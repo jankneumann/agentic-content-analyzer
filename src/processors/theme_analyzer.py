@@ -77,6 +77,7 @@ class ThemeAnalyzer:
         self.provider_used: Optional[Provider] = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
+        self.model_version: Optional[str] = None
 
         logger.info(f"Initialized ThemeAnalyzer with {self.framework} ({self.model})")
 
@@ -170,6 +171,7 @@ class ThemeAnalyzer:
                 top_theme=themes[0].name if themes else None,
                 processing_time_seconds=processing_time,
                 model_used=self.model,
+                model_version=self.model_version,
                 agent_framework=self.framework,
             )
 
@@ -293,8 +295,13 @@ class ThemeAnalyzer:
                 # Create client for this provider
                 client = Anthropic(api_key=provider_config.api_key)
 
+                # Get provider-specific model ID for API call
+                provider_model_id = self.model_config.get_provider_model_id(
+                    self.model, provider_config.provider
+                )
+
                 response = client.messages.create(
-                    model=self.model,
+                    model=provider_model_id,
                     max_tokens=8000,
                     temperature=0.3,  # Lower temperature for more consistent analysis
                     messages=[
@@ -309,6 +316,9 @@ class ThemeAnalyzer:
                 self.provider_used = provider_config.provider
                 self.input_tokens = response.usage.input_tokens
                 self.output_tokens = response.usage.output_tokens
+                self.model_version = self.model_config.get_model_version(
+                    self.model, self.provider_used
+                )
 
                 # Success - break out of failover loop
                 break

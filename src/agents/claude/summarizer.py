@@ -84,12 +84,17 @@ class ClaudeAgent(SummarizationAgent):
                 # Create client for this provider
                 client = Anthropic(api_key=provider_config.api_key)
 
+                # Get provider-specific model ID for API call
+                provider_model_id = self.model_config.get_provider_model_id(
+                    self.model, provider_config.provider
+                )
+
                 # Create prompt
                 prompt = self._create_summary_prompt(newsletter)
 
-                # Call Claude API
+                # Call Claude API with provider-specific model ID
                 response = client.messages.create(
-                    model=self.model,
+                    model=provider_model_id,
                     max_tokens=4096,
                     temperature=0.0,  # Deterministic for consistent summaries
                     messages=[{"role": "user", "content": prompt}],
@@ -99,6 +104,9 @@ class ClaudeAgent(SummarizationAgent):
                 self.provider_used = provider_config.provider
                 self.input_tokens = response.usage.input_tokens
                 self.output_tokens = response.usage.output_tokens
+                self.model_version = self.model_config.get_model_version(
+                    self.model, self.provider_used
+                )
 
                 # Extract response
                 response_text = response.content[0].text

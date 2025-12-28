@@ -52,6 +52,7 @@ class SummarizationAgent(ABC):
         self.provider_used: Optional[Provider] = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
+        self.model_version: Optional[str] = None  # Track model version used
 
     @abstractmethod
     def summarize_newsletter(self, newsletter: Newsletter) -> AgentResponse:
@@ -158,4 +159,5 @@ Provide ONLY the JSON output, no additional commentary."""
             relevance_scores=data.get("relevance_scores", {}),
             agent_framework=self.framework_name,
             model_used=self.model,
+            model_version=self.model_version,
         )

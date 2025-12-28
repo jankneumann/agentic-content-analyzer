@@ -98,6 +98,7 @@ class NewsletterSummarizer:
                     relevance_scores=summary_data.relevance_scores,
                     agent_framework=summary_data.agent_framework,
                     model_used=summary_data.model_used,
+                    model_version=summary_data.model_version,
                     token_usage=summary_data.token_usage,
                     processing_time_seconds=summary_data.processing_time_seconds,
                 )

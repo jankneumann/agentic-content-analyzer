@@ -55,6 +55,7 @@ class DigestCreator:
         self.provider_used: Optional[Provider] = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
+        self.model_version: Optional[str] = None
 
         logger.info(f"Initialized DigestCreator with {self.model}")
 
@@ -130,6 +131,7 @@ class DigestCreator:
             newsletter_count=theme_result.newsletter_count,
             agent_framework=self.framework,
             model_used=self.model,
+            model_version=self.model_version,
             processing_time_seconds=processing_time,
         )
 
@@ -186,8 +188,13 @@ class DigestCreator:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
                 client = Anthropic(api_key=provider_config.api_key)
 
+                # Get provider-specific model ID for API call
+                provider_model_id = self.model_config.get_provider_model_id(
+                    self.model, provider_config.provider
+                )
+
                 response = client.messages.create(
-                    model=self.model,
+                    model=provider_model_id,
                     max_tokens=12000,  # Longer for full digest
                     temperature=0.4,  # Slightly higher for narrative flow
                     messages=[{"role": "user", "content": prompt}],
@@ -197,6 +204,9 @@ class DigestCreator:
                 self.provider_used = provider_config.provider
                 self.input_tokens = response.usage.input_tokens
                 self.output_tokens = response.usage.output_tokens
+                self.model_version = self.model_config.get_model_version(
+                    self.model, self.provider_used
+                )
 
                 break  # Success
 
