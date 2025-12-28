@@ -67,6 +67,10 @@ def test_summarize_newsletter_success(
     assert summary.agent_framework == "claude"
     # Verify model is from registry (behavior-based testing)
     assert summary.model_used in MODEL_REGISTRY, f"Model {summary.model_used} not in registry"
+    # Verify model version is tracked
+    assert summary.model_version is not None, "Model version should be tracked"
+    assert isinstance(summary.model_version, str), "Model version should be a string"
+    assert len(summary.model_version) > 0, "Model version should not be empty"
     assert summary.token_usage == 1500  # 1000 input + 500 output
 
 

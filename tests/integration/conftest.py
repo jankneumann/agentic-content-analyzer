@@ -177,6 +177,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             },
             agent_framework="claude",
             model_used=test_model,
+            model_version="20250929",  # Test version
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
@@ -195,6 +196,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             },
             agent_framework="claude",
             model_used=test_model,
+            model_version="20250929",  # Test version
             token_usage=2200,
             processing_time_seconds=3.2,
         ),
@@ -213,6 +215,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             },
             agent_framework="claude",
             model_used=test_model,
+            model_version="20250929",  # Test version
             token_usage=2400,
             processing_time_seconds=3.4,
         ),

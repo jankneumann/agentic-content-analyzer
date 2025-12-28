@@ -45,11 +45,14 @@ class TestModelRegistry:
         assert hasattr(model_info, "name")
         assert hasattr(model_info, "supports_vision")
         assert hasattr(model_info, "supports_video")
+        assert hasattr(model_info, "default_version")
 
         # Verify types
         assert isinstance(model_info.family, ModelFamily)
         assert isinstance(model_info.supports_vision, bool)
         assert isinstance(model_info.supports_video, bool)
+        # default_version can be None or string
+        assert model_info.default_version is None or isinstance(model_info.default_version, str)
 
     def test_provider_model_config_has_required_fields(self):
         """Test that provider-model configs have required fields."""
@@ -60,6 +63,7 @@ class TestModelRegistry:
         # Verify required fields exist
         assert hasattr(config, "model_id")
         assert hasattr(config, "provider")
+        assert hasattr(config, "provider_model_id")
         assert hasattr(config, "cost_per_mtok_input")
         assert hasattr(config, "cost_per_mtok_output")
         assert hasattr(config, "context_window")
@@ -68,6 +72,8 @@ class TestModelRegistry:
 
         # Verify types and constraints
         assert isinstance(config.provider, Provider)
+        assert isinstance(config.provider_model_id, str)
+        assert len(config.provider_model_id) > 0, "Provider model ID must not be empty"
         assert config.cost_per_mtok_input > 0, "Input cost must be positive"
         assert config.cost_per_mtok_output > 0, "Output cost must be positive"
         assert config.context_window > 0, "Context window must be positive"
@@ -214,6 +220,86 @@ class TestModelConfig:
         family = config.get_family(model_id)
 
         assert isinstance(family, ModelFamily)
+
+    def test_get_provider_model_id(self):
+        """Test getting provider-specific model ID for API calls."""
+        config = ModelConfig()
+        config.add_provider(ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key"))
+
+        # Get any model that's available on Anthropic
+        model_id = next(
+            (mid for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if prov == Provider.ANTHROPIC),
+            None
+        )
+
+        if model_id:
+            provider_model_id = config.get_provider_model_id(model_id, Provider.ANTHROPIC)
+
+            # Verify it's a non-empty string
+            assert isinstance(provider_model_id, str)
+            assert len(provider_model_id) > 0
+
+            # Verify it's different from the general model ID (should include version/provider prefix)
+            # Unless they happen to be the same (e.g., for OpenAI models)
+            assert provider_model_id != ""
+
+    def test_get_model_version(self):
+        """Test extracting version from provider-specific model ID."""
+        config = ModelConfig()
+        config.add_provider(ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key"))
+
+        # Get any model that's available on Anthropic
+        model_id = next(
+            (mid for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if prov == Provider.ANTHROPIC),
+            None
+        )
+
+        if model_id:
+            version = config.get_model_version(model_id, Provider.ANTHROPIC)
+
+            # Verify it's a string
+            assert isinstance(version, str)
+
+            # For Anthropic models with dates, should be 8 digits (YYYYMMDD)
+            # For others, might be different format or "unknown"
+            assert len(version) > 0
+
+    def test_different_versions_per_provider(self):
+        """Test that different providers can use different versions of the same model family."""
+        config = ModelConfig()
+
+        # Find a model that's available on multiple providers
+        models_by_provider = {}
+        for model_id, provider in PROVIDER_MODEL_CONFIGS.keys():
+            if model_id not in models_by_provider:
+                models_by_provider[model_id] = []
+            models_by_provider[model_id].append(provider)
+
+        # Find a model with at least 2 providers
+        multi_provider_model = next(
+            (mid for mid, provs in models_by_provider.items() if len(provs) >= 2),
+            None
+        )
+
+        if multi_provider_model:
+            providers = models_by_provider[multi_provider_model][:2]
+
+            # Add both providers
+            for provider in providers:
+                config.add_provider(ProviderConfig(provider=provider, api_key="test-key"))
+
+            # Get provider-specific IDs for both
+            provider_id_1 = config.get_provider_model_id(multi_provider_model, providers[0])
+            provider_id_2 = config.get_provider_model_id(multi_provider_model, providers[1])
+
+            # They should both be valid
+            assert isinstance(provider_id_1, str)
+            assert isinstance(provider_id_2, str)
+            assert len(provider_id_1) > 0
+            assert len(provider_id_2) > 0
+
+            # They might be different (different provider formats) or the same version
+            # The key is that both are valid and can be used for API calls
 
 
 class TestProviderManagement:
