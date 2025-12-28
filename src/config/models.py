@@ -104,12 +104,13 @@ class ProviderConfig:
 class ModelInfo:
     """Information about an LLM model (provider-agnostic)."""
 
-    id: str  # Model identifier (e.g., "claude-sonnet-4-5-20251022")
+    id: str  # Model identifier (family-based, e.g., "claude-sonnet-4-5")
     family: ModelFamily
     name: str  # Human-readable name
     # Capabilities (same across all providers)
     supports_vision: bool = False  # Whether model supports image inputs
     supports_video: bool = False  # Whether model supports video inputs (e.g., YouTube URLs)
+    default_version: Optional[str] = None  # Default version date (e.g., "20250929")
 
 
 @dataclass
@@ -119,8 +120,13 @@ class ProviderModelConfig:
     Same model can have different costs, limits, and tiers on different providers.
     """
 
-    model_id: str  # Model identifier
+    model_id: str  # General model identifier (e.g., "claude-sonnet-4-5")
     provider: Provider  # Where to access it
+    provider_model_id: str  # Provider-specific model identifier
+                           # Examples:
+                           # - Anthropic: "claude-sonnet-4-5-20250929"
+                           # - AWS Bedrock: "anthropic.claude-sonnet-4-5-20250929-v1:0"
+                           # - Vertex AI: "claude-sonnet-4-5@20250929"
     # Provider-specific pricing
     cost_per_mtok_input: float  # Cost per million input tokens (USD)
     cost_per_mtok_output: float  # Cost per million output tokens (USD)
@@ -129,6 +135,17 @@ class ProviderModelConfig:
     max_output_tokens: int  # Maximum output tokens
     # Provider tier (affects pricing/limits)
     tier: str = "standard"  # e.g., "standard", "enterprise", "on-demand", "provisioned"
+
+    @property
+    def version(self) -> str:
+        """Extract version (YYYYMMDD) from provider_model_id.
+
+        Returns:
+            Version string (e.g., "20250929") or "unknown" if not found
+        """
+        import re
+        match = re.search(r'(\d{8})', self.provider_model_id)
+        return match.group(1) if match else "unknown"
 
 
 def load_model_registry() -> Tuple[
@@ -153,27 +170,29 @@ def load_model_registry() -> Tuple[
     with open(yaml_path, "r") as f:
         config = yaml.safe_load(f)
 
-    # Parse models
+    # Parse models (now family-based IDs)
     model_registry = {}
     for model_id, model_data in config.get("models", {}).items():
         model_registry[model_id] = ModelInfo(
-            id=model_id,
+            id=model_id,  # Now: family-based like "claude-sonnet-4-5"
             family=ModelFamily(model_data["family"]),
             name=model_data["name"],
             supports_vision=model_data.get("supports_vision", False),
             supports_video=model_data.get("supports_video", False),
+            default_version=model_data.get("default_version"),  # NEW
         )
 
-    # Parse provider-model configs
+    # Parse provider-model configs (with provider-specific model IDs)
     provider_model_configs = {}
     for key, pmc_data in config.get("provider_model_configs", {}).items():
-        # Parse key: "provider.model_id"
+        # Parse key: "provider.model_id" (model_id is family-based)
         provider_str, model_id = key.split(".", 1)
         provider = Provider(provider_str)
 
         provider_model_configs[(model_id, provider)] = ProviderModelConfig(
-            model_id=model_id,
+            model_id=model_id,  # General ID (e.g., "claude-sonnet-4-5")
             provider=provider,
+            provider_model_id=pmc_data["provider_model_id"],  # NEW: Provider-specific ID
             cost_per_mtok_input=pmc_data["cost_per_mtok_input"],
             cost_per_mtok_output=pmc_data["cost_per_mtok_output"],
             context_window=pmc_data["context_window"],
@@ -334,6 +353,39 @@ class ModelConfig:
             )
 
         return result
+
+    def get_provider_model_id(self, model_id: str, provider: Provider) -> str:
+        """Get the provider-specific model identifier for API calls.
+
+        Args:
+            model_id: General model identifier (e.g., "claude-sonnet-4-5")
+            provider: Provider to get ID for
+
+        Returns:
+            Provider-specific model ID for API calls
+            Examples:
+            - Anthropic: "claude-sonnet-4-5-20250929"
+            - AWS Bedrock: "anthropic.claude-sonnet-4-5-20250929-v1:0"
+            - Vertex AI: "claude-sonnet-4-5@20250929"
+
+        Raises:
+            ValueError: If model not available on provider
+        """
+        config = self.get_provider_model_config(model_id, provider)
+        return config.provider_model_id
+
+    def get_model_version(self, model_id: str, provider: Provider) -> str:
+        """Get the version of a model for a specific provider.
+
+        Args:
+            model_id: General model identifier (e.g., "claude-sonnet-4-5")
+            provider: Provider to get version for
+
+        Returns:
+            Version string (e.g., "20250929") or "unknown" if not found
+        """
+        config = self.get_provider_model_config(model_id, provider)
+        return config.version
 
     def add_provider(self, provider_config: ProviderConfig, priority: int = -1) -> None:
         """Add or update a provider configuration.

@@ -31,7 +31,8 @@ class NewsletterSummary(Base):
 
     # Metadata
     agent_framework = Column(String(100), nullable=False)  # claude, openai, google, microsoft
-    model_used = Column(String(100), nullable=False)
+    model_used = Column(String(100), nullable=False)  # General model ID (e.g., "claude-sonnet-4-5")
+    model_version = Column(String(20), nullable=True)  # Version (e.g., "20250929")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     token_usage = Column(Integer, nullable=True)
     processing_time_seconds = Column(Float, nullable=True)
@@ -52,6 +53,7 @@ class SummaryData(BaseModel):
     notable_quotes: list[str] = Field(default_factory=list)
     relevance_scores: dict[str, float] = Field(default_factory=dict)
     agent_framework: str
-    model_used: str
+    model_used: str  # General model ID (e.g., "claude-sonnet-4-5")
+    model_version: Optional[str] = None  # Version (e.g., "20250929")
     token_usage: Optional[int] = None
     processing_time_seconds: Optional[float] = None

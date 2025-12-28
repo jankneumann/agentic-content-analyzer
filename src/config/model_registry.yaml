@@ -1,56 +1,67 @@
 # Model Registry Configuration
-# Updated: December 2024
+# Updated: December 2024 (Refactored: Family-based model IDs)
 #
 # This file contains:
-# 1. Model definitions (provider-agnostic capabilities)
-# 2. Provider-model configurations (provider-specific pricing, limits, tiers)
+# 1. Model definitions (provider-agnostic capabilities, family-based IDs)
+# 2. Provider-model configurations (provider-specific model IDs, pricing, limits)
 #
 # Update this file when:
 # - New models are released
 # - Pricing changes
 # - Context windows are increased
 # - New providers add support for existing models
+#
+# Key Changes (Dec 2024 Refactoring):
+# - Model IDs are now family-based (e.g., "claude-sonnet-4-5" instead of "claude-sonnet-4-5-20250929")
+# - Each model has a default_version field
+# - Provider configs have provider_model_id field with the actual API identifier
 
-# Model Definitions (provider-agnostic)
+# Model Definitions (provider-agnostic, family-based IDs)
 models:
   # Claude 4.5 Family
-  claude-haiku-4-5-20251001:
+  claude-haiku-4-5:
     family: claude
     name: "Claude 4.5 Haiku"
     supports_vision: true
     supports_video: false
+    default_version: "20251001"
 
-  claude-sonnet-4-5-20250929:
+  claude-sonnet-4-5:
     family: claude
     name: "Claude 4.5 Sonnet"
     supports_vision: true
     supports_video: false
+    default_version: "20250929"
 
-  claude-opus-4-5-20251024:
+  claude-opus-4-5:
     family: claude
     name: "Claude 4.5 Opus"
     supports_vision: true
     supports_video: false
+    default_version: "20251024"
 
   # Legacy Claude
-  claude-sonnet-4-20250514:
+  claude-sonnet-4:
     family: claude
     name: "Claude Sonnet 4"
     supports_vision: true
     supports_video: false
+    default_version: "20250514"
 
   # Gemini 2.0 Family
-  gemini-2.0-flash-exp:
+  gemini-2.0-flash:
     family: gemini
     name: "Gemini 2.0 Flash"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
+    default_version: "exp"
 
   gemini-2.0-pro:
     family: gemini
     name: "Gemini 2.0 Pro"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
+    default_version: "001"
 
   # OpenAI GPT-4o Family
   gpt-4o:
@@ -58,38 +69,45 @@ models:
     name: "GPT-4o"
     supports_vision: true
     supports_video: false
+    default_version: "2024-11-20"
 
   gpt-4o-mini:
     family: gpt
     name: "GPT-4o Mini"
     supports_vision: true
     supports_video: false
+    default_version: "2024-07-18"
 
   o1-mini:
     family: gpt
     name: "OpenAI o1-mini"
     supports_vision: false
     supports_video: false
+    default_version: "2024-09-12"
 
 # Provider-Model Configurations
-# Format: provider.model_id
+# Format: provider.model-family (NO version/date in key)
+# Each config includes provider_model_id with the actual API identifier
 provider_model_configs:
   # Claude Haiku 4.5
-  anthropic.claude-haiku-4-5-20251001:
+  anthropic.claude-haiku-4-5:
+    provider_model_id: "claude-haiku-4-5-20251001"  # Anthropic API identifier
     cost_per_mtok_input: 0.80  # $0.80 per million input tokens
     cost_per_mtok_output: 4.00  # $4.00 per million output tokens
     context_window: 200000
     max_output_tokens: 8192
     tier: standard
 
-  aws_bedrock.claude-haiku-4-5-20251001:
+  aws_bedrock.claude-haiku-4-5:
+    provider_model_id: "anthropic.claude-haiku-4-5-20251001-v1:0"  # AWS Bedrock identifier
     cost_per_mtok_input: 0.92  # ~15% markup over Anthropic
     cost_per_mtok_output: 4.60
     context_window: 200000
     max_output_tokens: 8192
     tier: on-demand
 
-  google_vertex.claude-haiku-4-5-20251001:
+  google_vertex.claude-haiku-4-5:
+    provider_model_id: "claude-haiku-4-5@20251001"  # Vertex AI identifier
     cost_per_mtok_input: 0.80
     cost_per_mtok_output: 4.00
     context_window: 200000
@@ -97,21 +115,24 @@ provider_model_configs:
     tier: standard
 
   # Claude Sonnet 4.5
-  anthropic.claude-sonnet-4-5-20250929:
+  anthropic.claude-sonnet-4-5:
+    provider_model_id: "claude-sonnet-4-5-20250929"
     cost_per_mtok_input: 3.00
     cost_per_mtok_output: 15.00
     context_window: 200000
     max_output_tokens: 8192
     tier: standard
 
-  aws_bedrock.claude-sonnet-4-5-20250929:
+  aws_bedrock.claude-sonnet-4-5:
+    provider_model_id: "anthropic.claude-sonnet-4-5-20250929-v1:0"
     cost_per_mtok_input: 3.45  # ~15% markup
     cost_per_mtok_output: 17.25
     context_window: 200000
     max_output_tokens: 8192
     tier: on-demand
 
-  google_vertex.claude-sonnet-4-5-20250929:
+  google_vertex.claude-sonnet-4-5:
+    provider_model_id: "claude-sonnet-4-5@20250929"
     cost_per_mtok_input: 3.00
     cost_per_mtok_output: 15.00
     context_window: 200000
@@ -119,21 +140,24 @@ provider_model_configs:
     tier: standard
 
   # Claude Opus 4.5
-  anthropic.claude-opus-4-5-20251024:
+  anthropic.claude-opus-4-5:
+    provider_model_id: "claude-opus-4-5-20251024"
     cost_per_mtok_input: 15.00
     cost_per_mtok_output: 75.00
     context_window: 200000
     max_output_tokens: 8192
     tier: standard
 
-  aws_bedrock.claude-opus-4-5-20251024:
+  aws_bedrock.claude-opus-4-5:
+    provider_model_id: "anthropic.claude-opus-4-5-20251024-v1:0"
     cost_per_mtok_input: 17.25  # ~15% markup
     cost_per_mtok_output: 86.25
     context_window: 200000
     max_output_tokens: 8192
     tier: on-demand
 
-  google_vertex.claude-opus-4-5-20251024:
+  google_vertex.claude-opus-4-5:
+    provider_model_id: "claude-opus-4-5@20251024"
     cost_per_mtok_input: 15.00
     cost_per_mtok_output: 75.00
     context_window: 200000
@@ -141,14 +165,16 @@ provider_model_configs:
     tier: standard
 
   # Legacy Claude Sonnet 4
-  anthropic.claude-sonnet-4-20250514:
+  anthropic.claude-sonnet-4:
+    provider_model_id: "claude-sonnet-4-20250514"
     cost_per_mtok_input: 3.00
     cost_per_mtok_output: 15.00
     context_window: 200000
     max_output_tokens: 8192
     tier: standard
 
-  aws_bedrock.claude-sonnet-4-20250514:
+  aws_bedrock.claude-sonnet-4:
+    provider_model_id: "anthropic.claude-sonnet-4-20250514-v1:0"
     cost_per_mtok_input: 3.45
     cost_per_mtok_output: 17.25
     context_window: 200000
@@ -156,14 +182,16 @@ provider_model_configs:
     tier: on-demand
 
   # Gemini 2.0 Flash
-  google_ai.gemini-2.0-flash-exp:
+  google_ai.gemini-2.0-flash:
+    provider_model_id: "gemini-2.0-flash-exp"  # Google AI Studio identifier
     cost_per_mtok_input: 0.075  # Extremely cheap
     cost_per_mtok_output: 0.30
     context_window: 1000000  # 1M token context
     max_output_tokens: 8192
     tier: standard
 
-  google_vertex.gemini-2.0-flash-exp:
+  google_vertex.gemini-2.0-flash:
+    provider_model_id: "gemini-2.0-flash-exp"  # Vertex AI identifier
     cost_per_mtok_input: 0.075
     cost_per_mtok_output: 0.30
     context_window: 1000000
@@ -172,6 +200,7 @@ provider_model_configs:
 
   # Gemini 2.0 Pro
   google_ai.gemini-2.0-pro:
+    provider_model_id: "gemini-2.0-pro"
     cost_per_mtok_input: 1.25
     cost_per_mtok_output: 5.00
     context_window: 2000000  # 2M token context
@@ -179,6 +208,7 @@ provider_model_configs:
     tier: standard
 
   google_vertex.gemini-2.0-pro:
+    provider_model_id: "gemini-2.0-pro"
     cost_per_mtok_input: 1.25
     cost_per_mtok_output: 5.00
     context_window: 2000000
@@ -187,6 +217,7 @@ provider_model_configs:
 
   # GPT-4o
   openai.gpt-4o:
+    provider_model_id: "gpt-4o"
     cost_per_mtok_input: 2.50
     cost_per_mtok_output: 10.00
     context_window: 128000
@@ -194,6 +225,7 @@ provider_model_configs:
     tier: standard
 
   microsoft_azure.gpt-4o:
+    provider_model_id: "gpt-4o"  # Azure uses same name
     cost_per_mtok_input: 2.875  # ~15% markup
     cost_per_mtok_output: 11.50
     context_window: 128000
@@ -201,6 +233,7 @@ provider_model_configs:
     tier: standard
 
   aws_bedrock.gpt-4o:
+    provider_model_id: "gpt-4o"
     cost_per_mtok_input: 2.875
     cost_per_mtok_output: 11.50
     context_window: 128000
@@ -209,6 +242,7 @@ provider_model_configs:
 
   # GPT-4o Mini
   openai.gpt-4o-mini:
+    provider_model_id: "gpt-4o-mini"
     cost_per_mtok_input: 0.15
     cost_per_mtok_output: 0.60
     context_window: 128000
@@ -216,6 +250,7 @@ provider_model_configs:
     tier: standard
 
   microsoft_azure.gpt-4o-mini:
+    provider_model_id: "gpt-4o-mini"
     cost_per_mtok_input: 0.1725  # ~15% markup
     cost_per_mtok_output: 0.69
     context_window: 128000
@@ -223,6 +258,7 @@ provider_model_configs:
     tier: standard
 
   aws_bedrock.gpt-4o-mini:
+    provider_model_id: "gpt-4o-mini"
     cost_per_mtok_input: 0.1725
     cost_per_mtok_output: 0.69
     context_window: 128000
@@ -231,6 +267,7 @@ provider_model_configs:
 
   # OpenAI o1-mini
   openai.o1-mini:
+    provider_model_id: "o1-mini"
     cost_per_mtok_input: 3.00
     cost_per_mtok_output: 12.00
     context_window: 128000
@@ -238,20 +275,21 @@ provider_model_configs:
     tier: standard
 
   microsoft_azure.o1-mini:
+    provider_model_id: "o1-mini"
     cost_per_mtok_input: 3.45  # ~15% markup
     cost_per_mtok_output: 13.80
     context_window: 128000
     max_output_tokens: 65536
     tier: standard
 
-# Default model selection per pipeline step
+# Default model selection per pipeline step (using family-based IDs)
 default_models:
-  summarization: claude-haiku-4-5-20251001  # Fast, cheap for structured extraction
-  theme_analysis: claude-sonnet-4-5-20250929  # Better reasoning for theme extraction
-  digest_creation: claude-sonnet-4-5-20250929  # Balanced quality/cost for long-form
-  historical_context: claude-sonnet-4-5-20250929  # Good at temporal reasoning
-  youtube_processing: gemini-2.0-flash-exp  # Native YouTube support, very cheap
-  entity_extraction: claude-haiku-4-5-20251001  # Structured extraction, cost-effective
+  summarization: claude-haiku-4-5  # Fast, cheap for structured extraction
+  theme_analysis: claude-sonnet-4-5  # Better reasoning for theme extraction
+  digest_creation: claude-sonnet-4-5  # Balanced quality/cost for long-form
+  historical_context: claude-sonnet-4-5  # Good at temporal reasoning
+  youtube_processing: gemini-2.0-flash  # Native YouTube support, very cheap
+  entity_extraction: claude-haiku-4-5  # Structured extraction, cost-effective
   reranking: gpt-4o-mini  # Fast, cheap for simple ranking
 
 # Notes on provider tiers and pricing:

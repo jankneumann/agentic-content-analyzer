@@ -65,7 +65,8 @@ class Digest(Base):
 
     # Generation metadata
     agent_framework = Column(String(100), nullable=False)
-    model_used = Column(String(100), nullable=False)
+    model_used = Column(String(100), nullable=False)  # General model ID
+    model_version = Column(String(20), nullable=True)  # Version
     token_usage = Column(Integer, nullable=True)
     processing_time_seconds = Column(Integer, nullable=True)
 
@@ -96,7 +97,8 @@ class DigestData(BaseModel):
     historical_context: Optional[list[dict]] = None
     newsletter_count: int
     agent_framework: str
-    model_used: str
+    model_used: str  # General model ID
+    model_version: Optional[str] = None  # Version
     token_usage: Optional[int] = None
     processing_time_seconds: Optional[float] = None
 

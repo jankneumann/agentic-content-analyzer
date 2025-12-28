@@ -60,7 +60,8 @@ class ThemeAnalysis(Base):
 
     # Metadata
     agent_framework = Column(String(100), nullable=False)  # claude, openai, google, gemini
-    model_used = Column(String(100), nullable=False)
+    model_used = Column(String(100), nullable=False)  # General model ID
+    model_version = Column(String(20), nullable=True)  # Version
     processing_time_seconds = Column(Float, nullable=True)
     token_usage = Column(Integer, nullable=True)
 
@@ -200,7 +201,8 @@ class ThemeAnalysisResult(BaseModel):
     # Performance metrics
     processing_time_seconds: float = 0.0
     token_usage: Optional[int] = None
-    model_used: str = ""
+    model_used: str = ""  # General model ID
+    model_version: Optional[str] = None  # Version
     agent_framework: str = ""
 
     # Insights
