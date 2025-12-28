@@ -8,6 +8,7 @@ from typing import Optional
 from anthropic import Anthropic
 
 from src.config import settings
+from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.newsletter import Newsletter
 from src.models.summary import NewsletterSummary
 from src.models.theme import (
@@ -34,6 +35,7 @@ class ThemeAnalyzer:
 
     def __init__(
         self,
+        model_config: Optional[ModelConfig] = None,
         use_large_context: bool = False,
         model_override: Optional[str] = None,
     ) -> None:
@@ -41,31 +43,42 @@ class ThemeAnalyzer:
         Initialize theme analyzer.
 
         Args:
+            model_config: Model configuration (defaults to settings.get_model_config())
             use_large_context: If True, use large context model (Gemini Flash)
             model_override: Optional model name override
         """
         self.use_large_context = use_large_context
 
+        # Get model config from settings if not provided
+        if model_config is None:
+            model_config = settings.get_model_config()
+
+        self.model_config = model_config
+
+        # Get model for theme analysis step (or use override)
+        self.model = model_override or model_config.get_model_for_step(
+            ModelStep.THEME_ANALYSIS
+        )
+
+        # Determine framework based on model family
+        model_family = model_config.get_family(self.model)
+        self.framework = model_family.value  # "claude", "gemini", "gpt"
+
         if use_large_context:
             # TODO: Add Gemini Flash support in future
             logger.warning(
                 "Large context model (Gemini) not yet implemented, "
-                "falling back to Claude Sonnet"
+                "using configured theme analysis model"
             )
-            self.client = Anthropic(api_key=settings.anthropic_api_key)
-            self.model = model_override or "claude-sonnet-4-20250514"
-            self.framework = "claude"
-        else:
-            # Use Claude Sonnet as primary
-            self.client = Anthropic(api_key=settings.anthropic_api_key)
-            self.model = model_override or "claude-sonnet-4-20250514"
-            self.framework = "claude"
 
         self.graphiti_client: Optional[GraphitiClient] = None
 
-        logger.info(
-            f"Initialized ThemeAnalyzer with {self.framework} ({self.model})"
-        )
+        # Track usage for cost calculation
+        self.provider_used: Optional[Provider] = None
+        self.input_tokens: int = 0
+        self.output_tokens: int = 0
+
+        logger.info(f"Initialized ThemeAnalyzer with {self.framework} ({self.model})")
 
     async def analyze_themes(
         self,
@@ -133,7 +146,9 @@ class ThemeAnalyzer:
             # 5. Enrich with historical context (NEW)
             if include_historical_context and themes:
                 logger.info("Enriching themes with historical context...")
-                context_analyzer = HistoricalContextAnalyzer(model=self.model)
+                context_analyzer = HistoricalContextAnalyzer(
+                    model_config=self.model_config, model=self.model
+                )
                 themes = await context_analyzer.enrich_themes_with_history(
                     themes=themes,
                     current_date=request.end_date,
@@ -249,23 +264,81 @@ class ThemeAnalyzer:
             relevance_threshold=relevance_threshold,
         )
 
-        # Call LLM for analysis
+        # Call LLM for analysis with provider failover
         start_time = time.time()
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=8000,
-            temperature=0.3,  # Lower temperature for more consistent analysis
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-        )
+        # Get providers for this model (in priority order)
+        try:
+            providers = self.model_config.get_providers_for_model(self.model)
+        except ValueError as e:
+            logger.error(f"No providers configured for model {self.model}: {e}")
+            return []
+
+        # Filter for Anthropic-compatible providers (for now, only Anthropic)
+        # TODO: Add support for other providers (AWS Bedrock, Vertex AI, Azure, OpenAI)
+        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+
+        if not anthropic_providers:
+            logger.error(f"No Anthropic-compatible providers for model {self.model}")
+            return []
+
+        # Try each provider in order (failover support)
+        response = None
+        last_error = None
+
+        for provider_config in anthropic_providers:
+            try:
+                logger.info(f"Trying provider: {provider_config.provider.value}")
+
+                # Create client for this provider
+                client = Anthropic(api_key=provider_config.api_key)
+
+                response = client.messages.create(
+                    model=self.model,
+                    max_tokens=8000,
+                    temperature=0.3,  # Lower temperature for more consistent analysis
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        }
+                    ],
+                )
+
+                # Track provider and token usage for cost calculation
+                self.provider_used = provider_config.provider
+                self.input_tokens = response.usage.input_tokens
+                self.output_tokens = response.usage.output_tokens
+
+                # Success - break out of failover loop
+                break
+
+            except Exception as e:
+                error_msg = f"Error with provider {provider_config.provider.value}: {str(e)}"
+                logger.error(error_msg)
+                last_error = str(e)
+                continue  # Try next provider
+
+        if response is None:
+            logger.error(f"All providers failed. Last error: {last_error}")
+            return []
 
         llm_time = time.time() - start_time
-        logger.info(f"LLM analysis completed in {llm_time:.2f}s")
+
+        # Calculate actual cost
+        cost = self.model_config.calculate_cost(
+            model_id=self.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            provider=self.provider_used,
+        )
+
+        logger.info(
+            f"LLM analysis completed in {llm_time:.2f}s, "
+            f"tokens: {self.input_tokens + self.output_tokens}, "
+            f"cost: ${cost:.4f}, "
+            f"provider: {self.provider_used.value}"
+        )
 
         # Parse response
         themes = self._parse_theme_response(

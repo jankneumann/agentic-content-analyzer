@@ -7,6 +7,7 @@ from typing import Optional
 from anthropic import Anthropic
 
 from src.config import settings
+from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.newsletter import Newsletter
 from src.models.theme import HistoricalMention, ThemeData, ThemeEvolution
 from src.storage.database import get_db
@@ -23,16 +24,33 @@ class HistoricalContextAnalyzer:
     Provides continuity and tracks how themes have developed over time.
     """
 
-    def __init__(self, model: str = "claude-sonnet-4-20250514"):
+    def __init__(
+        self,
+        model_config: Optional[ModelConfig] = None,
+        model: Optional[str] = None,
+    ):
         """
         Initialize historical context analyzer.
 
         Args:
-            model: Claude model to use for analysis
+            model_config: Model configuration (defaults to settings.get_model_config())
+            model: Optional model override (defaults to HISTORICAL_CONTEXT step model)
         """
-        self.client = Anthropic(api_key=settings.anthropic_api_key)
-        self.model = model
+        # Get model config from settings if not provided
+        if model_config is None:
+            model_config = settings.get_model_config()
+
+        self.model_config = model_config
+
+        # Get model for historical context step (or use override)
+        self.model = model or model_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT)
+
         self.graphiti_client: Optional[GraphitiClient] = None
+
+        # Track usage for cost calculation
+        self.provider_used: Optional[Provider] = None
+        self.input_tokens: int = 0
+        self.output_tokens: int = 0
 
         logger.info(f"Initialized HistoricalContextAnalyzer with {self.model}")
 
@@ -252,13 +270,48 @@ Provide a JSON response with:
 
 Provide ONLY the JSON, no other text."""
 
-        # Call LLM
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=1500,
-            temperature=0.3,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        # Call LLM with provider failover
+        try:
+            providers = self.model_config.get_providers_for_model(self.model)
+        except ValueError as e:
+            logger.error(f"No providers configured for model {self.model}: {e}")
+            return ("No provider available.", [], None)
+
+        # Filter for Anthropic-compatible providers
+        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+
+        if not anthropic_providers:
+            logger.error(f"No Anthropic-compatible providers for model {self.model}")
+            return ("No provider available.", [], None)
+
+        # Try each provider in order
+        response = None
+        for provider_config in anthropic_providers:
+            try:
+                logger.debug(f"Trying provider: {provider_config.provider.value}")
+                client = Anthropic(api_key=provider_config.api_key)
+
+                response = client.messages.create(
+                    model=self.model,
+                    max_tokens=1500,
+                    temperature=0.3,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+
+                # Track provider and token usage
+                self.provider_used = provider_config.provider
+                self.input_tokens = response.usage.input_tokens
+                self.output_tokens = response.usage.output_tokens
+
+                break  # Success
+
+            except Exception as e:
+                logger.error(f"Error with provider {provider_config.provider.value}: {e}")
+                continue
+
+        if response is None:
+            logger.error("All providers failed for evolution analysis")
+            return ("Provider error.", [], None)
 
         # Parse response
         try:

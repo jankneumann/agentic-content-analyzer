@@ -12,6 +12,7 @@ from src.models.theme import (
     ThemeData,
     ThemeTrend,
 )
+from src.config.models import MODEL_REGISTRY
 from src.processors.theme_analyzer import ThemeAnalyzer
 
 
@@ -127,18 +128,24 @@ def test_theme_analyzer_initialization():
     with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic:
         analyzer = ThemeAnalyzer()
 
-        assert analyzer.model == "claude-sonnet-4-20250514"
-        assert analyzer.framework == "claude"
+        # Model should be from registry and configured for theme_analysis step
+        assert analyzer.model in MODEL_REGISTRY, f"Model {analyzer.model} not in registry"
+        assert analyzer.model_config is not None
+        assert analyzer.framework in ["claude", "gemini", "gpt"]
         assert not analyzer.use_large_context
-        mock_anthropic.assert_called_once()
 
 
 def test_theme_analyzer_initialization_with_model_override():
     """Test ThemeAnalyzer with custom model."""
     with patch("src.processors.theme_analyzer.Anthropic"):
-        analyzer = ThemeAnalyzer(model_override="claude-opus-4-5-20251101")
+        # Use any valid model from the registry
+        available_models = list(MODEL_REGISTRY.keys())
+        test_model = available_models[0]  # Use first model from registry
 
-        assert analyzer.model == "claude-opus-4-5-20251101"
+        analyzer = ThemeAnalyzer(model_override=test_model)
+
+        assert analyzer.model == test_model
+        assert analyzer.model in MODEL_REGISTRY
 
 
 def test_theme_analyzer_large_context_warning():
@@ -457,12 +464,17 @@ async def test_extract_themes_with_relevance_filtering(
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text=mock_response_low_relevance)]
+    # Add token usage to mock response
+    mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
     mock_client.messages.create.return_value = mock_response
 
     with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
         analyzer = ThemeAnalyzer()
+        # Mock calculate_cost to return a numeric value
+        analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
+
         themes = await analyzer._extract_themes_with_llm(
             newsletters=sample_newsletters,
             summaries=sample_summaries,

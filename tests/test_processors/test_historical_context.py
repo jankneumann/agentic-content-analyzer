@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.config.models import MODEL_REGISTRY
 from src.models.theme import (
     HistoricalMention,
     ThemeCategory,
@@ -124,9 +125,10 @@ def test_historical_context_analyzer_initialization():
     with patch("src.processors.historical_context.Anthropic") as mock_anthropic:
         analyzer = HistoricalContextAnalyzer()
 
-        assert analyzer.model == "claude-sonnet-4-20250514"
+        # Model should be from registry and configured for historical_context step
+        assert analyzer.model in MODEL_REGISTRY, f"Model {analyzer.model} not in registry"
+        assert analyzer.model_config is not None
         assert analyzer.graphiti_client is None
-        mock_anthropic.assert_called_once()
 
 
 def test_historical_context_analyzer_custom_model():
@@ -359,7 +361,8 @@ async def test_analyze_evolution_with_llm_success(
     # Verify LLM was called with correct prompt
     mock_client.messages.create.assert_called_once()
     call_args = mock_client.messages.create.call_args
-    assert call_args[1]["model"] == "claude-sonnet-4-20250514"
+    # Model should be from registry
+    assert call_args[1]["model"] in MODEL_REGISTRY
     assert call_args[1]["temperature"] == 0.3
     assert "Large Language Models" in call_args[1]["messages"][0]["content"]
 
