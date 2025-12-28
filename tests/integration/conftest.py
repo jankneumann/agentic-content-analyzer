@@ -20,6 +20,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from src.config.models import MODEL_REGISTRY
 from src.models.digest import Base as DigestBase
 from src.models.newsletter import Base as NewsletterBase
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
@@ -157,6 +158,9 @@ def sample_newsletters(db_session) -> list[Newsletter]:
 @pytest.fixture
 def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
     """Create sample summaries for the newsletters."""
+    # Use any valid model from the registry for test data
+    test_model = list(MODEL_REGISTRY.keys())[0]
+
     summaries = [
         NewsletterSummary(
             newsletter_id=sample_newsletters[0].id,
@@ -172,7 +176,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
                 "individual_developers": 0.7,
             },
             agent_framework="claude",
-            model_used="claude-haiku-4-5-20251001",
+            model_used=test_model,
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
@@ -190,7 +194,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
                 "individual_developers": 0.85,
             },
             agent_framework="claude",
-            model_used="claude-haiku-4-5-20251001",
+            model_used=test_model,
             token_usage=2200,
             processing_time_seconds=3.2,
         ),
@@ -208,7 +212,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
                 "individual_developers": 0.95,
             },
             agent_framework="claude",
-            model_used="claude-haiku-4-5-20251001",
+            model_used=test_model,
             token_usage=2400,
             processing_time_seconds=3.4,
         ),
@@ -232,6 +236,8 @@ def mock_anthropic_client():
 
     Returns different responses based on prompt content to simulate
     summarization, theme analysis, and digest creation.
+
+    Includes proper token usage for cost calculation.
     """
     mock_client = MagicMock()
 
@@ -250,8 +256,12 @@ def mock_anthropic_client():
             "individual_developers": 0.75
         }
     }''')]
-    mock_summary_response.usage.input_tokens = 1000
-    mock_summary_response.usage.output_tokens = 500
+
+    # Mock token usage for cost calculation
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 1000
+    mock_usage.output_tokens = 500
+    mock_summary_response.usage = mock_usage
 
     mock_client.messages.create.return_value = mock_summary_response
 

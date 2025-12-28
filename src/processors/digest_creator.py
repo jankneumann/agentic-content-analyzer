@@ -8,6 +8,7 @@ from typing import Optional
 from anthropic import Anthropic
 
 from src.config import settings
+from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.digest import DigestData, DigestRequest, DigestSection, DigestType
 from src.models.newsletter import Newsletter
 from src.models.theme import ThemeAnalysisRequest, ThemeData
@@ -25,16 +26,35 @@ class DigestCreator:
     Supports daily and weekly digests with multi-audience formatting.
     """
 
-    def __init__(self, model: str = "claude-sonnet-4-20250514"):
+    def __init__(
+        self,
+        model_config: Optional[ModelConfig] = None,
+        model: Optional[str] = None,
+    ):
         """
         Initialize digest creator.
 
         Args:
-            model: Claude model to use for digest generation
+            model_config: Model configuration (defaults to settings.get_model_config())
+            model: Optional model override (defaults to DIGEST_CREATION step model)
         """
-        self.client = Anthropic(api_key=settings.anthropic_api_key)
-        self.model = model
-        self.framework = "claude"
+        # Get model config from settings if not provided
+        if model_config is None:
+            model_config = settings.get_model_config()
+
+        self.model_config = model_config
+
+        # Get model for digest creation step (or use override)
+        self.model = model or model_config.get_model_for_step(ModelStep.DIGEST_CREATION)
+
+        # Determine framework based on model family
+        model_family = model_config.get_family(self.model)
+        self.framework = model_family.value
+
+        # Track usage for cost calculation
+        self.provider_used: Optional[Provider] = None
+        self.input_tokens: int = 0
+        self.output_tokens: int = 0
 
         logger.info(f"Initialized DigestCreator with {self.model}")
 
@@ -65,7 +85,7 @@ class DigestCreator:
             relevance_threshold=0.3,
         )
 
-        analyzer = ThemeAnalyzer()
+        analyzer = ThemeAnalyzer(model_config=self.model_config)
         theme_result = await analyzer.analyze_themes(
             theme_request,
             include_historical_context=request.include_historical_context,
@@ -143,12 +163,67 @@ class DigestCreator:
             theme_count=len(themes),
         )
 
-        # Call LLM
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=12000,  # Longer for full digest
-            temperature=0.4,  # Slightly higher for narrative flow
-            messages=[{"role": "user", "content": prompt}],
+        # Call LLM with provider failover
+        try:
+            providers = self.model_config.get_providers_for_model(self.model)
+        except ValueError as e:
+            logger.error(f"No providers configured for model {self.model}: {e}")
+            raise RuntimeError(f"No providers available for digest generation: {e}")
+
+        # Filter for Anthropic-compatible providers
+        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+
+        if not anthropic_providers:
+            logger.error(f"No Anthropic-compatible providers for model {self.model}")
+            raise RuntimeError("No Anthropic providers available for digest generation")
+
+        # Try each provider in order
+        response = None
+        last_error = None
+
+        for provider_config in anthropic_providers:
+            try:
+                logger.info(f"Trying provider: {provider_config.provider.value}")
+                client = Anthropic(api_key=provider_config.api_key)
+
+                response = client.messages.create(
+                    model=self.model,
+                    max_tokens=12000,  # Longer for full digest
+                    temperature=0.4,  # Slightly higher for narrative flow
+                    messages=[{"role": "user", "content": prompt}],
+                )
+
+                # Track provider and token usage
+                self.provider_used = provider_config.provider
+                self.input_tokens = response.usage.input_tokens
+                self.output_tokens = response.usage.output_tokens
+
+                break  # Success
+
+            except Exception as e:
+                error_msg = f"Error with provider {provider_config.provider.value}: {str(e)}"
+                logger.error(error_msg)
+                last_error = str(e)
+                continue
+
+        if response is None:
+            error_msg = f"All providers failed. Last error: {last_error}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        # Calculate actual cost
+        cost = self.model_config.calculate_cost(
+            model_id=self.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            provider=self.provider_used,
+        )
+
+        logger.info(
+            f"Digest generation completed, "
+            f"tokens: {self.input_tokens + self.output_tokens}, "
+            f"cost: ${cost:.4f}, "
+            f"provider: {self.provider_used.value}"
         )
 
         # Parse response

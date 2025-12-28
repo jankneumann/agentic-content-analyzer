@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
+from src.config.models import MODEL_REGISTRY
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.processors.summarizer import NewsletterSummarizer
@@ -64,7 +65,8 @@ def test_summarize_newsletter_success(
     assert len(summary.technical_details) == 2
     assert summary.relevance_scores["cto_leadership"] == 0.8
     assert summary.agent_framework == "claude"
-    assert summary.model_used == "claude-haiku-4-5-20251001"
+    # Verify model is from registry (behavior-based testing)
+    assert summary.model_used in MODEL_REGISTRY, f"Model {summary.model_used} not in registry"
     assert summary.token_usage == 1500  # 1000 input + 500 output
 
 

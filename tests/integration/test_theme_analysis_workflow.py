@@ -80,10 +80,15 @@ async def test_analyze_themes_success(
         relevance_threshold=0.5,
     )
 
-    # Mock Anthropic client
+    # Mock Anthropic client with proper token usage
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text=mock_theme_llm_response)]
+    # Add token usage for cost calculation
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 2000
+    mock_usage.output_tokens = 800
+    mock_response.usage = mock_usage
     mock_client.messages.create.return_value = mock_response
 
     # Run theme analysis
@@ -140,10 +145,15 @@ async def test_analyze_themes_with_historical_context(
         end_date=datetime(2025, 1, 31),
     )
 
-    # Mock Anthropic client
+    # Mock Anthropic client with proper token usage
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text=mock_theme_llm_response)]
+    # Add token usage for cost calculation
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 2000
+    mock_usage.output_tokens = 800
+    mock_response.usage = mock_usage
     mock_client.messages.create.return_value = mock_response
 
     # Mock HistoricalContextAnalyzer
@@ -256,6 +266,11 @@ async def test_analyze_themes_relevance_filtering(
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text=mock_response_low_relevance)]
+    # Add token usage for cost calculation
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 2000
+    mock_usage.output_tokens = 800
+    mock_response.usage = mock_usage
     mock_client.messages.create.return_value = mock_response
 
     # Request with 0.5 threshold
@@ -295,7 +310,20 @@ async def test_analyze_themes_no_summaries(
 
     # Note: sample_summaries fixture not included, so no summaries exist
 
-    with patch("src.processors.theme_analyzer.Anthropic"):
+    # Mock Anthropic client with proper token usage (needed for cost calculation)
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="[]")]  # Empty themes response
+    # Add token usage for cost calculation
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 1000
+    mock_usage.output_tokens = 100
+    mock_response.usage = mock_usage
+    mock_client.messages.create.return_value = mock_response
+
+    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
+        mock_anthropic_class.return_value = mock_client
+
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 

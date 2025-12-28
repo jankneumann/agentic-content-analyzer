@@ -6,13 +6,28 @@ These should be added to a separate integration test suite.
 
 import json
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.agents.base import AgentResponse
 from src.agents.claude.summarizer import ClaudeAgent
+from src.config.models import MODEL_REGISTRY, ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
 from src.models.summary import SummaryData
+
+
+@pytest.fixture
+def test_model_config() -> ModelConfig:
+    """Create test ModelConfig with Anthropic provider."""
+    config = ModelConfig()
+    config.add_provider(
+        ProviderConfig(
+            provider=Provider.ANTHROPIC,
+            api_key="test-api-key-123",
+        )
+    )
+    return config
 
 
 @pytest.fixture
@@ -64,26 +79,41 @@ def sample_summary_dict() -> dict:
     }
 
 
-def test_claude_agent_initialization_default():
-    """Test ClaudeAgent initialization with defaults."""
+def test_claude_agent_initialization_with_model_config(test_model_config):
+    """Test ClaudeAgent initialization with ModelConfig."""
+    agent = ClaudeAgent(model_config=test_model_config)
+
+    # Model should be from registry and configured for SUMMARIZATION step
+    assert agent.model in MODEL_REGISTRY, f"Model {agent.model} not in registry"
+    assert agent.model_config is not None
+    assert agent.framework_name == "claude"
+    assert agent.step == ModelStep.SUMMARIZATION
+
+
+def test_claude_agent_initialization_with_custom_model(test_model_config):
+    """Test ClaudeAgent initialization with custom model override."""
+    # Use any valid Claude model from the registry
+    claude_models = [m for m in MODEL_REGISTRY.keys() if "claude" in m]
+    test_model = claude_models[0]  # Use first Claude model
+
+    agent = ClaudeAgent(model_config=test_model_config, model=test_model)
+
+    assert agent.model == test_model
+    assert agent.model in MODEL_REGISTRY
+
+
+def test_claude_agent_initialization_backward_compatibility_api_key():
+    """Test ClaudeAgent initialization with api_key (backward compatibility)."""
     agent = ClaudeAgent(api_key="test-key")
 
-    assert agent.model == "claude-haiku-4-5-20251001"
+    assert agent.model in MODEL_REGISTRY
     assert agent.api_key == "test-key"
     assert agent.framework_name == "claude"
 
 
-def test_claude_agent_initialization_custom_model():
-    """Test ClaudeAgent initialization with custom model."""
-    agent = ClaudeAgent(model="claude-opus-4-5-20251101", api_key="test-key")
-
-    assert agent.model == "claude-opus-4-5-20251101"
-    assert agent.api_key == "test-key"
-
-
-def test_create_summary_prompt_with_text(sample_newsletter):
+def test_create_summary_prompt_with_text(sample_newsletter, test_model_config):
     """Test prompt creation with text content."""
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     prompt = agent._create_summary_prompt(sample_newsletter)
 
     # Verify key components
@@ -97,7 +127,7 @@ def test_create_summary_prompt_with_text(sample_newsletter):
     assert "strategic_insights" in prompt
 
 
-def test_create_summary_prompt_html_fallback():
+def test_create_summary_prompt_html_fallback(test_model_config):
     """Test prompt falls back to HTML when no text content."""
     newsletter = Newsletter(
         source=NewsletterSource.GMAIL,
@@ -112,13 +142,13 @@ def test_create_summary_prompt_html_fallback():
     )
     newsletter.id = 1
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     prompt = agent._create_summary_prompt(newsletter)
 
     assert "<html><body>HTML content only</body></html>" in prompt
 
 
-def test_create_summary_prompt_truncates_long_content():
+def test_create_summary_prompt_truncates_long_content(test_model_config):
     """Test prompt truncates very long content."""
     long_text = "A" * 20000  # 20K characters
 
@@ -134,7 +164,7 @@ def test_create_summary_prompt_truncates_long_content():
     )
     newsletter.id = 1
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     prompt = agent._create_summary_prompt(newsletter)
 
     # Should truncate to ~15K characters (allow small margin for whitespace)
@@ -147,9 +177,9 @@ def test_create_summary_prompt_truncates_long_content():
     assert len(content_section) <= 15100
 
 
-def test_validate_summary_data_complete(sample_summary_dict):
+def test_validate_summary_data_complete(sample_summary_dict, test_model_config):
     """Test validation of complete summary data."""
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     summary_data = agent._validate_summary_data(sample_summary_dict, newsletter_id=1)
 
     assert isinstance(summary_data, SummaryData)
@@ -163,16 +193,16 @@ def test_validate_summary_data_complete(sample_summary_dict):
     assert len(summary_data.notable_quotes) == 2
     assert summary_data.relevance_scores["cto_leadership"] == 0.9
     assert summary_data.agent_framework == "claude"
-    assert summary_data.model_used == "claude-haiku-4-5-20251001"
+    assert summary_data.model_used in MODEL_REGISTRY
 
 
-def test_validate_summary_data_minimal():
+def test_validate_summary_data_minimal(test_model_config):
     """Test validation with minimal data (defaults)."""
     minimal_data = {
         "executive_summary": "Short summary",
     }
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     summary_data = agent._validate_summary_data(minimal_data, newsletter_id=2)
 
     assert summary_data.newsletter_id == 2
@@ -185,27 +215,32 @@ def test_validate_summary_data_minimal():
     assert summary_data.relevance_scores == {}
 
 
-def test_validate_summary_data_custom_model():
+def test_validate_summary_data_custom_model(test_model_config):
     """Test validation includes custom model name."""
-    agent = ClaudeAgent(model="claude-opus-4-5-20251101", api_key="test-key")
+    # Use any valid Claude model from the registry
+    claude_models = [m for m in MODEL_REGISTRY.keys() if "claude" in m]
+    test_model = claude_models[0]
+
+    agent = ClaudeAgent(model_config=test_model_config, model=test_model)
     summary_data = agent._validate_summary_data(
         {"executive_summary": "Test"}, newsletter_id=1
     )
 
-    assert summary_data.model_used == "claude-opus-4-5-20251101"
+    assert summary_data.model_used == test_model
+    assert summary_data.model_used in MODEL_REGISTRY
 
 
-def test_extract_json_from_response_plain():
+def test_extract_json_from_response_plain(test_model_config):
     """Test extracting JSON from plain response."""
     response = '{"key": "value", "number": 42}'
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     result = agent._extract_json_from_response(response)
 
     assert result == {"key": "value", "number": 42}
 
 
-def test_extract_json_from_response_with_json_markdown():
+def test_extract_json_from_response_with_json_markdown(test_model_config):
     """Test extracting JSON from markdown code block with 'json' tag."""
     response = """```json
 {
@@ -214,14 +249,14 @@ def test_extract_json_from_response_with_json_markdown():
 }
 ```"""
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     result = agent._extract_json_from_response(response)
 
     assert result["executive_summary"] == "Test summary"
     assert result["key_themes"] == ["Theme 1", "Theme 2"]
 
 
-def test_extract_json_from_response_with_generic_markdown():
+def test_extract_json_from_response_with_generic_markdown(test_model_config):
     """Test extracting JSON from generic markdown code block."""
     response = """```
 {
@@ -230,14 +265,14 @@ def test_extract_json_from_response_with_generic_markdown():
 }
 ```"""
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     result = agent._extract_json_from_response(response)
 
     assert result["executive_summary"] == "Test summary"
     assert result["key_themes"] == ["Theme 1"]
 
 
-def test_extract_json_from_response_with_surrounding_text():
+def test_extract_json_from_response_with_surrounding_text(test_model_config):
     """Test extracting JSON when surrounded by explanatory text."""
     response = """Here is the summary in JSON format:
 
@@ -250,23 +285,23 @@ def test_extract_json_from_response_with_surrounding_text():
 
 This should work correctly."""
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
     result = agent._extract_json_from_response(response)
 
     assert result["executive_summary"] == "Test"
 
 
-def test_extract_json_from_response_invalid():
+def test_extract_json_from_response_invalid(test_model_config):
     """Test extraction fails gracefully with invalid JSON."""
     response = "This is not valid JSON at all"
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
 
     with pytest.raises(json.JSONDecodeError):
         agent._extract_json_from_response(response)
 
 
-def test_extract_json_from_response_malformed_markdown():
+def test_extract_json_from_response_malformed_markdown(test_model_config):
     """Test extraction fails with malformed markdown blocks."""
     response = """```json
 {
@@ -275,7 +310,7 @@ def test_extract_json_from_response_malformed_markdown():
 }
 ```"""
 
-    agent = ClaudeAgent(api_key="test-key")
+    agent = ClaudeAgent(model_config=test_model_config)
 
     with pytest.raises(json.JSONDecodeError):
         agent._extract_json_from_response(response)
