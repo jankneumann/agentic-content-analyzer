@@ -5,6 +5,7 @@ from typing import Optional
 from src.agents.base import SummarizationAgent
 from src.agents.claude import ClaudeAgent
 from src.config import settings
+from src.config.models import ModelConfig
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.storage.database import get_db
@@ -16,15 +17,26 @@ logger = get_logger(__name__)
 class NewsletterSummarizer:
     """Service for summarizing newsletters."""
 
-    def __init__(self, agent: Optional[SummarizationAgent] = None) -> None:
+    def __init__(
+        self,
+        agent: Optional[SummarizationAgent] = None,
+        model_config: Optional[ModelConfig] = None,
+    ) -> None:
         """
         Initialize summarizer.
 
         Args:
-            agent: Summarization agent to use (defaults to ClaudeAgent)
+            agent: Summarization agent to use (defaults to ClaudeAgent with ModelConfig)
+            model_config: Model configuration (defaults to settings.get_model_config())
         """
         if agent is None:
-            agent = ClaudeAgent(api_key=settings.anthropic_api_key)
+            # Get model config from settings if not provided
+            if model_config is None:
+                model_config = settings.get_model_config()
+
+            # Create default ClaudeAgent with model config
+            agent = ClaudeAgent(model_config=model_config)
+
         self.agent = agent
         logger.info(f"Initialized summarizer with {agent.__class__.__name__}")
 

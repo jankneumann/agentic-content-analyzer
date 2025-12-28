@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.newsletter import Newsletter
 from src.models.summary import SummaryData
 
@@ -21,17 +22,36 @@ class AgentResponse(BaseModel):
 class SummarizationAgent(ABC):
     """Abstract base class for newsletter summarization agents."""
 
-    def __init__(self, model: str, api_key: str) -> None:
+    def __init__(
+        self,
+        model_config: ModelConfig,
+        step: ModelStep = ModelStep.SUMMARIZATION,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> None:
         """
         Initialize the agent.
 
         Args:
-            model: Model identifier (e.g., "claude-3-5-sonnet-20241022")
-            api_key: API key for the service
+            model_config: Model configuration instance
+            step: Pipeline step this agent is used for (default: SUMMARIZATION)
+            model: Optional model override (for backward compatibility)
+            api_key: Optional API key override (for backward compatibility)
         """
-        self.model = model
-        self.api_key = api_key
+        self.model_config = model_config
+        self.step = step
         self.framework_name = self.__class__.__name__.replace("Agent", "").lower()
+
+        # Get model for this step (or use override)
+        self.model = model or model_config.get_model_for_step(step)
+
+        # Backward compatibility: store api_key if provided
+        self.api_key = api_key
+
+        # Track provider used (set by subclass during API call)
+        self.provider_used: Optional[Provider] = None
+        self.input_tokens: int = 0
+        self.output_tokens: int = 0
 
     @abstractmethod
     def summarize_newsletter(self, newsletter: Newsletter) -> AgentResponse:
@@ -45,6 +65,23 @@ class SummarizationAgent(ABC):
             AgentResponse with SummaryData
         """
         pass
+
+    def calculate_cost(self) -> float:
+        """
+        Calculate the cost of the last API call.
+
+        Returns:
+            Cost in USD based on actual provider used and token counts
+        """
+        if not self.provider_used or not (self.input_tokens or self.output_tokens):
+            return 0.0
+
+        return self.model_config.calculate_cost(
+            model_id=self.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            provider=self.provider_used,
+        )
 
     def _create_summary_prompt(self, newsletter: Newsletter) -> str:
         """

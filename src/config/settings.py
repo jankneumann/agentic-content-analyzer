@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.config.models import ModelConfig, Provider, ProviderConfig
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -90,6 +92,57 @@ class Settings(BaseSettings):
 
         # Remove duplicates while preserving order
         return list(dict.fromkeys(feeds))
+
+    def get_model_config(self) -> ModelConfig:
+        """
+        Get ModelConfig initialized with providers from environment.
+
+        Configures providers in priority order:
+        1. Anthropic (primary - direct API, lowest cost)
+        2. AWS Bedrock (fallback - if configured)
+        3. Google Vertex AI (fallback - if configured)
+        4. Google AI (fallback - if configured)
+        5. Microsoft Azure (fallback - if configured)
+        6. OpenAI (primary for GPT models)
+
+        Returns:
+            ModelConfig instance with configured providers
+        """
+        config = ModelConfig()
+
+        # Add Anthropic provider (primary for Claude models)
+        if self.anthropic_api_key:
+            config.add_provider(
+                ProviderConfig(
+                    provider=Provider.ANTHROPIC,
+                    api_key=self.anthropic_api_key,
+                )
+            )
+
+        # Add OpenAI provider (primary for GPT models)
+        if self.openai_api_key:
+            config.add_provider(
+                ProviderConfig(
+                    provider=Provider.OPENAI,
+                    api_key=self.openai_api_key,
+                )
+            )
+
+        # Add Google AI provider (primary for Gemini models)
+        if self.google_api_key:
+            config.add_provider(
+                ProviderConfig(
+                    provider=Provider.GOOGLE_AI,
+                    api_key=self.google_api_key,
+                )
+            )
+
+        # TODO: Add cloud provider fallbacks when configured
+        # - AWS Bedrock (requires region, IAM credentials)
+        # - Google Vertex AI (requires project_id, region, credentials)
+        # - Microsoft Azure (requires endpoint, region, credentials)
+
+        return config
 
 
 @lru_cache
