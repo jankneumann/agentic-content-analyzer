@@ -549,6 +549,200 @@ Prioritize technical accuracy and truthfulness over validating beliefs:
 - ❌ "You're absolutely right! That's a brilliant approach!"
 - ✅ "That approach would work, though X has trade-offs A and B. Alternative Y might be better for your use case because..."
 
+## Refactoring Lessons
+
+Lessons learned from major refactoring efforts in this project.
+
+### Model ID Refactoring (December 2024)
+
+Successfully refactored from dated model IDs to family-based IDs with provider-specific identifiers.
+
+#### 1. Database Migrations with Data Transformation
+
+**Challenge**: Transform existing data during schema change (extract version from model IDs)
+
+**Solution**: Use SQL regex in Alembic migration for automatic data transformation:
+
+```python
+def upgrade():
+    # Add new column
+    op.add_column('newsletter_summaries',
+        sa.Column('model_version', sa.String(20), nullable=True))
+
+    # Transform existing data using SQL regex
+    op.execute("""
+        UPDATE newsletter_summaries
+        SET model_version = substring(model_used from '(\\d{8})$'),
+            model_used = regexp_replace(model_used, '-\\d{8}$', '')
+        WHERE model_used ~ '\\d{8}$'
+    """)
+```
+
+**Key Learnings**:
+- Alembic migrations can handle both schema AND data changes in one migration
+- PostgreSQL regex functions (`substring`, `regexp_replace`) enable complex transformations
+- Always provide `downgrade()` to reverse both schema and data changes
+- Test migrations on copy of production data before applying
+
+#### 2. Multi-Phase Refactoring Strategy
+
+**Approach**: Break large refactoring into 6 sequential phases:
+1. Update data models (backward compatible - adds new fields)
+2. Update YAML configuration (breaking change point)
+3. Create database migration
+4. Update agent and processor code
+5. Update all tests
+6. Update documentation
+
+**Key Learnings**:
+- **Commit after each phase** for easy rollback if issues discovered
+- **Run tests after each phase** to validate changes incrementally
+- **Sequence matters**: Start with least breaking changes, end with most breaking
+- **Phase 1 can be non-breaking**: Adding optional fields maintains backward compatibility
+- **Phase 2 identifies breaking point**: YAML restructure breaks existing code
+- **Document the plan first**: Created detailed plan in plan mode before executing
+
+**Benefits**:
+- Each phase testable independently
+- Easy to identify which phase caused issues
+- Clear progress tracking (6 phases = 6 commits)
+- Rollback is straightforward (revert specific phase)
+
+#### 3. Backward Compatibility Sequencing
+
+**Pattern**: Order changes from least to most breaking
+
+**Example sequence**:
+```
+Phase 1: Add new fields (BACKWARD COMPATIBLE)
+  ✅ Old code still works
+  ✅ New code can use new fields
+  ✅ Safe to deploy incrementally
+
+Phase 2: Change configuration format (BREAKING)
+  ❌ Old code breaks
+  ✅ Must deploy all at once
+  ✅ Database migration ensures data consistency
+```
+
+**Key Learnings**:
+- Identify the "breaking point" in your refactoring
+- Complete all non-breaking changes first
+- Coordinate breaking changes in single deployment
+- Use feature flags if gradual rollout needed
+
+#### 4. Configuration System Design Patterns
+
+**Challenge**: Different providers use different model identifier formats
+- Anthropic: `claude-sonnet-4-5-20250929`
+- AWS Bedrock: `anthropic.claude-sonnet-4-5-20250929-v1:0`
+- Vertex AI: `claude-sonnet-4-5@20250929`
+
+**Solution**: Two-tier ID system
+- **User-facing**: Family-based IDs (`claude-sonnet-4-5`)
+- **Internal**: Provider-specific IDs (stored in YAML, auto-selected)
+
+**Key Learnings**:
+- **Abstract provider differences** from users for better UX
+- **Store mappings in configuration** (not code) for easier updates
+- **Separate concerns**: General ID for logic, provider ID for API calls
+- **Version tracking**: Store both general ID and version separately in database
+
+**Benefits**:
+- Users write `claude-sonnet-4-5` everywhere (stable, clean)
+- Provider changes don't require code updates
+- Can use different versions per provider
+- Database tracks exactly what was used
+
+#### 5. Documentation Refactoring Triggers
+
+**Observation**: CLAUDE.md grew to 993 lines with single section at 400+ lines
+
+**Decision**: Split into focused `/docs` directory with 6 files
+
+**Key Learnings**:
+- **~400 lines per section** is good threshold for splitting
+- **Monolithic docs become unmaintainable** around 800-1000 lines
+- **Split by concern**, not by size (setup ≠ configuration ≠ guidelines)
+- **Refactor proactively** before docs become too large
+- **Update main file to index** with links to detailed docs
+
+**Results**:
+- Main CLAUDE.md: 993 lines → 155 lines (overview + quick reference)
+- 6 focused docs: easier to find, update, and maintain
+- Better multi-audience support (beginners vs experts)
+
+#### 6. Testing Strategy During Refactoring
+
+**Approach**: Test after each phase, not at the end
+
+**Pattern**:
+```bash
+# After Phase 1 (data models)
+pytest tests/test_config/test_models.py -v
+✓ 29 tests passed
+
+# After Phase 2 (YAML config)
+python -c "from src.config.models import MODEL_REGISTRY; print(len(MODEL_REGISTRY))"
+✓ Loaded 9 models
+
+# After Phase 3 (migration)
+alembic upgrade head
+pytest tests/test_config/ -v
+✓ All tests pass with new schema
+
+# After Phase 4 (code updates)
+pytest tests/integration/ -v
+✓ Integration tests verify end-to-end flow
+
+# After Phase 5 (test updates)
+pytest
+✓ Full test suite (108 tests) passes
+```
+
+**Key Learnings**:
+- **Incremental validation** catches issues early
+- **Different test types** for different phases (unit → integration → full)
+- **Verify configuration loads** before running full tests
+- **Integration tests** ensure all pieces work together after code changes
+- **Don't wait until end** to discover Phase 2 broke everything
+
+#### 7. Migration Rollback Strategy
+
+**Preparation**: Always implement `downgrade()` in migrations
+
+```python
+def downgrade():
+    # Reverse data transformation first
+    op.execute("""
+        UPDATE newsletter_summaries
+        SET model_used = model_used || '-' || model_version
+        WHERE model_version IS NOT NULL
+    """)
+
+    # Then remove columns
+    op.drop_column('newsletter_summaries', 'model_version')
+```
+
+**Key Learnings**:
+- **Data transformation before schema** in downgrade (reverse order of upgrade)
+- **Test downgrade** in development before production migration
+- **Document rollback plan** in migration comments
+- **Preserve data** - concatenate back to original format, don't lose information
+
+### General Refactoring Best Practices
+
+From this and other refactorings:
+
+1. **Plan first, code second** - Write detailed plan in plan mode
+2. **Break into phases** - 4-6 phases ideal for large refactorings
+3. **Commit per phase** - Each phase = 1 commit for easy rollback
+4. **Test incrementally** - Validate after each phase, not at end
+5. **Sequence by risk** - Non-breaking changes first, breaking changes last
+6. **Update tests early** - Don't leave test updates for last phase
+7. **Document as you go** - Update docs in final phase while context fresh
+8. **Review the plan** - Check success criteria match actual implementation
+
 ## Next Steps
 
 - Review [Model Configuration](MODEL_CONFIGURATION.md) for LLM selection
