@@ -236,6 +236,42 @@ The newsletter processing pipeline has four distinct LLM steps, each configurabl
 | **DIGEST_CREATION** | Generate multi-audience formatted output | Claude Sonnet | Quality-critical; customer-facing content |
 | **HISTORICAL_CONTEXT** | Query knowledge graph for related themes | Claude Haiku | Simple queries; speed matters |
 
+### Model ID System
+
+The project uses **family-based model IDs** for user-facing configuration, while internally managing provider-specific identifiers for API calls.
+
+**Family-Based IDs** (what you use in code and config):
+- Format: `claude-sonnet-4-5` (no version dates)
+- Stable across provider and version updates
+- Used in: Environment variables, ModelConfig, database `model_used` field
+- Example: `config = ModelConfig(summarization="claude-haiku-4-5")`
+
+**Provider-Specific IDs** (managed internally):
+- Format varies by provider:
+  - Anthropic: `claude-sonnet-4-5-20250929` (includes release date)
+  - AWS Bedrock: `anthropic.claude-sonnet-4-5-20250929-v1:0` (namespace prefix)
+  - Google Vertex AI: `claude-sonnet-4-5@20250929` (@ separator)
+- Stored in `model_registry.yaml` under `provider_model_id`
+- Automatically selected for API calls based on provider
+- Version tracked separately in database `model_version` field
+
+**Benefits**:
+- **Multi-version support**: Different providers can use different release versions
+- **Cleaner code**: No version dates in application code
+- **Easier updates**: Change provider-specific IDs without code changes
+- **Better tracking**: Separate general ID and version in database
+
+**Example**:
+```python
+# You use family-based ID
+config = ModelConfig(summarization="claude-sonnet-4-5")
+
+# System automatically uses correct provider ID for API:
+# - Anthropic: "claude-sonnet-4-5-20250929"
+# - AWS Bedrock: "anthropic.claude-sonnet-4-5-20250929-v1:0"
+# - Vertex AI: "claude-sonnet-4-5@20250929"
+```
+
 ### Configuration Methods
 
 #### 1. Environment-Based (Recommended for Production)
@@ -243,11 +279,11 @@ The newsletter processing pipeline has four distinct LLM steps, each configurabl
 Set model IDs via environment variables (defined in `.env`):
 
 ```bash
-# Use Haiku for cost optimization
-MODEL_SUMMARIZATION=claude-haiku-4-5-20251001
-MODEL_THEME_ANALYSIS=claude-haiku-4-5-20251001
-MODEL_DIGEST_CREATION=claude-haiku-4-5-20251001
-MODEL_HISTORICAL_CONTEXT=claude-haiku-4-5-20251001
+# Use Haiku for cost optimization (family-based IDs)
+MODEL_SUMMARIZATION=claude-haiku-4-5
+MODEL_THEME_ANALYSIS=claude-haiku-4-5
+MODEL_DIGEST_CREATION=claude-haiku-4-5
+MODEL_HISTORICAL_CONTEXT=claude-haiku-4-5
 
 # Provider API keys
 ANTHROPIC_API_KEY=sk-ant-...
@@ -260,12 +296,12 @@ For custom workflows or testing:
 ```python
 from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
 
-# Configure specific models per step
+# Configure specific models per step (using family-based IDs)
 config = ModelConfig(
-    summarization="claude-haiku-4-5-20251001",      # Fast extraction
-    theme_analysis="claude-sonnet-4-5-20250929",    # Better reasoning
-    digest_creation="claude-sonnet-4-5-20250929",   # Quality output
-    historical_context="claude-haiku-4-5-20251001", # Simple queries
+    summarization="claude-haiku-4-5",      # Fast extraction
+    theme_analysis="claude-sonnet-4-5",    # Better reasoning
+    digest_creation="claude-sonnet-4-5",   # Quality output
+    historical_context="claude-haiku-4-5", # Simple queries
     providers=[
         ProviderConfig(provider=Provider.ANTHROPIC, api_key="sk-ant-...")
     ]
@@ -286,7 +322,7 @@ from src.agents.claude import ClaudeAgent
 
 agent = ClaudeAgent(
     model_config=config,
-    model="claude-opus-4-5-20250514"  # Override to highest quality
+    model="claude-opus-4-5"  # Override to highest quality (family-based ID)
 )
 ```
 
@@ -331,16 +367,19 @@ config = ModelConfig(
 The same model costs differently on different providers:
 
 ```yaml
-# In model_registry.yaml
-anthropic.claude-sonnet-4-5-20250929:
+# In model_registry.yaml (family-based keys, provider-specific IDs)
+anthropic.claude-sonnet-4-5:
+  provider_model_id: "claude-sonnet-4-5-20250929"  # Provider-specific ID for API calls
   cost_per_mtok_input: 3.00   # $3/MTok
   cost_per_mtok_output: 15.00  # $15/MTok
 
-aws_bedrock.claude-sonnet-4-5-20250929:
+aws_bedrock.claude-sonnet-4-5:
+  provider_model_id: "anthropic.claude-sonnet-4-5-20250929-v1:0"  # Bedrock format
   cost_per_mtok_input: 3.00
   cost_per_mtok_output: 15.00
 
-vertex_ai.claude-sonnet-4-5-20250929:
+google_vertex.claude-sonnet-4-5:
+  provider_model_id: "claude-sonnet-4-5@20250929"  # Vertex format
   cost_per_mtok_input: 3.00
   cost_per_mtok_output: 15.00
 ```
@@ -352,12 +391,12 @@ vertex_ai.claude-sonnet-4-5-20250929:
 Use cheaper models for simple tasks, premium models for quality-critical steps:
 
 ```python
-# Cost-optimized configuration
+# Cost-optimized configuration (family-based IDs)
 config = ModelConfig(
-    summarization="claude-haiku-4-5-20251001",      # $0.80/MTok input, $4/MTok output
-    theme_analysis="claude-sonnet-4-5-20250929",    # $3/MTok input, $15/MTok output
-    digest_creation="claude-sonnet-4-5-20250929",   # $3/MTok input, $15/MTok output
-    historical_context="claude-haiku-4-5-20251001", # $0.80/MTok input, $4/MTok output
+    summarization="claude-haiku-4-5",      # $0.80/MTok input, $4/MTok output
+    theme_analysis="claude-sonnet-4-5",    # $3/MTok input, $15/MTok output
+    digest_creation="claude-sonnet-4-5",   # $3/MTok input, $15/MTok output
+    historical_context="claude-haiku-4-5", # $0.80/MTok input, $4/MTok output
 )
 
 # Cost savings example (processing 100 newsletters):
@@ -372,12 +411,12 @@ config = ModelConfig(
 Use premium models for all steps when quality is paramount:
 
 ```python
-# Maximum quality configuration
+# Maximum quality configuration (family-based IDs)
 config = ModelConfig(
-    summarization="claude-sonnet-4-5-20250929",
-    theme_analysis="claude-opus-4-5-20250514",      # Highest reasoning capability
-    digest_creation="claude-opus-4-5-20250514",
-    historical_context="claude-sonnet-4-5-20250929",
+    summarization="claude-sonnet-4-5",
+    theme_analysis="claude-opus-4-5",      # Highest reasoning capability
+    digest_creation="claude-opus-4-5",
+    historical_context="claude-sonnet-4-5",
 )
 ```
 
@@ -386,12 +425,12 @@ config = ModelConfig(
 Use fastest, cheapest models for all steps:
 
 ```python
-# Maximum cost savings
+# Maximum cost savings (family-based IDs)
 config = ModelConfig(
-    summarization="claude-haiku-4-5-20251001",
-    theme_analysis="claude-haiku-4-5-20251001",
-    digest_creation="claude-haiku-4-5-20251001",
-    historical_context="claude-haiku-4-5-20251001",
+    summarization="claude-haiku-4-5",
+    theme_analysis="claude-haiku-4-5",
+    digest_creation="claude-haiku-4-5",
+    historical_context="claude-haiku-4-5",
 )
 ```
 
@@ -420,15 +459,22 @@ Edit `src/config/model_registry.yaml`:
 
 ```yaml
 models:
-  # Add new model definition
-  claude-opus-4-5-20250514:
+  # Add new model definition (family-based ID)
+  claude-opus-4-5:
     family: claude
     name: "Claude 4.5 Opus"
-    description: "Highest intelligence, best for complex reasoning"
-    provider_configs:
-      anthropic.claude-opus-4-5-20250514:
-        cost_per_mtok_input: 15.00
-        cost_per_mtok_output: 75.00
+    supports_vision: true
+    supports_video: false
+    default_version: "20251024"
+
+provider_model_configs:
+  # Add provider-specific configuration
+  anthropic.claude-opus-4-5:
+    provider_model_id: "claude-opus-4-5-20251024"  # Actual API identifier
+    cost_per_mtok_input: 15.00
+    cost_per_mtok_output: 75.00
+    context_window: 200000
+    max_output_tokens: 8192
 ```
 
 #### 2. Use New Model
@@ -436,14 +482,14 @@ models:
 Set in environment or code:
 
 ```bash
-# Environment
-MODEL_THEME_ANALYSIS=claude-opus-4-5-20250514
+# Environment (use family-based ID)
+MODEL_THEME_ANALYSIS=claude-opus-4-5
 ```
 
 ```python
-# Code
+# Code (use family-based ID)
 config = ModelConfig(
-    theme_analysis="claude-opus-4-5-20250514"
+    theme_analysis="claude-opus-4-5"
 )
 ```
 
@@ -465,10 +511,13 @@ class Provider(str, Enum):
 #### 2. Add Provider Configuration to YAML
 
 ```yaml
-provider_configs:
-  my_new_provider.claude-sonnet-4-5-20250929:
+provider_model_configs:
+  my_new_provider.claude-sonnet-4-5:
+    provider_model_id: "provider-specific-identifier"  # Your provider's API identifier
     cost_per_mtok_input: 3.00
     cost_per_mtok_output: 15.00
+    context_window: 200000
+    max_output_tokens: 8192
 ```
 
 #### 3. Implement Provider Client (if needed)
@@ -518,13 +567,22 @@ pytest tests/integration/test_e2e_model_combinations.py -v
 
 Current available models (see `model_registry.yaml` for full list):
 
+**Note**: Model IDs are now family-based (no version dates). The system automatically uses the correct provider-specific identifier for API calls.
+
 **Claude Family**:
-- `claude-haiku-4-5-20251001`: Fastest, cheapest ($0.80/$4 per MTok)
-- `claude-sonnet-4-5-20250929`: Balanced quality/cost ($3/$15 per MTok)
-- `claude-opus-4-5-20250514`: Highest quality ($15/$75 per MTok)
+- `claude-haiku-4-5`: Fastest, cheapest ($0.80/$4 per MTok)
+- `claude-sonnet-4-5`: Balanced quality/cost ($3/$15 per MTok)
+- `claude-opus-4-5`: Highest quality ($15/$75 per MTok)
+- `claude-sonnet-4`: Legacy Claude Sonnet 4 ($3/$15 per MTok)
 
 **Gemini Family** (for framework comparison):
-- `gemini-2.0-flash-001`: Fast, affordable
+- `gemini-2.0-flash`: Fast, affordable, 1M context
+- `gemini-2.0-pro`: High quality, 2M context
+
+**OpenAI Family**:
+- `gpt-4o`: Standard GPT-4o
+- `gpt-4o-mini`: Smaller, faster GPT-4o
+- `o1-mini`: Reasoning-focused model
 - `gemini-2.0-pro-001`: Premium quality
 
 **GPT Family** (for framework comparison):
@@ -551,9 +609,9 @@ echo $ANTHROPIC_API_KEY
 **Unexpected costs**: Verify provider-specific pricing in YAML matches actual provider pricing
 
 ```python
-# Check cost calculation
+# Check cost calculation (use family-based ID)
 cost = config.calculate_cost(
-    model_id="claude-sonnet-4-5-20250929",
+    model_id="claude-sonnet-4-5",
     input_tokens=1000,
     output_tokens=500,
     provider=Provider.ANTHROPIC
