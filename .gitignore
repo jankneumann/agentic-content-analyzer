@@ -205,3 +205,15 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project-specific
+# Gmail API credentials
+credentials.json
+token.json
+
+# Local data directories (if using bind mounts instead of named volumes)
+data/
+
+# Database files
+*.db
+*.sqlite3

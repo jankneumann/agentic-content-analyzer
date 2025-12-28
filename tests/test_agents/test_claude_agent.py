@@ -1,0 +1,315 @@
+"""Tests for ClaudeAgent - Functional tests for pure functions.
+
+Integration tests (LLM API calls) are documented but not implemented.
+These should be added to a separate integration test suite.
+"""
+
+import json
+from datetime import datetime
+
+import pytest
+
+from src.agents.base import AgentResponse
+from src.agents.claude.summarizer import ClaudeAgent
+from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
+from src.models.summary import SummaryData
+
+
+@pytest.fixture
+def sample_newsletter() -> Newsletter:
+    """Create sample newsletter for testing."""
+    newsletter = Newsletter(
+        source=NewsletterSource.GMAIL,
+        source_id="test-123",
+        sender="test@example.com",
+        publication="Tech Weekly",
+        title="AI Advances in 2025",
+        raw_html="<html><body>Newsletter about AI advances</body></html>",
+        raw_text="Newsletter content about AI advances and new LLM developments.",
+        published_date=datetime(2025, 1, 15, 10, 0, 0),
+        url="https://example.com/newsletter",
+        status=ProcessingStatus.PENDING,
+    )
+    newsletter.id = 1
+    return newsletter
+
+
+@pytest.fixture
+def sample_summary_dict() -> dict:
+    """Create sample summary dictionary."""
+    return {
+        "executive_summary": "Major AI advancements this week including new LLM releases.",
+        "key_themes": ["LLM Performance", "Cost Reduction", "Multimodal AI"],
+        "strategic_insights": [
+            "LLM costs decreasing by 40% enables broader adoption",
+            "Multimodal capabilities becoming table stakes",
+        ],
+        "technical_details": [
+            "Context windows expanded to 1M tokens",
+            "New embedding models with better accuracy",
+        ],
+        "actionable_items": [
+            "Evaluate new LLM pricing for cost optimization",
+            "Test multimodal features for product applications",
+        ],
+        "notable_quotes": [
+            "Context is king in the new AI landscape",
+            "Cost reduction unlocks enterprise use cases",
+        ],
+        "relevance_scores": {
+            "cto_leadership": 0.9,
+            "technical_teams": 0.85,
+            "individual_developers": 0.7,
+        },
+    }
+
+
+def test_claude_agent_initialization_default():
+    """Test ClaudeAgent initialization with defaults."""
+    agent = ClaudeAgent(api_key="test-key")
+
+    assert agent.model == "claude-haiku-4-5-20251001"
+    assert agent.api_key == "test-key"
+    assert agent.framework_name == "claude"
+
+
+def test_claude_agent_initialization_custom_model():
+    """Test ClaudeAgent initialization with custom model."""
+    agent = ClaudeAgent(model="claude-opus-4-5-20251101", api_key="test-key")
+
+    assert agent.model == "claude-opus-4-5-20251101"
+    assert agent.api_key == "test-key"
+
+
+def test_create_summary_prompt_with_text(sample_newsletter):
+    """Test prompt creation with text content."""
+    agent = ClaudeAgent(api_key="test-key")
+    prompt = agent._create_summary_prompt(sample_newsletter)
+
+    # Verify key components
+    assert "AI Advances in 2025" in prompt
+    assert "Tech Weekly" in prompt
+    assert "2025-01-15" in prompt
+    assert "Newsletter content about AI advances" in prompt
+    assert "JSON format" in prompt
+    assert "executive_summary" in prompt
+    assert "key_themes" in prompt
+    assert "strategic_insights" in prompt
+
+
+def test_create_summary_prompt_html_fallback():
+    """Test prompt falls back to HTML when no text content."""
+    newsletter = Newsletter(
+        source=NewsletterSource.GMAIL,
+        source_id="test-123",
+        sender="test@example.com",
+        publication="Tech Weekly",
+        title="Test Newsletter",
+        raw_html="<html><body>HTML content only</body></html>",
+        raw_text=None,  # No text content
+        published_date=datetime(2025, 1, 15),
+        status=ProcessingStatus.PENDING,
+    )
+    newsletter.id = 1
+
+    agent = ClaudeAgent(api_key="test-key")
+    prompt = agent._create_summary_prompt(newsletter)
+
+    assert "<html><body>HTML content only</body></html>" in prompt
+
+
+def test_create_summary_prompt_truncates_long_content():
+    """Test prompt truncates very long content."""
+    long_text = "A" * 20000  # 20K characters
+
+    newsletter = Newsletter(
+        source=NewsletterSource.GMAIL,
+        source_id="test-123",
+        sender="test@example.com",
+        publication="Tech Weekly",
+        title="Long Newsletter",
+        raw_text=long_text,
+        published_date=datetime(2025, 1, 15),
+        status=ProcessingStatus.PENDING,
+    )
+    newsletter.id = 1
+
+    agent = ClaudeAgent(api_key="test-key")
+    prompt = agent._create_summary_prompt(newsletter)
+
+    # Should truncate to ~15K characters (allow small margin for whitespace)
+    # The content section should not significantly exceed 15K
+    content_start = prompt.find("**Content:**") + len("**Content:**")
+    content_end = prompt.find("**Required Output")
+    content_section = prompt[content_start:content_end].strip()
+
+    # Allow 100 char margin for whitespace/newlines
+    assert len(content_section) <= 15100
+
+
+def test_validate_summary_data_complete(sample_summary_dict):
+    """Test validation of complete summary data."""
+    agent = ClaudeAgent(api_key="test-key")
+    summary_data = agent._validate_summary_data(sample_summary_dict, newsletter_id=1)
+
+    assert isinstance(summary_data, SummaryData)
+    assert summary_data.newsletter_id == 1
+    assert summary_data.executive_summary == "Major AI advancements this week including new LLM releases."
+    assert len(summary_data.key_themes) == 3
+    assert "LLM Performance" in summary_data.key_themes
+    assert len(summary_data.strategic_insights) == 2
+    assert len(summary_data.technical_details) == 2
+    assert len(summary_data.actionable_items) == 2
+    assert len(summary_data.notable_quotes) == 2
+    assert summary_data.relevance_scores["cto_leadership"] == 0.9
+    assert summary_data.agent_framework == "claude"
+    assert summary_data.model_used == "claude-haiku-4-5-20251001"
+
+
+def test_validate_summary_data_minimal():
+    """Test validation with minimal data (defaults)."""
+    minimal_data = {
+        "executive_summary": "Short summary",
+    }
+
+    agent = ClaudeAgent(api_key="test-key")
+    summary_data = agent._validate_summary_data(minimal_data, newsletter_id=2)
+
+    assert summary_data.newsletter_id == 2
+    assert summary_data.executive_summary == "Short summary"
+    assert summary_data.key_themes == []
+    assert summary_data.strategic_insights == []
+    assert summary_data.technical_details == []
+    assert summary_data.actionable_items == []
+    assert summary_data.notable_quotes == []
+    assert summary_data.relevance_scores == {}
+
+
+def test_validate_summary_data_custom_model():
+    """Test validation includes custom model name."""
+    agent = ClaudeAgent(model="claude-opus-4-5-20251101", api_key="test-key")
+    summary_data = agent._validate_summary_data(
+        {"executive_summary": "Test"}, newsletter_id=1
+    )
+
+    assert summary_data.model_used == "claude-opus-4-5-20251101"
+
+
+def test_extract_json_from_response_plain():
+    """Test extracting JSON from plain response."""
+    response = '{"key": "value", "number": 42}'
+
+    agent = ClaudeAgent(api_key="test-key")
+    result = agent._extract_json_from_response(response)
+
+    assert result == {"key": "value", "number": 42}
+
+
+def test_extract_json_from_response_with_json_markdown():
+    """Test extracting JSON from markdown code block with 'json' tag."""
+    response = """```json
+{
+  "executive_summary": "Test summary",
+  "key_themes": ["Theme 1", "Theme 2"]
+}
+```"""
+
+    agent = ClaudeAgent(api_key="test-key")
+    result = agent._extract_json_from_response(response)
+
+    assert result["executive_summary"] == "Test summary"
+    assert result["key_themes"] == ["Theme 1", "Theme 2"]
+
+
+def test_extract_json_from_response_with_generic_markdown():
+    """Test extracting JSON from generic markdown code block."""
+    response = """```
+{
+  "executive_summary": "Test summary",
+  "key_themes": ["Theme 1"]
+}
+```"""
+
+    agent = ClaudeAgent(api_key="test-key")
+    result = agent._extract_json_from_response(response)
+
+    assert result["executive_summary"] == "Test summary"
+    assert result["key_themes"] == ["Theme 1"]
+
+
+def test_extract_json_from_response_with_surrounding_text():
+    """Test extracting JSON when surrounded by explanatory text."""
+    response = """Here is the summary in JSON format:
+
+```json
+{
+  "executive_summary": "Test",
+  "key_themes": []
+}
+```
+
+This should work correctly."""
+
+    agent = ClaudeAgent(api_key="test-key")
+    result = agent._extract_json_from_response(response)
+
+    assert result["executive_summary"] == "Test"
+
+
+def test_extract_json_from_response_invalid():
+    """Test extraction fails gracefully with invalid JSON."""
+    response = "This is not valid JSON at all"
+
+    agent = ClaudeAgent(api_key="test-key")
+
+    with pytest.raises(json.JSONDecodeError):
+        agent._extract_json_from_response(response)
+
+
+def test_extract_json_from_response_malformed_markdown():
+    """Test extraction fails with malformed markdown blocks."""
+    response = """```json
+{
+  "executive_summary": "Test",
+  "key_themes": [  # Missing closing bracket
+}
+```"""
+
+    agent = ClaudeAgent(api_key="test-key")
+
+    with pytest.raises(json.JSONDecodeError):
+        agent._extract_json_from_response(response)
+
+
+# TODO: Integration tests - require LLM API access
+# These tests should be moved to integration tests as they require real LLM API calls
+# The core logic is covered by unit tests above
+#
+# @pytest.mark.integration
+# def test_summarize_newsletter_success():
+#     """Test successful newsletter summarization with real LLM (INTEGRATION TEST)."""
+#     # Requires:
+#     # - Real or mocked Anthropic API
+#     # - Verify response parsing
+#     # - Verify token usage and timing
+#     pass
+#
+# @pytest.mark.integration
+# def test_summarize_newsletter_json_parse_error():
+#     """Test handling of malformed LLM response (INTEGRATION TEST)."""
+#     pass
+#
+# @pytest.mark.integration
+# def test_summarize_newsletter_api_error():
+#     """Test handling of API errors (INTEGRATION TEST)."""
+#     pass
+#
+# @pytest.mark.integration
+# def test_summarize_newsletter_with_haiku_model():
+#     """Test summarization with Haiku model (INTEGRATION TEST)."""
+#     pass
+#
+# @pytest.mark.integration
+# def test_summarize_newsletter_with_opus_model():
+#     """Test summarization with Opus model for higher quality (INTEGRATION TEST)."""
+#     pass

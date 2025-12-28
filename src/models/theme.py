@@ -1,0 +1,210 @@
+"""Theme analysis data models."""
+
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
+from sqlalchemy.orm import declarative_base
+
+from src.models.newsletter import Base
+
+
+class ThemeCategory(str, Enum):
+    """Theme categorization."""
+
+    ML_AI = "ml_ai"  # LLMs, agents, RAG, fine-tuning
+    DEVOPS_INFRA = "devops_infra"  # Cloud, containers, orchestration
+    DATA_ENGINEERING = "data_engineering"  # Pipelines, lakes, processing
+    BUSINESS_STRATEGY = "business_strategy"  # Adoption, ROI, governance
+    TOOLS_PRODUCTS = "tools_products"  # New releases, updates
+    RESEARCH_ACADEMIA = "research_academia"  # Papers, breakthroughs
+    SECURITY = "security"  # Security, privacy, compliance
+    OTHER = "other"  # Miscellaneous
+
+
+class ThemeTrend(str, Enum):
+    """Theme trend classification."""
+
+    EMERGING = "emerging"  # New topic, recent mentions
+    GROWING = "growing"  # Increasing frequency
+    ESTABLISHED = "established"  # Consistent mentions over time
+    DECLINING = "declining"  # Decreasing mentions
+    ONE_OFF = "one_off"  # Single mention
+
+
+class ThemeAnalysis(Base):
+    """Theme analysis results database model."""
+
+    __tablename__ = "theme_analyses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Time range for analysis
+    analysis_date = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=False)
+
+    # Analysis scope
+    newsletter_count = Column(Integer, nullable=False)
+    newsletter_ids = Column(JSON, nullable=False)  # List[int]
+
+    # Detected themes
+    themes = Column(JSON, nullable=False)  # List[ThemeData dict]
+
+    # Summary statistics
+    total_themes = Column(Integer, nullable=False)
+    emerging_themes_count = Column(Integer, nullable=False)
+    top_theme = Column(String(500), nullable=True)
+
+    # Metadata
+    agent_framework = Column(String(100), nullable=False)  # claude, openai, google, gemini
+    model_used = Column(String(100), nullable=False)
+    processing_time_seconds = Column(Float, nullable=True)
+    token_usage = Column(Integer, nullable=True)
+
+
+class HistoricalMention(BaseModel):
+    """Historical mention of a theme."""
+
+    date: datetime = Field(..., description="Date of mention")
+    newsletter_id: int = Field(..., description="Newsletter ID")
+    newsletter_title: str = Field(..., description="Newsletter title")
+    publication: str = Field(..., description="Publication name")
+    context: str = Field(..., description="Context snippet about the theme")
+    sentiment: Optional[str] = Field(None, description="Sentiment/stance (positive, neutral, negative)")
+
+
+class ThemeEvolution(BaseModel):
+    """How a theme has evolved over time."""
+
+    theme_name: str = Field(..., description="Theme name")
+    first_mention: datetime = Field(..., description="When first discussed")
+    total_mentions: int = Field(..., description="Total historical mentions")
+    mention_frequency: str = Field(..., description="Frequency (rare, occasional, frequent, constant)")
+
+    # Evolution narrative
+    evolution_summary: str = Field(
+        ...,
+        description="How the theme has evolved (1-2 sentences)"
+    )
+    previous_discussions: list[str] = Field(
+        default_factory=list,
+        description="Key points from previous discussions"
+    )
+
+    # Change tracking
+    stance_change: Optional[str] = Field(
+        None,
+        description="How stance/sentiment has changed over time"
+    )
+
+    # Historical mentions
+    recent_mentions: list[HistoricalMention] = Field(
+        default_factory=list,
+        description="Recent mentions (last 3-5)"
+    )
+
+
+class ThemeData(BaseModel):
+    """Individual theme data."""
+
+    name: str = Field(..., description="Theme name (e.g., 'RAG Architecture')")
+    description: str = Field(..., description="Brief description of the theme")
+    category: ThemeCategory = Field(..., description="Theme category")
+
+    # Frequency and recency
+    mention_count: int = Field(..., description="Number of newsletters mentioning this theme")
+    newsletter_ids: list[int] = Field(default_factory=list, description="IDs of newsletters mentioning theme")
+    first_seen: datetime = Field(..., description="First mention date")
+    last_seen: datetime = Field(..., description="Most recent mention date")
+
+    # Trend classification
+    trend: ThemeTrend = Field(..., description="Theme trend (emerging, growing, etc.)")
+
+    # Relevance scoring
+    relevance_score: float = Field(..., description="Overall relevance (0-1)")
+    strategic_relevance: float = Field(..., description="Strategic/leadership relevance (0-1)")
+    tactical_relevance: float = Field(..., description="Tactical/developer relevance (0-1)")
+    novelty_score: float = Field(..., description="How novel vs. established (0-1)")
+    cross_functional_impact: float = Field(..., description="Cross-team impact (0-1)")
+
+    # Related themes
+    related_themes: list[str] = Field(
+        default_factory=list,
+        description="Names of related themes"
+    )
+
+    # Key insights
+    key_points: list[str] = Field(
+        default_factory=list,
+        description="Key points about this theme from newsletters"
+    )
+
+    # Historical context (NEW)
+    historical_context: Optional[ThemeEvolution] = Field(
+        None,
+        description="Historical context and evolution of this theme"
+    )
+
+    # Continuity text (NEW)
+    continuity_text: Optional[str] = Field(
+        None,
+        description="Human-readable continuity statement (e.g., 'Previously discussed in...')"
+    )
+
+
+class ThemeAnalysisRequest(BaseModel):
+    """Request parameters for theme analysis."""
+
+    start_date: datetime
+    end_date: datetime
+    min_newsletters: int = Field(
+        default=1,
+        description="Minimum newsletters to analyze"
+    )
+    max_themes: int = Field(
+        default=20,
+        description="Maximum themes to return"
+    )
+    relevance_threshold: float = Field(
+        default=0.3,
+        description="Minimum relevance score (0-1)"
+    )
+    use_large_context_model: bool = Field(
+        default=False,
+        description="Use large context model (Gemini Flash) for analysis"
+    )
+
+
+class ThemeAnalysisResult(BaseModel):
+    """Complete theme analysis results."""
+
+    analysis_date: datetime = Field(default_factory=datetime.utcnow)
+    start_date: datetime
+    end_date: datetime
+
+    # Newsletters analyzed
+    newsletter_count: int
+    newsletter_ids: list[int] = Field(default_factory=list)
+
+    # Themes
+    themes: list[ThemeData] = Field(default_factory=list)
+    total_themes: int = 0
+    emerging_themes_count: int = 0
+
+    # Top theme
+    top_theme: Optional[str] = None
+
+    # Performance metrics
+    processing_time_seconds: float = 0.0
+    token_usage: Optional[int] = None
+    model_used: str = ""
+    agent_framework: str = ""
+
+    # Insights
+    cross_theme_insights: list[str] = Field(
+        default_factory=list,
+        description="Insights about connections between themes"
+    )
