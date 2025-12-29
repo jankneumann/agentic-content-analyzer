@@ -20,14 +20,14 @@ class DigestType(str, Enum):
 class DigestStatus(str, Enum):
     """Digest generation status."""
 
-    PENDING = "pending"
-    GENERATING = "generating"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    PENDING_REVIEW = "pending_review"  # NEW: Awaiting human review
-    APPROVED = "approved"  # NEW: Approved for delivery
-    REJECTED = "rejected"  # NEW: Rejected (won't deliver)
-    DELIVERED = "delivered"
+    PENDING = "PENDING"
+    GENERATING = "GENERATING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    PENDING_REVIEW = "PENDING_REVIEW"  # NEW: Awaiting human review
+    APPROVED = "APPROVED"  # NEW: Approved for delivery
+    REJECTED = "REJECTED"  # NEW: Rejected (won't deliver)
+    DELIVERED = "DELIVERED"
 
 
 class Digest(Base):

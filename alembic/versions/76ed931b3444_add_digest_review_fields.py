@@ -33,18 +33,18 @@ def upgrade() -> None:
         sa.Column('revision_history', sa.JSON(), nullable=True))
 
     # Update enum type to add new status values (PostgreSQL specific)
-    # Note: Cannot use ALTER TYPE ADD VALUE in a transaction, so we use this approach
+    # Note: Must use uppercase to match existing enum values (PENDING, GENERATING, etc.)
     op.execute("""
         DO $$
         BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'pending_review' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'digeststatus')) THEN
-                ALTER TYPE digeststatus ADD VALUE 'pending_review';
+            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'PENDING_REVIEW' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'digeststatus')) THEN
+                ALTER TYPE digeststatus ADD VALUE 'PENDING_REVIEW';
             END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'approved' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'digeststatus')) THEN
-                ALTER TYPE digeststatus ADD VALUE 'approved';
+            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'APPROVED' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'digeststatus')) THEN
+                ALTER TYPE digeststatus ADD VALUE 'APPROVED';
             END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'rejected' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'digeststatus')) THEN
-                ALTER TYPE digeststatus ADD VALUE 'rejected';
+            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'REJECTED' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'digeststatus')) THEN
+                ALTER TYPE digeststatus ADD VALUE 'REJECTED';
             END IF;
         END
         $$;
