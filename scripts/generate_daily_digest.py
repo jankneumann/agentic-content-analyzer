@@ -76,6 +76,9 @@ async def main_async(args) -> None:
             technical_developments = [section.model_dump() for section in digest.technical_developments]
             emerging_trends = [section.model_dump() for section in digest.emerging_trends]
 
+            # Determine initial status (PENDING_REVIEW by default, APPROVED if auto-approved)
+            initial_status = DigestStatus.APPROVED if args.auto_approve else DigestStatus.PENDING_REVIEW
+
             db_digest = Digest(
                 digest_type=digest.digest_type,
                 period_start=digest.period_start,
@@ -89,13 +92,18 @@ async def main_async(args) -> None:
                 sources=digest.sources,
                 historical_context=digest.historical_context or [],
                 newsletter_count=digest.newsletter_count,
-                status=DigestStatus.COMPLETED,
+                status=initial_status,
                 completed_at=datetime.utcnow(),
                 agent_framework=digest.agent_framework,
                 model_used=digest.model_used,
                 token_usage=digest.token_usage,
                 processing_time_seconds=int(digest.processing_time_seconds) if digest.processing_time_seconds else None,
             )
+
+            # Set review metadata if auto-approved
+            if args.auto_approve:
+                db_digest.reviewed_by = "auto-approval"
+                db_digest.reviewed_at = datetime.utcnow()
             db.add(db_digest)
             db.commit()
 
@@ -175,6 +183,11 @@ def main() -> None:
         "--save",
         action="store_true",
         help="Save digest to database",
+    )
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Automatically approve digest (skip review). Sets status to APPROVED instead of PENDING_REVIEW.",
     )
     parser.add_argument(
         "--output",
