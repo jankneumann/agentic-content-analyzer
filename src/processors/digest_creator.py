@@ -300,13 +300,14 @@ class DigestCreator:
         return "\n\n".join(context_parts)
 
     def _build_newsletters_context(self, newsletters: list[dict]) -> str:
-        """Build context string from newsletters with numbered references."""
+        """Build context string from newsletters with database ID references."""
         context_parts = []
 
-        for idx, newsletter in enumerate(newsletters[:10], start=1):  # Limit to avoid token overflow
+        for newsletter in newsletters[:10]:  # Limit to avoid token overflow
             date = newsletter["published_date"].strftime("%Y-%m-%d")
+            newsletter_id = newsletter["id"]
             context_parts.append(
-                f"[{idx}] {newsletter['publication']} - {newsletter['title']} ({date})"
+                f"[{newsletter_id}] {newsletter['publication']} - {newsletter['title']} ({date})"
             )
 
         return "\n".join(context_parts)
@@ -366,11 +367,11 @@ Provide a JSON response with:
   "strategic_insights": [
     {{
       "title": "Strategic Insight Title",
-      "summary": "2-3 sentence summary of the insight [1][2]",
+      "summary": "2-3 sentence summary of the insight [18][23]",
       "details": [
-        "Specific point about business impact [1]",
-        "Decision implications for leadership [2]",
-        "Strategic considerations [1][3]"
+        "Specific point about business impact [18]",
+        "Decision implications for leadership [23]",
+        "Strategic considerations [18][24]"
       ],
       "themes": ["Related Theme 1", "Related Theme 2"],
       "continuity": "Historical context if available (from theme continuity)"
@@ -380,11 +381,11 @@ Provide a JSON response with:
   "technical_developments": [
     {{
       "title": "Technical Development Title",
-      "summary": "2-3 sentence summary for developers/practitioners [2][4]",
+      "summary": "2-3 sentence summary for developers/practitioners [23][25]",
       "details": [
-        "Technical details and implementation insights [2]",
-        "How-to guidance or best practices [4]",
-        "Tools, frameworks, or approaches mentioned [2][4]"
+        "Technical details and implementation insights [23]",
+        "How-to guidance or best practices [25]",
+        "Tools, frameworks, or approaches mentioned [23][25]"
       ],
       "themes": ["Related Theme 1"],
       "continuity": "Historical context if available"
@@ -394,11 +395,11 @@ Provide a JSON response with:
   "emerging_trends": [
     {{
       "title": "Emerging Trend Title",
-      "summary": "2-3 sentence summary of what's new [3][5]",
+      "summary": "2-3 sentence summary of what's new [24][26]",
       "details": [
-        "Why this is emerging now [3]",
-        "Potential impact or implications [5]",
-        "What to watch for [3][5]"
+        "Why this is emerging now [24]",
+        "Potential impact or implications [26]",
+        "What to watch for [24][26]"
       ],
       "themes": ["Related Theme 1"],
       "continuity": "Historical context showing how this evolved"
@@ -427,10 +428,11 @@ Provide a JSON response with:
 
 # Guidelines
 
-- **Source Citations**: Use numbered references [1], [2], etc. throughout all content
-  - Numbers correspond to the newsletter list above (e.g., [1] = first newsletter)
+- **Source Citations**: Use database ID references [18], [23], etc. throughout all content
+  - IDs are the actual newsletter database IDs shown in brackets above (e.g., [18] = newsletter ID 18)
   - Add citations to summaries and detail points showing which newsletters support each claim
-  - Use multiple citations [1][3] when a point draws from multiple sources
+  - Use multiple citations [18][23] when a point draws from multiple sources
+  - These IDs enable cross-digest traceability and interactive revision tool use
   - This provides transparency and traceability for all insights
 
 - **Executive Overview**: Focus on "what matters and why" for decision-makers
@@ -438,17 +440,17 @@ Provide a JSON response with:
   - CTO-level business impact and implications
   - Connect to Comcast's enterprise AI/data initiatives
   - Include continuity from historical context where relevant
-  - Add source citations [1][2] to summary and each detail point
+  - Add source citations [18][23] to summary and each detail point
 - **Technical Developments**: Limit to {request.max_technical_developments} most significant
   - Practitioner-level details and implementation guidance
   - Concrete tools, frameworks, techniques mentioned
   - Best practices and lessons learned
-  - Add source citations [3][4] to summary and each detail point
+  - Add source citations [23][25] to summary and each detail point
 - **Emerging Trends**: Limit to {request.max_emerging_trends} most noteworthy
   - New or rapidly evolving topics
   - MUST include historical continuity showing how they emerged
   - Future implications
-  - Add source citations [1][5] to summary and each detail point
+  - Add source citations [24][26] to summary and each detail point
 - **Actionable Recommendations**: Specific, role-based actions
   - Leadership: Strategic decisions, investments, risks
   - Teams: Implementations, processes, capabilities
