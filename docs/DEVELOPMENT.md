@@ -29,6 +29,47 @@ python -m src.processors.digest_creator --type daily
 python -m src.processors.digest_creator --type weekly
 ```
 
+### Review Workflow
+
+```bash
+# List all digests pending review
+python -m scripts.review_digest --list
+
+# View a specific digest
+python -m scripts.review_digest --id 42 --view
+python -m scripts.review_digest --id 42 --view --format html
+
+# Quick approve/reject (batch mode)
+python -m scripts.review_digest --id 42 --action approve --reviewer "user@example.com"
+python -m scripts.review_digest --id 42 --action reject --notes "Too technical" --reviewer "user@example.com"
+
+# Interactive AI-powered revision session
+python -m scripts.review_digest --id 42 --revise-interactive --reviewer "user@example.com"
+
+# Generate digest with auto-approval (skip review)
+python -m scripts.generate_daily_digest --save --auto-approve
+```
+
+**Interactive Revision Session:**
+- Multi-turn conversational refinement with AI
+- On-demand newsletter content fetching via LLM tools
+- Token-efficient context loading (summaries + themes)
+- Complete audit trail stored in `revision_history` JSON field
+- Cost tracking for revision sessions
+
+**Digest Status Flow:**
+```
+PENDING → GENERATING → COMPLETED → PENDING_REVIEW
+                                        ↓
+                        ┌───────────────┼─────────────┐
+                        ↓               ↓             ↓
+        [Interactive Revision]      APPROVED      REJECTED
+                        ↓               ↓
+                 PENDING_REVIEW     DELIVERED
+```
+
+See [Review System Documentation](REVIEW_SYSTEM.md) for detailed guide.
+
 ### Background Tasks (Celery)
 
 ```bash
@@ -748,3 +789,4 @@ From this and other refactorings:
 - Review [Model Configuration](MODEL_CONFIGURATION.md) for LLM selection
 - Check [Content Guidelines](CONTENT_GUIDELINES.md) for digest quality standards
 - See [Architecture](ARCHITECTURE.md) for system design details
+- Read [Review System](REVIEW_SYSTEM.md) for digest review and revision workflow

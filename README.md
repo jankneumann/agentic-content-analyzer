@@ -88,6 +88,7 @@ src/
     newsletter.py   # Newsletter model
     summary.py      # Summary model
     digest.py       # Digest model
+    revision.py     # Revision context models
   storage/          # Data persistence
     database.py     # PostgreSQL connection
     graphiti_client.py  # Graphiti MCP integration
@@ -95,12 +96,73 @@ src/
     summarizer.py
     theme_analyzer.py
     digest_creator.py
+    digest_reviser.py  # AI-powered digest revision
+  services/         # Business logic layer
+    review_service.py  # Digest review operations
   delivery/         # Output channels
     email.py
     web.py
   tasks/            # Celery tasks
   api/              # FastAPI app
+
+scripts/
+  review_digest.py  # Interactive digest review CLI
+  generate_daily_digest.py
+  generate_weekly_digest.py
 ```
+
+## Workflow
+
+### 1. Newsletter Ingestion
+```bash
+# Fetch from Gmail
+python -m scripts.ingest_gmail
+
+# Fetch from Substack RSS
+python -m scripts.ingest_substack
+```
+
+### 2. Digest Generation
+```bash
+# Generate daily digest (goes to PENDING_REVIEW by default)
+python -m scripts.generate_daily_digest --save
+
+# Generate weekly digest
+python -m scripts.generate_weekly_digest --save
+
+# Auto-approve digest (skip review)
+python -m scripts.generate_daily_digest --save --auto-approve
+```
+
+### 3. Human Review (NEW)
+```bash
+# List all digests pending review
+python -m scripts.review_digest --list
+
+# View digest content
+python -m scripts.review_digest --id 42 --view
+
+# Interactive AI-powered revision
+python -m scripts.review_digest --id 42 --revise-interactive
+
+# Quick approve
+python -m scripts.review_digest --id 42 --action approve
+
+# Quick reject with notes
+python -m scripts.review_digest --id 42 --action reject --notes "Too technical"
+```
+
+**Interactive Revision Features:**
+- Multi-turn conversational refinement with AI
+- On-demand newsletter content fetching via LLM tools
+- Token-efficient context loading (summaries + themes)
+- Complete audit trail of all revisions
+- Cost tracking for revision sessions
+
+See [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md) for detailed documentation.
+
+### 4. Email Delivery (Coming Soon)
+Only digests with status `APPROVED` will be delivered.
 
 ## Development
 
@@ -231,6 +293,10 @@ See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the full development roadmap.
 
 - [CLAUDE.md](CLAUDE.md) - Guidance for Claude Code working in this repository
 - [PROJECT_PLAN.md](PROJECT_PLAN.md) - Complete project plan and roadmap
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Development guide and commands
+- [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md) - Human review system documentation
+- [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) - Model selection and configuration
+- [docs/CONTENT_GUIDELINES.md](docs/CONTENT_GUIDELINES.md) - Content quality guidelines
 
 ## License
 
