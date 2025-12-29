@@ -30,10 +30,16 @@ def upgrade() -> None:
         sa.Column('model_version', sa.String(length=20), nullable=True)
     )
 
-    # Add model_version column to theme_analyses
-    op.add_column('theme_analyses',
-        sa.Column('model_version', sa.String(length=20), nullable=True)
-    )
+    # Add model_version column to theme_analyses (only if table exists)
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'theme_analyses') THEN
+                ALTER TABLE theme_analyses ADD COLUMN IF NOT EXISTS model_version VARCHAR(20);
+            END IF;
+        END
+        $$;
+    """)
 
     # Migrate existing data: extract version from model_used and update to family-based ID
     # Pattern: claude-sonnet-4-5-20250929 -> model_used="claude-sonnet-4-5", model_version="20250929"
@@ -54,12 +60,18 @@ def upgrade() -> None:
         WHERE model_used ~ '\\d{8}$'
     """)
 
-    # Update theme_analyses
+    # Update theme_analyses (only if table exists)
     op.execute("""
-        UPDATE theme_analyses
-        SET model_version = substring(model_used from '(\\d{8})$'),
-            model_used = regexp_replace(model_used, '-\\d{8}$', '')
-        WHERE model_used ~ '\\d{8}$'
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'theme_analyses') THEN
+                UPDATE theme_analyses
+                SET model_version = substring(model_used from '(\\d{8})$'),
+                    model_used = regexp_replace(model_used, '-\\d{8}$', '')
+                WHERE model_used ~ '\\d{8}$';
+            END IF;
+        END
+        $$;
     """)
 
 
@@ -82,14 +94,30 @@ def downgrade() -> None:
         WHERE model_version IS NOT NULL
     """)
 
-    # theme_analyses
+    # theme_analyses (only if table exists)
     op.execute("""
-        UPDATE theme_analyses
-        SET model_used = model_used || '-' || model_version
-        WHERE model_version IS NOT NULL
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'theme_analyses') THEN
+                UPDATE theme_analyses
+                SET model_used = model_used || '-' || model_version
+                WHERE model_version IS NOT NULL;
+            END IF;
+        END
+        $$;
     """)
 
     # Drop columns
     op.drop_column('newsletter_summaries', 'model_version')
     op.drop_column('digests', 'model_version')
-    op.drop_column('theme_analyses', 'model_version')
+
+    # Drop from theme_analyses only if it exists
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'theme_analyses') THEN
+                ALTER TABLE theme_analyses DROP COLUMN IF EXISTS model_version;
+            END IF;
+        END
+        $$;
+    """)

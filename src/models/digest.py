@@ -24,6 +24,9 @@ class DigestStatus(str, Enum):
     GENERATING = "generating"
     COMPLETED = "completed"
     FAILED = "failed"
+    PENDING_REVIEW = "pending_review"  # NEW: Awaiting human review
+    APPROVED = "approved"  # NEW: Approved for delivery
+    REJECTED = "rejected"  # NEW: Rejected (won't deliver)
     DELIVERED = "delivered"
 
 
@@ -70,6 +73,13 @@ class Digest(Base):
     token_usage = Column(Integer, nullable=True)
     processing_time_seconds = Column(Integer, nullable=True)
 
+    # Review tracking (NEW)
+    reviewed_by = Column(String(200), nullable=True)
+    review_notes = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    revision_count = Column(Integer, default=0, nullable=False)
+    revision_history = Column(JSON, nullable=True)  # Conversation audit trail
+
 
 class DigestSection(BaseModel):
     """A section within a digest (strategic insight, technical development, etc.)."""
@@ -101,6 +111,13 @@ class DigestData(BaseModel):
     model_version: Optional[str] = None  # Version
     token_usage: Optional[int] = None
     processing_time_seconds: Optional[float] = None
+
+    # Review tracking (NEW)
+    reviewed_by: Optional[str] = None
+    review_notes: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    revision_count: int = 0
+    revision_history: Optional[dict] = None  # Conversation audit trail
 
 
 class DigestRequest(BaseModel):
