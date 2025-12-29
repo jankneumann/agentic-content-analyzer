@@ -2,7 +2,7 @@
 
 import argparse
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.models.digest import Digest, DigestData, DigestRequest, DigestStatus, DigestType
@@ -93,7 +93,7 @@ async def main_async(args) -> None:
                 historical_context=digest.historical_context or [],
                 newsletter_count=digest.newsletter_count,
                 status=initial_status,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
                 agent_framework=digest.agent_framework,
                 model_used=digest.model_used,
                 token_usage=digest.token_usage,
@@ -103,11 +103,14 @@ async def main_async(args) -> None:
             # Set review metadata if auto-approved
             if args.auto_approve:
                 db_digest.reviewed_by = "auto-approval"
-                db_digest.reviewed_at = datetime.utcnow()
+                db_digest.reviewed_at = datetime.now(timezone.utc)
             db.add(db_digest)
             db.commit()
 
-        print(f"✓ Digest saved to database (ID: {db_digest.id})")
+            # Access ID before session closes
+            digest_id = db_digest.id
+
+        print(f"✓ Digest saved to database (ID: {digest_id})")
 
     # Export to file if requested
     if args.output:
