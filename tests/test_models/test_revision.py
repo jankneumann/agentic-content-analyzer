@@ -162,10 +162,11 @@ class TestRevisionContext:
 
         formatted = context.to_llm_context()
 
-        # Check metadata
-        assert "Type: daily" in formatted or "Type: DigestType.DAILY" in formatted
+        # Check metadata (enum value in format with markdown bold)
+        assert "**Type**:" in formatted
+        assert "DigestType.DAILY" in formatted or "daily" in formatted.lower()
         assert "2025-01-15" in formatted
-        assert "Newsletter Count: 5" in formatted
+        assert "**Newsletter Count**: 5" in formatted
 
 
 class TestRevisionResult:
