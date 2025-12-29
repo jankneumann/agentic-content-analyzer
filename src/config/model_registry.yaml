@@ -287,6 +287,7 @@ default_models:
   summarization: claude-haiku-4-5  # Fast, cheap for structured extraction
   theme_analysis: claude-sonnet-4-5  # Better reasoning for theme extraction
   digest_creation: claude-sonnet-4-5  # Balanced quality/cost for long-form
+  digest_revision: claude-sonnet-4-5  # Quality-critical for conversational refinement
   historical_context: claude-sonnet-4-5  # Good at temporal reasoning
   youtube_processing: gemini-2.0-flash  # Native YouTube support, very cheap
   entity_extraction: claude-haiku-4-5  # Structured extraction, cost-effective

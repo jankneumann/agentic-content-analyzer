@@ -78,6 +78,7 @@ class ModelStep(str, Enum):
     SUMMARIZATION = "summarization"  # Individual newsletter summarization
     THEME_ANALYSIS = "theme_analysis"  # Cross-newsletter theme extraction
     DIGEST_CREATION = "digest_creation"  # Digest generation
+    DIGEST_REVISION = "digest_revision"  # Interactive digest revision
     HISTORICAL_CONTEXT = "historical_context"  # Historical context analysis
     YOUTUBE_PROCESSING = "youtube_processing"  # YouTube video summarization
     ENTITY_EXTRACTION = "entity_extraction"  # Entity extraction for knowledge graph
@@ -219,6 +220,7 @@ class ModelConfig:
         summarization: Optional[str] = None,
         theme_analysis: Optional[str] = None,
         digest_creation: Optional[str] = None,
+        digest_revision: Optional[str] = None,
         historical_context: Optional[str] = None,
         youtube_processing: Optional[str] = None,
         entity_extraction: Optional[str] = None,
@@ -232,6 +234,7 @@ class ModelConfig:
             summarization: Model for newsletter summarization (default from YAML)
             theme_analysis: Model for theme analysis (default from YAML)
             digest_creation: Model for digest generation (default from YAML)
+            digest_revision: Model for interactive digest revision (default from YAML)
             historical_context: Model for historical context (default from YAML)
             youtube_processing: Model for YouTube processing (default from YAML)
             entity_extraction: Model for entity extraction (default from YAML)
@@ -245,6 +248,8 @@ class ModelConfig:
             or DEFAULT_MODELS["theme_analysis"],
             ModelStep.DIGEST_CREATION: digest_creation
             or DEFAULT_MODELS["digest_creation"],
+            ModelStep.DIGEST_REVISION: digest_revision
+            or DEFAULT_MODELS["digest_revision"],
             ModelStep.HISTORICAL_CONTEXT: historical_context
             or DEFAULT_MODELS["historical_context"],
             ModelStep.YOUTUBE_PROCESSING: youtube_processing
