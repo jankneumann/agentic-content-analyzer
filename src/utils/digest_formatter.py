@@ -126,14 +126,18 @@ class DigestFormatter:
         if digest.sources:
             md_parts.append("## Sources\n")
             for source in digest.sources:
+                # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
+                newsletter_id = source.get('id') or source.get('newsletter_id', '')
+                id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
+
                 if source.get("url"):
                     md_parts.append(
-                        f"- [{source['publication']}: {source['title']}]({source['url']}) "
+                        f"- {id_prefix}[{source['publication']}: {source['title']}]({source['url']}) "
                         f"({source['date']})"
                     )
                 else:
                     md_parts.append(
-                        f"- {source['publication']}: {source['title']} ({source['date']})"
+                        f"- {id_prefix}{source['publication']}: {source['title']} ({source['date']})"
                     )
             md_parts.append("")
 
@@ -250,8 +254,11 @@ class DigestFormatter:
             lines.append("\nSOURCES")
             lines.append("-" * 80)
             for source in digest.sources:
+                # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
+                newsletter_id = source.get('id') or source.get('newsletter_id', '')
+                id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
                 lines.append(
-                    f"• {source['publication']}: {source['title']} ({source['date']})"
+                    f"• {id_prefix}{source['publication']}: {source['title']} ({source['date']})"
                 )
 
         lines.append("")
@@ -571,15 +578,19 @@ class DigestFormatter:
             <ul>
 """)
             for source in digest.sources:
+                # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
+                newsletter_id = source.get('id') or source.get('newsletter_id', '')
+                id_prefix = f'[{newsletter_id}] ' if newsletter_id else ""
+
                 if source.get("url"):
                     html_parts.append(
-                        f'                <li><a href="{source["url"]}">'
+                        f'                <li>{id_prefix}<a href="{source["url"]}">'
                         f'{source["publication"]}: {source["title"]}</a> '
                         f'<span style="color: #666;">({source["date"]})</span></li>'
                     )
                 else:
                     html_parts.append(
-                        f'                <li>{source["publication"]}: {source["title"]} '
+                        f'                <li>{id_prefix}{source["publication"]}: {source["title"]} '
                         f'<span style="color: #666;">({source["date"]})</span></li>'
                     )
             html_parts.append("            </ul>\n        </div>")
