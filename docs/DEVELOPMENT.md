@@ -302,6 +302,116 @@ def get_rss_feed_urls(self) -> list[str]:
 
 ## Database Patterns
 
+### SQLAlchemy Session Management
+
+**Understanding `expire_on_commit`:**
+
+SQLAlchemy has a default behavior called `expire_on_commit=True` which expires all objects in a session after `commit()` is called. This causes `DetachedInstanceError` when you try to access object attributes after commit or after the session closes.
+
+**Our Solution:**
+
+We configure `expire_on_commit=False` globally in `src/storage/database.py`:
+
+```python
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    expire_on_commit=False,  # Prevents DetachedInstanceError
+)
+```
+
+**Why This Matters:**
+
+```python
+# WITHOUT expire_on_commit=False, this would fail:
+with get_db() as db:
+    newsletter = db.query(Newsletter).first()
+    newsletter.status = ProcessingStatus.PROCESSING
+    db.commit()  # Object expires here!
+
+    # This would raise DetachedInstanceError:
+    print(newsletter.title)  # ERROR!
+```
+
+```python
+# WITH expire_on_commit=False, this works:
+with get_db() as db:
+    newsletter = db.query(Newsletter).first()
+    newsletter.status = ProcessingStatus.PROCESSING
+    db.commit()  # Object remains usable
+
+    print(newsletter.title)  # Works!
+```
+
+**Best Practices:**
+
+1. **Don't add per-session workarounds**: Never use `db.expire_on_commit = False` in individual code blocks - the global setting handles this.
+
+2. **Use eager loading for relationships**: When returning objects that will be used after session closes, use `joinedload()` or `selectinload()` for any relationships you need:
+
+```python
+from sqlalchemy.orm import joinedload
+
+# Load newsletter relationship when querying summaries
+summaries = (
+    db.query(NewsletterSummary)
+    .options(joinedload(NewsletterSummary.newsletter))
+    .all()
+)
+
+# Now summary.newsletter works even after session closes
+for summary in summaries:
+    print(summary.newsletter.title)  # Works!
+```
+
+3. **Convert to dicts for API responses**: When returning data through APIs, convert ORM objects to dictionaries/Pydantic models within the session:
+
+```python
+with get_db() as db:
+    newsletters = db.query(Newsletter).all()
+
+    # Convert to dicts inside session - safe pattern
+    return [
+        {
+            "id": n.id,
+            "title": n.title,
+            "published_date": n.published_date,
+        }
+        for n in newsletters
+    ]
+```
+
+4. **Use `refresh()` after commit if you need fresh data**: If you need to see database-generated values (like auto-increment IDs or default values):
+
+```python
+db.add(new_object)
+db.commit()
+db.refresh(new_object)  # Load fresh data from DB
+return new_object.id  # Now includes DB-generated ID
+```
+
+5. **Extract IDs early for nested operations**: When you need IDs for subsequent operations outside the session:
+
+```python
+with get_db() as db:
+    digest = db.query(Digest).first()
+    digest_id = digest.id  # Capture ID while in session
+    db.commit()
+
+# Use captured ID outside session
+process_digest(digest_id)
+```
+
+**Common Pitfalls to Avoid:**
+
+| Pattern | Problem | Solution |
+|---------|---------|----------|
+| `summary.newsletter.title` after session close | Lazy-loaded relationship fails | Use `joinedload()` |
+| Accessing object after `db.commit()` | Object would be expired | Global `expire_on_commit=False` |
+| Returning ORM objects from functions | Detached from session | Convert to dict/Pydantic |
+| Adding `db.expire_on_commit = False` inline | Inconsistent, clutters code | Use global setting |
+
 ### Deduplication
 
 Always check for existing records before inserting:
