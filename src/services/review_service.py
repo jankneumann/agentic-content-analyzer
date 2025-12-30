@@ -47,6 +47,9 @@ class ReviewService:
         logger.info("Listing pending reviews")
 
         with get_db() as db:
+            # Disable expiration on commit so objects remain accessible after session closes
+            db.expire_on_commit = False
+
             digests = (
                 db.query(Digest)
                 .filter(Digest.status == DigestStatus.PENDING_REVIEW)
@@ -69,6 +72,9 @@ class ReviewService:
         logger.info(f"Loading digest {digest_id}")
 
         with get_db() as db:
+            # Disable expiration on commit so objects remain accessible after session closes
+            db.expire_on_commit = False
+
             digest = db.query(Digest).filter_by(id=digest_id).first()
 
             if not digest:

@@ -1,0 +1,11 @@
+{
+  "source": "GMAIL",
+  "source_id": "test-llm-advances-001",
+  "sender": "ai-weekly@example.com",
+  "publication": "AI Weekly",
+  "title": "Latest LLM Advances: GPT-5 and Claude Opus 4",
+  "published_date": "2025-01-13T10:00:00Z",
+  "url": "https://example.com/newsletters/llm-advances-jan-2025",
+  "raw_html": "<html><body><h1>Latest LLM Advances</h1><p>OpenAI announced GPT-5 with 10T parameters, showing remarkable improvements in reasoning and multi-modal capabilities. Meanwhile, Anthropic released Claude Opus 4 with extended context windows up to 1M tokens.</p><h2>Key Developments</h2><ul><li>GPT-5 achieves 95% accuracy on MMLU benchmark</li><li>Claude Opus 4 supports 1M token context</li><li>New fine-tuning methods reduce training costs by 40%</li></ul><p>These advances signal a new era in AI capabilities, particularly for complex reasoning tasks and long-context processing.</p></body></html>",
+  "raw_text": "Latest LLM Advances: GPT-5 and Claude Opus 4\n\nOpenAI announced GPT-5 with 10T parameters, showing remarkable improvements in reasoning and multi-modal capabilities. Meanwhile, Anthropic released Claude Opus 4 with extended context windows up to 1M tokens.\n\nKey Developments:\n- GPT-5 achieves 95% accuracy on MMLU benchmark\n- Claude Opus 4 supports 1M token context\n- New fine-tuning methods reduce training costs by 40%\n\nThese advances signal a new era in AI capabilities, particularly for complex reasoning tasks and long-context processing."
+}

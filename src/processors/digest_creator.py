@@ -9,12 +9,22 @@ from anthropic import Anthropic
 
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
-from src.models.digest import DigestData, DigestRequest, DigestSection, DigestType
+from src.models.digest import (
+    Digest,
+    DigestData,
+    DigestRequest,
+    DigestSection,
+    DigestStatus,
+    DigestType,
+)
 from src.models.newsletter import Newsletter
+from src.models.summary import NewsletterSummary
 from src.models.theme import ThemeAnalysisRequest, ThemeData
+from src.processors.summarizer import NewsletterSummarizer
 from src.processors.theme_analyzer import ThemeAnalyzer
 from src.storage.database import get_db
 from src.utils.logging import get_logger
+from src.utils.token_counter import TokenCounter
 
 logger = get_logger(__name__)
 
@@ -107,33 +117,122 @@ class DigestCreator:
             request.period_end
         )
 
-        # 3. Generate digest content using LLM
-        digest_content = await self._generate_digest_content(
-            request=request,
-            themes=theme_result.themes,
+        # 2b. Fetch summaries for all newsletters
+        newsletter_ids = [nl["id"] for nl in newsletters]
+        with get_db() as db:
+            # Disable expiration to prevent DetachedInstanceError
+            db.expire_on_commit = False
+            summaries = (
+                db.query(NewsletterSummary)
+                .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
+                .all()
+            )
+
+        logger.info(
+            f"Fetched {len(summaries)} summaries for {len(newsletters)} newsletters"
+        )
+
+        # Check for missing summaries
+        missing_ids = [
+            nl["id"] for nl in newsletters if nl["id"] not in {s.newsletter_id for s in summaries}
+        ]
+
+        if missing_ids:
+            logger.warning(
+                f"{len(missing_ids)} newsletters do not have summaries yet. "
+                f"Creating summaries on-demand..."
+            )
+
+            # Create summarizer instance (uses same model config as digest creator)
+            summarizer = NewsletterSummarizer(model_config=self.model_config)
+
+            # Create summaries using batch method
+            result = summarizer.summarize_newsletters(missing_ids)
+
+            # Log results
+            if result["failed_ids"]:
+                logger.warning(
+                    f"Continuing with digest creation. "
+                    f"Newsletters {result['failed_ids']} will be skipped due to "
+                    f"summarization failures."
+                )
+
+            # Re-fetch summaries to include newly created ones
+            with get_db() as db:
+                db.expire_on_commit = False
+                summaries = (
+                    db.query(NewsletterSummary)
+                    .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
+                    .all()
+                )
+
+            logger.info(
+                f"After on-demand creation: {len(summaries)} summaries available "
+                f"for {len(newsletters)} newsletters"
+            )
+
+        # 3. Check token budget and determine if hierarchical digest is needed
+        needs_hierarchy, budget_info = await self._check_token_budget(
             newsletters=newsletters,
+            themes=theme_result.themes,
         )
 
-        # 4. Build final digest
+        # 4. Create digest (hierarchical or single, based on token budget)
+        if needs_hierarchy:
+            logger.info(
+                f"Newsletters exceed token budget ({len(newsletters)} newsletters, "
+                f"{budget_info['newsletter_budget']} token budget). "
+                f"Creating hierarchical digest..."
+            )
+
+            # Batch newsletters by token budget
+            batches = self._batch_newsletters_by_tokens(
+                newsletters=newsletters,
+                token_budget=budget_info["newsletter_budget"],
+            )
+
+            # Create hierarchical digest (sub-digests + combination)
+            digest = await self._create_hierarchical_digest(
+                request=request,
+                newsletters=newsletters,
+                themes=theme_result.themes,
+                batches=batches,
+                summaries=summaries,
+            )
+
+        else:
+            # Single digest - existing flow (newsletters fit in budget)
+            logger.info(
+                f"Creating single digest ({len(newsletters)} newsletters fit in budget)"
+            )
+
+            digest_content = await self._generate_digest_content(
+                request=request,
+                themes=theme_result.themes,
+                newsletters=newsletters,
+                summaries=summaries,
+            )
+
+            digest = DigestData(
+                digest_type=request.digest_type,
+                period_start=request.period_start,
+                period_end=request.period_end,
+                title=digest_content["title"],
+                executive_overview=digest_content["executive_overview"],
+                strategic_insights=digest_content["strategic_insights"],
+                technical_developments=digest_content["technical_developments"],
+                emerging_trends=digest_content["emerging_trends"],
+                actionable_recommendations=digest_content["actionable_recommendations"],
+                sources=self._build_sources(newsletters),
+                newsletter_count=theme_result.newsletter_count,
+                agent_framework=self.framework,
+                model_used=self.model,
+                model_version=self.model_version,
+            )
+
+        # 5. Set processing time
         processing_time = time.time() - start_time
-
-        digest = DigestData(
-            digest_type=request.digest_type,
-            period_start=request.period_start,
-            period_end=request.period_end,
-            title=digest_content["title"],
-            executive_overview=digest_content["executive_overview"],
-            strategic_insights=digest_content["strategic_insights"],
-            technical_developments=digest_content["technical_developments"],
-            emerging_trends=digest_content["emerging_trends"],
-            actionable_recommendations=digest_content["actionable_recommendations"],
-            sources=self._build_sources(newsletters),
-            newsletter_count=theme_result.newsletter_count,
-            agent_framework=self.framework,
-            model_used=self.model,
-            model_version=self.model_version,
-            processing_time_seconds=processing_time,
-        )
+        digest.processing_time_seconds = processing_time
 
         logger.info(
             f"Digest created successfully in {processing_time:.2f}s "
@@ -142,11 +241,576 @@ class DigestCreator:
 
         return digest
 
+    async def _check_token_budget(
+        self,
+        newsletters: list[dict],
+        themes: list[ThemeData],
+    ) -> tuple[bool, dict]:
+        """
+        Check if newsletters fit in token budget.
+
+        Args:
+            newsletters: List of newsletter dicts
+            themes: List of theme data
+
+        Returns:
+            Tuple of (needs_hierarchy, budget_info)
+            - needs_hierarchy: True if newsletters exceed budget
+            - budget_info: Dict with token budget breakdown
+        """
+        from src.models.summary import NewsletterSummary
+        from src.utils.token_counter import TokenCounter
+
+        logger.debug("Checking token budget for newsletters and themes")
+
+        # Get first provider for this model
+        try:
+            providers = self.model_config.get_providers_for_model(self.model)
+            provider = providers[0].provider if providers else Provider.ANTHROPIC
+        except ValueError:
+            logger.warning("No providers found, using ANTHROPIC as default")
+            provider = Provider.ANTHROPIC
+
+        # Initialize token counter
+        counter = TokenCounter(self.model_config, self.model)
+
+        # Calculate token budget
+        budget = counter.calculate_token_budget(
+            model_id=self.model,
+            provider=provider,
+            context_window_percentage=0.5,  # Use 50% of context window
+        )
+
+        # Fetch summaries for more accurate token estimation
+        summaries = []
+        try:
+            newsletter_ids = [nl["id"] for nl in newsletters]
+            with get_db() as db:
+                # Disable expiration to prevent DetachedInstanceError
+                db.expire_on_commit = False
+                summaries = (
+                    db.query(NewsletterSummary)
+                    .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
+                    .all()
+                )
+            logger.debug(f"Loaded {len(summaries)} summaries for token estimation")
+        except Exception as e:
+            logger.warning(f"Failed to load summaries for token estimation: {e}")
+            summaries = []
+
+        # Estimate tokens for all content (including summaries)
+        estimated_tokens = counter.estimate_newsletter_batch_tokens(
+            newsletters=newsletters,
+            themes=themes,
+            summaries=summaries,
+        )
+
+        needs_hierarchy = estimated_tokens > budget["newsletter_budget"]
+
+        logger.info(
+            f"Token budget check: {estimated_tokens} tokens estimated, "
+            f"{budget['newsletter_budget']} budget available. "
+            f"Needs hierarchy: {needs_hierarchy}"
+        )
+
+        return needs_hierarchy, budget
+
+    def _batch_newsletters_by_tokens(
+        self,
+        newsletters: list[dict],
+        token_budget: int,
+    ) -> list[list[dict]]:
+        """
+        Batch newsletters to fit token budget.
+
+        Uses greedy algorithm: add newsletters to batch until budget exceeded,
+        then start new batch.
+
+        Args:
+            newsletters: List of newsletter dicts (ordered chronologically)
+            token_budget: Maximum tokens allowed per batch
+
+        Returns:
+            List of newsletter batches (each batch is a list of newsletters)
+        """
+        from src.utils.token_counter import TokenCounter
+
+        logger.info(
+            f"Batching {len(newsletters)} newsletters with {token_budget} token budget"
+        )
+
+        counter = TokenCounter(self.model_config, self.model)
+        batches = []
+        current_batch = []
+        current_tokens = 0
+
+        for newsletter in newsletters:
+            # Estimate tokens for this newsletter
+            nl_text = f"{newsletter.get('publication', '')} - {newsletter.get('title', '')}"
+            nl_tokens = counter.estimate_text_tokens(nl_text)
+
+            # Check if adding this newsletter would exceed budget
+            if current_batch and current_tokens + nl_tokens > token_budget:
+                # Save current batch and start new one
+                batches.append(current_batch)
+                logger.debug(
+                    f"Batch {len(batches)} complete: {len(current_batch)} newsletters, "
+                    f"{current_tokens} tokens"
+                )
+                current_batch = [newsletter]
+                current_tokens = nl_tokens
+            else:
+                # Add to current batch
+                current_batch.append(newsletter)
+                current_tokens += nl_tokens
+
+        # Add final batch if not empty
+        if current_batch:
+            batches.append(current_batch)
+            logger.debug(
+                f"Batch {len(batches)} complete: {len(current_batch)} newsletters, "
+                f"{current_tokens} tokens"
+            )
+
+        logger.info(
+            f"Created {len(batches)} batches from {len(newsletters)} newsletters"
+        )
+
+        # Log warning if single newsletter exceeds budget
+        for i, batch in enumerate(batches):
+            if len(batch) == 1:
+                nl = batch[0]
+                logger.warning(
+                    f"Batch {i+1} contains single newsletter that may exceed budget: "
+                    f"{nl.get('publication')} - {nl.get('title')}"
+                )
+
+        return batches
+
+    async def _create_hierarchical_digest(
+        self,
+        request: DigestRequest,
+        newsletters: list[dict],
+        themes: list[ThemeData],
+        batches: list[list[dict]],
+        summaries: list[NewsletterSummary],
+    ) -> DigestData:
+        """
+        Create hierarchical digest from newsletter batches.
+
+        Flow:
+        1. For each batch, create sub-digest and save to DB
+        2. Combine all sub-digests into parent digest
+        3. Save parent with child references
+
+        Args:
+            request: Digest generation request
+            newsletters: Full list of all newsletters
+            themes: Theme analysis results
+            batches: List of newsletter batches (from _batch_newsletters_by_tokens)
+
+        Returns:
+            Combined parent digest with hierarchical metadata
+
+        Raises:
+            Exception: If sub-digest creation or combination fails
+        """
+        logger.info(
+            f"Creating hierarchical digest with {len(batches)} sub-digests "
+            f"from {len(newsletters)} newsletters"
+        )
+        sub_digest_ids = []
+
+        # Create sub-digests for each batch
+        for i, batch in enumerate(batches, 1):
+            logger.info(
+                f"Creating sub-digest {i}/{len(batches)} with {len(batch)} newsletters"
+            )
+
+            try:
+                # Get summaries for this batch
+                batch_ids = [nl["id"] for nl in batch]
+                batch_summaries = [
+                    s for s in summaries if s.newsletter_id in batch_ids
+                ]
+
+                # Generate digest content for this batch
+                digest_content = await self._generate_digest_content(
+                    request=request,
+                    themes=themes,
+                    newsletters=batch,
+                    summaries=batch_summaries,
+                )
+
+                # Create sub-digest with title suffix
+                sub_digest = DigestData(
+                    digest_type=DigestType.SUB_DIGEST,
+                    period_start=request.period_start,
+                    period_end=request.period_end,
+                    title=f"{digest_content['title']} - Part {i} of {len(batches)}",
+                    executive_overview=digest_content["executive_overview"],
+                    strategic_insights=digest_content["strategic_insights"],
+                    technical_developments=digest_content["technical_developments"],
+                    emerging_trends=digest_content["emerging_trends"],
+                    actionable_recommendations=digest_content[
+                        "actionable_recommendations"
+                    ],
+                    sources=self._build_sources(batch),
+                    newsletter_count=len(batch),
+                    agent_framework=self.framework,
+                    model_used=self.model,
+                    model_version=self.model_version,
+                )
+
+                # Save to database immediately
+                with get_db() as db:
+                    # Convert to dict, removing fields that aren't in DB model yet
+                    sub_digest_dict = sub_digest.model_dump()
+                    # Remove fields that will be added by database
+                    sub_digest_dict.pop("processing_time_seconds", None)
+
+                    db_sub_digest = Digest(**sub_digest_dict)
+                    db_sub_digest.status = DigestStatus.COMPLETED
+                    db_sub_digest.completed_at = datetime.utcnow()
+
+                    db.add(db_sub_digest)
+                    db.commit()
+                    db.refresh(db_sub_digest)
+                    sub_digest_ids.append(db_sub_digest.id)
+
+                logger.info(
+                    f"Sub-digest {i}/{len(batches)} created successfully "
+                    f"(ID: {db_sub_digest.id})"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to create sub-digest {i}/{len(batches)}: {e}")
+                # Clean up any sub-digests created so far
+                if sub_digest_ids:
+                    logger.warning(
+                        f"Cleaning up {len(sub_digest_ids)} sub-digests due to error"
+                    )
+                    with get_db() as db:
+                        db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).delete(
+                            synchronize_session=False
+                        )
+                        db.commit()
+                raise Exception(f"Hierarchical digest creation failed: {e}")
+
+        # Combine sub-digests into parent digest
+        logger.info(
+            f"Combining {len(sub_digest_ids)} sub-digests into parent digest"
+        )
+        combined_digest = await self._combine_sub_digests(
+            request=request,
+            sub_digest_ids=sub_digest_ids,
+            newsletters=newsletters,
+        )
+
+        # Set hierarchy metadata
+        combined_digest.is_combined = True
+        combined_digest.child_digest_ids = sub_digest_ids
+        combined_digest.source_digest_count = len(sub_digest_ids)
+
+        logger.info(
+            f"Hierarchical digest created successfully with {len(sub_digest_ids)} "
+            f"sub-digests (IDs: {sub_digest_ids})"
+        )
+
+        return combined_digest
+
+    async def _combine_sub_digests(
+        self,
+        request: DigestRequest,
+        sub_digest_ids: list[int],
+        newsletters: list[dict],
+    ) -> DigestData:
+        """
+        Combine multiple sub-digests into single digest via LLM synthesis.
+
+        Uses LLM to:
+        - De-duplicate similar insights across sub-digests
+        - Re-prioritize based on full dataset
+        - Create coherent narrative spanning all newsletters
+        - Preserve source citations from all sub-digests
+
+        Args:
+            request: Original digest request
+            sub_digest_ids: List of sub-digest database IDs
+            newsletters: Full list of all newsletters (for sources)
+
+        Returns:
+            Combined digest data
+
+        Raises:
+            Exception: If all providers fail
+        """
+        logger.info(f"Combining {len(sub_digest_ids)} sub-digests via LLM synthesis")
+
+        # Load sub-digests from database
+        with get_db() as db:
+            # Disable expiration to prevent DetachedInstanceError
+            db.expire_on_commit = False
+            sub_digests = (
+                db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).all()
+            )
+
+        if len(sub_digests) != len(sub_digest_ids):
+            raise ValueError(
+                f"Expected {len(sub_digest_ids)} sub-digests, "
+                f"found {len(sub_digests)}"
+            )
+
+        # Build combination prompt
+        prompt = self._build_combination_prompt(
+            request=request,
+            sub_digests=sub_digests,
+        )
+
+        # Call LLM with provider failover (same pattern as _generate_digest_content)
+        providers = self.model_config.get_providers_for_model(self.model)
+        last_error = None
+
+        for provider_config in providers:
+            # Only use Anthropic providers for now (Claude models)
+            if provider_config.provider != Provider.ANTHROPIC:
+                continue
+
+            try:
+                logger.info(
+                    f"Attempting combination with provider: "
+                    f"{provider_config.provider.value}"
+                )
+
+                client = Anthropic(api_key=provider_config.api_key)
+                provider_model_id = self.model_config.get_provider_model_id(
+                    self.model, provider_config.provider
+                )
+
+                response = client.messages.create(
+                    model=provider_model_id,
+                    max_tokens=12000,
+                    temperature=0.4,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+
+                # Parse response (same format as regular digest)
+                raw_content = response.content[0].text.strip()
+                logger.debug(f"Received LLM response: {raw_content[:200]}...")
+
+                # Try to extract JSON from markdown code blocks if present
+                if "```json" in raw_content:
+                    start = raw_content.find("```json") + 7
+                    end = raw_content.find("```", start)
+                    raw_content = raw_content[start:end].strip()
+                elif "```" in raw_content:
+                    start = raw_content.find("```") + 3
+                    end = raw_content.find("```", start)
+                    raw_content = raw_content[start:end].strip()
+
+                digest_json = json.loads(raw_content)
+
+                # Convert sections to DigestSection objects
+                strategic_insights = [
+                    DigestSection(**section)
+                    for section in digest_json.get("strategic_insights", [])
+                ]
+                technical_developments = [
+                    DigestSection(**section)
+                    for section in digest_json.get("technical_developments", [])
+                ]
+                emerging_trends = [
+                    DigestSection(**section)
+                    for section in digest_json.get("emerging_trends", [])
+                ]
+
+                # Build combined digest
+                combined_digest = DigestData(
+                    digest_type=request.digest_type,  # DAILY or WEEKLY, not SUB_DIGEST
+                    period_start=request.period_start,
+                    period_end=request.period_end,
+                    title=digest_json["title"],
+                    executive_overview=digest_json["executive_overview"],
+                    strategic_insights=strategic_insights,
+                    technical_developments=technical_developments,
+                    emerging_trends=emerging_trends,
+                    actionable_recommendations=digest_json[
+                        "actionable_recommendations"
+                    ],
+                    sources=self._build_sources(newsletters),
+                    newsletter_count=len(newsletters),
+                    agent_framework=self.framework,
+                    model_used=self.model,
+                    model_version=self.model_version,
+                )
+
+                logger.info(
+                    f"Successfully combined sub-digests using "
+                    f"{provider_config.provider.value}"
+                )
+                self.provider_used = provider_config.provider
+
+                return combined_digest
+
+            except Exception as e:
+                last_error = e
+                logger.error(
+                    f"Provider {provider_config.provider.value} failed during "
+                    f"combination: {e}"
+                )
+                continue
+
+        # All providers failed - fallback to first sub-digest with warning
+        logger.error(
+            f"All providers failed during combination. Last error: {last_error}"
+        )
+        logger.warning(
+            "Falling back to first sub-digest as combined digest (degraded mode)"
+        )
+
+        # Convert first sub-digest to DigestData
+        first_sub = sub_digests[0]
+        fallback_digest = DigestData(
+            digest_type=request.digest_type,  # Use original type, not SUB_DIGEST
+            period_start=request.period_start,
+            period_end=request.period_end,
+            title=first_sub.title.replace(f" - Part 1 of {len(sub_digests)}", ""),
+            executive_overview=first_sub.executive_overview,
+            strategic_insights=[
+                DigestSection(**s) for s in first_sub.strategic_insights
+            ],
+            technical_developments=[
+                DigestSection(**s) for s in first_sub.technical_developments
+            ],
+            emerging_trends=[DigestSection(**s) for s in first_sub.emerging_trends],
+            actionable_recommendations=first_sub.actionable_recommendations,
+            sources=self._build_sources(newsletters),
+            newsletter_count=len(newsletters),
+            agent_framework=self.framework,
+            model_used=self.model,
+            model_version=self.model_version,
+        )
+
+        return fallback_digest
+
+    def _build_combination_prompt(
+        self,
+        request: DigestRequest,
+        sub_digests: list[Digest],
+    ) -> str:
+        """
+        Build prompt for combining sub-digests.
+
+        Args:
+            request: Original digest request
+            sub_digests: List of sub-digest database objects
+
+        Returns:
+            Prompt string for LLM
+        """
+        # Build summaries of each sub-digest
+        sub_digest_summaries = []
+        for i, sub in enumerate(sub_digests, 1):
+            sub_digest_summaries.append(
+                f"""
+## Sub-Digest {i} ({sub.newsletter_count} newsletters)
+
+**Executive Overview:**
+{sub.executive_overview}
+
+**Strategic Insights:** {len(sub.strategic_insights)} insights
+{self._format_sections_for_prompt(sub.strategic_insights[:3])}
+
+**Technical Developments:** {len(sub.technical_developments)} developments
+{self._format_sections_for_prompt(sub.technical_developments[:3])}
+
+**Emerging Trends:** {len(sub.emerging_trends)} trends
+{self._format_sections_for_prompt(sub.emerging_trends[:2])}
+"""
+            )
+
+        return f"""You are synthesizing {len(sub_digests)} sub-digests into a single comprehensive digest.
+
+# Time Period
+{request.digest_type.value.title()} digest covering {request.period_start.date()} to {request.period_end.date()}
+
+# Sub-Digests to Combine
+{''.join(sub_digest_summaries)}
+
+# Your Task
+Synthesize these sub-digests into a single comprehensive digest that:
+- De-duplicates similar insights across sub-digests
+- Re-prioritizes insights based on full dataset
+- Creates coherent narrative spanning all newsletters
+- Preserves source citations from all sub-digests
+- Limits to {request.max_strategic_insights} strategic insights, {request.max_technical_developments} technical developments, {request.max_emerging_trends} emerging trends
+
+# Output Format
+Return a JSON object with the following structure:
+
+{{
+  "title": "Engaging title for the combined digest",
+  "executive_overview": "2-3 sentence high-level summary",
+  "strategic_insights": [
+    {{
+      "title": "Insight title",
+      "summary": "2-3 sentence summary",
+      "details": ["detail 1", "detail 2"],
+      "themes": ["theme1", "theme2"],
+      "continuity": "Historical context (optional)"
+    }}
+  ],
+  "technical_developments": [
+    {{
+      "title": "Development title",
+      "summary": "2-3 sentence summary",
+      "details": ["detail 1", "detail 2"],
+      "themes": ["theme1", "theme2"]
+    }}
+  ],
+  "emerging_trends": [
+    {{
+      "title": "Trend title",
+      "summary": "2-3 sentence summary",
+      "details": ["detail 1", "detail 2"],
+      "themes": ["theme1", "theme2"]
+    }}
+  ],
+  "actionable_recommendations": {{
+    "CTO/VP Engineering": ["recommendation 1", "recommendation 2"],
+    "Team Leads": ["recommendation 1", "recommendation 2"],
+    "Individual Contributors": ["recommendation 1", "recommendation 2"]
+  }}
+}}
+
+Output only the JSON object, no additional text.
+"""
+
+    def _format_sections_for_prompt(self, sections: list[dict]) -> str:
+        """
+        Format digest sections for inclusion in combination prompt.
+
+        Args:
+            sections: List of section dicts
+
+        Returns:
+            Formatted string
+        """
+        if not sections:
+            return "(none)"
+
+        formatted = []
+        for i, section in enumerate(sections, 1):
+            formatted.append(f"{i}. {section.get('title', 'Untitled')}")
+
+        return "\n".join(formatted)
+
     async def _generate_digest_content(
         self,
         request: DigestRequest,
         themes: list[ThemeData],
         newsletters: list[dict],
+        summaries: list[NewsletterSummary],
     ) -> dict:
         """Generate digest content using LLM."""
         logger.info("Generating digest content with LLM...")
@@ -154,8 +818,8 @@ class DigestCreator:
         # Build context from themes
         themes_context = self._build_themes_context(themes)
 
-        # Build newsletter list for reference
-        newsletters_context = self._build_newsletters_context(newsletters)
+        # Build newsletter list for reference (using summaries)
+        newsletters_context = self._build_newsletters_context(newsletters, summaries)
 
         # Construct prompt
         prompt = self._build_digest_prompt(
@@ -299,18 +963,44 @@ class DigestCreator:
 
         return "\n\n".join(context_parts)
 
-    def _build_newsletters_context(self, newsletters: list[dict]) -> str:
-        """Build context string from newsletters with database ID references."""
+    def _build_newsletters_context(
+        self, newsletters: list[dict], summaries: list[NewsletterSummary]
+    ) -> str:
+        """Build context string from newsletter summaries."""
+        # Create lookup dict for quick access
+        summaries_by_id = {s.newsletter_id: s for s in summaries}
+
         context_parts = []
 
-        for newsletter in newsletters[:10]:  # Limit to avoid token overflow
-            date = newsletter["published_date"].strftime("%Y-%m-%d")
+        for newsletter in newsletters:
             newsletter_id = newsletter["id"]
+            summary = summaries_by_id.get(newsletter_id)
+
+            if not summary:
+                logger.warning(
+                    f"No summary found for newsletter {newsletter_id}, skipping"
+                )
+                continue
+
+            date = newsletter["published_date"].strftime("%Y-%m-%d")
+
+            # Build rich context from summary
             context_parts.append(
-                f"[{newsletter_id}] {newsletter['publication']} - {newsletter['title']} ({date})"
+                f"""[{newsletter_id}] {newsletter['publication']} - {newsletter['title']} ({date})
+
+**Executive Summary:**
+{summary.executive_summary}
+
+**Key Themes:** {', '.join(summary.key_themes)}
+
+**Strategic Insights:**
+{chr(10).join(f"- {insight}" for insight in summary.strategic_insights)}
+
+**Technical Details:**
+{chr(10).join(f"- {detail}" for detail in summary.technical_details)}""".strip()
             )
 
-        return "\n".join(context_parts)
+        return "\n\n---\n\n".join(context_parts)
 
     def _build_digest_prompt(
         self,

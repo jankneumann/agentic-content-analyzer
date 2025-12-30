@@ -1,14 +1,26 @@
 """Shared fixtures for integration tests.
 
 Test Database Isolation:
-- Uses separate test database (newsletters_test)
-- Environment variable: TEST_DATABASE_URL
-- Transaction rollback after each test
-- No impact on development database
+- PostgreSQL: Uses separate test database (newsletters_test)
+  - Environment variable: TEST_DATABASE_URL
+  - Transaction rollback after each test
+  - No impact on development database
+- Neo4j: Uses dedicated test instance on different port
+  - Dev/prod instance: port 7687 (bolt://localhost:7687)
+  - Test instance: port 7688 (bolt://localhost:7688)
+  - Environment variables: TEST_NEO4J_URI, TEST_NEO4J_USER, TEST_NEO4J_PASSWORD
+  - Automatic cleanup (DETACH DELETE all nodes) after each test
+  - Safety check: prevents connecting to port 7687
+  - Completely separate Docker container with own data volume
 
 Setup:
-1. Create test database: createdb newsletters_test
-2. Run integration tests: pytest tests/integration/ -v
+1. Create PostgreSQL test database: createdb newsletters_test
+2. Start dev dependencies: docker compose up -d postgres redis neo4j
+3. Start test Neo4j instance: docker compose up -d neo4j-test
+4. Run integration tests: pytest tests/integration/ -v
+
+Note: The test Neo4j instance uses the 'test' profile and runs on port 7688 to
+ensure test cleanup never affects production knowledge graph data.
 """
 
 import os
@@ -17,6 +29,7 @@ from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
+from neo4j import GraphDatabase
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -32,6 +45,11 @@ TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql://newsletter_user:newsletter_password@localhost/newsletters_test"
 )
+
+# Test Neo4j configuration (dedicated test instance on different port)
+TEST_NEO4J_URI = os.getenv("TEST_NEO4J_URI", "bolt://localhost:7688")
+TEST_NEO4J_USER = os.getenv("TEST_NEO4J_USER", "neo4j")
+TEST_NEO4J_PASSWORD = os.getenv("TEST_NEO4J_PASSWORD", "newsletter_password")
 
 
 @pytest.fixture(scope="session")
@@ -99,6 +117,68 @@ def mock_get_db(db_session):
         yield db_session
 
     return _mock_get_db
+
+
+@pytest.fixture(scope="session")
+def neo4j_driver():
+    """Create Neo4j driver for test session.
+
+    Connects to dedicated test Neo4j instance on port 7688.
+    Driver is shared across all tests in the session.
+
+    The test instance is separate from dev/prod (port 7687) to prevent
+    accidentally deleting production data during test cleanup.
+    """
+    # Safety check: Verify we're not connecting to production port
+    if "7687" in TEST_NEO4J_URI:
+        raise ValueError(
+            f"Safety check failed: TEST_NEO4J_URI is using production port 7687. "
+            f"Tests must use dedicated test instance on port 7688. "
+            f"Set TEST_NEO4J_URI=bolt://localhost:7688"
+        )
+
+    driver = GraphDatabase.driver(
+        TEST_NEO4J_URI,
+        auth=(TEST_NEO4J_USER, TEST_NEO4J_PASSWORD)
+    )
+
+    # Verify connection
+    try:
+        driver.verify_connectivity()
+    except Exception as e:
+        driver.close()
+        raise RuntimeError(
+            f"Failed to connect to test Neo4j instance at {TEST_NEO4J_URI}. "
+            f"Make sure the test instance is running: docker compose up -d neo4j-test"
+        ) from e
+
+    yield driver
+
+    # Cleanup: Close driver at end of session
+    driver.close()
+
+
+@pytest.fixture(autouse=True)
+def clean_neo4j(neo4j_driver):
+    """Clean Neo4j test instance after each test for isolation.
+
+    This fixture runs automatically for all integration tests.
+    Deletes all nodes and relationships from the test Neo4j instance to ensure
+    tests don't interfere with each other.
+
+    Safe to use because this connects to a dedicated test instance (port 7688)
+    that is completely separate from dev/prod (port 7687).
+
+    Similar to PostgreSQL transaction rollback, but Neo4j doesn't support
+    transactions across connections, so we manually delete all data.
+    """
+    # Run test first
+    yield
+
+    # Cleanup: Delete all nodes and relationships after test
+    with neo4j_driver.session() as session:
+        # Delete all relationships first, then all nodes
+        session.run("MATCH (n) DETACH DELETE n")
 
 
 @pytest.fixture

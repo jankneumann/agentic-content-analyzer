@@ -48,8 +48,31 @@ services:
       timeout: 10s
       retries: 5
 
+  neo4j-test:
+    image: neo4j:5
+    container_name: newsletter-neo4j-test
+    environment:
+      NEO4J_AUTH: neo4j/newsletter_password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+    ports:
+      - "7475:7474"  # HTTP (test)
+      - "7688:7687"  # Bolt (test)
+    volumes:
+      - neo4j_test_data:/data
+      - neo4j_test_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p newsletter_password 'RETURN 1'"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - test  # Only start with --profile test or when explicitly specified
+
 volumes:
   postgres_data:
   redis_data:
   neo4j_data:
   neo4j_logs:
+  neo4j_test_data:
+  neo4j_test_logs:

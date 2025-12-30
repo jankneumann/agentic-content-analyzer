@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     weekly_digest_day: int = 1  # Monday (0=Sunday, 1=Monday, etc.)
     weekly_digest_hour: int = 7  # 7am
 
+    # Token Budget Configuration (for hierarchical digest creation)
+    digest_context_window_percentage: float = 0.5  # Use 50% of context for input
+    digest_newsletter_budget_percentage: float = 0.6  # 60% of input for newsletters
+    digest_theme_budget_percentage: float = 0.3  # 30% of input for themes
+    digest_prompt_overhead_percentage: float = 0.1  # 10% of input for prompt
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""

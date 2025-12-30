@@ -52,6 +52,7 @@ dependencies = [
     "python-dateutil>=2.8.2",
     "pytz>=2024.1",
     "pyyaml>=6.0.0",
+    "tiktoken>=0.5.0",  # Token counting for context window management
 ]
 
 [project.optional-dependencies]

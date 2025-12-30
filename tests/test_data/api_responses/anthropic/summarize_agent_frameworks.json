@@ -1,0 +1,18 @@
+{
+  "id": "msg_test_agent_frameworks_003",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"executive_summary\": \"The AI agent framework landscape is maturing with distinct options for different use cases. LangChain remains dominant with extensive integrations, while AutoGPT focuses on autonomous execution, CrewAI enables multi-agent coordination, and Semantic Kernel targets enterprise adoption with Microsoft backing.\", \"key_themes\": [\"AI Agents\", \"Framework Selection\", \"Multi-Agent Systems\", \"Enterprise Integration\", \"Developer Tools\"], \"strategic_insights\": [\"Framework selection should align with specific use case: LangChain for complex workflows, AutoGPT for autonomous tasks, CrewAI for multi-agent systems, Semantic Kernel for enterprise integration\", \"The proliferation of specialized frameworks indicates the market is moving beyond one-size-fits-all solutions\", \"Starting with LangChain provides flexibility to evaluate alternatives as requirements evolve\"], \"technical_details\": [\"LangChain offers mature ecosystem with extensive integrations and strong community support\", \"AutoGPT enables autonomous task completion with minimal configuration overhead\", \"CrewAI implements role-based architecture for multi-agent coordination\", \"Semantic Kernel provides enterprise-ready features with Microsoft backing and Azure integration\", \"Framework choice impacts development velocity, maintenance burden, and scaling capabilities\"], \"actionable_items\": [\"Map current and planned agent use cases to framework strengths\", \"Prototype with LangChain to establish baseline capabilities\", \"Evaluate AutoGPT for autonomous workflow automation opportunities\", \"Consider CrewAI for complex multi-agent coordination requirements\", \"Assess Semantic Kernel for enterprise integration with Microsoft stack\"], \"notable_quotes\": [\"Most teams benefit from starting with LangChain and evaluating alternatives as needs evolve\"], \"relevance_scores\": {\"cto_leadership\": 0.80, \"technical_teams\": 0.90, \"individual_developers\": 0.85}}"
+    }
+  ],
+  "model": "claude-haiku-4-5",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 580,
+    "output_tokens": 510
+  }
+}

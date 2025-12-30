@@ -10,7 +10,9 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.config import settings
-from src.models.newsletter import NewsletterData, NewsletterSource, ProcessingStatus
+from src.models.newsletter import Newsletter, NewsletterData, NewsletterSource, ProcessingStatus
+from src.storage.database import get_db
+from src.utils.content_hash import generate_content_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
 
@@ -229,6 +231,9 @@ class SubstackRSSClient:
         # Generate unique source_id from link or content hash
         source_id = self._generate_source_id(entry)
 
+        # Generate content hash for deduplication
+        content_hash = generate_content_hash(raw_text) if raw_text else None
+
         return NewsletterData(
             source=NewsletterSource.SUBSTACK_RSS,
             source_id=source_id,
@@ -240,6 +245,7 @@ class SubstackRSSClient:
             raw_html=raw_html,
             raw_text=raw_text,
             extracted_links=links,
+            content_hash=content_hash,
             status=ProcessingStatus.PENDING,
         )
 
@@ -373,12 +379,21 @@ class SubstackIngestionService:
         with get_db() as db:
             for newsletter_data in newsletters:
                 try:
-                    # Check if already exists
+                    # Check if already exists by source_id (exact match)
                     existing = (
                         db.query(Newsletter)
                         .filter(Newsletter.source_id == newsletter_data.source_id)
                         .first()
                     )
+
+                    # If not found by source_id, check by content_hash (cross-source duplicate)
+                    content_duplicate = None
+                    if not existing and newsletter_data.content_hash:
+                        content_duplicate = (
+                            db.query(Newsletter)
+                            .filter(Newsletter.content_hash == newsletter_data.content_hash)
+                            .first()
+                        )
 
                     if existing:
                         if force_reprocess:
@@ -391,6 +406,7 @@ class SubstackIngestionService:
                             existing.raw_html = newsletter_data.raw_html
                             existing.raw_text = newsletter_data.raw_text
                             existing.extracted_links = newsletter_data.extracted_links
+                            existing.content_hash = newsletter_data.content_hash
                             existing.status = ProcessingStatus.PENDING
                             existing.error_message = None
                             count += 1
@@ -401,6 +417,35 @@ class SubstackIngestionService:
                                 f"Newsletter already exists (use --force to reprocess): {newsletter_data.source_id}"
                             )
                             continue
+
+                    elif content_duplicate:
+                        # Found duplicate by content hash from different source
+                        logger.info(
+                            f"Content duplicate detected: '{newsletter_data.title}' "
+                            f"matches existing newsletter ID {content_duplicate.id} "
+                            f"(source: {content_duplicate.source.value})"
+                        )
+
+                        # Create newsletter but link to canonical version
+                        newsletter = Newsletter(
+                            source=newsletter_data.source,
+                            source_id=newsletter_data.source_id,
+                            title=newsletter_data.title,
+                            sender=newsletter_data.sender,
+                            publication=newsletter_data.publication,
+                            published_date=newsletter_data.published_date,
+                            url=newsletter_data.url,
+                            raw_html=newsletter_data.raw_html,
+                            raw_text=newsletter_data.raw_text,
+                            extracted_links=newsletter_data.extracted_links,
+                            content_hash=newsletter_data.content_hash,
+                            canonical_newsletter_id=content_duplicate.id,  # Link to canonical
+                            status=ProcessingStatus.COMPLETED,  # Mark as completed (duplicate)
+                        )
+                        db.add(newsletter)
+                        count += 1
+                        logger.info(f"Linked duplicate to canonical ID {content_duplicate.id}")
+                        continue
 
                     # Create new newsletter
                     newsletter = Newsletter(
@@ -414,6 +459,7 @@ class SubstackIngestionService:
                         raw_html=newsletter_data.raw_html,
                         raw_text=newsletter_data.raw_text,
                         extracted_links=newsletter_data.extracted_links,
+                        content_hash=newsletter_data.content_hash,
                         status=newsletter_data.status,
                     )
 

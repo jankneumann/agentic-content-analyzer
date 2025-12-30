@@ -15,6 +15,7 @@ class DigestType(str, Enum):
 
     DAILY = "daily"
     WEEKLY = "weekly"
+    SUB_DIGEST = "sub_digest"  # Sub-digest for hierarchical digest creation
 
 
 class DigestStatus(str, Enum):
@@ -73,12 +74,18 @@ class Digest(Base):
     token_usage = Column(Integer, nullable=True)
     processing_time_seconds = Column(Integer, nullable=True)
 
-    # Review tracking (NEW)
+    # Review tracking
     reviewed_by = Column(String(200), nullable=True)
     review_notes = Column(Text, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     revision_count = Column(Integer, default=0, nullable=False)
     revision_history = Column(JSON, nullable=True)  # Conversation audit trail
+
+    # Hierarchical digest support (NEW)
+    parent_digest_id = Column(Integer, nullable=True, index=True)  # FK added in migration
+    child_digest_ids = Column(JSON, nullable=True)  # List[int] of child digest IDs
+    is_combined = Column(Integer, default=0, nullable=False)  # Boolean as integer (0/1)
+    source_digest_count = Column(Integer, nullable=True)  # Number of sub-digests combined
 
 
 class DigestSection(BaseModel):
@@ -112,12 +119,18 @@ class DigestData(BaseModel):
     token_usage: Optional[int] = None
     processing_time_seconds: Optional[float] = None
 
-    # Review tracking (NEW)
+    # Review tracking
     reviewed_by: Optional[str] = None
     review_notes: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     revision_count: int = 0
     revision_history: Optional[dict] = None  # Conversation audit trail
+
+    # Hierarchical digest support (NEW)
+    parent_digest_id: Optional[int] = None
+    child_digest_ids: Optional[list[int]] = None
+    is_combined: bool = False
+    source_digest_count: Optional[int] = None
 
 
 class DigestRequest(BaseModel):

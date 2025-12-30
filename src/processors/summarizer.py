@@ -120,6 +120,75 @@ class NewsletterSummarizer:
                 logger.error(f"Error summarizing newsletter {newsletter_id}: {e}")
                 return False
 
+    def summarize_newsletters(self, newsletter_ids: list[int]) -> dict[str, int | list[int]]:
+        """
+        Summarize multiple newsletters with detailed tracking.
+
+        Args:
+            newsletter_ids: List of newsletter IDs to summarize
+
+        Returns:
+            Dictionary with:
+                - 'created_count': Number of successfully created summaries
+                - 'failed_ids': List of newsletter IDs that failed
+                - 'skipped_count': Number of newsletters already summarized (skipped)
+        """
+        created_count = 0
+        failed_ids = []
+        skipped_count = 0
+
+        logger.info(f"Starting batch summarization for {len(newsletter_ids)} newsletters")
+
+        for i, newsletter_id in enumerate(newsletter_ids, 1):
+            logger.info(
+                f"Processing newsletter {i}/{len(newsletter_ids)} (ID: {newsletter_id})..."
+            )
+
+            try:
+                # Check if already summarized (summarize_newsletter does this, but we track it)
+                with get_db() as db:
+                    existing = (
+                        db.query(NewsletterSummary)
+                        .filter(NewsletterSummary.newsletter_id == newsletter_id)
+                        .first()
+                    )
+
+                if existing:
+                    skipped_count += 1
+                    logger.info(f"Newsletter {newsletter_id} already has summary, skipping")
+                    continue
+
+                # Create summary
+                success = self.summarize_newsletter(newsletter_id)
+
+                if success:
+                    created_count += 1
+                    logger.info(
+                        f"✓ Successfully created summary for newsletter {newsletter_id}"
+                    )
+                else:
+                    failed_ids.append(newsletter_id)
+                    logger.error(f"✗ Failed to create summary for newsletter {newsletter_id}")
+
+            except Exception as e:
+                failed_ids.append(newsletter_id)
+                logger.error(
+                    f"✗ Exception creating summary for newsletter {newsletter_id}: {e}",
+                    exc_info=True,
+                )
+
+        # Log final results
+        logger.info(
+            f"Batch summarization complete: "
+            f"{created_count} created, {skipped_count} skipped, {len(failed_ids)} failed"
+        )
+
+        return {
+            "created_count": created_count,
+            "failed_ids": failed_ids,
+            "skipped_count": skipped_count,
+        }
+
     def summarize_pending_newsletters(self, limit: Optional[int] = None) -> int:
         """
         Summarize all pending newsletters.
@@ -140,10 +209,10 @@ class NewsletterSummarizer:
             pending_ids = [row[0] for row in query.all()]
             logger.info(f"Found {len(pending_ids)} pending newsletters to summarize")
 
-        count = 0
-        for newsletter_id in pending_ids:
-            if self.summarize_newsletter(newsletter_id):
-                count += 1
+        # Use new batch summarization method
+        result = self.summarize_newsletters(pending_ids)
 
-        logger.info(f"Successfully summarized {count}/{len(pending_ids)} newsletters")
-        return count
+        logger.info(
+            f"Successfully summarized {result['created_count']}/{len(pending_ids)} newsletters"
+        )
+        return result["created_count"]

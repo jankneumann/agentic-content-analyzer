@@ -1,0 +1,11 @@
+{
+  "source": "GMAIL",
+  "source_id": "test-agent-frameworks-003",
+  "sender": "agentic-ai@example.com",
+  "publication": "Agentic AI Monthly",
+  "title": "AI Agent Frameworks: LangChain, AutoGPT, and CrewAI Compared",
+  "published_date": "2025-01-15T09:00:00Z",
+  "url": "https://example.com/newsletters/agent-frameworks-comparison",
+  "raw_html": "<html><body><h1>AI Agent Frameworks Comparison</h1><p>The agent framework landscape is rapidly evolving. LangChain remains the most popular, but newer frameworks like CrewAI and AutoGPT offer specialized capabilities.</p><h2>Framework Strengths</h2><ul><li><strong>LangChain:</strong> Mature ecosystem, extensive integrations, strong community</li><li><strong>AutoGPT:</strong> Autonomous task completion, minimal configuration</li><li><strong>CrewAI:</strong> Multi-agent coordination, role-based architecture</li><li><strong>Semantic Kernel:</strong> Enterprise-ready, Microsoft backing</li></ul><h2>Use Case Recommendations</h2><p>For complex workflows: LangChain. For autonomous agents: AutoGPT. For multi-agent systems: CrewAI. For enterprise integration: Semantic Kernel.</p><p>Most teams benefit from starting with LangChain and evaluating alternatives as needs evolve.</p></body></html>",
+  "raw_text": "AI Agent Frameworks: LangChain, AutoGPT, and CrewAI Compared\n\nThe agent framework landscape is rapidly evolving. LangChain remains the most popular, but newer frameworks like CrewAI and AutoGPT offer specialized capabilities.\n\nFramework Strengths:\n- LangChain: Mature ecosystem, extensive integrations, strong community\n- AutoGPT: Autonomous task completion, minimal configuration\n- CrewAI: Multi-agent coordination, role-based architecture\n- Semantic Kernel: Enterprise-ready, Microsoft backing\n\nUse Case Recommendations:\nFor complex workflows: LangChain. For autonomous agents: AutoGPT. For multi-agent systems: CrewAI. For enterprise integration: Semantic Kernel.\n\nMost teams benefit from starting with LangChain and evaluating alternatives as needs evolve."
+}

@@ -1,0 +1,11 @@
+{
+  "source": "GMAIL",
+  "source_id": "test-vector-db-002",
+  "sender": "data-engineering@example.com",
+  "publication": "Data Engineering Weekly",
+  "title": "Vector Database Performance Benchmarks 2025",
+  "published_date": "2025-01-14T14:30:00Z",
+  "url": "https://example.com/newsletters/vector-db-benchmarks",
+  "raw_html": "<html><body><h1>Vector Database Performance Benchmarks 2025</h1><p>Comprehensive benchmarks comparing Pinecone, Weaviate, Qdrant, and Milvus show significant performance differences for RAG applications.</p><h2>Benchmark Results</h2><ul><li>Pinecone leads in query latency (12ms avg)</li><li>Milvus handles largest datasets (100M+ vectors)</li><li>Qdrant offers best cost-performance ratio</li><li>Weaviate excels in hybrid search</li></ul><h2>RAG Implementation Tips</h2><p>For production RAG systems, consider chunking strategy, embedding model selection, and index optimization. Most teams see 3-5x improvement with proper tuning.</p></body></html>",
+  "raw_text": "Vector Database Performance Benchmarks 2025\n\nComprehensive benchmarks comparing Pinecone, Weaviate, Qdrant, and Milvus show significant performance differences for RAG applications.\n\nBenchmark Results:\n- Pinecone leads in query latency (12ms avg)\n- Milvus handles largest datasets (100M+ vectors)\n- Qdrant offers best cost-performance ratio\n- Weaviate excels in hybrid search\n\nRAG Implementation Tips:\nFor production RAG systems, consider chunking strategy, embedding model selection, and index optimization. Most teams see 3-5x improvement with proper tuning."
+}

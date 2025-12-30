@@ -49,6 +49,10 @@ class Newsletter(Base):
     raw_text = Column(Text)
     extracted_links = Column(JSON)  # List of URLs found in content
 
+    # Deduplication
+    content_hash = Column(String(64), nullable=True, index=True)  # SHA-256 of normalized content
+    canonical_newsletter_id = Column(Integer, nullable=True)  # Links to canonical version if duplicate
+
     # Processing
     status = Column(
         SQLEnum(ProcessingStatus),
@@ -74,4 +78,5 @@ class NewsletterData(BaseModel):
     raw_html: Optional[str] = None
     raw_text: Optional[str] = None
     extracted_links: list[str] = Field(default_factory=list)
+    content_hash: Optional[str] = None
     status: ProcessingStatus = ProcessingStatus.PENDING

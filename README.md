@@ -184,6 +184,7 @@ alembic history
 
 ### Running Tests
 
+**Unit Tests:**
 ```bash
 # Run all tests
 pytest
@@ -192,11 +193,38 @@ pytest
 pytest --cov=src --cov-report=html
 
 # Run specific test file
-pytest tests/test_ingestion/test_gmail.py
+pytest tests/test_processors/test_summarizer.py
 
 # Run specific test
 pytest -k "test_newsletter_parsing"
 ```
+
+**Integration Tests:**
+Integration tests require dedicated test infrastructure to avoid affecting dev/prod data.
+
+```bash
+# Setup test infrastructure (one-time)
+make test-setup
+# Creates: PostgreSQL test DB + Neo4j test instance (port 7688)
+
+# Run integration tests
+make test-integration
+# Or: pytest tests/integration/ -v
+
+# Teardown test infrastructure (optional)
+make test-teardown  # Stop but keep data
+make test-clean     # Stop and delete all test data
+```
+
+**Test Infrastructure Details:**
+- **PostgreSQL**: Separate `newsletters_test` database with transaction rollback
+- **Neo4j**: Dedicated test instance on port 7688 (dev/prod uses 7687)
+  - HTTP: http://localhost:7475
+  - Bolt: bolt://localhost:7688
+  - Automatic cleanup after each test (safe, isolated from dev data)
+
+**Why separate Neo4j instance?**
+Neo4j Community Edition doesn't support multiple databases. Using a separate Docker container on a different port ensures test cleanup never affects your production knowledge graph data.
 
 ### Code Quality
 

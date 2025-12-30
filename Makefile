@@ -47,6 +47,28 @@ test:  ## Run tests
 test-cov:  ## Run tests with coverage report
 	pytest --cov=src --cov-report=term-missing --cov-report=html
 
+test-integration:  ## Run integration tests (requires test services)
+	pytest tests/integration/ -v
+
+test-setup:  ## Start test infrastructure (PostgreSQL test DB, Neo4j test instance)
+	@echo "Starting test infrastructure..."
+	createdb newsletters_test 2>/dev/null || echo "Test database already exists"
+	docker compose up -d neo4j-test
+	@echo "Waiting for Neo4j test instance to be ready..."
+	@sleep 5
+	@echo "✓ Test infrastructure ready!"
+	@echo "  - PostgreSQL test DB: newsletters_test"
+	@echo "  - Neo4j test instance: bolt://localhost:7688 (http://localhost:7475)"
+
+test-teardown:  ## Stop test infrastructure
+	docker compose stop neo4j-test
+	@echo "Test infrastructure stopped (data preserved)"
+
+test-clean:  ## Stop and remove test infrastructure (WARNING: deletes test data)
+	docker compose down neo4j-test -v
+	dropdb newsletters_test 2>/dev/null || echo "Test database already removed"
+	@echo "Test infrastructure cleaned"
+
 lint:  ## Lint code with ruff
 	ruff check src/ tests/
 
@@ -86,3 +108,19 @@ neo4j:  ## Open Neo4j browser (http://localhost:7474)
 	@echo "Username: neo4j"
 	@echo "Password: newsletter_password"
 	@open http://localhost:7474 2>/dev/null || xdg-open http://localhost:7474 2>/dev/null || echo "Please open http://localhost:7474 in your browser"
+
+# Pipeline commands
+pipeline:  ## Run full newsletter pipeline (ingest → summarize → digest)
+	python -m scripts.run_pipeline
+
+pipeline-skip-ingest:  ## Run pipeline without ingestion (process existing newsletters)
+	python -m scripts.run_pipeline --skip-ingestion
+
+pipeline-weekly:  ## Run weekly digest pipeline
+	python -m scripts.run_pipeline --weekly
+
+pipeline-auto-approve:  ## Run pipeline and auto-approve digest
+	python -m scripts.run_pipeline --auto-approve
+
+pipeline-yesterday:  ## Process yesterday's newsletters
+	python -m scripts.run_pipeline --date $$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d yesterday +%Y-%m-%d)
