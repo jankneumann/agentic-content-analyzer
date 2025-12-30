@@ -120,8 +120,6 @@ class DigestCreator:
         # 2b. Fetch summaries for all newsletters
         newsletter_ids = [nl["id"] for nl in newsletters]
         with get_db() as db:
-            # Disable expiration to prevent DetachedInstanceError
-            db.expire_on_commit = False
             summaries = (
                 db.query(NewsletterSummary)
                 .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
@@ -159,7 +157,6 @@ class DigestCreator:
 
             # Re-fetch summaries to include newly created ones
             with get_db() as db:
-                db.expire_on_commit = False
                 summaries = (
                     db.query(NewsletterSummary)
                     .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
@@ -286,8 +283,6 @@ class DigestCreator:
         try:
             newsletter_ids = [nl["id"] for nl in newsletters]
             with get_db() as db:
-                # Disable expiration to prevent DetachedInstanceError
-                db.expire_on_commit = False
                 summaries = (
                     db.query(NewsletterSummary)
                     .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
@@ -549,8 +544,6 @@ class DigestCreator:
 
         # Load sub-digests from database
         with get_db() as db:
-            # Disable expiration to prevent DetachedInstanceError
-            db.expire_on_commit = False
             sub_digests = (
                 db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).all()
             )

@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from anthropic import Anthropic
+from sqlalchemy.orm import joinedload
 
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.digest import Digest
@@ -82,9 +83,11 @@ class DigestReviser:
             if not digest:
                 raise ValueError(f"Digest {digest_id} not found")
 
-            # Load summaries for the period
+            # Load summaries for the period with eager loading of newsletter relationship
+            # to prevent DetachedInstanceError when accessing summary.newsletter
             summaries = (
                 db.query(NewsletterSummary)
+                .options(joinedload(NewsletterSummary.newsletter))
                 .join(Newsletter, NewsletterSummary.newsletter_id == Newsletter.id)
                 .filter(
                     Newsletter.published_date >= digest.period_start,

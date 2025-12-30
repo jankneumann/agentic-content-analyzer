@@ -20,7 +20,14 @@ engine = create_engine(
 )
 
 # Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# expire_on_commit=False prevents DetachedInstanceError when accessing objects
+# after session.commit() - objects remain usable even after commit/session close
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    expire_on_commit=False,
+)
 
 
 def init_db() -> None:
