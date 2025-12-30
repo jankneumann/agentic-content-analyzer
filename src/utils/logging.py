@@ -32,6 +32,7 @@ def setup_logging() -> None:
 
     # Suppress Neo4j driver verbose output
     logging.getLogger("neo4j").setLevel(logging.WARNING)
+    logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)  # Suppress index creation notifications
 
 
 def get_logger(name: str) -> logging.Logger:
