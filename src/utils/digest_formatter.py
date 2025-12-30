@@ -439,20 +439,26 @@ class DigestFormatter:
 """)
 
             for insight in digest.strategic_insights:
+                # Handle both DigestSection objects and dicts
+                title = insight.title if hasattr(insight, 'title') else insight.get('title', '')
+                summary = insight.summary if hasattr(insight, 'summary') else insight.get('summary', '')
+                details = insight.details if hasattr(insight, 'details') else insight.get('details', [])
+                continuity = insight.continuity if hasattr(insight, 'continuity') else insight.get('continuity', None)
+
                 html_parts.append(f"""        <div class="section">
-            <h3>{insight.title}</h3>
-            <p class="summary">{insight.summary}</p>
+            <h3>{title}</h3>
+            <p class="summary">{summary}</p>
 """)
 
-                if insight.details:
+                if details:
                     html_parts.append("            <ul>")
-                    for detail in insight.details:
+                    for detail in details:
                         html_parts.append(f"                <li>{detail}</li>")
                     html_parts.append("            </ul>")
 
-                if insight.continuity:
+                if continuity:
                     html_parts.append(
-                        f'            <div class="continuity">{insight.continuity}</div>'
+                        f'            <div class="continuity">{continuity}</div>'
                     )
 
                 html_parts.append("        </div>")
@@ -465,20 +471,26 @@ class DigestFormatter:
 """)
 
             for dev in digest.technical_developments:
+                # Handle both DigestSection objects and dicts
+                title = dev.title if hasattr(dev, 'title') else dev.get('title', '')
+                summary = dev.summary if hasattr(dev, 'summary') else dev.get('summary', '')
+                details = dev.details if hasattr(dev, 'details') else dev.get('details', [])
+                continuity = dev.continuity if hasattr(dev, 'continuity') else dev.get('continuity', None)
+
                 html_parts.append(f"""        <div class="section">
-            <h3>{dev.title}</h3>
-            <p class="summary">{dev.summary}</p>
+            <h3>{title}</h3>
+            <p class="summary">{summary}</p>
 """)
 
-                if dev.details:
+                if details:
                     html_parts.append("            <ul>")
-                    for detail in dev.details:
+                    for detail in details:
                         html_parts.append(f"                <li>{detail}</li>")
                     html_parts.append("            </ul>")
 
-                if dev.continuity:
+                if continuity:
                     html_parts.append(
-                        f'            <div class="continuity">{dev.continuity}</div>'
+                        f'            <div class="continuity">{continuity}</div>'
                     )
 
                 html_parts.append("        </div>")
@@ -491,20 +503,26 @@ class DigestFormatter:
 """)
 
             for trend in digest.emerging_trends:
+                # Handle both DigestSection objects and dicts
+                title = trend.title if hasattr(trend, 'title') else trend.get('title', '')
+                summary = trend.summary if hasattr(trend, 'summary') else trend.get('summary', '')
+                details = trend.details if hasattr(trend, 'details') else trend.get('details', [])
+                continuity = trend.continuity if hasattr(trend, 'continuity') else trend.get('continuity', None)
+
                 html_parts.append(f"""        <div class="section">
-            <h3><span class="trend-emerging">📈</span>{trend.title}</h3>
-            <p class="summary">{trend.summary}</p>
+            <h3><span class="trend-emerging">📈</span>{title}</h3>
+            <p class="summary">{summary}</p>
 """)
 
-                if trend.details:
+                if details:
                     html_parts.append("            <ul>")
-                    for detail in trend.details:
+                    for detail in details:
                         html_parts.append(f"                <li>{detail}</li>")
                     html_parts.append("            </ul>")
 
-                if trend.continuity:
+                if continuity:
                     html_parts.append(
-                        f'            <div class="continuity">📈 {trend.continuity}</div>'
+                        f'            <div class="continuity">📈 {continuity}</div>'
                     )
 
                 html_parts.append("        </div>")

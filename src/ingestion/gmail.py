@@ -21,7 +21,10 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # Gmail API scopes
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 
 
 class GmailClient:
