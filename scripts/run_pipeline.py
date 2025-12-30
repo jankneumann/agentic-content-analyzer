@@ -35,8 +35,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from src.ingestion.gmail import GmailIngester
-from src.ingestion.substack import SubstackIngester
+from src.ingestion.gmail import GmailIngestionService
+from src.ingestion.substack import SubstackIngestionService
 from src.models.digest import Digest, DigestData, DigestRequest, DigestStatus, DigestType
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.processors.digest_creator import DigestCreator
@@ -166,26 +166,39 @@ class NewsletterPipeline:
         total_ingested = 0
 
         if "gmail" in sources:
+            gmail = None
             try:
                 logger.info("Ingesting from Gmail...")
-                with GmailIngester() as gmail:
-                    count = gmail.fetch_and_store(days_back=1)
-                    total_ingested += count
-                    logger.info(f"✓ Ingested {count} newsletters from Gmail")
+                gmail = GmailIngestionService()
+                # Calculate after_date (1 day before the target date)
+                after_date = date - timedelta(days=1)
+                count = gmail.ingest_newsletters(after_date=after_date)
+                total_ingested += count
+                logger.info(f"✓ Ingested {count} newsletters from Gmail")
             except Exception as e:
                 logger.error(f"✗ Gmail ingestion failed: {e}", exc_info=True)
                 self.stats["errors"].append(("gmail_ingestion", str(e)))
+            finally:
+                if gmail:
+                    # GmailIngestionService doesn't have a close method, no cleanup needed
+                    pass
 
         if "substack" in sources:
+            substack = None
             try:
                 logger.info("Ingesting from Substack RSS...")
-                with SubstackIngester() as substack:
-                    count = substack.fetch_and_store(days_back=1)
-                    total_ingested += count
-                    logger.info(f"✓ Ingested {count} newsletters from Substack")
+                substack = SubstackIngestionService()
+                # Calculate after_date (1 day before the target date)
+                after_date = date - timedelta(days=1)
+                count = substack.ingest_newsletters(after_date=after_date)
+                total_ingested += count
+                logger.info(f"✓ Ingested {count} newsletters from Substack")
             except Exception as e:
                 logger.error(f"✗ Substack ingestion failed: {e}", exc_info=True)
                 self.stats["errors"].append(("substack_ingestion", str(e)))
+            finally:
+                if substack:
+                    substack.close()
 
         return total_ingested
 
