@@ -88,11 +88,11 @@ async def view_digest(digest_id: int, format: str = "markdown") -> Optional[Any]
     # Format digest
     formatter = DigestFormatter()
     if format == "markdown":
-        output = formatter.format_markdown(digest)
+        output = formatter.to_markdown(digest)
     elif format == "html":
-        output = formatter.format_html(digest)
+        output = formatter.to_html(digest)
     else:
-        output = formatter.format_plain_text(digest)
+        output = formatter.to_plain_text(digest)
 
     print(output)
     print("\n")
@@ -143,7 +143,7 @@ async def interactive_revision_session(
     print("=" * 80 + "\n")
 
     formatter = DigestFormatter()
-    print(formatter.format_markdown(context.digest))
+    print(formatter.to_markdown(context.digest))
 
     # 4. Interactive loop
     print("\n" + "=" * 80)
@@ -177,7 +177,7 @@ async def interactive_revision_session(
             print("\n" + "=" * 80)
             print("CURRENT DIGEST (WITH CHANGES)")
             print("=" * 80 + "\n")
-            print(formatter.format_markdown(working_digest))
+            print(formatter.to_markdown(working_digest))
             continue
 
         # Process revision request via service
@@ -281,7 +281,7 @@ async def interactive_revision_session(
     print("\n" + "=" * 80)
     print("REVISED DIGEST (FINAL)")
     print("=" * 80 + "\n")
-    print(formatter.format_markdown(working_digest))
+    print(formatter.to_markdown(working_digest))
 
     # Show cost summary
     cost = service.calculate_revision_cost()

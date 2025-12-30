@@ -31,16 +31,22 @@ class DigestFormatter:
             md_parts.append("*For CTOs and Technical Leaders*\n")
 
             for insight in digest.strategic_insights:
-                md_parts.append(f"### {insight.title}\n")
-                md_parts.append(f"{insight.summary}\n")
+                # Handle both DigestSection objects and dicts
+                title = insight.title if hasattr(insight, 'title') else insight.get('title', '')
+                summary = insight.summary if hasattr(insight, 'summary') else insight.get('summary', '')
+                details = insight.details if hasattr(insight, 'details') else insight.get('details', [])
+                continuity = insight.continuity if hasattr(insight, 'continuity') else insight.get('continuity', None)
 
-                if insight.details:
-                    for detail in insight.details:
+                md_parts.append(f"### {title}\n")
+                md_parts.append(f"{summary}\n")
+
+                if details:
+                    for detail in details:
                         md_parts.append(f"- {detail}")
                     md_parts.append("")
 
-                if insight.continuity:
-                    md_parts.append(f"> {insight.continuity}\n")
+                if continuity:
+                    md_parts.append(f"> {continuity}\n")
 
                 md_parts.append("")
 
@@ -50,16 +56,22 @@ class DigestFormatter:
             md_parts.append("*For Developers and Practitioners*\n")
 
             for dev in digest.technical_developments:
-                md_parts.append(f"### {dev.title}\n")
-                md_parts.append(f"{dev.summary}\n")
+                # Handle both DigestSection objects and dicts
+                title = dev.title if hasattr(dev, 'title') else dev.get('title', '')
+                summary = dev.summary if hasattr(dev, 'summary') else dev.get('summary', '')
+                details = dev.details if hasattr(dev, 'details') else dev.get('details', [])
+                continuity = dev.continuity if hasattr(dev, 'continuity') else dev.get('continuity', None)
 
-                if dev.details:
-                    for detail in dev.details:
+                md_parts.append(f"### {title}\n")
+                md_parts.append(f"{summary}\n")
+
+                if details:
+                    for detail in details:
                         md_parts.append(f"- {detail}")
                     md_parts.append("")
 
-                if dev.continuity:
-                    md_parts.append(f"> {dev.continuity}\n")
+                if continuity:
+                    md_parts.append(f"> {continuity}\n")
 
                 md_parts.append("")
 
@@ -69,16 +81,22 @@ class DigestFormatter:
             md_parts.append("*New and Noteworthy*\n")
 
             for trend in digest.emerging_trends:
-                md_parts.append(f"### {trend.title}\n")
-                md_parts.append(f"{trend.summary}\n")
+                # Handle both DigestSection objects and dicts
+                title = trend.title if hasattr(trend, 'title') else trend.get('title', '')
+                summary = trend.summary if hasattr(trend, 'summary') else trend.get('summary', '')
+                details = trend.details if hasattr(trend, 'details') else trend.get('details', [])
+                continuity = trend.continuity if hasattr(trend, 'continuity') else trend.get('continuity', None)
 
-                if trend.details:
-                    for detail in trend.details:
+                md_parts.append(f"### {title}\n")
+                md_parts.append(f"{summary}\n")
+
+                if details:
+                    for detail in details:
                         md_parts.append(f"- {detail}")
                     md_parts.append("")
 
-                if trend.continuity:
-                    md_parts.append(f"> 📈 {trend.continuity}\n")
+                if continuity:
+                    md_parts.append(f"> 📈 {continuity}\n")
 
                 md_parts.append("")
 
