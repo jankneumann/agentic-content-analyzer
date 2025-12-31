@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,  # Verify connections before using
-    echo=settings.is_development,  # Log SQL in development
+    echo=False,  # Disable echo - use logging configuration instead
 )
 
 # Create session factory
