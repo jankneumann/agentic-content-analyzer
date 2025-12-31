@@ -1,0 +1,485 @@
+"""API endpoints for podcast script management and review.
+
+Provides REST endpoints for:
+- Script generation from digests
+- Script retrieval and listing
+- Section-based review workflow
+- Script approval/rejection
+"""
+
+from typing import List, Optional
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from src.models.podcast import (
+    PodcastLength,
+    PodcastRequest,
+    PodcastStatus,
+    ScriptReviewAction,
+    ScriptReviewRequest,
+    VoicePersona,
+    VoiceProvider,
+)
+from src.processors.podcast_script_generator import PodcastScriptGenerator
+from src.services.script_review_service import ScriptReviewService
+from src.storage.database import get_db
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/scripts", tags=["podcast-scripts"])
+
+# Initialize services
+review_service = ScriptReviewService()
+script_generator = PodcastScriptGenerator()
+
+
+# --- Request/Response Models ---
+
+
+class GenerateScriptRequest(BaseModel):
+    """Request to generate a podcast script from a digest."""
+
+    digest_id: int = Field(..., description="ID of the digest to convert")
+    length: PodcastLength = Field(
+        default=PodcastLength.STANDARD, description="Target podcast length"
+    )
+    enable_web_search: bool = Field(
+        default=True, description="Allow model to use web search tool"
+    )
+    custom_focus_topics: List[str] = Field(
+        default_factory=list, description="Optional topics to emphasize"
+    )
+
+
+class ScriptSummary(BaseModel):
+    """Summary of a script for listing."""
+
+    id: int
+    digest_id: int
+    title: Optional[str]
+    length: str
+    word_count: Optional[int]
+    estimated_duration: Optional[str]
+    status: str
+    revision_count: int
+    created_at: Optional[str]
+    reviewed_by: Optional[str]
+
+
+class SectionFeedbackRequest(BaseModel):
+    """Request to revise a section with feedback."""
+
+    feedback: str = Field(..., description="Reviewer feedback for this section")
+
+
+class ReviewRequest(BaseModel):
+    """Request to submit a review."""
+
+    action: ScriptReviewAction = Field(..., description="Review action")
+    reviewer: str = Field(..., description="Reviewer identifier")
+    section_feedback: dict = Field(
+        default_factory=dict,
+        description="Section-specific feedback (key = section index, value = feedback)",
+    )
+    general_notes: Optional[str] = Field(None, description="General review notes")
+
+
+class ReviewStatistics(BaseModel):
+    """Review workflow statistics."""
+
+    pending_review: int
+    revision_requested: int
+    approved_ready_for_audio: int
+    completed_with_audio: int
+    failed_rejected: int
+    total: int
+
+
+# --- Background Tasks ---
+
+
+async def generate_script_task(request: PodcastRequest) -> None:
+    """Background task for script generation."""
+    from src.models.podcast import PodcastScriptRecord
+    from src.storage.database import get_db
+
+    logger.info(f"Starting background script generation for digest {request.digest_id}")
+
+    # Create initial record
+    with get_db() as db:
+        script_record = PodcastScriptRecord(
+            digest_id=request.digest_id,
+            length=request.length,
+            status=PodcastStatus.SCRIPT_GENERATING,
+        )
+        db.add(script_record)
+        db.commit()
+        db.refresh(script_record)
+        script_id = script_record.id
+
+    try:
+        # Generate script
+        generator = PodcastScriptGenerator()
+        script, metadata = await generator.generate_script(request)
+
+        # Update record with generated content
+        with get_db() as db:
+            script_record = (
+                db.query(PodcastScriptRecord)
+                .filter(PodcastScriptRecord.id == script_id)
+                .first()
+            )
+            script_record.script_json = script.model_dump()
+            script_record.title = script.title
+            script_record.word_count = script.word_count
+            script_record.estimated_duration_seconds = script.estimated_duration_seconds
+            script_record.status = PodcastStatus.SCRIPT_PENDING_REVIEW
+            script_record.newsletter_ids_fetched = metadata.newsletter_ids_fetched
+            script_record.web_search_queries = metadata.web_searches
+            script_record.tool_call_count = metadata.tool_call_count
+            script_record.model_used = generator.model
+            script_record.model_version = generator.model_version
+            script_record.token_usage = {
+                "input_tokens": generator.input_tokens,
+                "output_tokens": generator.output_tokens,
+            }
+            db.commit()
+
+        logger.info(f"Script {script_id} generated successfully")
+
+    except Exception as e:
+        logger.error(f"Script generation failed: {e}")
+        with get_db() as db:
+            script_record = (
+                db.query(PodcastScriptRecord)
+                .filter(PodcastScriptRecord.id == script_id)
+                .first()
+            )
+            script_record.status = PodcastStatus.FAILED
+            script_record.error_message = str(e)
+            db.commit()
+
+
+# --- Endpoints ---
+
+
+@router.post("/generate", response_model=dict)
+async def generate_script(
+    request: GenerateScriptRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Generate a podcast script from a digest (Phase 1).
+
+    Starts script generation in background and returns immediately.
+    Poll GET /scripts/{script_id} for status.
+    """
+    logger.info(f"Received script generation request for digest {request.digest_id}")
+
+    # Convert to PodcastRequest
+    podcast_request = PodcastRequest(
+        digest_id=request.digest_id,
+        length=request.length,
+        enable_web_search=request.enable_web_search,
+        custom_focus_topics=request.custom_focus_topics,
+    )
+
+    # Queue background task
+    background_tasks.add_task(generate_script_task, podcast_request)
+
+    return {
+        "status": "queued",
+        "message": f"Script generation started for digest {request.digest_id}",
+        "length": request.length.value,
+    }
+
+
+@router.get("/", response_model=List[ScriptSummary])
+async def list_scripts(
+    status: Optional[PodcastStatus] = Query(None, description="Filter by status"),
+    digest_id: Optional[int] = Query(None, description="Filter by digest ID"),
+    limit: int = Query(50, le=100, description="Maximum results"),
+) -> List[ScriptSummary]:
+    """List podcast scripts with optional filtering."""
+    from src.models.podcast import PodcastScriptRecord
+
+    with get_db() as db:
+        query = db.query(PodcastScriptRecord)
+
+        if status:
+            query = query.filter(PodcastScriptRecord.status == status)
+        if digest_id:
+            query = query.filter(PodcastScriptRecord.digest_id == digest_id)
+
+        scripts = (
+            query.order_by(PodcastScriptRecord.created_at.desc()).limit(limit).all()
+        )
+
+        return [
+            ScriptSummary(
+                id=s.id,
+                digest_id=s.digest_id,
+                title=s.title,
+                length=s.length.value if s.length else "unknown",
+                word_count=s.word_count,
+                estimated_duration=(
+                    f"{s.estimated_duration_seconds // 60} min"
+                    if s.estimated_duration_seconds
+                    else None
+                ),
+                status=s.status.value if s.status else "unknown",
+                revision_count=s.revision_count or 0,
+                created_at=s.created_at.isoformat() if s.created_at else None,
+                reviewed_by=s.reviewed_by,
+            )
+            for s in scripts
+        ]
+
+
+@router.get("/pending-review", response_model=List[ScriptSummary])
+async def list_pending_scripts() -> List[ScriptSummary]:
+    """List all scripts pending review."""
+    scripts = await review_service.list_pending_reviews()
+
+    return [
+        ScriptSummary(
+            id=s.id,
+            digest_id=s.digest_id,
+            title=s.title,
+            length=s.length.value if s.length else "unknown",
+            word_count=s.word_count,
+            estimated_duration=(
+                f"{s.estimated_duration_seconds // 60} min"
+                if s.estimated_duration_seconds
+                else None
+            ),
+            status=s.status.value if s.status else "unknown",
+            revision_count=s.revision_count or 0,
+            created_at=s.created_at.isoformat() if s.created_at else None,
+            reviewed_by=s.reviewed_by,
+        )
+        for s in scripts
+    ]
+
+
+@router.get("/approved", response_model=List[ScriptSummary])
+async def list_approved_scripts() -> List[ScriptSummary]:
+    """List all approved scripts ready for audio generation."""
+    scripts = await review_service.list_approved_scripts()
+
+    return [
+        ScriptSummary(
+            id=s.id,
+            digest_id=s.digest_id,
+            title=s.title,
+            length=s.length.value if s.length else "unknown",
+            word_count=s.word_count,
+            estimated_duration=(
+                f"{s.estimated_duration_seconds // 60} min"
+                if s.estimated_duration_seconds
+                else None
+            ),
+            status=s.status.value if s.status else "unknown",
+            revision_count=s.revision_count or 0,
+            created_at=s.created_at.isoformat() if s.created_at else None,
+            reviewed_by=s.reviewed_by,
+        )
+        for s in scripts
+    ]
+
+
+@router.get("/statistics", response_model=ReviewStatistics)
+async def get_review_statistics() -> ReviewStatistics:
+    """Get statistics about script review workflow."""
+    stats = await review_service.get_review_statistics()
+    return ReviewStatistics(**stats)
+
+
+@router.get("/digest/{digest_id}", response_model=List[ScriptSummary])
+async def list_scripts_for_digest(digest_id: int) -> List[ScriptSummary]:
+    """List all scripts generated from a specific digest."""
+    scripts = await review_service.get_scripts_for_digest(digest_id)
+
+    return [
+        ScriptSummary(
+            id=s.id,
+            digest_id=s.digest_id,
+            title=s.title,
+            length=s.length.value if s.length else "unknown",
+            word_count=s.word_count,
+            estimated_duration=(
+                f"{s.estimated_duration_seconds // 60} min"
+                if s.estimated_duration_seconds
+                else None
+            ),
+            status=s.status.value if s.status else "unknown",
+            revision_count=s.revision_count or 0,
+            created_at=s.created_at.isoformat() if s.created_at else None,
+            reviewed_by=s.reviewed_by,
+        )
+        for s in scripts
+    ]
+
+
+@router.get("/{script_id}")
+async def get_script(script_id: int) -> dict:
+    """Get script with full details for review.
+
+    Returns the complete script with section indices suitable for review UI.
+    """
+    try:
+        return review_service.get_script_for_review(script_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/{script_id}/sections/{section_index}")
+async def get_script_section(script_id: int, section_index: int) -> dict:
+    """Get a specific section of a script.
+
+    Useful for displaying individual section content.
+    """
+    try:
+        script_data = review_service.get_script_for_review(script_id)
+
+        if section_index < 0 or section_index >= len(script_data["sections"]):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Section {section_index} not found. Script has {len(script_data['sections'])} sections.",
+            )
+
+        section = script_data["sections"][section_index]
+        section["script_title"] = script_data["title"]
+        return section
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/{script_id}/sections/{section_index}/dialogue")
+async def get_section_dialogue(script_id: int, section_index: int) -> dict:
+    """Get formatted dialogue text for a specific section.
+
+    Returns dialogue as formatted text suitable for display.
+    """
+    try:
+        text = review_service.get_section_dialogue_text(script_id, section_index)
+        return {"section_index": section_index, "dialogue_text": text}
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{script_id}/review")
+async def submit_review(
+    script_id: int,
+    request: ReviewRequest,
+) -> dict:
+    """Submit review with optional section-specific feedback.
+
+    Actions:
+    - approve: Mark script as ready for audio generation
+    - request_revision: Apply section feedback and return to pending review
+    - reject: Mark script as failed
+    """
+    try:
+        review_request = ScriptReviewRequest(
+            script_id=script_id,
+            action=request.action,
+            reviewer=request.reviewer,
+            section_feedback={int(k): v for k, v in request.section_feedback.items()},
+            general_notes=request.general_notes,
+        )
+
+        script = await review_service.submit_review(review_request)
+
+        return {
+            "script_id": script.id,
+            "status": script.status.value if script.status else "unknown",
+            "revision_count": script.revision_count or 0,
+            "reviewed_by": script.reviewed_by,
+            "reviewed_at": script.reviewed_at.isoformat() if script.reviewed_at else None,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{script_id}/sections/{section_index}/revise")
+async def revise_section(
+    script_id: int,
+    section_index: int,
+    request: SectionFeedbackRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Revise a single section based on feedback.
+
+    The AI will regenerate the section dialogue based on the feedback
+    while maintaining persona voices and conversational flow.
+    """
+    from src.models.podcast import ScriptRevisionRequest
+
+    try:
+        revision_request = ScriptRevisionRequest(
+            script_id=script_id,
+            section_index=section_index,
+            feedback=request.feedback,
+        )
+
+        script = await review_service.revise_section(revision_request)
+
+        return {
+            "script_id": script.id,
+            "section_revised": section_index,
+            "status": script.status.value if script.status else "unknown",
+            "revision_count": script.revision_count or 0,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{script_id}/approve")
+async def quick_approve(
+    script_id: int,
+    reviewer: str = Query(..., description="Reviewer identifier"),
+    notes: Optional[str] = Query(None, description="Approval notes"),
+) -> dict:
+    """Quick approve a script for audio generation.
+
+    Convenience endpoint for approving without detailed review.
+    """
+    try:
+        script = await review_service.quick_approve(script_id, reviewer, notes)
+
+        return {
+            "script_id": script.id,
+            "status": script.status.value if script.status else "unknown",
+            "approved_at": script.approved_at.isoformat() if script.approved_at else None,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{script_id}/reject")
+async def quick_reject(
+    script_id: int,
+    reviewer: str = Query(..., description="Reviewer identifier"),
+    reason: str = Query(..., description="Rejection reason"),
+) -> dict:
+    """Quick reject a script.
+
+    Convenience endpoint for rejection.
+    """
+    try:
+        script = await review_service.quick_reject(script_id, reviewer, reason)
+
+        return {
+            "script_id": script.id,
+            "status": script.status.value if script.status else "unknown",
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

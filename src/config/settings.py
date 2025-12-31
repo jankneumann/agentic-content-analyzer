@@ -63,6 +63,24 @@ class Settings(BaseSettings):
     digest_theme_budget_percentage: float = 0.3  # 30% of input for themes
     digest_prompt_overhead_percentage: float = 0.1  # 10% of input for prompt
 
+    # Podcast / TTS Configuration
+    podcast_voice_provider: str = "openai_tts"  # Default TTS provider
+    podcast_output_format: str = "mp3"
+    podcast_sample_rate: int = 44100
+    podcast_words_per_minute: int = 150  # Average speaking rate
+    podcast_storage_path: str = "data/podcasts"  # Local storage path
+
+    # TTS Provider API Keys
+    elevenlabs_api_key: str | None = None
+
+    # Voice Persona Mappings (provider-specific voice IDs)
+    # Configure in code via VOICE_PERSONA_CONFIG dict
+    # ElevenLabs voice IDs - configure with actual voice IDs from your account
+    elevenlabs_voice_alex_male: str = ""
+    elevenlabs_voice_alex_female: str = ""
+    elevenlabs_voice_sam_male: str = ""
+    elevenlabs_voice_sam_female: str = ""
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""
