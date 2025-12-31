@@ -78,10 +78,10 @@ class PodcastRequest(BaseModel):
     """Request to generate a podcast from a digest."""
     digest_id: int
     length: PodcastLength = PodcastLength.STANDARD
-    include_web_search: bool = True
-    include_original_text: bool = False  # Only for extended
+    enable_web_search: bool = True  # Allow model to use web search tool
     voice_provider: VoiceProvider = VoiceProvider.ELEVENLABS
     custom_focus_topics: list[str] = []  # Optional topic emphasis
+    # Note: Original newsletter text is fetched on-demand via tool, not pre-loaded
 
 # --- Database Model ---
 
@@ -109,10 +109,12 @@ class Podcast(Base):
     voice_provider = Column(SQLEnum(VoiceProvider))
     voice_config = Column(JSON)  # Provider-specific voice IDs
 
-    # Context used
-    newsletter_ids = Column(JSON)  # List of newsletter IDs used
+    # Context & Tool Usage Tracking
+    newsletter_ids_available = Column(JSON)  # All newsletter IDs in digest period
+    newsletter_ids_fetched = Column(JSON)  # IDs fetched via get_newsletter_content tool
     theme_ids = Column(JSON)  # Themes incorporated
-    web_search_queries = Column(JSON)  # Web searches performed
+    web_search_queries = Column(JSON)  # Web searches performed via tool
+    tool_call_count = Column(Integer)  # Total tool invocations
 
     # Tracking
     model_used = Column(String(100))
@@ -215,12 +217,24 @@ MODEL_PODCAST_SCRIPT=claude-sonnet-4-5
 | Digest technical_developments | - | Top 3 | All |
 | Digest emerging_trends | - | Top 1 | All |
 | Digest actionable_recommendations | - | Key 3 | All |
-| Newsletter summaries | - | Key points | Full |
-| Original newsletter text | - | - | Excerpts |
+| Newsletter summaries (metadata) | ✓ | ✓ | ✓ |
+| Newsletter full text (via tool) | On-demand | On-demand | On-demand |
 | Graphiti themes | Top 3 | Top 5 | All |
 | Historical context | - | Key 2 | All |
 | Web search grounding | - | Optional | ✓ |
 | Relevant links | - | Top 5 | All |
+
+**Tool-Based Newsletter Access:**
+
+Original newsletter content is NOT included in the initial context. Instead, the model is provided with:
+1. A list of available newsletters (ID, title, publication, date, summary preview)
+2. A `get_newsletter_content` tool to fetch full text on-demand
+
+This approach:
+- Reduces initial context size significantly
+- Lets the model decide which newsletters are worth quoting directly
+- Enables smarter token budget management
+- Works consistently across all lengths (model decides depth)
 
 ### 2.2 Script Generation Prompt Design
 
@@ -267,6 +281,30 @@ CONTENT REQUIREMENTS:
 - Connect news to practical implications for engineering organizations
 - Highlight connections between topics when they exist
 - End with clear takeaways or actions
+
+AVAILABLE TOOLS:
+You have access to the following tools to enrich your script:
+
+1. **get_newsletter_content(newsletter_id: int) -> str**
+   Retrieves the full original text of a newsletter by ID.
+   Use this when you want to:
+   - Quote directly from a source for impact
+   - Get more context on a specific story
+   - Verify details before making claims
+   - Find compelling examples or data points
+
+2. **web_search(query: str) -> list[SearchResult]**
+   Searches the web for recent information.
+   Use this when you want to:
+   - Get the latest updates on breaking stories
+   - Find competitor reactions or announcements
+   - Verify claims with external sources
+   - Add context about companies or technologies mentioned
+
+Use tools judiciously based on podcast length:
+- Brief (5 min): Use sparingly, only for key quotes
+- Standard (15 min): Use for 2-3 deep-dive moments
+- Extended (30 min): Use freely to enrich content
 """
 
 PODCAST_SCRIPT_LENGTH_PROMPTS = {
@@ -319,11 +357,13 @@ Include:
 }
 ```
 
-### 2.3 Context Assembly
+### 2.3 Context Assembly (Tool-Based Approach)
+
+The script generator uses an agentic approach where the LLM has access to tools for fetching additional content on-demand, rather than pre-loading all newsletter content.
 
 ```python
 class PodcastScriptGenerator:
-    """Generate podcast scripts from digests."""
+    """Generate podcast scripts from digests using tool-based content retrieval."""
 
     def __init__(self):
         self.model_config = ModelConfig()
@@ -336,36 +376,47 @@ class PodcastScriptGenerator:
     ) -> PodcastScript:
         """Generate a podcast script from a digest."""
 
-        # 1. Load digest and related data
-        context = await self._assemble_context(request)
+        # 1. Load digest and lightweight context (NO full newsletter text)
+        context = await self._assemble_lightweight_context(request)
 
-        # 2. Optionally perform web search for grounding
-        if request.include_web_search:
-            context.web_results = await self._perform_web_search(context)
+        # 2. Define tools for the LLM to call on-demand
+        tools = self._create_tools(context)
 
-        # 3. Generate script via LLM
-        script = await self._generate_script_llm(context, request.length)
+        # 3. Generate script via agentic LLM loop (with tool use)
+        script = await self._generate_script_with_tools(context, tools, request.length)
 
         # 4. Validate and enhance script
         script = self._validate_and_enhance(script)
 
         return script
 
-    async def _assemble_context(self, request: PodcastRequest) -> PodcastContext:
-        """Assemble all context needed for script generation."""
+    async def _assemble_lightweight_context(self, request: PodcastRequest) -> PodcastContext:
+        """Assemble lightweight context - metadata only, no full newsletter text."""
 
         with get_db() as db:
-            # Load digest
+            # Load digest (structured data)
             digest = db.query(Digest).filter(Digest.id == request.digest_id).first()
 
-            # Load newsletters from the digest period
+            # Load newsletter METADATA only (not full text)
             newsletters = db.query(Newsletter).filter(
                 Newsletter.published_date >= digest.period_start,
                 Newsletter.published_date <= digest.period_end,
                 Newsletter.status == ProcessingStatus.COMPLETED
             ).all()
 
-            # Load summaries
+            # Create lightweight newsletter list for the prompt
+            newsletter_metadata = [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "publication": n.publication,
+                    "date": n.published_date.isoformat(),
+                    "url": n.url
+                }
+                for n in newsletters
+            ]
+
+            # Load summaries (these ARE included - they're already condensed)
             newsletter_ids = [n.id for n in newsletters]
             summaries = db.query(NewsletterSummary).filter(
                 NewsletterSummary.newsletter_id.in_(newsletter_ids)
@@ -377,7 +428,7 @@ class PodcastScriptGenerator:
                 ThemeAnalysis.end_date <= digest.period_end
             ).order_by(ThemeAnalysis.created_at.desc()).first()
 
-        # Query Graphiti for additional theme context
+        # Query Graphiti for theme context
         graphiti_themes = await self.graphiti.extract_themes_from_range(
             start_date=digest.period_start,
             end_date=digest.period_end
@@ -385,27 +436,173 @@ class PodcastScriptGenerator:
 
         return PodcastContext(
             digest=digest,
-            newsletters=newsletters,
+            newsletter_metadata=newsletter_metadata,  # Lightweight!
             summaries=summaries,
             theme_analysis=theme_analysis,
             graphiti_themes=graphiti_themes,
-            length=request.length,
-            include_original_text=request.include_original_text
+            length=request.length
         )
 
-    async def _perform_web_search(self, context: PodcastContext) -> list[WebSearchResult]:
-        """Perform web searches for grounding and recent context."""
+    def _create_tools(self, context: PodcastContext) -> list[Tool]:
+        """Create tools for on-demand content retrieval."""
 
-        # Extract key topics from digest for search
-        search_queries = self._extract_search_queries(context)
+        return [
+            Tool(
+                name="get_newsletter_content",
+                description="Retrieve the full original text of a newsletter by ID. "
+                           "Use when you need direct quotes, more context, or specific details.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "newsletter_id": {
+                            "type": "integer",
+                            "description": "The ID of the newsletter to retrieve"
+                        }
+                    },
+                    "required": ["newsletter_id"]
+                },
+                handler=self._handle_get_newsletter_content
+            ),
+            Tool(
+                name="web_search",
+                description="Search the web for recent information about a topic. "
+                           "Use for latest updates, competitor info, or external context.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query"
+                        }
+                    },
+                    "required": ["query"]
+                },
+                handler=self._handle_web_search
+            )
+        ]
 
-        results = []
-        for query in search_queries[:5]:  # Limit to 5 searches
-            # Use web search tool/API
-            search_result = await self._web_search(query)
-            results.extend(search_result)
+    async def _handle_get_newsletter_content(self, newsletter_id: int) -> str:
+        """Tool handler: Fetch full newsletter content from database."""
+        with get_db() as db:
+            newsletter = db.query(Newsletter).filter(
+                Newsletter.id == newsletter_id
+            ).first()
 
-        return results
+            if not newsletter:
+                return f"Newsletter with ID {newsletter_id} not found."
+
+            # Return cleaned text content
+            return f"""
+Newsletter: {newsletter.title}
+Publication: {newsletter.publication}
+Date: {newsletter.published_date}
+
+Content:
+{newsletter.raw_text[:15000]}  # Limit to avoid context overflow
+"""
+
+    async def _handle_web_search(self, query: str) -> str:
+        """Tool handler: Perform web search."""
+        results = await self.web_search_service.search(query, num_results=3)
+        return "\n\n".join([
+            f"**{r.title}**\n{r.snippet}\nSource: {r.url}"
+            for r in results
+        ])
+
+    async def _generate_script_with_tools(
+        self,
+        context: PodcastContext,
+        tools: list[Tool],
+        length: PodcastLength
+    ) -> PodcastScript:
+        """Run agentic loop with tool use to generate script."""
+
+        # Build initial prompt with lightweight context
+        system_prompt = PODCAST_SCRIPT_SYSTEM_PROMPT
+        user_prompt = self._build_user_prompt(context, length)
+
+        # Agentic loop - model can call tools as needed
+        messages = [{"role": "user", "content": user_prompt}]
+
+        while True:
+            response = await self.client.messages.create(
+                model=self.model,
+                system=system_prompt,
+                messages=messages,
+                tools=[t.to_dict() for t in tools],
+                max_tokens=12000
+            )
+
+            # Check if model wants to use tools
+            if response.stop_reason == "tool_use":
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        result = await self._execute_tool(block, tools)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result
+                        })
+
+                messages.append({"role": "assistant", "content": response.content})
+                messages.append({"role": "user", "content": tool_results})
+            else:
+                # Model finished - extract script from response
+                return self._parse_script_response(response)
+
+    def _build_user_prompt(self, context: PodcastContext, length: PodcastLength) -> str:
+        """Build the user prompt with lightweight context."""
+
+        return f"""
+Create a {length.value} podcast script for the {context.digest.digest_type.value} digest.
+
+## Digest Overview
+**Title:** {context.digest.title}
+**Period:** {context.digest.period_start} to {context.digest.period_end}
+
+**Executive Overview:**
+{context.digest.executive_overview}
+
+**Strategic Insights:**
+{json.dumps(context.digest.strategic_insights, indent=2)}
+
+**Technical Developments:**
+{json.dumps(context.digest.technical_developments, indent=2)}
+
+**Emerging Trends:**
+{json.dumps(context.digest.emerging_trends, indent=2)}
+
+## Available Newsletters
+You can use the `get_newsletter_content` tool to retrieve full text for any of these:
+
+{self._format_newsletter_list(context.newsletter_metadata)}
+
+## Newsletter Summaries
+{self._format_summaries(context.summaries)}
+
+## Themes from Knowledge Graph
+{self._format_themes(context.graphiti_themes)}
+
+## Instructions
+{PODCAST_SCRIPT_LENGTH_PROMPTS[length]}
+
+Generate the podcast script. Use the tools to fetch newsletter content or web search
+when you need more detail for compelling quotes or to verify/enrich specific points.
+"""
+```
+
+### 2.4 Tool Usage Tracking
+
+Track which tools were called during generation for transparency and debugging:
+
+```python
+class PodcastGenerationMetadata(BaseModel):
+    """Metadata about podcast script generation."""
+    newsletter_fetches: list[int]  # Newsletter IDs fetched via tool
+    web_searches: list[str]  # Search queries executed
+    tool_call_count: int
+    total_tokens_used: int
 ```
 
 ---
