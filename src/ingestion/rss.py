@@ -1,4 +1,4 @@
-"""Substack RSS feed ingestion."""
+"""Generic RSS feed ingestion."""
 
 import hashlib
 from datetime import datetime
@@ -19,24 +19,24 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-class SubstackRSSClient:
-    """Client for fetching newsletters from Substack RSS feeds."""
+class RSSClient:
+    """Client for fetching newsletters from RSS feeds."""
 
     def __init__(self, timeout: int = 30) -> None:
         """
-        Initialize Substack RSS client.
+        Initialize RSS client.
 
         Args:
             timeout: HTTP request timeout in seconds
         """
         self.timeout = timeout
         self.client = httpx.Client(timeout=timeout)
-        logger.info("Substack RSS client initialized")
+        logger.info("RSS client initialized")
 
     def close(self) -> None:
         """Close HTTP client."""
         self.client.close()
-        logger.info("Substack RSS client closed")
+        logger.info("RSS client closed")
 
     def fetch_feed(
         self,
@@ -163,9 +163,6 @@ class SubstackRSSClient:
         # Fallback to domain name from URL
         parsed_url = urlparse(feed_url)
         domain = parsed_url.netloc or parsed_url.path
-        # Remove common substack domain suffix
-        if domain.endswith(".substack.com"):
-            domain = domain.replace(".substack.com", "")
         return domain.title()
 
     def _parse_entry_date(self, entry: feedparser.FeedParserDict) -> Optional[datetime]:
@@ -235,7 +232,7 @@ class SubstackRSSClient:
         content_hash = generate_content_hash(raw_text) if raw_text else None
 
         return NewsletterData(
-            source=NewsletterSource.SUBSTACK_RSS,
+            source=NewsletterSource.RSS,
             source_id=source_id,
             title=title,
             sender=author,
@@ -322,12 +319,12 @@ class SubstackRSSClient:
         self.close()
 
 
-class SubstackIngestionService:
-    """Service for ingesting newsletters from Substack RSS feeds."""
+class RSSIngestionService:
+    """Service for ingesting newsletters from RSS feeds."""
 
     def __init__(self) -> None:
-        """Initialize Substack ingestion service."""
-        self.client = SubstackRSSClient()
+        """Initialize RSS ingestion service."""
+        self.client = RSSClient()
 
     def ingest_newsletters(
         self,
@@ -351,7 +348,7 @@ class SubstackIngestionService:
         from src.models.newsletter import Newsletter
         from src.storage.database import get_db
 
-        logger.info("Starting Substack RSS newsletter ingestion...")
+        logger.info("Starting RSS newsletter ingestion...")
 
         # Get feed URLs from config if not provided
         if feed_urls is None:

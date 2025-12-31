@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.ingestion.gmail import GmailIngestionService
-from src.ingestion.substack import SubstackIngestionService
+from src.ingestion.rss import RSSIngestionService
 from src.models.digest import Digest, DigestData, DigestRequest, DigestStatus, DigestType
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.processors.digest_creator import DigestCreator
@@ -62,7 +62,7 @@ class NewsletterPipeline:
     async def run_daily_pipeline(
         self,
         date: datetime,
-        sources: list[str] = ["gmail", "substack"],
+        sources: list[str] = ["gmail", "rss"],
         auto_approve: bool = False,
     ) -> dict:
         """
@@ -106,7 +106,7 @@ class NewsletterPipeline:
     async def run_weekly_pipeline(
         self,
         end_date: datetime,
-        sources: list[str] = ["gmail", "substack"],
+        sources: list[str] = ["gmail", "rss"],
         auto_approve: bool = False,
     ) -> dict:
         """
@@ -157,7 +157,7 @@ class NewsletterPipeline:
         Ingest newsletters from specified sources.
 
         Args:
-            sources: List of sources ('gmail', 'substack')
+            sources: List of sources ('gmail', 'rss')
             date: Date to ingest for
 
         Returns:
@@ -183,22 +183,22 @@ class NewsletterPipeline:
                     # GmailIngestionService doesn't have a close method, no cleanup needed
                     pass
 
-        if "substack" in sources:
-            substack = None
+        if "rss" in sources:
+            rss = None
             try:
-                logger.info("Ingesting from Substack RSS...")
-                substack = SubstackIngestionService()
+                logger.info("Ingesting from RSS feeds...")
+                rss = RSSIngestionService()
                 # Calculate after_date (1 day before the target date)
                 after_date = date - timedelta(days=1)
-                count = substack.ingest_newsletters(after_date=after_date)
+                count = rss.ingest_newsletters(after_date=after_date)
                 total_ingested += count
-                logger.info(f"✓ Ingested {count} newsletters from Substack")
+                logger.info(f"✓ Ingested {count} newsletters from RSS")
             except Exception as e:
-                logger.error(f"✗ Substack ingestion failed: {e}", exc_info=True)
-                self.stats["errors"].append(("substack_ingestion", str(e)))
+                logger.error(f"✗ RSS ingestion failed: {e}", exc_info=True)
+                self.stats["errors"].append(("rss_ingestion", str(e)))
             finally:
-                if substack:
-                    substack.close()
+                if rss:
+                    rss.close()
 
         return total_ingested
 
@@ -344,8 +344,8 @@ Examples:
     parser.add_argument(
         "--sources",
         nargs="+",
-        default=["gmail", "substack"],
-        choices=["gmail", "substack"],
+        default=["gmail", "rss"],
+        choices=["gmail", "rss"],
         help="Which sources to ingest from (default: both)",
     )
 

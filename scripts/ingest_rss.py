@@ -1,9 +1,9 @@
-"""CLI script to ingest newsletters from Substack RSS feeds."""
+"""CLI script to ingest newsletters from RSS feeds."""
 
 import argparse
 from datetime import datetime, timedelta
 
-from src.ingestion.substack import SubstackIngestionService
+from src.ingestion.rss import RSSIngestionService
 from src.utils.logging import get_logger, setup_logging
 
 # Setup logging
@@ -12,8 +12,8 @@ logger = get_logger(__name__)
 
 
 def main() -> None:
-    """Run Substack RSS ingestion."""
-    parser = argparse.ArgumentParser(description="Ingest newsletters from Substack RSS feeds")
+    """Run RSS ingestion."""
+    parser = argparse.ArgumentParser(description="Ingest newsletters from RSS feeds")
     parser.add_argument(
         "--feeds",
         type=str,
@@ -49,7 +49,7 @@ def main() -> None:
         logger.info("Force reprocessing enabled - will update existing newsletters")
 
     # Run ingestion
-    service = SubstackIngestionService()
+    service = RSSIngestionService()
 
     try:
         count = service.ingest_newsletters(
@@ -62,7 +62,7 @@ def main() -> None:
         print(f"\n✓ Successfully ingested {count} newsletters from RSS feeds")
         print("\nYou can now view them in the database:")
         print("  docker exec -it newsletter-postgres psql -U newsletter_user -d newsletters")
-        print("  SELECT id, title, publication, published_date, status FROM newsletters WHERE source = 'substack_rss';")
+        print("  SELECT id, title, publication, published_date, status FROM newsletters WHERE source = 'RSS';")
 
         if count == 0:
             print("\nℹ️  No new newsletters found. Make sure you have:")
@@ -70,7 +70,7 @@ def main() -> None:
             print("  2. Created rss_feeds.txt with feed URLs (one per line), or")
             print("  3. Provided --feeds argument with URLs")
             print("\nExample RSS feeds to try:")
-            print("  python scripts/ingest_substack.py --feeds https://www.theainavigator.com/feed")
+            print("  python -m scripts.ingest_rss --feeds https://www.latent.space/feed")
 
     except Exception as e:
         logger.error(f"Ingestion failed: {e}", exc_info=True)

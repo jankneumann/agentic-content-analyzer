@@ -1,11 +1,11 @@
 """Newsletter ingestion modules."""
 
 from src.ingestion.gmail import GmailClient, GmailIngestionService
-from src.ingestion.substack import SubstackRSSClient, SubstackIngestionService
+from src.ingestion.rss import RSSClient, RSSIngestionService
 
 __all__ = [
     "GmailClient",
     "GmailIngestionService",
-    "SubstackRSSClient",
-    "SubstackIngestionService",
+    "RSSClient",
+    "RSSIngestionService",
 ]

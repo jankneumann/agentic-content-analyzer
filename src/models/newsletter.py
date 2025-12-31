@@ -15,7 +15,8 @@ class NewsletterSource(str, Enum):
     """Newsletter source types."""
 
     GMAIL = "gmail"
-    SUBSTACK_RSS = "substack_rss"
+    RSS = "rss"
+    SUBSTACK_RSS = "substack_rss"  # Deprecated: Use RSS instead
     OTHER = "other"
 
 

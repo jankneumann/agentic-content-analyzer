@@ -1,0 +1,51 @@
+# RSS Feed URLs (one per line)
+# Lines starting with # are comments and will be ignored
+
+# Example AI/ML Newsletters (Substack)
+https://newsletter.pragmaticengineer.com/feed
+https://www.latent.space/feed
+https://natesnewsletter.substack.com/feed
+https://ruben.substack.com/feed
+https://techtiff.substack.com/feed
+https://addyo.substack.com/feed
+https://rasmusengelbrecht.substack.com/feed
+https://jakobnielsenphd.substack.com/feed
+https://dataprodmgmt.substack.com/feed
+https://maryamnaz.substack.com/feed
+https://metacircuits.substack.com/feed
+https://importai.substack.com/feed
+https://cutlefish.substack.com/feed
+https://aiblewmymind.substack.com/feed
+https://shreyasdoshi.substack.com/feed
+https://molochinations.substack.com/feed
+https://callmejz.substack.com/feed
+https://msukhareva.substack.com/feed
+https://theneuralmaze.substack.com/feed
+https://thepipeandtheline.substack.com/feed
+
+# Non-Substack Newsletter Feeds:
+https://magazine.sebastianraschka.com/feed
+https://www.productcompass.pm/feed
+https://www.decodingai.com/feed
+https://www.exponentialview.co/feed
+https://creatoreconomy.so/feed
+https://newsletter.pragmaticengineer.com/feed
+https://thegtme.com/feed
+https://www.dwarkesh.com/feed
+https://www.artificialintelligencemadesimple.com/feed
+https://www.ignorance.ai/feed
+https://www.thealgorithmicbridge.com/feed
+https://www.pracdata.io/feed
+https://blog.bytebytego.com/feed
+https://www.lennysnewsletter.com/feed
+https://news.aiinvestinghq.com/feed
+https://charitydotwtf.substack.com/feed
+https://www.scarletink.com/feed
+https://read.engineerscodex.com/feed
+
+# RSS feeds for Tech companies:
+https://aws.amazon.com/blogs/machine-learning/feed/
+https://www.thoughtworks.com/rss/insights.xml
+
+# RSS feeds for people
+http://www.martinfowler.com/feed.atom"

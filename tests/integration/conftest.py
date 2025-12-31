@@ -210,7 +210,7 @@ def sample_newsletters(db_session) -> list[Newsletter]:
             status=ProcessingStatus.PENDING,
         ),
         Newsletter(
-            source=NewsletterSource.SUBSTACK_RSS,
+            source=NewsletterSource.RSS,
             source_id="rss-003",
             sender="tech-trends@substack.com",
             publication="Tech Trends",
