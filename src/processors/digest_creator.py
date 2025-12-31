@@ -978,8 +978,7 @@ Output only the JSON object, no additional text.
             date = newsletter["published_date"].strftime("%Y-%m-%d")
 
             # Build rich context from summary
-            context_parts.append(
-                f"""[{newsletter_id}] {newsletter['publication']} - {newsletter['title']} ({date})
+            context = f"""[{newsletter_id}] {newsletter['publication']} - {newsletter['title']} ({date})
 
 **Executive Summary:**
 {summary.executive_summary}
@@ -990,8 +989,17 @@ Output only the JSON object, no additional text.
 {chr(10).join(f"- {insight}" for insight in summary.strategic_insights)}
 
 **Technical Details:**
-{chr(10).join(f"- {detail}" for detail in summary.technical_details)}""".strip()
-            )
+{chr(10).join(f"- {detail}" for detail in summary.technical_details)}"""
+
+            # Add relevant links if available
+            if summary.relevant_links:
+                links_text = chr(10).join(
+                    f"- {link.get('title', 'Resource')}: {link.get('url', '')}"
+                    for link in summary.relevant_links
+                )
+                context += f"\n\n**Relevant Links:**\n{links_text}"
+
+            context_parts.append(context.strip())
 
         return "\n\n---\n\n".join(context_parts)
 
@@ -1117,6 +1125,12 @@ Provide a JSON response with:
   - Use multiple citations [18][23] when a point draws from multiple sources
   - These IDs enable cross-digest traceability and interactive revision tool use
   - This provides transparency and traceability for all insights
+
+- **Relevant Links**: When newsletters include research papers, documentation, or other resources:
+  - Include the actual URL in your detail points where relevant (e.g., "See research paper: https://arxiv.org/...")
+  - Reference the link title and source newsletter ID for context
+  - Make it easy for readers to access the original sources directly
+  - Example: "BGE-M3 embeddings paper (https://arxiv.org/abs/2402.03216) from [42] demonstrates 15% improvement"
 
 - **Executive Overview**: Focus on "what matters and why" for decision-makers
 - **Strategic Insights**: Limit to {request.max_strategic_insights} most important
