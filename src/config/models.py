@@ -83,6 +83,7 @@ class ModelStep(str, Enum):
     YOUTUBE_PROCESSING = "youtube_processing"  # YouTube video summarization
     ENTITY_EXTRACTION = "entity_extraction"  # Entity extraction for knowledge graph
     RERANKING = "reranking"  # Search result reranking (Graphiti)
+    PODCAST_SCRIPT = "podcast_script"  # Podcast script generation from digest
 
 
 @dataclass
@@ -225,6 +226,7 @@ class ModelConfig:
         youtube_processing: Optional[str] = None,
         entity_extraction: Optional[str] = None,
         reranking: Optional[str] = None,
+        podcast_script: Optional[str] = None,
         # Provider configurations (in priority order for failover)
         providers: Optional[List[ProviderConfig]] = None,
     ):
@@ -239,6 +241,7 @@ class ModelConfig:
             youtube_processing: Model for YouTube processing (default from YAML)
             entity_extraction: Model for entity extraction (default from YAML)
             reranking: Model for search reranking (default from YAML)
+            podcast_script: Model for podcast script generation (default from YAML)
             providers: List of provider configurations in priority order
         """
         # Use defaults from YAML if not specified
@@ -257,6 +260,8 @@ class ModelConfig:
             ModelStep.ENTITY_EXTRACTION: entity_extraction
             or DEFAULT_MODELS["entity_extraction"],
             ModelStep.RERANKING: reranking or DEFAULT_MODELS["reranking"],
+            ModelStep.PODCAST_SCRIPT: podcast_script
+            or DEFAULT_MODELS.get("podcast_script", DEFAULT_MODELS["digest_creation"]),
         }
 
         # Validate all models exist
