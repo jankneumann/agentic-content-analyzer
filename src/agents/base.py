@@ -119,6 +119,10 @@ Please analyze this newsletter and provide a structured summary:
     "technical_details": ["detail1", "detail2"],  # Developer-focused specifics
     "actionable_items": ["action1", "action2"],  # What readers should do
     "notable_quotes": ["quote1", "quote2"],  # Important quotes or data points
+    "relevant_links": [  # Links to referenced resources for deeper reading
+        {{"title": "Resource Title", "url": "https://..."}},
+        {{"title": "Another Resource", "url": "https://..."}}
+    ],
     "relevance_scores": {{
         "cto_leadership": 0.0-1.0,  # How relevant for C-level
         "technical_teams": 0.0-1.0,  # How relevant for dev teams
@@ -132,6 +136,7 @@ Focus on:
 - Trends and patterns in the AI/tech landscape
 - Practical applications for enterprise settings
 - Best practices and recommendations
+- Extract links to referenced papers, articles, or resources (arxiv, research blogs, documentation, etc.)
 
 Provide ONLY the JSON output, no additional commentary."""
 
@@ -156,6 +161,7 @@ Provide ONLY the JSON output, no additional commentary."""
             technical_details=data.get("technical_details", []),
             actionable_items=data.get("actionable_items", []),
             notable_quotes=data.get("notable_quotes", []),
+            relevant_links=data.get("relevant_links", []),
             relevance_scores=data.get("relevance_scores", {}),
             agent_framework=self.framework_name,
             model_used=self.model,

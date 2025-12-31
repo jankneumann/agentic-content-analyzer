@@ -25,6 +25,7 @@ class NewsletterSummary(Base):
     technical_details = Column(JSON, nullable=False)  # List[str]
     actionable_items = Column(JSON, nullable=False)  # List[str]
     notable_quotes = Column(JSON, nullable=False)  # List[str]
+    relevant_links = Column(JSON, nullable=False, default=list)  # List[Dict[str, str]] - {"title": "...", "url": "..."}
 
     # Relevance scoring
     relevance_scores = Column(JSON, nullable=False)  # Dict[str, float]
@@ -51,6 +52,7 @@ class SummaryData(BaseModel):
     technical_details: list[str] = Field(default_factory=list)
     actionable_items: list[str] = Field(default_factory=list)
     notable_quotes: list[str] = Field(default_factory=list)
+    relevant_links: list[dict[str, str]] = Field(default_factory=list)  # [{"title": "...", "url": "..."}]
     relevance_scores: dict[str, float] = Field(default_factory=dict)
     agent_framework: str
     model_used: str  # General model ID (e.g., "claude-sonnet-4-5")

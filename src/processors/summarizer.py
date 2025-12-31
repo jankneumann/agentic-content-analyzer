@@ -95,6 +95,7 @@ class NewsletterSummarizer:
                     technical_details=summary_data.technical_details,
                     actionable_items=summary_data.actionable_items,
                     notable_quotes=summary_data.notable_quotes,
+                    relevant_links=summary_data.relevant_links,
                     relevance_scores=summary_data.relevance_scores,
                     agent_framework=summary_data.agent_framework,
                     model_used=summary_data.model_used,

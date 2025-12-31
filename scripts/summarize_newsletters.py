@@ -8,6 +8,7 @@ from src.models.summary import NewsletterSummary
 from src.processors.summarizer import NewsletterSummarizer
 from src.storage.database import get_db
 from src.utils.logging import get_logger, setup_logging
+from src.utils.summary_formatter import SummaryFormatter
 
 # Setup logging
 setup_logging()
@@ -43,7 +44,7 @@ def list_pending_newsletters(after_date=None, before_date=None):
             print(f"{n.id:<6} | {title:<50} | {pub:<25} | {date_str:<12} | {n.status.value}")
 
 
-def list_summaries(newsletter_id=None, after_date=None, before_date=None):
+def list_summaries(newsletter_id=None, after_date=None, before_date=None, format_type="text"):
     """List existing newsletter summaries with optional filtering."""
     with get_db() as db:
         query = db.query(NewsletterSummary, Newsletter).join(
@@ -79,23 +80,19 @@ def list_summaries(newsletter_id=None, after_date=None, before_date=None):
             themes = (themes[:45] + '...') if len(themes) > 48 else themes
             print(f"{newsletter.id:<6} | {title:<40} | {pub:<20} | {date_str:<12} | {themes}")
 
-        # If showing a specific summary, display more details
+        # If showing a specific summary, display formatted output
         if newsletter_id and results:
             summary, newsletter = results[0]
-            print(f"\n{'='*140}")
-            print(f"SUMMARY DETAILS - Newsletter #{newsletter.id}")
-            print(f"{'='*140}")
-            print(f"Title: {newsletter.title}")
-            print(f"Publication: {newsletter.publication}")
-            print(f"Published: {newsletter.published_date.strftime('%Y-%m-%d %H:%M')}")
-            print(f"\nExecutive Summary:")
-            print(f"  {summary.executive_summary}")
-            print(f"\nKey Themes: {', '.join(summary.key_themes)}")
-            print(f"\nStrategic Insights:")
-            for insight in summary.strategic_insights:
-                print(f"  • {insight}")
-            print(f"\nModel: {summary.model_used}")
-            print(f"Created: {summary.created_at.strftime('%Y-%m-%d %H:%M')}")
+
+            # Use formatter based on format_type
+            if format_type == "markdown":
+                output = SummaryFormatter.to_markdown(summary, newsletter)
+            elif format_type == "html":
+                output = SummaryFormatter.to_html(summary, newsletter)
+            else:  # text
+                output = SummaryFormatter.to_plain_text(summary, newsletter)
+
+            print(output)
 
 
 def main() -> None:
@@ -149,6 +146,15 @@ def main() -> None:
         help="Claude model to use (default: claude-haiku-4-5-20251001)",
     )
 
+    # Output format argument
+    parser.add_argument(
+        "--format",
+        type=str,
+        choices=["text", "markdown", "html"],
+        default="text",
+        help="Output format for summary display (default: text)",
+    )
+
     args = parser.parse_args()
 
     # Parse dates
@@ -177,7 +183,12 @@ def main() -> None:
 
         elif args.list_summaries:
             # List summaries
-            list_summaries(newsletter_id=args.id, after_date=after_date, before_date=before_date)
+            list_summaries(
+                newsletter_id=args.id,
+                after_date=after_date,
+                before_date=before_date,
+                format_type=args.format,
+            )
 
         elif args.id:
             # Summarize specific newsletter
