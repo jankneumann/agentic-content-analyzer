@@ -230,8 +230,7 @@ def main() -> None:
             for nid in newsletter_ids:
                 if summarizer.summarize_newsletter(nid):
                     count += 1
-
-            print(f"\n✓ Successfully summarized {count}/{len(newsletter_ids)} newsletters")
+                    print(f"\n✓ Successfully summarized newsletter id {nid} and {count}/{len(newsletter_ids)} newsletters")
             if count > 0:
                 print("\nView summaries:")
                 print("  python -m scripts.summarize_newsletters --list-summaries")
