@@ -153,3 +153,21 @@ export interface SummarizationProgress {
   /** Error message if status is error */
   errorMessage?: string
 }
+
+/**
+ * Filters for summary list queries
+ */
+export interface SummaryFilters {
+  /** Filter by newsletter ID */
+  newsletterId?: string
+  /** Filter by model used */
+  modelUsed?: string
+  /** Filter after this date */
+  startDate?: string
+  /** Filter before this date */
+  endDate?: string
+  /** Pagination limit */
+  limit?: number
+  /** Pagination offset */
+  offset?: number
+}

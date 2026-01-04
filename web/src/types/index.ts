@@ -27,6 +27,7 @@ export type {
   SummarizeRequest,
   SummarizeResponse,
   SummarizationProgress,
+  SummaryFilters,
 } from "./summary"
 
 // Theme types
