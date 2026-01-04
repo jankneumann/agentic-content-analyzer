@@ -13,6 +13,9 @@ Comprehensive documentation is available in the `/docs` directory:
 - **[Content Guidelines](docs/CONTENT_GUIDELINES.md)** - Digest quality standards and formatting
 - **[Development Guide](docs/DEVELOPMENT.md)** - Commands, patterns, and best practices
 
+- Always use Context7 MCP when you need library/API documentation, code generation, setup or configuration steps for external libraries without me having to explicitly ask.
+
+
 ## Quick Reference
 
 ### Project Overview

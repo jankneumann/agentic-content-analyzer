@@ -15,9 +15,10 @@ from typing import Callable, Optional
 from src.config import settings
 from src.config.models import ModelConfig
 from src.delivery.audio_generator import (
-    AudioMetadata,
     PodcastAudioGenerator,
-    get_output_path,
+)
+from src.delivery.audio_generator_v2 import (
+    get_output_path,  # Shared utility function
 )
 from src.models.podcast import (
     Podcast,
@@ -171,6 +172,8 @@ class PodcastCreator:
         alex_voice: VoicePersona = VoicePersona.ALEX_MALE,
         sam_voice: VoicePersona = VoicePersona.SAM_FEMALE,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        use_v2_generator: bool = True,  # Default to V2 (batched, ffmpeg-based)
+        speed: float = 1.3,  # Default to 1.3x speed
     ) -> Podcast:
         """Generate audio from an approved script.
 
@@ -185,6 +188,8 @@ class PodcastCreator:
             alex_voice: Voice persona for Alex
             sam_voice: Voice persona for Sam
             progress_callback: Optional callback(current, total, message)
+            use_v2_generator: Use V2 generator (batched, ffmpeg-based)
+            speed: Speech speed (0.25 to 4.0, default 1.5)
 
         Returns:
             Podcast record with audio information
@@ -238,11 +243,22 @@ class PodcastCreator:
             script = PodcastScript.model_validate(script_record.script_json)
 
             # Initialize audio generator with voice config
-            self.audio_generator = PodcastAudioGenerator(
-                provider=voice_provider,
-                alex_voice=alex_voice,
-                sam_voice=sam_voice,
-            )
+            if use_v2_generator:
+                from src.delivery.audio_generator_v2 import PodcastAudioGeneratorV2
+                self.audio_generator = PodcastAudioGeneratorV2(
+                    provider=voice_provider,
+                    alex_voice=alex_voice,
+                    sam_voice=sam_voice,
+                    speed=speed,
+                )
+                logger.info(f"Using V2 audio generator (batched, ffmpeg-based, speed={speed}x)")
+            else:
+                self.audio_generator = PodcastAudioGenerator(
+                    provider=voice_provider,
+                    alex_voice=alex_voice,
+                    sam_voice=sam_voice,
+                )
+                logger.info("Using V1 audio generator (pydub-based, deprecated)")
 
             # Get output path
             output_path = get_output_path(podcast_id)

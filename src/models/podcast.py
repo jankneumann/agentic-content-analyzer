@@ -218,7 +218,7 @@ class PodcastScriptRecord(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     digest_id = Column(Integer, ForeignKey("digests.id"), nullable=False, index=True)
-    length = Column(SQLEnum(PodcastLength), nullable=False)
+    length = Column(SQLEnum(PodcastLength, values_callable=lambda x: [e.value for e in x]), nullable=False)
 
     # Script content
     title = Column(String(500), nullable=True)
@@ -228,7 +228,7 @@ class PodcastScriptRecord(Base):
 
     # Review workflow
     status = Column(
-        SQLEnum(PodcastStatus),
+        SQLEnum(PodcastStatus, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=PodcastStatus.PENDING,
         index=True,
@@ -285,9 +285,9 @@ class Podcast(Base):
     file_size_bytes = Column(Integer, nullable=True)
 
     # Voice configuration
-    voice_provider = Column(SQLEnum(VoiceProvider), nullable=True)
-    alex_voice = Column(SQLEnum(VoicePersona), nullable=True)
-    sam_voice = Column(SQLEnum(VoicePersona), nullable=True)
+    voice_provider = Column(SQLEnum(VoiceProvider, values_callable=lambda x: [e.value for e in x]), nullable=True)
+    alex_voice = Column(SQLEnum(VoicePersona, values_callable=lambda x: [e.value for e in x]), nullable=True)
+    sam_voice = Column(SQLEnum(VoicePersona, values_callable=lambda x: [e.value for e in x]), nullable=True)
     voice_config = Column(JSON, nullable=True)  # Provider-specific voice IDs used
 
     # Status

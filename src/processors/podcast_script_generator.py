@@ -773,7 +773,7 @@ Technical Details:
                     speaker=turn.get("speaker", "alex"),
                     text=turn.get("text", ""),
                     emphasis=turn.get("emphasis"),
-                    pause_after=turn.get("pause_after", 0.5),
+                    pause_after=turn.get("pause_after", 0.0),
                 )
                 for turn in section_data.get("dialogue", [])
             ]
@@ -830,13 +830,13 @@ Technical Details:
                 speaker="alex",
                 text="Welcome to this week's AI and tech digest.",
                 emphasis="excited",
-                pause_after=0.5,
+                pause_after=0.0,
             ),
             DialogueTurn(
                 speaker="sam",
                 text="Unfortunately, we encountered an issue generating the full script.",
                 emphasis="concerned",
-                pause_after=0.5,
+                pause_after=0.0,
             ),
         ]
 
