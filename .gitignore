@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -217,3 +217,19 @@ data/
 # Database files
 *.db
 *.sqlite3
+
+# Node.js / Frontend
+node_modules/
+web/dist/
+web/node_modules/
+*.tsbuildinfo
+
+# Package manager
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Playwright
+web/test-results/
+web/playwright-report/
+web/playwright/.cache/
