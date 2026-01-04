@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.newsletter_routes import router as newsletter_router
+from src.api.summary_routes import router as summary_router
 from src.api.script_routes import router as script_router
 
 
@@ -43,6 +44,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(newsletter_router)
+app.include_router(summary_router)
 app.include_router(script_router)
 
 

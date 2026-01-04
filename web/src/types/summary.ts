@@ -100,6 +100,10 @@ export interface NewsletterSummary {
 export interface SummaryListItem {
   id: string
   newsletterId: string
+  /** Newsletter title for display */
+  newsletterTitle?: string
+  /** Newsletter publication name */
+  newsletterPublication?: string | null
   /** First 200 chars of executive summary */
   executiveSummaryPreview: string
   keyThemes: string[]
