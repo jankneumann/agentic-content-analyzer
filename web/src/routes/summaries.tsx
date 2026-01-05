@@ -379,27 +379,29 @@ function SummariesPage() {
                 </div>
 
                 {/* Key Themes */}
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                    Key Themes
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedSummary.keyThemes.map((theme, i) => (
-                      <Badge key={i} variant="secondary">
-                        {theme}
-                      </Badge>
-                    ))}
+                {(selectedSummary.keyThemes?.length ?? 0) > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                      Key Themes
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {(selectedSummary.keyThemes ?? []).map((theme, i) => (
+                        <Badge key={i} variant="secondary">
+                          {theme}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Strategic Insights */}
-                {selectedSummary.strategicInsights.length > 0 && (
+                {(selectedSummary.strategicInsights?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Strategic Insights
                     </h4>
                     <ul className="list-disc list-inside space-y-1">
-                      {selectedSummary.strategicInsights.map((insight, i) => (
+                      {(selectedSummary.strategicInsights ?? []).map((insight, i) => (
                         <li key={i} className="text-sm">
                           {insight}
                         </li>
@@ -409,13 +411,13 @@ function SummariesPage() {
                 )}
 
                 {/* Technical Details */}
-                {selectedSummary.technicalDetails.length > 0 && (
+                {(selectedSummary.technicalDetails?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Technical Details
                     </h4>
                     <ul className="list-disc list-inside space-y-1">
-                      {selectedSummary.technicalDetails.map((detail, i) => (
+                      {(selectedSummary.technicalDetails ?? []).map((detail, i) => (
                         <li key={i} className="text-sm">
                           {detail}
                         </li>
@@ -425,13 +427,13 @@ function SummariesPage() {
                 )}
 
                 {/* Actionable Items */}
-                {selectedSummary.actionableItems.length > 0 && (
+                {(selectedSummary.actionableItems?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Actionable Items
                     </h4>
                     <ul className="list-disc list-inside space-y-1">
-                      {selectedSummary.actionableItems.map((item, i) => (
+                      {(selectedSummary.actionableItems ?? []).map((item, i) => (
                         <li key={i} className="text-sm">
                           {item}
                         </li>
@@ -490,7 +492,7 @@ function SummaryRow({
       <TableCell>
         <div>
           <div className="font-medium line-clamp-1">
-            {summary.newsletterTitle ?? `Newsletter #${summary.newsletterId}`}
+            {summary.newsletterTitle ?? `Newsletter #${summary.newsletterId ?? "?"}`}
           </div>
           <div className="text-sm text-muted-foreground line-clamp-1">
             {summary.executiveSummaryPreview}
