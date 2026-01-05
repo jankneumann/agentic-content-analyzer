@@ -179,7 +179,7 @@ function SummariesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Avg Processing</CardDescription>
               <CardTitle className="text-2xl">
-                {stats.avgProcessingTime.toFixed(1)}s
+                {stats.avgProcessingTime?.toFixed(1) ?? "0"}s
               </CardTitle>
             </CardHeader>
           </Card>
@@ -187,7 +187,7 @@ function SummariesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Avg Tokens</CardDescription>
               <CardTitle className="text-2xl">
-                {Math.round(stats.avgTokenUsage).toLocaleString()}
+                {Math.round(stats.avgTokenUsage ?? 0).toLocaleString()}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -195,7 +195,7 @@ function SummariesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Models Used</CardDescription>
               <CardTitle className="text-2xl">
-                {Object.keys(stats.byModel).length}
+                {Object.keys(stats.byModel ?? {}).length}
               </CardTitle>
             </CardHeader>
           </Card>
