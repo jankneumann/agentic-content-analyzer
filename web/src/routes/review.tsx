@@ -22,7 +22,7 @@ import {
 
 export const ReviewRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/review",
+  path: "review",
   component: ReviewPage,
 })
 

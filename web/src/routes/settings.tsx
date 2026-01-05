@@ -24,7 +24,7 @@ import {
 
 export const SettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/settings",
+  path: "settings",
   component: SettingsPage,
 })
 

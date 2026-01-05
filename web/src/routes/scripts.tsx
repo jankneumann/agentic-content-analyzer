@@ -23,7 +23,7 @@ import {
 
 export const ScriptsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/scripts",
+  path: "scripts",
   component: ScriptsPage,
 })
 

@@ -23,7 +23,7 @@ import {
 
 export const ThemesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/themes",
+  path: "themes",
   component: ThemesPage,
 })
 

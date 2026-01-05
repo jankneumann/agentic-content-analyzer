@@ -23,7 +23,7 @@ import {
 
 export const PodcastsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/podcasts",
+  path: "podcasts",
   component: PodcastsPage,
 })
 

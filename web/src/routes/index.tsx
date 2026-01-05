@@ -37,7 +37,7 @@ import { Badge } from "@/components/ui/badge"
  */
 export const IndexRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/",
+  path: "/",  // Root path must have leading slash
   component: DashboardPage,
 })
 

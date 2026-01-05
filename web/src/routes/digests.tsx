@@ -23,7 +23,7 @@ import {
 
 export const DigestsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/digests",
+  path: "digests",
   component: DigestsPage,
 })
 

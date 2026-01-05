@@ -69,7 +69,7 @@ import type { SummaryFilters, SummaryListItem } from "@/types"
 
 export const SummariesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/summaries",
+  path: "summaries",
   component: SummariesPage,
 })
 
@@ -499,14 +499,14 @@ function SummaryRow({
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap gap-1">
-          {summary.keyThemes.slice(0, 3).map((theme, i) => (
+          {(summary.keyThemes ?? []).slice(0, 3).map((theme, i) => (
             <Badge key={i} variant="outline" className="text-xs">
               {theme}
             </Badge>
           ))}
-          {summary.keyThemes.length > 3 && (
+          {(summary.keyThemes?.length ?? 0) > 3 && (
             <Badge variant="outline" className="text-xs">
-              +{summary.keyThemes.length - 3}
+              +{(summary.keyThemes?.length ?? 0) - 3}
             </Badge>
           )}
         </div>
@@ -514,18 +514,20 @@ function SummaryRow({
       <TableCell>
         <Badge variant="secondary" className="gap-1">
           <Zap className="h-3 w-3" />
-          {summary.modelUsed.split("-").slice(-2).join("-")}
+          {summary.modelUsed?.split("-").slice(-2).join("-") ?? "Unknown"}
         </Badge>
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {summary.processingTimeSeconds?.toFixed(1)}s
+          {summary.processingTimeSeconds?.toFixed(1) ?? "?"}s
         </span>
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground">
-          {formatDistanceToNow(new Date(summary.createdAt), { addSuffix: true })}
+          {summary.createdAt
+            ? formatDistanceToNow(new Date(summary.createdAt), { addSuffix: true })
+            : "Unknown"}
         </span>
       </TableCell>
       <TableCell>

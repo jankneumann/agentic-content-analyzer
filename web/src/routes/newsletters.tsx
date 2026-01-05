@@ -68,7 +68,7 @@ import type { NewsletterStatus, NewsletterSource, NewsletterFilters } from "@/ty
  */
 export const NewslettersRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/newsletters",
+  path: "newsletters",
   component: NewslettersPage,
 })
 
@@ -267,19 +267,19 @@ function NewslettersPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Pending</CardDescription>
-              <CardTitle className="text-2xl">{stats.byStatus.pending ?? 0}</CardTitle>
+              <CardTitle className="text-2xl">{stats.byStatus?.pending ?? 0}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Summarized</CardDescription>
-              <CardTitle className="text-2xl">{stats.byStatus.completed ?? 0}</CardTitle>
+              <CardTitle className="text-2xl">{stats.byStatus?.completed ?? 0}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Failed</CardDescription>
-              <CardTitle className="text-2xl">{stats.byStatus.failed ?? 0}</CardTitle>
+              <CardTitle className="text-2xl">{stats.byStatus?.failed ?? 0}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -421,9 +421,11 @@ function NewslettersPage() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-muted-foreground">
-                          {formatDistanceToNow(new Date(newsletter.publishedDate), {
-                            addSuffix: true,
-                          })}
+                          {newsletter.publishedDate
+                            ? formatDistanceToNow(new Date(newsletter.publishedDate), {
+                                addSuffix: true,
+                              })
+                            : "Unknown"}
                         </span>
                       </TableCell>
                     </TableRow>
