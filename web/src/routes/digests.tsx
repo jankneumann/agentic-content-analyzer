@@ -7,9 +7,10 @@
  * Route: /digests
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import { FileText, Plus } from "lucide-react"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,7 +21,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export const Route = createFileRoute("/digests")({
+export const DigestsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/digests",
   component: DigestsPage,
 })
 

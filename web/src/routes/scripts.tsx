@@ -7,9 +7,10 @@
  * Route: /scripts
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import { Mic, Plus } from "lucide-react"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,7 +21,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export const Route = createFileRoute("/scripts")({
+export const ScriptsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/scripts",
   component: ScriptsPage,
 })
 

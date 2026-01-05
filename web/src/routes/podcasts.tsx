@@ -7,9 +7,10 @@
  * Route: /podcasts
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import { Radio, Play } from "lucide-react"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,7 +21,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export const Route = createFileRoute("/podcasts")({
+export const PodcastsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/podcasts",
   component: PodcastsPage,
 })
 

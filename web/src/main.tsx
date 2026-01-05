@@ -20,9 +20,6 @@ import "./index.css"
 // Import the route tree
 import { routeTree } from "./routeTree.gen"
 
-// Log router initialization for debugging
-console.log("[main.tsx] Initializing router with route tree:", routeTree)
-
 /**
  * Create the router instance
  *
@@ -35,28 +32,19 @@ console.log("[main.tsx] Initializing router with route tree:", routeTree)
 const router = createRouter({
   routeTree,
   // Default pending component while routes load
-  defaultPendingComponent: () => {
-    console.log("[main.tsx] Rendering pending component")
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    )
-  },
+  defaultPendingComponent: () => (
+    <div className="flex h-screen items-center justify-center bg-background">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    </div>
+  ),
   // Default error component for route errors
-  defaultErrorComponent: ({ error }) => {
-    console.error("[main.tsx] Route error:", error)
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
-        <h1 className="text-2xl font-bold text-red-500">Something went wrong</h1>
-        <p className="text-gray-500">{error.message}</p>
-        <pre className="max-w-lg overflow-auto text-xs">{error.stack}</pre>
-      </div>
-    )
-  },
+  defaultErrorComponent: ({ error }) => (
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+      <h1 className="text-2xl font-bold text-destructive">Something went wrong</h1>
+      <p className="text-muted-foreground">{error.message}</p>
+    </div>
+  ),
 })
-
-console.log("[main.tsx] Router created:", router)
 
 /**
  * Declare router type for TypeScript
@@ -76,19 +64,8 @@ declare module "@tanstack/react-router" {
  * Uses createRoot for React 18+ concurrent features.
  * StrictMode enables additional development checks.
  */
-console.log("[main.tsx] Rendering to root element")
-const rootElement = document.getElementById("root")
-console.log("[main.tsx] Root element:", rootElement)
-
-if (rootElement) {
-  const root = createRoot(rootElement)
-  console.log("[main.tsx] Created React root, rendering...")
-  root.render(
-    <StrictMode>
-      <RouterProvider router={router} />
-    </StrictMode>
-  )
-  console.log("[main.tsx] Render called")
-} else {
-  console.error("[main.tsx] Root element not found!")
-}
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>
+)

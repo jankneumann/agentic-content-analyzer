@@ -9,7 +9,7 @@
  * Route: /
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import {
   Newspaper,
   Sparkles,
@@ -20,6 +20,7 @@ import {
   Mic,
 } from "lucide-react"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer, PageSection } from "@/components/layout"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,7 +35,9 @@ import { Badge } from "@/components/ui/badge"
 /**
  * Route definition for the index page
  */
-export const Route = createFileRoute("/")({
+export const IndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
   component: DashboardPage,
 })
 

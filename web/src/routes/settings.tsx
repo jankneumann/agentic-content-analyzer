@@ -9,9 +9,10 @@
  * Route: /settings
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import { Cpu, Volume2, Database } from "lucide-react"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer, PageSection } from "@/components/layout"
 import {
   Card,
@@ -21,7 +22,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export const Route = createFileRoute("/settings")({
+export const SettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
   component: SettingsPage,
 })
 

@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react"
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import {
   Sparkles,
   Play,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
 import { Button } from "@/components/ui/button"
 import {
@@ -66,7 +67,9 @@ import {
 } from "@/hooks"
 import type { SummaryFilters, SummaryListItem } from "@/types"
 
-export const Route = createFileRoute("/summaries")({
+export const SummariesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/summaries",
   component: SummariesPage,
 })
 

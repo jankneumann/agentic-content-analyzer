@@ -7,9 +7,10 @@
  * Route: /themes
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import { BarChart3, Network, Table2 } from "lucide-react"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,7 +21,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export const Route = createFileRoute("/themes")({
+export const ThemesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/themes",
   component: ThemesPage,
 })
 

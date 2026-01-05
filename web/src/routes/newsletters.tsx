@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react"
-import { createFileRoute } from "@tanstack/react-router"
+import { createRoute } from "@tanstack/react-router"
 import {
   Newspaper,
   Plus,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
+import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
 import { Button } from "@/components/ui/button"
 import {
@@ -65,7 +66,9 @@ import type { NewsletterStatus, NewsletterSource, NewsletterFilters } from "@/ty
 /**
  * Route definition
  */
-export const Route = createFileRoute("/newsletters")({
+export const NewslettersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/newsletters",
   component: NewslettersPage,
 })
 
