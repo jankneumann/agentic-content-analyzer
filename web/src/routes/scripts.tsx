@@ -201,10 +201,11 @@ function ScriptsPage() {
   }
 
   // Determine if the selected script is reviewable
-  const isReviewable = selectedScript &&
-    (selectedScript as ScriptDetail).status &&
+  const scriptDetail = selectedScript as unknown as ScriptDetail | undefined
+  const isReviewable = scriptDetail &&
+    scriptDetail.status &&
     ["script_pending_review", "script_revision_requested"].includes(
-      (selectedScript as ScriptDetail).status as string
+      scriptDetail.status
     )
 
   // Filter scripts by search
@@ -384,9 +385,9 @@ function ScriptsPage() {
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
-          ) : selectedScript ? (
+          ) : scriptDetail ? (
             (() => {
-              const script = selectedScript as ScriptDetail
+              const script = scriptDetail
               return (
                 <ScrollArea className="max-h-[60vh] pr-4">
                   <div className="space-y-6 py-4">
@@ -490,9 +491,9 @@ function ScriptsPage() {
                 </Button>
               </>
             )}
-            {selectedScriptId && !isReviewable && selectedScript && (
+            {selectedScriptId && !isReviewable && scriptDetail && (
               <span className="text-sm text-muted-foreground">
-                Script is {(selectedScript as ScriptDetail).status?.replace(/_/g, " ")}
+                Script is {scriptDetail.status?.replace(/_/g, " ")}
               </span>
             )}
           </DialogFooter>
