@@ -68,17 +68,33 @@ import type { ScriptListItem } from "@/types"
 /**
  * Script detail type for display
  */
+interface DialogueTurn {
+  speaker: string
+  text: string
+  emphasis?: string
+  pause_after?: number
+}
+
 interface ScriptDetailSection {
-  section_type: string
+  index: number
+  type: string
   title: string
-  dialogue: unknown[]
+  word_count: number
+  dialogue: DialogueTurn[]
+  sources_cited: number[]
 }
 
 interface ScriptDetail {
+  id: number
+  digest_id: number
   title?: string
   length?: string
+  word_count?: number
+  estimated_duration?: string
   status?: string
+  revision_count?: number
   sections?: ScriptDetailSection[]
+  sources_summary?: Array<{ id: number; title: string; publication: string }>
 }
 
 export const ScriptsRoute = createRoute({
@@ -377,26 +393,52 @@ function ScriptsPage() {
                       </div>
                     </div>
 
-                    {/* Sections preview */}
+                    {/* Sections with dialogue */}
                     {script.sections && (
                       <div>
-                        <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                          Sections
+                        <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                          Sections ({script.sections.length})
                         </h4>
-                        <div className="space-y-2">
+                        <div className="space-y-4">
                           {script.sections.map((section, i) => (
-                            <div key={i} className="p-3 rounded-lg border">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Badge variant="outline" className="text-xs">
-                                  {section.section_type}
+                            <div key={i} className="rounded-lg border">
+                              {/* Section header */}
+                              <div className="flex items-center gap-2 p-3 border-b bg-muted/30">
+                                <Badge variant="outline" className="text-xs capitalize">
+                                  {section.type}
                                 </Badge>
-                                <span className="font-medium text-sm">
+                                <span className="font-medium text-sm flex-1">
                                   {section.title}
                                 </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {section.word_count} words
+                                </span>
                               </div>
-                              <p className="text-xs text-muted-foreground">
-                                {section.dialogue?.length ?? 0} dialogue turns
-                              </p>
+                              {/* Dialogue content */}
+                              <div className="p-3 space-y-3">
+                                {section.dialogue?.map((turn, j) => (
+                                  <div key={j} className="flex gap-3">
+                                    <div className="flex-shrink-0">
+                                      <Badge
+                                        variant={turn.speaker === "ALEX" ? "default" : "secondary"}
+                                        className="w-14 justify-center text-xs"
+                                      >
+                                        {turn.speaker}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="text-sm leading-relaxed">
+                                        {turn.text}
+                                      </p>
+                                      {turn.emphasis && (
+                                        <span className="text-xs text-muted-foreground italic">
+                                          [{turn.emphasis}]
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           ))}
                         </div>
