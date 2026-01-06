@@ -1,7 +1,7 @@
 """Tests for GraphitiClient."""
 
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -92,8 +92,7 @@ def test_graphiti_client_initialization(mock_neo4j_driver, mock_graphiti):
 
             # Verify driver was created
             mock_graphdb.driver.assert_called_once_with(
-                "bolt://localhost:7687",
-                auth=("neo4j", "password")
+                "bolt://localhost:7687", auth=("neo4j", "password")
             )
 
             # Verify Graphiti was initialized
@@ -129,9 +128,7 @@ async def test_add_newsletter_summary(
             mock_graphiti_class.return_value = mock_graphiti
 
             client = GraphitiClient()
-            episode_id = await client.add_newsletter_summary(
-                sample_newsletter, sample_summary
-            )
+            episode_id = await client.add_newsletter_summary(sample_newsletter, sample_summary)
 
             # Verify episode was added to Graphiti
             mock_graphiti.add_episode.assert_called_once()

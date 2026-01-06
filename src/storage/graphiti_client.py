@@ -5,11 +5,10 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from graphiti_core import Graphiti
-from graphiti_core.nodes import EpisodeType
-from graphiti_core.llm_client.anthropic_client import AnthropicClient, LLMConfig
-from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
-
+from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+from graphiti_core.llm_client.anthropic_client import AnthropicClient, LLMConfig
+from graphiti_core.nodes import EpisodeType
 from neo4j import GraphDatabase
 
 from src.config import settings
@@ -48,17 +47,11 @@ class GraphitiClient:
         self.openai_api_key = openai_api_key or settings.openai_api_key
 
         # Initialize Neo4j driver
-        self.driver = GraphDatabase.driver(
-            self.neo4j_uri,
-            auth=(neo4j_user, neo4j_password)
-        )
+        self.driver = GraphDatabase.driver(self.neo4j_uri, auth=(neo4j_user, neo4j_password))
 
         # Initialize LLM client with Claude
         llm_client = AnthropicClient(
-            config=LLMConfig(
-                api_key=self.anthropic_api_key,
-                model="claude-haiku-4-5-20251001"
-            )
+            config=LLMConfig(api_key=self.anthropic_api_key, model="claude-haiku-4-5-20251001")
         )
 
         # Initialize embedder with OpenAI
@@ -72,7 +65,7 @@ class GraphitiClient:
         cross_encoder = OpenAIRerankerClient(
             config=LLMConfig(
                 api_key=self.openai_api_key,
-                model="gpt-4o-mini"  # Use a smaller model for reranking
+                model="gpt-4o-mini",  # Use a smaller model for reranking
             )
         )
 
@@ -122,16 +115,6 @@ class GraphitiClient:
         # Create structured episode content with section headers
         episode_content = self._create_episode_content(newsletter, summary)
 
-        # Create episode metadata
-        episode_metadata = {
-            "newsletter_id": newsletter.id,
-            "source": newsletter.source.value,
-            "publication": newsletter.publication or newsletter.sender,
-            "sender": newsletter.sender,
-            "model_used": summary.model_used,
-            "relevance_scores": summary.relevance_scores or {},
-        }
-
         # Use newsletter published date as episode timestamp
         reference_time = newsletter.published_date or datetime.now()
 
@@ -145,8 +128,7 @@ class GraphitiClient:
         )
 
         logger.info(
-            f"Added episode {episode_id} for newsletter {newsletter.id} "
-            f"({newsletter.title})"
+            f"Added episode {episode_id} for newsletter {newsletter.id} ({newsletter.title})"
         )
 
         return episode_id
@@ -197,8 +179,7 @@ class GraphitiClient:
             List of temporal entities and relationships
         """
         logger.info(
-            f"Getting temporal context for {len(concepts)} concepts "
-            f"from {start_date} to {end_date}"
+            f"Getting temporal context for {len(concepts)} concepts from {start_date} to {end_date}"
         )
 
         # Search for each concept and filter by time
@@ -286,9 +267,7 @@ class GraphitiClient:
         Returns:
             List of related entities, facts, and themes
         """
-        logger.info(
-            f"Extracting themes from newsletters between {start_date} and {end_date}"
-        )
+        logger.info(f"Extracting themes from newsletters between {start_date} and {end_date}")
 
         # Search for broad AI/tech themes
         results = await self.graphiti.search(
@@ -392,14 +371,13 @@ class GraphitiClient:
 
         # Filter semantic results by date
         filtered_semantic = [
-            r for r in semantic_results
-            if "reference_time" in r
-            and start_date <= r["reference_time"] < before_date
+            r
+            for r in semantic_results
+            if "reference_time" in r and start_date <= r["reference_time"] < before_date
         ]
 
         logger.info(
-            f"Found {len(mentions)} direct mentions and "
-            f"{len(filtered_semantic)} semantic matches"
+            f"Found {len(mentions)} direct mentions and {len(filtered_semantic)} semantic matches"
         )
 
         # Combine results (prioritize direct mentions)
@@ -516,44 +494,32 @@ class GraphitiClient:
 
         # Executive summary
         if summary.executive_summary:
-            sections.append(
-                f"[EXECUTIVE_SUMMARY]\n{summary.executive_summary}"
-            )
+            sections.append(f"[EXECUTIVE_SUMMARY]\n{summary.executive_summary}")
 
         # Key themes
         if summary.key_themes:
             themes_text = "; ".join(summary.key_themes)
-            sections.append(
-                f"[KEY_THEMES]\n{themes_text}"
-            )
+            sections.append(f"[KEY_THEMES]\n{themes_text}")
 
         # Strategic insights (for CTO/leadership)
         if summary.strategic_insights:
             insights_text = " ".join(summary.strategic_insights)
-            sections.append(
-                f"[STRATEGIC_INSIGHTS]\n{insights_text}"
-            )
+            sections.append(f"[STRATEGIC_INSIGHTS]\n{insights_text}")
 
         # Technical details (for developers)
         if summary.technical_details:
             details_text = " ".join(summary.technical_details)
-            sections.append(
-                f"[TECHNICAL_DETAILS]\n{details_text}"
-            )
+            sections.append(f"[TECHNICAL_DETAILS]\n{details_text}")
 
         # Actionable items
         if summary.actionable_items:
             actions_text = " ".join(summary.actionable_items)
-            sections.append(
-                f"[ACTIONABLE_ITEMS]\n{actions_text}"
-            )
+            sections.append(f"[ACTIONABLE_ITEMS]\n{actions_text}")
 
         # Notable quotes and data points
         if summary.notable_quotes:
             quotes_text = " ".join(summary.notable_quotes)
-            sections.append(
-                f"[NOTABLE_DATA]\n{quotes_text}"
-            )
+            sections.append(f"[NOTABLE_DATA]\n{quotes_text}")
 
         return "\n\n".join(sections)
 

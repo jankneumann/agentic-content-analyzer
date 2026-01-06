@@ -8,9 +8,8 @@ This separation enables human review before expensive TTS synthesis.
 """
 
 import time
+from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
-from typing import Callable, Optional
 
 from src.config import settings
 from src.config.models import ModelConfig
@@ -49,7 +48,7 @@ class PodcastCreator:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
+        model_config: ModelConfig | None = None,
     ):
         """Initialize podcast creator.
 
@@ -171,7 +170,7 @@ class PodcastCreator:
         voice_provider: VoiceProvider = VoiceProvider.OPENAI_TTS,
         alex_voice: VoicePersona = VoicePersona.ALEX_MALE,
         sam_voice: VoicePersona = VoicePersona.SAM_FEMALE,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
         use_v2_generator: bool = True,  # Default to V2 (batched, ffmpeg-based)
         speed: float = 1.3,  # Default to 1.3x speed
     ) -> Podcast:
@@ -199,17 +198,12 @@ class PodcastCreator:
             RuntimeError: If audio generation fails
         """
         start_time = time.time()
-        logger.info(
-            f"Phase 2: Generating audio for script {script_id} "
-            f"with {voice_provider.value}"
-        )
+        logger.info(f"Phase 2: Generating audio for script {script_id} with {voice_provider.value}")
 
         # Load and validate script
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record:
@@ -245,6 +239,7 @@ class PodcastCreator:
             # Initialize audio generator with voice config
             if use_v2_generator:
                 from src.delivery.audio_generator_v2 import PodcastAudioGeneratorV2
+
                 self.audio_generator = PodcastAudioGeneratorV2(
                     provider=voice_provider,
                     alex_voice=alex_voice,
@@ -395,19 +390,13 @@ class PodcastCreator:
         """
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record:
                 return {"error": f"Script {script_id} not found"}
 
-            podcasts = (
-                db.query(Podcast)
-                .filter(Podcast.script_id == script_id)
-                .all()
-            )
+            podcasts = db.query(Podcast).filter(Podcast.script_id == script_id).all()
 
             return {
                 "script_id": script_id,
@@ -417,8 +406,12 @@ class PodcastCreator:
                 "status": script_record.status,
                 "word_count": script_record.word_count,
                 "revision_count": script_record.revision_count or 0,
-                "created_at": script_record.created_at.isoformat() if script_record.created_at else None,
-                "approved_at": script_record.approved_at.isoformat() if script_record.approved_at else None,
+                "created_at": script_record.created_at.isoformat()
+                if script_record.created_at
+                else None,
+                "approved_at": script_record.approved_at.isoformat()
+                if script_record.approved_at
+                else None,
                 "podcasts": [
                     {
                         "podcast_id": p.id,

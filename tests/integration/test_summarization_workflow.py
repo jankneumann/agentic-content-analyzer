@@ -124,11 +124,9 @@ def test_summarize_newsletter_llm_error(db_session, sample_newsletters, mock_get
     newsletter = sample_newsletters[0]
 
     # Mock LLM to raise exception
-    mock_client = type('MockClient', (), {})()
-    mock_client.messages = type('Messages', (), {})()
-    mock_client.messages.create = lambda **kwargs: (_ for _ in ()).throw(
-        Exception("API Error")
-    )
+    mock_client = type("MockClient", (), {})()
+    mock_client.messages = type("Messages", (), {})()
+    mock_client.messages.create = lambda **kwargs: (_ for _ in ()).throw(Exception("API Error"))
 
     with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
@@ -199,9 +197,7 @@ def test_summarize_pending_newsletters_with_limit(
 
     # Verify one newsletter still pending
     pending = (
-        db_session.query(Newsletter)
-        .filter(Newsletter.status == ProcessingStatus.PENDING)
-        .count()
+        db_session.query(Newsletter).filter(Newsletter.status == ProcessingStatus.PENDING).count()
     )
     assert pending == 1
 

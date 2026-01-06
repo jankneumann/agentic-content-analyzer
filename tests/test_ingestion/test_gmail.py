@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ingestion.gmail import GmailClient, GmailIngestionService
+from src.ingestion.gmail import GmailClient
 from src.models.newsletter import NewsletterSource, ProcessingStatus
 
 
@@ -40,7 +40,9 @@ def test_extract_publication_name():
     client = GmailClient.__new__(GmailClient)
 
     # Test "Name <email>" format
-    assert client._extract_publication_name("Newsletter Name <news@example.com>") == "Newsletter Name"
+    assert (
+        client._extract_publication_name("Newsletter Name <news@example.com>") == "Newsletter Name"
+    )
 
     # Test email only
     assert client._extract_publication_name("news@example.com") == "Example"

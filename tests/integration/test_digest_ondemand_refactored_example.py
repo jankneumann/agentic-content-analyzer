@@ -7,17 +7,17 @@ This demonstrates the new testing approach:
 - Mocked API calls with cached responses (Anthropic, OpenAI)
 """
 
-import pytest
 import logging
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.models.digest import DigestRequest, DigestType
 from src.models.summary import NewsletterSummary
 from src.processors.digest_creator import DigestCreator
-
-from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 from tests.helpers.api_mocks import create_anthropic_summarization_responses
+from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -41,8 +41,7 @@ async def test_digest_creates_missing_summaries_refactored(db_session):
     # ============================================================
     logger.info("Loading test newsletters into database...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
     logger.info(f"Loaded {len(newsletters)} newsletters: {[nl.id for nl in newsletters]}")
 
@@ -78,11 +77,11 @@ async def test_digest_creates_missing_summaries_refactored(db_session):
                     {
                         "object": "embedding",
                         "embedding": [0.002] * 1536,  # Mock embedding vector
-                        "index": 0
+                        "index": 0,
                     }
                 ],
                 "model": "text-embedding-3-small",
-                "usage": {"prompt_tokens": 8, "total_tokens": 8}
+                "usage": {"prompt_tokens": 8, "total_tokens": 8},
             }
             mock_httpx.return_value = mock_openai_response
 
@@ -105,18 +104,24 @@ async def test_digest_creates_missing_summaries_refactored(db_session):
 
             # Mock digest creation response
             mock_digest_response = MagicMock()
-            mock_digest_response.content = [MagicMock(text='''{
+            mock_digest_response.content = [
+                MagicMock(
+                    text="""{
                 "title": "Test Daily Digest",
                 "executive_overview": "Test overview",
                 "strategic_insights": [],
                 "technical_developments": [],
                 "emerging_trends": [],
                 "actionable_recommendations": []
-            }''')]
+            }"""
+                )
+            ]
             mock_digest_response.usage = MagicMock(input_tokens=500, output_tokens=200)
 
             # Add digest response to mock sequence (after summaries)
-            mock_client.messages.create.side_effect = mock_summary_responses + [mock_digest_response]
+            mock_client.messages.create.side_effect = mock_summary_responses + [
+                mock_digest_response
+            ]
 
             digest = await creator.create_digest(request)
             logger.info("Digest creation completed")
@@ -133,13 +138,17 @@ async def test_digest_creates_missing_summaries_refactored(db_session):
 
     # Verify each newsletter has a summary with REAL data
     for newsletter in newsletters:
-        summary = db_session.query(NewsletterSummary).filter(
-            NewsletterSummary.newsletter_id == newsletter.id
-        ).first()
+        summary = (
+            db_session.query(NewsletterSummary)
+            .filter(NewsletterSummary.newsletter_id == newsletter.id)
+            .first()
+        )
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
         assert summary.executive_summary is not None
         assert len(summary.key_themes) > 0
-        logger.info(f"✓ Newsletter {newsletter.id} has summary with {len(summary.key_themes)} themes")
+        logger.info(
+            f"✓ Newsletter {newsletter.id} has summary with {len(summary.key_themes)} themes"
+        )
 
     # Verify digest was created
     assert digest is not None

@@ -1,15 +1,15 @@
 """Tests for DigestReviser processor."""
 
 import json
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
+from src.config.models import ModelConfig, Provider, ProviderConfig
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.newsletter import Newsletter, NewsletterSource
-from src.models.revision import RevisionContext, RevisionResult
+from src.models.revision import RevisionContext
 from src.models.summary import NewsletterSummary
 from src.processors.digest_reviser import DigestReviser
 
@@ -19,9 +19,7 @@ def mock_model_config():
     """Create mock model configuration."""
     config = ModelConfig(
         digest_revision="claude-sonnet-4-5",
-        providers=[
-            ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")
-        ],
+        providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")],
     )
     return config
 
@@ -53,6 +51,7 @@ def sample_digest():
         status=DigestStatus.PENDING_REVIEW,
         agent_framework="claude",
         model_used="claude-sonnet-4-5",
+        revision_count=0,  # Initialize revision count
     )
     digest.id = 1
     return digest
@@ -66,10 +65,10 @@ def sample_newsletters():
         newsletter = Newsletter(
             source=NewsletterSource.GMAIL,
             source_id=f"test-{i}",
-            title=f"Newsletter {i+1}",
+            title=f"Newsletter {i + 1}",
             publication="Tech Weekly",
             published_date=datetime(2025, 1, 15, 10 + i, 0, 0),
-            raw_text=f"Content for newsletter {i+1} about AI and RAG systems.",
+            raw_text=f"Content for newsletter {i + 1} about AI and RAG systems.",
         )
         newsletter.id = i + 1
         newsletters.append(newsletter)
@@ -113,15 +112,12 @@ class TestDigestReviserInitialization:
 
     def test_initialization_with_model_override(self, mock_model_config):
         """Test initialization with model override."""
-        reviser = DigestReviser(
-            model_config=mock_model_config,
-            model="claude-opus-4-5"
-        )
+        reviser = DigestReviser(model_config=mock_model_config, model="claude-opus-4-5")
 
         assert reviser.model == "claude-opus-4-5"
 
-    @patch('src.processors.digest_reviser.settings')
-    def test_initialization_without_config(self, mock_settings):
+    @patch("src.config.settings")
+    def test_initialization_without_config(self, mock_settings, mock_model_config):
         """Test initialization without config (uses settings)."""
         mock_settings.get_model_config.return_value = mock_model_config
 
@@ -135,30 +131,33 @@ class TestDigestReviserLoadContext:
     """Tests for load_context method."""
 
     @pytest.mark.asyncio
-    async def test_load_context_success(
-        self, sample_digest, sample_summaries, sample_newsletters
-    ):
+    async def test_load_context_success(self, sample_digest, sample_summaries, sample_newsletters):
         """Test successful context loading."""
-        with patch('src.processors.digest_reviser.get_db') as mock_get_db:
+        with patch("src.processors.digest_reviser.get_db") as mock_get_db:
             # Setup mock database session
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            # Mock digest query
-            mock_db.query.return_value.filter_by.return_value.first.return_value = sample_digest
+            # Create separate query mocks for Digest and NewsletterSummary
+            digest_query_mock = MagicMock()
+            digest_query_mock.filter_by.return_value.first.return_value = sample_digest
 
-            # Mock summaries query
-            mock_summaries_query = MagicMock()
-            mock_summaries_query.join.return_value = mock_summaries_query
-            mock_summaries_query.filter.return_value = mock_summaries_query
-            mock_summaries_query.order_by.return_value = mock_summaries_query
-            mock_summaries_query.all.return_value = sample_summaries
+            summary_query_mock = MagicMock()
+            summary_query_mock.options.return_value = summary_query_mock
+            summary_query_mock.join.return_value = summary_query_mock
+            summary_query_mock.filter.return_value = summary_query_mock
+            summary_query_mock.order_by.return_value = summary_query_mock
+            summary_query_mock.all.return_value = sample_summaries
 
-            # Chain query calls
-            mock_db.query.side_effect = [
-                mock_db.query.return_value,  # First call for Digest
-                mock_summaries_query,  # Second call for NewsletterSummary
-            ]
+            # Return different mocks based on which model is being queried
+            def query_side_effect(model):
+                if model.__name__ == "Digest":
+                    return digest_query_mock
+                elif model.__name__ == "NewsletterSummary":
+                    return summary_query_mock
+                return MagicMock()
+
+            mock_db.query.side_effect = query_side_effect
 
             reviser = DigestReviser()
             context = await reviser.load_context(digest_id=1)
@@ -171,7 +170,7 @@ class TestDigestReviserLoadContext:
     @pytest.mark.asyncio
     async def test_load_context_digest_not_found(self):
         """Test context loading when digest doesn't exist."""
-        with patch('src.processors.digest_reviser.get_db') as mock_get_db:
+        with patch("src.processors.digest_reviser.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -211,11 +210,9 @@ class TestDigestReviserToolHandlers:
     """Tests for tool call handlers."""
 
     @pytest.mark.asyncio
-    async def test_handle_fetch_newsletter_content(
-        self, sample_newsletters, sample_summaries
-    ):
+    async def test_handle_fetch_newsletter_content(self, sample_newsletters, sample_summaries):
         """Test fetching newsletter content."""
-        with patch('src.processors.digest_reviser.get_db') as mock_get_db:
+        with patch("src.processors.digest_reviser.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -319,9 +316,7 @@ class TestDigestReviserApplyRevision:
         """Test applying revision to strategic insights."""
         reviser = DigestReviser()
 
-        new_insights = [
-            {"title": "New Insight", "summary": "Summary", "details": []}
-        ]
+        new_insights = [{"title": "New Insight", "summary": "Summary", "details": []}]
         updated_digest = await reviser.apply_revision(
             digest=sample_digest,
             section="strategic_insights",

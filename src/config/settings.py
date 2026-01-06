@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Database
-    database_url: str = "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
+    database_url: str = (
+        "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
+    )
     redis_url: str = "redis://localhost:6379/0"
 
     # Neo4j / Graphiti
@@ -110,8 +112,10 @@ class Settings(BaseSettings):
 
         # Try feeds file if it exists
         if os.path.exists(self.rss_feeds_file):
-            with open(self.rss_feeds_file, "r") as f:
-                file_feeds = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+            with open(self.rss_feeds_file) as f:
+                file_feeds = [
+                    line.strip() for line in f if line.strip() and not line.startswith("#")
+                ]
                 feeds.extend(file_feeds)
 
         # Remove duplicates while preserving order

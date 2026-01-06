@@ -5,7 +5,6 @@ Modules:
     models: LLM model configuration and provider management
 """
 
-from src.config.settings import Settings, get_settings, settings
 from src.config.models import (
     ModelConfig,
     ModelFamily,
@@ -15,6 +14,7 @@ from src.config.models import (
     get_model_config,
     set_model_config,
 )
+from src.config.settings import Settings, get_settings, settings
 
 __all__ = [
     # Application settings

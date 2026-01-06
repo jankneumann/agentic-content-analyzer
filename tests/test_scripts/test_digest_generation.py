@@ -3,6 +3,8 @@
 import asyncio
 from datetime import datetime
 
+import pytest
+
 from src.models.digest import DigestRequest, DigestType
 from src.processors.digest_creator import DigestCreator
 from src.utils.logging import get_logger
@@ -10,6 +12,8 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+@pytest.mark.skip(reason="Functional test requiring database - run manually")
+@pytest.mark.asyncio
 async def test_digest_generation():
     """Generate a test digest for December 26, 2025."""
     logger.info("=" * 80)
@@ -70,9 +74,7 @@ async def test_digest_generation():
         logger.info(f"SOURCES ({len(digest.sources)}):")
         logger.info("-" * 80)
         for i, source in enumerate(digest.sources, 1):
-            logger.info(
-                f"{i}. [{source['id']}] {source['publication']} - {source['title']}"
-            )
+            logger.info(f"{i}. [{source['id']}] {source['publication']} - {source['title']}")
 
         logger.info("\n" + "=" * 80)
         logger.info("VERIFICATION: Check the logs above for:")

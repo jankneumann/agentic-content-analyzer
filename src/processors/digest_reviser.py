@@ -1,7 +1,7 @@
 """Digest revision processor with AI-powered interactive refinement."""
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from anthropic import Anthropic
 from sqlalchemy.orm import joinedload
@@ -26,8 +26,8 @@ class DigestReviser:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
-        model: Optional[str] = None,
+        model_config: ModelConfig | None = None,
+        model: str | None = None,
     ) -> None:
         """
         Initialize digest reviser.
@@ -45,12 +45,10 @@ class DigestReviser:
         self.model_config = model_config
 
         # Use configured model for digest revision, or override
-        self.model = model or self.model_config.get_model_for_step(
-            ModelStep.DIGEST_REVISION
-        )
+        self.model = model or self.model_config.get_model_for_step(ModelStep.DIGEST_REVISION)
 
         # Provider tracking (for cost calculation)
-        self.provider_used: Optional[Provider] = None
+        self.provider_used: Provider | None = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
 
@@ -119,7 +117,7 @@ class DigestReviser:
         self,
         context: RevisionContext,
         user_request: str,
-        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        conversation_history: list[dict[str, Any]] | None = None,
     ) -> RevisionResult:
         """Process revision request with LLM (with tool use).
 
@@ -149,9 +147,7 @@ class DigestReviser:
         anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
 
         if not anthropic_providers:
-            raise ValueError(
-                f"No Anthropic-compatible providers configured for model {self.model}"
-            )
+            raise ValueError(f"No Anthropic-compatible providers configured for model {self.model}")
 
         # Try each provider in order (failover support)
         last_error = None
@@ -208,9 +204,7 @@ class DigestReviser:
                             tools_used.append(block.name)
 
                             # Handle tool call
-                            result = await self._handle_tool_call(
-                                block.name, block.input, context
-                            )
+                            result = await self._handle_tool_call(block.name, block.input, context)
 
                             tool_results.append(
                                 {
@@ -243,7 +237,7 @@ class DigestReviser:
                 continue  # Try next provider
 
             except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {str(e)}"
+                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
                 logger.error(error_msg)
                 last_error = str(e)
                 continue  # Try next provider
@@ -254,7 +248,7 @@ class DigestReviser:
         raise Exception(final_error)
 
     async def _handle_tool_call(
-        self, tool_name: str, tool_input: Dict[str, Any], context: RevisionContext
+        self, tool_name: str, tool_input: dict[str, Any], context: RevisionContext
     ) -> str:
         """Handle LLM tool calls during revision.
 
@@ -277,9 +271,7 @@ class DigestReviser:
 
             # Fetch from database
             with get_db() as db:
-                newsletter = (
-                    db.query(Newsletter).filter_by(id=newsletter_id).first()
-                )
+                newsletter = db.query(Newsletter).filter_by(id=newsletter_id).first()
 
                 if not newsletter:
                     return f"Error: Newsletter {newsletter_id} not found"
@@ -325,9 +317,7 @@ class DigestReviser:
                 # Check strategic insights
                 for insight in summary.strategic_insights:
                     if query in str(insight).lower():
-                        results.append(
-                            f"- {summary.newsletter.title}: {str(insight)[:150]}..."
-                        )
+                        results.append(f"- {summary.newsletter.title}: {str(insight)[:150]}...")
                         break
 
             if not results:
@@ -340,7 +330,7 @@ class DigestReviser:
         else:
             return f"Error: Unknown tool '{tool_name}'"
 
-    def _get_tool_definitions(self) -> List[Dict[str, Any]]:
+    def _get_tool_definitions(self) -> list[dict[str, Any]]:
         """Get tool definitions for Claude SDK.
 
         Returns:
@@ -391,8 +381,8 @@ class DigestReviser:
         self,
         context: RevisionContext,
         user_request: str,
-        conversation_history: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[Dict[str, Any]]:
+        conversation_history: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         """Build messages for Claude API with context and history.
 
         Args:
@@ -453,9 +443,7 @@ Example response format:
 
         return messages
 
-    def _parse_revision_result(
-        self, response: Any, context: RevisionContext
-    ) -> RevisionResult:
+    def _parse_revision_result(self, response: Any, context: RevisionContext) -> RevisionResult:
         """Parse Claude response into RevisionResult.
 
         Args:
@@ -489,7 +477,7 @@ Example response format:
             confidence_score=result_dict.get("confidence_score", 1.0),
         )
 
-    def _extract_json_from_response(self, response_text: str) -> Dict[str, Any]:
+    def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
         """Extract JSON from Claude response, handling markdown code blocks.
 
         Args:
@@ -516,7 +504,7 @@ Example response format:
             json_str = response_text[json_start:json_end].strip()
             return json.loads(json_str)
 
-        raise json.JSONDecodeError(f"Could not extract JSON from response", response_text, 0)
+        raise json.JSONDecodeError("Could not extract JSON from response", response_text, 0)
 
     async def apply_revision(
         self,
@@ -553,8 +541,7 @@ Example response format:
 
         if section not in section_mapping:
             raise ValueError(
-                f"Invalid section '{section}'. "
-                f"Valid sections: {list(section_mapping.keys())}"
+                f"Invalid section '{section}'. Valid sections: {list(section_mapping.keys())}"
             )
 
         # Update the field

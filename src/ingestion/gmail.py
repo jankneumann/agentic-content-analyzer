@@ -3,7 +3,7 @@
 import base64
 import os.path
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -14,7 +14,7 @@ from googleapiclient.errors import HttpError
 from src.config import settings
 from src.models.newsletter import Newsletter, NewsletterData, NewsletterSource, ProcessingStatus
 from src.storage.database import get_db
-from src.utils.content_hash import generate_content_hash, should_skip_duplicate
+from src.utils.content_hash import generate_content_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
 
@@ -71,7 +71,7 @@ class GmailClient:
         self,
         query: str = "label:newsletters-ai",
         max_results: int = 10,
-        after_date: Optional[datetime] = None,
+        after_date: datetime | None = None,
     ) -> list[NewsletterData]:
         """
         Fetch newsletters from Gmail.
@@ -125,7 +125,7 @@ class GmailClient:
             logger.error(f"Gmail API error: {error}")
             raise
 
-    def _fetch_and_parse_message(self, message_id: str) -> Optional[NewsletterData]:
+    def _fetch_and_parse_message(self, message_id: str) -> NewsletterData | None:
         """
         Fetch and parse a single Gmail message.
 
@@ -192,7 +192,7 @@ class GmailClient:
             logger.error(f"Error fetching message {message_id}: {e}")
             return None
 
-    def _extract_body(self, payload: dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    def _extract_body(self, payload: dict[str, Any]) -> tuple[str | None, str | None]:
         """
         Extract HTML and plain text body from message payload.
 
@@ -291,7 +291,7 @@ class GmailIngestionService:
         self,
         query: str = "label:newsletters-ai",
         max_results: int = 10,
-        after_date: Optional[datetime] = None,
+        after_date: datetime | None = None,
         force_reprocess: bool = False,
     ) -> int:
         """

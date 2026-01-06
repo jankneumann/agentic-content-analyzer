@@ -311,11 +311,13 @@ class SummaryFormatter:
         # Title and metadata
         html_parts.append(f"        <h1>{newsletter.title}</h1>")
         html_parts.append(f"""        <div class="metadata">
-            <strong>Publication:</strong> {newsletter.publication or 'N/A'}<br>
-            <strong>Published:</strong> {newsletter.published_date.strftime('%B %d, %Y %H:%M')}<br>
+            <strong>Publication:</strong> {newsletter.publication or "N/A"}<br>
+            <strong>Published:</strong> {newsletter.published_date.strftime("%B %d, %Y %H:%M")}<br>
 """)
         if newsletter.url:
-            html_parts.append(f'            <strong>URL:</strong> <a href="{newsletter.url}">{newsletter.url}</a><br>')
+            html_parts.append(
+                f'            <strong>URL:</strong> <a href="{newsletter.url}">{newsletter.url}</a><br>'
+            )
         html_parts.append("        </div>\n")
 
         # Executive Summary
@@ -382,14 +384,14 @@ class SummaryFormatter:
             for category, score in summary.relevance_scores.items():
                 bar_width = int(score * 150)  # Max 150px
                 html_parts.append(f"""            <div class="score-item">
-                <strong>{category.replace('_', ' ').title()}:</strong> {score:.2f}
+                <strong>{category.replace("_", " ").title()}:</strong> {score:.2f}
                 <span class="score-bar" style="width: {bar_width}px;"></span>
             </div>""")
             html_parts.append("        </div>\n")
 
         # Footer
         html_parts.append(f"""        <div class="footer">
-            Summarized on {summary.created_at.strftime('%B %d, %Y %H:%M')} using {summary.agent_framework} ({summary.model_used})""")
+            Summarized on {summary.created_at.strftime("%B %d, %Y %H:%M")} using {summary.agent_framework} ({summary.model_used})""")
         if summary.token_usage or summary.processing_time_seconds:
             metadata_parts = []
             if summary.token_usage:

@@ -11,23 +11,22 @@ This does NOT verify LLM output quality - that's for scenario tests.
 We only care that the flow works, not that summaries are meaningful.
 """
 
-import pytest
 import logging
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.models.digest import DigestRequest, DigestType
 from src.models.summary import NewsletterSummary
-from src.models.newsletter import ProcessingStatus
 from src.processors.digest_creator import DigestCreator
-
-from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 from tests.helpers.simple_mocks import (
-    create_simple_summary_response,
     create_simple_digest_response,
-    create_simple_theme_analysis_response,
     create_simple_embedding_response,
+    create_simple_summary_response,
+    create_simple_theme_analysis_response,
 )
+from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -51,8 +50,7 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
     # ============================================================
     logger.info("Loading test newsletters into database...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
     logger.info(f"Loaded {len(newsletters)} newsletters: {[nl.id for nl in newsletters]}")
 
@@ -67,9 +65,7 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
     logger.info("Setting up API mocks...")
 
     # Create simple summary responses for 3 newsletters
-    mock_summary_responses = [
-        create_simple_summary_response(newsletter_id=i) for i in range(1, 4)
-    ]
+    mock_summary_responses = [create_simple_summary_response(newsletter_id=i) for i in range(1, 4)]
 
     # Mock theme analysis response
     mock_theme_response = create_simple_theme_analysis_response(theme_count=3)
@@ -85,11 +81,17 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_summarizer:
-                    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
-                        with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
+                    with patch(
+                        "src.processors.theme_analyzer.Anthropic"
+                    ) as mock_anthropic_analyzer:
+                        with patch(
+                            "src.processors.digest_creator.Anthropic"
+                        ) as mock_anthropic_digest:
                             # Configure mocks
                             mock_summarizer_client = MagicMock()
-                            mock_summarizer_client.messages.create.side_effect = mock_summary_responses
+                            mock_summarizer_client.messages.create.side_effect = (
+                                mock_summary_responses
+                            )
                             mock_anthropic_summarizer.return_value = mock_summarizer_client
 
                             mock_analyzer_client = MagicMock()
@@ -109,7 +111,9 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
                                 # ============================================================
                                 # 3. TEST: Create digest (should trigger on-demand summarization)
                                 # ============================================================
-                                logger.info("Creating digest (should trigger on-demand summarization)...")
+                                logger.info(
+                                    "Creating digest (should trigger on-demand summarization)..."
+                                )
 
                                 request = DigestRequest(
                                     digest_type=DigestType.DAILY,
@@ -138,15 +142,19 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
 
     # Verify each newsletter has a summary
     for newsletter in newsletters:
-        summary = db_session.query(NewsletterSummary).filter(
-            NewsletterSummary.newsletter_id == newsletter.id
-        ).first()
+        summary = (
+            db_session.query(NewsletterSummary)
+            .filter(NewsletterSummary.newsletter_id == newsletter.id)
+            .first()
+        )
 
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
         assert summary.executive_summary is not None
         assert len(summary.key_themes) > 0
 
-        logger.info(f"✓ Newsletter {newsletter.id} has summary with {len(summary.key_themes)} themes")
+        logger.info(
+            f"✓ Newsletter {newsletter.id} has summary with {len(summary.key_themes)} themes"
+        )
 
     # Verify digest was created
     assert digest is not None
@@ -173,8 +181,7 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     # Create summary for first newsletter manually
@@ -187,7 +194,11 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
         technical_details=["Existing detail"],
         actionable_items=["Existing action"],
         notable_quotes=["Existing quote"],
-        relevance_scores={"cto_leadership": 0.8, "technical_teams": 0.9, "individual_developers": 0.7},
+        relevance_scores={
+            "cto_leadership": 0.8,
+            "technical_teams": 0.9,
+            "individual_developers": 0.7,
+        },
         agent_framework="claude",
         model_used="claude-haiku-4-5",
         model_version="20250929",
@@ -204,9 +215,7 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
     # ============================================================
     logger.info("Setting up API mocks for 2 missing summaries...")
 
-    mock_summary_responses = [
-        create_simple_summary_response(newsletter_id=i) for i in range(2, 4)
-    ]
+    mock_summary_responses = [create_simple_summary_response(newsletter_id=i) for i in range(2, 4)]
 
     mock_theme_response = create_simple_theme_analysis_response(theme_count=3)
     mock_digest_response = create_simple_digest_response()
@@ -216,10 +225,16 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_summarizer:
-                    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
-                        with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
+                    with patch(
+                        "src.processors.theme_analyzer.Anthropic"
+                    ) as mock_anthropic_analyzer:
+                        with patch(
+                            "src.processors.digest_creator.Anthropic"
+                        ) as mock_anthropic_digest:
                             mock_summarizer_client = MagicMock()
-                            mock_summarizer_client.messages.create.side_effect = mock_summary_responses
+                            mock_summarizer_client.messages.create.side_effect = (
+                                mock_summary_responses
+                            )
                             mock_anthropic_summarizer.return_value = mock_summarizer_client
 
                             mock_analyzer_client = MagicMock()
@@ -261,9 +276,11 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
 
     # Verify all newsletters have summaries
     for newsletter in newsletters:
-        summary = db_session.query(NewsletterSummary).filter(
-            NewsletterSummary.newsletter_id == newsletter.id
-        ).first()
+        summary = (
+            db_session.query(NewsletterSummary)
+            .filter(NewsletterSummary.newsletter_id == newsletter.id)
+            .first()
+        )
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
 
     logger.info("✓ Exactly 3 summaries exist (1 existing + 2 created)")
@@ -288,8 +305,7 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     assert db_session.query(NewsletterSummary).count() == 0
@@ -306,7 +322,7 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
 
     def mock_create_side_effect(*args, **kwargs):
         """Side effect that fails on 2nd call."""
-        if not hasattr(mock_create_side_effect, 'call_count'):
+        if not hasattr(mock_create_side_effect, "call_count"):
             mock_create_side_effect.call_count = 0
 
         mock_create_side_effect.call_count += 1
@@ -319,7 +335,7 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
             return mock_summary_response_3
         else:
             # Theme analysis or digest creation
-            if 'themes' in str(kwargs):
+            if "themes" in str(kwargs):
                 return create_simple_theme_analysis_response()
             else:
                 return create_simple_digest_response()
@@ -329,18 +345,28 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_summarizer:
-                    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
-                        with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
+                    with patch(
+                        "src.processors.theme_analyzer.Anthropic"
+                    ) as mock_anthropic_analyzer:
+                        with patch(
+                            "src.processors.digest_creator.Anthropic"
+                        ) as mock_anthropic_digest:
                             mock_summarizer_client = MagicMock()
-                            mock_summarizer_client.messages.create.side_effect = mock_create_side_effect
+                            mock_summarizer_client.messages.create.side_effect = (
+                                mock_create_side_effect
+                            )
                             mock_anthropic_summarizer.return_value = mock_summarizer_client
 
                             mock_analyzer_client = MagicMock()
-                            mock_analyzer_client.messages.create.return_value = create_simple_theme_analysis_response()
+                            mock_analyzer_client.messages.create.return_value = (
+                                create_simple_theme_analysis_response()
+                            )
                             mock_anthropic_analyzer.return_value = mock_analyzer_client
 
                             mock_digest_client = MagicMock()
-                            mock_digest_client.messages.create.return_value = create_simple_digest_response()
+                            mock_digest_client.messages.create.return_value = (
+                                create_simple_digest_response()
+                            )
                             mock_anthropic_digest.return_value = mock_digest_client
 
                             with patch("httpx.Client.post") as mock_httpx:
@@ -349,7 +375,9 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
                                 # ============================================================
                                 # 3. TEST: Create digest (should handle failure gracefully)
                                 # ============================================================
-                                logger.info("Creating digest with expected failure for 2nd newsletter...")
+                                logger.info(
+                                    "Creating digest with expected failure for 2nd newsletter..."
+                                )
 
                                 request = DigestRequest(
                                     digest_type=DigestType.DAILY,
@@ -405,8 +433,7 @@ async def test_ondemand_summarization_no_newsletters_in_period(db_session):
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
     logger.info(f"Loaded {len(newsletters)} newsletters")
 

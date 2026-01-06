@@ -1,7 +1,7 @@
 """Base classes for agent implementations."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -14,8 +14,8 @@ class AgentResponse(BaseModel):
     """Base response from an agent."""
 
     success: bool
-    data: Optional[Any] = None
-    error: Optional[str] = None
+    data: Any | None = None
+    error: str | None = None
     metadata: dict[str, Any] = {}
 
 
@@ -26,8 +26,8 @@ class SummarizationAgent(ABC):
         self,
         model_config: ModelConfig,
         step: ModelStep = ModelStep.SUMMARIZATION,
-        model: Optional[str] = None,
-        api_key: Optional[str] = None,
+        model: str | None = None,
+        api_key: str | None = None,
     ) -> None:
         """
         Initialize the agent.
@@ -49,10 +49,10 @@ class SummarizationAgent(ABC):
         self.api_key = api_key
 
         # Track provider used (set by subclass during API call)
-        self.provider_used: Optional[Provider] = None
+        self.provider_used: Provider | None = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
-        self.model_version: Optional[str] = None  # Track model version used
+        self.model_version: str | None = None  # Track model version used
 
     @abstractmethod
     def summarize_newsletter(self, newsletter: Newsletter) -> AgentResponse:

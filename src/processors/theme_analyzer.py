@@ -2,8 +2,7 @@
 
 import json
 import time
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from anthropic import Anthropic
 
@@ -35,9 +34,9 @@ class ThemeAnalyzer:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
+        model_config: ModelConfig | None = None,
         use_large_context: bool = False,
-        model_override: Optional[str] = None,
+        model_override: str | None = None,
     ) -> None:
         """
         Initialize theme analyzer.
@@ -56,9 +55,7 @@ class ThemeAnalyzer:
         self.model_config = model_config
 
         # Get model for theme analysis step (or use override)
-        self.model = model_override or model_config.get_model_for_step(
-            ModelStep.THEME_ANALYSIS
-        )
+        self.model = model_override or model_config.get_model_for_step(ModelStep.THEME_ANALYSIS)
 
         # Determine framework based on model family
         model_family = model_config.get_family(self.model)
@@ -71,13 +68,13 @@ class ThemeAnalyzer:
                 "using configured theme analysis model"
             )
 
-        self.graphiti_client: Optional[GraphitiClient] = None
+        self.graphiti_client: GraphitiClient | None = None
 
         # Track usage for cost calculation
-        self.provider_used: Optional[Provider] = None
+        self.provider_used: Provider | None = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
-        self.model_version: Optional[str] = None
+        self.model_version: str | None = None
 
         logger.info(f"Initialized ThemeAnalyzer with {self.framework} ({self.model})")
 
@@ -97,19 +94,14 @@ class ThemeAnalyzer:
             Theme analysis results
         """
         start_time = time.time()
-        logger.info(
-            f"Starting theme analysis from {request.start_date} to {request.end_date}"
-        )
+        logger.info(f"Starting theme analysis from {request.start_date} to {request.end_date}")
 
         # Initialize Graphiti client
         self.graphiti_client = GraphitiClient()
 
         try:
             # 1. Fetch newsletters from database for the date range
-            newsletters = await self._fetch_newsletters(
-                request.start_date,
-                request.end_date
-            )
+            newsletters = await self._fetch_newsletters(request.start_date, request.end_date)
 
             if len(newsletters) < request.min_newsletters:
                 logger.warning(
@@ -176,8 +168,7 @@ class ThemeAnalyzer:
             )
 
             logger.info(
-                f"Theme analysis complete: {len(themes)} themes found "
-                f"in {processing_time:.2f}s"
+                f"Theme analysis complete: {len(themes)} themes found in {processing_time:.2f}s"
             )
 
             return result
@@ -324,7 +315,7 @@ class ThemeAnalyzer:
                 break
 
             except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {str(e)}"
+                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
                 logger.error(error_msg)
                 last_error = str(e)
                 continue  # Try next provider
@@ -389,7 +380,7 @@ class ThemeAnalyzer:
                     f"Summary: {summary['executive_summary']}\n\n"
                     f"Key Themes: {', '.join(summary['key_themes'])}\n\n"
                     f"Strategic Insights:\n"
-                    + "\n".join(f"- {i}" for i in summary['strategic_insights'])
+                    + "\n".join(f"- {i}" for i in summary["strategic_insights"])
                     + "\n"
                 )
 

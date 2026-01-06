@@ -6,11 +6,9 @@ These should be added to a separate integration test suite.
 
 import json
 from datetime import datetime
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agents.base import AgentResponse
 from src.agents.claude.summarizer import ClaudeAgent
 from src.config.models import MODEL_REGISTRY, ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
@@ -184,7 +182,10 @@ def test_validate_summary_data_complete(sample_summary_dict, test_model_config):
 
     assert isinstance(summary_data, SummaryData)
     assert summary_data.newsletter_id == 1
-    assert summary_data.executive_summary == "Major AI advancements this week including new LLM releases."
+    assert (
+        summary_data.executive_summary
+        == "Major AI advancements this week including new LLM releases."
+    )
     assert len(summary_data.key_themes) == 3
     assert "LLM Performance" in summary_data.key_themes
     assert len(summary_data.strategic_insights) == 2
@@ -222,9 +223,7 @@ def test_validate_summary_data_custom_model(test_model_config):
     test_model = claude_models[0]
 
     agent = ClaudeAgent(model_config=test_model_config, model=test_model)
-    summary_data = agent._validate_summary_data(
-        {"executive_summary": "Test"}, newsletter_id=1
-    )
+    summary_data = agent._validate_summary_data({"executive_summary": "Test"}, newsletter_id=1)
 
     assert summary_data.model_used == test_model
     assert summary_data.model_used in MODEL_REGISTRY

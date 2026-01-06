@@ -1,11 +1,12 @@
 """Tests for digest creation."""
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.models.digest import DigestData, DigestRequest, DigestSection, DigestType
+from src.models.digest import DigestData, DigestRequest, DigestType
+from src.models.summary import NewsletterSummary
 from src.models.theme import ThemeAnalysisResult, ThemeCategory, ThemeData, ThemeTrend
 from src.processors.digest_creator import DigestCreator
 
@@ -80,6 +81,29 @@ def sample_newsletters() -> list[dict]:
 
 
 @pytest.fixture
+def sample_summaries() -> list[NewsletterSummary]:
+    """Create sample newsletter summaries for testing."""
+    summaries = []
+    for i, newsletter_id in enumerate([1, 2]):
+        summary = NewsletterSummary(
+            newsletter_id=newsletter_id,
+            executive_summary=f"Summary for newsletter {newsletter_id}",
+            key_themes=["AI", "Machine Learning"],
+            strategic_insights=["Strategic insight 1"],
+            technical_details=["Technical detail 1"],
+            actionable_items=["Action item 1"],
+            notable_quotes=["Notable quote 1"],
+            relevant_links=[],
+            relevance_scores={"leadership": 0.8, "technical": 0.7},
+            agent_framework="claude",
+            model_used="claude-sonnet-4-5",
+        )
+        summary.id = newsletter_id
+        summaries.append(summary)
+    return summaries
+
+
+@pytest.fixture
 def mock_llm_response() -> dict:
     """Create mock LLM response for digest generation."""
     return {
@@ -146,9 +170,7 @@ def mock_llm_response() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_digest_success(
-    sample_themes, sample_newsletters, mock_llm_response
-):
+async def test_create_digest_success(sample_themes, sample_newsletters, mock_llm_response):
     """Test successful digest creation."""
     request = DigestRequest(
         digest_type=DigestType.DAILY,
@@ -177,9 +199,7 @@ async def test_create_digest_success(
         mock_analyzer_class.return_value = mock_analyzer
 
         # Mock newsletter fetch
-        with patch.object(
-            DigestCreator, "_fetch_newsletters", return_value=sample_newsletters
-        ):
+        with patch.object(DigestCreator, "_fetch_newsletters", return_value=sample_newsletters):
             # Mock LLM generation
             with patch.object(
                 DigestCreator,
@@ -310,10 +330,10 @@ def test_build_themes_context(sample_themes):
     assert "Performance optimization" in context
 
 
-def test_build_newsletters_context(sample_newsletters):
+def test_build_newsletters_context(sample_newsletters, sample_summaries):
     """Test newsletters context string building."""
     creator = DigestCreator()
-    context = creator._build_newsletters_context(sample_newsletters)
+    context = creator._build_newsletters_context(sample_newsletters, sample_summaries)
 
     # Check that newsletters are listed
     assert "AI Weekly" in context

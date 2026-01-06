@@ -3,12 +3,10 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
-
 
 # Path to test data directory
 TEST_DATA_DIR = Path(__file__).parent.parent / "test_data"
@@ -30,7 +28,7 @@ def load_test_newsletter_data(filename: str) -> dict:
     if not file_path.exists():
         raise FileNotFoundError(f"Test newsletter not found: {file_path}")
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         data = json.load(f)
 
     # Convert ISO date string to datetime if needed
@@ -43,9 +41,7 @@ def load_test_newsletter_data(filename: str) -> dict:
 
 
 def create_test_newsletter(
-    db: Session,
-    filename: str,
-    status: ProcessingStatus = ProcessingStatus.PENDING
+    db: Session, filename: str, status: ProcessingStatus = ProcessingStatus.PENDING
 ) -> Newsletter:
     """
     Load test newsletter from JSON and insert into database.
@@ -82,8 +78,8 @@ def create_test_newsletter(
 
 def create_test_newsletters_batch(
     db: Session,
-    filenames: Optional[list[str]] = None,
-    status: ProcessingStatus = ProcessingStatus.PENDING
+    filenames: list[str] | None = None,
+    status: ProcessingStatus = ProcessingStatus.PENDING,
 ) -> list[Newsletter]:
     """
     Load multiple test newsletters and insert into database.

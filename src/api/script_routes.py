@@ -7,8 +7,6 @@ Provides REST endpoints for:
 - Script approval/rejection
 """
 
-from typing import List, Optional
-
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -18,8 +16,6 @@ from src.models.podcast import (
     PodcastStatus,
     ScriptReviewAction,
     ScriptReviewRequest,
-    VoicePersona,
-    VoiceProvider,
 )
 from src.processors.podcast_script_generator import PodcastScriptGenerator
 from src.services.script_review_service import ScriptReviewService
@@ -45,10 +41,8 @@ class GenerateScriptRequest(BaseModel):
     length: PodcastLength = Field(
         default=PodcastLength.STANDARD, description="Target podcast length"
     )
-    enable_web_search: bool = Field(
-        default=True, description="Allow model to use web search tool"
-    )
-    custom_focus_topics: List[str] = Field(
+    enable_web_search: bool = Field(default=True, description="Allow model to use web search tool")
+    custom_focus_topics: list[str] = Field(
         default_factory=list, description="Optional topics to emphasize"
     )
 
@@ -58,14 +52,14 @@ class ScriptSummary(BaseModel):
 
     id: int
     digest_id: int
-    title: Optional[str]
+    title: str | None
     length: str
-    word_count: Optional[int]
-    estimated_duration: Optional[str]
+    word_count: int | None
+    estimated_duration: str | None
     status: str
     revision_count: int
-    created_at: Optional[str]
-    reviewed_by: Optional[str]
+    created_at: str | None
+    reviewed_by: str | None
 
 
 class SectionFeedbackRequest(BaseModel):
@@ -83,7 +77,7 @@ class ReviewRequest(BaseModel):
         default_factory=dict,
         description="Section-specific feedback (key = section index, value = feedback)",
     )
-    general_notes: Optional[str] = Field(None, description="General review notes")
+    general_notes: str | None = Field(None, description="General review notes")
 
 
 class ReviewStatistics(BaseModel):
@@ -111,7 +105,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
     with get_db() as db:
         script_record = PodcastScriptRecord(
             digest_id=request.digest_id,
-            length=request.length.value if hasattr(request.length, 'value') else request.length,
+            length=request.length.value if hasattr(request.length, "value") else request.length,
             status=PodcastStatus.SCRIPT_GENERATING.value,
         )
         db.add(script_record)
@@ -127,9 +121,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
         # Update record with generated content
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
             script_record.script_json = script.model_dump()
             script_record.title = script.title
@@ -153,9 +145,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
         logger.error(f"Script generation failed: {e}")
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
             script_record.status = PodcastStatus.FAILED.value
             script_record.error_message = str(e)
@@ -191,16 +181,16 @@ async def generate_script(
     return {
         "status": "queued",
         "message": f"Script generation started for digest {request.digest_id}",
-        "length": request.length.value if hasattr(request.length, 'value') else request.length,
+        "length": request.length.value if hasattr(request.length, "value") else request.length,
     }
 
 
-@router.get("/", response_model=List[ScriptSummary])
+@router.get("/", response_model=list[ScriptSummary])
 async def list_scripts(
-    status: Optional[PodcastStatus] = Query(None, description="Filter by status"),
-    digest_id: Optional[int] = Query(None, description="Filter by digest ID"),
+    status: PodcastStatus | None = Query(None, description="Filter by status"),
+    digest_id: int | None = Query(None, description="Filter by digest ID"),
     limit: int = Query(50, le=100, description="Maximum results"),
-) -> List[ScriptSummary]:
+) -> list[ScriptSummary]:
     """List podcast scripts with optional filtering."""
     from src.models.podcast import PodcastScriptRecord
 
@@ -212,9 +202,7 @@ async def list_scripts(
         if digest_id:
             query = query.filter(PodcastScriptRecord.digest_id == digest_id)
 
-        scripts = (
-            query.order_by(PodcastScriptRecord.created_at.desc()).limit(limit).all()
-        )
+        scripts = query.order_by(PodcastScriptRecord.created_at.desc()).limit(limit).all()
 
         return [
             ScriptSummary(
@@ -237,8 +225,8 @@ async def list_scripts(
         ]
 
 
-@router.get("/pending-review", response_model=List[ScriptSummary])
-async def list_pending_scripts() -> List[ScriptSummary]:
+@router.get("/pending-review", response_model=list[ScriptSummary])
+async def list_pending_scripts() -> list[ScriptSummary]:
     """List all scripts pending review."""
     scripts = await review_service.list_pending_reviews()
 
@@ -263,8 +251,8 @@ async def list_pending_scripts() -> List[ScriptSummary]:
     ]
 
 
-@router.get("/approved", response_model=List[ScriptSummary])
-async def list_approved_scripts() -> List[ScriptSummary]:
+@router.get("/approved", response_model=list[ScriptSummary])
+async def list_approved_scripts() -> list[ScriptSummary]:
     """List all approved scripts ready for audio generation."""
     scripts = await review_service.list_approved_scripts()
 
@@ -296,8 +284,8 @@ async def get_review_statistics() -> ReviewStatistics:
     return ReviewStatistics(**stats)
 
 
-@router.get("/digest/{digest_id}", response_model=List[ScriptSummary])
-async def list_scripts_for_digest(digest_id: int) -> List[ScriptSummary]:
+@router.get("/digest/{digest_id}", response_model=list[ScriptSummary])
+async def list_scripts_for_digest(digest_id: int) -> list[ScriptSummary]:
     """List all scripts generated from a specific digest."""
     scripts = await review_service.get_scripts_for_digest(digest_id)
 
@@ -444,7 +432,7 @@ async def revise_section(
 async def quick_approve(
     script_id: int,
     reviewer: str = Query(..., description="Reviewer identifier"),
-    notes: Optional[str] = Query(None, description="Approval notes"),
+    notes: str | None = Query(None, description="Approval notes"),
 ) -> dict:
     """Quick approve a script for audio generation.
 

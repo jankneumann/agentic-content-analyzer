@@ -7,7 +7,6 @@ Includes SSE endpoints for real-time progress tracking.
 
 import asyncio
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -40,12 +39,12 @@ class SummaryListItem(BaseModel):
     id: int
     newsletter_id: int
     newsletter_title: str
-    newsletter_publication: Optional[str]
+    newsletter_publication: str | None
     executive_summary_preview: str
     key_themes: list[str]
     model_used: str
     created_at: datetime
-    processing_time_seconds: Optional[float]
+    processing_time_seconds: float | None
 
     class Config:
         from_attributes = True
@@ -66,10 +65,10 @@ class SummaryDetail(BaseModel):
     relevance_scores: RelevanceScores
     agent_framework: str
     model_used: str
-    model_version: Optional[str]
+    model_version: str | None
     created_at: datetime
-    token_usage: Optional[int]
-    processing_time_seconds: Optional[float]
+    token_usage: int | None
+    processing_time_seconds: float | None
 
     class Config:
         from_attributes = True
@@ -96,7 +95,7 @@ class SummarizeRequest(BaseModel):
         default=False,
         description="Force re-summarization even if summary exists",
     )
-    model: Optional[str] = Field(
+    model: str | None = Field(
         default=None,
         description="Model to use (uses default if not specified)",
     )
@@ -134,10 +133,10 @@ _summarization_tasks: dict[str, dict] = {}
 
 @router.get("", response_model=PaginatedSummaryResponse)
 async def list_summaries(
-    newsletter_id: Optional[int] = Query(None, description="Filter by newsletter"),
-    model_used: Optional[str] = Query(None, description="Filter by model"),
-    start_date: Optional[datetime] = Query(None, description="Filter after this date"),
-    end_date: Optional[datetime] = Query(None, description="Filter before this date"),
+    newsletter_id: int | None = Query(None, description="Filter by newsletter"),
+    model_used: str | None = Query(None, description="Filter by model"),
+    start_date: datetime | None = Query(None, description="Filter after this date"),
+    end_date: datetime | None = Query(None, description="Filter before this date"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> PaginatedSummaryResponse:
@@ -164,10 +163,7 @@ async def list_summaries(
 
         # Apply pagination and ordering
         summaries = (
-            query.order_by(NewsletterSummary.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
+            query.order_by(NewsletterSummary.created_at.desc()).offset(offset).limit(limit).all()
         )
 
         # Convert to response models
@@ -212,9 +208,7 @@ async def get_summary_stats() -> SummaryStats:
         by_model = {model: count for model, count in model_counts}
 
         # Average processing time
-        avg_time_result = db.query(
-            func.avg(NewsletterSummary.processing_time_seconds)
-        ).scalar()
+        avg_time_result = db.query(func.avg(NewsletterSummary.processing_time_seconds)).scalar()
         avg_processing_time = float(avg_time_result) if avg_time_result else 0.0
 
         # Average token usage
@@ -249,11 +243,7 @@ async def get_summary_by_newsletter(newsletter_id: int) -> SummaryDetail:
 async def get_summary(summary_id: int) -> SummaryDetail:
     """Get a single summary by ID."""
     with get_db() as db:
-        summary = (
-            db.query(NewsletterSummary)
-            .filter(NewsletterSummary.id == summary_id)
-            .first()
-        )
+        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
 
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
@@ -265,11 +255,7 @@ async def get_summary(summary_id: int) -> SummaryDetail:
 async def delete_summary(summary_id: int):
     """Delete a summary."""
     with get_db() as db:
-        summary = (
-            db.query(NewsletterSummary)
-            .filter(NewsletterSummary.id == summary_id)
-            .first()
-        )
+        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
 
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
@@ -305,20 +291,14 @@ async def trigger_summarization(
     with get_db() as db:
         if request.newsletter_ids:
             newsletters = (
-                db.query(Newsletter)
-                .filter(Newsletter.id.in_(request.newsletter_ids))
-                .all()
+                db.query(Newsletter).filter(Newsletter.id.in_(request.newsletter_ids)).all()
             )
             if not request.force:
                 # Filter out already summarized
-                newsletters = [
-                    n for n in newsletters if n.status != ProcessingStatus.COMPLETED
-                ]
+                newsletters = [n for n in newsletters if n.status != ProcessingStatus.COMPLETED]
         else:
             newsletters = (
-                db.query(Newsletter)
-                .filter(Newsletter.status == ProcessingStatus.PENDING)
-                .all()
+                db.query(Newsletter).filter(Newsletter.status == ProcessingStatus.PENDING).all()
             )
 
         newsletter_ids = [n.id for n in newsletters]
@@ -373,11 +353,7 @@ async def regenerate_summary(
     import uuid
 
     with get_db() as db:
-        summary = (
-            db.query(NewsletterSummary)
-            .filter(NewsletterSummary.id == summary_id)
-            .first()
-        )
+        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
 
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
@@ -456,7 +432,7 @@ async def _run_summarization(
 
             except Exception as e:
                 _summarization_tasks[task_id]["failed"] += 1
-                _summarization_tasks[task_id]["message"] = f"Error: {str(e)}"
+                _summarization_tasks[task_id]["message"] = f"Error: {e!s}"
 
             _summarization_tasks[task_id]["processed"] = i + 1
             _summarization_tasks[task_id]["progress"] = int((i + 1) / total * 100)

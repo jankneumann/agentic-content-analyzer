@@ -1,7 +1,6 @@
 """Tests for ReviewService."""
 
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,7 +38,7 @@ def sample_digest():
 @pytest.fixture
 def mock_digest_reviser():
     """Create mock DigestReviser."""
-    with patch('src.services.review_service.DigestReviser') as mock_class:
+    with patch("src.services.review_service.DigestReviser") as mock_class:
         mock_reviser = MagicMock()
         mock_class.return_value = mock_reviser
         yield mock_reviser
@@ -48,7 +47,7 @@ def mock_digest_reviser():
 class TestReviewServiceInitialization:
     """Tests for ReviewService initialization."""
 
-    @patch('src.services.review_service.settings')
+    @patch("src.config.settings")
     def test_initialization_default(self, mock_settings):
         """Test initialization with default config."""
         mock_config = MagicMock()
@@ -74,7 +73,7 @@ class TestReviewServiceListPendingReviews:
     @pytest.mark.asyncio
     async def test_list_pending_reviews_success(self, sample_digest):
         """Test listing pending reviews."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -96,7 +95,7 @@ class TestReviewServiceListPendingReviews:
     @pytest.mark.asyncio
     async def test_list_pending_reviews_empty(self):
         """Test listing when no pending reviews."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -119,7 +118,7 @@ class TestReviewServiceGetDigest:
     @pytest.mark.asyncio
     async def test_get_digest_found(self, sample_digest):
         """Test getting existing digest."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -134,7 +133,7 @@ class TestReviewServiceGetDigest:
     @pytest.mark.asyncio
     async def test_get_digest_not_found(self):
         """Test getting non-existent digest."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -150,9 +149,7 @@ class TestReviewServiceStartRevisionSession:
     """Tests for start_revision_session method."""
 
     @pytest.mark.asyncio
-    async def test_start_revision_session_success(
-        self, sample_digest, mock_digest_reviser
-    ):
+    async def test_start_revision_session_success(self, sample_digest, mock_digest_reviser):
         """Test starting revision session."""
         mock_context = MagicMock(spec=RevisionContext)
         mock_context.digest = sample_digest
@@ -171,9 +168,7 @@ class TestReviewServiceStartRevisionSession:
         mock_digest_reviser.load_context.assert_called_once_with(1)
 
     @pytest.mark.asyncio
-    async def test_start_revision_session_invalid_status(
-        self, sample_digest, mock_digest_reviser
-    ):
+    async def test_start_revision_session_invalid_status(self, sample_digest, mock_digest_reviser):
         """Test starting session with invalid digest status."""
         # Set digest to DELIVERED (not reviewable)
         sample_digest.status = DigestStatus.DELIVERED
@@ -231,7 +226,7 @@ class TestReviewServiceApplyRevision:
         updated_digest = sample_digest
         updated_digest.revision_count = 1
 
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -254,7 +249,7 @@ class TestReviewServiceApplyRevision:
     @pytest.mark.asyncio
     async def test_apply_revision_digest_not_found(self):
         """Test applying revision to non-existent digest."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -276,7 +271,7 @@ class TestReviewServiceFinalizeReview:
     @pytest.mark.asyncio
     async def test_finalize_review_approve(self, sample_digest):
         """Test finalizing review with approval."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -301,7 +296,7 @@ class TestReviewServiceFinalizeReview:
     @pytest.mark.asyncio
     async def test_finalize_review_reject(self, sample_digest):
         """Test finalizing review with rejection."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -323,7 +318,7 @@ class TestReviewServiceFinalizeReview:
     @pytest.mark.asyncio
     async def test_finalize_review_save_draft(self, sample_digest):
         """Test finalizing review as save-draft."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -343,7 +338,7 @@ class TestReviewServiceFinalizeReview:
     @pytest.mark.asyncio
     async def test_finalize_review_invalid_action(self, sample_digest):
         """Test finalizing review with invalid action."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -366,7 +361,7 @@ class TestReviewServiceQuickReview:
     @pytest.mark.asyncio
     async def test_quick_review_approve(self, sample_digest):
         """Test quick approval."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -386,7 +381,7 @@ class TestReviewServiceQuickReview:
     @pytest.mark.asyncio
     async def test_quick_review_reject(self, sample_digest):
         """Test quick rejection."""
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 

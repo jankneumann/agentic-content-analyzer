@@ -2,8 +2,7 @@
 
 import json
 import time
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from anthropic import Anthropic
 
@@ -38,8 +37,8 @@ class DigestCreator:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
-        model: Optional[str] = None,
+        model_config: ModelConfig | None = None,
+        model: str | None = None,
     ):
         """
         Initialize digest creator.
@@ -62,10 +61,10 @@ class DigestCreator:
         self.framework = model_family.value
 
         # Track usage for cost calculation
-        self.provider_used: Optional[Provider] = None
+        self.provider_used: Provider | None = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
-        self.model_version: Optional[str] = None
+        self.model_version: str | None = None
 
         logger.info(f"Initialized DigestCreator with {self.model}")
 
@@ -112,10 +111,7 @@ class DigestCreator:
         )
 
         # 2. Get newsletters for source references
-        newsletters = await self._fetch_newsletters(
-            request.period_start,
-            request.period_end
-        )
+        newsletters = await self._fetch_newsletters(request.period_start, request.period_end)
 
         # 2b. Fetch summaries for all newsletters
         newsletter_ids = [nl["id"] for nl in newsletters]
@@ -126,9 +122,7 @@ class DigestCreator:
                 .all()
             )
 
-        logger.info(
-            f"Fetched {len(summaries)} summaries for {len(newsletters)} newsletters"
-        )
+        logger.info(f"Fetched {len(summaries)} summaries for {len(newsletters)} newsletters")
 
         # Check for missing summaries
         missing_ids = [
@@ -199,9 +193,7 @@ class DigestCreator:
 
         else:
             # Single digest - existing flow (newsletters fit in budget)
-            logger.info(
-                f"Creating single digest ({len(newsletters)} newsletters fit in budget)"
-            )
+            logger.info(f"Creating single digest ({len(newsletters)} newsletters fit in budget)")
 
             digest_content = await self._generate_digest_content(
                 request=request,
@@ -256,7 +248,6 @@ class DigestCreator:
             - budget_info: Dict with token budget breakdown
         """
         from src.models.summary import NewsletterSummary
-        from src.utils.token_counter import TokenCounter
 
         logger.debug("Checking token budget for newsletters and themes")
 
@@ -328,11 +319,8 @@ class DigestCreator:
         Returns:
             List of newsletter batches (each batch is a list of newsletters)
         """
-        from src.utils.token_counter import TokenCounter
 
-        logger.info(
-            f"Batching {len(newsletters)} newsletters with {token_budget} token budget"
-        )
+        logger.info(f"Batching {len(newsletters)} newsletters with {token_budget} token budget")
 
         counter = TokenCounter(self.model_config, self.model)
         batches = []
@@ -367,16 +355,14 @@ class DigestCreator:
                 f"{current_tokens} tokens"
             )
 
-        logger.info(
-            f"Created {len(batches)} batches from {len(newsletters)} newsletters"
-        )
+        logger.info(f"Created {len(batches)} batches from {len(newsletters)} newsletters")
 
         # Log warning if single newsletter exceeds budget
         for i, batch in enumerate(batches):
             if len(batch) == 1:
                 nl = batch[0]
                 logger.warning(
-                    f"Batch {i+1} contains single newsletter that may exceed budget: "
+                    f"Batch {i + 1} contains single newsletter that may exceed budget: "
                     f"{nl.get('publication')} - {nl.get('title')}"
                 )
 
@@ -418,16 +404,12 @@ class DigestCreator:
 
         # Create sub-digests for each batch
         for i, batch in enumerate(batches, 1):
-            logger.info(
-                f"Creating sub-digest {i}/{len(batches)} with {len(batch)} newsletters"
-            )
+            logger.info(f"Creating sub-digest {i}/{len(batches)} with {len(batch)} newsletters")
 
             try:
                 # Get summaries for this batch
                 batch_ids = [nl["id"] for nl in batch]
-                batch_summaries = [
-                    s for s in summaries if s.newsletter_id in batch_ids
-                ]
+                batch_summaries = [s for s in summaries if s.newsletter_id in batch_ids]
 
                 # Generate digest content for this batch
                 digest_content = await self._generate_digest_content(
@@ -447,9 +429,7 @@ class DigestCreator:
                     strategic_insights=digest_content["strategic_insights"],
                     technical_developments=digest_content["technical_developments"],
                     emerging_trends=digest_content["emerging_trends"],
-                    actionable_recommendations=digest_content[
-                        "actionable_recommendations"
-                    ],
+                    actionable_recommendations=digest_content["actionable_recommendations"],
                     sources=self._build_sources(batch),
                     newsletter_count=len(batch),
                     agent_framework=self.framework,
@@ -474,17 +454,14 @@ class DigestCreator:
                     sub_digest_ids.append(db_sub_digest.id)
 
                 logger.info(
-                    f"Sub-digest {i}/{len(batches)} created successfully "
-                    f"(ID: {db_sub_digest.id})"
+                    f"Sub-digest {i}/{len(batches)} created successfully (ID: {db_sub_digest.id})"
                 )
 
             except Exception as e:
                 logger.error(f"Failed to create sub-digest {i}/{len(batches)}: {e}")
                 # Clean up any sub-digests created so far
                 if sub_digest_ids:
-                    logger.warning(
-                        f"Cleaning up {len(sub_digest_ids)} sub-digests due to error"
-                    )
+                    logger.warning(f"Cleaning up {len(sub_digest_ids)} sub-digests due to error")
                     with get_db() as db:
                         db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).delete(
                             synchronize_session=False
@@ -493,9 +470,7 @@ class DigestCreator:
                 raise Exception(f"Hierarchical digest creation failed: {e}")
 
         # Combine sub-digests into parent digest
-        logger.info(
-            f"Combining {len(sub_digest_ids)} sub-digests into parent digest"
-        )
+        logger.info(f"Combining {len(sub_digest_ids)} sub-digests into parent digest")
         combined_digest = await self._combine_sub_digests(
             request=request,
             sub_digest_ids=sub_digest_ids,
@@ -544,14 +519,11 @@ class DigestCreator:
 
         # Load sub-digests from database
         with get_db() as db:
-            sub_digests = (
-                db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).all()
-            )
+            sub_digests = db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).all()
 
         if len(sub_digests) != len(sub_digest_ids):
             raise ValueError(
-                f"Expected {len(sub_digest_ids)} sub-digests, "
-                f"found {len(sub_digests)}"
+                f"Expected {len(sub_digest_ids)} sub-digests, found {len(sub_digests)}"
             )
 
         # Build combination prompt
@@ -571,8 +543,7 @@ class DigestCreator:
 
             try:
                 logger.info(
-                    f"Attempting combination with provider: "
-                    f"{provider_config.provider.value}"
+                    f"Attempting combination with provider: {provider_config.provider.value}"
                 )
 
                 client = Anthropic(api_key=provider_config.api_key)
@@ -613,8 +584,7 @@ class DigestCreator:
                     for section in digest_json.get("technical_developments", [])
                 ]
                 emerging_trends = [
-                    DigestSection(**section)
-                    for section in digest_json.get("emerging_trends", [])
+                    DigestSection(**section) for section in digest_json.get("emerging_trends", [])
                 ]
 
                 # Build combined digest
@@ -627,9 +597,7 @@ class DigestCreator:
                     strategic_insights=strategic_insights,
                     technical_developments=technical_developments,
                     emerging_trends=emerging_trends,
-                    actionable_recommendations=digest_json[
-                        "actionable_recommendations"
-                    ],
+                    actionable_recommendations=digest_json["actionable_recommendations"],
                     sources=self._build_sources(newsletters),
                     newsletter_count=len(newsletters),
                     agent_framework=self.framework,
@@ -638,8 +606,7 @@ class DigestCreator:
                 )
 
                 logger.info(
-                    f"Successfully combined sub-digests using "
-                    f"{provider_config.provider.value}"
+                    f"Successfully combined sub-digests using {provider_config.provider.value}"
                 )
                 self.provider_used = provider_config.provider
 
@@ -648,18 +615,13 @@ class DigestCreator:
             except Exception as e:
                 last_error = e
                 logger.error(
-                    f"Provider {provider_config.provider.value} failed during "
-                    f"combination: {e}"
+                    f"Provider {provider_config.provider.value} failed during combination: {e}"
                 )
                 continue
 
         # All providers failed - fallback to first sub-digest with warning
-        logger.error(
-            f"All providers failed during combination. Last error: {last_error}"
-        )
-        logger.warning(
-            "Falling back to first sub-digest as combined digest (degraded mode)"
-        )
+        logger.error(f"All providers failed during combination. Last error: {last_error}")
+        logger.warning("Falling back to first sub-digest as combined digest (degraded mode)")
 
         # Convert first sub-digest to DigestData
         first_sub = sub_digests[0]
@@ -669,12 +631,8 @@ class DigestCreator:
             period_end=request.period_end,
             title=first_sub.title.replace(f" - Part 1 of {len(sub_digests)}", ""),
             executive_overview=first_sub.executive_overview,
-            strategic_insights=[
-                DigestSection(**s) for s in first_sub.strategic_insights
-            ],
-            technical_developments=[
-                DigestSection(**s) for s in first_sub.technical_developments
-            ],
+            strategic_insights=[DigestSection(**s) for s in first_sub.strategic_insights],
+            technical_developments=[DigestSection(**s) for s in first_sub.technical_developments],
             emerging_trends=[DigestSection(**s) for s in first_sub.emerging_trends],
             actionable_recommendations=first_sub.actionable_recommendations,
             sources=self._build_sources(newsletters),
@@ -728,7 +686,7 @@ class DigestCreator:
 {request.digest_type.value.title()} digest covering {request.period_start.date()} to {request.period_end.date()}
 
 # Sub-Digests to Combine
-{''.join(sub_digest_summaries)}
+{"".join(sub_digest_summaries)}
 
 # Your Task
 Synthesize these sub-digests into a single comprehensive digest that:
@@ -868,7 +826,7 @@ Output only the JSON object, no additional text.
                 break  # Success
 
             except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {str(e)}"
+                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
                 logger.error(error_msg)
                 last_error = str(e)
                 continue
@@ -937,11 +895,7 @@ Output only the JSON object, no additional text.
         context_parts = []
 
         for i, theme in enumerate(themes, 1):
-            continuity = (
-                f"\nContinuity: {theme.continuity_text}"
-                if theme.continuity_text
-                else ""
-            )
+            continuity = f"\nContinuity: {theme.continuity_text}" if theme.continuity_text else ""
 
             context_parts.append(
                 f"{i}. {theme.name} ({theme.category.value}, {theme.trend.value})\n"
@@ -970,20 +924,18 @@ Output only the JSON object, no additional text.
             summary = summaries_by_id.get(newsletter_id)
 
             if not summary:
-                logger.warning(
-                    f"No summary found for newsletter {newsletter_id}, skipping"
-                )
+                logger.warning(f"No summary found for newsletter {newsletter_id}, skipping")
                 continue
 
             date = newsletter["published_date"].strftime("%Y-%m-%d")
 
             # Build rich context from summary
-            context = f"""[{newsletter_id}] {newsletter['publication']} - {newsletter['title']} ({date})
+            context = f"""[{newsletter_id}] {newsletter["publication"]} - {newsletter["title"]} ({date})
 
 **Executive Summary:**
 {summary.executive_summary}
 
-**Key Themes:** {', '.join(summary.key_themes)}
+**Key Themes:** {", ".join(summary.key_themes)}
 
 **Strategic Insights:**
 {chr(10).join(f"- {insight}" for insight in summary.strategic_insights)}

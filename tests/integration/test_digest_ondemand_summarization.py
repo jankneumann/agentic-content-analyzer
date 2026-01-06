@@ -4,13 +4,13 @@ These tests verify that DigestCreator automatically creates missing summaries
 when generating digests, with proper error handling and database persistence.
 """
 
-import pytest
 import logging
 from datetime import datetime
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.models.digest import DigestRequest, DigestType
-from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.processors.digest_creator import DigestCreator
 from src.processors.summarizer import NewsletterSummarizer
@@ -46,11 +46,13 @@ async def test_digest_creates_missing_summaries(
                 # Mock theme analyzer to avoid GraphitiClient dependency
                 with patch("src.processors.theme_analyzer.ThemeAnalyzer") as mock_analyzer_class:
                     mock_analyzer = AsyncMock()
-                    mock_analyzer.analyze_themes = AsyncMock(return_value=MagicMock(
-                        themes=[],
-                        newsletter_count=len(sample_newsletters),
-                        processing_time_seconds=0.1
-                    ))
+                    mock_analyzer.analyze_themes = AsyncMock(
+                        return_value=MagicMock(
+                            themes=[],
+                            newsletter_count=len(sample_newsletters),
+                            processing_time_seconds=0.1,
+                        )
+                    )
                     mock_analyzer_class.return_value = mock_analyzer
 
                     logger.info("Mocking Anthropic client...")
@@ -77,14 +79,18 @@ async def test_digest_creates_missing_summaries(
                         logger.info("Configuring mock LLM responses...")
                         # Mock digest creation LLM call
                         mock_digest_response = MagicMock()
-                        mock_digest_response.content = [MagicMock(text='''{
+                        mock_digest_response.content = [
+                            MagicMock(
+                                text="""{
                             "title": "Test Daily Digest",
                             "executive_overview": "Test overview",
                             "strategic_insights": [],
                             "technical_developments": [],
                             "emerging_trends": [],
                             "actionable_recommendations": []
-                        }''')]
+                        }"""
+                            )
+                        ]
                         mock_digest_response.usage = MagicMock(input_tokens=500, output_tokens=200)
 
                         # Configure mock to return summary response first, then digest response
@@ -95,7 +101,9 @@ async def test_digest_creates_missing_summaries(
                             mock_digest_response,  # Digest creation
                         ]
 
-                        logger.info("Calling create_digest() - this will create missing summaries...")
+                        logger.info(
+                            "Calling create_digest() - this will create missing summaries..."
+                        )
                         digest = await creator.create_digest(request)
                         logger.info("Digest creation completed")
 
@@ -108,9 +116,11 @@ async def test_digest_creates_missing_summaries(
     logger.info("Verifying each newsletter has a summary...")
     # Verify each newsletter has a summary
     for newsletter in sample_newsletters:
-        summary = db_session.query(NewsletterSummary).filter(
-            NewsletterSummary.newsletter_id == newsletter.id
-        ).first()
+        summary = (
+            db_session.query(NewsletterSummary)
+            .filter(NewsletterSummary.newsletter_id == newsletter.id)
+            .first()
+        )
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
     logger.info("All newsletters have summaries ✓")
 
@@ -147,11 +157,13 @@ async def test_digest_with_some_existing_summaries(
                 logger.info("Mocking ThemeAnalyzer...")
                 with patch("src.processors.theme_analyzer.ThemeAnalyzer") as mock_analyzer_class:
                     mock_analyzer = AsyncMock()
-                    mock_analyzer.analyze_themes = AsyncMock(return_value=MagicMock(
-                        themes=[],
-                        newsletter_count=len(sample_newsletters),
-                        processing_time_seconds=0.1
-                    ))
+                    mock_analyzer.analyze_themes = AsyncMock(
+                        return_value=MagicMock(
+                            themes=[],
+                            newsletter_count=len(sample_newsletters),
+                            processing_time_seconds=0.1,
+                        )
+                    )
                     mock_analyzer_class.return_value = mock_analyzer
 
                     logger.info("Mocking Anthropic client...")
@@ -175,14 +187,18 @@ async def test_digest_with_some_existing_summaries(
                         logger.info("Configuring mock LLM responses (1 summary + digest)...")
                         # Mock digest creation LLM call
                         mock_digest_response = MagicMock()
-                        mock_digest_response.content = [MagicMock(text='''{
+                        mock_digest_response.content = [
+                            MagicMock(
+                                text="""{
                             "title": "Test Daily Digest",
                             "executive_overview": "Test overview",
                             "strategic_insights": [],
                             "technical_developments": [],
                             "emerging_trends": [],
                             "actionable_recommendations": []
-                        }''')]
+                        }"""
+                            )
+                        ]
                         mock_digest_response.usage = MagicMock(input_tokens=500, output_tokens=200)
 
                         # Configure mock - only 1 summarization + digest call
@@ -228,11 +244,13 @@ async def test_digest_continues_with_partial_summary_failures(
                 logger.info("Mocking ThemeAnalyzer...")
                 with patch("src.processors.theme_analyzer.ThemeAnalyzer") as mock_analyzer_class:
                     mock_analyzer = AsyncMock()
-                    mock_analyzer.analyze_themes = AsyncMock(return_value=MagicMock(
-                        themes=[],
-                        newsletter_count=len(sample_newsletters),
-                        processing_time_seconds=0.1
-                    ))
+                    mock_analyzer.analyze_themes = AsyncMock(
+                        return_value=MagicMock(
+                            themes=[],
+                            newsletter_count=len(sample_newsletters),
+                            processing_time_seconds=0.1,
+                        )
+                    )
                     mock_analyzer_class.return_value = mock_analyzer
 
                     logger.info("Mocking summarizer to fail on 2nd newsletter...")
@@ -240,10 +258,12 @@ async def test_digest_continues_with_partial_summary_failures(
                     with patch.object(
                         NewsletterSummarizer,
                         "summarize_newsletter",
-                        side_effect=[True, False, True]  # Success, fail, success
+                        side_effect=[True, False, True],  # Success, fail, success
                     ):
                         logger.info("Mocking Anthropic client...")
-                        with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_class:
+                        with patch(
+                            "src.agents.claude.summarizer.Anthropic"
+                        ) as mock_anthropic_class:
                             mock_anthropic_class.return_value = mock_anthropic_client
 
                             logger.info("Creating digest request...")
@@ -263,16 +283,24 @@ async def test_digest_continues_with_partial_summary_failures(
                             logger.info("Configuring mock LLM responses...")
                             # Mock digest creation LLM call
                             mock_digest_response = MagicMock()
-                            mock_digest_response.content = [MagicMock(text='''{
+                            mock_digest_response.content = [
+                                MagicMock(
+                                    text="""{
                                 "title": "Test Daily Digest",
                                 "executive_overview": "Test overview",
                                 "strategic_insights": [],
                                 "technical_developments": [],
                                 "emerging_trends": [],
                                 "actionable_recommendations": []
-                            }''')]
-                            mock_digest_response.usage = MagicMock(input_tokens=500, output_tokens=200)
-                            mock_anthropic_client.messages.create.return_value = mock_digest_response
+                            }"""
+                                )
+                            ]
+                            mock_digest_response.usage = MagicMock(
+                                input_tokens=500, output_tokens=200
+                            )
+                            mock_anthropic_client.messages.create.return_value = (
+                                mock_digest_response
+                            )
 
                             logger.info("Calling create_digest() - 2nd summary should fail...")
                             digest = await creator.create_digest(request)
@@ -311,11 +339,13 @@ async def test_digest_with_all_summaries_existing(
                 logger.info("Mocking ThemeAnalyzer...")
                 with patch("src.processors.theme_analyzer.ThemeAnalyzer") as mock_analyzer_class:
                     mock_analyzer = AsyncMock()
-                    mock_analyzer.analyze_themes = AsyncMock(return_value=MagicMock(
-                        themes=[],
-                        newsletter_count=len(sample_newsletters),
-                        processing_time_seconds=0.1
-                    ))
+                    mock_analyzer.analyze_themes = AsyncMock(
+                        return_value=MagicMock(
+                            themes=[],
+                            newsletter_count=len(sample_newsletters),
+                            processing_time_seconds=0.1,
+                        )
+                    )
                     mock_analyzer_class.return_value = mock_analyzer
 
                     logger.info("Mocking Anthropic client...")
@@ -325,16 +355,22 @@ async def test_digest_with_all_summaries_existing(
                         logger.info("Configuring mock LLM responses (digest only, no summaries)...")
                         # Mock digest creation LLM call only (no summarization calls)
                         mock_digest_response = MagicMock()
-                        mock_digest_response.content = [MagicMock(text='''{
+                        mock_digest_response.content = [
+                            MagicMock(
+                                text="""{
                             "title": "Test Daily Digest",
                             "executive_overview": "Test overview",
                             "strategic_insights": [],
                             "technical_developments": [],
                             "emerging_trends": [],
                             "actionable_recommendations": []
-                        }''')]
+                        }"""
+                            )
+                        ]
                         mock_digest_response.usage = MagicMock(input_tokens=500, output_tokens=200)
-                        mock_anthropic_client_local.messages.create.return_value = mock_digest_response
+                        mock_anthropic_client_local.messages.create.return_value = (
+                            mock_digest_response
+                        )
 
                         mock_anthropic_class.return_value = mock_anthropic_client_local
 

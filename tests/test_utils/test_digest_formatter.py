@@ -133,7 +133,10 @@ def test_to_markdown(sample_digest_data):
     # Check sources
     assert "## Sources" in result
     assert "[TechCrunch: The Future of Enterprise AI](https://techcrunch.com/article1)" in result
-    assert "[Towards Data Science: RAG Best Practices](https://towardsdatascience.com/article2)" in result
+    assert (
+        "[Towards Data Science: RAG Best Practices](https://towardsdatascience.com/article2)"
+        in result
+    )
 
     # Check footer
     assert "---" in result

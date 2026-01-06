@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 # Path to cached API responses
@@ -32,7 +31,7 @@ def load_cached_response(provider: str, filename: str) -> dict:
     if not file_path.exists():
         raise FileNotFoundError(f"Cached response not found: {file_path}")
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         return json.load(f)
 
 

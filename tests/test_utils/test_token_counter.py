@@ -1,7 +1,5 @@
 """Tests for token counting utility."""
 
-import pytest
-
 from src.config.models import ModelConfig, Provider
 from src.utils.token_counter import TokenCounter
 
@@ -78,7 +76,7 @@ class TestTokenCounter:
         assert budget["newsletter_budget"] == 60000  # 60% of input
         assert budget["theme_budget"] == 30000  # 30% of input
         assert budget["prompt_overhead"] == 10000  # 10% of input
-        assert budget["max_output_tokens"] == 8192
+        assert budget["max_output_tokens"] == 64000  # Updated to match model_registry.yaml
 
     def test_calculate_token_budget_custom_percentage(self):
         """Test token budget calculation with custom percentage."""

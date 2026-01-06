@@ -9,9 +9,9 @@ Key improvements over V1:
 """
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
 
 from src.config import settings
 from src.delivery.audio_utils import concatenate_mp3_files
@@ -127,7 +127,7 @@ class PodcastAudioGeneratorV2:
         """
         if not self.silence_cache:
             logger.warning("No silence templates available, returning empty bytes")
-            return b''
+            return b""
 
         # Find closest duration
         closest = min(self.silence_cache.keys(), key=lambda x: abs(x - duration))
@@ -137,7 +137,7 @@ class PodcastAudioGeneratorV2:
         self,
         script: PodcastScript,
         output_path: Path,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> AudioMetadata:
         """Generate complete podcast audio from a script.
 
@@ -160,8 +160,7 @@ class PodcastAudioGeneratorV2:
 
         # Calculate total batches for progress tracking
         total_batches = sum(
-            len(self.batcher.batch_section(s, self.use_ssml))
-            for s in script.sections
+            len(self.batcher.batch_section(s, self.use_ssml)) for s in script.sections
         )
 
         logger.info(
@@ -177,8 +176,7 @@ class PodcastAudioGeneratorV2:
             # Process each section
             for section_idx, section in enumerate(script.sections):
                 logger.info(
-                    f"Processing section {section_idx + 1}/{len(script.sections)}: "
-                    f"{section.title}"
+                    f"Processing section {section_idx + 1}/{len(script.sections)}: {section.title}"
                 )
 
                 # Batch the dialogue turns
@@ -194,17 +192,13 @@ class PodcastAudioGeneratorV2:
                             current_batch,
                             total_batches,
                             f"Synthesizing: {batch.speaker.upper()} "
-                            f"({len(batch.turns)} turns) in {section.section_type}"
+                            f"({len(batch.turns)} turns) in {section.section_type}",
                         )
 
                     # Synthesize batch
                     try:
                         # Use SSML text if supported, otherwise plain text
-                        text = (
-                            batch.combined_text_ssml
-                            if self.use_ssml
-                            else batch.combined_text
-                        )
+                        text = batch.combined_text_ssml if self.use_ssml else batch.combined_text
 
                         logger.debug(
                             f"TTS call {api_call_count}: {batch.speaker}, "
@@ -218,38 +212,28 @@ class PodcastAudioGeneratorV2:
                         )
 
                         audio_segments.append(audio_bytes)
-                        logger.debug(
-                            f"Generated {len(audio_bytes) / 1024:.1f} KB for batch"
-                        )
+                        logger.debug(f"Generated {len(audio_bytes) / 1024:.1f} KB for batch")
 
                         # Add pause after batch (if not using SSML)
                         if not self.use_ssml and batch.total_pause_after > 0:
                             silence = self._get_silence(batch.total_pause_after)
                             if silence:
                                 audio_segments.append(silence)
-                                logger.debug(
-                                    f"Added {batch.total_pause_after}s silence"
-                                )
+                                logger.debug(f"Added {batch.total_pause_after}s silence")
 
                     except Exception as e:
-                        logger.error(
-                            f"Failed to synthesize batch {current_batch}: {e}"
-                        )
+                        logger.error(f"Failed to synthesize batch {current_batch}: {e}")
                         # Re-raise to fail fast rather than produce broken audio
                         raise
 
             if progress_callback:
-                progress_callback(
-                    total_batches, total_batches, "Combining audio segments..."
-                )
+                progress_callback(total_batches, total_batches, "Combining audio segments...")
 
             # Concatenate all MP3 segments using ffmpeg
             if not audio_segments:
                 raise RuntimeError("No audio segments generated")
 
-            logger.info(
-                f"Concatenating {len(audio_segments)} audio segments using ffmpeg"
-            )
+            logger.info(f"Concatenating {len(audio_segments)} audio segments using ffmpeg")
 
             concatenate_mp3_files(audio_segments, output_path)
 
@@ -297,7 +281,7 @@ class PodcastAudioGeneratorV2:
         }
 
 
-def get_output_path(podcast_id: int, base_dir: Optional[Path] = None) -> Path:
+def get_output_path(podcast_id: int, base_dir: Path | None = None) -> Path:
     """Get output path for a podcast audio file.
 
     Args:

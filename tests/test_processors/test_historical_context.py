@@ -150,18 +150,14 @@ async def test_enrich_themes_with_history_success(
     mock_client.messages.create.return_value = mock_response
 
     mock_graphiti = AsyncMock()
-    mock_graphiti.get_historical_theme_mentions = AsyncMock(
-        return_value=sample_historical_mentions
-    )
+    mock_graphiti.get_historical_theme_mentions = AsyncMock(return_value=sample_historical_mentions)
     mock_graphiti.get_theme_evolution_timeline = AsyncMock(return_value=sample_timeline)
     mock_graphiti.close = MagicMock()
 
     with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
-        with patch(
-            "src.processors.historical_context.GraphitiClient"
-        ) as mock_graphiti_class:
+        with patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti
 
             analyzer = HistoricalContextAnalyzer()
@@ -195,9 +191,7 @@ async def test_enrich_themes_with_history_no_history(sample_themes):
     with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
-        with patch(
-            "src.processors.historical_context.GraphitiClient"
-        ) as mock_graphiti_class:
+        with patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti
 
             analyzer = HistoricalContextAnalyzer()
@@ -224,17 +218,13 @@ async def test_analyze_theme_evolution_with_history(
     mock_client.messages.create.return_value = mock_response
 
     mock_graphiti = AsyncMock()
-    mock_graphiti.get_historical_theme_mentions = AsyncMock(
-        return_value=sample_historical_mentions
-    )
+    mock_graphiti.get_historical_theme_mentions = AsyncMock(return_value=sample_historical_mentions)
     mock_graphiti.get_theme_evolution_timeline = AsyncMock(return_value=sample_timeline)
 
     with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
-        with patch(
-            "src.processors.historical_context.GraphitiClient"
-        ) as mock_graphiti_class:
+        with patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti
 
             analyzer = HistoricalContextAnalyzer()
@@ -262,20 +252,20 @@ async def test_analyze_theme_evolution_no_history():
     mock_graphiti = AsyncMock()
     mock_graphiti.get_historical_theme_mentions = AsyncMock(return_value=[])
 
-    with patch("src.processors.historical_context.Anthropic"):
-        with patch(
-            "src.processors.historical_context.GraphitiClient"
-        ) as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
+    with (
+        patch("src.processors.historical_context.Anthropic"),
+        patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class,
+    ):
+        mock_graphiti_class.return_value = mock_graphiti
 
-            analyzer = HistoricalContextAnalyzer()
-            analyzer.graphiti_client = mock_graphiti
+        analyzer = HistoricalContextAnalyzer()
+        analyzer.graphiti_client = mock_graphiti
 
-            evolution = await analyzer._analyze_theme_evolution(
-                theme_name="New Theme",
-                current_date=datetime(2025, 1, 15),
-                lookback_days=90,
-            )
+        evolution = await analyzer._analyze_theme_evolution(
+            theme_name="New Theme",
+            current_date=datetime(2025, 1, 15),
+            lookback_days=90,
+        )
 
     # Should return new theme evolution
     assert evolution.total_mentions == 0
@@ -332,9 +322,7 @@ def test_extract_recent_mentions_empty():
 
 
 @pytest.mark.asyncio
-async def test_analyze_evolution_with_llm_success(
-    sample_timeline, mock_llm_evolution_response
-):
+async def test_analyze_evolution_with_llm_success(sample_timeline, mock_llm_evolution_response):
     """Test LLM-based evolution analysis."""
     mock_client = MagicMock()
     mock_response = MagicMock()

@@ -9,16 +9,13 @@ Provides REST endpoints for:
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.models.digest import (
     Digest,
-    DigestData,
     DigestRequest,
-    DigestSection,
     DigestStatus,
     DigestType,
 )
@@ -38,12 +35,10 @@ class GenerateDigestRequest(BaseModel):
     """Request to generate a new digest."""
 
     digest_type: str = Field(..., description="Type of digest: 'daily' or 'weekly'")
-    period_start: Optional[datetime] = Field(
+    period_start: datetime | None = Field(
         None, description="Start of period (defaults based on type)"
     )
-    period_end: Optional[datetime] = Field(
-        None, description="End of period (defaults to now)"
-    )
+    period_end: datetime | None = Field(None, description="End of period (defaults to now)")
     max_strategic_insights: int = Field(default=5)
     max_technical_developments: int = Field(default=5)
     max_emerging_trends: int = Field(default=3)
@@ -63,7 +58,7 @@ class DigestSummary(BaseModel):
     created_at: str
     model_used: str
     revision_count: int
-    reviewed_by: Optional[str] = None
+    reviewed_by: str | None = None
 
 
 class DigestSectionResponse(BaseModel):
@@ -71,9 +66,9 @@ class DigestSectionResponse(BaseModel):
 
     title: str
     summary: str
-    details: List[str]
-    themes: List[str]
-    continuity: Optional[str] = None
+    details: list[str]
+    themes: list[str]
+    continuity: str | None = None
 
 
 class DigestDetail(BaseModel):
@@ -85,24 +80,24 @@ class DigestDetail(BaseModel):
     period_start: str
     period_end: str
     executive_overview: str
-    strategic_insights: List[DigestSectionResponse]
-    technical_developments: List[DigestSectionResponse]
-    emerging_trends: List[DigestSectionResponse]
+    strategic_insights: list[DigestSectionResponse]
+    technical_developments: list[DigestSectionResponse]
+    emerging_trends: list[DigestSectionResponse]
     actionable_recommendations: dict
-    sources: List[dict]
+    sources: list[dict]
     newsletter_count: int
     status: str
     created_at: str
-    completed_at: Optional[str] = None
+    completed_at: str | None = None
     model_used: str
-    model_version: Optional[str] = None
-    processing_time_seconds: Optional[int] = None
+    model_version: str | None = None
+    processing_time_seconds: int | None = None
     revision_count: int
-    reviewed_by: Optional[str] = None
-    reviewed_at: Optional[str] = None
-    review_notes: Optional[str] = None
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    review_notes: str | None = None
     is_combined: bool = False
-    child_digest_ids: Optional[List[int]] = None
+    child_digest_ids: list[int] | None = None
 
 
 class DigestStatistics(BaseModel):
@@ -123,8 +118,8 @@ class ReviewRequest(BaseModel):
 
     action: str = Field(..., description="Review action: approve, reject, or request_revision")
     reviewer: str = Field(..., description="Reviewer identifier")
-    notes: Optional[str] = Field(None, description="Review notes")
-    section_feedback: Optional[dict] = Field(
+    notes: str | None = Field(None, description="Review notes")
+    section_feedback: dict | None = Field(
         default_factory=dict,
         description="Section-specific feedback (key = section type, value = feedback)",
     )
@@ -187,9 +182,7 @@ async def generate_digest_task(request: DigestRequest) -> None:
             digest_record.technical_developments = [
                 s.model_dump() for s in digest_data.technical_developments
             ]
-            digest_record.emerging_trends = [
-                s.model_dump() for s in digest_data.emerging_trends
-            ]
+            digest_record.emerging_trends = [s.model_dump() for s in digest_data.emerging_trends]
             digest_record.actionable_recommendations = digest_data.actionable_recommendations
             digest_record.sources = digest_data.sources
             digest_record.newsletter_count = digest_data.newsletter_count
@@ -240,7 +233,7 @@ async def generate_digest(
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid digest type. Must be 'daily' or 'weekly'",
+            detail="Invalid digest type. Must be 'daily' or 'weekly'",
         )
 
     # Calculate default period based on type
@@ -280,13 +273,13 @@ async def generate_digest(
     }
 
 
-@router.get("/", response_model=List[DigestSummary])
+@router.get("/", response_model=list[DigestSummary])
 async def list_digests(
-    status: Optional[str] = Query(None, description="Filter by status"),
-    digest_type: Optional[str] = Query(None, description="Filter by type"),
+    status: str | None = Query(None, description="Filter by status"),
+    digest_type: str | None = Query(None, description="Filter by type"),
     limit: int = Query(50, le=100, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
-) -> List[DigestSummary]:
+) -> list[DigestSummary]:
     """List digests with optional filtering."""
     with get_db() as db:
         query = db.query(Digest)
@@ -308,12 +301,7 @@ async def list_digests(
             except ValueError:
                 pass  # Invalid type, ignore filter
 
-        digests = (
-            query.order_by(Digest.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        digests = query.order_by(Digest.created_at.desc()).offset(offset).limit(limit).all()
 
         return [
             DigestSummary(
@@ -352,11 +340,7 @@ async def get_digest_statistics() -> DigestStatistics:
         # Count by type
         by_type = {}
         for dtype in [DigestType.DAILY, DigestType.WEEKLY]:
-            by_type[dtype.value] = (
-                db.query(Digest)
-                .filter(Digest.digest_type == dtype)
-                .count()
-            )
+            by_type[dtype.value] = db.query(Digest).filter(Digest.digest_type == dtype).count()
 
         return DigestStatistics(
             total=total,
@@ -380,7 +364,7 @@ async def get_digest(digest_id: int) -> DigestDetail:
             raise HTTPException(status_code=404, detail="Digest not found")
 
         # Convert JSON sections to response models
-        def parse_sections(sections_json: list) -> List[DigestSectionResponse]:
+        def parse_sections(sections_json: list) -> list[DigestSectionResponse]:
             if not sections_json:
                 return []
             return [
@@ -484,7 +468,7 @@ async def submit_review(
 async def quick_approve(
     digest_id: int,
     reviewer: str = Query(..., description="Reviewer identifier"),
-    notes: Optional[str] = Query(None, description="Approval notes"),
+    notes: str | None = Query(None, description="Approval notes"),
 ) -> dict:
     """Quick approve a digest for delivery."""
     with get_db() as db:

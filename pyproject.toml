@@ -60,8 +60,10 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
     "ruff>=0.1.0",
     "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
     "ipython>=8.20.0",
 ]
 
@@ -75,10 +77,75 @@ packages = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "alembic/versions",
+    "node_modules",
+    ".pytest_cache",
+]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
-ignore = ["E501"]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "W",      # pycodestyle warnings
+    "UP",     # pyupgrade - use modern Python syntax
+    "B",      # flake8-bugbear - common bugs
+    "C4",     # flake8-comprehensions - list/dict comprehensions
+    "SIM",    # flake8-simplify - simplify code
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit - security
+    "ASYNC",  # flake8-async - async best practices
+    "DTZ",    # flake8-datetimez - timezone-aware datetime
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "S101",   # assert in tests is fine
+    "S105",   # hardcoded passwords (often false positives in tests)
+    "S106",   # hardcoded passwords
+    "S107",   # hardcoded default passwords (acceptable for local dev defaults)
+    "S110",   # try-except-pass (sometimes intentional for optional operations)
+    "S603",   # subprocess call (we control the inputs)
+    "B008",   # function call in default argument (Depends() in FastAPI)
+    "B904",   # raise from err (not critical for HTTPException)
+    "DTZ001", # datetime.utcnow() - will address separately
+    "DTZ003", # datetime.utcnow() - same as above
+    "DTZ005", # datetime.now() without tz - will address separately
+    "SIM102", # nested if statements (sometimes more readable)
+    "SIM105", # contextlib.suppress (try-except-pass is clear enough)
+    "SIM108", # ternary operator (if-else is sometimes clearer)
+    "SIM115", # context manager for files (sometimes not needed)
+    "SIM116", # dictionary vs if statements (readability preference)
+    "SIM118", # key in dict vs dict.keys() (minor)
+    "C401",   # unnecessary generator (minor)
+    "C416",   # unnecessary comprehension (minor)
+    "N806",   # variable naming in function (CONSTANTS are fine)
+    "RUF022", # __all__ sorting (not critical)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",   # Allow asserts
+    "S105",   # Allow test credentials
+    "S106",   # Allow test credentials
+    "SIM103", # Return condition directly (if-else is clearer in tests)
+    "SIM117", # Nested with statements (more readable in tests)
+    "F841",   # Unused variables (sometimes needed for setup)
+    "RUF005", # List concatenation (simpler to read)
+    "RUF015", # iter() over slice (minor)
+    "RUF043", # Regex pattern without raw string (acceptable in tests)
+    "B007",   # Loop variable not used (sometimes intentional)
+]
+"alembic/*" = ["E402"]  # Imports not at top of file
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-single-line = false
+combine-as-imports = true
 
 [tool.mypy]
 python_version = "3.11"

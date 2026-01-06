@@ -9,15 +9,12 @@ This module provides models for:
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 from sqlalchemy import (
     JSON,
-    Boolean,
     Column,
     DateTime,
-    Enum as SQLEnum,
     ForeignKey,
     Integer,
     String,
@@ -26,7 +23,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from src.models.newsletter import Base
-
 
 # --- Enums ---
 
@@ -90,7 +86,7 @@ class DialogueTurn(BaseModel):
 
     speaker: str = Field(..., description="Speaker identifier: 'alex' or 'sam'")
     text: str = Field(..., description="The spoken content")
-    emphasis: Optional[str] = Field(
+    emphasis: str | None = Field(
         None, description="Emotional tone: 'excited', 'thoughtful', 'concerned', 'amused'"
     )
     pause_after: float = Field(default=0.5, description="Seconds of pause after this turn")
@@ -117,8 +113,8 @@ class PodcastScript(BaseModel):
     estimated_duration_seconds: int = Field(..., description="Estimated duration in seconds")
     word_count: int = Field(..., description="Total word count of script")
     sections: list[PodcastSection] = Field(default_factory=list, description="Script sections")
-    intro: Optional[PodcastSection] = Field(None, description="Intro section (convenience)")
-    outro: Optional[PodcastSection] = Field(None, description="Outro section (convenience)")
+    intro: PodcastSection | None = Field(None, description="Intro section (convenience)")
+    outro: PodcastSection | None = Field(None, description="Outro section (convenience)")
     sources_summary: list[dict] = Field(
         default_factory=list,
         description="Summary of sources: [{id, title, publication, url}]",
@@ -155,7 +151,7 @@ class ScriptRevisionRequest(BaseModel):
     script_id: int = Field(..., description="ID of the script to revise")
     section_index: int = Field(..., description="Index of section to revise (0-based)")
     feedback: str = Field(..., description="Reviewer feedback for this section")
-    replacement_dialogue: Optional[list[DialogueTurn]] = Field(
+    replacement_dialogue: list[DialogueTurn] | None = Field(
         None, description="If provided, replace section dialogue entirely"
     )
 
@@ -170,7 +166,7 @@ class ScriptReviewRequest(BaseModel):
         default_factory=dict,
         description="Section-specific feedback (key = section index, value = feedback)",
     )
-    general_notes: Optional[str] = Field(None, description="General review notes")
+    general_notes: str | None = Field(None, description="General review notes")
 
 
 class PodcastGenerationMetadata(BaseModel):
@@ -179,9 +175,7 @@ class PodcastGenerationMetadata(BaseModel):
     newsletter_ids_fetched: list[int] = Field(
         default_factory=list, description="Newsletter IDs fetched via tool"
     )
-    web_searches: list[str] = Field(
-        default_factory=list, description="Web search queries executed"
-    )
+    web_searches: list[str] = Field(default_factory=list, description="Web search queries executed")
     tool_call_count: int = Field(default=0, description="Total tool invocations")
     total_tokens_used: int = Field(default=0, description="Total tokens consumed")
 
@@ -291,7 +285,9 @@ class Podcast(Base):
     voice_config = Column(JSON, nullable=True)  # Provider-specific voice IDs used
 
     # Status
-    status = Column(String(50), default="generating", nullable=False)  # generating, completed, failed
+    status = Column(
+        String(50), default="generating", nullable=False
+    )  # generating, completed, failed
     error_message = Column(Text, nullable=True)
 
     # Timestamps

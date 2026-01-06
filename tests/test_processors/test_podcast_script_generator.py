@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -221,10 +221,16 @@ class TestPodcastScriptGenerator:
         assert PodcastLength.EXTENDED in WORD_COUNT_TARGETS
 
         # Verify brief is shortest
-        assert WORD_COUNT_TARGETS[PodcastLength.BRIEF]["max"] < WORD_COUNT_TARGETS[PodcastLength.STANDARD]["min"]
+        assert (
+            WORD_COUNT_TARGETS[PodcastLength.BRIEF]["max"]
+            < WORD_COUNT_TARGETS[PodcastLength.STANDARD]["min"]
+        )
 
         # Verify standard is in middle
-        assert WORD_COUNT_TARGETS[PodcastLength.STANDARD]["max"] < WORD_COUNT_TARGETS[PodcastLength.EXTENDED]["min"]
+        assert (
+            WORD_COUNT_TARGETS[PodcastLength.STANDARD]["max"]
+            < WORD_COUNT_TARGETS[PodcastLength.EXTENDED]["min"]
+        )
 
     def test_length_prompts_defined(self):
         """Test length-specific prompts are defined."""
@@ -544,7 +550,9 @@ class TestFallbackScript:
 class TestUserPromptBuilding:
     """Tests for user prompt construction."""
 
-    def test_build_user_prompt(self, sample_digest_data, sample_newsletter_metadata, sample_summaries):
+    def test_build_user_prompt(
+        self, sample_digest_data, sample_newsletter_metadata, sample_summaries
+    ):
         """Test user prompt building."""
         generator = PodcastScriptGenerator()
 
@@ -577,7 +585,9 @@ class TestUserPromptBuilding:
         assert "section_type" in prompt
         assert "dialogue" in prompt
 
-    def test_build_user_prompt_no_custom_topics(self, sample_digest_data, sample_newsletter_metadata, sample_summaries):
+    def test_build_user_prompt_no_custom_topics(
+        self, sample_digest_data, sample_newsletter_metadata, sample_summaries
+    ):
         """Test user prompt without custom focus topics."""
         generator = PodcastScriptGenerator()
 

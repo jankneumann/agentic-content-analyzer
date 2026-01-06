@@ -7,7 +7,6 @@ consistent hashes for detecting duplicate content across different sources
 
 import hashlib
 import re
-from typing import Optional
 
 
 def normalize_content(text: str) -> str:
@@ -33,38 +32,38 @@ def normalize_content(text: str) -> str:
     text = text.lower()
 
     # Remove HTML tags
-    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r"<[^>]+>", "", text)
 
     # Decode common HTML entities
-    text = text.replace('&nbsp;', ' ')
-    text = text.replace('&amp;', '&')
-    text = text.replace('&lt;', '<')
-    text = text.replace('&gt;', '>')
-    text = text.replace('&quot;', '"')
-    text = text.replace('&#39;', "'")
+    text = text.replace("&nbsp;", " ")
+    text = text.replace("&amp;", "&")
+    text = text.replace("&lt;", "<")
+    text = text.replace("&gt;", ">")
+    text = text.replace("&quot;", '"')
+    text = text.replace("&#39;", "'")
 
     # Remove URLs (can vary between Gmail/RSS)
-    text = re.sub(r'https?://\S+', '', text)
+    text = re.sub(r"https?://\S+", "", text)
 
     # Remove email addresses
-    text = re.sub(r'\S+@\S+', '', text)
+    text = re.sub(r"\S+@\S+", "", text)
 
     # Remove common email footer patterns
     footer_patterns = [
-        r'unsubscribe.*$',
-        r'view in browser.*$',
-        r'forward to a friend.*$',
-        r'update your preferences.*$',
-        r'manage your subscription.*$',
-        r'click here to.*$',
-        r'you received this email because.*$',
-        r'this email was sent to.*$',
+        r"unsubscribe.*$",
+        r"view in browser.*$",
+        r"forward to a friend.*$",
+        r"update your preferences.*$",
+        r"manage your subscription.*$",
+        r"click here to.*$",
+        r"you received this email because.*$",
+        r"this email was sent to.*$",
     ]
     for pattern in footer_patterns:
-        text = re.sub(pattern, '', text, flags=re.IGNORECASE | re.MULTILINE)
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE)
 
     # Normalize whitespace
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r"\s+", " ", text)
 
     # Remove leading/trailing whitespace
     text = text.strip()
@@ -83,7 +82,7 @@ def generate_content_hash(raw_text: str) -> str:
         64-character SHA-256 hash hex string
     """
     normalized = normalize_content(raw_text)
-    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def calculate_content_similarity(text1: str, text2: str) -> float:
@@ -118,9 +117,7 @@ def calculate_content_similarity(text1: str, text2: str) -> float:
 
 
 def should_skip_duplicate(
-    existing_text: str,
-    new_text: str,
-    similarity_threshold: float = 0.85
+    existing_text: str, new_text: str, similarity_threshold: float = 0.85
 ) -> bool:
     """
     Determine if new content is a duplicate of existing content.

@@ -7,7 +7,6 @@ Includes SSE endpoints for real-time progress tracking.
 
 import asyncio
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -31,8 +30,8 @@ class NewsletterListItem(BaseModel):
     id: int
     source: NewsletterSource
     title: str
-    sender: Optional[str]
-    publication: Optional[str]
+    sender: str | None
+    publication: str | None
     published_date: datetime
     status: ProcessingStatus
     has_summary: bool = False
@@ -49,18 +48,18 @@ class NewsletterDetail(BaseModel):
     source: NewsletterSource
     source_id: str
     title: str
-    sender: Optional[str]
-    publication: Optional[str]
+    sender: str | None
+    publication: str | None
     published_date: datetime
-    url: Optional[str]
-    raw_text: Optional[str]
-    extracted_links: Optional[list[str]]
-    content_hash: Optional[str]
-    canonical_newsletter_id: Optional[int]
+    url: str | None
+    raw_text: str | None
+    extracted_links: list[str] | None
+    content_hash: str | None
+    canonical_newsletter_id: int | None
     status: ProcessingStatus
     ingested_at: datetime
-    processed_at: Optional[datetime]
-    error_message: Optional[str]
+    processed_at: datetime | None
+    error_message: str | None
 
     class Config:
         from_attributes = True
@@ -119,12 +118,12 @@ _ingestion_tasks: dict[str, dict] = {}
 
 @router.get("", response_model=PaginatedNewsletterResponse)
 async def list_newsletters(
-    source: Optional[NewsletterSource] = Query(None, description="Filter by source"),
-    status: Optional[ProcessingStatus] = Query(None, description="Filter by status"),
-    publication: Optional[str] = Query(None, description="Filter by publication"),
-    start_date: Optional[datetime] = Query(None, description="Filter after this date"),
-    end_date: Optional[datetime] = Query(None, description="Filter before this date"),
-    search: Optional[str] = Query(None, description="Search in title"),
+    source: NewsletterSource | None = Query(None, description="Filter by source"),
+    status: ProcessingStatus | None = Query(None, description="Filter by status"),
+    publication: str | None = Query(None, description="Filter by publication"),
+    start_date: datetime | None = Query(None, description="Filter after this date"),
+    end_date: datetime | None = Query(None, description="Filter before this date"),
+    search: str | None = Query(None, description="Search in title"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> PaginatedNewsletterResponse:
@@ -156,10 +155,7 @@ async def list_newsletters(
 
         # Apply pagination and ordering
         newsletters = (
-            query.order_by(Newsletter.published_date.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
+            query.order_by(Newsletter.published_date.desc()).offset(offset).limit(limit).all()
         )
 
         # Convert to response models
@@ -195,17 +191,13 @@ async def get_newsletter_stats() -> NewsletterStats:
 
         # Count by status
         status_counts = (
-            db.query(Newsletter.status, func.count(Newsletter.id))
-            .group_by(Newsletter.status)
-            .all()
+            db.query(Newsletter.status, func.count(Newsletter.id)).group_by(Newsletter.status).all()
         )
         by_status = {status.value: count for status, count in status_counts}
 
         # Count by source
         source_counts = (
-            db.query(Newsletter.source, func.count(Newsletter.id))
-            .group_by(Newsletter.source)
-            .all()
+            db.query(Newsletter.source, func.count(Newsletter.id)).group_by(Newsletter.source).all()
         )
         by_source = {source.value: count for source, count in source_counts}
 
@@ -346,14 +338,14 @@ async def _run_ingestion(
             for i, data in enumerate(newsletters):
                 # Check for existing
                 existing = (
-                    db.query(Newsletter)
-                    .filter(Newsletter.source_id == data.source_id)
-                    .first()
+                    db.query(Newsletter).filter(Newsletter.source_id == data.source_id).first()
                 )
                 if existing:
                     _ingestion_tasks[task_id]["processed"] = i + 1
                     _ingestion_tasks[task_id]["progress"] = int((i + 1) / total * 100)
-                    _ingestion_tasks[task_id]["message"] = f"Skipped duplicate: {data.title[:50]}..."
+                    _ingestion_tasks[task_id]["message"] = (
+                        f"Skipped duplicate: {data.title[:50]}..."
+                    )
                     continue
 
                 newsletter = Newsletter(

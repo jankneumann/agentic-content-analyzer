@@ -5,8 +5,8 @@ Separates presentation layer from core review functionality.
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from src.config.models import ModelConfig
 from src.models.digest import Digest, DigestStatus
@@ -25,7 +25,7 @@ class ReviewService:
     All methods are async to support future web API integration.
     """
 
-    def __init__(self, model_config: Optional[ModelConfig] = None):
+    def __init__(self, model_config: ModelConfig | None = None):
         """
         Initialize review service.
 
@@ -38,7 +38,7 @@ class ReviewService:
         self.reviser = DigestReviser(model_config=self.model_config)
         logger.info("Initialized ReviewService")
 
-    async def list_pending_reviews(self) -> List[Digest]:
+    async def list_pending_reviews(self) -> list[Digest]:
         """Get all digests awaiting review.
 
         Returns:
@@ -57,7 +57,7 @@ class ReviewService:
             logger.info(f"Found {len(digests)} digests pending review")
             return digests
 
-    async def get_digest(self, digest_id: int) -> Optional[Digest]:
+    async def get_digest(self, digest_id: int) -> Digest | None:
         """Load digest by ID.
 
         Args:
@@ -96,8 +96,7 @@ class ReviewService:
             ValueError: If digest not found or not in reviewable status
         """
         logger.info(
-            f"Starting revision session {session_id} for digest {digest_id} "
-            f"by reviewer {reviewer}"
+            f"Starting revision session {session_id} for digest {digest_id} by reviewer {reviewer}"
         )
 
         # Load context via reviser
@@ -109,8 +108,7 @@ class ReviewService:
             DigestStatus.COMPLETED,
         ]:
             raise ValueError(
-                f"Digest {digest_id} is not reviewable. "
-                f"Status: {context.digest.status}"
+                f"Digest {digest_id} is not reviewable. Status: {context.digest.status}"
             )
 
         return context
@@ -119,7 +117,7 @@ class ReviewService:
         self,
         context: RevisionContext,
         user_input: str,
-        conversation_history: List[Dict[str, Any]],
+        conversation_history: list[dict[str, Any]],
         session_id: str,
     ) -> RevisionResult:
         """Process single revision request.
@@ -197,9 +195,9 @@ class ReviewService:
         self,
         digest_id: int,
         action: str,
-        revision_history: Optional[Dict[str, Any]],
+        revision_history: dict[str, Any] | None,
         reviewer: str,
-        review_notes: Optional[str] = None,
+        review_notes: str | None = None,
     ) -> Digest:
         """Complete review process and update digest status.
 
@@ -217,15 +215,12 @@ class ReviewService:
             ValueError: If digest not found or action invalid
         """
         logger.info(
-            f"Finalizing review for digest {digest_id}: "
-            f"action={action}, reviewer={reviewer}"
+            f"Finalizing review for digest {digest_id}: action={action}, reviewer={reviewer}"
         )
 
         valid_actions = ["approve", "reject", "save-draft"]
         if action not in valid_actions:
-            raise ValueError(
-                f"Invalid action '{action}'. Valid: {valid_actions}"
-            )
+            raise ValueError(f"Invalid action '{action}'. Valid: {valid_actions}")
 
         with get_db() as db:
             digest = db.query(Digest).filter_by(id=digest_id).first()
@@ -256,7 +251,7 @@ class ReviewService:
 
             digest.reviewed_by = reviewer
             digest.review_notes = review_notes
-            digest.reviewed_at = datetime.now(timezone.utc)
+            digest.reviewed_at = datetime.now(UTC)
 
             db.commit()
             db.refresh(digest)
@@ -273,7 +268,7 @@ class ReviewService:
         digest_id: int,
         action: str,
         reviewer: str,
-        notes: Optional[str] = None,
+        notes: str | None = None,
     ) -> Digest:
         """Quick approve/reject without interactive revision.
 
@@ -291,23 +286,18 @@ class ReviewService:
         Raises:
             ValueError: If digest not found or action invalid
         """
-        logger.info(
-            f"Quick review for digest {digest_id}: "
-            f"action={action}, reviewer={reviewer}"
-        )
+        logger.info(f"Quick review for digest {digest_id}: action={action}, reviewer={reviewer}")
 
         if action not in ["approve", "reject"]:
-            raise ValueError(
-                f"Invalid action '{action}'. Valid: 'approve', 'reject'"
-            )
+            raise ValueError(f"Invalid action '{action}'. Valid: 'approve', 'reject'")
 
         # Create minimal revision history for audit
         revision_history = {
             "sessions": [
                 {
                     "session_id": str(uuid.uuid4()),
-                    "started_at": datetime.now(timezone.utc).isoformat(),
-                    "ended_at": datetime.now(timezone.utc).isoformat(),
+                    "started_at": datetime.now(UTC).isoformat(),
+                    "ended_at": datetime.now(UTC).isoformat(),
                     "reviewer": reviewer,
                     "turns": [],  # No interactive turns
                     "final_action": action,
@@ -331,7 +321,7 @@ class ReviewService:
         ai_response: str,
         section_modified: str,
         change_accepted: bool,
-        tools_called: Optional[List[str]] = None,
+        tools_called: list[str] | None = None,
     ) -> RevisionTurn:
         """Create a revision turn object for audit trail.
 
@@ -352,7 +342,7 @@ class ReviewService:
             ai_response=ai_response,
             section_modified=section_modified,
             change_accepted=change_accepted,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tools_called=tools_called or [],
         )
 

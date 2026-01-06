@@ -7,9 +7,9 @@ to configuration changes in model_registry.yaml.
 import pytest
 
 from src.config.models import (
+    DEFAULT_MODELS,
     MODEL_REGISTRY,
     PROVIDER_MODEL_CONFIGS,
-    DEFAULT_MODELS,
     ModelConfig,
     ModelFamily,
     ModelStep,
@@ -100,11 +100,7 @@ class TestModelRegistry:
         """Test that all default models are available on at least one provider."""
         for step, model_id in DEFAULT_MODELS.items():
             # Find providers for this model
-            providers = [
-                prov
-                for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys()
-                if mid == model_id
-            ]
+            providers = [prov for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if mid == model_id]
             assert len(providers) > 0, f"Default model {model_id} ({step}) has no providers"
 
 
@@ -172,9 +168,7 @@ class TestModelConfig:
         # Find a model and a provider it's NOT available on
         model_id = next(iter(MODEL_REGISTRY.keys()))
         available_providers = [
-            prov
-            for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys()
-            if mid == model_id
+            prov for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if mid == model_id
         ]
 
         # Find a provider this model is NOT on
@@ -229,7 +223,7 @@ class TestModelConfig:
         # Get any model that's available on Anthropic
         model_id = next(
             (mid for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if prov == Provider.ANTHROPIC),
-            None
+            None,
         )
 
         if model_id:
@@ -251,7 +245,7 @@ class TestModelConfig:
         # Get any model that's available on Anthropic
         model_id = next(
             (mid for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if prov == Provider.ANTHROPIC),
-            None
+            None,
         )
 
         if model_id:
@@ -277,8 +271,7 @@ class TestModelConfig:
 
         # Find a model with at least 2 providers
         multi_provider_model = next(
-            (mid for mid, provs in models_by_provider.items() if len(provs) >= 2),
-            None
+            (mid for mid, provs in models_by_provider.items() if len(provs) >= 2), None
         )
 
         if multi_provider_model:
@@ -328,21 +321,15 @@ class TestProviderManagement:
         # Find a model available on multiple providers
         models_by_provider_count = {}
         for model_id, provider in PROVIDER_MODEL_CONFIGS.keys():
-            models_by_provider_count[model_id] = (
-                models_by_provider_count.get(model_id, 0) + 1
-            )
+            models_by_provider_count[model_id] = models_by_provider_count.get(model_id, 0) + 1
 
         # Find a model with at least 2 providers
-        model_id = next(
-            (m for m, count in models_by_provider_count.items() if count >= 2), None
-        )
+        model_id = next((m for m, count in models_by_provider_count.items() if count >= 2), None)
 
         if model_id:  # Only test if we found such a model
             # Get two providers for this model
             providers_for_model = [
-                prov
-                for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys()
-                if mid == model_id
+                prov for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if mid == model_id
             ][:2]
 
             provider1, provider2 = providers_for_model[0], providers_for_model[1]
@@ -444,8 +431,7 @@ class TestCostCalculation:
         for model_id in DEFAULT_MODELS.values():
             # Find a provider for this model
             provider = next(
-                (prov for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if mid == model_id),
-                None
+                (prov for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if mid == model_id), None
             )
             if provider:
                 config.add_provider(ProviderConfig(provider=provider, api_key="test-key"))
@@ -478,8 +464,7 @@ class TestCostCalculation:
         # Add providers for all default models
         for model_id in DEFAULT_MODELS.values():
             provider = next(
-                (prov for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if mid == model_id),
-                None
+                (prov for (mid, prov) in PROVIDER_MODEL_CONFIGS.keys() if mid == model_id), None
             )
             if provider:
                 config.add_provider(ProviderConfig(provider=provider, api_key="test-key"))

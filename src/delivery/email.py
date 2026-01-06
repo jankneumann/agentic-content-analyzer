@@ -3,13 +3,11 @@
 import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
 
-from src.config import settings
+from src.ingestion.gmail import GmailClient
 from src.models.digest import Digest
 from src.utils.digest_formatter import DigestFormatter
 from src.utils.logging import get_logger
-from src.ingestion.gmail import GmailClient
 
 logger = get_logger(__name__)
 
@@ -26,7 +24,7 @@ class GmailDeliveryService:
         self,
         digest: Digest,
         recipient_email: str,
-        subject: Optional[str] = None,
+        subject: str | None = None,
     ) -> bool:
         """
         Send digest via Gmail.
@@ -45,23 +43,23 @@ class GmailDeliveryService:
             html_content = formatter.to_html(digest)
 
             # Create email message
-            message = MIMEMultipart('alternative')
-            message['To'] = recipient_email
-            message['From'] = 'me'  # Gmail API uses 'me' for authenticated user
-            message['Subject'] = subject or digest.title
+            message = MIMEMultipart("alternative")
+            message["To"] = recipient_email
+            message["From"] = "me"  # Gmail API uses 'me' for authenticated user
+            message["Subject"] = subject or digest.title
 
             # Attach HTML content
-            html_part = MIMEText(html_content, 'html')
+            html_part = MIMEText(html_content, "html")
             message.attach(html_part)
 
             # Encode message
-            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
             # Send via Gmail API
             sent_message = (
                 self.gmail_client.service.users()
                 .messages()
-                .send(userId='me', body={'raw': raw_message})
+                .send(userId="me", body={"raw": raw_message})
                 .execute()
             )
 

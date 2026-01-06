@@ -10,11 +10,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.newsletter_routes import router as newsletter_router
-from src.api.summary_routes import router as summary_router
-from src.api.script_routes import router as script_router
 from src.api.digest_routes import router as digest_router
+from src.api.newsletter_routes import router as newsletter_router
 from src.api.podcast_routes import router as podcast_router
+from src.api.script_routes import router as script_router
+from src.api.summary_routes import router as summary_router
 
 
 @asynccontextmanager

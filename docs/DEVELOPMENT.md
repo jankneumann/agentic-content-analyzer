@@ -120,14 +120,181 @@ pytest tests/test_config/test_models.py -v
 
 ```bash
 # Lint code with Ruff
-ruff check src/
-ruff check src/ --fix  # Auto-fix issues
+ruff check src/ tests/
+ruff check src/ tests/ --fix  # Auto-fix issues
+
+# Format code
+ruff format src/ tests/
 
 # Type check with mypy
 mypy src/
 
-# Format code
-ruff format src/
+# Run pre-commit hooks manually
+pre-commit run --all-files
+```
+
+### Pre-Commit Hooks
+
+Pre-commit hooks are configured to run automatically before each commit:
+
+```bash
+# Install pre-commit hooks (first time only)
+pre-commit install
+
+# Hooks that run on every commit:
+# 1. ruff - Linter with auto-fix
+# 2. ruff-format - Code formatter
+# 3. trailing-whitespace - Remove trailing spaces
+# 4. end-of-file-fixer - Ensure newline at EOF
+# 5. check-yaml - Validate YAML files
+# 6. check-added-large-files - Prevent large file commits
+# 7. check-merge-conflict - Detect merge conflict markers
+# 8. detect-private-key - Prevent accidental key commits
+# 9. mypy - Type checking (optional, can be slow)
+```
+
+## Linter Guidelines
+
+This project uses **Ruff** for linting and formatting, configured in `pyproject.toml`.
+
+### Enabled Rule Categories
+
+| Rule | Description | Purpose |
+|------|-------------|---------|
+| E | pycodestyle errors | Basic Python style errors |
+| F | Pyflakes | Undefined names, unused imports |
+| I | isort | Import sorting and organization |
+| N | pep8-naming | Naming conventions (functions, classes) |
+| W | pycodestyle warnings | Style warnings |
+| UP | pyupgrade | Modern Python syntax (3.11+) |
+| B | flake8-bugbear | Common bugs and design issues |
+| C4 | flake8-comprehensions | List/dict comprehension improvements |
+| SIM | flake8-simplify | Code simplification suggestions |
+| RUF | Ruff-specific | Additional quality rules |
+| S | flake8-bandit | Security vulnerability checks |
+| ASYNC | flake8-async | Async/await best practices |
+| DTZ | flake8-datetimez | Timezone-aware datetime usage |
+
+### Ignored Rules
+
+Some rules are intentionally ignored for project-specific reasons:
+
+```toml
+ignore = [
+    "E501",   # Line too long - handled by formatter
+    "S101",   # Assert in tests - acceptable
+    "S105",   # Hardcoded passwords - false positives in tests
+    "S106",   # Hardcoded passwords
+    "S107",   # Hardcoded default passwords - acceptable for local dev
+    "S110",   # try-except-pass - sometimes intentional
+    "S603",   # Subprocess call - we control the inputs
+    "B008",   # Function call in default argument - FastAPI Depends()
+    "B904",   # Raise from err - not critical for HTTPException
+    "DTZ001", # datetime.utcnow() - will address separately
+    "DTZ003", # datetime.utcnow() - same as above
+    "DTZ005", # datetime.now() without tz - will address separately
+    "SIM102", # Nested if statements - sometimes more readable
+    "SIM105", # contextlib.suppress - try-except-pass is clear
+    "SIM108", # Ternary operator - if-else sometimes clearer
+    "SIM115", # Context manager for files - sometimes not needed
+    "SIM116", # Dict vs if statements - readability preference
+    "SIM118", # key in dict vs dict.keys() - minor
+    "C401",   # Unnecessary generator - minor
+    "C416",   # Unnecessary comprehension - minor
+    "N806",   # Variable naming in function - CONSTANTS are fine
+    "RUF022", # __all__ sorting - not critical
+]
+```
+
+### Test-Specific Ignores
+
+Tests have additional relaxed rules to support test patterns:
+
+```toml
+"tests/*" = [
+    "S101",   # Allow asserts
+    "S105",   # Allow test credentials
+    "S106",   # Allow test credentials
+    "SIM103", # Return condition directly - if-else clearer in tests
+    "SIM117", # Nested with statements - more readable in tests
+    "F841",   # Unused variables - sometimes needed for setup
+    "RUF005", # List concatenation - simpler to read
+    "RUF015", # iter() over slice - minor
+    "RUF043", # Regex without raw string - acceptable
+    "B007",   # Loop variable not used - sometimes intentional
+]
+```
+
+### Key Linting Principles
+
+1. **Use Modern Python Syntax (UP rules)**:
+   ```python
+   # Preferred (Python 3.11+)
+   def func(arg: str | None = None) -> list[str]:
+       ...
+
+   # Avoid (legacy)
+   from typing import List, Optional
+   def func(arg: Optional[str] = None) -> List[str]:
+       ...
+   ```
+
+2. **Import Organization (I rules)**:
+   ```python
+   # Correct order:
+   # 1. Standard library
+   import os
+   from datetime import datetime
+
+   # 2. Third-party
+   import pytest
+   from anthropic import Anthropic
+
+   # 3. Local (first-party)
+   from src.config import settings
+   from src.models.digest import Digest
+   ```
+
+3. **Security Awareness (S rules)**:
+   - Never hardcode production credentials
+   - Validate user inputs at system boundaries
+   - Use subprocess carefully with controlled inputs
+
+4. **Async Best Practices (ASYNC rules)**:
+   - Always await async functions
+   - Use `async with` for async context managers
+   - Avoid blocking calls in async functions
+
+### Running Linter
+
+```bash
+# Check for issues
+ruff check src/ tests/
+
+# Auto-fix what can be fixed
+ruff check src/ tests/ --fix
+
+# Show all rules and their descriptions
+ruff rule --all
+
+# Check specific rule
+ruff rule UP045  # Shows details about the rule
+```
+
+### Formatting
+
+Ruff's formatter is a drop-in replacement for Black:
+
+```bash
+# Check if formatting needed
+ruff format src/ tests/ --check
+
+# Apply formatting
+ruff format src/ tests/
+
+# Format settings in pyproject.toml
+line-length = 100
+target-version = "py311"
 ```
 
 ### Database Management

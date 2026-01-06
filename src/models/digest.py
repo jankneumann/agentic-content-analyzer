@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Enum as SQLEnum, Integer, String, Text
@@ -95,7 +94,7 @@ class DigestSection(BaseModel):
     summary: str = Field(..., description="2-3 sentence summary")
     details: list[str] = Field(default_factory=list, description="Detailed points")
     themes: list[str] = Field(default_factory=list, description="Related theme names")
-    continuity: Optional[str] = Field(None, description="Historical continuity text")
+    continuity: str | None = Field(None, description="Historical continuity text")
 
 
 class DigestData(BaseModel):
@@ -111,26 +110,26 @@ class DigestData(BaseModel):
     emerging_trends: list[DigestSection] = Field(default_factory=list)
     actionable_recommendations: dict[str, list[str]] = Field(default_factory=dict)
     sources: list[dict] = Field(default_factory=list)
-    historical_context: Optional[list[dict]] = None
+    historical_context: list[dict] | None = None
     newsletter_count: int
     agent_framework: str
     model_used: str  # General model ID
-    model_version: Optional[str] = None  # Version
-    token_usage: Optional[int] = None
-    processing_time_seconds: Optional[float] = None
+    model_version: str | None = None  # Version
+    token_usage: int | None = None
+    processing_time_seconds: float | None = None
 
     # Review tracking
-    reviewed_by: Optional[str] = None
-    review_notes: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
+    reviewed_by: str | None = None
+    review_notes: str | None = None
+    reviewed_at: datetime | None = None
     revision_count: int = 0
-    revision_history: Optional[dict] = None  # Conversation audit trail
+    revision_history: dict | None = None  # Conversation audit trail
 
     # Hierarchical digest support (NEW)
-    parent_digest_id: Optional[int] = None
-    child_digest_ids: Optional[list[int]] = None
+    parent_digest_id: int | None = None
+    child_digest_ids: list[int] | None = None
     is_combined: bool = False
-    source_digest_count: Optional[int] = None
+    source_digest_count: int | None = None
 
 
 class DigestRequest(BaseModel):

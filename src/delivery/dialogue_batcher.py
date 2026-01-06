@@ -92,9 +92,7 @@ class DialogueBatcher:
         if current_turns:
             batches.append(self._create_batch(current_turns, use_ssml))
 
-        reduction_pct = (
-            (len(section.dialogue) - len(batches)) / len(section.dialogue) * 100
-        )
+        reduction_pct = (len(section.dialogue) - len(batches)) / len(section.dialogue) * 100
         logger.debug(
             f"Batched {len(section.dialogue)} turns into {len(batches)} batches "
             f"for section '{section.title}' ({reduction_pct:.0f}% API call reduction)"
@@ -123,7 +121,7 @@ class DialogueBatcher:
 
         # Build combined plain text (all turns joined)
         text_parts = [turn.text for turn in turns]
-        combined_text = ' '.join(text_parts)
+        combined_text = " ".join(text_parts)
 
         # Build combined text with SSML pauses (if supported)
         if use_ssml:
@@ -136,7 +134,7 @@ class DialogueBatcher:
 
             # Add last turn without pause (pause handled separately)
             ssml_parts.append(turns[-1].text)
-            combined_text_ssml = ''.join(ssml_parts)
+            combined_text_ssml = "".join(ssml_parts)
         else:
             # No SSML support - just use plain text
             # Pauses will be added as separate silent MP3 segments

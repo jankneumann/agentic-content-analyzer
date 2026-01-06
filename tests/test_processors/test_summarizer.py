@@ -9,7 +9,7 @@ from datetime import datetime
 import pytest
 
 from src.agents.base import AgentResponse, SummarizationAgent
-from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
+from src.config.models import ModelConfig, Provider, ProviderConfig
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
 from src.models.summary import SummaryData
 from src.processors.summarizer import NewsletterSummarizer
@@ -22,12 +22,8 @@ class MockAgent(SummarizationAgent):
         """Initialize mock agent."""
         # Create minimal model config for testing
         model_config = ModelConfig()
-        model_config.add_provider(
-            ProviderConfig(provider=Provider.ANTHROPIC, api_key="mock-key")
-        )
-        super().__init__(
-            model_config=model_config, model="mock-model", api_key="mock-key"
-        )
+        model_config.add_provider(ProviderConfig(provider=Provider.ANTHROPIC, api_key="mock-key"))
+        super().__init__(model_config=model_config, model="mock-model", api_key="mock-key")
 
     def summarize_newsletter(self, newsletter: Newsletter) -> AgentResponse:
         """Mock summarization."""
@@ -141,12 +137,8 @@ class MockSuccessAgent(SummarizationAgent):
 
     def __init__(self):
         model_config = ModelConfig()
-        model_config.add_provider(
-            ProviderConfig(provider=Provider.ANTHROPIC, api_key="mock-key")
-        )
-        super().__init__(
-            model_config=model_config, model="mock-model", api_key="mock-key"
-        )
+        model_config.add_provider(ProviderConfig(provider=Provider.ANTHROPIC, api_key="mock-key"))
+        super().__init__(model_config=model_config, model="mock-model", api_key="mock-key")
 
     def summarize_newsletter(self, newsletter: Newsletter) -> AgentResponse:
         return AgentResponse(
@@ -175,12 +167,8 @@ class MockFailureAgent(SummarizationAgent):
 
     def __init__(self, fail_on_ids=None):
         model_config = ModelConfig()
-        model_config.add_provider(
-            ProviderConfig(provider=Provider.ANTHROPIC, api_key="mock-key")
-        )
-        super().__init__(
-            model_config=model_config, model="mock-model", api_key="mock-key"
-        )
+        model_config.add_provider(ProviderConfig(provider=Provider.ANTHROPIC, api_key="mock-key"))
+        super().__init__(model_config=model_config, model="mock-model", api_key="mock-key")
         self.fail_on_ids = fail_on_ids or []
 
     def summarize_newsletter(self, newsletter: Newsletter) -> AgentResponse:

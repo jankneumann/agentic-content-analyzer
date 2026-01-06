@@ -9,9 +9,8 @@ Provides a unified interface for multiple TTS providers:
 Each provider requires specific API keys and configuration.
 """
 
-import io
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 
 from src.config import settings
 from src.models.podcast import VoicePersona, VoiceProvider
@@ -32,10 +31,14 @@ VOICE_PERSONA_CONFIG = {
     VoiceProvider.ELEVENLABS: {
         # These should be configured with actual ElevenLabs voice IDs
         # from the user's account. Placeholder defaults provided.
-        VoicePersona.ALEX_MALE: settings.elevenlabs_voice_alex_male or "nPczCjzI2devNBz1zQrb",  # Brian - Deep, Resonant and Comforting
-        VoicePersona.ALEX_FEMALE: settings.elevenlabs_voice_alex_female or "XrExE9yKIg1WjnnlVkGX",  # Matilda - Knowledgable, Professional
-        VoicePersona.SAM_MALE: settings.elevenlabs_voice_sam_male or "CwhRBWXzGAHq8TQ4Fs17",  # Roger - Resonant,Laid-back, Casual
-        VoicePersona.SAM_FEMALE: settings.elevenlabs_voice_sam_female or "SAz9YHcvj6GT2YYXdXww",  # River - Relaxed, Neutral, Informative
+        VoicePersona.ALEX_MALE: settings.elevenlabs_voice_alex_male
+        or "nPczCjzI2devNBz1zQrb",  # Brian - Deep, Resonant and Comforting
+        VoicePersona.ALEX_FEMALE: settings.elevenlabs_voice_alex_female
+        or "XrExE9yKIg1WjnnlVkGX",  # Matilda - Knowledgable, Professional
+        VoicePersona.SAM_MALE: settings.elevenlabs_voice_sam_male
+        or "CwhRBWXzGAHq8TQ4Fs17",  # Roger - Resonant,Laid-back, Casual
+        VoicePersona.SAM_FEMALE: settings.elevenlabs_voice_sam_female
+        or "SAz9YHcvj6GT2YYXdXww",  # River - Relaxed, Neutral, Informative
     },
     VoiceProvider.GOOGLE_TTS: {
         VoicePersona.ALEX_MALE: "en-US-Studio-M",
@@ -121,7 +124,7 @@ class OpenAITTSProvider(TTSProvider):
     Good balance of cost and quality.
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         """Initialize OpenAI TTS provider.
 
         Args:
@@ -194,7 +197,7 @@ class ElevenLabsTTSProvider(TTSProvider):
     Requires ElevenLabs API subscription.
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         """Initialize ElevenLabs TTS provider.
 
         Args:
@@ -233,12 +236,11 @@ class ElevenLabsTTSProvider(TTSProvider):
         """
         import aiohttp
 
-        logger.debug(
-            f"ElevenLabs TTS: synthesizing {len(text)} chars with voice {voice_id}"
-        )
+        logger.debug(f"ElevenLabs TTS: synthesizing {len(text)} chars with voice {voice_id}")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{self.base_url}/text-to-speech/{voice_id}",
                 headers={
                     "xi-api-key": self.api_key,
@@ -254,13 +256,12 @@ class ElevenLabsTTSProvider(TTSProvider):
                         "use_speaker_boost": use_speaker_boost,
                     },
                 },
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise RuntimeError(
-                        f"ElevenLabs TTS failed ({response.status}): {error_text}"
-                    )
-                return await response.read()
+            ) as response,
+        ):
+            if response.status != 200:
+                error_text = await response.text()
+                raise RuntimeError(f"ElevenLabs TTS failed ({response.status}): {error_text}")
+            return await response.read()
 
     async def synthesize_stream(
         self,
@@ -276,8 +277,9 @@ class ElevenLabsTTSProvider(TTSProvider):
 
         model_id = kwargs.get("model_id", "eleven_turbo_v2_5")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{self.base_url}/text-to-speech/{voice_id}/stream",
                 headers={
                     "xi-api-key": self.api_key,
@@ -291,15 +293,16 @@ class ElevenLabsTTSProvider(TTSProvider):
                         "similarity_boost": kwargs.get("similarity_boost", 0.75),
                     },
                 },
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise RuntimeError(
-                        f"ElevenLabs TTS stream failed ({response.status}): {error_text}"
-                    )
+            ) as response,
+        ):
+            if response.status != 200:
+                error_text = await response.text()
+                raise RuntimeError(
+                    f"ElevenLabs TTS stream failed ({response.status}): {error_text}"
+                )
 
-                async for chunk in response.content.iter_chunked(4096):
-                    yield chunk
+            async for chunk in response.content.iter_chunked(4096):
+                yield chunk
 
     def get_voice_id(self, persona: VoicePersona) -> str:
         """Get ElevenLabs voice ID for a persona."""
@@ -319,7 +322,7 @@ class GoogleTTSProvider(TTSProvider):
     Note: Stub implementation - requires google-cloud-texttospeech package.
     """
 
-    def __init__(self, credentials_path: Optional[str] = None):
+    def __init__(self, credentials_path: str | None = None):
         """Initialize Google Cloud TTS provider."""
         self.credentials_path = credentials_path
         logger.info("GoogleTTSProvider initialized (implementation pending)")

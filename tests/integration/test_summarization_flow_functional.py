@@ -10,16 +10,14 @@ This does NOT verify LLM output quality - that's for scenario tests.
 We only care that the flow works, not that summaries are meaningful.
 """
 
-import pytest
 import logging
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.processors.summarizer import NewsletterSummarizer
-
-from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 from tests.helpers.simple_mocks import create_simple_summary_response
+from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +41,7 @@ def test_summarize_single_newsletter(db_session, mock_get_db):
     logger.info("Loading test newsletter...")
     newsletters = create_test_newsletters_batch(
         db_session,
-        filenames=[get_default_test_newsletters()[0]]  # Just first one
+        filenames=[get_default_test_newsletters()[0]],  # Just first one
     )
     newsletter = newsletters[0]
     logger.info(f"Loaded newsletter {newsletter.id}: {newsletter.title}")
@@ -84,9 +82,11 @@ def test_summarize_single_newsletter(db_session, mock_get_db):
     db_session.refresh(newsletter)
 
     # Check summary exists
-    summary = db_session.query(NewsletterSummary).filter(
-        NewsletterSummary.newsletter_id == newsletter.id
-    ).first()
+    summary = (
+        db_session.query(NewsletterSummary)
+        .filter(NewsletterSummary.newsletter_id == newsletter.id)
+        .first()
+    )
 
     assert summary is not None, "Summary should be created"
     assert success is True, "Summarization should succeed"
@@ -120,8 +120,7 @@ def test_summarize_multiple_newsletters_batch(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
     newsletter_ids = [nl.id for nl in newsletters]
     logger.info(f"Loaded {len(newsletters)} newsletters: {newsletter_ids}")
@@ -134,9 +133,7 @@ def test_summarize_multiple_newsletters_batch(db_session, mock_get_db):
     # 2. MOCK: Anthropic API for 3 newsletters
     # ============================================================
     logger.info("Setting up API mocks for batch summarization...")
-    mock_responses = [
-        create_simple_summary_response(newsletter_id=i) for i in range(1, 4)
-    ]
+    mock_responses = [create_simple_summary_response(newsletter_id=i) for i in range(1, 4)]
 
     # Patch get_db and Anthropic
     with patch("src.processors.summarizer.get_db", mock_get_db):
@@ -160,9 +157,9 @@ def test_summarize_multiple_newsletters_batch(db_session, mock_get_db):
     logger.info("Verifying batch results...")
 
     # Check result tracking
-    assert result['created_count'] == 3, f"Expected 3 created, got {result['created_count']}"
-    assert result['skipped_count'] == 0, f"Expected 0 skipped, got {result['skipped_count']}"
-    assert len(result['failed_ids']) == 0, f"Expected 0 failures, got {result['failed_ids']}"
+    assert result["created_count"] == 3, f"Expected 3 created, got {result['created_count']}"
+    assert result["skipped_count"] == 0, f"Expected 0 skipped, got {result['skipped_count']}"
+    assert len(result["failed_ids"]) == 0, f"Expected 0 failures, got {result['failed_ids']}"
 
     # Check database
     summaries = db_session.query(NewsletterSummary).all()
@@ -171,9 +168,11 @@ def test_summarize_multiple_newsletters_batch(db_session, mock_get_db):
     # Verify each newsletter has a summary
     for newsletter in newsletters:
         db_session.refresh(newsletter)
-        summary = db_session.query(NewsletterSummary).filter(
-            NewsletterSummary.newsletter_id == newsletter.id
-        ).first()
+        summary = (
+            db_session.query(NewsletterSummary)
+            .filter(NewsletterSummary.newsletter_id == newsletter.id)
+            .first()
+        )
 
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
         assert newsletter.status == ProcessingStatus.COMPLETED
@@ -199,8 +198,7 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     # Create summary for first newsletter manually
@@ -213,7 +211,11 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
         technical_details=["Existing detail"],
         actionable_items=["Existing action"],
         notable_quotes=["Existing quote"],
-        relevance_scores={"cto_leadership": 0.8, "technical_teams": 0.9, "individual_developers": 0.7},
+        relevance_scores={
+            "cto_leadership": 0.8,
+            "technical_teams": 0.9,
+            "individual_developers": 0.7,
+        },
         agent_framework="claude",
         model_used="claude-haiku-4-5",
         model_version="20250929",
@@ -229,9 +231,7 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
     # 2. MOCK: Only 2 API calls needed (3rd already exists)
     # ============================================================
     logger.info("Setting up API mocks for 2 missing summaries...")
-    mock_responses = [
-        create_simple_summary_response(newsletter_id=i) for i in range(2, 4)
-    ]
+    mock_responses = [create_simple_summary_response(newsletter_id=i) for i in range(2, 4)]
 
     newsletter_ids = [nl.id for nl in newsletters]
 
@@ -257,9 +257,9 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
     logger.info("Verifying results...")
 
     # Check result tracking
-    assert result['created_count'] == 2, f"Expected 2 created, got {result['created_count']}"
-    assert result['skipped_count'] == 1, f"Expected 1 skipped, got {result['skipped_count']}"
-    assert len(result['failed_ids']) == 0, f"Expected 0 failures, got {result['failed_ids']}"
+    assert result["created_count"] == 2, f"Expected 2 created, got {result['created_count']}"
+    assert result["skipped_count"] == 1, f"Expected 1 skipped, got {result['skipped_count']}"
+    assert len(result["failed_ids"]) == 0, f"Expected 0 failures, got {result['failed_ids']}"
 
     # Check database - should have exactly 3 summaries total
     summaries = db_session.query(NewsletterSummary).all()
@@ -267,9 +267,11 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
 
     # Verify all newsletters have summaries
     for newsletter in newsletters:
-        summary = db_session.query(NewsletterSummary).filter(
-            NewsletterSummary.newsletter_id == newsletter.id
-        ).first()
+        summary = (
+            db_session.query(NewsletterSummary)
+            .filter(NewsletterSummary.newsletter_id == newsletter.id)
+            .first()
+        )
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
 
     logger.info("✓ Exactly 3 summaries exist (1 existing + 2 created)")
@@ -295,8 +297,7 @@ def test_summarize_handles_api_failures(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletter...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=[get_default_test_newsletters()[0]]
+        db_session, filenames=[get_default_test_newsletters()[0]]
     )
     newsletter = newsletters[0]
     logger.info(f"Loaded newsletter {newsletter.id}")
@@ -334,9 +335,11 @@ def test_summarize_handles_api_failures(db_session, mock_get_db):
     db_session.refresh(newsletter)
 
     # Check that summary was NOT created
-    summary = db_session.query(NewsletterSummary).filter(
-        NewsletterSummary.newsletter_id == newsletter.id
-    ).first()
+    summary = (
+        db_session.query(NewsletterSummary)
+        .filter(NewsletterSummary.newsletter_id == newsletter.id)
+        .first()
+    )
 
     assert summary is None, "Summary should NOT be created on failure"
     assert success is False, "Summarization should return False on failure"
@@ -344,7 +347,9 @@ def test_summarize_handles_api_failures(db_session, mock_get_db):
     assert newsletter.error_message is not None, "Error message should be set"
     assert "Simulated API failure" in newsletter.error_message
 
-    logger.info(f"✓ Failure handled: status={newsletter.status}, error='{newsletter.error_message}'")
+    logger.info(
+        f"✓ Failure handled: status={newsletter.status}, error='{newsletter.error_message}'"
+    )
     logger.info("=== TEST PASSED ===\n")
 
 
@@ -409,8 +414,7 @@ def test_summarize_batch_with_partial_failures(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
     newsletter_ids = [nl.id for nl in newsletters]
     logger.info(f"Loaded {len(newsletters)} newsletters: {newsletter_ids}")
@@ -428,7 +432,7 @@ def test_summarize_batch_with_partial_failures(db_session, mock_get_db):
 
     def mock_side_effect(*args, **kwargs):
         """Fail on 2nd call."""
-        if not hasattr(mock_side_effect, 'call_count'):
+        if not hasattr(mock_side_effect, "call_count"):
             mock_side_effect.call_count = 0
         mock_side_effect.call_count += 1
 
@@ -461,10 +465,10 @@ def test_summarize_batch_with_partial_failures(db_session, mock_get_db):
     logger.info("Verifying partial success...")
 
     # Check result tracking
-    assert result['created_count'] == 2, f"Expected 2 created, got {result['created_count']}"
-    assert result['skipped_count'] == 0, f"Expected 0 skipped, got {result['skipped_count']}"
-    assert len(result['failed_ids']) == 1, f"Expected 1 failure, got {len(result['failed_ids'])}"
-    assert newsletters[1].id in result['failed_ids'], "Failed ID should be in failed_ids list"
+    assert result["created_count"] == 2, f"Expected 2 created, got {result['created_count']}"
+    assert result["skipped_count"] == 0, f"Expected 0 skipped, got {result['skipped_count']}"
+    assert len(result["failed_ids"]) == 1, f"Expected 1 failure, got {len(result['failed_ids'])}"
+    assert newsletters[1].id in result["failed_ids"], "Failed ID should be in failed_ids list"
 
     # Check database - should have 2 summaries
     summaries = db_session.query(NewsletterSummary).all()

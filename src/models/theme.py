@@ -2,11 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
 
 from src.models.newsletter import Base
 
@@ -74,7 +72,9 @@ class HistoricalMention(BaseModel):
     newsletter_title: str = Field(..., description="Newsletter title")
     publication: str = Field(..., description="Publication name")
     context: str = Field(..., description="Context snippet about the theme")
-    sentiment: Optional[str] = Field(None, description="Sentiment/stance (positive, neutral, negative)")
+    sentiment: str | None = Field(
+        None, description="Sentiment/stance (positive, neutral, negative)"
+    )
 
 
 class ThemeEvolution(BaseModel):
@@ -83,28 +83,24 @@ class ThemeEvolution(BaseModel):
     theme_name: str = Field(..., description="Theme name")
     first_mention: datetime = Field(..., description="When first discussed")
     total_mentions: int = Field(..., description="Total historical mentions")
-    mention_frequency: str = Field(..., description="Frequency (rare, occasional, frequent, constant)")
+    mention_frequency: str = Field(
+        ..., description="Frequency (rare, occasional, frequent, constant)"
+    )
 
     # Evolution narrative
-    evolution_summary: str = Field(
-        ...,
-        description="How the theme has evolved (1-2 sentences)"
-    )
+    evolution_summary: str = Field(..., description="How the theme has evolved (1-2 sentences)")
     previous_discussions: list[str] = Field(
-        default_factory=list,
-        description="Key points from previous discussions"
+        default_factory=list, description="Key points from previous discussions"
     )
 
     # Change tracking
-    stance_change: Optional[str] = Field(
-        None,
-        description="How stance/sentiment has changed over time"
+    stance_change: str | None = Field(
+        None, description="How stance/sentiment has changed over time"
     )
 
     # Historical mentions
     recent_mentions: list[HistoricalMention] = Field(
-        default_factory=list,
-        description="Recent mentions (last 3-5)"
+        default_factory=list, description="Recent mentions (last 3-5)"
     )
 
 
@@ -117,7 +113,9 @@ class ThemeData(BaseModel):
 
     # Frequency and recency
     mention_count: int = Field(..., description="Number of newsletters mentioning this theme")
-    newsletter_ids: list[int] = Field(default_factory=list, description="IDs of newsletters mentioning theme")
+    newsletter_ids: list[int] = Field(
+        default_factory=list, description="IDs of newsletters mentioning theme"
+    )
     first_seen: datetime = Field(..., description="First mention date")
     last_seen: datetime = Field(..., description="Most recent mention date")
 
@@ -132,27 +130,21 @@ class ThemeData(BaseModel):
     cross_functional_impact: float = Field(..., description="Cross-team impact (0-1)")
 
     # Related themes
-    related_themes: list[str] = Field(
-        default_factory=list,
-        description="Names of related themes"
-    )
+    related_themes: list[str] = Field(default_factory=list, description="Names of related themes")
 
     # Key insights
     key_points: list[str] = Field(
-        default_factory=list,
-        description="Key points about this theme from newsletters"
+        default_factory=list, description="Key points about this theme from newsletters"
     )
 
     # Historical context (NEW)
-    historical_context: Optional[ThemeEvolution] = Field(
-        None,
-        description="Historical context and evolution of this theme"
+    historical_context: ThemeEvolution | None = Field(
+        None, description="Historical context and evolution of this theme"
     )
 
     # Continuity text (NEW)
-    continuity_text: Optional[str] = Field(
-        None,
-        description="Human-readable continuity statement (e.g., 'Previously discussed in...')"
+    continuity_text: str | None = Field(
+        None, description="Human-readable continuity statement (e.g., 'Previously discussed in...')"
     )
 
 
@@ -161,21 +153,11 @@ class ThemeAnalysisRequest(BaseModel):
 
     start_date: datetime
     end_date: datetime
-    min_newsletters: int = Field(
-        default=1,
-        description="Minimum newsletters to analyze"
-    )
-    max_themes: int = Field(
-        default=20,
-        description="Maximum themes to return"
-    )
-    relevance_threshold: float = Field(
-        default=0.3,
-        description="Minimum relevance score (0-1)"
-    )
+    min_newsletters: int = Field(default=1, description="Minimum newsletters to analyze")
+    max_themes: int = Field(default=20, description="Maximum themes to return")
+    relevance_threshold: float = Field(default=0.3, description="Minimum relevance score (0-1)")
     use_large_context_model: bool = Field(
-        default=False,
-        description="Use large context model (Gemini Flash) for analysis"
+        default=False, description="Use large context model (Gemini Flash) for analysis"
     )
 
 
@@ -196,17 +178,16 @@ class ThemeAnalysisResult(BaseModel):
     emerging_themes_count: int = 0
 
     # Top theme
-    top_theme: Optional[str] = None
+    top_theme: str | None = None
 
     # Performance metrics
     processing_time_seconds: float = 0.0
-    token_usage: Optional[int] = None
+    token_usage: int | None = None
     model_used: str = ""  # General model ID
-    model_version: Optional[str] = None  # Version
+    model_version: str | None = None  # Version
     agent_framework: str = ""
 
     # Insights
     cross_theme_insights: list[str] = Field(
-        default_factory=list,
-        description="Insights about connections between themes"
+        default_factory=list, description="Insights about connections between themes"
     )

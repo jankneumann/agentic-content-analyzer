@@ -1,7 +1,5 @@
 """Newsletter summarization processor."""
 
-from typing import Optional
-
 from src.agents.base import SummarizationAgent
 from src.agents.claude import ClaudeAgent
 from src.config import settings
@@ -19,8 +17,8 @@ class NewsletterSummarizer:
 
     def __init__(
         self,
-        agent: Optional[SummarizationAgent] = None,
-        model_config: Optional[ModelConfig] = None,
+        agent: SummarizationAgent | None = None,
+        model_config: ModelConfig | None = None,
     ) -> None:
         """
         Initialize summarizer.
@@ -141,9 +139,7 @@ class NewsletterSummarizer:
         logger.info(f"Starting batch summarization for {len(newsletter_ids)} newsletters")
 
         for i, newsletter_id in enumerate(newsletter_ids, 1):
-            logger.info(
-                f"Processing newsletter {i}/{len(newsletter_ids)} (ID: {newsletter_id})..."
-            )
+            logger.info(f"Processing newsletter {i}/{len(newsletter_ids)} (ID: {newsletter_id})...")
 
             try:
                 # Check if already summarized (summarize_newsletter does this, but we track it)
@@ -164,9 +160,7 @@ class NewsletterSummarizer:
 
                 if success:
                     created_count += 1
-                    logger.info(
-                        f"✓ Successfully created summary for newsletter {newsletter_id}"
-                    )
+                    logger.info(f"✓ Successfully created summary for newsletter {newsletter_id}")
                 else:
                     failed_ids.append(newsletter_id)
                     logger.error(f"✗ Failed to create summary for newsletter {newsletter_id}")
@@ -190,7 +184,7 @@ class NewsletterSummarizer:
             "skipped_count": skipped_count,
         }
 
-    def summarize_pending_newsletters(self, limit: Optional[int] = None) -> int:
+    def summarize_pending_newsletters(self, limit: int | None = None) -> int:
         """
         Summarize all pending newsletters.
 

@@ -2,7 +2,7 @@
 
 import json
 import time
-from typing import Any, Optional
+from typing import Any
 
 from anthropic import Anthropic
 
@@ -19,10 +19,10 @@ class ClaudeAgent(SummarizationAgent):
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
+        model_config: ModelConfig | None = None,
         step: ModelStep = ModelStep.SUMMARIZATION,
-        model: Optional[str] = None,
-        api_key: Optional[str] = None,
+        model: str | None = None,
+        api_key: str | None = None,
     ) -> None:
         """
         Initialize Claude agent.
@@ -36,9 +36,7 @@ class ClaudeAgent(SummarizationAgent):
         # Backward compatibility: create minimal ModelConfig if api_key provided
         if model_config is None and api_key:
             model_config = ModelConfig()
-            model_config.add_provider(
-                ProviderConfig(provider=Provider.ANTHROPIC, api_key=api_key)
-            )
+            model_config.add_provider(ProviderConfig(provider=Provider.ANTHROPIC, api_key=api_key))
 
         if model_config is None:
             raise ValueError("Either model_config or api_key must be provided")
@@ -152,7 +150,7 @@ class ClaudeAgent(SummarizationAgent):
                 continue  # Try next provider
 
             except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {str(e)}"
+                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
                 logger.error(error_msg)
                 last_error = str(e)
                 continue  # Try next provider
@@ -190,4 +188,4 @@ class ClaudeAgent(SummarizationAgent):
             json_str = response_text[json_start:json_end].strip()
             return json.loads(json_str)
 
-        raise json.JSONDecodeError(f"Could not extract JSON from response", response_text, 0)
+        raise json.JSONDecodeError("Could not extract JSON from response", response_text, 0)

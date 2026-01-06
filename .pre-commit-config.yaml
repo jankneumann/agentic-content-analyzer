@@ -1,0 +1,53 @@
+# Pre-commit configuration for agentic-newsletter-aggregator
+# See https://pre-commit.com for more information
+# Run `pre-commit install` to set up the git hook scripts
+
+repos:
+  # Ruff - Fast Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      # Run the formatter
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(web/|\.md$)
+      - id: end-of-file-fixer
+        exclude: ^web/
+      - id: check-yaml
+        args: [--unsafe]  # Allow custom YAML tags
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # Type checking with mypy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.5.0
+          - types-requests
+          - types-python-dateutil
+          - types-pytz
+          - types-PyYAML
+        args: [--ignore-missing-imports]
+        exclude: ^(tests/|alembic/)
+
+# Configuration
+default_language_version:
+  python: python3  # Use system's python3
+
+# Skip certain hooks in CI if needed
+ci:
+  skip: [mypy]  # mypy can be slow in CI, run separately

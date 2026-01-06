@@ -11,8 +11,6 @@ Two personas drive the conversation:
 
 import json
 import time
-from datetime import datetime
-from typing import Optional
 
 from anthropic import Anthropic
 
@@ -27,7 +25,6 @@ from src.models.podcast import (
     PodcastRequest,
     PodcastScript,
     PodcastSection,
-    PodcastStatus,
 )
 from src.models.summary import NewsletterSummary
 from src.storage.database import get_db
@@ -125,7 +122,6 @@ Structure:
 Focus on: Executive-level insights, "what matters most this {period}"
 Skip: Deep technical details, extensive background
 """,
-
     PodcastLength.STANDARD: """
 Generate a 15-minute podcast script (~2250-3000 words).
 
@@ -140,7 +136,6 @@ Structure:
 Balance: Equal strategic and technical depth
 Include: Relevant links and further reading mentions
 """,
-
     PodcastLength.EXTENDED: """
 Generate a 30-minute podcast script (~4500-6000 words).
 
@@ -159,7 +154,7 @@ Include:
 - Full historical theme evolution
 - All relevant links with context
 - Competitor and industry analysis
-"""
+""",
 }
 
 
@@ -177,11 +172,11 @@ PODCAST_TOOLS = [
             "properties": {
                 "newsletter_id": {
                     "type": "integer",
-                    "description": "The database ID of the newsletter to retrieve"
+                    "description": "The database ID of the newsletter to retrieve",
                 }
             },
-            "required": ["newsletter_id"]
-        }
+            "required": ["newsletter_id"],
+        },
     },
     {
         "name": "web_search",
@@ -195,12 +190,12 @@ PODCAST_TOOLS = [
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "The search query to find relevant information"
+                    "description": "The search query to find relevant information",
                 }
             },
-            "required": ["query"]
-        }
-    }
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -217,8 +212,8 @@ class PodcastScriptGenerator:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
-        model: Optional[str] = None,
+        model_config: ModelConfig | None = None,
+        model: str | None = None,
     ):
         """Initialize podcast script generator.
 
@@ -233,10 +228,10 @@ class PodcastScriptGenerator:
         self.model = model or model_config.get_model_for_step(ModelStep.PODCAST_SCRIPT)
 
         # Track usage for cost calculation
-        self.provider_used: Optional[Provider] = None
+        self.provider_used: Provider | None = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
-        self.model_version: Optional[str] = None
+        self.model_version: str | None = None
 
         # Track tool usage
         self.newsletter_ids_fetched: list[int] = []
@@ -344,10 +339,14 @@ class PodcastScriptGenerator:
             # Load summaries (these ARE included - they're already condensed)
             newsletter_ids = [n.id for n in newsletters]
             summaries = (
-                db.query(NewsletterSummary)
-                .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
-                .all()
-            ) if newsletter_ids else []
+                (
+                    db.query(NewsletterSummary)
+                    .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
+                    .all()
+                )
+                if newsletter_ids
+                else []
+            )
 
             # Convert digest to dictionary for context
             digest_data = {
@@ -364,8 +363,7 @@ class PodcastScriptGenerator:
             }
 
         logger.info(
-            f"Assembled context: {len(newsletter_metadata)} newsletters, "
-            f"{len(summaries)} summaries"
+            f"Assembled context: {len(newsletter_metadata)} newsletters, {len(summaries)} summaries"
         )
 
         return {
@@ -432,9 +430,7 @@ class PodcastScriptGenerator:
             self.input_tokens += response.usage.input_tokens
             self.output_tokens += response.usage.output_tokens
             self.provider_used = provider_config.provider
-            self.model_version = self.model_config.get_model_version(
-                self.model, self.provider_used
-            )
+            self.model_version = self.model_config.get_model_version(self.model, self.provider_used)
 
             # Check if model wants to use tools
             if response.stop_reason == "tool_use":
@@ -444,11 +440,13 @@ class PodcastScriptGenerator:
                     if block.type == "tool_use":
                         self.tool_call_count += 1
                         result = await self._execute_tool(block)
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result,
-                        })
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": result,
+                            }
+                        )
 
                 # Add assistant response and tool results to messages
                 messages.append({"role": "assistant", "content": response.content})
@@ -504,11 +502,7 @@ class PodcastScriptGenerator:
         self.newsletter_ids_fetched.append(newsletter_id)
 
         with get_db() as db:
-            newsletter = (
-                db.query(Newsletter)
-                .filter(Newsletter.id == newsletter_id)
-                .first()
-            )
+            newsletter = db.query(Newsletter).filter(Newsletter.id == newsletter_id).first()
 
             if not newsletter:
                 return f"Newsletter with ID {newsletter_id} not found."
@@ -583,36 +577,36 @@ the get_newsletter_content tool.
         summaries_text = self._format_summaries(context["summaries"])
 
         # Get length-specific instructions
-        length_prompt = PODCAST_SCRIPT_LENGTH_PROMPTS[length].format(
-            period=digest["digest_type"]
-        )
+        length_prompt = PODCAST_SCRIPT_LENGTH_PROMPTS[length].format(period=digest["digest_type"])
 
         # Format custom focus topics if any
         focus_topics_text = ""
         if context.get("custom_focus_topics"):
             topics = ", ".join(context["custom_focus_topics"])
-            focus_topics_text = f"\n## Custom Focus Topics\nPlease emphasize these topics: {topics}\n"
+            focus_topics_text = (
+                f"\n## Custom Focus Topics\nPlease emphasize these topics: {topics}\n"
+            )
 
         word_target = WORD_COUNT_TARGETS[length]
 
         return f"""
-Create a {length.value} podcast script for the {digest['digest_type']} digest.
+Create a {length.value} podcast script for the {digest["digest_type"]} digest.
 
 ## Digest Overview
-**Title:** {digest['title']}
+**Title:** {digest["title"]}
 **Period:** {period}
 
 **Executive Overview:**
-{digest['executive_overview']}
+{digest["executive_overview"]}
 
 **Strategic Insights:**
-{json.dumps(digest['strategic_insights'], indent=2)}
+{json.dumps(digest["strategic_insights"], indent=2)}
 
 **Technical Developments:**
-{json.dumps(digest['technical_developments'], indent=2)}
+{json.dumps(digest["technical_developments"], indent=2)}
 
 **Emerging Trends:**
-{json.dumps(digest['emerging_trends'], indent=2)}
+{json.dumps(digest["emerging_trends"], indent=2)}
 
 ## Available Newsletters
 You can use the `get_newsletter_content` tool to retrieve full text for any of these:
@@ -625,8 +619,8 @@ You can use the `get_newsletter_content` tool to retrieve full text for any of t
 ## Instructions
 {length_prompt}
 
-**Word Count Target:** {word_target['min']}-{word_target['max']} words
-**Duration Target:** {word_target['duration_mins']} minutes
+**Word Count Target:** {word_target["min"]}-{word_target["max"]} words
+**Duration Target:** {word_target["duration_mins"]} minutes
 
 ## Output Format
 
@@ -683,9 +677,7 @@ when you need more detail for compelling quotes or to verify/enrich specific poi
         lines = []
         for nl in newsletter_metadata:
             date = nl.get("date", "")[:10] if nl.get("date") else "Unknown"
-            lines.append(
-                f"- [{nl['id']}] {nl['publication']} - {nl['title']} ({date})"
-            )
+            lines.append(f"- [{nl['id']}] {nl['publication']} - {nl['title']} ({date})")
 
         return "\n".join(lines)
 
@@ -797,10 +789,7 @@ Technical Details:
                 outro_section = section
 
         # Calculate estimated duration
-        word_target = WORD_COUNT_TARGETS[length]
-        estimated_duration = int(
-            (total_words / settings.podcast_words_per_minute) * 60
-        )
+        estimated_duration = int((total_words / settings.podcast_words_per_minute) * 60)
 
         # Build sources summary
         sources_summary = script_json.get("sources_summary", [])

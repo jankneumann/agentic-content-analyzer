@@ -1,7 +1,5 @@
 """HTML parsing utilities."""
 
-import re
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -46,7 +44,7 @@ def html_to_text(html: str) -> str:
         return ""
 
 
-def extract_links(html: str, base_url: Optional[str] = None) -> list[str]:
+def extract_links(html: str, base_url: str | None = None) -> list[str]:
     """
     Extract all links from HTML.
 
@@ -134,7 +132,7 @@ def clean_html(html: str, preserve_links: bool = True) -> str:
         return html
 
 
-def extract_article_content(html: str) -> Optional[str]:
+def extract_article_content(html: str) -> str | None:
     """
     Attempt to extract main article content from HTML.
 

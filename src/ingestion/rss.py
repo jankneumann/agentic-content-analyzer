@@ -2,12 +2,10 @@
 
 import hashlib
 from datetime import datetime
-from typing import Optional
 from urllib.parse import urlparse
 
 import feedparser
 import httpx
-from bs4 import BeautifulSoup
 
 from src.config import settings
 from src.models.newsletter import Newsletter, NewsletterData, NewsletterSource, ProcessingStatus
@@ -42,7 +40,7 @@ class RSSClient:
         self,
         feed_url: str,
         max_entries: int = 10,
-        after_date: Optional[datetime] = None,
+        after_date: datetime | None = None,
     ) -> list[NewsletterData]:
         """
         Fetch newsletters from a single RSS feed.
@@ -110,7 +108,7 @@ class RSSClient:
         self,
         feed_urls: list[str],
         max_entries_per_feed: int = 10,
-        after_date: Optional[datetime] = None,
+        after_date: datetime | None = None,
     ) -> list[NewsletterData]:
         """
         Fetch newsletters from multiple RSS feeds.
@@ -165,7 +163,7 @@ class RSSClient:
         domain = parsed_url.netloc or parsed_url.path
         return domain.title()
 
-    def _parse_entry_date(self, entry: feedparser.FeedParserDict) -> Optional[datetime]:
+    def _parse_entry_date(self, entry: feedparser.FeedParserDict) -> datetime | None:
         """
         Parse entry publication date.
 
@@ -330,7 +328,7 @@ class RSSIngestionService:
         self,
         feed_urls: list[str] | None = None,
         max_entries_per_feed: int = 10,
-        after_date: Optional[datetime] = None,
+        after_date: datetime | None = None,
         force_reprocess: bool = False,
     ) -> int:
         """
@@ -345,8 +343,6 @@ class RSSIngestionService:
         Returns:
             Number of newsletters ingested
         """
-        from src.models.newsletter import Newsletter
-        from src.storage.database import get_db
 
         logger.info("Starting RSS newsletter ingestion...")
 
@@ -355,7 +351,9 @@ class RSSIngestionService:
             feed_urls = settings.get_rss_feed_urls()
 
         if not feed_urls:
-            logger.warning("No RSS feed URLs configured. Please set RSS_FEEDS or create rss_feeds.txt")
+            logger.warning(
+                "No RSS feed URLs configured. Please set RSS_FEEDS or create rss_feeds.txt"
+            )
             return 0
 
         logger.info(f"Fetching from {len(feed_urls)} RSS feeds")

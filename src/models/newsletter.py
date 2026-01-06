@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Enum as SQLEnum, Integer, String, Text
@@ -52,7 +51,9 @@ class Newsletter(Base):
 
     # Deduplication
     content_hash = Column(String(64), nullable=True, index=True)  # SHA-256 of normalized content
-    canonical_newsletter_id = Column(Integer, nullable=True)  # Links to canonical version if duplicate
+    canonical_newsletter_id = Column(
+        Integer, nullable=True
+    )  # Links to canonical version if duplicate
 
     # Processing
     status = Column(
@@ -72,12 +73,12 @@ class NewsletterData(BaseModel):
     source: NewsletterSource
     source_id: str
     title: str
-    sender: Optional[str] = None
-    publication: Optional[str] = None
+    sender: str | None = None
+    publication: str | None = None
     published_date: datetime
-    url: Optional[str] = None
-    raw_html: Optional[str] = None
-    raw_text: Optional[str] = None
+    url: str | None = None
+    raw_html: str | None = None
+    raw_text: str | None = None
     extracted_links: list[str] = Field(default_factory=list)
-    content_hash: Optional[str] = None
+    content_hash: str | None = None
     status: ProcessingStatus = ProcessingStatus.PENDING

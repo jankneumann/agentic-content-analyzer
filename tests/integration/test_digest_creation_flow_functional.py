@@ -12,22 +12,21 @@ This does NOT verify LLM output quality - that's for scenario tests.
 We only care that the flow works, not that digests are meaningful.
 """
 
-import pytest
 import logging
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from src.models.digest import DigestRequest, DigestType, DigestStatus, Digest
+import pytest
+
+from src.models.digest import Digest, DigestRequest, DigestType
 from src.models.summary import NewsletterSummary
 from src.processors.digest_creator import DigestCreator
-
-from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 from tests.helpers.simple_mocks import (
-    create_simple_summary_response,
     create_simple_digest_response,
-    create_simple_theme_analysis_response,
     create_simple_embedding_response,
+    create_simple_theme_analysis_response,
 )
+from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -52,8 +51,7 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletters and creating summaries...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     # Create summaries for all newsletters
@@ -66,7 +64,11 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
             technical_details=[f"Detail {i}"],
             actionable_items=[f"Action {i}"],
             notable_quotes=[f"Quote {i}"],
-            relevance_scores={"cto_leadership": 0.8, "technical_teams": 0.9, "individual_developers": 0.7},
+            relevance_scores={
+                "cto_leadership": 0.8,
+                "technical_teams": 0.9,
+                "individual_developers": 0.7,
+            },
             agent_framework="claude",
             model_used="claude-haiku-4-5",
             model_version="20250929",
@@ -146,7 +148,9 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
     # Verify sources
     assert len(digest.sources) == 3, f"Expected 3 sources, got {len(digest.sources)}"
 
-    logger.info(f"✓ Digest structure valid: {digest.newsletter_count} newsletters, {len(digest.sources)} sources")
+    logger.info(
+        f"✓ Digest structure valid: {digest.newsletter_count} newsletters, {len(digest.sources)} sources"
+    )
     logger.info("=== TEST PASSED ===\n")
 
 
@@ -168,8 +172,7 @@ async def test_create_weekly_digest(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletters and creating summaries...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     # Create summaries
@@ -182,7 +185,11 @@ async def test_create_weekly_digest(db_session, mock_get_db):
             technical_details=[f"Detail {i}"],
             actionable_items=[f"Action {i}"],
             notable_quotes=[f"Quote {i}"],
-            relevance_scores={"cto_leadership": 0.8, "technical_teams": 0.9, "individual_developers": 0.7},
+            relevance_scores={
+                "cto_leadership": 0.8,
+                "technical_teams": 0.9,
+                "individual_developers": 0.7,
+            },
             agent_framework="claude",
             model_used="claude-haiku-4-5",
             model_version="20250929",
@@ -266,8 +273,7 @@ async def test_create_digest_with_empty_period(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
     logger.info(f"Loaded {len(newsletters)} newsletters (dated 2025-01-13 to 2025-01-15)")
 
@@ -325,8 +331,7 @@ async def test_digest_includes_all_newsletter_sources(db_session, mock_get_db):
     # ============================================================
     logger.info("Loading test newsletters...")
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     # Create summaries
@@ -339,7 +344,11 @@ async def test_digest_includes_all_newsletter_sources(db_session, mock_get_db):
             technical_details=[f"Detail {i}"],
             actionable_items=[f"Action {i}"],
             notable_quotes=[f"Quote {i}"],
-            relevance_scores={"cto_leadership": 0.8, "technical_teams": 0.9, "individual_developers": 0.7},
+            relevance_scores={
+                "cto_leadership": 0.8,
+                "technical_teams": 0.9,
+                "individual_developers": 0.7,
+            },
             agent_framework="claude",
             model_used="claude-haiku-4-5",
             model_version="20250929",
@@ -432,8 +441,7 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
     # 1. SETUP: Load newsletters and create summaries
     # ============================================================
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     for i, newsletter in enumerate(newsletters, 1):
@@ -445,7 +453,11 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
             technical_details=[f"Detail {i}"],
             actionable_items=[f"Action {i}"],
             notable_quotes=[f"Quote {i}"],
-            relevance_scores={"cto_leadership": 0.8, "technical_teams": 0.9, "individual_developers": 0.7},
+            relevance_scores={
+                "cto_leadership": 0.8,
+                "technical_teams": 0.9,
+                "individual_developers": 0.7,
+            },
             agent_framework="claude",
             model_used="claude-haiku-4-5",
             model_version="20250929",
@@ -498,7 +510,9 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
 
     assert digest.processing_time_seconds is not None, "Processing time should be tracked"
     assert digest.processing_time_seconds > 0, "Processing time should be positive"
-    assert digest.processing_time_seconds < 60, "Processing time should be reasonable (< 60s for test)"
+    assert digest.processing_time_seconds < 60, (
+        "Processing time should be reasonable (< 60s for test)"
+    )
 
     logger.info(f"✓ Processing time tracked: {digest.processing_time_seconds:.2f}s")
     logger.info("=== TEST PASSED ===\n")
@@ -519,8 +533,7 @@ async def test_digest_with_custom_limits(db_session, mock_get_db):
     # 1. SETUP: Load newsletters and create summaries
     # ============================================================
     newsletters = create_test_newsletters_batch(
-        db_session,
-        filenames=get_default_test_newsletters()
+        db_session, filenames=get_default_test_newsletters()
     )
 
     for i, newsletter in enumerate(newsletters, 1):
@@ -532,7 +545,11 @@ async def test_digest_with_custom_limits(db_session, mock_get_db):
             technical_details=[f"Detail {i}"],
             actionable_items=[f"Action {i}"],
             notable_quotes=[f"Quote {i}"],
-            relevance_scores={"cto_leadership": 0.8, "technical_teams": 0.9, "individual_developers": 0.7},
+            relevance_scores={
+                "cto_leadership": 0.8,
+                "technical_teams": 0.9,
+                "individual_developers": 0.7,
+            },
             agent_framework="claude",
             model_used="claude-haiku-4-5",
             model_version="20250929",

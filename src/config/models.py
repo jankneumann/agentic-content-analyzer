@@ -44,11 +44,9 @@ Usage:
     )
 """
 
-import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import yaml
 
@@ -93,10 +91,10 @@ class ProviderConfig:
     provider: Provider
     api_key: str
     # Provider-specific settings
-    region: Optional[str] = None  # For AWS Bedrock, Azure (e.g., "us-east-1")
-    project_id: Optional[str] = None  # For Google Vertex AI
-    resource_name: Optional[str] = None  # For Azure (deployment name)
-    endpoint: Optional[str] = None  # Custom endpoint URL
+    region: str | None = None  # For AWS Bedrock, Azure (e.g., "us-east-1")
+    project_id: str | None = None  # For Google Vertex AI
+    resource_name: str | None = None  # For Azure (deployment name)
+    endpoint: str | None = None  # Custom endpoint URL
     # Rate limiting
     max_requests_per_minute: int = 60
     max_tokens_per_minute: int = 100_000
@@ -112,7 +110,7 @@ class ModelInfo:
     # Capabilities (same across all providers)
     supports_vision: bool = False  # Whether model supports image inputs
     supports_video: bool = False  # Whether model supports video inputs (e.g., YouTube URLs)
-    default_version: Optional[str] = None  # Default version date (e.g., "20250929")
+    default_version: str | None = None  # Default version date (e.g., "20250929")
 
 
 @dataclass
@@ -125,10 +123,10 @@ class ProviderModelConfig:
     model_id: str  # General model identifier (e.g., "claude-sonnet-4-5")
     provider: Provider  # Where to access it
     provider_model_id: str  # Provider-specific model identifier
-                           # Examples:
-                           # - Anthropic: "claude-sonnet-4-5-20250929"
-                           # - AWS Bedrock: "anthropic.claude-sonnet-4-5-20250929-v1:0"
-                           # - Vertex AI: "claude-sonnet-4-5@20250929"
+    # Examples:
+    # - Anthropic: "claude-sonnet-4-5-20250929"
+    # - AWS Bedrock: "anthropic.claude-sonnet-4-5-20250929-v1:0"
+    # - Vertex AI: "claude-sonnet-4-5@20250929"
     # Provider-specific pricing
     cost_per_mtok_input: float  # Cost per million input tokens (USD)
     cost_per_mtok_output: float  # Cost per million output tokens (USD)
@@ -146,12 +144,13 @@ class ProviderModelConfig:
             Version string (e.g., "20250929") or "unknown" if not found
         """
         import re
-        match = re.search(r'(\d{8})', self.provider_model_id)
+
+        match = re.search(r"(\d{8})", self.provider_model_id)
         return match.group(1) if match else "unknown"
 
 
-def load_model_registry() -> Tuple[
-    Dict[str, ModelInfo], Dict[Tuple[str, Provider], ProviderModelConfig], Dict[str, str]
+def load_model_registry() -> tuple[
+    dict[str, ModelInfo], dict[tuple[str, Provider], ProviderModelConfig], dict[str, str]
 ]:
     """Load model registry from YAML configuration file.
 
@@ -164,12 +163,11 @@ def load_model_registry() -> Tuple[
 
     if not yaml_path.exists():
         raise FileNotFoundError(
-            f"Model registry not found: {yaml_path}. "
-            "Ensure src/config/model_registry.yaml exists."
+            f"Model registry not found: {yaml_path}. Ensure src/config/model_registry.yaml exists."
         )
 
     # Load YAML
-    with open(yaml_path, "r") as f:
+    with open(yaml_path) as f:
         config = yaml.safe_load(f)
 
     # Parse models (now family-based IDs)
@@ -218,17 +216,17 @@ class ModelConfig:
     def __init__(
         self,
         # Model selection per step (can override defaults)
-        summarization: Optional[str] = None,
-        theme_analysis: Optional[str] = None,
-        digest_creation: Optional[str] = None,
-        digest_revision: Optional[str] = None,
-        historical_context: Optional[str] = None,
-        youtube_processing: Optional[str] = None,
-        entity_extraction: Optional[str] = None,
-        reranking: Optional[str] = None,
-        podcast_script: Optional[str] = None,
+        summarization: str | None = None,
+        theme_analysis: str | None = None,
+        digest_creation: str | None = None,
+        digest_revision: str | None = None,
+        historical_context: str | None = None,
+        youtube_processing: str | None = None,
+        entity_extraction: str | None = None,
+        reranking: str | None = None,
+        podcast_script: str | None = None,
         # Provider configurations (in priority order for failover)
-        providers: Optional[List[ProviderConfig]] = None,
+        providers: list[ProviderConfig] | None = None,
     ):
         """Initialize model configuration.
 
@@ -247,18 +245,14 @@ class ModelConfig:
         # Use defaults from YAML if not specified
         self._models = {
             ModelStep.SUMMARIZATION: summarization or DEFAULT_MODELS["summarization"],
-            ModelStep.THEME_ANALYSIS: theme_analysis
-            or DEFAULT_MODELS["theme_analysis"],
-            ModelStep.DIGEST_CREATION: digest_creation
-            or DEFAULT_MODELS["digest_creation"],
-            ModelStep.DIGEST_REVISION: digest_revision
-            or DEFAULT_MODELS["digest_revision"],
+            ModelStep.THEME_ANALYSIS: theme_analysis or DEFAULT_MODELS["theme_analysis"],
+            ModelStep.DIGEST_CREATION: digest_creation or DEFAULT_MODELS["digest_creation"],
+            ModelStep.DIGEST_REVISION: digest_revision or DEFAULT_MODELS["digest_revision"],
             ModelStep.HISTORICAL_CONTEXT: historical_context
             or DEFAULT_MODELS["historical_context"],
             ModelStep.YOUTUBE_PROCESSING: youtube_processing
             or DEFAULT_MODELS["youtube_processing"],
-            ModelStep.ENTITY_EXTRACTION: entity_extraction
-            or DEFAULT_MODELS["entity_extraction"],
+            ModelStep.ENTITY_EXTRACTION: entity_extraction or DEFAULT_MODELS["entity_extraction"],
             ModelStep.RERANKING: reranking or DEFAULT_MODELS["reranking"],
             ModelStep.PODCAST_SCRIPT: podcast_script
             or DEFAULT_MODELS.get("podcast_script", DEFAULT_MODELS["digest_creation"]),
@@ -298,14 +292,10 @@ class ModelConfig:
             ValueError: If model not found in registry
         """
         if model_id not in MODEL_REGISTRY:
-            raise ValueError(
-                f"Unknown model: {model_id}. Available: {list(MODEL_REGISTRY.keys())}"
-            )
+            raise ValueError(f"Unknown model: {model_id}. Available: {list(MODEL_REGISTRY.keys())}")
         return MODEL_REGISTRY[model_id]
 
-    def get_provider_model_config(
-        self, model_id: str, provider: Provider
-    ) -> ProviderModelConfig:
+    def get_provider_model_config(self, model_id: str, provider: Provider) -> ProviderModelConfig:
         """Get provider-specific configuration for a model.
 
         Args:
@@ -321,9 +311,7 @@ class ModelConfig:
         key = (model_id, provider)
         if key not in PROVIDER_MODEL_CONFIGS:
             available = [
-                f"{p.value}.{m}"
-                for (m, p) in PROVIDER_MODEL_CONFIGS.keys()
-                if m == model_id
+                f"{p.value}.{m}" for (m, p) in PROVIDER_MODEL_CONFIGS.keys() if m == model_id
             ]
             raise ValueError(
                 f"Model '{model_id}' not available on provider '{provider.value}'. "
@@ -331,7 +319,7 @@ class ModelConfig:
             )
         return PROVIDER_MODEL_CONFIGS[key]
 
-    def get_providers_for_model(self, model_id: str) -> List[ProviderConfig]:
+    def get_providers_for_model(self, model_id: str) -> list[ProviderConfig]:
         """Get available providers for a model in priority order.
 
         Enables automatic failover: if rate limited on first provider,
@@ -405,9 +393,7 @@ class ModelConfig:
             priority: Position in priority list (0 = highest, -1 = lowest/append)
         """
         # Remove existing config for this provider
-        self._providers = [
-            p for p in self._providers if p.provider != provider_config.provider
-        ]
+        self._providers = [p for p in self._providers if p.provider != provider_config.provider]
 
         # Add at specified priority
         if priority == -1 or priority >= len(self._providers):
@@ -420,7 +406,7 @@ class ModelConfig:
         model_id: str,
         input_tokens: int,
         output_tokens: int,
-        provider: Optional[Provider] = None,
+        provider: Provider | None = None,
     ) -> float:
         """Calculate cost for model usage.
 
@@ -477,12 +463,10 @@ class ModelConfig:
             ValueError: If model not found in registry
         """
         if model_id not in MODEL_REGISTRY:
-            raise ValueError(
-                f"Unknown model: {model_id}. Available: {list(MODEL_REGISTRY.keys())}"
-            )
+            raise ValueError(f"Unknown model: {model_id}. Available: {list(MODEL_REGISTRY.keys())}")
         self._models[step] = model_id
 
-    def get_all_models(self) -> Dict[ModelStep, str]:
+    def get_all_models(self) -> dict[ModelStep, str]:
         """Get all configured models.
 
         Returns:
@@ -490,7 +474,7 @@ class ModelConfig:
         """
         return self._models.copy()
 
-    def get_available_models_for_provider(self, provider: Provider) -> List[str]:
+    def get_available_models_for_provider(self, provider: Provider) -> list[str]:
         """Get all models available on a specific provider.
 
         Args:
@@ -500,11 +484,7 @@ class ModelConfig:
             List of model IDs available on that provider
         """
         return sorted(
-            set(
-                model_id
-                for (model_id, prov) in PROVIDER_MODEL_CONFIGS.keys()
-                if prov == provider
-            )
+            set(model_id for (model_id, prov) in PROVIDER_MODEL_CONFIGS.keys() if prov == provider)
         )
 
     def get_cost_estimate(
@@ -512,8 +492,8 @@ class ModelConfig:
         newsletters_per_day: int = 10,
         digests_per_week: int = 2,
         youtube_videos_per_week: int = 5,
-        provider: Optional[Provider] = None,
-    ) -> Dict[str, float]:
+        provider: Provider | None = None,
+    ) -> dict[str, float]:
         """Estimate monthly costs based on usage patterns.
 
         Args:
@@ -581,9 +561,7 @@ class ModelConfig:
         costs["historical_context"] = self.calculate_cost(
             model,
             int(monthly_digests * 0.5 * TOKEN_ESTIMATES["historical_context"]["input"]),
-            int(
-                monthly_digests * 0.5 * TOKEN_ESTIMATES["historical_context"]["output"]
-            ),
+            int(monthly_digests * 0.5 * TOKEN_ESTIMATES["historical_context"]["output"]),
             provider,
         )
 
@@ -602,7 +580,7 @@ class ModelConfig:
 
 
 # Global instance
-_model_config: Optional[ModelConfig] = None
+_model_config: ModelConfig | None = None
 
 
 def get_model_config() -> ModelConfig:

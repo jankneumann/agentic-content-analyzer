@@ -24,26 +24,29 @@ ensure test cleanup never affects production knowledge graph data.
 """
 
 import os
+from collections.abc import Generator
 from datetime import datetime
-from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
 from neo4j import GraphDatabase
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config.models import MODEL_REGISTRY
 from src.models.digest import Base as DigestBase
-from src.models.newsletter import Base as NewsletterBase
-from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
+from src.models.newsletter import (
+    Base as NewsletterBase,
+    Newsletter,
+    NewsletterSource,
+    ProcessingStatus,
+)
 from src.models.summary import NewsletterSummary
-
 
 # Test database configuration
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql://newsletter_user:newsletter_password@localhost/newsletters_test"
+    "postgresql://newsletter_user:newsletter_password@localhost/newsletters_test",
 )
 
 # Test Neo4j configuration (dedicated test instance on different port)
@@ -132,15 +135,12 @@ def neo4j_driver():
     # Safety check: Verify we're not connecting to production port
     if "7687" in TEST_NEO4J_URI:
         raise ValueError(
-            f"Safety check failed: TEST_NEO4J_URI is using production port 7687. "
-            f"Tests must use dedicated test instance on port 7688. "
-            f"Set TEST_NEO4J_URI=bolt://localhost:7688"
+            "Safety check failed: TEST_NEO4J_URI is using production port 7687. "
+            "Tests must use dedicated test instance on port 7688. "
+            "Set TEST_NEO4J_URI=bolt://localhost:7688"
         )
 
-    driver = GraphDatabase.driver(
-        TEST_NEO4J_URI,
-        auth=(TEST_NEO4J_USER, TEST_NEO4J_PASSWORD)
-    )
+    driver = GraphDatabase.driver(TEST_NEO4J_URI, auth=(TEST_NEO4J_USER, TEST_NEO4J_PASSWORD))
 
     # Verify connection
     try:
@@ -326,7 +326,9 @@ def mock_anthropic_client():
 
     # Default mock response for summarization
     mock_summary_response = MagicMock()
-    mock_summary_response.content = [MagicMock(text='''{
+    mock_summary_response.content = [
+        MagicMock(
+            text="""{
         "executive_summary": "Test summary of newsletter content.",
         "key_themes": ["Theme 1", "Theme 2", "Theme 3"],
         "strategic_insights": ["Strategic insight 1", "Strategic insight 2"],
@@ -338,7 +340,9 @@ def mock_anthropic_client():
             "technical_teams": 0.85,
             "individual_developers": 0.75
         }
-    }''')]
+    }"""
+        )
+    ]
 
     # Mock token usage for cost calculation
     mock_usage = MagicMock()
@@ -364,14 +368,18 @@ def mock_graphiti_client():
 
     # Mock async methods using AsyncMock
     mock_client.add_newsletter_summary = AsyncMock(return_value=None)
-    mock_client.search_related_concepts = AsyncMock(return_value=[
-        {"name": "LLM", "relevance": 0.9},
-        {"name": "Vector DB", "relevance": 0.7},
-    ])
+    mock_client.search_related_concepts = AsyncMock(
+        return_value=[
+            {"name": "LLM", "relevance": 0.9},
+            {"name": "Vector DB", "relevance": 0.7},
+        ]
+    )
     mock_client.get_temporal_context = AsyncMock(return_value=[])
-    mock_client.extract_themes_from_range = AsyncMock(return_value=[
-        {"name": "RAG", "fact": "Retrieval Augmented Generation improving"},
-    ])
+    mock_client.extract_themes_from_range = AsyncMock(
+        return_value=[
+            {"name": "RAG", "fact": "Retrieval Augmented Generation improving"},
+        ]
+    )
     mock_client.get_historical_theme_mentions = AsyncMock(return_value=[])
     mock_client.get_theme_evolution_timeline = AsyncMock(return_value=[])
     mock_client.close = AsyncMock(return_value=None)

@@ -10,15 +10,13 @@ Tests the complete review flow:
 """
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
 from src.models.digest import Digest, DigestStatus, DigestType
-from src.models.newsletter import Newsletter, NewsletterSource
-from src.models.summary import NewsletterSummary
 from src.services.review_service import ReviewService
 
 
@@ -63,9 +61,7 @@ class TestFullReviewWorkflow:
             period_end=datetime(2025, 1, 15, 23, 59, 59),
             title="AI Advances - January 15, 2025",
             executive_overview="Initial executive summary...",
-            strategic_insights=[
-                {"title": "RAG", "summary": "Test", "details": []}
-            ],
+            strategic_insights=[{"title": "RAG", "summary": "Test", "details": []}],
             technical_developments=[],
             emerging_trends=[],
             actionable_recommendations={},
@@ -79,10 +75,11 @@ class TestFullReviewWorkflow:
         db_session.commit()
 
         # 2. Start review session
-        with patch('src.services.review_service.get_db') as mock_get_db, \
-             patch('src.processors.digest_reviser.get_db') as mock_reviser_get_db, \
-             patch('src.processors.digest_reviser.Anthropic') as mock_anthropic_class:
-
+        with (
+            patch("src.services.review_service.get_db") as mock_get_db,
+            patch("src.processors.digest_reviser.get_db") as mock_reviser_get_db,
+            patch("src.processors.digest_reviser.Anthropic") as mock_anthropic_class,
+        ):
             # Setup database mocks
             mock_get_db.return_value.__enter__.return_value = db_session
             mock_reviser_get_db.return_value.__enter__.return_value = db_session
@@ -95,9 +92,7 @@ class TestFullReviewWorkflow:
             # Create service
             config = ModelConfig(
                 digest_revision="claude-sonnet-4-5",
-                providers=[
-                    ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")
-                ],
+                providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")],
             )
             service = ReviewService(model_config=config)
 
@@ -144,14 +139,16 @@ class TestFullReviewWorkflow:
 
             # 6. Finalize with approval
             revision_history = {
-                "sessions": [{
-                    "session_id": session_id,
-                    "started_at": datetime.now(timezone.utc).isoformat(),
-                    "ended_at": datetime.now(timezone.utc).isoformat(),
-                    "reviewer": "test@example.com",
-                    "turns": [turn.to_dict()],
-                    "final_action": "approve",
-                }]
+                "sessions": [
+                    {
+                        "session_id": session_id,
+                        "started_at": datetime.now(UTC).isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "reviewer": "test@example.com",
+                        "turns": [turn.to_dict()],
+                        "final_action": "approve",
+                    }
+                ]
             }
 
             final_digest = await service.finalize_review(
@@ -192,7 +189,7 @@ class TestFullReviewWorkflow:
         db_session.add(digest)
         db_session.commit()
 
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__.return_value = db_session
 
             service = ReviewService()
@@ -237,10 +234,11 @@ class TestFullReviewWorkflow:
         db_session.add(digest)
         db_session.commit()
 
-        with patch('src.services.review_service.get_db') as mock_get_db, \
-             patch('src.processors.digest_reviser.get_db') as mock_reviser_get_db, \
-             patch('src.processors.digest_reviser.Anthropic') as mock_anthropic_class:
-
+        with (
+            patch("src.services.review_service.get_db") as mock_get_db,
+            patch("src.processors.digest_reviser.get_db") as mock_reviser_get_db,
+            patch("src.processors.digest_reviser.Anthropic") as mock_anthropic_class,
+        ):
             mock_get_db.return_value.__enter__.return_value = db_session
             mock_reviser_get_db.return_value.__enter__.return_value = db_session
 
@@ -250,9 +248,7 @@ class TestFullReviewWorkflow:
 
             config = ModelConfig(
                 digest_revision="claude-sonnet-4-5",
-                providers=[
-                    ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")
-                ],
+                providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")],
             )
             service = ReviewService(model_config=config)
 
@@ -332,7 +328,7 @@ class TestFullReviewWorkflow:
         db_session.add(digest)
         db_session.commit()
 
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__.return_value = db_session
 
             service = ReviewService()
@@ -375,9 +371,10 @@ class TestReviewWorkflowEdgeCases:
         db_session.add(digest)
         db_session.commit()
 
-        with patch('src.services.review_service.get_db') as mock_get_db, \
-             patch('src.processors.digest_reviser.get_db') as mock_reviser_get_db:
-
+        with (
+            patch("src.services.review_service.get_db") as mock_get_db,
+            patch("src.processors.digest_reviser.get_db") as mock_reviser_get_db,
+        ):
             mock_get_db.return_value.__enter__.return_value = db_session
             mock_reviser_get_db.return_value.__enter__.return_value = db_session
 
@@ -410,25 +407,17 @@ class TestReviewWorkflowEdgeCases:
             model_used="claude-sonnet-4-5",
         )
         # Set initial revision history
-        digest.revision_history = {
-            "sessions": [
-                {"session_id": "session1", "turns": []}
-            ]
-        }
+        digest.revision_history = {"sessions": [{"session_id": "session1", "turns": []}]}
         db_session.add(digest)
         db_session.commit()
 
-        with patch('src.services.review_service.get_db') as mock_get_db:
+        with patch("src.services.review_service.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__.return_value = db_session
 
             service = ReviewService()
 
             # Add second session
-            new_history = {
-                "sessions": [
-                    {"session_id": "session2", "turns": []}
-                ]
-            }
+            new_history = {"sessions": [{"session_id": "session2", "turns": []}]}
 
             result = await service.finalize_review(
                 digest_id=digest.id,

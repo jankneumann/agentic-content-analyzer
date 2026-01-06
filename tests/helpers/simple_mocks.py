@@ -32,11 +32,12 @@ def create_simple_summary_response(newsletter_id: int = 1) -> MagicMock:
         "relevance_scores": {
             "cto_leadership": 0.8,
             "technical_teams": 0.9,
-            "individual_developers": 0.7
-        }
+            "individual_developers": 0.7,
+        },
     }
 
     import json
+
     mock_content = MagicMock()
     mock_content.type = "text"
     mock_content.text = json.dumps(summary_json)
@@ -75,11 +76,12 @@ def create_simple_digest_response() -> MagicMock:
         "actionable_recommendations": {
             "cto_leadership": ["Action 1"],
             "technical_teams": ["Action 2"],
-            "individual_developers": ["Action 3"]
-        }
+            "individual_developers": ["Action 3"],
+        },
     }
 
     import json
+
     mock_content = MagicMock()
     mock_content.type = "text"
     mock_content.text = json.dumps(digest_json)
@@ -108,26 +110,28 @@ def create_simple_theme_analysis_response(theme_count: int = 3) -> MagicMock:
     mock_response.stop_reason = "end_turn"
 
     # Minimal valid themes JSON with all required fields
-    import datetime
     themes = []
     for i in range(theme_count):
-        themes.append({
-            "name": f"Test Theme {i+1}",
-            "description": f"Description for theme {i+1}",
-            "category": "ml_ai",  # Required ThemeCategory
-            "mention_count": 3,  # Required
-            "newsletter_ids": [1, 2, 3],
-            "first_seen": "2025-01-13T00:00:00Z",  # Required
-            "last_seen": "2025-01-15T00:00:00Z",  # Required
-            "trend": "established",  # Required ThemeTrend
-            "relevance_score": 0.8,
-            "strategic_relevance": 0.8,  # Required
-            "tactical_relevance": 0.8,  # Required
-        })
+        themes.append(
+            {
+                "name": f"Test Theme {i + 1}",
+                "description": f"Description for theme {i + 1}",
+                "category": "ml_ai",  # Required ThemeCategory
+                "mention_count": 3,  # Required
+                "newsletter_ids": [1, 2, 3],
+                "first_seen": "2025-01-13T00:00:00Z",  # Required
+                "last_seen": "2025-01-15T00:00:00Z",  # Required
+                "trend": "established",  # Required ThemeTrend
+                "relevance_score": 0.8,
+                "strategic_relevance": 0.8,  # Required
+                "tactical_relevance": 0.8,  # Required
+            }
+        )
 
     themes_json = {"themes": themes}
 
     import json
+
     mock_content = MagicMock()
     mock_content.type = "text"
     mock_content.text = json.dumps(themes_json)
@@ -157,14 +161,11 @@ def create_simple_embedding_response() -> MagicMock:
             {
                 "object": "embedding",
                 "embedding": [0.001] * 1536,  # Mock 1536-dim embedding
-                "index": 0
+                "index": 0,
             }
         ],
         "model": "text-embedding-3-small",
-        "usage": {
-            "prompt_tokens": 8,
-            "total_tokens": 8
-        }
+        "usage": {"prompt_tokens": 8, "total_tokens": 8},
     }
 
     mock_response.json.return_value = embedding_data

@@ -10,14 +10,12 @@ Provides REST endpoints for:
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from src.models.podcast import (
-    AudioGenerationRequest,
     Podcast,
     PodcastScriptRecord,
     PodcastStatus,
@@ -115,9 +113,7 @@ async def generate_audio_task(
         # Get the script
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record or not script_record.script_json:
@@ -158,9 +154,7 @@ async def generate_audio_task(
 
             # Update script status
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
             script_record.status = PodcastStatus.COMPLETED.value
             db.commit()
@@ -176,9 +170,7 @@ async def generate_audio_task(
                 podcast.error_message = str(e)
 
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
             if script_record:
                 script_record.status = PodcastStatus.FAILED.value
@@ -190,28 +182,22 @@ async def generate_audio_task(
 # --- Endpoints ---
 
 
-@router.get("/", response_model=List[PodcastListItem])
+@router.get("/", response_model=list[PodcastListItem])
 async def list_podcasts(
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(50, le=100, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
-) -> List[PodcastListItem]:
+) -> list[PodcastListItem]:
     """List podcasts with optional filtering."""
     with get_db() as db:
-        query = (
-            db.query(Podcast, PodcastScriptRecord)
-            .join(PodcastScriptRecord, Podcast.script_id == PodcastScriptRecord.id)
+        query = db.query(Podcast, PodcastScriptRecord).join(
+            PodcastScriptRecord, Podcast.script_id == PodcastScriptRecord.id
         )
 
         if status:
             query = query.filter(Podcast.status == status)
 
-        results = (
-            query.order_by(Podcast.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        results = query.order_by(Podcast.created_at.desc()).offset(offset).limit(limit).all()
 
         return [
             PodcastListItem(
@@ -243,6 +229,7 @@ async def get_podcast_statistics() -> PodcastStatistics:
 
         # Calculate total duration
         from sqlalchemy import func
+
         total_duration = (
             db.query(func.sum(Podcast.duration_seconds))
             .filter(Podcast.status == "completed")
@@ -252,11 +239,7 @@ async def get_podcast_statistics() -> PodcastStatistics:
         # Count by voice provider
         by_provider = {}
         for provider in VoiceProvider:
-            count = (
-                db.query(Podcast)
-                .filter(Podcast.voice_provider == provider.value)
-                .count()
-            )
+            count = db.query(Podcast).filter(Podcast.voice_provider == provider.value).count()
             if count > 0:
                 by_provider[provider.value] = count
 
@@ -270,10 +253,10 @@ async def get_podcast_statistics() -> PodcastStatistics:
         )
 
 
-@router.get("/approved-scripts", response_model=List[dict])
+@router.get("/approved-scripts", response_model=list[dict])
 async def list_approved_scripts(
     limit: int = Query(20, le=50, description="Maximum results"),
-) -> List[dict]:
+) -> list[dict]:
     """List approved scripts ready for audio generation."""
     with get_db() as db:
         scripts = (
@@ -428,5 +411,3 @@ async def stream_audio(podcast_id: int):
             media_type="audio/mpeg",
             filename=f"podcast_{podcast_id}.mp3",
         )
-
-

@@ -5,9 +5,7 @@ podcast script based on reviewer feedback, leaving other sections unchanged.
 """
 
 import json
-import time
 from datetime import datetime
-from typing import Optional
 
 from anthropic import Anthropic
 
@@ -62,8 +60,8 @@ class PodcastScriptReviser:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
-        model: Optional[str] = None,
+        model_config: ModelConfig | None = None,
+        model: str | None = None,
     ):
         """Initialize script reviser.
 
@@ -78,7 +76,7 @@ class PodcastScriptReviser:
         self.model = model or model_config.get_model_for_step(ModelStep.PODCAST_SCRIPT)
 
         # Track usage
-        self.provider_used: Optional[Provider] = None
+        self.provider_used: Provider | None = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
 
@@ -160,9 +158,7 @@ class PodcastScriptReviser:
 
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record:
@@ -173,9 +169,7 @@ class PodcastScriptReviser:
             original_section = script.sections[section_index]
 
             # Generate revision
-            revised_section = await self.revise_section(
-                script_record, section_index, feedback
-            )
+            revised_section = await self.revise_section(script_record, section_index, feedback)
 
             # Update script with revised section
             script.sections[section_index] = revised_section
@@ -247,15 +241,11 @@ class PodcastScriptReviser:
         Returns:
             Updated PodcastScriptRecord with all revisions applied
         """
-        logger.info(
-            f"Applying {len(section_feedback)} revisions to script {script_id}"
-        )
+        logger.info(f"Applying {len(section_feedback)} revisions to script {script_id}")
 
         script_record = None
         for section_index, feedback in sorted(section_feedback.items()):
-            script_record = await self.apply_revision(
-                script_id, int(section_index), feedback
-            )
+            script_record = await self.apply_revision(script_id, int(section_index), feedback)
 
         return script_record
 
@@ -287,13 +277,13 @@ class PodcastScriptReviser:
             prev_section = full_script.sections[section_idx - 1]
             if prev_section.dialogue:
                 last_turn = prev_section.dialogue[-1]
-                context_before = f"\n[Previous section ends with {last_turn.speaker.upper()} saying: \"{last_turn.text[:100]}...\"]\n"
+                context_before = f'\n[Previous section ends with {last_turn.speaker.upper()} saying: "{last_turn.text[:100]}..."]\n'
 
         if section_idx < len(full_script.sections) - 1:
             next_section = full_script.sections[section_idx + 1]
             if next_section.dialogue:
                 first_turn = next_section.dialogue[0]
-                context_after = f"\n[Next section starts with {first_turn.speaker.upper()} saying: \"{first_turn.text[:100]}...\"]\n"
+                context_after = f'\n[Next section starts with {first_turn.speaker.upper()} saying: "{first_turn.text[:100]}..."]\n'
 
         return f"""
 Revise this podcast section based on the reviewer feedback.
@@ -469,15 +459,11 @@ Respond with ONLY the JSON object, no additional text.
         Returns:
             Updated PodcastScriptRecord
         """
-        logger.info(
-            f"Directly replacing dialogue in script {script_id}, section {section_index}"
-        )
+        logger.info(f"Directly replacing dialogue in script {script_id}, section {section_index}")
 
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record:
@@ -531,9 +517,7 @@ Respond with ONLY the JSON object, no additional text.
                 "original_word_count": sum(
                     len(turn.text.split()) for turn in original_section.dialogue
                 ),
-                "revised_word_count": sum(
-                    len(turn.text.split()) for turn in replacement_dialogue
-                ),
+                "revised_word_count": sum(len(turn.text.split()) for turn in replacement_dialogue),
             }
             history = script_record.revision_history or []
             history.append(revision_entry)

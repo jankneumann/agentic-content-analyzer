@@ -100,9 +100,7 @@ async def test_analyze_themes_success(
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 analyzer = ThemeAnalyzer()
-                result = await analyzer.analyze_themes(
-                    request, include_historical_context=False
-                )
+                result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Verify results
     assert result is not None
@@ -174,11 +172,8 @@ async def test_analyze_themes_with_historical_context(
                 mock_historical_class.return_value = mock_historical
 
                 with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-
                     analyzer = ThemeAnalyzer()
-                    result = await analyzer.analyze_themes(
-                        request, include_historical_context=True
-                    )
+                    result = await analyzer.analyze_themes(request, include_historical_context=True)
 
     # Verify historical context analyzer was called
     mock_historical.enrich_themes_with_history.assert_called_once()
@@ -211,7 +206,6 @@ async def test_analyze_themes_insufficient_newsletters(
             mock_graphiti_class.return_value = mock_graphiti_client
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-
                 analyzer = ThemeAnalyzer()
                 result = await analyzer.analyze_themes(request)
 
@@ -287,7 +281,6 @@ async def test_analyze_themes_relevance_filtering(
             mock_graphiti_class.return_value = mock_graphiti_client
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-
                 analyzer = ThemeAnalyzer()
                 result = await analyzer.analyze_themes(request)
 
@@ -328,7 +321,6 @@ async def test_analyze_themes_no_summaries(
             mock_graphiti_class.return_value = mock_graphiti_client
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-
                 analyzer = ThemeAnalyzer()
                 result = await analyzer.analyze_themes(request)
 

@@ -1,7 +1,6 @@
 """Token counting utility for context window management."""
 
 import tiktoken
-from typing import Any, Dict, Optional
 
 from src.config.models import ModelConfig, Provider
 from src.utils.logging import get_logger
@@ -19,8 +18,8 @@ class TokenCounter:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
-        model_id: Optional[str] = None,
+        model_config: ModelConfig | None = None,
+        model_id: str | None = None,
     ):
         """
         Initialize token counter.
@@ -72,9 +71,9 @@ class TokenCounter:
     def estimate_newsletter_batch_tokens(
         self,
         newsletters: list[dict],
-        themes: Optional[list] = None,
-        prompt_template: Optional[str] = None,
-        summaries: Optional[list] = None,
+        themes: list | None = None,
+        prompt_template: str | None = None,
+        summaries: list | None = None,
     ) -> int:
         """
         Estimate total tokens for newsletter batch including all context.
@@ -160,7 +159,7 @@ class TokenCounter:
         model_id: str,
         provider: Provider,
         context_window_percentage: float = 0.5,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Calculate token budget allocation for digest generation.
 
@@ -191,9 +190,7 @@ class TokenCounter:
 
         # Get model configuration
         try:
-            provider_config = self.model_config.get_provider_model_config(
-                model_id, provider
-            )
+            provider_config = self.model_config.get_provider_model_config(model_id, provider)
         except ValueError as e:
             logger.error(f"Failed to get model config: {e}")
             raise ValueError(
@@ -227,7 +224,7 @@ class TokenCounter:
         logger.info(
             f"Token budget calculated: "
             f"total={total_context}, "
-            f"input={available_for_input} ({context_window_percentage*100:.0f}%), "
+            f"input={available_for_input} ({context_window_percentage * 100:.0f}%), "
             f"newsletters={newsletter_budget}, "
             f"themes={theme_budget}, "
             f"overhead={prompt_overhead}"

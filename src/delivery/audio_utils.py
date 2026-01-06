@@ -46,27 +46,28 @@ def concatenate_mp3_files(mp3_bytes_list: list[bytes], output_path: Path) -> Non
         # Step 1: Write MP3 bytes to temp files and convert each to WAV
         for i, mp3_bytes in enumerate(mp3_bytes_list):
             # Write MP3 to temp file
-            mp3_temp = tempfile.NamedTemporaryFile(
-                delete=False, suffix=f"_{i}.mp3", mode='wb'
-            )
+            mp3_temp = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{i}.mp3", mode="wb")
             mp3_temp.write(mp3_bytes)
             mp3_temp.close()
             mp3_temp_files.append(mp3_temp.name)
 
             # Convert MP3 to WAV (normalize to consistent format)
-            wav_temp = tempfile.NamedTemporaryFile(
-                delete=False, suffix=f"_{i}.wav"
-            )
+            wav_temp = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{i}.wav")
             wav_temp.close()
             wav_temp_files.append(wav_temp.name)
 
             cmd = [
-                'ffmpeg', '-y',
-                '-i', mp3_temp.name,
-                '-acodec', 'pcm_s16le',  # Standard WAV format
-                '-ar', '24000',  # Match OpenAI TTS sample rate
-                '-ac', '1',  # Mono
-                wav_temp.name
+                "ffmpeg",
+                "-y",
+                "-i",
+                mp3_temp.name,
+                "-acodec",
+                "pcm_s16le",  # Standard WAV format
+                "-ar",
+                "24000",  # Match OpenAI TTS sample rate
+                "-ac",
+                "1",  # Mono
+                wav_temp.name,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
@@ -78,9 +79,7 @@ def concatenate_mp3_files(mp3_bytes_list: list[bytes], output_path: Path) -> Non
         )
 
         # Step 2: Create concat file list for ffmpeg
-        concat_file = tempfile.NamedTemporaryFile(
-            mode='w', suffix='.txt', delete=False
-        )
+        concat_file = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
         for wav_file in wav_temp_files:
             escaped_path = wav_file.replace("'", "'\\''")
             concat_file.write(f"file '{escaped_path}'\n")
@@ -88,19 +87,22 @@ def concatenate_mp3_files(mp3_bytes_list: list[bytes], output_path: Path) -> Non
         concat_file_path = concat_file.name
 
         # Step 3: Concatenate WAV files
-        combined_wav = tempfile.NamedTemporaryFile(
-            delete=False, suffix='_combined.wav'
-        )
+        combined_wav = tempfile.NamedTemporaryFile(delete=False, suffix="_combined.wav")
         combined_wav.close()
         combined_wav_path = combined_wav.name
 
         cmd = [
-            'ffmpeg', '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', concat_file_path,
-            '-c', 'copy',
-            combined_wav_path
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_file_path,
+            "-c",
+            "copy",
+            combined_wav_path,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -110,12 +112,17 @@ def concatenate_mp3_files(mp3_bytes_list: list[bytes], output_path: Path) -> Non
 
         # Step 4: Convert combined WAV to MP3
         cmd = [
-            'ffmpeg', '-y',
-            '-i', combined_wav_path,
-            '-acodec', 'libmp3lame',
-            '-b:a', '192k',  # Good quality bitrate
-            '-ar', '24000',  # Keep sample rate
-            str(output_path)
+            "ffmpeg",
+            "-y",
+            "-i",
+            combined_wav_path,
+            "-acodec",
+            "libmp3lame",
+            "-b:a",
+            "192k",  # Good quality bitrate
+            "-ar",
+            "24000",  # Keep sample rate
+            str(output_path),
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:

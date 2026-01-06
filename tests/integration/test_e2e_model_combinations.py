@@ -8,13 +8,12 @@ Tests the full workflow with various model configurations:
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.theme import ThemeAnalysisRequest
-from src.processors.digest_creator import DigestCreator
 from src.processors.summarizer import NewsletterSummarizer
 from src.processors.theme_analyzer import ThemeAnalyzer
 
@@ -27,9 +26,7 @@ def haiku_config():
         theme_analysis="claude-haiku-4-5-20251001",
         digest_creation="claude-haiku-4-5-20251001",
         historical_context="claude-haiku-4-5-20251001",
-        providers=[
-            ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-haiku-key")
-        ],
+        providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-haiku-key")],
     )
     return config
 
@@ -42,9 +39,7 @@ def sonnet_config():
         theme_analysis="claude-sonnet-4-5-20250929",
         digest_creation="claude-sonnet-4-5-20250929",
         historical_context="claude-sonnet-4-5-20250929",
-        providers=[
-            ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-sonnet-key")
-        ],
+        providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-sonnet-key")],
     )
     return config
 
@@ -57,9 +52,7 @@ def mixed_config():
         theme_analysis="claude-sonnet-4-5-20250929",  # Better reasoning
         digest_creation="claude-sonnet-4-5-20250929",  # Quality output
         historical_context="claude-haiku-4-5-20251001",  # Simple queries
-        providers=[
-            ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-mixed-key")
-        ],
+        providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-mixed-key")],
     )
     return config
 
@@ -136,9 +129,7 @@ async def test_theme_analysis_with_haiku(
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 analyzer = ThemeAnalyzer(model_config=haiku_config)
-                result = await analyzer.analyze_themes(
-                    request, include_historical_context=False
-                )
+                result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Verify Haiku was used
     assert analyzer.model == "claude-haiku-4-5-20251001"
@@ -179,9 +170,7 @@ async def test_theme_analysis_with_sonnet(
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 analyzer = ThemeAnalyzer(model_config=sonnet_config)
-                result = await analyzer.analyze_themes(
-                    request, include_historical_context=False
-                )
+                result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Verify Sonnet was used
     assert analyzer.model == "claude-sonnet-4-5-20250929"
@@ -292,9 +281,7 @@ def test_model_override_at_agent_level(haiku_config):
 
     with patch("src.agents.claude.summarizer.Anthropic"):
         # Create agent with model override
-        agent = ClaudeAgent(
-            model_config=haiku_config, model="claude-sonnet-4-5-20250929"
-        )
+        agent = ClaudeAgent(model_config=haiku_config, model="claude-sonnet-4-5-20250929")
         summarizer = NewsletterSummarizer(agent=agent)
 
     # Should use Sonnet despite Haiku config
@@ -305,21 +292,13 @@ def test_model_override_at_agent_level(haiku_config):
 def test_model_selection_per_step(mixed_config):
     """Test that each step gets the correct model from config."""
     # Verify model selection for each step
+    assert mixed_config.get_model_for_step(ModelStep.SUMMARIZATION) == "claude-haiku-4-5-20251001"
+    assert mixed_config.get_model_for_step(ModelStep.THEME_ANALYSIS) == "claude-sonnet-4-5-20250929"
     assert (
-        mixed_config.get_model_for_step(ModelStep.SUMMARIZATION)
-        == "claude-haiku-4-5-20251001"
+        mixed_config.get_model_for_step(ModelStep.DIGEST_CREATION) == "claude-sonnet-4-5-20250929"
     )
     assert (
-        mixed_config.get_model_for_step(ModelStep.THEME_ANALYSIS)
-        == "claude-sonnet-4-5-20250929"
-    )
-    assert (
-        mixed_config.get_model_for_step(ModelStep.DIGEST_CREATION)
-        == "claude-sonnet-4-5-20250929"
-    )
-    assert (
-        mixed_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT)
-        == "claude-haiku-4-5-20251001"
+        mixed_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT) == "claude-haiku-4-5-20251001"
     )
 
 

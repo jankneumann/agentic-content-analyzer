@@ -1,6 +1,6 @@
 """Tests for revision context and result models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -63,11 +63,11 @@ def sample_newsletters():
         newsletter = Newsletter(
             source=NewsletterSource.GMAIL,
             source_id=f"test-{i}",
-            title=f"Newsletter {i+1}",
+            title=f"Newsletter {i + 1}",
             sender="test@example.com",
             publication="Tech Weekly",
             published_date=datetime(2025, 1, 15, 10 + i, 0, 0),
-            raw_text=f"Content for newsletter {i+1}",
+            raw_text=f"Content for newsletter {i + 1}",
         )
         newsletter.id = i + 1
         newsletters.append(newsletter)
@@ -227,7 +227,7 @@ class TestRevisionTurn:
 
     def test_initialization(self):
         """Test RevisionTurn initialization."""
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         turn = RevisionTurn(
             turn=1,
             user_input="Make executive summary more concise",
@@ -254,14 +254,14 @@ class TestRevisionTurn:
             ai_response="Test response",
             section_modified="test_section",
             change_accepted=False,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
         assert turn.tools_called == []
 
     def test_to_dict_serialization(self):
         """Test conversion to dictionary for JSON serialization."""
-        timestamp = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        timestamp = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
         turn = RevisionTurn(
             turn=2,
             user_input="Add technical details",
@@ -291,7 +291,7 @@ class TestRevisionTurn:
             ai_response="Response",
             section_modified="test",
             change_accepted=False,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
         result = turn.to_dict()

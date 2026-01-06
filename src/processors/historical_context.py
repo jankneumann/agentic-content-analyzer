@@ -2,15 +2,12 @@
 
 import json
 from datetime import datetime, timedelta
-from typing import Optional
 
 from anthropic import Anthropic
 
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
-from src.models.newsletter import Newsletter
 from src.models.theme import HistoricalMention, ThemeData, ThemeEvolution
-from src.storage.database import get_db
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger
 
@@ -26,8 +23,8 @@ class HistoricalContextAnalyzer:
 
     def __init__(
         self,
-        model_config: Optional[ModelConfig] = None,
-        model: Optional[str] = None,
+        model_config: ModelConfig | None = None,
+        model: str | None = None,
     ):
         """
         Initialize historical context analyzer.
@@ -45,10 +42,10 @@ class HistoricalContextAnalyzer:
         # Get model for historical context step (or use override)
         self.model = model or model_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT)
 
-        self.graphiti_client: Optional[GraphitiClient] = None
+        self.graphiti_client: GraphitiClient | None = None
 
         # Track usage for cost calculation
-        self.provider_used: Optional[Provider] = None
+        self.provider_used: Provider | None = None
         self.input_tokens: int = 0
         self.output_tokens: int = 0
 
@@ -128,7 +125,7 @@ class HistoricalContextAnalyzer:
                 first_mention=current_date,
                 total_mentions=0,
                 mention_frequency="new",
-                evolution_summary=f"This is a new theme, first appearing in this analysis period.",
+                evolution_summary="This is a new theme, first appearing in this analysis period.",
                 previous_discussions=[],
                 recent_mentions=[],
             )
@@ -146,8 +143,7 @@ class HistoricalContextAnalyzer:
 
         # Determine first mention
         first_mention = (
-            timeline[0]["timestamp"] if timeline
-            else current_date - timedelta(days=lookback_days)
+            timeline[0]["timestamp"] if timeline else current_date - timedelta(days=lookback_days)
         )
 
         # Calculate frequency
@@ -165,12 +161,14 @@ class HistoricalContextAnalyzer:
             frequency = "constant"
 
         # Use LLM to analyze evolution
-        evolution_summary, previous_discussions, stance_change = (
-            await self._analyze_evolution_with_llm(
-                theme_name=theme_name,
-                timeline=timeline,
-                recent_mentions=historical_mentions[:10],
-            )
+        (
+            evolution_summary,
+            previous_discussions,
+            stance_change,
+        ) = await self._analyze_evolution_with_llm(
+            theme_name=theme_name,
+            timeline=timeline,
+            recent_mentions=historical_mentions[:10],
         )
 
         return ThemeEvolution(
@@ -216,7 +214,7 @@ class HistoricalContextAnalyzer:
         theme_name: str,
         timeline: list[dict],
         recent_mentions: list[dict],
-    ) -> tuple[str, list[str], Optional[str]]:
+    ) -> tuple[str, list[str], str | None]:
         """
         Use LLM to analyze how a theme has evolved.
 
@@ -354,9 +352,7 @@ Provide ONLY the JSON, no other text."""
             title = mention.get("title", "Unknown")
             content = mention.get("content", "")[:200]  # First 200 chars
 
-            context_parts.append(
-                f"{i}. {date} - {title}\n   {content}..."
-            )
+            context_parts.append(f"{i}. {date} - {title}\n   {content}...")
 
         return "\n\n".join(context_parts)
 

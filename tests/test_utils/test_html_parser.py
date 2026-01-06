@@ -1,7 +1,5 @@
 """Tests for HTML parsing utilities."""
 
-import pytest
-
 from src.utils.html_parser import (
     clean_html,
     extract_links,

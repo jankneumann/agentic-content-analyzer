@@ -9,8 +9,8 @@ Provides business logic for podcast script review workflow:
 Separates presentation layer from core review functionality.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from src.config.models import ModelConfig
 from src.models.podcast import (
@@ -39,7 +39,7 @@ class ScriptReviewService:
     4. FAILED - Rejected by reviewer
     """
 
-    def __init__(self, model_config: Optional[ModelConfig] = None):
+    def __init__(self, model_config: ModelConfig | None = None):
         """Initialize script review service.
 
         Args:
@@ -51,7 +51,7 @@ class ScriptReviewService:
         self.reviser = PodcastScriptReviser(model_config=self.model_config)
         logger.info("Initialized ScriptReviewService")
 
-    async def list_pending_reviews(self) -> List[PodcastScriptRecord]:
+    async def list_pending_reviews(self) -> list[PodcastScriptRecord]:
         """Get all scripts awaiting review.
 
         Returns:
@@ -63,9 +63,7 @@ class ScriptReviewService:
         with get_db() as db:
             scripts = (
                 db.query(PodcastScriptRecord)
-                .filter(
-                    PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value
-                )
+                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value)
                 .order_by(PodcastScriptRecord.created_at.desc())
                 .all()
             )
@@ -73,7 +71,7 @@ class ScriptReviewService:
             logger.info(f"Found {len(scripts)} scripts pending review")
             return scripts
 
-    async def list_approved_scripts(self) -> List[PodcastScriptRecord]:
+    async def list_approved_scripts(self) -> list[PodcastScriptRecord]:
         """Get all scripts that are approved and ready for audio generation.
 
         Returns:
@@ -92,7 +90,7 @@ class ScriptReviewService:
             logger.info(f"Found {len(scripts)} approved scripts")
             return scripts
 
-    async def get_script(self, script_id: int) -> Optional[PodcastScriptRecord]:
+    async def get_script(self, script_id: int) -> PodcastScriptRecord | None:
         """Load script by ID.
 
         Args:
@@ -105,9 +103,7 @@ class ScriptReviewService:
 
         with get_db() as db:
             script = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script:
@@ -115,7 +111,7 @@ class ScriptReviewService:
 
             return script
 
-    async def get_scripts_for_digest(self, digest_id: int) -> List[PodcastScriptRecord]:
+    async def get_scripts_for_digest(self, digest_id: int) -> list[PodcastScriptRecord]:
         """Get all scripts generated from a specific digest.
 
         Args:
@@ -136,7 +132,7 @@ class ScriptReviewService:
 
             return scripts
 
-    def get_script_for_review(self, script_id: int) -> Dict[str, Any]:
+    def get_script_for_review(self, script_id: int) -> dict[str, Any]:
         """Get script with review-friendly formatting.
 
         Transforms the script into a structure suitable for review UI,
@@ -155,9 +151,7 @@ class ScriptReviewService:
 
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record:
@@ -179,9 +173,13 @@ class ScriptReviewService:
             "estimated_duration_seconds": script.estimated_duration_seconds,
             "status": script_record.status,
             "revision_count": script_record.revision_count or 0,
-            "created_at": script_record.created_at.isoformat() if script_record.created_at else None,
+            "created_at": script_record.created_at.isoformat()
+            if script_record.created_at
+            else None,
             "reviewed_by": script_record.reviewed_by,
-            "reviewed_at": script_record.reviewed_at.isoformat() if script_record.reviewed_at else None,
+            "reviewed_at": script_record.reviewed_at.isoformat()
+            if script_record.reviewed_at
+            else None,
             "sections": [
                 {
                     "index": i,
@@ -250,17 +248,16 @@ class ScriptReviewService:
             ]
             if script_record.status not in reviewable_states:
                 raise ValueError(
-                    f"Script {request.script_id} is not reviewable. "
-                    f"Status: {script_record.status}"
+                    f"Script {request.script_id} is not reviewable. Status: {script_record.status}"
                 )
 
             # Apply review action
             if request.action == ScriptReviewAction.APPROVE:
                 script_record.status = PodcastStatus.SCRIPT_APPROVED.value
                 script_record.reviewed_by = request.reviewer
-                script_record.reviewed_at = datetime.now(timezone.utc)
+                script_record.reviewed_at = datetime.now(UTC)
                 script_record.review_notes = request.general_notes
-                script_record.approved_at = datetime.now(timezone.utc)
+                script_record.approved_at = datetime.now(UTC)
 
                 db.commit()
                 db.refresh(script_record)
@@ -270,7 +267,7 @@ class ScriptReviewService:
             elif request.action == ScriptReviewAction.REQUEST_REVISION:
                 script_record.status = PodcastStatus.SCRIPT_REVISION_REQUESTED.value
                 script_record.reviewed_by = request.reviewer
-                script_record.reviewed_at = datetime.now(timezone.utc)
+                script_record.reviewed_at = datetime.now(UTC)
                 script_record.review_notes = request.general_notes
 
                 db.commit()
@@ -278,9 +275,7 @@ class ScriptReviewService:
 
                 # Apply section-specific revisions
                 if request.section_feedback:
-                    logger.info(
-                        f"Applying {len(request.section_feedback)} section revisions"
-                    )
+                    logger.info(f"Applying {len(request.section_feedback)} section revisions")
                     script_record = await self.reviser.apply_multiple_revisions(
                         request.script_id,
                         request.section_feedback,
@@ -294,7 +289,7 @@ class ScriptReviewService:
             elif request.action == ScriptReviewAction.REJECT:
                 script_record.status = PodcastStatus.FAILED.value
                 script_record.reviewed_by = request.reviewer
-                script_record.reviewed_at = datetime.now(timezone.utc)
+                script_record.reviewed_at = datetime.now(UTC)
                 script_record.review_notes = request.general_notes
                 script_record.error_message = "Rejected by reviewer"
 
@@ -317,9 +312,7 @@ class ScriptReviewService:
         Returns:
             Updated PodcastScriptRecord
         """
-        logger.info(
-            f"Revising section {request.section_index} of script {request.script_id}"
-        )
+        logger.info(f"Revising section {request.section_index} of script {request.script_id}")
 
         # Check if direct replacement is provided
         if request.replacement_dialogue:
@@ -340,7 +333,7 @@ class ScriptReviewService:
         self,
         script_id: int,
         reviewer: str,
-        notes: Optional[str] = None,
+        notes: str | None = None,
     ) -> PodcastScriptRecord:
         """Quick approve a script without detailed review.
 
@@ -413,9 +406,7 @@ class ScriptReviewService:
         """
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record or not script_record.script_json:
@@ -439,7 +430,7 @@ class ScriptReviewService:
 
             return "\n\n".join(lines)
 
-    async def get_review_statistics(self) -> Dict[str, Any]:
+    async def get_review_statistics(self) -> dict[str, Any]:
         """Get statistics about script review workflow.
 
         Returns:

@@ -9,11 +9,10 @@ Handles:
 """
 
 import io
-import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Callable, Optional
 
 from src.config import settings
 from src.delivery.tts_service import TTSService
@@ -77,15 +76,14 @@ class PodcastAudioGenerator:
         self.sample_rate = sample_rate
 
         logger.info(
-            f"Initialized PodcastAudioGenerator with {provider.value}, "
-            f"format={output_format}"
+            f"Initialized PodcastAudioGenerator with {provider.value}, format={output_format}"
         )
 
     async def generate_audio(
         self,
         script: PodcastScript,
         output_path: Path,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> AudioMetadata:
         """Generate complete podcast audio from a script.
 
@@ -101,9 +99,7 @@ class PodcastAudioGenerator:
             RuntimeError: If audio generation fails
         """
         start_time = time.time()
-        logger.info(
-            f"Generating audio for '{script.title}' ({script.word_count} words)"
-        )
+        logger.info(f"Generating audio for '{script.title}' ({script.word_count} words)")
 
         # Count total turns for progress
         total_turns = sum(len(s.dialogue) for s in script.sections)
@@ -116,16 +112,14 @@ class PodcastAudioGenerator:
             from pydub import AudioSegment
         except ImportError:
             raise RuntimeError(
-                "pydub is required for audio generation. "
-                "Install with: pip install pydub"
+                "pydub is required for audio generation. Install with: pip install pydub"
             )
 
         try:
             # Process each section
             for section_idx, section in enumerate(script.sections):
                 logger.debug(
-                    f"Processing section {section_idx + 1}/{len(script.sections)}: "
-                    f"{section.title}"
+                    f"Processing section {section_idx + 1}/{len(script.sections)}: {section.title}"
                 )
 
                 for turn in section.dialogue:
@@ -153,18 +147,12 @@ class PodcastAudioGenerator:
                         # Add pause after turn
                         pause_ms = int(turn.pause_after * 1000)
                         if pause_ms > 0:
-                            audio_segments.append(
-                                AudioSegment.silent(duration=pause_ms)
-                            )
+                            audio_segments.append(AudioSegment.silent(duration=pause_ms))
 
                     except Exception as e:
-                        logger.error(
-                            f"Failed to synthesize turn {current_turn}: {e}"
-                        )
+                        logger.error(f"Failed to synthesize turn {current_turn}: {e}")
                         # Add a longer pause as fallback
-                        audio_segments.append(
-                            AudioSegment.silent(duration=2000)
-                        )
+                        audio_segments.append(AudioSegment.silent(duration=2000))
 
                 # Add section transition pause
                 audio_segments.append(AudioSegment.silent(duration=1000))
@@ -261,11 +249,7 @@ class PodcastAudioGenerator:
             Dict with time and cost estimates
         """
         total_turns = sum(len(s.dialogue) for s in script.sections)
-        total_chars = sum(
-            len(t.text)
-            for s in script.sections
-            for t in s.dialogue
-        )
+        total_chars = sum(len(t.text) for s in script.sections for t in s.dialogue)
 
         # Rough estimates based on provider
         if self.provider == VoiceProvider.OPENAI_TTS:
@@ -306,7 +290,7 @@ class PodcastAudioGenerator:
         }
 
 
-def get_output_path(podcast_id: int, storage_path: Optional[str] = None) -> Path:
+def get_output_path(podcast_id: int, storage_path: str | None = None) -> Path:
     """Get the output path for a podcast audio file.
 
     Args:

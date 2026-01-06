@@ -1,6 +1,6 @@
 """Digest formatting utilities for multi-audience output."""
 
-from src.models.digest import DigestData, DigestSection
+from src.models.digest import DigestData
 
 
 class DigestFormatter:
@@ -32,10 +32,18 @@ class DigestFormatter:
 
             for insight in digest.strategic_insights:
                 # Handle both DigestSection objects and dicts
-                title = insight.title if hasattr(insight, 'title') else insight.get('title', '')
-                summary = insight.summary if hasattr(insight, 'summary') else insight.get('summary', '')
-                details = insight.details if hasattr(insight, 'details') else insight.get('details', [])
-                continuity = insight.continuity if hasattr(insight, 'continuity') else insight.get('continuity', None)
+                title = insight.title if hasattr(insight, "title") else insight.get("title", "")
+                summary = (
+                    insight.summary if hasattr(insight, "summary") else insight.get("summary", "")
+                )
+                details = (
+                    insight.details if hasattr(insight, "details") else insight.get("details", [])
+                )
+                continuity = (
+                    insight.continuity
+                    if hasattr(insight, "continuity")
+                    else insight.get("continuity", None)
+                )
 
                 md_parts.append(f"### {title}\n")
                 md_parts.append(f"{summary}\n")
@@ -57,10 +65,12 @@ class DigestFormatter:
 
             for dev in digest.technical_developments:
                 # Handle both DigestSection objects and dicts
-                title = dev.title if hasattr(dev, 'title') else dev.get('title', '')
-                summary = dev.summary if hasattr(dev, 'summary') else dev.get('summary', '')
-                details = dev.details if hasattr(dev, 'details') else dev.get('details', [])
-                continuity = dev.continuity if hasattr(dev, 'continuity') else dev.get('continuity', None)
+                title = dev.title if hasattr(dev, "title") else dev.get("title", "")
+                summary = dev.summary if hasattr(dev, "summary") else dev.get("summary", "")
+                details = dev.details if hasattr(dev, "details") else dev.get("details", [])
+                continuity = (
+                    dev.continuity if hasattr(dev, "continuity") else dev.get("continuity", None)
+                )
 
                 md_parts.append(f"### {title}\n")
                 md_parts.append(f"{summary}\n")
@@ -82,10 +92,14 @@ class DigestFormatter:
 
             for trend in digest.emerging_trends:
                 # Handle both DigestSection objects and dicts
-                title = trend.title if hasattr(trend, 'title') else trend.get('title', '')
-                summary = trend.summary if hasattr(trend, 'summary') else trend.get('summary', '')
-                details = trend.details if hasattr(trend, 'details') else trend.get('details', [])
-                continuity = trend.continuity if hasattr(trend, 'continuity') else trend.get('continuity', None)
+                title = trend.title if hasattr(trend, "title") else trend.get("title", "")
+                summary = trend.summary if hasattr(trend, "summary") else trend.get("summary", "")
+                details = trend.details if hasattr(trend, "details") else trend.get("details", [])
+                continuity = (
+                    trend.continuity
+                    if hasattr(trend, "continuity")
+                    else trend.get("continuity", None)
+                )
 
                 md_parts.append(f"### {title}\n")
                 md_parts.append(f"{summary}\n")
@@ -127,7 +141,7 @@ class DigestFormatter:
             md_parts.append("## Sources\n")
             for source in digest.sources:
                 # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
-                newsletter_id = source.get('id') or source.get('newsletter_id', '')
+                newsletter_id = source.get("id") or source.get("newsletter_id", "")
                 id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
 
                 if source.get("url"):
@@ -255,7 +269,7 @@ class DigestFormatter:
             lines.append("-" * 80)
             for source in digest.sources:
                 # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
-                newsletter_id = source.get('id') or source.get('newsletter_id', '')
+                newsletter_id = source.get("id") or source.get("newsletter_id", "")
                 id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
                 lines.append(
                     f"• {id_prefix}{source['publication']}: {source['title']} ({source['date']})"
@@ -422,7 +436,7 @@ class DigestFormatter:
         html_parts.append(f"        <h1>{digest.title}</h1>")
         html_parts.append(
             f"""        <div class="metadata">
-            <strong>Period:</strong> {digest.period_start.strftime('%B %d, %Y')} - {digest.period_end.strftime('%B %d, %Y')}<br>
+            <strong>Period:</strong> {digest.period_start.strftime("%B %d, %Y")} - {digest.period_end.strftime("%B %d, %Y")}<br>
             <strong>Newsletters Analyzed:</strong> {digest.newsletter_count}
         </div>
 """
@@ -447,10 +461,18 @@ class DigestFormatter:
 
             for insight in digest.strategic_insights:
                 # Handle both DigestSection objects and dicts
-                title = insight.title if hasattr(insight, 'title') else insight.get('title', '')
-                summary = insight.summary if hasattr(insight, 'summary') else insight.get('summary', '')
-                details = insight.details if hasattr(insight, 'details') else insight.get('details', [])
-                continuity = insight.continuity if hasattr(insight, 'continuity') else insight.get('continuity', None)
+                title = insight.title if hasattr(insight, "title") else insight.get("title", "")
+                summary = (
+                    insight.summary if hasattr(insight, "summary") else insight.get("summary", "")
+                )
+                details = (
+                    insight.details if hasattr(insight, "details") else insight.get("details", [])
+                )
+                continuity = (
+                    insight.continuity
+                    if hasattr(insight, "continuity")
+                    else insight.get("continuity", None)
+                )
 
                 html_parts.append(f"""        <div class="section">
             <h3>{title}</h3>
@@ -464,9 +486,7 @@ class DigestFormatter:
                     html_parts.append("            </ul>")
 
                 if continuity:
-                    html_parts.append(
-                        f'            <div class="continuity">{continuity}</div>'
-                    )
+                    html_parts.append(f'            <div class="continuity">{continuity}</div>')
 
                 html_parts.append("        </div>")
 
@@ -479,10 +499,12 @@ class DigestFormatter:
 
             for dev in digest.technical_developments:
                 # Handle both DigestSection objects and dicts
-                title = dev.title if hasattr(dev, 'title') else dev.get('title', '')
-                summary = dev.summary if hasattr(dev, 'summary') else dev.get('summary', '')
-                details = dev.details if hasattr(dev, 'details') else dev.get('details', [])
-                continuity = dev.continuity if hasattr(dev, 'continuity') else dev.get('continuity', None)
+                title = dev.title if hasattr(dev, "title") else dev.get("title", "")
+                summary = dev.summary if hasattr(dev, "summary") else dev.get("summary", "")
+                details = dev.details if hasattr(dev, "details") else dev.get("details", [])
+                continuity = (
+                    dev.continuity if hasattr(dev, "continuity") else dev.get("continuity", None)
+                )
 
                 html_parts.append(f"""        <div class="section">
             <h3>{title}</h3>
@@ -496,9 +518,7 @@ class DigestFormatter:
                     html_parts.append("            </ul>")
 
                 if continuity:
-                    html_parts.append(
-                        f'            <div class="continuity">{continuity}</div>'
-                    )
+                    html_parts.append(f'            <div class="continuity">{continuity}</div>')
 
                 html_parts.append("        </div>")
 
@@ -511,10 +531,14 @@ class DigestFormatter:
 
             for trend in digest.emerging_trends:
                 # Handle both DigestSection objects and dicts
-                title = trend.title if hasattr(trend, 'title') else trend.get('title', '')
-                summary = trend.summary if hasattr(trend, 'summary') else trend.get('summary', '')
-                details = trend.details if hasattr(trend, 'details') else trend.get('details', [])
-                continuity = trend.continuity if hasattr(trend, 'continuity') else trend.get('continuity', None)
+                title = trend.title if hasattr(trend, "title") else trend.get("title", "")
+                summary = trend.summary if hasattr(trend, "summary") else trend.get("summary", "")
+                details = trend.details if hasattr(trend, "details") else trend.get("details", [])
+                continuity = (
+                    trend.continuity
+                    if hasattr(trend, "continuity")
+                    else trend.get("continuity", None)
+                )
 
                 html_parts.append(f"""        <div class="section">
             <h3><span class="trend-emerging">📈</span>{title}</h3>
@@ -528,9 +552,7 @@ class DigestFormatter:
                     html_parts.append("            </ul>")
 
                 if continuity:
-                    html_parts.append(
-                        f'            <div class="continuity">📈 {continuity}</div>'
-                    )
+                    html_parts.append(f'            <div class="continuity">📈 {continuity}</div>')
 
                 html_parts.append("        </div>")
 
@@ -579,18 +601,18 @@ class DigestFormatter:
 """)
             for source in digest.sources:
                 # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
-                newsletter_id = source.get('id') or source.get('newsletter_id', '')
-                id_prefix = f'[{newsletter_id}] ' if newsletter_id else ""
+                newsletter_id = source.get("id") or source.get("newsletter_id", "")
+                id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
 
                 if source.get("url"):
                     html_parts.append(
                         f'                <li>{id_prefix}<a href="{source["url"]}">'
-                        f'{source["publication"]}: {source["title"]}</a> '
+                        f"{source['publication']}: {source['title']}</a> "
                         f'<span style="color: #666;">({source["date"]})</span></li>'
                     )
                 else:
                     html_parts.append(
-                        f'                <li>{id_prefix}{source["publication"]}: {source["title"]} '
+                        f"                <li>{id_prefix}{source['publication']}: {source['title']} "
                         f'<span style="color: #666;">({source["date"]})</span></li>'
                     )
             html_parts.append("            </ul>\n        </div>")
@@ -599,7 +621,7 @@ class DigestFormatter:
         html_parts.append(
             f"""
         <div class="footer">
-            Generated on {digest.period_end.strftime('%B %d, %Y')} using {digest.agent_framework}
+            Generated on {digest.period_end.strftime("%B %d, %Y")} using {digest.agent_framework}
         </div>
     </div>
 </body>

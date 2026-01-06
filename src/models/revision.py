@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from src.models.digest import Digest
 from src.models.summary import NewsletterSummary
@@ -17,9 +17,9 @@ class RevisionContext:
     """
 
     digest: Digest
-    summaries: List[NewsletterSummary]  # Already condensed summaries
-    theme_analysis: Optional[Any] = None  # Theme analysis data (if available)
-    newsletter_ids: List[int] = None  # IDs for on-demand fetching via tools
+    summaries: list[NewsletterSummary]  # Already condensed summaries
+    theme_analysis: Any | None = None  # Theme analysis data (if available)
+    newsletter_ids: list[int] = None  # IDs for on-demand fetching via tools
 
     def __post_init__(self):
         """Initialize newsletter IDs if not provided."""
@@ -132,9 +132,7 @@ class RevisionContext:
 
         # Available tools note
         parts.append("\n\n## AVAILABLE TOOLS\n")
-        parts.append(
-            "You have access to the following tools to retrieve additional details:\n"
-        )
+        parts.append("You have access to the following tools to retrieve additional details:\n")
         parts.append(
             "- **fetch_newsletter_content(newsletter_id)**: "
             "Retrieve full content of a specific newsletter when you need detailed information"
@@ -159,7 +157,9 @@ class RevisionResult:
     section_modified: str  # Which digest section was changed
     explanation: str  # AI explanation of the change
     confidence_score: float = 1.0  # How confident the AI is (0.0-1.0)
-    tools_used: List[str] = None  # Tools called during revision (e.g., ["fetch_newsletter_content"])
+    tools_used: list[str] = (
+        None  # Tools called during revision (e.g., ["fetch_newsletter_content"])
+    )
 
     def __post_init__(self):
         """Initialize tools_used if not provided."""
@@ -181,7 +181,7 @@ class RevisionTurn:
     section_modified: str
     change_accepted: bool
     timestamp: datetime
-    tools_called: List[str] = None  # Tools used in this turn
+    tools_called: list[str] = None  # Tools used in this turn
 
     def __post_init__(self):
         """Initialize tools_called if not provided."""
