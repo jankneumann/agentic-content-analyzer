@@ -428,7 +428,7 @@ Respond with ONLY the JSON object, no additional text.
                     speaker=turn.get("speaker", "alex"),
                     text=turn.get("text", ""),
                     emphasis=turn.get("emphasis"),
-                    pause_after=turn.get("pause_after", 0.5),
+                    pause_after=turn.get("pause_after", 0.0),
                 )
                 for turn in section_json.get("dialogue", [])
             ]

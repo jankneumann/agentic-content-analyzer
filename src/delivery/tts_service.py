@@ -32,10 +32,10 @@ VOICE_PERSONA_CONFIG = {
     VoiceProvider.ELEVENLABS: {
         # These should be configured with actual ElevenLabs voice IDs
         # from the user's account. Placeholder defaults provided.
-        VoicePersona.ALEX_MALE: settings.elevenlabs_voice_alex_male or "pNInz6obpgDQGcFmaJgB",  # Adam
-        VoicePersona.ALEX_FEMALE: settings.elevenlabs_voice_alex_female or "21m00Tcm4TlvDq8ikWAM",  # Rachel
-        VoicePersona.SAM_MALE: settings.elevenlabs_voice_sam_male or "VR6AewLTigWG4xSOukaG",  # Arnold
-        VoicePersona.SAM_FEMALE: settings.elevenlabs_voice_sam_female or "EXAVITQu4vr4xnSDxMaL",  # Bella
+        VoicePersona.ALEX_MALE: settings.elevenlabs_voice_alex_male or "nPczCjzI2devNBz1zQrb",  # Brian - Deep, Resonant and Comforting
+        VoicePersona.ALEX_FEMALE: settings.elevenlabs_voice_alex_female or "XrExE9yKIg1WjnnlVkGX",  # Matilda - Knowledgable, Professional
+        VoicePersona.SAM_MALE: settings.elevenlabs_voice_sam_male or "CwhRBWXzGAHq8TQ4Fs17",  # Roger - Resonant,Laid-back, Casual
+        VoicePersona.SAM_FEMALE: settings.elevenlabs_voice_sam_female or "SAz9YHcvj6GT2YYXdXww",  # River - Relaxed, Neutral, Informative
     },
     VoiceProvider.GOOGLE_TTS: {
         VoicePersona.ALEX_MALE: "en-US-Studio-M",
@@ -105,6 +105,14 @@ class TTSProvider(ABC):
         """
         pass
 
+    def supports_ssml(self) -> bool:
+        """Check if provider supports SSML markup.
+
+        Returns:
+            True if SSML is supported, False otherwise
+        """
+        return False  # Default: no SSML support
+
 
 class OpenAITTSProvider(TTSProvider):
     """OpenAI TTS implementation.
@@ -127,7 +135,7 @@ class OpenAITTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        model: str = "tts-1-hd",
+        model: str = "tts-1",
         speed: float = 1.0,
         response_format: str = "mp3",
         **kwargs,
@@ -296,6 +304,10 @@ class ElevenLabsTTSProvider(TTSProvider):
     def get_voice_id(self, persona: VoicePersona) -> str:
         """Get ElevenLabs voice ID for a persona."""
         return VOICE_PERSONA_CONFIG[VoiceProvider.ELEVENLABS][persona]
+
+    def supports_ssml(self) -> bool:
+        """ElevenLabs supports SSML markup for pauses and prosody."""
+        return True
 
 
 class GoogleTTSProvider(TTSProvider):
