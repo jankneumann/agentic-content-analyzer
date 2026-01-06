@@ -112,7 +112,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
         script_record = PodcastScriptRecord(
             digest_id=request.digest_id,
             length=request.length.value if hasattr(request.length, 'value') else request.length,
-            status="script_generating",
+            status=PodcastStatus.SCRIPT_GENERATING.value,
         )
         db.add(script_record)
         db.commit()
@@ -135,7 +135,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
             script_record.title = script.title
             script_record.word_count = script.word_count
             script_record.estimated_duration_seconds = script.estimated_duration_seconds
-            script_record.status = "script_pending_review"
+            script_record.status = PodcastStatus.SCRIPT_PENDING_REVIEW.value
             script_record.newsletter_ids_fetched = metadata.newsletter_ids_fetched
             script_record.web_search_queries = metadata.web_searches
             script_record.tool_call_count = metadata.tool_call_count
@@ -157,7 +157,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
                 .filter(PodcastScriptRecord.id == script_id)
                 .first()
             )
-            script_record.status = "failed"
+            script_record.status = PodcastStatus.FAILED.value
             script_record.error_message = str(e)
             db.commit()
 

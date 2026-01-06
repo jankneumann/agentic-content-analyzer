@@ -124,7 +124,7 @@ async def generate_audio_task(
                 raise ValueError(f"Script {script_id} not found or has no content")
 
             # Update script status
-            script_record.status = PodcastStatus.AUDIO_GENERATING
+            script_record.status = PodcastStatus.AUDIO_GENERATING.value
             db.commit()
 
             script_data = script_record.script_json
@@ -162,7 +162,7 @@ async def generate_audio_task(
                 .filter(PodcastScriptRecord.id == script_id)
                 .first()
             )
-            script_record.status = PodcastStatus.COMPLETED
+            script_record.status = PodcastStatus.COMPLETED.value
             db.commit()
 
         logger.info(f"Audio generation completed for podcast {podcast_id}")
@@ -181,7 +181,7 @@ async def generate_audio_task(
                 .first()
             )
             if script_record:
-                script_record.status = PodcastStatus.FAILED
+                script_record.status = PodcastStatus.FAILED.value
                 script_record.error_message = str(e)
 
             db.commit()
@@ -278,7 +278,7 @@ async def list_approved_scripts(
     with get_db() as db:
         scripts = (
             db.query(PodcastScriptRecord)
-            .filter(PodcastScriptRecord.status == "script_approved")
+            .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED.value)
             .order_by(PodcastScriptRecord.approved_at.desc())
             .limit(limit)
             .all()
@@ -319,7 +319,7 @@ async def get_podcast(podcast_id: int) -> PodcastDetail:
             script_id=podcast.script_id,
             title=script.title,
             digest_id=script.digest_id,
-            length=script.length.value if script.length else None,
+            length=script.length,
             word_count=script.word_count,
             estimated_duration_seconds=script.estimated_duration_seconds,
             duration_seconds=podcast.duration_seconds,
@@ -359,7 +359,7 @@ async def generate_audio(
         if not script:
             raise HTTPException(status_code=404, detail="Script not found")
 
-        if script.status != "script_approved":
+        if script.status != PodcastStatus.SCRIPT_APPROVED.value:
             raise HTTPException(
                 status_code=400,
                 detail=f"Script must be approved before audio generation. Current status: {script.status}",

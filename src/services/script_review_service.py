@@ -64,7 +64,7 @@ class ScriptReviewService:
             scripts = (
                 db.query(PodcastScriptRecord)
                 .filter(
-                    PodcastScriptRecord.status == "script_pending_review"
+                    PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value
                 )
                 .order_by(PodcastScriptRecord.created_at.desc())
                 .all()
@@ -84,7 +84,7 @@ class ScriptReviewService:
         with get_db() as db:
             scripts = (
                 db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == "script_approved")
+                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED.value)
                 .order_by(PodcastScriptRecord.approved_at.desc())
                 .all()
             )
@@ -244,7 +244,10 @@ class ScriptReviewService:
                 raise ValueError(f"Script {request.script_id} not found")
 
             # Verify script is in reviewable state
-            reviewable_states = ["script_pending_review", "script_revision_requested"]
+            reviewable_states = [
+                PodcastStatus.SCRIPT_PENDING_REVIEW.value,
+                PodcastStatus.SCRIPT_REVISION_REQUESTED.value,
+            ]
             if script_record.status not in reviewable_states:
                 raise ValueError(
                     f"Script {request.script_id} is not reviewable. "
@@ -253,7 +256,7 @@ class ScriptReviewService:
 
             # Apply review action
             if request.action == ScriptReviewAction.APPROVE:
-                script_record.status = "script_approved"
+                script_record.status = PodcastStatus.SCRIPT_APPROVED.value
                 script_record.reviewed_by = request.reviewer
                 script_record.reviewed_at = datetime.now(timezone.utc)
                 script_record.review_notes = request.general_notes
@@ -265,7 +268,7 @@ class ScriptReviewService:
                 logger.info(f"Script {request.script_id} approved by {request.reviewer}")
 
             elif request.action == ScriptReviewAction.REQUEST_REVISION:
-                script_record.status = "script_revision_requested"
+                script_record.status = PodcastStatus.SCRIPT_REVISION_REQUESTED.value
                 script_record.reviewed_by = request.reviewer
                 script_record.reviewed_at = datetime.now(timezone.utc)
                 script_record.review_notes = request.general_notes
@@ -289,7 +292,7 @@ class ScriptReviewService:
                 )
 
             elif request.action == ScriptReviewAction.REJECT:
-                script_record.status = "failed"
+                script_record.status = PodcastStatus.FAILED.value
                 script_record.reviewed_by = request.reviewer
                 script_record.reviewed_at = datetime.now(timezone.utc)
                 script_record.review_notes = request.general_notes
@@ -446,27 +449,27 @@ class ScriptReviewService:
             # Count by status
             pending = (
                 db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == "script_pending_review")
+                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value)
                 .count()
             )
             revision_requested = (
                 db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == "script_revision_requested")
+                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_REVISION_REQUESTED.value)
                 .count()
             )
             approved = (
                 db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == "script_approved")
+                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED.value)
                 .count()
             )
             completed = (
                 db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == "completed")
+                .filter(PodcastScriptRecord.status == PodcastStatus.COMPLETED.value)
                 .count()
             )
             failed = (
                 db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == "failed")
+                .filter(PodcastScriptRecord.status == PodcastStatus.FAILED.value)
                 .count()
             )
 
