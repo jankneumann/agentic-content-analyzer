@@ -1,0 +1,4 @@
+# pnpm workspace configuration
+# This enables monorepo support for the frontend alongside the Python backend
+packages:
+  - "web"

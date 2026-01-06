@@ -23,7 +23,16 @@
       "Bash(docker ps:*)",
       "Bash(git mv:*)",
       "Bash(python test_podcast_generation.py:*)",
-      "Bash(ffmpeg:*)"
+      "Bash(ffmpeg:*)",
+      "Bash(curl:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm list:*)",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(cat:*)",
+      "Bash(timeout 5 pnpm preview:*)",
+      "Bash(python3:*)"
     ]
   }
 }
