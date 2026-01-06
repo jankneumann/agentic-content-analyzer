@@ -17,3 +17,5 @@ export type { ProgressEvent, SSEOptions } from "./sse"
 // Entity-specific API functions
 export * from "./newsletters"
 export * from "./summaries"
+export * from "./scripts"
+export * from "./digests"

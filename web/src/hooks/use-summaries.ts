@@ -110,12 +110,12 @@ export function useTriggerSummarization() {
       const response = await triggerSummarization(request)
 
       // Subscribe to progress updates
-      if (response.taskId) {
+      if (response.task_id) {
         setIsProcessing(true)
 
         return new Promise<typeof response>((resolve, reject) => {
           subscribeToProgress<SummarizationProgress>(
-            `/summaries/status/${response.taskId}`,
+            `/summaries/status/${response.task_id}`,
             {
               onProgress: (event: ProgressEvent<SummarizationProgress>) => {
                 if (event.data) {

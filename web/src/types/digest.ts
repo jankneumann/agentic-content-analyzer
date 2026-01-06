@@ -7,6 +7,8 @@
  * Digests are the aggregated output combining multiple newsletter summaries
  * into a cohesive document with multi-audience formatting.
  *
+ * Field names use snake_case to match the Python backend.
+ *
  * @see Backend model: src/models/digest.py
  */
 
@@ -24,14 +26,14 @@ export type DigestType = "daily" | "weekly" | "sub_digest"
  * Tracks the digest through the review and delivery pipeline.
  */
 export type DigestStatus =
-  | "pending" // Created but not yet generated
-  | "generating" // LLM is generating content
-  | "completed" // Generation complete, awaiting review
-  | "failed" // Generation failed
-  | "pending_review" // Ready for human review
-  | "approved" // Approved by reviewer
-  | "rejected" // Rejected by reviewer
-  | "delivered" // Sent to recipients
+  | "PENDING" // Created but not yet generated
+  | "GENERATING" // LLM is generating content
+  | "COMPLETED" // Generation complete, awaiting review
+  | "FAILED" // Generation failed
+  | "PENDING_REVIEW" // Ready for human review
+  | "APPROVED" // Approved by reviewer
+  | "REJECTED" // Rejected by reviewer
+  | "DELIVERED" // Sent to recipients
 
 /**
  * Source reference in a digest
@@ -39,14 +41,14 @@ export type DigestStatus =
  * Links digest content back to original newsletters.
  */
 export interface DigestSource {
-  /** Newsletter ID */
-  id: string
   /** Newsletter title */
   title: string
   /** Publication name */
   publication: string | null
+  /** Original date */
+  date: string
   /** Original URL if available */
-  url?: string
+  url?: string | null
 }
 
 /**
@@ -68,7 +70,7 @@ export interface DigestSection {
    * Historical continuity context
    * How this section relates to previous digests
    */
-  continuity?: string
+  continuity?: string | null
 }
 
 /**
@@ -77,14 +79,13 @@ export interface DigestSection {
  * Different recommendations for different audience segments.
  */
 export interface ActionableRecommendations {
-  /** For executives/leadership */
-  executives?: string[]
-  /** For engineering leaders */
-  engineeringLeaders?: string[]
-  /** For individual contributors */
-  practitioners?: string[]
-  /** General recommendations */
-  general?: string[]
+  /** For leadership */
+  for_leadership?: string[]
+  /** For teams */
+  for_teams?: string[]
+  /** For individuals */
+  for_individuals?: string[]
+  [key: string]: string[] | undefined
 }
 
 /**
@@ -96,148 +97,99 @@ export interface RevisionEntry {
   /** When the revision was made */
   timestamp: string
   /** Who made the revision */
-  revisedBy: string
-  /** What sections were changed */
-  sectionsChanged: string[]
-  /** Feedback that prompted the revision */
-  feedback: string
-  /** Summary of changes made */
-  changesSummary: string
-}
-
-/**
- * Digest entity
- *
- * The main aggregated output document combining
- * multiple newsletter summaries.
- */
-export interface Digest {
-  /** Unique identifier (UUID) */
-  id: string
-
-  /** Type of digest */
-  digestType: DigestType
-
-  /** Start of the covered period */
-  periodStart: string // ISO 8601
-
-  /** End of the covered period */
-  periodEnd: string // ISO 8601
-
-  /** Digest title */
-  title: string
-
-  /**
-   * Executive overview
-   * High-level summary for leadership (2-3 paragraphs)
-   */
-  executiveOverview: string
-
-  /**
-   * Strategic insights section
-   * CTO-level implications and recommendations
-   */
-  strategicInsights: DigestSection[]
-
-  /**
-   * Technical developments section
-   * Developer-focused details and implementations
-   */
-  technicalDevelopments: DigestSection[]
-
-  /**
-   * Emerging trends section
-   * New topics with historical context
-   */
-  emergingTrends: DigestSection[]
-
-  /**
-   * Role-specific action items
-   */
-  actionableRecommendations: ActionableRecommendations
-
-  /**
-   * Source newsletters referenced
-   */
-  sources: DigestSource[]
-
-  /**
-   * Historical context from knowledge graph
-   */
-  historicalContext?: Record<string, unknown>
-
-  /** Number of newsletters included */
-  newsletterCount: number
-
-  /** Current status in workflow */
-  status: DigestStatus
-
-  /** Who reviewed/approved */
-  reviewedBy: string | null
-
-  /** Review notes */
-  reviewNotes: string | null
-
-  /** When reviewed */
-  reviewedAt: string | null
-
-  /** Number of revisions made */
-  revisionCount: number
-
-  /** History of revisions */
-  revisionHistory: RevisionEntry[]
-
-  /** Parent digest ID (for sub_digests) */
-  parentDigestId: string | null
-
-  /** Child digest IDs (for combined digests) */
-  childDigestIds: string[]
-
-  /** Whether this is a combined digest */
-  isCombined: boolean
-
-  /** Number of source digests if combined */
-  sourceDigestCount: number
-
-  /** Agent framework used */
-  agentFramework: string
-
-  /** Model used */
-  modelUsed: string
-
-  /** Model version */
-  modelVersion: string | null
-
-  /** Tokens used */
-  tokenUsage: number
-
-  /** Processing time in seconds */
-  processingTimeSeconds: number
-
-  /** When created */
-  createdAt: string // ISO 8601
-
-  /** When generation completed */
-  completedAt: string | null
-
-  /** When delivered */
-  deliveredAt: string | null
+  reviewer: string
+  /** What action was taken */
+  action: string
+  /** Section-specific feedback */
+  section_feedback?: Record<string, string>
 }
 
 /**
  * Digest list item (lightweight view)
+ *
+ * Used in list views - matches backend DigestSummary response model.
  */
 export interface DigestListItem {
-  id: string
-  digestType: DigestType
+  id: number
+  digest_type: DigestType
   title: string
-  periodStart: string
-  periodEnd: string
-  newsletterCount: number
+  period_start: string
+  period_end: string
+  newsletter_count: number
   status: DigestStatus
-  reviewedBy: string | null
-  revisionCount: number
-  createdAt: string
+  created_at: string
+  model_used: string
+  revision_count: number
+  reviewed_by: string | null
+}
+
+/**
+ * Digest detail (full view)
+ *
+ * Used for detail views - matches backend DigestDetail response model.
+ */
+export interface DigestDetail {
+  id: number
+  digest_type: DigestType
+  title: string
+  period_start: string
+  period_end: string
+  executive_overview: string
+  strategic_insights: DigestSection[]
+  technical_developments: DigestSection[]
+  emerging_trends: DigestSection[]
+  actionable_recommendations: ActionableRecommendations
+  sources: DigestSource[]
+  newsletter_count: number
+  status: DigestStatus
+  created_at: string
+  completed_at: string | null
+  model_used: string
+  model_version: string | null
+  processing_time_seconds: number | null
+  revision_count: number
+  reviewed_by: string | null
+  reviewed_at: string | null
+  review_notes: string | null
+  is_combined: boolean
+  child_digest_ids: number[] | null
+}
+
+/**
+ * Digest statistics
+ */
+export interface DigestStatistics {
+  total: number
+  pending: number
+  generating: number
+  completed: number
+  pending_review: number
+  approved: number
+  delivered: number
+  by_type: Record<string, number>
+}
+
+/**
+ * Digest entity (full model)
+ *
+ * The main aggregated output document combining
+ * multiple newsletter summaries.
+ */
+export interface Digest extends DigestDetail {
+  /** Historical context from knowledge graph */
+  historical_context?: Record<string, unknown>
+  /** Agent framework used */
+  agent_framework: string
+  /** Tokens used */
+  token_usage: number | null
+  /** Parent digest ID (for sub_digests) */
+  parent_digest_id: number | null
+  /** Number of source digests if combined */
+  source_digest_count: number | null
+  /** When delivered */
+  delivered_at: string | null
+  /** History of revisions */
+  revision_history: RevisionEntry[] | null
 }
 
 /**
@@ -245,17 +197,19 @@ export interface DigestListItem {
  */
 export interface GenerateDigestRequest {
   /** Type of digest to generate */
-  digestType: DigestType
-  /** Start of period to cover */
-  periodStart: string
-  /** End of period to cover */
-  periodEnd: string
-  /** Specific newsletter IDs (optional, uses date range if not provided) */
-  newsletterIds?: string[]
+  digest_type: "daily" | "weekly"
+  /** Start of period to cover (optional, computed based on type) */
+  period_start?: string
+  /** End of period to cover (optional, defaults to now) */
+  period_end?: string
+  /** Max strategic insights */
+  max_strategic_insights?: number
+  /** Max technical developments */
+  max_technical_developments?: number
+  /** Max emerging trends */
+  max_emerging_trends?: number
   /** Include historical context from knowledge graph */
-  includeHistoricalContext?: boolean
-  /** Custom title (auto-generated if not provided) */
-  title?: string
+  include_historical_context?: boolean
 }
 
 /**
@@ -267,7 +221,7 @@ export type ReviewAction = "approve" | "request_revision" | "reject"
  * Section-specific feedback for revision
  */
 export interface SectionFeedback {
-  /** Section identifier (e.g., "strategicInsights", "emergingTrends") */
+  /** Section identifier (e.g., "strategic_insights", "emerging_trends") */
   section: string
   /** Specific feedback for this section */
   feedback: string
@@ -283,24 +237,18 @@ export interface DigestReviewRequest {
   action: ReviewAction
   /** Name of the reviewer */
   reviewer: string
-  /** Section-specific feedback */
-  sectionFeedback?: SectionFeedback[]
+  /** Section-specific feedback (key = section type, value = feedback) */
+  section_feedback?: Record<string, string>
   /** General notes about the review */
-  generalNotes?: string
+  notes?: string
 }
 
 /**
  * Request to revise a specific section
  */
 export interface ReviseDigestSectionRequest {
-  /** Section to revise */
-  section: string
-  /** Index within section array */
-  index: number
   /** Revision instructions */
   feedback: string
-  /** Reviewer name */
-  reviewer: string
 }
 
 /**
@@ -308,15 +256,9 @@ export interface ReviseDigestSectionRequest {
  */
 export interface DigestFilters {
   /** Filter by digest type */
-  digestType?: DigestType
+  digest_type?: DigestType
   /** Filter by status */
   status?: DigestStatus
-  /** Filter by period start (after this date) */
-  periodStartAfter?: string
-  /** Filter by period end (before this date) */
-  periodEndBefore?: string
-  /** Filter by reviewer */
-  reviewedBy?: string
   /** Pagination limit */
   limit?: number
   /** Pagination offset */
@@ -328,7 +270,7 @@ export interface DigestFilters {
  */
 export interface DigestGenerationProgress {
   /** Task identifier */
-  taskId: string
+  task_id: string
   /** Current step */
   step: string
   /** Progress percentage (0-100) */
@@ -336,7 +278,7 @@ export interface DigestGenerationProgress {
   /** Status */
   status: "processing" | "completed" | "error"
   /** Error message if failed */
-  errorMessage?: string
+  error_message?: string
   /** Digest ID once created */
-  digestId?: string
+  digest_id?: number
 }

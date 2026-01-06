@@ -109,8 +109,10 @@ export async function deleteNewsletter(id: string): Promise<void> {
  */
 export async function fetchNewsletterStats(): Promise<{
   total: number
-  byStatus: Record<string, number>
-  bySource: Record<string, number>
+  by_status: Record<string, number>
+  by_source: Record<string, number>
+  pending_count: number
+  summarized_count: number
 }> {
   return apiClient.get("/newsletters/stats")
 }

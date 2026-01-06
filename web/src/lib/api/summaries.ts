@@ -118,9 +118,9 @@ export async function deleteSummary(id: string): Promise<void> {
  */
 export async function fetchSummaryStats(): Promise<{
   total: number
-  byModel: Record<string, number>
-  avgProcessingTime: number
-  avgTokenUsage: number
+  by_model: Record<string, number>
+  avg_processing_time: number
+  avg_token_usage: number
 }> {
   return apiClient.get("/summaries/stats")
 }

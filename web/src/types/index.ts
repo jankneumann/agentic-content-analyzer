@@ -54,7 +54,9 @@ export type {
   ActionableRecommendations,
   RevisionEntry,
   Digest,
+  DigestDetail,
   DigestListItem,
+  DigestStatistics,
   GenerateDigestRequest,
   ReviewAction,
   SectionFeedback,
@@ -109,6 +111,7 @@ export type {
  * Common API response wrapper
  *
  * Standard response format for paginated lists.
+ * Field names use snake_case to match the Python backend.
  */
 export interface PaginatedResponse<T> {
   /** Data items */
@@ -120,7 +123,7 @@ export interface PaginatedResponse<T> {
   /** Page size limit */
   limit: number
   /** Whether there are more items */
-  hasMore: boolean
+  has_more: boolean
 }
 
 /**

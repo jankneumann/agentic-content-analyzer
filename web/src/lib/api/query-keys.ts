@@ -117,6 +117,9 @@ export const digestKeys = {
 
   /** Key for pending review digests */
   pendingReview: () => [...digestKeys.all, "pending-review"] as const,
+
+  /** Key for digest statistics */
+  statistics: () => [...digestKeys.all, "statistics"] as const,
 }
 
 /**

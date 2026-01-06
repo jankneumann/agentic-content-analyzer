@@ -99,14 +99,14 @@ function SummariesPage() {
   const handleModelFilter = (value: string) => {
     setFilters((prev) => ({
       ...prev,
-      modelUsed: value === "all" ? undefined : value,
+      model_used: value === "all" ? undefined : value,
       offset: 0,
     }))
   }
 
   const handleSummarizeAll = () => {
     summarizeMutation.mutate(
-      { newsletterIds: [] }, // Empty = all pending
+      { newsletter_ids: [] }, // Empty = all pending
       {
         onSuccess: () => {
           refetch()
@@ -155,11 +155,11 @@ function SummariesPage() {
                   Summarizing newsletters... ({summarizeMutation.progress.progress}%)
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {summarizeMutation.progress.step}
+                  {summarizeMutation.progress.message}
                 </p>
               </div>
               <Badge variant="outline">
-                {summarizeMutation.progress.completedCount} / {summarizeMutation.progress.totalCount}
+                {summarizeMutation.progress.processed ?? 0} / {summarizeMutation.progress.total ?? 0}
               </Badge>
             </div>
           </CardContent>
@@ -179,7 +179,7 @@ function SummariesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Avg Processing</CardDescription>
               <CardTitle className="text-2xl">
-                {stats.avgProcessingTime?.toFixed(1) ?? "0"}s
+                {stats.avg_processing_time?.toFixed(1) ?? "0"}s
               </CardTitle>
             </CardHeader>
           </Card>
@@ -187,7 +187,7 @@ function SummariesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Avg Tokens</CardDescription>
               <CardTitle className="text-2xl">
-                {Math.round(stats.avgTokenUsage ?? 0).toLocaleString()}
+                {Math.round(stats.avg_token_usage ?? 0).toLocaleString()}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -195,7 +195,7 @@ function SummariesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Models Used</CardDescription>
               <CardTitle className="text-2xl">
-                {Object.keys(stats.byModel ?? {}).length}
+                {Object.keys(stats.by_model ?? {}).length}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -226,7 +226,7 @@ function SummariesPage() {
               />
             </div>
             <Select
-              value={filters.modelUsed ?? "all"}
+              value={filters.model_used ?? "all"}
               onValueChange={handleModelFilter}
             >
               <SelectTrigger className="w-[180px]">
@@ -234,8 +234,8 @@ function SummariesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Models</SelectItem>
-                {stats?.byModel &&
-                  Object.keys(stats.byModel).map((model) => (
+                {stats?.by_model &&
+                  Object.keys(stats.by_model).map((model) => (
                     <SelectItem key={model} value={model}>
                       {model}
                     </SelectItem>
@@ -333,7 +333,7 @@ function SummariesPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!data.hasMore}
+                  disabled={!data.has_more}
                   onClick={() =>
                     setFilters((prev) => ({
                       ...prev,
@@ -375,17 +375,17 @@ function SummariesPage() {
                   <h4 className="text-sm font-medium text-muted-foreground mb-2">
                     Executive Summary
                   </h4>
-                  <p className="text-sm">{selectedSummary.executiveSummary}</p>
+                  <p className="text-sm">{selectedSummary.executive_summary}</p>
                 </div>
 
                 {/* Key Themes */}
-                {(selectedSummary.keyThemes?.length ?? 0) > 0 && (
+                {(selectedSummary.key_themes?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Key Themes
                     </h4>
                     <div className="flex flex-wrap gap-2">
-                      {(selectedSummary.keyThemes ?? []).map((theme, i) => (
+                      {(selectedSummary.key_themes ?? []).map((theme, i) => (
                         <Badge key={i} variant="secondary">
                           {theme}
                         </Badge>
@@ -395,13 +395,13 @@ function SummariesPage() {
                 )}
 
                 {/* Strategic Insights */}
-                {(selectedSummary.strategicInsights?.length ?? 0) > 0 && (
+                {(selectedSummary.strategic_insights?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Strategic Insights
                     </h4>
                     <ul className="list-disc list-inside space-y-1">
-                      {(selectedSummary.strategicInsights ?? []).map((insight, i) => (
+                      {(selectedSummary.strategic_insights ?? []).map((insight, i) => (
                         <li key={i} className="text-sm">
                           {insight}
                         </li>
@@ -411,13 +411,13 @@ function SummariesPage() {
                 )}
 
                 {/* Technical Details */}
-                {(selectedSummary.technicalDetails?.length ?? 0) > 0 && (
+                {(selectedSummary.technical_details?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Technical Details
                     </h4>
                     <ul className="list-disc list-inside space-y-1">
-                      {(selectedSummary.technicalDetails ?? []).map((detail, i) => (
+                      {(selectedSummary.technical_details ?? []).map((detail, i) => (
                         <li key={i} className="text-sm">
                           {detail}
                         </li>
@@ -427,13 +427,13 @@ function SummariesPage() {
                 )}
 
                 {/* Actionable Items */}
-                {(selectedSummary.actionableItems?.length ?? 0) > 0 && (
+                {(selectedSummary.actionable_items?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Actionable Items
                     </h4>
                     <ul className="list-disc list-inside space-y-1">
-                      {(selectedSummary.actionableItems ?? []).map((item, i) => (
+                      {(selectedSummary.actionable_items ?? []).map((item, i) => (
                         <li key={i} className="text-sm">
                           {item}
                         </li>
@@ -447,18 +447,18 @@ function SummariesPage() {
                   <div className="grid grid-cols-3 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground">Model:</span>{" "}
-                      <span className="font-medium">{selectedSummary.modelUsed}</span>
+                      <span className="font-medium">{selectedSummary.model_used}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Processing:</span>{" "}
                       <span className="font-medium">
-                        {selectedSummary.processingTimeSeconds?.toFixed(1)}s
+                        {selectedSummary.processing_time_seconds?.toFixed(1)}s
                       </span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Tokens:</span>{" "}
                       <span className="font-medium">
-                        {selectedSummary.tokenUsage?.toLocaleString()}
+                        {selectedSummary.token_usage?.toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -492,23 +492,23 @@ function SummaryRow({
       <TableCell>
         <div>
           <div className="font-medium line-clamp-1">
-            {summary.newsletterTitle ?? `Newsletter #${summary.newsletterId ?? "?"}`}
+            {summary.newsletter_title ?? `Newsletter #${summary.newsletter_id ?? "?"}`}
           </div>
           <div className="text-sm text-muted-foreground line-clamp-1">
-            {summary.executiveSummaryPreview}
+            {summary.executive_summary_preview}
           </div>
         </div>
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap gap-1">
-          {(summary.keyThemes ?? []).slice(0, 3).map((theme, i) => (
+          {(summary.key_themes ?? []).slice(0, 3).map((theme, i) => (
             <Badge key={i} variant="outline" className="text-xs">
               {theme}
             </Badge>
           ))}
-          {(summary.keyThemes?.length ?? 0) > 3 && (
+          {(summary.key_themes?.length ?? 0) > 3 && (
             <Badge variant="outline" className="text-xs">
-              +{(summary.keyThemes?.length ?? 0) - 3}
+              +{(summary.key_themes?.length ?? 0) - 3}
             </Badge>
           )}
         </div>
@@ -516,19 +516,19 @@ function SummaryRow({
       <TableCell>
         <Badge variant="secondary" className="gap-1">
           <Zap className="h-3 w-3" />
-          {summary.modelUsed?.split("-").slice(-2).join("-") ?? "Unknown"}
+          {summary.model_used?.split("-").slice(-2).join("-") ?? "Unknown"}
         </Badge>
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {summary.processingTimeSeconds?.toFixed(1) ?? "?"}s
+          {summary.processing_time_seconds?.toFixed(1) ?? "?"}s
         </span>
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground">
-          {summary.createdAt
-            ? formatDistanceToNow(new Date(summary.createdAt), { addSuffix: true })
+          {summary.created_at
+            ? formatDistanceToNow(new Date(summary.created_at), { addSuffix: true })
             : "Unknown"}
         </span>
       </TableCell>

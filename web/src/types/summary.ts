@@ -15,81 +15,92 @@
  *
  * Contains structured information extracted from a newsletter by the LLM.
  * Each newsletter has at most one summary (1:1 relationship).
+ *
+ * Note: Field names use snake_case to match the Python backend API responses.
  */
 export interface NewsletterSummary {
-  /** Unique identifier (UUID) */
-  id: string
+  /** Unique identifier */
+  id: number
 
   /** ID of the newsletter this summary belongs to */
-  newsletterId: string
+  newsletter_id: number
 
   /**
    * Executive summary - 2-3 sentence high-level overview
    * Suitable for leadership or quick scanning
    */
-  executiveSummary: string
+  executive_summary: string
 
   /**
    * Key themes identified in the newsletter
    * Array of theme names/topics covered
    */
-  keyThemes: string[]
+  key_themes: string[]
 
   /**
    * Strategic insights for business leaders
    * Higher-level implications and recommendations
    */
-  strategicInsights: string[]
+  strategic_insights: string[]
 
   /**
    * Technical details for practitioners
    * Implementation notes, code references, technical depth
    */
-  technicalDetails: string[]
+  technical_details: string[]
 
   /**
    * Actionable items extracted from the content
    * Things readers could implement or investigate
    */
-  actionableItems: string[]
+  actionable_items: string[]
 
   /**
    * Notable quotes from the newsletter
    * Interesting or impactful statements
    */
-  notableQuotes: string[]
+  notable_quotes: string[]
 
   /**
    * Relevant links for further reading
    * URLs mentioned in the newsletter worth highlighting
    */
-  relevantLinks: string[]
+  relevant_links: Array<Record<string, unknown>>
+
+  /**
+   * Relevance scores for different audience segments
+   */
+  relevance_scores: {
+    cto_leadership: number
+    technical_teams: number
+    individual_developers: number
+  }
 
   /**
    * Agent framework used for summarization
    * e.g., "claude-sdk", "langchain", "autogen"
    */
-  agentFramework: string
+  agent_framework: string
 
   /**
    * LLM model identifier used
    * e.g., "claude-haiku-4-5", "gpt-4o"
    */
-  modelUsed: string
+  model_used: string
 
   /**
    * Specific model version (if available)
    */
-  modelVersion: string | null
+  model_version: string | null
 
   /** When the summary was created */
-  createdAt: string // ISO 8601 date string
+  created_at: string // ISO 8601 date string
 
   /** Total tokens used in generation */
-  tokenUsage: number
+  token_usage: number | null
 
   /** Time taken to generate in seconds */
-  processingTimeSeconds: number
+  processing_time_seconds: number | null
 }
 
 /**
@@ -98,18 +109,18 @@ export interface NewsletterSummary {
  * For displaying in lists without full content
  */
 export interface SummaryListItem {
-  id: string
-  newsletterId: string
+  id: number
+  newsletter_id: number
   /** Newsletter title for display */
-  newsletterTitle?: string
+  newsletter_title?: string
   /** Newsletter publication name */
-  newsletterPublication?: string | null
+  newsletter_publication?: string | null
   /** First 200 chars of executive summary */
-  executiveSummaryPreview: string
-  keyThemes: string[]
-  modelUsed: string
-  createdAt: string
-  processingTimeSeconds: number
+  executive_summary_preview: string
+  key_themes: string[]
+  model_used: string
+  created_at: string
+  processing_time_seconds: number | null
 }
 
 /**
@@ -117,7 +128,7 @@ export interface SummaryListItem {
  */
 export interface SummarizeRequest {
   /** Newsletter IDs to summarize (if empty, summarizes all pending) */
-  newsletterIds?: string[]
+  newsletter_ids?: number[]
   /** Force re-summarization even if summary exists */
   force?: boolean
   /** Model to use for summarization (uses default if not specified) */
@@ -129,11 +140,13 @@ export interface SummarizeRequest {
  */
 export interface SummarizeResponse {
   /** Task ID for tracking progress */
-  taskId: string
+  task_id: string
+  /** Message from the server */
+  message: string
   /** Number of newsletters queued for summarization */
-  queuedCount: number
+  queued_count: number
   /** IDs of newsletters being processed */
-  newsletterIds: string[]
+  newsletter_ids: number[]
 }
 
 /**
@@ -141,21 +154,25 @@ export interface SummarizeResponse {
  */
 export interface SummarizationProgress {
   /** Task identifier */
-  taskId: string
+  task_id: string
   /** Current step description */
-  step: string
+  step?: string
   /** Progress percentage (0-100) */
   progress: number
   /** Currently processing newsletter ID */
-  currentNewsletterId?: string
+  current_newsletter_id?: number
   /** Count of completed summaries */
-  completedCount: number
+  completed_count?: number
   /** Total count to process */
-  totalCount: number
+  total_count?: number
+  /** Count of processed */
+  processed?: number
+  /** Total */
+  total?: number
   /** Status: processing, completed, or error */
-  status: "processing" | "completed" | "error"
-  /** Error message if status is error */
-  errorMessage?: string
+  status: "queued" | "processing" | "completed" | "error"
+  /** Message from the server */
+  message?: string
 }
 
 /**
@@ -163,13 +180,13 @@ export interface SummarizationProgress {
  */
 export interface SummaryFilters {
   /** Filter by newsletter ID */
-  newsletterId?: string
+  newsletter_id?: number
   /** Filter by model used */
-  modelUsed?: string
+  model_used?: string
   /** Filter after this date */
-  startDate?: string
+  start_date?: string
   /** Filter before this date */
-  endDate?: string
+  end_date?: string
   /** Pagination limit */
   limit?: number
   /** Pagination offset */

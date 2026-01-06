@@ -267,19 +267,19 @@ function NewslettersPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Pending</CardDescription>
-              <CardTitle className="text-2xl">{stats.byStatus?.pending ?? 0}</CardTitle>
+              <CardTitle className="text-2xl">{stats.by_status?.pending ?? 0}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Summarized</CardDescription>
-              <CardTitle className="text-2xl">{stats.byStatus?.completed ?? 0}</CardTitle>
+              <CardTitle className="text-2xl">{stats.by_status?.completed ?? 0}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Failed</CardDescription>
-              <CardTitle className="text-2xl">{stats.byStatus?.failed ?? 0}</CardTitle>
+              <CardTitle className="text-2xl">{stats.by_status?.failed ?? 0}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -421,8 +421,8 @@ function NewslettersPage() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-muted-foreground">
-                          {newsletter.publishedDate
-                            ? formatDistanceToNow(new Date(newsletter.publishedDate), {
+                          {newsletter.published_date
+                            ? formatDistanceToNow(new Date(newsletter.published_date), {
                                 addSuffix: true,
                               })
                             : "Unknown"}
@@ -459,7 +459,7 @@ function NewslettersPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!data.hasMore}
+                  disabled={!data.has_more}
                   onClick={() =>
                     setFilters((prev) => ({
                       ...prev,

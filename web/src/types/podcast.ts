@@ -241,18 +241,20 @@ export interface ScriptRevisionEntry {
 
 /**
  * Script list item (lightweight view)
+ * Field names use snake_case to match the Python backend API.
  */
 export interface ScriptListItem {
-  id: string
-  digestId: string
-  title: string
-  length: ScriptLength
-  wordCount: number
-  estimatedDurationSeconds: number
-  status: ScriptStatus
-  revisionCount: number
-  createdAt: string
-  reviewedBy: string | null
+  id: number
+  digest_id: number
+  title: string | null
+  length: string
+  word_count: number | null
+  /** Duration formatted as string e.g., "5 min" */
+  estimated_duration: string | null
+  status: string
+  revision_count: number
+  created_at: string | null
+  reviewed_by: string | null
 }
 
 /**
@@ -319,16 +321,26 @@ export interface PodcastListItem {
 
 /**
  * Request to generate a podcast script
+ * Field names use snake_case to match the Python backend API.
  */
 export interface GenerateScriptRequest {
   /** Source digest ID */
-  digestId: string
+  digest_id: number
   /** Script length preference */
   length?: ScriptLength
   /** Enable web search for additional context */
-  enableWebSearch?: boolean
+  enable_web_search?: boolean
   /** Custom focus topics */
-  customFocusTopics?: string[]
+  custom_focus_topics?: string[]
+}
+
+/**
+ * Response from generate script endpoint
+ */
+export interface GenerateScriptResponse {
+  status: string
+  message: string
+  length: string
 }
 
 /**
@@ -400,18 +412,19 @@ export interface AudioGenerationProgress {
 
 /**
  * Script review statistics
+ * Field names use snake_case to match the Python backend API.
  */
 export interface ScriptReviewStatistics {
   /** Scripts pending review */
-  pendingReview: number
+  pending_review: number
   /** Scripts with revision requested */
-  revisionRequested: number
+  revision_requested: number
   /** Approved scripts ready for audio */
-  approvedReadyForAudio: number
+  approved_ready_for_audio: number
   /** Completed with audio */
-  completedWithAudio: number
+  completed_with_audio: number
   /** Failed or rejected */
-  failedRejected: number
+  failed_rejected: number
   /** Total scripts */
   total: number
 }

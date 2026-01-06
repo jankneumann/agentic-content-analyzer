@@ -41,52 +41,56 @@ export interface ExtractedLink {
  *
  * Represents a single newsletter or email that has been ingested.
  * This is the primary content source for the aggregation pipeline.
+ * Field names use snake_case to match the Python backend API responses.
  */
 export interface Newsletter {
-  /** Unique identifier (UUID) */
-  id: string
+  /** Unique identifier */
+  id: number
 
   /** Source of the newsletter */
   source: NewsletterSource
 
   /** External ID from the source system (e.g., Gmail message ID) */
-  sourceId: string
+  source_id: string
 
   /** Subject line or title of the newsletter */
   title: string
 
   /** Sender email address or name */
-  sender: string
+  sender: string | null
 
   /** Publication name if available (e.g., "The Batch", "TLDR AI") */
   publication: string | null
 
   /** When the newsletter was originally published/sent */
-  publishedDate: string // ISO 8601 date string
+  published_date: string // ISO 8601 date string
 
-  /** Raw HTML content of the newsletter */
-  rawHtml: string | null
+  /** URL if available */
+  url: string | null
 
   /** Plain text extraction of content */
-  rawText: string | null
+  raw_text: string | null
 
   /** Links extracted from the content */
-  extractedLinks: ExtractedLink[]
+  extracted_links: string[] | null
 
   /** SHA-256 hash for deduplication */
-  contentHash: string
+  content_hash: string | null
+
+  /** Canonical newsletter ID */
+  canonical_newsletter_id: number | null
 
   /** Current processing status */
   status: NewsletterStatus
 
   /** When the newsletter was ingested into the system */
-  ingestedAt: string // ISO 8601 date string
+  ingested_at: string // ISO 8601 date string
 
   /** When processing completed (if applicable) */
-  processedAt: string | null
+  processed_at: string | null
 
   /** Error message if status is 'failed' */
-  errorMessage: string | null
+  error_message: string | null
 }
 
 /**
@@ -96,16 +100,16 @@ export interface Newsletter {
  * Omits large fields like rawHtml and rawText.
  */
 export interface NewsletterListItem {
-  id: string
+  id: number
   source: NewsletterSource
   title: string
-  sender: string
+  sender: string | null
   publication: string | null
-  publishedDate: string
+  published_date: string
   status: NewsletterStatus
-  ingestedAt: string
+  ingested_at: string
   /** Whether a summary exists for this newsletter */
-  hasSummary: boolean
+  has_summary: boolean
 }
 
 /**
@@ -119,9 +123,9 @@ export interface NewsletterFilters {
   /** Filter by publication name */
   publication?: string
   /** Filter newsletters after this date */
-  startDate?: string
+  start_date?: string
   /** Filter newsletters before this date */
-  endDate?: string
+  end_date?: string
   /** Search in title and sender */
   search?: string
   /** Number of items to return */
@@ -136,22 +140,22 @@ export interface NewsletterFilters {
 export interface IngestRequest {
   /** Source to ingest from */
   source: NewsletterSource
-  /** For RSS: specific feed URL (optional, uses configured feeds if not provided) */
-  feedUrl?: string
-  /** Maximum number of items to fetch */
-  maxItems?: number
+  /** Maximum results to fetch */
+  max_results?: number
+  /** Days back to search */
+  days_back?: number
 }
 
 /**
  * Response from ingestion trigger
  */
 export interface IngestResponse {
-  /** Number of new newsletters ingested */
-  ingestedCount: number
-  /** Number of duplicates skipped */
-  skippedCount: number
-  /** IDs of newly ingested newsletters */
-  newsletterIds: string[]
-  /** Any errors encountered during ingestion */
-  errors: string[]
+  /** Task ID for tracking progress */
+  task_id: string
+  /** Message from the server */
+  message: string
+  /** Source being ingested */
+  source: NewsletterSource
+  /** Maximum results */
+  max_results: number
 }

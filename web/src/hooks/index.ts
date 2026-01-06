@@ -26,3 +26,30 @@ export {
   useRegenerateSummary,
   useDeleteSummary,
 } from "./use-summaries"
+
+// Script hooks
+export {
+  useScripts,
+  usePendingScripts,
+  useApprovedScripts,
+  useScriptStats,
+  useScript,
+  useGenerateScript,
+  useApproveScript,
+  useRejectScript,
+  useSubmitScriptReview,
+  useReviseScriptSection,
+} from "./use-scripts"
+
+// Digest hooks
+export {
+  useDigests,
+  useDigestStats,
+  useDigest,
+  useDigestSection,
+  useGenerateDigest,
+  useSubmitDigestReview,
+  useApproveDigest,
+  useRejectDigest,
+  useReviseDigestSection,
+} from "./use-digests"
