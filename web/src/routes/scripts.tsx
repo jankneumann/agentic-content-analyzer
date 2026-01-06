@@ -176,6 +176,10 @@ function ScriptsPage() {
           setSelectedScriptId(null)
           refetch()
         },
+        onError: (err) => {
+          console.error("Approve failed:", err)
+          alert(`Failed to approve: ${err instanceof Error ? err.message : "Unknown error"}`)
+        },
       }
     )
   }
@@ -188,9 +192,20 @@ function ScriptsPage() {
           setSelectedScriptId(null)
           refetch()
         },
+        onError: (err) => {
+          console.error("Reject failed:", err)
+          alert(`Failed to reject: ${err instanceof Error ? err.message : "Unknown error"}`)
+        },
       }
     )
   }
+
+  // Determine if the selected script is reviewable
+  const isReviewable = selectedScript &&
+    (selectedScript as ScriptDetail).status &&
+    ["script_pending_review", "script_revision_requested"].includes(
+      (selectedScript as ScriptDetail).status as string
+    )
 
   // Filter scripts by search
   const filteredScripts = scripts?.filter((script) => {
@@ -456,7 +471,7 @@ function ScriptsPage() {
             >
               Close
             </Button>
-            {selectedScriptId && (
+            {selectedScriptId && isReviewable && (
               <>
                 <Button
                   variant="destructive"
@@ -474,6 +489,11 @@ function ScriptsPage() {
                   Approve
                 </Button>
               </>
+            )}
+            {selectedScriptId && !isReviewable && selectedScript && (
+              <span className="text-sm text-muted-foreground">
+                Script is {(selectedScript as ScriptDetail).status?.replace(/_/g, " ")}
+              </span>
             )}
           </DialogFooter>
         </DialogContent>
