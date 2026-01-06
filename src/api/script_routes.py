@@ -28,7 +28,7 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/scripts", tags=["podcast-scripts"])
+router = APIRouter(prefix="/api/v1/scripts", tags=["podcast-scripts"])
 
 # Initialize services
 review_service = ScriptReviewService()
@@ -111,8 +111,8 @@ async def generate_script_task(request: PodcastRequest) -> None:
     with get_db() as db:
         script_record = PodcastScriptRecord(
             digest_id=request.digest_id,
-            length=request.length,
-            status=PodcastStatus.SCRIPT_GENERATING,
+            length=request.length.value if hasattr(request.length, 'value') else request.length,
+            status="script_generating",
         )
         db.add(script_record)
         db.commit()
@@ -135,7 +135,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
             script_record.title = script.title
             script_record.word_count = script.word_count
             script_record.estimated_duration_seconds = script.estimated_duration_seconds
-            script_record.status = PodcastStatus.SCRIPT_PENDING_REVIEW
+            script_record.status = "script_pending_review"
             script_record.newsletter_ids_fetched = metadata.newsletter_ids_fetched
             script_record.web_search_queries = metadata.web_searches
             script_record.tool_call_count = metadata.tool_call_count
@@ -157,7 +157,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
                 .filter(PodcastScriptRecord.id == script_id)
                 .first()
             )
-            script_record.status = PodcastStatus.FAILED
+            script_record.status = "failed"
             script_record.error_message = str(e)
             db.commit()
 
@@ -191,7 +191,7 @@ async def generate_script(
     return {
         "status": "queued",
         "message": f"Script generation started for digest {request.digest_id}",
-        "length": request.length.value,
+        "length": request.length.value if hasattr(request.length, 'value') else request.length,
     }
 
 
@@ -221,14 +221,14 @@ async def list_scripts(
                 id=s.id,
                 digest_id=s.digest_id,
                 title=s.title,
-                length=s.length.value if s.length else "unknown",
+                length=s.length or "unknown",
                 word_count=s.word_count,
                 estimated_duration=(
                     f"{s.estimated_duration_seconds // 60} min"
                     if s.estimated_duration_seconds
                     else None
                 ),
-                status=s.status.value if s.status else "unknown",
+                status=s.status or "unknown",
                 revision_count=s.revision_count or 0,
                 created_at=s.created_at.isoformat() if s.created_at else None,
                 reviewed_by=s.reviewed_by,
@@ -247,14 +247,14 @@ async def list_pending_scripts() -> List[ScriptSummary]:
             id=s.id,
             digest_id=s.digest_id,
             title=s.title,
-            length=s.length.value if s.length else "unknown",
+            length=s.length or "unknown",
             word_count=s.word_count,
             estimated_duration=(
                 f"{s.estimated_duration_seconds // 60} min"
                 if s.estimated_duration_seconds
                 else None
             ),
-            status=s.status.value if s.status else "unknown",
+            status=s.status or "unknown",
             revision_count=s.revision_count or 0,
             created_at=s.created_at.isoformat() if s.created_at else None,
             reviewed_by=s.reviewed_by,
@@ -273,14 +273,14 @@ async def list_approved_scripts() -> List[ScriptSummary]:
             id=s.id,
             digest_id=s.digest_id,
             title=s.title,
-            length=s.length.value if s.length else "unknown",
+            length=s.length or "unknown",
             word_count=s.word_count,
             estimated_duration=(
                 f"{s.estimated_duration_seconds // 60} min"
                 if s.estimated_duration_seconds
                 else None
             ),
-            status=s.status.value if s.status else "unknown",
+            status=s.status or "unknown",
             revision_count=s.revision_count or 0,
             created_at=s.created_at.isoformat() if s.created_at else None,
             reviewed_by=s.reviewed_by,
@@ -306,14 +306,14 @@ async def list_scripts_for_digest(digest_id: int) -> List[ScriptSummary]:
             id=s.id,
             digest_id=s.digest_id,
             title=s.title,
-            length=s.length.value if s.length else "unknown",
+            length=s.length or "unknown",
             word_count=s.word_count,
             estimated_duration=(
                 f"{s.estimated_duration_seconds // 60} min"
                 if s.estimated_duration_seconds
                 else None
             ),
-            status=s.status.value if s.status else "unknown",
+            status=s.status or "unknown",
             revision_count=s.revision_count or 0,
             created_at=s.created_at.isoformat() if s.created_at else None,
             reviewed_by=s.reviewed_by,
@@ -396,7 +396,7 @@ async def submit_review(
 
         return {
             "script_id": script.id,
-            "status": script.status.value if script.status else "unknown",
+            "status": script.status or "unknown",
             "revision_count": script.revision_count or 0,
             "reviewed_by": script.reviewed_by,
             "reviewed_at": script.reviewed_at.isoformat() if script.reviewed_at else None,
@@ -432,7 +432,7 @@ async def revise_section(
         return {
             "script_id": script.id,
             "section_revised": section_index,
-            "status": script.status.value if script.status else "unknown",
+            "status": script.status or "unknown",
             "revision_count": script.revision_count or 0,
         }
 
@@ -455,7 +455,7 @@ async def quick_approve(
 
         return {
             "script_id": script.id,
-            "status": script.status.value if script.status else "unknown",
+            "status": script.status or "unknown",
             "approved_at": script.approved_at.isoformat() if script.approved_at else None,
         }
 
@@ -478,7 +478,7 @@ async def quick_reject(
 
         return {
             "script_id": script.id,
-            "status": script.status.value if script.status else "unknown",
+            "status": script.status or "unknown",
         }
 
     except ValueError as e:
