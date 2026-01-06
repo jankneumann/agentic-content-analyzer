@@ -210,14 +210,14 @@ class PodcastCreator:
             if not script_record:
                 raise ValueError(f"Script {script_id} not found")
 
-            if script_record.status != PodcastStatus.SCRIPT_APPROVED:
+            if script_record.status != PodcastStatus.SCRIPT_APPROVED.value:
                 raise ValueError(
                     f"Script must be approved before audio generation. "
-                    f"Current status: {script_record.status.value}"
+                    f"Current status: {script_record.status}"
                 )
 
             # Update script status
-            script_record.status = PodcastStatus.AUDIO_GENERATING
+            script_record.status = PodcastStatus.AUDIO_GENERATING.value
             db.commit()
 
             # Create podcast record
@@ -397,8 +397,8 @@ class PodcastCreator:
                 "script_id": script_id,
                 "digest_id": script_record.digest_id,
                 "title": script_record.title,
-                "length": script_record.length.value if script_record.length else None,
-                "status": script_record.status.value if script_record.status else None,
+                "length": script_record.length,
+                "status": script_record.status,
                 "word_count": script_record.word_count,
                 "revision_count": script_record.revision_count or 0,
                 "created_at": script_record.created_at.isoformat() if script_record.created_at else None,
