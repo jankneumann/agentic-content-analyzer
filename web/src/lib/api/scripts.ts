@@ -19,7 +19,6 @@ import type {
   ScriptReviewStatistics,
   GenerateScriptRequest,
   GenerateScriptResponse,
-  ScriptLength,
 } from "@/types"
 
 /**
@@ -58,11 +57,11 @@ export async function fetchPendingScripts(): Promise<ScriptListItem[]> {
 }
 
 /**
- * Fetch approved scripts ready for audio
+ * Fetch approved scripts ready for audio (returns ScriptListItem)
  *
  * @returns List of approved scripts
  */
-export async function fetchApprovedScripts(): Promise<ScriptListItem[]> {
+export async function fetchApprovedScriptsList(): Promise<ScriptListItem[]> {
   return apiClient.get<ScriptListItem[]>("/scripts/approved")
 }
 

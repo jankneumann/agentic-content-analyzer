@@ -307,16 +307,70 @@ export interface Podcast {
 }
 
 /**
- * Podcast list item with script info
+ * Podcast list item (snake_case to match API)
  */
 export interface PodcastListItem {
-  id: string
-  scriptId: string
-  scriptTitle: string
-  durationSeconds: number
-  voiceProvider: string
-  status: AudioStatus
-  createdAt: string
+  id: number
+  script_id: number
+  title: string | null
+  digest_id: number | null
+  length: string | null
+  duration_seconds: number | null
+  file_size_bytes: number | null
+  audio_format: string
+  voice_provider: string | null
+  status: string
+  created_at: string | null
+  completed_at: string | null
+}
+
+/**
+ * Full podcast details (snake_case to match API)
+ */
+export interface PodcastDetail {
+  id: number
+  script_id: number
+  title: string | null
+  digest_id: number | null
+  length: string | null
+  word_count: number | null
+  estimated_duration_seconds: number | null
+  duration_seconds: number | null
+  file_size_bytes: number | null
+  audio_url: string | null
+  audio_format: string
+  voice_provider: string | null
+  alex_voice: string | null
+  sam_voice: string | null
+  status: string
+  error_message: string | null
+  created_at: string | null
+  completed_at: string | null
+}
+
+/**
+ * Podcast statistics
+ */
+export interface PodcastStatistics {
+  total: number
+  generating: number
+  completed: number
+  failed: number
+  total_duration_seconds: number
+  by_voice_provider: Record<string, number>
+}
+
+/**
+ * Approved script ready for audio generation
+ */
+export interface ApprovedScript {
+  id: number
+  digest_id: number
+  title: string | null
+  length: string | null
+  word_count: number | null
+  estimated_duration_seconds: number | null
+  approved_at: string | null
 }
 
 /**

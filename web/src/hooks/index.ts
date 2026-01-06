@@ -31,7 +31,6 @@ export {
 export {
   useScripts,
   usePendingScripts,
-  useApprovedScripts,
   useScriptStats,
   useScript,
   useGenerateScript,
@@ -53,3 +52,12 @@ export {
   useRejectDigest,
   useReviseDigestSection,
 } from "./use-digests"
+
+// Podcast hooks
+export {
+  usePodcasts,
+  usePodcastStats,
+  usePodcast,
+  useApprovedScripts,
+  useGenerateAudio,
+} from "./use-podcasts"

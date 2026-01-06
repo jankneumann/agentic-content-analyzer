@@ -19,7 +19,7 @@ import { queryKeys } from "@/lib/api/query-keys"
 import {
   fetchScripts,
   fetchPendingScripts,
-  fetchApprovedScripts,
+  fetchApprovedScriptsList,
   fetchScriptStats,
   fetchScript,
   generateScript,
@@ -57,14 +57,14 @@ export function usePendingScripts() {
 }
 
 /**
- * Hook to fetch approved scripts
+ * Hook to fetch approved scripts (returns ScriptListItem)
  *
  * @returns Query result with approved scripts
  */
-export function useApprovedScripts() {
+export function useApprovedScriptsList() {
   return useQuery({
     queryKey: queryKeys.scripts.approved(),
-    queryFn: fetchApprovedScripts,
+    queryFn: fetchApprovedScriptsList,
   })
 }
 

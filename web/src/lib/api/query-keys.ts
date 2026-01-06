@@ -131,7 +131,7 @@ export const scriptKeys = {
 
   /** Key for script lists */
   lists: () => [...scriptKeys.all, "list"] as const,
-  list: (filters?: Record<string, unknown>) =>
+  list: (filters?: { status?: string; digest_id?: number; limit?: number }) =>
     [...scriptKeys.lists(), filters] as const,
 
   /** Key for single script details */
@@ -161,7 +161,7 @@ export const podcastKeys = {
 
   /** Key for podcast lists */
   lists: () => [...podcastKeys.all, "list"] as const,
-  list: (filters?: Record<string, unknown>) =>
+  list: (filters?: { status?: string; limit?: number; offset?: number }) =>
     [...podcastKeys.lists(), filters] as const,
 
   /** Key for single podcast details */
@@ -171,6 +171,12 @@ export const podcastKeys = {
   /** Key for podcast by script ID */
   byScript: (scriptId: string) =>
     [...podcastKeys.all, "by-script", scriptId] as const,
+
+  /** Key for podcast statistics */
+  statistics: () => [...podcastKeys.all, "statistics"] as const,
+
+  /** Key for approved scripts ready for audio */
+  approvedScripts: () => [...podcastKeys.all, "approved-scripts"] as const,
 }
 
 /**

@@ -302,7 +302,7 @@ function SummariesPage() {
                   <SummaryRow
                     key={summary.id}
                     summary={summary}
-                    onView={() => setSelectedSummaryId(summary.id)}
+                    onView={() => setSelectedSummaryId(String(summary.id))}
                   />
                 ))}
               </TableBody>

@@ -14,6 +14,7 @@ from src.api.newsletter_routes import router as newsletter_router
 from src.api.summary_routes import router as summary_router
 from src.api.script_routes import router as script_router
 from src.api.digest_routes import router as digest_router
+from src.api.podcast_routes import router as podcast_router
 
 
 @asynccontextmanager
@@ -48,6 +49,7 @@ app.include_router(newsletter_router)
 app.include_router(summary_router)
 app.include_router(script_router)
 app.include_router(digest_router)
+app.include_router(podcast_router)
 
 
 @app.get("/health", tags=["system"])

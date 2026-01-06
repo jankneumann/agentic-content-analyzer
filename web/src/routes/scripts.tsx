@@ -65,6 +65,22 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useScripts, useScriptStats, useScript, useApproveScript, useRejectScript } from "@/hooks"
 import type { ScriptListItem } from "@/types"
 
+/**
+ * Script detail type for display
+ */
+interface ScriptDetailSection {
+  section_type: string
+  title: string
+  dialogue: unknown[]
+}
+
+interface ScriptDetail {
+  title?: string
+  length?: string
+  status?: string
+  sections?: ScriptDetailSection[]
+}
+
 export const ScriptsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "scripts",
@@ -338,53 +354,58 @@ function ScriptsPage() {
               <Skeleton className="h-16 w-full" />
             </div>
           ) : selectedScript ? (
-            <ScrollArea className="max-h-[60vh] pr-4">
-              <div className="space-y-6 py-4">
-                {/* Script metadata */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <span className="text-sm text-muted-foreground">Title:</span>{" "}
-                    <span className="font-medium">{(selectedScript as Record<string, unknown>).title as string || "Untitled"}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-muted-foreground">Length:</span>{" "}
-                    <span className="font-medium">{(selectedScript as Record<string, unknown>).length as string}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-muted-foreground">Status:</span>{" "}
-                    <Badge variant="secondary">
-                      {(selectedScript as Record<string, unknown>).status as string}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Sections preview */}
-                {(selectedScript as Record<string, unknown>).sections && (
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                      Sections
-                    </h4>
-                    <div className="space-y-2">
-                      {((selectedScript as Record<string, unknown>).sections as Array<Record<string, unknown>>).map((section, i) => (
-                        <div key={i} className="p-3 rounded-lg border">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline" className="text-xs">
-                              {section.section_type as string}
-                            </Badge>
-                            <span className="font-medium text-sm">
-                              {section.title as string}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {(section.dialogue as Array<unknown>)?.length ?? 0} dialogue turns
-                          </p>
-                        </div>
-                      ))}
+            (() => {
+              const script = selectedScript as ScriptDetail
+              return (
+                <ScrollArea className="max-h-[60vh] pr-4">
+                  <div className="space-y-6 py-4">
+                    {/* Script metadata */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <span className="text-sm text-muted-foreground">Title:</span>{" "}
+                        <span className="font-medium">{script.title ?? "Untitled"}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm text-muted-foreground">Length:</span>{" "}
+                        <span className="font-medium">{script.length ?? ""}</span>
+                      </div>
+                      <div>
+                        <span className="text-sm text-muted-foreground">Status:</span>{" "}
+                        <Badge variant="secondary">
+                          {script.status ?? ""}
+                        </Badge>
+                      </div>
                     </div>
+
+                    {/* Sections preview */}
+                    {script.sections && (
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                          Sections
+                        </h4>
+                        <div className="space-y-2">
+                          {script.sections.map((section, i) => (
+                            <div key={i} className="p-3 rounded-lg border">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {section.section_type}
+                                </Badge>
+                                <span className="font-medium text-sm">
+                                  {section.title}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {section.dialogue?.length ?? 0} dialogue turns
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </ScrollArea>
+                </ScrollArea>
+              )
+            })()
           ) : null}
           <DialogFooter className="flex gap-2">
             <Button
