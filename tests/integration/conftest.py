@@ -34,14 +34,22 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config.models import MODEL_REGISTRY
-from src.models.digest import Base as DigestBase
+from src.models.digest import Digest  # noqa: F401 - registers with Base.metadata
+
+# Import Base and all models that use it to ensure they're registered with metadata
+# All models share the same Base from newsletter.py
 from src.models.newsletter import (
-    Base as NewsletterBase,
+    Base,
     Newsletter,
     NewsletterSource,
     ProcessingStatus,
 )
+from src.models.podcast import (  # noqa: F401 - registers with Base.metadata
+    Podcast,
+    PodcastScriptRecord,
+)
 from src.models.summary import NewsletterSummary
+from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 
 # Test database configuration
 TEST_DATABASE_URL = os.getenv(
@@ -72,15 +80,14 @@ def test_db_engine():
             f"Set TEST_DATABASE_URL to a test database to proceed."
         )
 
-    # Create all tables
-    NewsletterBase.metadata.create_all(engine)
-    DigestBase.metadata.create_all(engine)
+    # Create all tables (all models share the same Base.metadata)
+    Base.metadata.create_all(engine)
 
     yield engine
 
     # Cleanup: Drop all tables after all tests complete
-    NewsletterBase.metadata.drop_all(engine)
-    DigestBase.metadata.drop_all(engine)
+    # All models use the same Base, so one drop_all handles everything
+    Base.metadata.drop_all(engine)
     engine.dispose()
 
 
