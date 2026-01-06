@@ -22,10 +22,10 @@ from src.processors.theme_analyzer import ThemeAnalyzer
 def haiku_config():
     """ModelConfig using Claude Haiku for all steps."""
     config = ModelConfig(
-        summarization="claude-haiku-4-5-20251001",
-        theme_analysis="claude-haiku-4-5-20251001",
-        digest_creation="claude-haiku-4-5-20251001",
-        historical_context="claude-haiku-4-5-20251001",
+        summarization="claude-haiku-4-5",
+        theme_analysis="claude-haiku-4-5",
+        digest_creation="claude-haiku-4-5",
+        historical_context="claude-haiku-4-5",
         providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-haiku-key")],
     )
     return config
@@ -35,10 +35,10 @@ def haiku_config():
 def sonnet_config():
     """ModelConfig using Claude Sonnet for all steps."""
     config = ModelConfig(
-        summarization="claude-sonnet-4-5-20250929",
-        theme_analysis="claude-sonnet-4-5-20250929",
-        digest_creation="claude-sonnet-4-5-20250929",
-        historical_context="claude-sonnet-4-5-20250929",
+        summarization="claude-sonnet-4-5",
+        theme_analysis="claude-sonnet-4-5",
+        digest_creation="claude-sonnet-4-5",
+        historical_context="claude-sonnet-4-5",
         providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-sonnet-key")],
     )
     return config
@@ -48,10 +48,10 @@ def sonnet_config():
 def mixed_config():
     """ModelConfig using different models for different steps."""
     config = ModelConfig(
-        summarization="claude-haiku-4-5-20251001",  # Fast extraction
-        theme_analysis="claude-sonnet-4-5-20250929",  # Better reasoning
-        digest_creation="claude-sonnet-4-5-20250929",  # Quality output
-        historical_context="claude-haiku-4-5-20251001",  # Simple queries
+        summarization="claude-haiku-4-5",  # Fast extraction
+        theme_analysis="claude-sonnet-4-5",  # Better reasoning
+        digest_creation="claude-sonnet-4-5",  # Quality output
+        historical_context="claude-haiku-4-5",  # Simple queries
         providers=[ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-mixed-key")],
     )
     return config
@@ -73,7 +73,7 @@ def test_summarization_with_haiku(
 
     assert result is True
     # Verify Haiku was used
-    assert summarizer.agent.model == "claude-haiku-4-5-20251001"
+    assert summarizer.agent.model == "claude-haiku-4-5"
 
 
 @pytest.mark.integration
@@ -92,7 +92,7 @@ def test_summarization_with_sonnet(
 
     assert result is True
     # Verify Sonnet was used
-    assert summarizer.agent.model == "claude-sonnet-4-5-20250929"
+    assert summarizer.agent.model == "claude-sonnet-4-5"
 
 
 @pytest.mark.integration
@@ -132,8 +132,8 @@ async def test_theme_analysis_with_haiku(
                 result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Verify Haiku was used
-    assert analyzer.model == "claude-haiku-4-5-20251001"
-    assert result.model_used == "claude-haiku-4-5-20251001"
+    assert analyzer.model == "claude-haiku-4-5"
+    assert result.model_used == "claude-haiku-4-5"
 
 
 @pytest.mark.integration
@@ -173,8 +173,8 @@ async def test_theme_analysis_with_sonnet(
                 result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Verify Sonnet was used
-    assert analyzer.model == "claude-sonnet-4-5-20250929"
-    assert result.model_used == "claude-sonnet-4-5-20250929"
+    assert analyzer.model == "claude-sonnet-4-5"
+    assert result.model_used == "claude-sonnet-4-5"
 
 
 @pytest.mark.integration
@@ -204,7 +204,7 @@ async def test_full_pipeline_with_mixed_models(
             summarize_result = summarizer.summarize_newsletter(newsletter.id)
 
     assert summarize_result is True
-    assert summarizer.agent.model == "claude-haiku-4-5-20251001"  # Fast model
+    assert summarizer.agent.model == "claude-haiku-4-5"  # Fast model
 
     # Step 2: Analyze themes with Sonnet
     request = ThemeAnalysisRequest(
@@ -234,7 +234,7 @@ async def test_full_pipeline_with_mixed_models(
                     request, include_historical_context=False
                 )
 
-    assert analyzer.model == "claude-sonnet-4-5-20250929"  # Quality model
+    assert analyzer.model == "claude-sonnet-4-5"  # Quality model
 
     # Verify different models were used for different steps
     assert summarizer.agent.model != analyzer.model
@@ -251,7 +251,7 @@ def test_cost_calculation_varies_by_model(haiku_config, sonnet_config):
 
     # Calculate cost for Haiku
     haiku_cost = haiku_config.calculate_cost(
-        model_id="claude-haiku-4-5-20251001",
+        model_id="claude-haiku-4-5",
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         provider=Provider.ANTHROPIC,
@@ -259,7 +259,7 @@ def test_cost_calculation_varies_by_model(haiku_config, sonnet_config):
 
     # Calculate cost for Sonnet (should be more expensive)
     sonnet_cost = sonnet_config.calculate_cost(
-        model_id="claude-sonnet-4-5-20250929",
+        model_id="claude-sonnet-4-5",
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         provider=Provider.ANTHROPIC,
@@ -267,9 +267,9 @@ def test_cost_calculation_varies_by_model(haiku_config, sonnet_config):
 
     # Verify Sonnet is more expensive than Haiku
     assert sonnet_cost > haiku_cost
-    # Haiku: $0.80/MTok input, $4.00/MTok output
+    # Haiku: $1.00/MTok input, $3.00/MTok output
     # Sonnet: $3.00/MTok input, $15.00/MTok output
-    assert haiku_cost == pytest.approx(0.0028, rel=1e-4)  # (1000*0.80 + 500*4.00)/1M
+    assert haiku_cost == pytest.approx(0.0025, rel=1e-4)  # (1000*1.00 + 500*3.00)/1M
     assert sonnet_cost == pytest.approx(0.0105, rel=1e-4)  # (1000*3.00 + 500*15.00)/1M
 
 
@@ -281,25 +281,21 @@ def test_model_override_at_agent_level(haiku_config):
 
     with patch("src.agents.claude.summarizer.Anthropic"):
         # Create agent with model override
-        agent = ClaudeAgent(model_config=haiku_config, model="claude-sonnet-4-5-20250929")
+        agent = ClaudeAgent(model_config=haiku_config, model="claude-sonnet-4-5")
         summarizer = NewsletterSummarizer(agent=agent)
 
     # Should use Sonnet despite Haiku config
-    assert summarizer.agent.model == "claude-sonnet-4-5-20250929"
+    assert summarizer.agent.model == "claude-sonnet-4-5"
 
 
 @pytest.mark.integration
 def test_model_selection_per_step(mixed_config):
     """Test that each step gets the correct model from config."""
     # Verify model selection for each step
-    assert mixed_config.get_model_for_step(ModelStep.SUMMARIZATION) == "claude-haiku-4-5-20251001"
-    assert mixed_config.get_model_for_step(ModelStep.THEME_ANALYSIS) == "claude-sonnet-4-5-20250929"
-    assert (
-        mixed_config.get_model_for_step(ModelStep.DIGEST_CREATION) == "claude-sonnet-4-5-20250929"
-    )
-    assert (
-        mixed_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT) == "claude-haiku-4-5-20251001"
-    )
+    assert mixed_config.get_model_for_step(ModelStep.SUMMARIZATION) == "claude-haiku-4-5"
+    assert mixed_config.get_model_for_step(ModelStep.THEME_ANALYSIS) == "claude-sonnet-4-5"
+    assert mixed_config.get_model_for_step(ModelStep.DIGEST_CREATION) == "claude-sonnet-4-5"
+    assert mixed_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT) == "claude-haiku-4-5"
 
 
 @pytest.mark.integration
@@ -314,7 +310,7 @@ def test_provider_failover_with_multiple_configs():
     )
 
     # Get providers for Haiku
-    providers = config.get_providers_for_model("claude-haiku-4-5-20251001")
+    providers = config.get_providers_for_model("claude-haiku-4-5")
 
     # Should have both providers
     assert len(providers) == 2
