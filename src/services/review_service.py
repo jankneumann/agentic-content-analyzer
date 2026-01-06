@@ -242,8 +242,12 @@ class ReviewService:
                 if digest.revision_history:
                     existing = digest.revision_history
                     if "sessions" in existing and "sessions" in revision_history:
-                        existing["sessions"].extend(revision_history["sessions"])
-                        digest.revision_history = existing
+                        # Create new dict to ensure SQLAlchemy detects the change
+                        merged_sessions = existing["sessions"] + revision_history["sessions"]
+                        digest.revision_history = {
+                            **existing,
+                            "sessions": merged_sessions,
+                        }
                     else:
                         digest.revision_history = revision_history
                 else:

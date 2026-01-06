@@ -8,7 +8,7 @@ This demonstrates the new testing approach:
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,15 +24,14 @@ logging.basicConfig(level=logging.INFO)
 
 
 @pytest.mark.asyncio
-async def test_digest_creates_missing_summaries_refactored(db_session):
+async def test_digest_creates_missing_summaries_refactored(db_session, mock_get_db):
     """
     Test that digest creator automatically creates missing summaries.
 
     This is a REFACTORED version showing the new approach:
     - Uses real newsletter data from test files
-    - Real database operations
-    - Real GraphitiClient (local Neo4j)
-    - Only mocks Anthropic/OpenAI API calls
+    - Real database operations (test PostgreSQL)
+    - Mocked ThemeAnalyzer and API calls
     """
     logger.info("=== Starting refactored test ===")
 
@@ -51,80 +50,79 @@ async def test_digest_creates_missing_summaries_refactored(db_session):
     assert summary_count == 0
 
     # ============================================================
-    # 2. MOCK: Only external API calls (Anthropic, OpenAI)
+    # 2. MOCK: External API calls and database access
     # ============================================================
     logger.info("Setting up API mocks with cached responses...")
 
     # Create cached Anthropic responses for all 3 newsletters
     mock_summary_responses = create_anthropic_summarization_responses()
 
-    # Mock Anthropic client to return cached responses
-    with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_class:
-        mock_client = MagicMock()
+    # Patch get_db for all modules that use it
+    with patch("src.processors.digest_creator.get_db", mock_get_db):
+        with patch("src.processors.summarizer.get_db", mock_get_db):
+            with patch("src.processors.theme_analyzer.get_db", mock_get_db):
+                # Mock ThemeAnalyzer to avoid complex graph operations
+                with patch("src.processors.theme_analyzer.ThemeAnalyzer") as mock_analyzer_class:
+                    from unittest.mock import AsyncMock
 
-        # Configure to return cached responses in sequence
-        mock_client.messages.create.side_effect = mock_summary_responses
-        mock_anthropic_class.return_value = mock_client
+                    mock_analyzer = AsyncMock()
+                    mock_analyzer.analyze_themes = AsyncMock(
+                        return_value=MagicMock(
+                            themes=[],
+                            newsletter_count=len(newsletters),
+                            processing_time_seconds=0.1,
+                        )
+                    )
+                    mock_analyzer_class.return_value = mock_analyzer
 
-        # Mock OpenAI embeddings (used by GraphitiClient)
-        with patch("httpx.Client.post") as mock_httpx:
-            # Mock OpenAI embeddings response
-            mock_openai_response = MagicMock()
-            mock_openai_response.status_code = 200
-            mock_openai_response.json.return_value = {
-                "object": "list",
-                "data": [
-                    {
-                        "object": "embedding",
-                        "embedding": [0.002] * 1536,  # Mock embedding vector
-                        "index": 0,
-                    }
-                ],
-                "model": "text-embedding-3-small",
-                "usage": {"prompt_tokens": 8, "total_tokens": 8},
-            }
-            mock_httpx.return_value = mock_openai_response
+                    # Mock Anthropic client to return cached responses
+                    with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_class:
+                        mock_client = MagicMock()
 
-            # ============================================================
-            # 3. TEST: Run digest creation (uses REAL database + GraphitiClient)
-            # ============================================================
-            logger.info("Creating digest with on-demand summarization...")
+                        # Configure to return cached responses in sequence
+                        mock_client.messages.create.side_effect = mock_summary_responses
+                        mock_anthropic_class.return_value = mock_client
 
-            request = DigestRequest(
-                digest_type=DigestType.DAILY,
-                period_start=datetime(2025, 1, 13, 0, 0, 0),
-                period_end=datetime(2025, 1, 15, 23, 59, 59),
-                max_strategic_insights=5,
-                max_technical_developments=5,
-                max_emerging_trends=3,
-                include_historical_context=False,
-            )
+                        # ============================================================
+                        # 3. TEST: Run digest creation
+                        # ============================================================
+                        logger.info("Creating digest with on-demand summarization...")
 
-            creator = DigestCreator()
+                        request = DigestRequest(
+                            digest_type=DigestType.DAILY,
+                            period_start=datetime(2025, 1, 13, 0, 0, 0, tzinfo=UTC),
+                            period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                            max_strategic_insights=5,
+                            max_technical_developments=5,
+                            max_emerging_trends=3,
+                            include_historical_context=False,
+                        )
 
-            # Mock digest creation response
-            mock_digest_response = MagicMock()
-            mock_digest_response.content = [
-                MagicMock(
-                    text="""{
-                "title": "Test Daily Digest",
-                "executive_overview": "Test overview",
-                "strategic_insights": [],
-                "technical_developments": [],
-                "emerging_trends": [],
-                "actionable_recommendations": []
-            }"""
-                )
-            ]
-            mock_digest_response.usage = MagicMock(input_tokens=500, output_tokens=200)
+                        creator = DigestCreator()
 
-            # Add digest response to mock sequence (after summaries)
-            mock_client.messages.create.side_effect = mock_summary_responses + [
-                mock_digest_response
-            ]
+                        # Mock digest creation response
+                        mock_digest_response = MagicMock()
+                        mock_digest_response.content = [
+                            MagicMock(
+                                text="""{
+                            "title": "Test Daily Digest",
+                            "executive_overview": "Test overview",
+                            "strategic_insights": [],
+                            "technical_developments": [],
+                            "emerging_trends": [],
+                            "actionable_recommendations": {}
+                        }"""
+                            )
+                        ]
+                        mock_digest_response.usage = MagicMock(input_tokens=500, output_tokens=200)
 
-            digest = await creator.create_digest(request)
-            logger.info("Digest creation completed")
+                        # Add digest response to mock sequence (after summaries)
+                        mock_client.messages.create.side_effect = mock_summary_responses + [
+                            mock_digest_response
+                        ]
+
+                        digest = await creator.create_digest(request)
+                        logger.info("Digest creation completed")
 
     # ============================================================
     # 4. VERIFY: Check actual database state
