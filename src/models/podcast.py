@@ -218,7 +218,7 @@ class PodcastScriptRecord(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     digest_id = Column(Integer, ForeignKey("digests.id"), nullable=False, index=True)
-    length = Column(SQLEnum(PodcastLength), nullable=False)
+    length = Column(String(50), nullable=False)  # Using String to match DB values
 
     # Script content
     title = Column(String(500), nullable=True)
@@ -228,9 +228,9 @@ class PodcastScriptRecord(Base):
 
     # Review workflow
     status = Column(
-        SQLEnum(PodcastStatus),
+        String(50),
         nullable=False,
-        default=PodcastStatus.PENDING,
+        default="pending",
         index=True,
     )
     reviewed_by = Column(String(100), nullable=True)
@@ -284,10 +284,10 @@ class Podcast(Base):
     duration_seconds = Column(Integer, nullable=True)
     file_size_bytes = Column(Integer, nullable=True)
 
-    # Voice configuration
-    voice_provider = Column(SQLEnum(VoiceProvider), nullable=True)
-    alex_voice = Column(SQLEnum(VoicePersona), nullable=True)
-    sam_voice = Column(SQLEnum(VoicePersona), nullable=True)
+    # Voice configuration - using String instead of SQLEnum to match existing DB values
+    voice_provider = Column(String(50), nullable=True)
+    alex_voice = Column(String(50), nullable=True)
+    sam_voice = Column(String(50), nullable=True)
     voice_config = Column(JSON, nullable=True)  # Provider-specific voice IDs used
 
     # Status

@@ -219,11 +219,11 @@ async def list_podcasts(
                 script_id=podcast.script_id,
                 title=script.title,
                 digest_id=script.digest_id,
-                length=script.length.value if script.length else None,
+                length=script.length,
                 duration_seconds=podcast.duration_seconds,
                 file_size_bytes=podcast.file_size_bytes,
                 audio_format=podcast.audio_format or "mp3",
-                voice_provider=podcast.voice_provider.value if podcast.voice_provider else None,
+                voice_provider=podcast.voice_provider,
                 status=podcast.status,
                 created_at=podcast.created_at.isoformat() if podcast.created_at else None,
                 completed_at=podcast.completed_at.isoformat() if podcast.completed_at else None,
@@ -254,7 +254,7 @@ async def get_podcast_statistics() -> PodcastStatistics:
         for provider in VoiceProvider:
             count = (
                 db.query(Podcast)
-                .filter(Podcast.voice_provider == provider)
+                .filter(Podcast.voice_provider == provider.value)
                 .count()
             )
             if count > 0:
@@ -298,9 +298,9 @@ async def get_podcast(podcast_id: int) -> PodcastDetail:
             file_size_bytes=podcast.file_size_bytes,
             audio_url=podcast.audio_url,
             audio_format=podcast.audio_format or "mp3",
-            voice_provider=podcast.voice_provider.value if podcast.voice_provider else None,
-            alex_voice=podcast.alex_voice.value if podcast.alex_voice else None,
-            sam_voice=podcast.sam_voice.value if podcast.sam_voice else None,
+            voice_provider=podcast.voice_provider,
+            alex_voice=podcast.alex_voice,
+            sam_voice=podcast.sam_voice,
             status=podcast.status,
             error_message=podcast.error_message,
             created_at=podcast.created_at.isoformat() if podcast.created_at else None,
@@ -331,10 +331,10 @@ async def generate_audio(
         if not script:
             raise HTTPException(status_code=404, detail="Script not found")
 
-        if script.status != PodcastStatus.SCRIPT_APPROVED:
+        if script.status != "script_approved":
             raise HTTPException(
                 status_code=400,
-                detail=f"Script must be approved before audio generation. Current status: {script.status.value}",
+                detail=f"Script must be approved before audio generation. Current status: {script.status}",
             )
 
         # Validate voice provider and personas
@@ -349,9 +349,9 @@ async def generate_audio(
         podcast = Podcast(
             script_id=request.script_id,
             audio_format="mp3",
-            voice_provider=voice_provider,
-            alex_voice=alex_voice,
-            sam_voice=sam_voice,
+            voice_provider=voice_provider.value,
+            alex_voice=alex_voice.value,
+            sam_voice=sam_voice.value,
             status="generating",
         )
         db.add(podcast)
