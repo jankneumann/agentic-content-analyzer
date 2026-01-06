@@ -270,6 +270,34 @@ async def get_podcast_statistics() -> PodcastStatistics:
         )
 
 
+@router.get("/approved-scripts", response_model=List[dict])
+async def list_approved_scripts(
+    limit: int = Query(20, le=50, description="Maximum results"),
+) -> List[dict]:
+    """List approved scripts ready for audio generation."""
+    with get_db() as db:
+        scripts = (
+            db.query(PodcastScriptRecord)
+            .filter(PodcastScriptRecord.status == "script_approved")
+            .order_by(PodcastScriptRecord.approved_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            {
+                "id": s.id,
+                "digest_id": s.digest_id,
+                "title": s.title,
+                "length": s.length,
+                "word_count": s.word_count,
+                "estimated_duration_seconds": s.estimated_duration_seconds,
+                "approved_at": s.approved_at.isoformat() if s.approved_at else None,
+            }
+            for s in scripts
+        ]
+
+
 @router.get("/{podcast_id}", response_model=PodcastDetail)
 async def get_podcast(podcast_id: int) -> PodcastDetail:
     """Get full podcast details."""
@@ -402,29 +430,3 @@ async def stream_audio(podcast_id: int):
         )
 
 
-@router.get("/approved-scripts", response_model=List[dict])
-async def list_approved_scripts(
-    limit: int = Query(20, le=50, description="Maximum results"),
-) -> List[dict]:
-    """List approved scripts ready for audio generation."""
-    with get_db() as db:
-        scripts = (
-            db.query(PodcastScriptRecord)
-            .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED)
-            .order_by(PodcastScriptRecord.approved_at.desc())
-            .limit(limit)
-            .all()
-        )
-
-        return [
-            {
-                "id": s.id,
-                "digest_id": s.digest_id,
-                "title": s.title,
-                "length": s.length.value if s.length else None,
-                "word_count": s.word_count,
-                "estimated_duration_seconds": s.estimated_duration_seconds,
-                "approved_at": s.approved_at.isoformat() if s.approved_at else None,
-            }
-            for s in scripts
-        ]
