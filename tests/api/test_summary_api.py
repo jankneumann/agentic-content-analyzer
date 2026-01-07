@@ -242,3 +242,48 @@ class TestSummarizationStatus:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
+
+
+class TestSummaryNavigation:
+    """Tests for GET /api/v1/summaries/{id}/navigation endpoint."""
+
+    def test_navigation_returns_position_info(self, client, sample_summaries):
+        """Test navigation returns position and total."""
+        summary_id = sample_summaries[0].id
+        response = client.get(f"/api/v1/summaries/{summary_id}/navigation")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "position" in data
+        assert "total" in data
+        assert data["total"] == 2
+        assert data["position"] in (1, 2)
+
+    def test_navigation_returns_prev_next_ids(self, client, sample_summaries):
+        """Test navigation returns prev/next IDs."""
+        # Get the second summary (which should have prev)
+        summary_id = sample_summaries[1].id
+        response = client.get(f"/api/v1/summaries/{summary_id}/navigation")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "prev_id" in data
+        assert "next_id" in data
+        assert "prev_newsletter_id" in data
+        assert "next_newsletter_id" in data
+
+    def test_navigation_first_item_no_prev(self, client, sample_summary):
+        """Test first item has no previous."""
+        response = client.get(f"/api/v1/summaries/{sample_summary.id}/navigation")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["position"] == 1
+        assert data["prev_id"] is None
+        assert data["prev_newsletter_id"] is None
+
+    def test_navigation_not_found(self, client):
+        """Test navigation for non-existent summary returns 404."""
+        response = client.get("/api/v1/summaries/99999/navigation")
+
+        assert response.status_code == 404
