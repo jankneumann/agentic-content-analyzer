@@ -25,6 +25,7 @@ import {
   SkipForward,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { toast } from "sonner"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -66,11 +67,16 @@ import {
   usePodcasts,
   usePodcastStats,
   usePodcast,
-  useApprovedScripts,
   useGenerateAudio,
+  useScripts,
 } from "@/hooks"
+import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
+import {
+  GenerateAudioDialog,
+  type AudioGenerationParams,
+} from "@/components/generation"
 import { getAudioUrl } from "@/lib/api/podcasts"
-import type { PodcastListItem } from "@/types"
+import type { PodcastListItem, ScriptListItem } from "@/types"
 
 export const PodcastsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -126,7 +132,6 @@ function PodcastsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedPodcastId, setSelectedPodcastId] = useState<number | null>(null)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
-  const [selectedScriptId, setSelectedScriptId] = useState<number | null>(null)
 
   const { data: podcasts, isLoading, isError, error, refetch } = usePodcasts(
     statusFilter === "all" ? undefined : { status: statusFilter }
@@ -136,27 +141,44 @@ function PodcastsPage() {
     selectedPodcastId ?? 0,
     { enabled: !!selectedPodcastId }
   )
-  const { data: approvedScripts } = useApprovedScripts()
+  const { data: scripts } = useScripts({ status: "script_approved" })
   const generateMutation = useGenerateAudio()
+  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
 
-  const handleGenerateAudio = () => {
-    if (!selectedScriptId) return
+  const handleGenerateAudio = (params: AudioGenerationParams) => {
+    // Close dialog immediately - task runs in background
+    setShowGenerateDialog(false)
+
+    // Add background task
+    const taskId = addTask({
+      type: "audio",
+      title: "Generate Podcast Audio",
+      message: "Starting audio generation...",
+    })
 
     generateMutation.mutate(
       {
-        script_id: selectedScriptId,
-        voice_provider: "openai_tts",
-        alex_voice: "alex_male",
-        sam_voice: "sam_female",
+        script_id: params.script_id,
+        voice_provider: params.voice_provider,
+        alex_voice: params.alex_voice,
+        sam_voice: params.sam_voice,
       },
       {
         onSuccess: () => {
-          setShowGenerateDialog(false)
-          setSelectedScriptId(null)
+          completeTask(taskId, "Audio generated successfully")
+          toast.success("Podcast audio generated")
           refetch()
+        },
+        onError: (err) => {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error"
+          failTask(taskId, errorMsg)
+          toast.error(`Failed to generate audio: ${errorMsg}`)
         },
       }
     )
+
+    // Update progress indicator
+    updateTask(taskId, { progress: 5, message: "Processing script sections..." })
   }
 
   return (
@@ -388,83 +410,13 @@ function PodcastsPage() {
       </Dialog>
 
       {/* Generate audio dialog */}
-      <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generate Audio</DialogTitle>
-            <DialogDescription>
-              Select an approved script to generate podcast audio
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            {!approvedScripts?.length ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No approved scripts available. Approve a script first.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Select Script</label>
-                <Select
-                  value={selectedScriptId?.toString() ?? ""}
-                  onValueChange={(v) => setSelectedScriptId(Number(v))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a script..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {approvedScripts.map((script) => (
-                      <SelectItem key={script.id} value={script.id.toString()}>
-                        {script.title ?? `Script #${script.id}`} ({script.length})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedScriptId && (
-                  <div className="mt-4 p-3 rounded-lg border text-sm">
-                    {(() => {
-                      const script = approvedScripts.find((s) => s.id === selectedScriptId)
-                      return script ? (
-                        <>
-                          <div>
-                            <span className="text-muted-foreground">Length:</span>{" "}
-                            <span className="font-medium capitalize">{script.length}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Words:</span>{" "}
-                            <span className="font-medium">{script.word_count}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Est. Duration:</span>{" "}
-                            <span className="font-medium">
-                              {formatDuration(script.estimated_duration_seconds)}
-                            </span>
-                          </div>
-                        </>
-                      ) : null
-                    })()}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowGenerateDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleGenerateAudio}
-              disabled={!selectedScriptId || generateMutation.isPending}
-            >
-              {generateMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="mr-2 h-4 w-4" />
-              )}
-              Generate
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <GenerateAudioDialog
+        open={showGenerateDialog}
+        onOpenChange={setShowGenerateDialog}
+        onGenerate={handleGenerateAudio}
+        isGenerating={generateMutation.isPending}
+        scripts={scripts as ScriptListItem[] | undefined}
+      />
     </PageContainer>
   )
 }

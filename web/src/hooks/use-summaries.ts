@@ -25,6 +25,8 @@ import {
   regenerateSummary,
   deleteSummary,
   fetchSummaryStats,
+  fetchSummaryNavigation,
+  type SummaryNavigationFilters,
 } from "@/lib/api/summaries"
 import { subscribeToProgress, type ProgressEvent } from "@/lib/api/sse"
 import type {
@@ -201,5 +203,30 @@ export function useDeleteSummary() {
         queryKey: queryKeys.summaries.lists(),
       })
     },
+  })
+}
+
+/**
+ * Hook to fetch navigation info for a summary
+ *
+ * Returns prev/next IDs for navigating within a filtered list.
+ * Respects the same filters applied on the list view.
+ *
+ * @param summaryId - Current summary ID
+ * @param filters - Optional filters to match list view
+ * @returns Query result with navigation info
+ *
+ * @example
+ * const { data: nav } = useSummaryNavigation(summaryId, { model_used: 'claude-haiku' })
+ * // nav = { prev_id: 1, next_id: 3, position: 2, total: 10 }
+ */
+export function useSummaryNavigation(
+  summaryId: string,
+  filters?: SummaryNavigationFilters
+) {
+  return useQuery({
+    queryKey: [...queryKeys.summaries.detail(summaryId), "navigation", filters],
+    queryFn: () => fetchSummaryNavigation(summaryId, filters),
+    enabled: !!summaryId,
   })
 }

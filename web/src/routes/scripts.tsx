@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react"
-import { createRoute } from "@tanstack/react-router"
+import { createRoute, useNavigate } from "@tanstack/react-router"
 import {
   FileText,
   Play,
@@ -22,8 +22,10 @@ import {
   ThumbsUp,
   ThumbsDown,
   Edit3,
+  FileSearch,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { toast } from "sonner"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -62,8 +64,13 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useScripts, useScriptStats, useScript, useApproveScript, useRejectScript } from "@/hooks"
-import type { ScriptListItem } from "@/types"
+import { useScripts, useScriptStats, useScript, useApproveScript, useRejectScript, useGenerateScript, useDigests } from "@/hooks"
+import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
+import {
+  GenerateScriptDialog,
+  type ScriptGenerationParams,
+} from "@/components/generation"
+import type { ScriptListItem, DigestListItem } from "@/types"
 
 /**
  * Script detail type for display
@@ -156,6 +163,7 @@ function ScriptsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [searchValue, setSearchValue] = useState("")
   const [selectedScriptId, setSelectedScriptId] = useState<number | null>(null)
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
   const { data: scripts, isLoading, isError, error, refetch } = useScripts(
     statusFilter === "all" ? undefined : { status: statusFilter }
@@ -165,8 +173,47 @@ function ScriptsPage() {
     selectedScriptId ?? 0,
     { enabled: !!selectedScriptId }
   )
+  const { data: digests } = useDigests()
   const approveMutation = useApproveScript()
   const rejectMutation = useRejectScript()
+  const generateMutation = useGenerateScript()
+  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+
+  const handleGenerateScript = (params: ScriptGenerationParams) => {
+    // Close dialog immediately - task runs in background
+    setShowGenerateDialog(false)
+
+    // Add background task
+    const taskId = addTask({
+      type: "script",
+      title: `${params.length} Script`,
+      message: "Starting generation...",
+    })
+
+    generateMutation.mutate(
+      {
+        digest_id: params.digest_id,
+        length: params.length,
+        enable_web_search: params.enable_web_search,
+        custom_focus_topics: params.custom_focus_topics,
+      },
+      {
+        onSuccess: () => {
+          completeTask(taskId, "Script generated successfully")
+          toast.success("Script generated")
+          refetch()
+        },
+        onError: (err) => {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error"
+          failTask(taskId, errorMsg)
+          toast.error(`Failed to generate script: ${errorMsg}`)
+        },
+      }
+    )
+
+    // Update progress indicator
+    updateTask(taskId, { progress: 10, message: "Processing digest content..." })
+  }
 
   const handleApprove = (scriptId: number) => {
     approveMutation.mutate(
@@ -224,7 +271,7 @@ function ScriptsPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button disabled>
+          <Button onClick={() => setShowGenerateDialog(true)}>
             <Play className="mr-2 h-4 w-4" />
             Generate Script
           </Button>
@@ -499,6 +546,15 @@ function ScriptsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Generate script dialog */}
+      <GenerateScriptDialog
+        open={showGenerateDialog}
+        onOpenChange={setShowGenerateDialog}
+        onGenerate={handleGenerateScript}
+        isGenerating={generateMutation.isPending}
+        digests={digests as DigestListItem[] | undefined}
+      />
     </PageContainer>
   )
 }
@@ -513,10 +569,24 @@ function ScriptRow({
   script: ScriptListItem
   onView: () => void
 }) {
+  const navigate = useNavigate()
   const status = statusConfig[script.status] ?? {
     label: script.status,
     variant: "outline" as const,
     icon: null,
+  }
+
+  // Show review button for reviewable scripts
+  const canReview = [
+    "script_pending_review",
+    "script_revision_requested",
+    "script_approved",
+    "completed",
+  ].includes(script.status)
+
+  const handleReviewClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigate({ to: "/review/script/$id", params: { id: script.id.toString() } })
   }
 
   return (
@@ -560,9 +630,22 @@ function ScriptRow({
         </span>
       </TableCell>
       <TableCell>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Eye className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Eye className="h-4 w-4" />
+          </Button>
+          {canReview && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleReviewClick}
+              title="Review script"
+            >
+              <FileSearch className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </TableCell>
     </TableRow>
   )

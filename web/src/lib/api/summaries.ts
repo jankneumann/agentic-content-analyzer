@@ -124,3 +124,202 @@ export async function fetchSummaryStats(): Promise<{
 }> {
   return apiClient.get("/summaries/stats")
 }
+
+/**
+ * Navigation info for prev/next within a filtered list
+ */
+export interface SummaryNavigationInfo {
+  prev_id: number | null
+  next_id: number | null
+  prev_newsletter_id: number | null
+  next_newsletter_id: number | null
+  position: number
+  total: number
+}
+
+/**
+ * Filters for navigation query (matches list filters)
+ */
+export interface SummaryNavigationFilters {
+  model_used?: string
+  start_date?: string
+  end_date?: string
+  sort_by?: string
+  sort_order?: string
+}
+
+/**
+ * Get navigation info for a summary
+ *
+ * Returns prev/next IDs for navigation within a filtered list.
+ * Respects the same filters applied on the list view.
+ *
+ * @param summaryId - Current summary ID
+ * @param filters - Optional filters to match list view
+ * @returns Navigation info with prev/next IDs
+ */
+export async function fetchSummaryNavigation(
+  summaryId: string,
+  filters?: SummaryNavigationFilters
+): Promise<SummaryNavigationInfo> {
+  return apiClient.get<SummaryNavigationInfo>(`/summaries/${summaryId}/navigation`, {
+    params: filters as Record<string, string | undefined>,
+  })
+}
+
+/**
+ * Context selection for feedback-based regeneration
+ */
+export interface ContextSelection {
+  text: string
+  source: "newsletter" | "summary"
+}
+
+/**
+ * Request for regenerating a summary with feedback
+ */
+export interface RegenerateWithFeedbackRequest {
+  feedback?: string
+  contextSelections?: ContextSelection[]
+  previewOnly?: boolean
+}
+
+/**
+ * Preview data returned from regeneration
+ */
+export interface SummaryPreviewData {
+  executive_summary: string
+  key_themes: string[]
+  strategic_insights: string[]
+  technical_details: string[]
+  actionable_items: string[]
+  notable_quotes: string[]
+  model_used: string
+}
+
+/**
+ * SSE progress event from regeneration
+ */
+export interface RegenerationProgressEvent {
+  status: "processing" | "completed" | "error"
+  message?: string
+  progress?: number
+  preview?: SummaryPreviewData
+}
+
+/**
+ * Regenerate a summary with user feedback using SSE streaming
+ *
+ * @param summaryId - Summary ID to regenerate
+ * @param request - Feedback and context selections
+ * @param onProgress - Callback for progress updates
+ * @returns Promise that resolves with the preview data
+ */
+export function regenerateSummaryWithFeedback(
+  summaryId: string,
+  request: RegenerateWithFeedbackRequest,
+  onProgress?: (event: RegenerationProgressEvent) => void
+): Promise<SummaryPreviewData | null> {
+  return new Promise((resolve, reject) => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
+
+    // Convert request to API format
+    const body = {
+      feedback: request.feedback,
+      context_selections: request.contextSelections?.map((ctx) => ({
+        text: ctx.text,
+        source: ctx.source,
+      })),
+      preview_only: request.previewOnly ?? true,
+    }
+
+    fetch(`${baseUrl}/api/v1/summaries/${summaryId}/regenerate-with-feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify(body),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error("No response body")
+        }
+
+        const decoder = new TextDecoder()
+        let buffer = ""
+
+        const processStream = async () => {
+          while (true) {
+            const { done, value } = await reader.read()
+
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+
+            // Process complete SSE messages
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || "" // Keep incomplete line in buffer
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const event = JSON.parse(line.slice(6)) as RegenerationProgressEvent
+                  onProgress?.(event)
+
+                  if (event.status === "completed" && event.preview) {
+                    resolve(event.preview)
+                    return
+                  }
+
+                  if (event.status === "error") {
+                    reject(new Error(event.message || "Regeneration failed"))
+                    return
+                  }
+                } catch {
+                  // Skip malformed JSON
+                }
+              }
+            }
+          }
+
+          // Stream ended without completion
+          resolve(null)
+        }
+
+        processStream().catch(reject)
+      })
+      .catch(reject)
+  })
+}
+
+/**
+ * Request to commit a preview
+ */
+export interface CommitPreviewRequest {
+  executive_summary: string
+  key_themes: string[]
+  strategic_insights: string[]
+  technical_details: string[]
+  actionable_items: string[]
+  notable_quotes: string[]
+}
+
+/**
+ * Commit a previewed regeneration, replacing the current summary
+ *
+ * @param summaryId - Summary ID to update
+ * @param preview - Preview data to commit
+ * @returns Updated summary
+ */
+export async function commitSummaryPreview(
+  summaryId: string,
+  preview: CommitPreviewRequest
+): Promise<NewsletterSummary> {
+  return apiClient.post<NewsletterSummary>(`/summaries/${summaryId}/commit-preview`, preview)
+}

@@ -183,3 +183,63 @@ export async function reviseDigestSection(
     { feedback }
   )
 }
+
+/**
+ * Full summary data from digest sources endpoint
+ * Includes newsletter metadata for display in review UI
+ */
+export interface DigestSourceSummary {
+  id: number
+  newsletter_id: number
+  newsletter_title: string
+  newsletter_publication: string | null
+  executive_summary: string
+  key_themes: string[]
+  strategic_insights: string[]
+  technical_details: string[]
+  actionable_items: string[]
+  notable_quotes: string[]
+  model_used: string
+  created_at: string | null
+  processing_time_seconds: number | null
+}
+
+/**
+ * Fetch source summaries for a digest
+ *
+ * Returns all summaries from newsletters within the digest's period.
+ *
+ * @param digestId - Digest ID
+ * @returns List of source summaries
+ */
+export async function fetchDigestSources(
+  digestId: number
+): Promise<DigestSourceSummary[]> {
+  return apiClient.get<DigestSourceSummary[]>(`/digests/${digestId}/sources`)
+}
+
+/**
+ * Navigation info for digest review
+ */
+export interface DigestNavigationInfo {
+  prev_id: number | null
+  next_id: number | null
+  position: number
+  total: number
+}
+
+/**
+ * Fetch navigation info for prev/next digest
+ *
+ * @param digestId - Current digest ID
+ * @param filters - Optional filters to match list view
+ * @returns Navigation info
+ */
+export async function fetchDigestNavigation(
+  digestId: number,
+  filters?: DigestFilters
+): Promise<DigestNavigationInfo> {
+  return apiClient.get<DigestNavigationInfo>(`/digests/${digestId}/navigation`, {
+    params: filters as Record<string, string | number | boolean | undefined>,
+  })
+}

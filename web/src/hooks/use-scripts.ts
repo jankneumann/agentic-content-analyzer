@@ -22,6 +22,7 @@ import {
   fetchApprovedScriptsList,
   fetchScriptStats,
   fetchScript,
+  fetchScriptNavigation,
   generateScript,
   approveScript,
   rejectScript,
@@ -92,6 +93,20 @@ export function useScript(scriptId: number, options?: { enabled?: boolean }) {
     queryKey: queryKeys.scripts.detail(String(scriptId)),
     queryFn: () => fetchScript(scriptId),
     enabled: options?.enabled ?? !!scriptId,
+  })
+}
+
+/**
+ * Hook to fetch script navigation info
+ *
+ * @param scriptId - Script ID
+ * @returns Query result with navigation data
+ */
+export function useScriptNavigation(scriptId: number) {
+  return useQuery({
+    queryKey: [...queryKeys.scripts.detail(String(scriptId)), "navigation"],
+    queryFn: () => fetchScriptNavigation(scriptId),
+    enabled: !!scriptId,
   })
 }
 

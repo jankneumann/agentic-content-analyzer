@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react"
-import { createRoute } from "@tanstack/react-router"
+import { createRoute, Link } from "@tanstack/react-router"
 import {
   Newspaper,
   Plus,
@@ -20,8 +20,12 @@ import {
   Clock,
   AlertCircle,
   Loader2,
+  FileSearch,
+  Eye,
+  ExternalLink,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { toast } from "sonner"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -54,13 +58,17 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useNewsletters, useIngestNewsletters, useNewsletterStats } from "@/hooks"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { useNewsletters, useNewsletter, useIngestNewsletters, useNewsletterStats } from "@/hooks"
+import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
+import {
+  IngestNewslettersDialog,
+  type IngestParams,
+} from "@/components/generation"
 import type { NewsletterStatus, NewsletterSource, NewsletterFilters } from "@/types"
 
 /**
@@ -128,11 +136,18 @@ function NewslettersPage() {
   })
   const [searchValue, setSearchValue] = useState("")
   const [ingestDialogOpen, setIngestDialogOpen] = useState(false)
-  const [selectedSource, setSelectedSource] = useState<NewsletterSource>("gmail")
+  const [selectedNewsletterId, setSelectedNewsletterId] = useState<string | null>(null)
 
   const { data, isLoading, isError, error, refetch } = useNewsletters(filters)
   const { data: stats } = useNewsletterStats()
   const ingestMutation = useIngestNewsletters()
+  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+
+  // Fetch selected newsletter details
+  const { data: selectedNewsletter, isLoading: isLoadingNewsletter } = useNewsletter(
+    selectedNewsletterId ?? "",
+    { enabled: !!selectedNewsletterId }
+  )
 
   const handleSearch = (value: string) => {
     setSearchValue(value)
@@ -155,16 +170,41 @@ function NewslettersPage() {
     }))
   }
 
-  const handleIngest = () => {
+  const handleIngest = (params: IngestParams) => {
+    // Close dialog immediately - task runs in background
+    setIngestDialogOpen(false)
+
+    const sourceName = params.source === "gmail" ? "Gmail" : "RSS"
+
+    // Add background task
+    const taskId = addTask({
+      type: "ingest",
+      title: `Ingest from ${sourceName}`,
+      message: "Starting ingestion...",
+    })
+
     ingestMutation.mutate(
-      { source: selectedSource },
+      {
+        source: params.source,
+        max_results: params.max_results,
+        days_back: params.days_back,
+      },
       {
         onSuccess: () => {
-          setIngestDialogOpen(false)
+          completeTask(taskId, "Ingestion complete")
+          toast.success(`Ingested newsletters from ${sourceName}`)
           refetch()
+        },
+        onError: (err) => {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error"
+          failTask(taskId, errorMsg)
+          toast.error(`Failed to ingest: ${errorMsg}`)
         },
       }
     )
+
+    // Update progress indicator
+    updateTask(taskId, { progress: 5, message: `Fetching from ${sourceName}...` })
   }
 
   return (
@@ -177,81 +217,10 @@ function NewslettersPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Dialog open={ingestDialogOpen} onOpenChange={setIngestDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Ingest New
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Ingest Newsletters</DialogTitle>
-                <DialogDescription>
-                  Fetch new newsletters from Gmail or RSS feeds.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <label className="text-sm font-medium">Source</label>
-                <Select
-                  value={selectedSource}
-                  onValueChange={(v) => setSelectedSource(v as NewsletterSource)}
-                >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="Select source" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gmail">
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4" />
-                        Gmail
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="rss">
-                      <div className="flex items-center gap-2">
-                        <Rss className="h-4 w-4" />
-                        RSS Feeds
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {ingestMutation.isPending && (
-                  <div className="mt-4 flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-muted-foreground">
-                      Ingesting newsletters...
-                    </span>
-                  </div>
-                )}
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIngestDialogOpen(false)}
-                  disabled={ingestMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleIngest}
-                  disabled={ingestMutation.isPending}
-                >
-                  {ingestMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Ingesting...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Start Ingestion
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => setIngestDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Ingest New
+          </Button>
         </div>
       }
     >
@@ -384,6 +353,7 @@ function NewslettersPage() {
                   <TableHead className="w-[150px]">Publication</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[150px]">Published</TableHead>
+                  <TableHead className="w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -395,6 +365,7 @@ function NewslettersPage() {
                       <TableCell>
                         <div>
                           <div className="font-medium line-clamp-1">
+                            <span className="text-muted-foreground font-normal">[{newsletter.id}]</span>{" "}
                             {newsletter.title}
                           </div>
                           <div className="text-sm text-muted-foreground">
@@ -427,6 +398,35 @@ function NewslettersPage() {
                               })
                             : "Unknown"}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setSelectedNewsletterId(String(newsletter.id))}
+                            title="View newsletter"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {newsletter.status === "completed" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              asChild
+                            >
+                              <Link
+                                to="/review/summary/$id"
+                                params={{ id: String(newsletter.id) }}
+                                title="Review summary"
+                              >
+                                <FileSearch className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -474,6 +474,124 @@ function NewslettersPage() {
           )}
         </CardContent>
       </Card>
+      {/* Newsletter detail dialog */}
+      <Dialog
+        open={!!selectedNewsletterId}
+        onOpenChange={(open) => !open && setSelectedNewsletterId(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Newspaper className="h-5 w-5" />
+              Newsletter Details
+            </DialogTitle>
+            <DialogDescription>
+              {selectedNewsletter?.title ?? "Loading..."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingNewsletter ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : selectedNewsletter ? (
+            <div className="space-y-4">
+              {/* Metadata */}
+              <div className="flex flex-wrap gap-4 text-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">From:</span>
+                  <span className="font-medium">{selectedNewsletter.sender}</span>
+                </div>
+                {selectedNewsletter.publication && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">Publication:</span>
+                    <span className="font-medium">{selectedNewsletter.publication}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Source:</span>
+                  <Badge variant="outline" className="gap-1">
+                    {sourceConfig[selectedNewsletter.source].icon}
+                    {sourceConfig[selectedNewsletter.source].label}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Status:</span>
+                  <Badge variant={statusConfig[selectedNewsletter.status].variant} className="gap-1">
+                    {statusConfig[selectedNewsletter.status].icon}
+                    {statusConfig[selectedNewsletter.status].label}
+                  </Badge>
+                </div>
+                {selectedNewsletter.published_date && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">Published:</span>
+                    <span>{formatDistanceToNow(new Date(selectedNewsletter.published_date), { addSuffix: true })}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="border rounded-lg">
+                <ScrollArea className="h-[400px]">
+                  <div className="p-4">
+                    {selectedNewsletter.raw_text ? (
+                      <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                        {selectedNewsletter.raw_text}
+                      </pre>
+                    ) : selectedNewsletter.raw_html ? (
+                      <div
+                        className="prose prose-sm max-w-none dark:prose-invert"
+                        dangerouslySetInnerHTML={{ __html: selectedNewsletter.raw_html }}
+                      />
+                    ) : (
+                      <p className="text-muted-foreground italic">No content available</p>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2">
+                {selectedNewsletter.url && (
+                  <Button variant="outline" asChild>
+                    <a
+                      href={selectedNewsletter.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      View Original
+                    </a>
+                  </Button>
+                )}
+                {selectedNewsletter.status === "completed" && (
+                  <Button asChild>
+                    <Link
+                      to="/review/summary/$id"
+                      params={{ id: String(selectedNewsletter.id) }}
+                    >
+                      <FileSearch className="mr-2 h-4 w-4" />
+                      Review Summary
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <p className="text-muted-foreground">Newsletter not found</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ingest newsletters dialog */}
+      <IngestNewslettersDialog
+        open={ingestDialogOpen}
+        onOpenChange={setIngestDialogOpen}
+        onIngest={handleIngest}
+        isIngesting={ingestMutation.isPending}
+      />
     </PageContainer>
   )
 }

@@ -20,6 +20,7 @@ import type {
   GenerateScriptRequest,
   GenerateScriptResponse,
 } from "@/types"
+import type { ScriptDetail } from "@/types/review"
 
 /**
  * Script filters for list queries
@@ -92,8 +93,23 @@ export async function fetchScriptStats(): Promise<ScriptReviewStatistics> {
  * @param scriptId - Script ID
  * @returns Full script details for review
  */
-export async function fetchScript(scriptId: number): Promise<Record<string, unknown>> {
-  return apiClient.get<Record<string, unknown>>(`/scripts/${scriptId}`)
+export async function fetchScript(scriptId: number): Promise<ScriptDetail> {
+  return apiClient.get<ScriptDetail>(`/scripts/${scriptId}`)
+}
+
+/**
+ * Fetch navigation info for a script
+ *
+ * @param scriptId - Script ID
+ * @returns Navigation info (prev/next IDs, position, total)
+ */
+export async function fetchScriptNavigation(scriptId: number): Promise<{
+  prev_id: number | null
+  next_id: number | null
+  position: number
+  total: number
+}> {
+  return apiClient.get(`/scripts/${scriptId}/navigation`)
 }
 
 /**

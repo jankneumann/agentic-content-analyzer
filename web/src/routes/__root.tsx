@@ -13,7 +13,9 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
-import { AppShell } from "@/components/layout"
+import { AppShell, BackgroundTasksIndicator } from "@/components/layout"
+import { Toaster } from "@/components/ui/sonner"
+import { BackgroundTasksProvider } from "@/contexts/BackgroundTasksContext"
 
 /**
  * TanStack Query client
@@ -45,9 +47,13 @@ const queryClient = new QueryClient({
 function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell>
-        <Outlet />
-      </AppShell>
+      <BackgroundTasksProvider>
+        <AppShell>
+          <Outlet />
+        </AppShell>
+        <BackgroundTasksIndicator />
+        <Toaster />
+      </BackgroundTasksProvider>
     </QueryClientProvider>
   )
 }

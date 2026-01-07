@@ -68,6 +68,9 @@ export interface Newsletter {
   /** URL if available */
   url: string | null
 
+  /** Raw HTML content of the newsletter */
+  raw_html: string | null
+
   /** Plain text extraction of content */
   raw_text: string | null
 

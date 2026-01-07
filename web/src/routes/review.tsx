@@ -1,13 +1,16 @@
 /**
- * Review Queue Page
+ * Review Route (Parent)
  *
- * Displays items pending review across the pipeline.
- * Central hub for approval workflows.
+ * Parent route for the review system.
+ * - /review shows the review queue index
+ * - /review/summary/:id shows summary review page
+ * - /review/digest/:id shows digest review page (future)
+ * - /review/script/:id shows script review page (future)
  *
  * Route: /review
  */
 
-import { createRoute } from "@tanstack/react-router"
+import { createRoute, Outlet, useMatches } from "@tanstack/react-router"
 import { FileText, Mic } from "lucide-react"
 
 import { Route as rootRoute } from "./__root"
@@ -23,10 +26,38 @@ import {
 export const ReviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "review",
-  component: ReviewPage,
+  component: ReviewLayout,
 })
 
-function ReviewPage() {
+/**
+ * Review Layout Component
+ *
+ * Renders child routes via Outlet, or shows the index page
+ * when at /review directly.
+ */
+function ReviewLayout() {
+  const matches = useMatches()
+
+  // Check if we're on a child route (more than just the review route)
+  const isChildRoute = matches.some(
+    (match) => match.routeId !== ReviewRoute.id && match.routeId.startsWith("/review")
+  )
+
+  // If on a child route, just render the child
+  if (isChildRoute) {
+    return <Outlet />
+  }
+
+  // Otherwise render the index page
+  return <ReviewIndexPage />
+}
+
+/**
+ * Review Index Page
+ *
+ * Shows the review queue with pending items.
+ */
+function ReviewIndexPage() {
   return (
     <PageContainer
       title="Review Queue"

@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react"
-import { createRoute } from "@tanstack/react-router"
+import { createRoute, Link } from "@tanstack/react-router"
 import {
   Sparkles,
   Play,
@@ -19,8 +19,10 @@ import {
   Eye,
   AlertCircle,
   Loader2,
+  FileSearch,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { toast } from "sonner"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -64,7 +66,13 @@ import {
   useSummary,
   useSummaryStats,
   useTriggerSummarization,
+  useNewsletterStats,
 } from "@/hooks"
+import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
+import {
+  GenerateSummaryDialog,
+  type SummaryGenerationParams,
+} from "@/components/generation"
 import type { SummaryFilters, SummaryListItem } from "@/types"
 
 export const SummariesRoute = createRoute({
@@ -80,10 +88,16 @@ function SummariesPage() {
   })
   const [searchValue, setSearchValue] = useState("")
   const [selectedSummaryId, setSelectedSummaryId] = useState<string | null>(null)
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
   const { data, isLoading, isError, error, refetch } = useSummaries(filters)
   const { data: stats } = useSummaryStats()
+  const { data: newsletterStats } = useNewsletterStats()
   const summarizeMutation = useTriggerSummarization()
+  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+
+  // Pending newsletters are those without summaries
+  const pendingCount = newsletterStats?.by_status?.pending ?? 0
 
   // Fetch selected summary details
   const { data: selectedSummary, isLoading: isLoadingSummary } = useSummary(
@@ -104,15 +118,40 @@ function SummariesPage() {
     }))
   }
 
-  const handleSummarizeAll = () => {
+  const handleGenerateSummaries = (params: SummaryGenerationParams) => {
+    // Close dialog immediately - task runs in background
+    setShowGenerateDialog(false)
+
+    const count = params.newsletter_ids.length || pendingCount
+
+    // Add background task
+    const taskId = addTask({
+      type: "summary",
+      title: `Summarize ${count} newsletter${count !== 1 ? "s" : ""}`,
+      message: "Starting summarization...",
+    })
+
     summarizeMutation.mutate(
-      { newsletter_ids: [] }, // Empty = all pending
+      {
+        newsletter_ids: params.newsletter_ids,
+        force: params.force,
+      },
       {
         onSuccess: () => {
+          completeTask(taskId, "Summarization complete")
+          toast.success(`Summarized ${count} newsletters`)
           refetch()
+        },
+        onError: (err) => {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error"
+          failTask(taskId, errorMsg)
+          toast.error(`Failed to summarize: ${errorMsg}`)
         },
       }
     )
+
+    // Update progress indicator
+    updateTask(taskId, { progress: 5, message: "Processing newsletters..." })
   }
 
   return (
@@ -125,21 +164,9 @@ function SummariesPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button
-            onClick={handleSummarizeAll}
-            disabled={summarizeMutation.isPending || summarizeMutation.isProcessing}
-          >
-            {summarizeMutation.isPending || summarizeMutation.isProcessing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Summarizing...
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-4 w-4" />
-                Summarize Pending
-              </>
-            )}
+          <Button onClick={() => setShowGenerateDialog(true)}>
+            <Play className="mr-2 h-4 w-4" />
+            Generate Summaries
           </Button>
         </div>
       }
@@ -277,11 +304,10 @@ function SummariesPage() {
                 <Button
                   className="mt-4"
                   size="sm"
-                  onClick={handleSummarizeAll}
-                  disabled={summarizeMutation.isPending}
+                  onClick={() => setShowGenerateDialog(true)}
                 >
                   <Play className="mr-2 h-4 w-4" />
-                  Summarize Pending
+                  Generate Summaries
                 </Button>
               </div>
             </div>
@@ -294,7 +320,7 @@ function SummariesPage() {
                   <TableHead className="w-[120px]">Model</TableHead>
                   <TableHead className="w-[100px]">Time</TableHead>
                   <TableHead className="w-[130px]">Created</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -473,6 +499,15 @@ function SummariesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Generate summaries dialog */}
+      <GenerateSummaryDialog
+        open={showGenerateDialog}
+        onOpenChange={setShowGenerateDialog}
+        onGenerate={handleGenerateSummaries}
+        isGenerating={summarizeMutation.isPending || summarizeMutation.isProcessing}
+        pendingCount={pendingCount}
+      />
     </PageContainer>
   )
 }
@@ -492,10 +527,11 @@ function SummaryRow({
       <TableCell>
         <div>
           <div className="font-medium line-clamp-1">
+            <span className="text-muted-foreground font-normal">[{summary.id}]</span>{" "}
             {summary.newsletter_title ?? `Newsletter #${summary.newsletter_id ?? "?"}`}
           </div>
           <div className="text-sm text-muted-foreground line-clamp-1">
-            {summary.executive_summary_preview}
+            Newsletter [{summary.newsletter_id}] • {summary.executive_summary_preview}
           </div>
         </div>
       </TableCell>
@@ -533,9 +569,35 @@ function SummaryRow({
         </span>
       </TableCell>
       <TableCell>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Eye className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={(e) => {
+              e.stopPropagation()
+              onView()
+            }}
+            title="View details"
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            asChild
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Link
+              to="/review/summary/$id"
+              params={{ id: String(summary.newsletter_id) }}
+              title="Review summary"
+            >
+              <FileSearch className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   )

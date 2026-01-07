@@ -26,6 +26,8 @@ import {
   approveDigest,
   rejectDigest,
   reviseDigestSection,
+  fetchDigestSources,
+  fetchDigestNavigation,
 } from "@/lib/api/digests"
 import type {
   DigestFilters,
@@ -244,5 +246,37 @@ export function useReviseDigestSection() {
         queryKey: queryKeys.digests.lists(),
       })
     },
+  })
+}
+
+/**
+ * Hook to fetch source summaries for a digest
+ *
+ * Returns all summaries from newsletters within the digest's period.
+ *
+ * @param digestId - Digest ID
+ * @param options - Query options
+ * @returns Query result with summaries data
+ */
+export function useDigestSources(digestId: number, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...queryKeys.digests.detail(String(digestId)), "sources"],
+    queryFn: () => fetchDigestSources(digestId),
+    enabled: options?.enabled ?? !!digestId,
+  })
+}
+
+/**
+ * Hook to fetch navigation info for digest review
+ *
+ * @param digestId - Current digest ID
+ * @param filters - Optional filters to match list view
+ * @returns Query result with navigation info
+ */
+export function useDigestNavigation(digestId: number, filters?: DigestFilters) {
+  return useQuery({
+    queryKey: [...queryKeys.digests.detail(String(digestId)), "navigation", filters],
+    queryFn: () => fetchDigestNavigation(digestId, filters),
+    enabled: !!digestId,
   })
 }

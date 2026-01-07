@@ -75,7 +75,7 @@ export async function fetchNewsletterWithSummary(
 export async function fetchNewsletterSummary(
   newsletterId: string
 ): Promise<NewsletterSummary> {
-  return apiClient.get<NewsletterSummary>(`/newsletters/${newsletterId}/summary`)
+  return apiClient.get<NewsletterSummary>(`/summaries/by-newsletter/${newsletterId}`)
 }
 
 /**

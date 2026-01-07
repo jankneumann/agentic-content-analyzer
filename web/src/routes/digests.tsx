@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react"
-import { createRoute } from "@tanstack/react-router"
+import { createRoute, Link } from "@tanstack/react-router"
 import {
   FileText,
   Plus,
@@ -21,13 +21,14 @@ import {
   Eye,
   ThumbsUp,
   ThumbsDown,
-  Calendar,
   Newspaper,
   Lightbulb,
   TrendingUp,
   Cpu,
+  FileSearch,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
+import { toast } from "sonner"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -75,6 +76,11 @@ import {
   useApproveDigest,
   useRejectDigest,
 } from "@/hooks"
+import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
+import {
+  GenerateDigestDialog,
+  type DigestGenerationParams,
+} from "@/components/generation"
 import type { DigestListItem, DigestStatus, DigestSection } from "@/types"
 
 export const DigestsRoute = createRoute({
@@ -137,6 +143,7 @@ function DigestsPage() {
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [searchValue, setSearchValue] = useState("")
   const [selectedDigestId, setSelectedDigestId] = useState<number | null>(null)
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
   const { data: digests, isLoading, isError, error, refetch } = useDigests(
     {
@@ -152,16 +159,44 @@ function DigestsPage() {
   const generateMutation = useGenerateDigest()
   const approveMutation = useApproveDigest()
   const rejectMutation = useRejectDigest()
+  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
 
-  const handleGenerateDigest = (type: "daily" | "weekly") => {
+  const handleGenerateDigest = (params: DigestGenerationParams) => {
+    // Close dialog immediately - task runs in background
+    setShowGenerateDialog(false)
+
+    // Add background task
+    const taskId = addTask({
+      type: "digest",
+      title: `${params.digest_type === "daily" ? "Daily" : "Weekly"} Digest`,
+      message: "Starting generation...",
+    })
+
     generateMutation.mutate(
-      { digest_type: type },
+      {
+        digest_type: params.digest_type,
+        period_start: params.period_start,
+        period_end: params.period_end,
+        max_strategic_insights: params.max_strategic_insights,
+        max_technical_developments: params.max_technical_developments,
+        max_emerging_trends: params.max_emerging_trends,
+      },
       {
         onSuccess: () => {
+          completeTask(taskId, "Digest generated successfully")
+          toast.success(`${params.digest_type === "daily" ? "Daily" : "Weekly"} digest generated`)
           refetch()
+        },
+        onError: (err) => {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error"
+          failTask(taskId, errorMsg)
+          toast.error(`Failed to generate digest: ${errorMsg}`)
         },
       }
     )
+
+    // Update progress indicator
+    updateTask(taskId, { progress: 10, message: "Preparing summaries..." })
   }
 
   const handleApprove = (digestId: number) => {
@@ -204,28 +239,9 @@ function DigestsPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => handleGenerateDigest("daily")}
-            disabled={generateMutation.isPending}
-          >
-            {generateMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Calendar className="mr-2 h-4 w-4" />
-            )}
-            Create Daily
-          </Button>
-          <Button
-            onClick={() => handleGenerateDigest("weekly")}
-            disabled={generateMutation.isPending}
-          >
-            {generateMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="mr-2 h-4 w-4" />
-            )}
-            Create Weekly
+          <Button onClick={() => setShowGenerateDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Generate Digest
           </Button>
         </div>
       }
@@ -533,6 +549,14 @@ function DigestsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Generate digest dialog */}
+      <GenerateDigestDialog
+        open={showGenerateDialog}
+        onOpenChange={setShowGenerateDialog}
+        onGenerate={handleGenerateDigest}
+        isGenerating={generateMutation.isPending}
+      />
     </PageContainer>
   )
 }
@@ -639,9 +663,28 @@ function DigestRow({
         </span>
       </TableCell>
       <TableCell>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Eye className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Eye className="h-4 w-4" />
+          </Button>
+          {(digest.status === "PENDING_REVIEW" || digest.status === "COMPLETED" || digest.status === "APPROVED") && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              asChild
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Link
+                to="/review/digest/$id"
+                params={{ id: String(digest.id) }}
+                title="Review digest"
+              >
+                <FileSearch className="h-4 w-4" />
+              </Link>
+            </Button>
+          )}
+        </div>
       </TableCell>
     </TableRow>
   )
