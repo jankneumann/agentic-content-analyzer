@@ -406,6 +406,110 @@ async def get_digest(digest_id: int) -> DigestDetail:
         )
 
 
+@router.get("/{digest_id}/sources")
+async def get_digest_sources(
+    digest_id: int,
+    limit: int = Query(100, le=200, description="Maximum results"),
+) -> list[dict]:
+    """Get all source summaries used to create a digest.
+
+    Returns full summaries from newsletters within the digest's period.
+    """
+    from src.models.summary import NewsletterSummary
+
+    with get_db() as db:
+        digest = db.query(Digest).filter(Digest.id == digest_id).first()
+
+        if not digest:
+            raise HTTPException(status_code=404, detail="Digest not found")
+
+        # Get summaries within the digest period
+        from src.models.newsletter import Newsletter
+
+        summaries = (
+            db.query(NewsletterSummary)
+            .join(Newsletter)
+            .filter(Newsletter.published_date >= digest.period_start)
+            .filter(Newsletter.published_date <= digest.period_end)
+            .order_by(Newsletter.published_date.desc())
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            {
+                "id": s.id,
+                "newsletter_id": s.newsletter_id,
+                "newsletter_title": s.newsletter.title if s.newsletter else "Unknown",
+                "newsletter_publication": s.newsletter.publication if s.newsletter else None,
+                "executive_summary": s.executive_summary,
+                "key_themes": s.key_themes or [],
+                "strategic_insights": s.strategic_insights or [],
+                "technical_details": s.technical_details or [],
+                "actionable_items": s.actionable_items or [],
+                "notable_quotes": s.notable_quotes or [],
+                "model_used": s.model_used,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "processing_time_seconds": s.processing_time_seconds,
+            }
+            for s in summaries
+        ]
+
+
+@router.get("/{digest_id}/navigation")
+async def get_digest_navigation(
+    digest_id: int,
+    status: str | None = Query(None, description="Filter by status"),
+    digest_type: str | None = Query(None, description="Filter by type"),
+) -> dict:
+    """Get navigation info for prev/next digest within a filtered list."""
+    with get_db() as db:
+        # Build base query with same filters as list view
+        query = db.query(Digest)
+        query = query.filter(Digest.digest_type.in_([DigestType.DAILY, DigestType.WEEKLY]))
+
+        if status:
+            try:
+                status_enum = DigestStatus(status)
+                query = query.filter(Digest.status == status_enum)
+            except ValueError:
+                pass
+
+        if digest_type:
+            try:
+                type_enum = DigestType(digest_type)
+                query = query.filter(Digest.digest_type == type_enum)
+            except ValueError:
+                pass
+
+        # Order by created_at descending (matching list view)
+        ordered_query = query.order_by(Digest.created_at.desc())
+        all_digests = ordered_query.all()
+        digest_ids = [d.id for d in all_digests]
+        total = len(digest_ids)
+
+        # Find current position
+        try:
+            current_idx = digest_ids.index(digest_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail="Digest not found in current filtered list",
+            )
+
+        # Find neighbors
+        position = current_idx + 1
+        prev_id = digest_ids[current_idx - 1] if current_idx > 0 else None
+        next_id = digest_ids[current_idx + 1] if current_idx < total - 1 else None
+
+        return {
+            "prev_id": prev_id,
+            "next_id": next_id,
+            "position": position,
+            "total": total,
+        }
+
+
 @router.post("/{digest_id}/review")
 async def submit_review(
     digest_id: int,

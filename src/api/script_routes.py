@@ -471,3 +471,39 @@ async def quick_reject(
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{script_id}/navigation")
+async def get_script_navigation(script_id: int) -> dict:
+    """Get navigation info for prev/next script.
+
+    Returns prev and next script IDs for navigation in review UI.
+    """
+    from src.models.podcast import PodcastScriptRecord
+
+    with get_db() as db:
+        # Get all scripts ordered by creation date
+        scripts = (
+            db.query(PodcastScriptRecord).order_by(PodcastScriptRecord.created_at.desc()).all()
+        )
+
+        if not scripts:
+            raise HTTPException(status_code=404, detail="No scripts found")
+
+        # Find current position
+        script_ids = [s.id for s in scripts]
+        try:
+            current_index = script_ids.index(script_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Script {script_id} not found")
+
+        # Calculate prev/next
+        prev_id = script_ids[current_index - 1] if current_index > 0 else None
+        next_id = script_ids[current_index + 1] if current_index < len(script_ids) - 1 else None
+
+        return {
+            "prev_id": prev_id,
+            "next_id": next_id,
+            "position": current_index + 1,
+            "total": len(script_ids),
+        }

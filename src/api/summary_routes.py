@@ -119,6 +119,46 @@ class SummaryStats(BaseModel):
     avg_token_usage: float
 
 
+class NavigationResponse(BaseModel):
+    """Navigation info for prev/next within a filtered list."""
+
+    prev_id: int | None
+    next_id: int | None
+    prev_newsletter_id: int | None
+    next_newsletter_id: int | None
+    position: int
+    total: int
+
+
+class ContextSelection(BaseModel):
+    """A text selection from the review interface."""
+
+    text: str = Field(..., max_length=500)
+    source: str = Field(..., pattern="^(newsletter|summary)$")
+
+
+class RegenerateWithFeedbackRequest(BaseModel):
+    """Request to regenerate summary with feedback."""
+
+    feedback: str | None = Field(None, max_length=1000)
+    context_selections: list[ContextSelection] | None = Field(None, max_length=5)
+    preview_only: bool = Field(
+        default=True,
+        description="If true, returns preview without saving",
+    )
+
+
+class CommitPreviewRequest(BaseModel):
+    """Request to commit a previewed regeneration."""
+
+    executive_summary: str
+    key_themes: list[str]
+    strategic_insights: list[str]
+    technical_details: list[str]
+    actionable_items: list[str]
+    notable_quotes: list[str]
+
+
 # ============================================================================
 # In-memory task storage (would use Redis in production)
 # ============================================================================
@@ -249,6 +289,74 @@ async def get_summary(summary_id: int) -> SummaryDetail:
             raise HTTPException(status_code=404, detail="Summary not found")
 
         return _summary_to_detail(summary)
+
+
+@router.get("/{summary_id}/navigation", response_model=NavigationResponse)
+async def get_summary_navigation(
+    summary_id: int,
+    model_used: str | None = Query(None, description="Filter by model"),
+    start_date: datetime | None = Query(None, description="Filter after this date"),
+    end_date: datetime | None = Query(None, description="Filter before this date"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+) -> NavigationResponse:
+    """
+    Get navigation info for prev/next item within a filtered list.
+
+    Returns the IDs of the previous and next summaries based on the
+    current filter and sort settings. This enables prev/next navigation
+    in the review interface while respecting the list filters.
+    """
+    with get_db() as db:
+        # Build base query with same filters as list view
+        query = db.query(NewsletterSummary).join(Newsletter)
+
+        if model_used:
+            query = query.filter(NewsletterSummary.model_used == model_used)
+        if start_date:
+            query = query.filter(NewsletterSummary.created_at >= start_date)
+        if end_date:
+            query = query.filter(NewsletterSummary.created_at <= end_date)
+
+        # Determine sort column and order
+        sort_column = getattr(NewsletterSummary, sort_by, NewsletterSummary.created_at)
+        if sort_order.lower() == "asc":
+            ordered_query = query.order_by(sort_column.asc())
+        else:
+            ordered_query = query.order_by(sort_column.desc())
+
+        # Get all summaries with their IDs and newsletter IDs
+        all_summaries = ordered_query.all()
+        summary_data = [(s.id, s.newsletter_id) for s in all_summaries]
+        total = len(summary_data)
+
+        # Find current summary position
+        current_idx = next(
+            (i for i, (sid, _) in enumerate(summary_data) if sid == summary_id),
+            None,
+        )
+
+        if current_idx is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Summary not found in current filtered list",
+            )
+
+        # Find position and neighbors
+        position = current_idx + 1  # 1-indexed
+        prev_id = summary_data[current_idx - 1][0] if current_idx > 0 else None
+        prev_newsletter_id = summary_data[current_idx - 1][1] if current_idx > 0 else None
+        next_id = summary_data[current_idx + 1][0] if current_idx < total - 1 else None
+        next_newsletter_id = summary_data[current_idx + 1][1] if current_idx < total - 1 else None
+
+        return NavigationResponse(
+            prev_id=prev_id,
+            next_id=next_id,
+            prev_newsletter_id=prev_newsletter_id,
+            next_newsletter_id=next_newsletter_id,
+            position=position,
+            total=total,
+        )
 
 
 @router.delete("/{summary_id}")
@@ -398,6 +506,131 @@ async def regenerate_summary(
         queued_count=1,
         newsletter_ids=[newsletter_id],
     )
+
+
+@router.post("/{summary_id}/regenerate-with-feedback")
+async def regenerate_with_feedback(
+    summary_id: int,
+    request: RegenerateWithFeedbackRequest,
+) -> StreamingResponse:
+    """
+    Regenerate a summary with user feedback via SSE streaming.
+
+    Uses the feedback and context selections to guide regeneration.
+    If preview_only=True (default), returns the preview without saving.
+
+    Returns SSE stream with progress and final result.
+    """
+    import json
+    import uuid
+
+    with get_db() as db:
+        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
+        if not summary:
+            raise HTTPException(status_code=404, detail="Summary not found")
+
+        newsletter = db.query(Newsletter).filter(Newsletter.id == summary.newsletter_id).first()
+        if not newsletter:
+            raise HTTPException(status_code=404, detail="Newsletter not found")
+
+        newsletter_id = newsletter.id
+
+    async def generate_preview():
+        """Generator for SSE streaming."""
+        try:
+            # Send initial status
+            yield f"data: {json.dumps({'status': 'processing', 'message': 'Starting regeneration...', 'progress': 0})}\n\n"
+
+            # Build the feedback context
+            feedback_parts = []
+            if request.feedback:
+                feedback_parts.append(f"User feedback: {request.feedback}")
+
+            if request.context_selections:
+                for ctx in request.context_selections:
+                    source_label = "newsletter" if ctx.source == "newsletter" else "summary"
+                    feedback_parts.append(f'Selected from {source_label}: "{ctx.text}"')
+
+            feedback_context = "\n".join(feedback_parts) if feedback_parts else None
+
+            yield f"data: {json.dumps({'status': 'processing', 'message': 'Generating with feedback...', 'progress': 30})}\n\n"
+
+            # Use the summarizer with feedback
+            from src.processors.summarizer import NewsletterSummarizer
+
+            summarizer = NewsletterSummarizer()
+
+            # Generate new summary (in thread to not block)
+            new_summary_data = await asyncio.to_thread(
+                summarizer.summarize_with_feedback,
+                newsletter_id,
+                feedback_context,
+            )
+
+            yield f"data: {json.dumps({'status': 'processing', 'message': 'Finalizing...', 'progress': 80})}\n\n"
+
+            if new_summary_data:
+                # Return the preview data
+                result = {
+                    "status": "completed",
+                    "progress": 100,
+                    "preview": {
+                        "executive_summary": new_summary_data.get("executive_summary", ""),
+                        "key_themes": new_summary_data.get("key_themes", []),
+                        "strategic_insights": new_summary_data.get("strategic_insights", []),
+                        "technical_details": new_summary_data.get("technical_details", []),
+                        "actionable_items": new_summary_data.get("actionable_items", []),
+                        "notable_quotes": new_summary_data.get("notable_quotes", []),
+                        "model_used": new_summary_data.get("model_used", "unknown"),
+                    },
+                }
+                yield f"data: {json.dumps(result)}\n\n"
+            else:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Failed to generate summary'})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_preview(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.post("/{summary_id}/commit-preview", response_model=SummaryDetail)
+async def commit_preview(
+    summary_id: int,
+    request: CommitPreviewRequest,
+) -> SummaryDetail:
+    """
+    Commit a previewed regeneration, replacing the current summary.
+
+    Takes the preview data and saves it as the new summary.
+    """
+    with get_db() as db:
+        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
+        if not summary:
+            raise HTTPException(status_code=404, detail="Summary not found")
+
+        # Update the summary with preview data
+        summary.executive_summary = request.executive_summary
+        summary.key_themes = request.key_themes
+        summary.strategic_insights = request.strategic_insights
+        summary.technical_details = request.technical_details
+        summary.actionable_items = request.actionable_items
+        summary.notable_quotes = request.notable_quotes
+
+        # Update timestamp
+        summary.created_at = datetime.utcnow()
+
+        db.commit()
+        db.refresh(summary)
+
+        return _summary_to_detail(summary)
 
 
 async def _run_summarization(

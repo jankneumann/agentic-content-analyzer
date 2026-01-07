@@ -211,3 +211,56 @@ class NewsletterSummarizer:
             f"Successfully summarized {result['created_count']}/{len(pending_ids)} newsletters"
         )
         return result["created_count"]
+
+    def summarize_with_feedback(self, newsletter_id: int, feedback_context: str) -> dict | None:
+        """
+        Regenerate a summary with user feedback (preview mode - doesn't save to DB).
+
+        Args:
+            newsletter_id: Newsletter ID to summarize
+            feedback_context: Formatted feedback and context selections from user
+
+        Returns:
+            Dictionary with summary fields if successful, None otherwise
+        """
+        with get_db() as db:
+            # Get newsletter
+            newsletter = db.query(Newsletter).filter(Newsletter.id == newsletter_id).first()
+
+            if not newsletter:
+                logger.error(f"Newsletter {newsletter_id} not found")
+                return None
+
+            try:
+                # Summarize with feedback
+                logger.info(f"Regenerating with feedback: {newsletter.title}")
+                response = self.agent.summarize_newsletter_with_feedback(
+                    newsletter, feedback_context
+                )
+
+                if not response.success:
+                    logger.error(f"Regeneration failed: {response.error}")
+                    return None
+
+                # Return summary data as dict (without saving to DB)
+                summary_data = response.data
+                return {
+                    "newsletter_id": newsletter_id,
+                    "executive_summary": summary_data.executive_summary,
+                    "key_themes": summary_data.key_themes,
+                    "strategic_insights": summary_data.strategic_insights,
+                    "technical_details": summary_data.technical_details,
+                    "actionable_items": summary_data.actionable_items,
+                    "notable_quotes": summary_data.notable_quotes,
+                    "relevant_links": summary_data.relevant_links,
+                    "relevance_scores": summary_data.relevance_scores,
+                    "agent_framework": summary_data.agent_framework,
+                    "model_used": summary_data.model_used,
+                    "model_version": summary_data.model_version,
+                    "token_usage": summary_data.token_usage,
+                    "processing_time_seconds": summary_data.processing_time_seconds,
+                }
+
+            except Exception as e:
+                logger.error(f"Error regenerating newsletter {newsletter_id}: {e}")
+                return None
