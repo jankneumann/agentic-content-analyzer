@@ -97,6 +97,11 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Descriptive messages**: Explain the "why", not just "what"
 - **Test before commit**: Run relevant tests
 
+### Feature Planning
+- **Use plan mode**: For significant features, create implementation plans before coding
+- **Archive plans**: Move completed plans from `.claude/plans/` to `docs/plans/` after PR merge
+- **Reference in PRs**: Link to the archived plan in PR descriptions
+
 ### Code Quality
 - **Run tests**: `pytest` before committing
 - **Type checking**: `mypy src/`

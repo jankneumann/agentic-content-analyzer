@@ -343,6 +343,47 @@ git commit -m "Add integration tests for theme analysis workflow
 - Blank line, then detailed explanation if needed
 - Reference issues: "Fixes #123" or "Relates to #456"
 
+### Feature Planning & Plan Archival
+
+For significant features, use Claude Code's plan mode to create implementation plans before coding. These plans serve as valuable documentation for future reference.
+
+**Planning Workflow**:
+
+1. **Create Plan**: Use plan mode to design the implementation approach
+   - Plans are created in `.claude/plans/` during development
+   - Include component architecture, API changes, and implementation steps
+
+2. **Archive Plan After PR Merge**: Move completed plans to `docs/plans/` for reference
+   ```bash
+   # After PR is merged, archive the plan
+   mv .claude/plans/feature-name.md docs/plans/YYYY-MM-DD-feature-name.md
+   git add docs/plans/
+   git commit -m "Archive implementation plan for feature-name"
+   ```
+
+3. **Reference Plans in PRs**: Include a link to the plan in the PR description
+   ```markdown
+   ## Implementation Plan
+   See [docs/plans/2025-01-08-revision-chat-panel.md](docs/plans/2025-01-08-revision-chat-panel.md)
+   ```
+
+**Plan Naming Convention**:
+- Format: `YYYY-MM-DD-feature-name.md`
+- Example: `2025-01-08-revision-chat-panel.md`
+
+**What to Include in Archived Plans**:
+- Original requirements and goals
+- Component architecture decisions
+- API design choices
+- Implementation steps taken
+- Any deviations from the original plan
+
+**Benefits**:
+- **Historical context**: Understand why decisions were made
+- **Onboarding**: New contributors can learn from past implementations
+- **Pattern reference**: Reuse successful approaches for similar features
+- **PR documentation**: Clear link between planning and implementation
+
 ### Tool Usage Best Practices
 
 #### AVOID sed for Global Changes
