@@ -19,8 +19,8 @@ import {
   SummariesListPane,
   DigestPane,
   SelectionPopover,
-  FeedbackPanel,
 } from "@/components/review"
+import { RevisionChatPanel } from "@/components/chat"
 import type { DigestSourceSummary } from "@/lib/api/digests"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useDigest, useDigestSources, useDigestNavigation } from "@/hooks/use-digests"
@@ -29,7 +29,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import type { NavigationInfo } from "@/types/review"
-import type { DigestDetail } from "@/types"
+import type { DigestDetail, ChatMessage } from "@/types"
 
 /**
  * Route definition for digest review page
@@ -59,7 +59,7 @@ function DigestReviewPage() {
   const {
     data: sources,
     isLoading: isLoadingSources,
-  } = useDigestSources(digestId, { enabled: !!digest })
+  } = useDigestSources(digestId)
 
   // Fetch navigation info
   const {
@@ -67,7 +67,7 @@ function DigestReviewPage() {
     isLoading: isNavLoading,
   } = useDigestNavigation(digestId)
 
-  // Transform backend navigation to match ReviewHeader props
+  // Transform backend navigation
   const navigation: NavigationInfo | undefined = navInfo
     ? {
         prevId: navInfo.prev_id,
@@ -96,7 +96,7 @@ function DigestReviewPage() {
       <div className="flex h-full items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading digest...</p>
+          <p className="text-sm text-muted-foreground">Loading review...</p>
         </div>
       </div>
     )
@@ -181,10 +181,14 @@ function DigestReviewContent({
 }: DigestReviewContentProps) {
   const containerRef = React.useRef<HTMLDivElement>(null)
 
-  // Preview state (for future regeneration support)
-  const [_isGenerating, _setIsGenerating] = React.useState(false)
-  const [_isAccepting, _setIsAccepting] = React.useState(false)
-  const [_error, _setError] = React.useState<string | null>(null)
+  // Panel expansion state
+  const [isPanelExpanded, setIsPanelExpanded] = React.useState(true)
+
+  // Chat messages (local state)
+  const [messages, setMessages] = React.useState<ChatMessage[]>([])
+  const [isStreaming, setIsStreaming] = React.useState(false)
+  const [isGenerating, setIsGenerating] = React.useState(false)
+  const [chatError, setChatError] = React.useState<Error | null>(null)
 
   // Text selection hook
   const { selection, clearSelection } = useTextSelection({
@@ -194,12 +198,7 @@ function DigestReviewContent({
   })
 
   // Review context for managing selections
-  const {
-    contextItems: _contextItems,
-    feedback: _feedback,
-    addContextItem,
-    clearAllContext: _clearAllContext,
-  } = useReviewContext()
+  const { addContextItem } = useReviewContext()
 
   // Handle adding selection to context
   const handleAddToContext = React.useCallback(() => {
@@ -216,54 +215,96 @@ function DigestReviewContent({
     }
   }, [selection, addContextItem, clearSelection])
 
-  // Placeholder handlers for future regeneration support
+  // Handle sending a chat message (for questions, NOT regeneration)
+  const handleSendMessage = React.useCallback(async (
+    content: string,
+    options?: { enableWebSearch?: boolean }
+  ) => {
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+      timestamp: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, userMessage])
+
+    setIsStreaming(true)
+    setChatError(null)
+
+    // TODO: Integrate with actual chat API for questions
+    // For now, simulate a response about the content
+    setTimeout(() => {
+      const assistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: options?.enableWebSearch
+          ? "I searched the web and found relevant information. Chat integration with web search is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback."
+          : "I understand your question about the digest. Chat integration for Q&A is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback.",
+        timestamp: new Date().toISOString(),
+      }
+      setMessages(prev => [...prev, assistantMessage])
+      setIsStreaming(false)
+    }, 1000)
+  }, [])
+
+  // Handle generating a preview (explicit button click)
   const handleGeneratePreview = React.useCallback(async () => {
-    toast.info("Digest regeneration coming soon", {
-      description: "This feature is under development.",
-    })
-  }, [])
+    setIsGenerating(true)
+    setChatError(null)
 
-  const handleAcceptPreview = React.useCallback(async () => {
-    // Will be implemented when regeneration is added
-  }, [])
+    // TODO: Implement actual digest regeneration
+    // For now, show placeholder response
+    setTimeout(() => {
+      setIsGenerating(false)
 
-  const handleRejectPreview = React.useCallback(() => {
-    // Will be implemented when regeneration is added
+      toast.info("Digest regeneration coming soon", {
+        description: "This feature is under development.",
+      })
+    }, 1000)
   }, [])
 
   return (
-    <div ref={containerRef} className="h-full">
-      <ReviewLayout
-        header={
-          <ReviewHeader
-            title="Review Digest"
-            backLabel="Back to Digests"
-            backTo="/digests"
-            navigation={navigation}
-            isNavigationLoading={isNavLoading}
-            onPrevious={onPrevious}
-            onNext={onNext}
-          />
-        }
-        leftPane={
-          <SummariesListPane
-            summaries={sources}
-            isLoading={isLoadingSources}
-          />
-        }
-        rightPane={<DigestPane digest={digest} />}
-        feedbackPanel={
-          <FeedbackPanel
-            isPreviewMode={false}
-            onGeneratePreview={handleGeneratePreview}
-            onAcceptPreview={handleAcceptPreview}
-            onRejectPreview={handleRejectPreview}
-            isGenerating={_isGenerating}
-            isAccepting={_isAccepting}
-            error={_error}
-          />
-        }
-      />
+    <div ref={containerRef} className="flex h-full flex-col">
+      {/* Main content area */}
+      <div className="flex-1 overflow-hidden">
+        <ReviewLayout
+          header={
+            <ReviewHeader
+              title="Review Digest"
+              backLabel="Back to Digests"
+              backTo="/digests"
+              navigation={navigation}
+              isNavigationLoading={isNavLoading}
+              onPrevious={onPrevious}
+              onNext={onNext}
+            />
+          }
+          leftPane={
+            <SummariesListPane
+              summaries={sources}
+              isLoading={isLoadingSources}
+            />
+          }
+          rightPane={<DigestPane digest={digest} />}
+        />
+      </div>
+
+      {/* Unified AI Revision Panel */}
+      <div className="shrink-0 border-t bg-background px-4 py-3">
+        <RevisionChatPanel
+          messages={messages}
+          isLoading={false}
+          isStreaming={isStreaming}
+          error={chatError}
+          onSendMessage={handleSendMessage}
+          onGeneratePreview={handleGeneratePreview}
+          isGenerating={isGenerating}
+          artifactType="digest"
+          isExpanded={isPanelExpanded}
+          onToggle={() => setIsPanelExpanded(!isPanelExpanded)}
+        />
+      </div>
 
       {/* Selection popover */}
       {selection && (

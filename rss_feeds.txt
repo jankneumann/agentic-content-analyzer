@@ -46,6 +46,8 @@ https://read.engineerscodex.com/feed
 # RSS feeds for Tech companies:
 https://aws.amazon.com/blogs/machine-learning/feed/
 https://www.thoughtworks.com/rss/insights.xml
+https://blog.google.com/rss
+
 
 # RSS feeds for people
 http://www.martinfowler.com/feed.atom"

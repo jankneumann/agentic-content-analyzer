@@ -199,9 +199,37 @@ function ScriptsPage() {
       },
       {
         onSuccess: () => {
-          completeTask(taskId, "Script generated successfully")
-          toast.success("Script generated")
-          refetch()
+          // API returns "queued" - actual work happens in background
+          updateTask(taskId, { progress: 20, message: "Generating script content..." })
+
+          let pollCount = 0
+          const maxPolls = 60 // 5 minutes max
+
+          const pollInterval = setInterval(async () => {
+            pollCount++
+            const progressPercent = Math.min(20 + pollCount * 1.3, 95)
+            updateTask(taskId, {
+              progress: Math.round(progressPercent),
+              message: pollCount < 10 ? "Structuring dialogue..." :
+                       pollCount < 20 ? "Writing host segments..." :
+                       pollCount < 30 ? "Adding transitions..." : "Finalizing script..."
+            })
+
+            const result = await refetch()
+            const newScript = result.data?.find(
+              (s) => s.status === "script_pending_review" || s.status === "script_approved"
+            )
+
+            if (newScript || pollCount >= maxPolls) {
+              clearInterval(pollInterval)
+              if (newScript) {
+                completeTask(taskId, "Script generated successfully")
+                toast.success("Script generated")
+              } else {
+                updateTask(taskId, { progress: 95, message: "Generation in progress..." })
+              }
+            }
+          }, 5000)
         },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
@@ -212,7 +240,7 @@ function ScriptsPage() {
     )
 
     // Update progress indicator
-    updateTask(taskId, { progress: 10, message: "Processing digest content..." })
+    updateTask(taskId, { progress: 10, message: "Queuing generation..." })
   }
 
   const handleApprove = (scriptId: number) => {

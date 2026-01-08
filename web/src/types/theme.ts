@@ -253,3 +253,63 @@ export interface ThemeAnalysisFilters {
   /** Pagination offset */
   offset?: number
 }
+
+/**
+ * Theme data from backend ThemeData model
+ */
+export interface ThemeData {
+  name: string
+  description: string
+  category: ThemeCategory
+  mention_count: number
+  newsletter_ids: number[]
+  first_seen: string
+  last_seen: string
+  trend: ThemeTrend
+  relevance_score: number
+  strategic_relevance: number
+  tactical_relevance: number
+  novelty_score: number
+  cross_functional_impact: number
+  related_themes: string[]
+  key_points: string[]
+  historical_context?: {
+    theme_name: string
+    first_mention: string
+    total_mentions: number
+    mention_frequency: string
+    evolution_summary: string
+    previous_discussions: string[]
+    stance_change?: string
+    recent_mentions: Array<{
+      date: string
+      newsletter_id: number
+      newsletter_title: string
+      publication: string
+      context: string
+      sentiment?: string
+    }>
+  }
+  continuity_text?: string
+}
+
+/**
+ * Result from theme analysis (matches backend ThemeAnalysisResult)
+ */
+export interface ThemeAnalysisResult {
+  analysis_date: string
+  start_date: string
+  end_date: string
+  newsletter_count: number
+  newsletter_ids: number[]
+  themes: ThemeData[]
+  total_themes: number
+  emerging_themes_count: number
+  top_theme: string | null
+  processing_time_seconds: number
+  token_usage: number | null
+  model_used: string
+  model_version: string | null
+  agent_framework: string
+  cross_theme_insights: string[]
+}

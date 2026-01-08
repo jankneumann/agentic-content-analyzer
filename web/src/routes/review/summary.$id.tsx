@@ -2,7 +2,7 @@
  * Summary Review Page
  *
  * Side-by-side view for reviewing a summary against its source newsletter.
- * Supports text selection for context and feedback submission.
+ * Supports text selection for context and AI-powered revision through chat.
  *
  * Route: /review/summary/:id (where id is the newsletter ID)
  */
@@ -20,8 +20,8 @@ import {
   SummaryPane,
   SummaryPreview,
   SelectionPopover,
-  FeedbackPanel,
 } from "@/components/review"
+import { RevisionChatPanel } from "@/components/chat"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useNewsletterWithSummary } from "@/hooks/use-newsletters"
 import { useSummaryNavigation } from "@/hooks/use-summaries"
@@ -35,7 +35,7 @@ import {
   type SummaryPreviewData,
 } from "@/lib/api/summaries"
 import type { NavigationInfo } from "@/types/review"
-import type { Newsletter, NewsletterSummary } from "@/types"
+import type { Newsletter, NewsletterSummary, ChatMessage } from "@/types"
 
 /**
  * Route definition for summary review page
@@ -190,11 +190,19 @@ function ReviewContent({
   const containerRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
 
+  // Panel expansion state
+  const [isPanelExpanded, setIsPanelExpanded] = React.useState(true)
+
   // Preview state
   const [previewData, setPreviewData] = React.useState<SummaryPreviewData | null>(null)
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [isAccepting, setIsAccepting] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [chatError, setChatError] = React.useState<Error | null>(null)
+
+  // Chat messages (local state for now - could be persisted via API)
+  const [messages, setMessages] = React.useState<ChatMessage[]>([])
+  const [isStreaming, setIsStreaming] = React.useState(false)
+  const [streamingContent, setStreamingContent] = React.useState("")
 
   const isPreviewMode = previewData !== null
 
@@ -208,7 +216,6 @@ function ReviewContent({
   // Review context for managing selections
   const {
     contextItems,
-    feedback,
     addContextItem,
     clearAllContext,
   } = useReviewContext()
@@ -228,55 +235,111 @@ function ReviewContent({
     }
   }, [selection, addContextItem, clearSelection])
 
-  // Handle generate preview
+  // Handle sending a chat message (for questions, NOT regeneration)
+  const handleSendMessage = React.useCallback(async (
+    content: string,
+    options?: { enableWebSearch?: boolean }
+  ) => {
+    // Add user message to chat
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+      timestamp: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, userMessage])
+
+    setIsStreaming(true)
+    setChatError(null)
+    setStreamingContent("")
+
+    // TODO: Integrate with actual chat API for questions
+    // For now, simulate a response about the content
+    setTimeout(() => {
+      const assistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: options?.enableWebSearch
+          ? "I searched the web and found relevant information. Chat integration with web search is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback."
+          : "I understand your question. Chat integration for Q&A is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback.",
+        timestamp: new Date().toISOString(),
+      }
+      setMessages(prev => [...prev, assistantMessage])
+      setIsStreaming(false)
+    }, 1000)
+  }, [])
+
+  // Handle generating a preview (explicit button click)
   const handleGeneratePreview = React.useCallback(async () => {
     setIsGenerating(true)
-    setError(null)
+    setChatError(null)
+    setStreamingContent("")
 
     try {
-      const contextSelections = contextItems.map((item) => ({
+      // Build feedback from conversation history
+      const conversationFeedback = messages
+        .filter(m => m.role === "user")
+        .map(m => m.content)
+        .join("\n\n")
+
+      // Convert context chips to API format
+      const contextSelections = contextItems.map(item => ({
         text: item.text,
         source: item.source === "left" ? "newsletter" as const : "summary" as const,
       }))
 
+      // Generate preview with feedback
       const preview = await regenerateSummaryWithFeedback(
         summary.id.toString(),
         {
-          feedback: feedback || undefined,
+          feedback: conversationFeedback || "Please improve this summary.",
           contextSelections: contextSelections.length > 0 ? contextSelections : undefined,
           previewOnly: true,
         },
         (event) => {
-          // Could show progress here if desired
-          console.log("Progress:", event)
+          if (event.message) {
+            setStreamingContent(event.message)
+          }
         }
       )
 
       if (preview) {
         setPreviewData(preview)
+
         toast.success("Preview generated", {
           description: "Review the changes and accept or reject.",
         })
       } else {
-        setError("Failed to generate preview")
+        throw new Error("Failed to generate preview")
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to generate preview"
-      setError(message)
+      const error = err instanceof Error ? err : new Error("Failed to generate preview")
+      setChatError(error)
+
+      // Add error message to chat
+      const errorMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: `Sorry, I encountered an error generating the preview: ${error.message}. Please try again.`,
+        timestamp: new Date().toISOString(),
+      }
+      setMessages(prev => [...prev, errorMessage])
+
       toast.error("Generation failed", {
-        description: message,
+        description: error.message,
       })
     } finally {
       setIsGenerating(false)
+      setStreamingContent("")
     }
-  }, [summary.id, contextItems, feedback])
+  }, [summary.id, messages, contextItems])
 
   // Handle accept preview
   const handleAcceptPreview = React.useCallback(async () => {
     if (!previewData) return
 
     setIsAccepting(true)
-    setError(null)
+    setChatError(null)
 
     try {
       await commitSummaryPreview(summary.id.toString(), {
@@ -296,14 +359,23 @@ function ReviewContent({
       setPreviewData(null)
       clearAllContext()
 
+      // Add confirmation to chat
+      const confirmMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "Great! The changes have been saved successfully. The summary has been updated.",
+        timestamp: new Date().toISOString(),
+      }
+      setMessages(prev => [...prev, confirmMessage])
+
       toast.success("Summary updated", {
         description: "The changes have been saved.",
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to save changes"
-      setError(message)
+      const error = err instanceof Error ? err : new Error("Failed to save changes")
+      setChatError(error)
       toast.error("Save failed", {
-        description: message,
+        description: error.message,
       })
     } finally {
       setIsAccepting(false)
@@ -313,50 +385,73 @@ function ReviewContent({
   // Handle reject preview
   const handleRejectPreview = React.useCallback(() => {
     setPreviewData(null)
-    setError(null)
+    setChatError(null)
+
+    // Add rejection note to chat
+    const rejectMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "No problem, I've discarded the preview. Feel free to provide more specific feedback and I'll try again.",
+      timestamp: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, rejectMessage])
+
     toast.info("Preview rejected", {
       description: "No changes were made.",
     })
   }, [])
 
   return (
-    <div ref={containerRef} className="h-full">
-      <ReviewLayout
-        header={
-          <ReviewHeader
-            title="Review Summary"
-            backLabel="Back to Summaries"
-            backTo="/summaries"
-            navigation={navigation}
-            isNavigationLoading={isNavLoading}
-            onPrevious={onPrevious}
-            onNext={onNext}
-          />
-        }
-        leftPane={<NewsletterPane newsletter={newsletter} />}
-        rightPane={
-          isPreviewMode ? (
-            <SummaryPreview
-              preview={previewData}
-              isStreaming={isGenerating}
-              originalSummary={summary}
+    <div ref={containerRef} className="flex h-full flex-col">
+      {/* Main content area */}
+      <div className="flex-1 overflow-hidden">
+        <ReviewLayout
+          header={
+            <ReviewHeader
+              title="Review Summary"
+              backLabel="Back to Summaries"
+              backTo="/summaries"
+              navigation={navigation}
+              isNavigationLoading={isNavLoading}
+              onPrevious={onPrevious}
+              onNext={onNext}
             />
-          ) : (
-            <SummaryPane summary={summary} />
-          )
-        }
-        feedbackPanel={
-          <FeedbackPanel
-            isPreviewMode={isPreviewMode}
-            onGeneratePreview={handleGeneratePreview}
-            onAcceptPreview={handleAcceptPreview}
-            onRejectPreview={handleRejectPreview}
-            isGenerating={isGenerating}
-            isAccepting={isAccepting}
-            error={error}
-          />
-        }
-      />
+          }
+          leftPane={<NewsletterPane newsletter={newsletter} />}
+          rightPane={
+            isPreviewMode ? (
+              <SummaryPreview
+                preview={previewData}
+                isStreaming={isGenerating}
+                originalSummary={summary}
+              />
+            ) : (
+              <SummaryPane summary={summary} />
+            )
+          }
+        />
+      </div>
+
+      {/* Unified AI Revision Panel */}
+      <div className="shrink-0 border-t bg-background px-4 py-3">
+        <RevisionChatPanel
+          messages={messages}
+          isLoading={false}
+          isStreaming={isStreaming}
+          streamingContent={streamingContent}
+          error={chatError}
+          onSendMessage={handleSendMessage}
+          onGeneratePreview={handleGeneratePreview}
+          isGenerating={isGenerating}
+          artifactType="summary"
+          isPreviewMode={isPreviewMode}
+          onAcceptPreview={handleAcceptPreview}
+          onRejectPreview={handleRejectPreview}
+          isAccepting={isAccepting}
+          isExpanded={isPanelExpanded}
+          onToggle={() => setIsPanelExpanded(!isPanelExpanded)}
+        />
+      </div>
 
       {/* Selection popover */}
       {selection && (

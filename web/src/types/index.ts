@@ -43,6 +43,8 @@ export type {
   GraphLink,
   AnalyzeThemesRequest,
   ThemeAnalysisFilters,
+  ThemeData,
+  ThemeAnalysisResult,
 } from "./theme"
 
 // Digest types
