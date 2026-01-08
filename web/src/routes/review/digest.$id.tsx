@@ -24,6 +24,7 @@ import { RevisionChatPanel } from "@/components/chat"
 import type { DigestSourceSummary } from "@/lib/api/digests"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useDigest, useDigestSources, useDigestNavigation } from "@/hooks/use-digests"
+import { useChatConfig } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -190,6 +191,17 @@ function DigestReviewContent({
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [chatError, setChatError] = React.useState<Error | null>(null)
 
+  // Chat config and model selection
+  const { data: chatConfig } = useChatConfig()
+  const [selectedModel, setSelectedModel] = React.useState<string | undefined>()
+
+  // Set default model when config loads
+  React.useEffect(() => {
+    if (chatConfig?.defaultModel && !selectedModel) {
+      setSelectedModel(chatConfig.defaultModel)
+    }
+  }, [chatConfig?.defaultModel, selectedModel])
+
   // Text selection hook
   const { selection, clearSelection } = useTextSelection({
     containerRef,
@@ -303,6 +315,9 @@ function DigestReviewContent({
           artifactType="digest"
           isExpanded={isPanelExpanded}
           onToggle={() => setIsPanelExpanded(!isPanelExpanded)}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          availableModels={chatConfig?.availableModels}
         />
       </div>
 

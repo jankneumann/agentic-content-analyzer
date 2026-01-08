@@ -30,11 +30,25 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Toggle } from "@/components/ui/toggle"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ChatMessage, StreamingMessage, TypingIndicator } from "./ChatMessage"
 import { ContextChipList } from "@/components/review/ContextChip"
 import { useReviewContext } from "@/contexts/ReviewContext"
 import { REVIEW_LIMITS } from "@/types/review"
 import type { ChatMessage as ChatMessageType, ArtifactType } from "@/types"
+
+/** Model info for the model selector */
+interface ChatModelInfo {
+  id: string
+  name: string
+  provider: string
+}
 
 interface RevisionChatPanelProps {
   /** Array of messages to display */
@@ -48,7 +62,7 @@ interface RevisionChatPanelProps {
   /** Error to display */
   error?: Error | null
   /** Callback when user sends a chat message (for questions, NOT regeneration) */
-  onSendMessage: (content: string, options?: { enableWebSearch?: boolean }) => void
+  onSendMessage: (content: string, options?: { enableWebSearch?: boolean; model?: string }) => void
   /** Callback when user clicks "Generate Preview" button */
   onGeneratePreview: () => void
   /** Whether preview generation is in progress */
@@ -71,6 +85,12 @@ interface RevisionChatPanelProps {
   maxMessageLength?: number
   /** Additional CSS classes for the container */
   className?: string
+  /** Currently selected model */
+  selectedModel?: string
+  /** Callback when model changes */
+  onModelChange?: (model: string) => void
+  /** Available models for selection */
+  availableModels?: ChatModelInfo[]
 }
 
 export function RevisionChatPanel({
@@ -91,6 +111,9 @@ export function RevisionChatPanel({
   onToggle,
   maxMessageLength = 2000,
   className,
+  selectedModel,
+  onModelChange,
+  availableModels,
 }: RevisionChatPanelProps) {
   const [input, setInput] = React.useState("")
   const [webSearchEnabled, setWebSearchEnabled] = React.useState(false)
@@ -132,14 +155,17 @@ export function RevisionChatPanel({
   const handleSubmit = React.useCallback(() => {
     if (!canSubmit) return
 
-    onSendMessage(input.trim(), { enableWebSearch: webSearchEnabled })
+    onSendMessage(input.trim(), {
+      enableWebSearch: webSearchEnabled,
+      model: selectedModel,
+    })
     setInput("")
 
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto"
     }
-  }, [canSubmit, input, webSearchEnabled, onSendMessage])
+  }, [canSubmit, input, webSearchEnabled, selectedModel, onSendMessage])
 
   // Handle keyboard shortcuts
   const handleKeyDown = React.useCallback(
@@ -384,6 +410,26 @@ export function RevisionChatPanel({
             {/* Controls row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
+                {/* Model selector */}
+                {availableModels && availableModels.length > 0 && (
+                  <Select
+                    value={selectedModel}
+                    onValueChange={onModelChange}
+                  >
+                    <SelectTrigger className="h-8 w-[160px] text-xs">
+                      <SelectValue placeholder="Select model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate">{model.name}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <Toggle
                   pressed={webSearchEnabled}
                   onPressedChange={setWebSearchEnabled}

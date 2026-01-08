@@ -5,6 +5,7 @@ from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.newsletter import Base, Newsletter, ProcessingStatus
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
+from src.models.settings import PromptOverride
 from src.models.summary import NewsletterSummary, SummaryData
 from src.models.theme import ThemeAnalysis
 
@@ -37,4 +38,6 @@ __all__ = [
     "RevisionContext",
     "RevisionResult",
     "RevisionTurn",
+    # Settings
+    "PromptOverride",
 ]

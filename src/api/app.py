@@ -15,6 +15,7 @@ from src.api.digest_routes import router as digest_router
 from src.api.newsletter_routes import router as newsletter_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.script_routes import router as script_router
+from src.api.settings_routes import router as settings_router
 from src.api.summary_routes import router as summary_router
 from src.api.theme_routes import router as theme_router
 
@@ -54,6 +55,7 @@ app.include_router(digest_router)
 app.include_router(podcast_router)
 app.include_router(theme_router)
 app.include_router(chat_router)
+app.include_router(settings_router)
 
 
 @app.get("/health", tags=["system"])

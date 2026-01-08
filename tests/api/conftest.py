@@ -33,6 +33,7 @@ from src.models.podcast import (
     PodcastScriptRecord,
     PodcastStatus,
 )
+from src.models.settings import PromptOverride  # noqa: F401 - registers with Base.metadata
 from src.models.summary import NewsletterSummary
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 
@@ -111,6 +112,8 @@ def client(db_session) -> Generator[TestClient, None, None]:
         patch("src.api.digest_routes.get_db", mock_get_db),
         patch("src.api.podcast_routes.get_db", mock_get_db),
         patch("src.api.script_routes.get_db", mock_get_db),
+        patch("src.api.chat_routes.get_db", mock_get_db),
+        patch("src.api.settings_routes.get_db", mock_get_db),
         patch("src.services.script_review_service.get_db", mock_get_db),
         patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):
