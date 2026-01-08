@@ -61,3 +61,25 @@ export {
   useApprovedScripts,
   useGenerateAudio,
 } from "./use-podcasts"
+
+// Theme hooks
+export {
+  useAnalyzeThemes,
+  useAnalysisStatus,
+  useLatestAnalysis,
+  useAnalysesList,
+} from "./use-themes"
+
+// Chat hooks
+export {
+  useChatConfig,
+  useConversations,
+  useConversation,
+  useConversationsForArtifact,
+  useCreateConversation,
+  useDeleteConversation,
+  useSendMessage,
+  useRegenerateMessage,
+  useApplySuggestedAction,
+  useChatSession,
+} from "./use-chat"

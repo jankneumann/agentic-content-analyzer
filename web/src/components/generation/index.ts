@@ -18,3 +18,6 @@ export type { IngestParams } from "./IngestNewslettersDialog"
 
 export { GenerateAudioDialog } from "./GenerateAudioDialog"
 export type { AudioGenerationParams } from "./GenerateAudioDialog"
+
+export { AnalyzeThemesDialog } from "./AnalyzeThemesDialog"
+export type { ThemeAnalysisParams } from "./AnalyzeThemesDialog"

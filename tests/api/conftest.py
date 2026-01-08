@@ -112,6 +112,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
         patch("src.api.podcast_routes.get_db", mock_get_db),
         patch("src.api.script_routes.get_db", mock_get_db),
         patch("src.services.script_review_service.get_db", mock_get_db),
+        patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):
         with TestClient(app) as test_client:
             yield test_client

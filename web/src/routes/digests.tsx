@@ -183,9 +183,39 @@ function DigestsPage() {
       },
       {
         onSuccess: () => {
-          completeTask(taskId, "Digest generated successfully")
-          toast.success(`${params.digest_type === "daily" ? "Daily" : "Weekly"} digest generated`)
-          refetch()
+          // API returns "queued" - actual work happens in background
+          // Poll for completion by checking digest list
+          updateTask(taskId, { progress: 20, message: "Generating digest content..." })
+
+          let pollCount = 0
+          const maxPolls = 60 // 5 minutes max (5s intervals)
+
+          const pollInterval = setInterval(async () => {
+            pollCount++
+            const progressPercent = Math.min(20 + pollCount * 1.3, 95)
+            updateTask(taskId, {
+              progress: Math.round(progressPercent),
+              message: pollCount < 10 ? "Analyzing summaries..." :
+                       pollCount < 20 ? "Building strategic insights..." :
+                       pollCount < 30 ? "Identifying trends..." : "Finalizing digest..."
+            })
+
+            // Refetch to check status
+            const result = await refetch()
+            const newDigest = result.data?.find(
+              (d) => d.status === "PENDING_REVIEW" || d.status === "COMPLETED"
+            )
+
+            if (newDigest || pollCount >= maxPolls) {
+              clearInterval(pollInterval)
+              if (newDigest) {
+                completeTask(taskId, "Digest generated successfully")
+                toast.success(`${params.digest_type === "daily" ? "Daily" : "Weekly"} digest generated`)
+              } else {
+                updateTask(taskId, { progress: 95, message: "Generation in progress..." })
+              }
+            }
+          }, 5000)
         },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
@@ -196,7 +226,7 @@ function DigestsPage() {
     )
 
     // Update progress indicator
-    updateTask(taskId, { progress: 10, message: "Preparing summaries..." })
+    updateTask(taskId, { progress: 10, message: "Queuing generation..." })
   }
 
   const handleApprove = (digestId: number) => {

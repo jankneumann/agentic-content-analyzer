@@ -26,7 +26,6 @@ import type {
   NewsletterFilters,
   SummaryFilters,
   DigestFilters,
-  ThemeAnalysisFilters,
 } from "@/types"
 
 /**
@@ -80,12 +79,17 @@ export const themeKeys = {
 
   /** Key for theme analysis lists */
   lists: () => [...themeKeys.all, "list"] as const,
-  list: (filters?: ThemeAnalysisFilters) =>
-    [...themeKeys.lists(), filters] as const,
+  list: (limit?: number) => [...themeKeys.lists(), { limit }] as const,
 
   /** Key for single theme analysis */
   details: () => [...themeKeys.all, "detail"] as const,
   detail: (id: string) => [...themeKeys.details(), id] as const,
+
+  /** Key for analysis status */
+  analysis: (id: number) => [...themeKeys.all, "analysis", id] as const,
+
+  /** Key for latest analysis */
+  latest: [...["themes"], "latest"] as const,
 
   /** Key for theme graph data */
   graph: (id: string) => [...themeKeys.detail(id), "graph"] as const,

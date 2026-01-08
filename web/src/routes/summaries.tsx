@@ -131,6 +131,21 @@ function SummariesPage() {
       message: "Starting summarization...",
     })
 
+    // Track progress from SSE via mutation's progress state
+    let lastProgress = 0
+    const progressInterval = setInterval(() => {
+      if (summarizeMutation.progress) {
+        const p = summarizeMutation.progress
+        if (p.progress !== lastProgress) {
+          lastProgress = p.progress
+          updateTask(taskId, {
+            progress: p.progress,
+            message: p.message || `Processing ${p.processed || 0}/${p.total || count}...`
+          })
+        }
+      }
+    }, 500)
+
     summarizeMutation.mutate(
       {
         newsletter_ids: params.newsletter_ids,
@@ -138,11 +153,13 @@ function SummariesPage() {
       },
       {
         onSuccess: () => {
+          clearInterval(progressInterval)
           completeTask(taskId, "Summarization complete")
           toast.success(`Summarized ${count} newsletters`)
           refetch()
         },
         onError: (err) => {
+          clearInterval(progressInterval)
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
           failTask(taskId, errorMsg)
           toast.error(`Failed to summarize: ${errorMsg}`)
@@ -151,7 +168,7 @@ function SummariesPage() {
     )
 
     // Update progress indicator
-    updateTask(taskId, { progress: 5, message: "Processing newsletters..." })
+    updateTask(taskId, { progress: 5, message: "Queuing summarization..." })
   }
 
   return (

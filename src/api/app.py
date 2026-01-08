@@ -10,11 +10,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.chat_routes import router as chat_router
 from src.api.digest_routes import router as digest_router
 from src.api.newsletter_routes import router as newsletter_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.script_routes import router as script_router
 from src.api.summary_routes import router as summary_router
+from src.api.theme_routes import router as theme_router
 
 
 @asynccontextmanager
@@ -50,6 +52,8 @@ app.include_router(summary_router)
 app.include_router(script_router)
 app.include_router(digest_router)
 app.include_router(podcast_router)
+app.include_router(theme_router)
+app.include_router(chat_router)
 
 
 @app.get("/health", tags=["system"])
@@ -65,7 +69,7 @@ async def get_system_config():
         "version": "0.1.0",
         "features": {
             "sse_enabled": True,
-            "chat_enabled": False,  # Phase 2
-            "themes_enabled": False,  # Phase 2
+            "chat_enabled": True,
+            "themes_enabled": True,
         },
     }

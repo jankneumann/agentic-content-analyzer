@@ -320,6 +320,7 @@ export interface PodcastListItem {
   audio_format: string
   voice_provider: string | null
   status: string
+  error_message: string | null
   created_at: string | null
   completed_at: string | null
 }

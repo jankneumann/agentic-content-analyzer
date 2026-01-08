@@ -18,6 +18,7 @@ import {
   Volume2,
   Download,
   Sparkles,
+  BarChart3,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
@@ -45,6 +46,7 @@ const taskTypeIcons: Record<TaskType, React.ReactNode> = {
   summary: <Sparkles className="h-4 w-4" />,
   audio: <Volume2 className="h-4 w-4" />,
   ingest: <Download className="h-4 w-4" />,
+  themes: <BarChart3 className="h-4 w-4" />,
 }
 
 /**

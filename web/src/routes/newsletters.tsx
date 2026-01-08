@@ -183,6 +183,9 @@ function NewslettersPage() {
       message: "Starting ingestion...",
     })
 
+    // Track initial count for comparison
+    const initialCount = data?.total ?? 0
+
     ingestMutation.mutate(
       {
         source: params.source,
@@ -191,9 +194,45 @@ function NewslettersPage() {
       },
       {
         onSuccess: () => {
-          completeTask(taskId, "Ingestion complete")
-          toast.success(`Ingested newsletters from ${sourceName}`)
-          refetch()
+          // API returns "queued" - actual work happens in background
+          // Poll for completion by checking for new newsletters
+          updateTask(taskId, { progress: 20, message: `Fetching from ${sourceName}...` })
+
+          let pollCount = 0
+          const maxPolls = 60 // 5 minutes max (5s intervals)
+
+          const pollInterval = setInterval(async () => {
+            pollCount++
+            const progressPercent = Math.min(20 + pollCount * 1.3, 95)
+            updateTask(taskId, {
+              progress: Math.round(progressPercent),
+              message:
+                pollCount < 10
+                  ? `Connecting to ${sourceName}...`
+                  : pollCount < 20
+                    ? "Fetching newsletters..."
+                    : pollCount < 30
+                      ? "Processing content..."
+                      : "Finalizing ingestion...",
+            })
+
+            const result = await refetch()
+            const newCount = result.data?.total ?? 0
+
+            // Check if we have new newsletters or if we've been polling too long
+            if (newCount > initialCount || pollCount >= maxPolls) {
+              clearInterval(pollInterval)
+              if (newCount > initialCount) {
+                const ingestedCount = newCount - initialCount
+                completeTask(taskId, `Ingested ${ingestedCount} newsletter${ingestedCount > 1 ? "s" : ""}`)
+                toast.success(`Ingested ${ingestedCount} newsletter${ingestedCount > 1 ? "s" : ""} from ${sourceName}`)
+              } else {
+                // No new newsletters found - could be duplicates or empty inbox
+                completeTask(taskId, "No new newsletters found")
+                toast.info(`No new newsletters found in ${sourceName}`)
+              }
+            }
+          }, 5000)
         },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
@@ -204,7 +243,7 @@ function NewslettersPage() {
     )
 
     // Update progress indicator
-    updateTask(taskId, { progress: 5, message: `Fetching from ${sourceName}...` })
+    updateTask(taskId, { progress: 10, message: "Queuing ingestion..." })
   }
 
   return (
