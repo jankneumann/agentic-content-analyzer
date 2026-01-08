@@ -25,6 +25,7 @@ import { RevisionChatPanel } from "@/components/chat"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useNewsletterWithSummary } from "@/hooks/use-newsletters"
 import { useSummaryNavigation } from "@/hooks/use-summaries"
+import { useChatConfig } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -203,6 +204,17 @@ function ReviewContent({
   const [messages, setMessages] = React.useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = React.useState(false)
   const [streamingContent, setStreamingContent] = React.useState("")
+
+  // Chat config and model selection
+  const { data: chatConfig } = useChatConfig()
+  const [selectedModel, setSelectedModel] = React.useState<string | undefined>()
+
+  // Set default model when config loads
+  React.useEffect(() => {
+    if (chatConfig?.defaultModel && !selectedModel) {
+      setSelectedModel(chatConfig.defaultModel)
+    }
+  }, [chatConfig?.defaultModel, selectedModel])
 
   const isPreviewMode = previewData !== null
 
@@ -450,6 +462,9 @@ function ReviewContent({
           isAccepting={isAccepting}
           isExpanded={isPanelExpanded}
           onToggle={() => setIsPanelExpanded(!isPanelExpanded)}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          availableModels={chatConfig?.availableModels}
         />
       </div>
 

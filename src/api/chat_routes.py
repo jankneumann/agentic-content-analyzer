@@ -5,9 +5,9 @@ Endpoints for AI revision chatbot functionality.
 Includes SSE streaming for real-time message responses.
 """
 
-import asyncio
 import json
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Literal
 
@@ -16,10 +16,15 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
 
+from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
+from src.services.chat_service import ChatService
+from src.services.prompt_service import PromptService
 from src.storage.database import get_db
+from src.utils.logging import get_logger
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+logger = get_logger(__name__)
 
 
 # ============================================================================
@@ -213,34 +218,105 @@ def conversation_to_list_item(conv: Conversation) -> ConversationListItem:
     )
 
 
+async def generate_ai_response_streaming(
+    conversation: Conversation,
+    user_message: str,
+    enable_web_search: bool = False,
+    model: str | None = None,
+) -> AsyncGenerator[tuple[str, MessageMetadata | None], None]:
+    """Generate streaming AI response for the conversation.
+
+    Uses ChatService for actual LLM calls with multi-provider support.
+
+    Yields:
+        Tuples of (content_chunk, metadata_or_none)
+        - Content chunks have metadata=None
+        - Final yield has empty content and MessageMetadata
+    """
+    # Get default model if not specified
+    model = model or DEFAULT_MODELS.get("digest_revision", "claude-sonnet-4-5")
+
+    # Build messages from conversation history
+    messages: list[dict[str, str]] = []
+    for msg in conversation.messages:
+        messages.append({"role": msg.role, "content": msg.content})
+    messages.append({"role": "user", "content": user_message})
+
+    # Get system prompt from PromptService
+    prompt_service = PromptService()
+    system_prompt = prompt_service.get_chat_prompt(conversation.artifact_type)
+
+    # Create chat service
+    model_config = get_model_config()
+    chat_service = ChatService(model_config)
+
+    logger.info(
+        f"Generating chat response: model={model}, artifact={conversation.artifact_type}, "
+        f"web_search={enable_web_search}"
+    )
+
+    try:
+        async for chunk, chat_meta in chat_service.generate_response(
+            messages=messages,
+            model=model,
+            system_prompt=system_prompt,
+        ):
+            if chat_meta:
+                # Final chunk with metadata
+                metadata = MessageMetadata(
+                    model=chat_meta.model,
+                    token_usage=chat_meta.input_tokens + chat_meta.output_tokens,
+                    web_search_used=enable_web_search,
+                    processing_time_ms=chat_meta.processing_time_ms,
+                )
+                yield "", metadata
+            else:
+                yield chunk, None
+    except Exception as e:
+        logger.error(f"Error generating AI response: {e}")
+        # Yield error as content
+        yield f"\n\n[Error: {e!s}]", None
+        # Yield minimal metadata
+        metadata = MessageMetadata(
+            model=model,
+            token_usage=0,
+            web_search_used=enable_web_search,
+            processing_time_ms=0,
+        )
+        yield "", metadata
+
+
 async def generate_ai_response(
     conversation: Conversation,
     user_message: str,
     enable_web_search: bool = False,
     model: str | None = None,
 ) -> tuple[str, MessageMetadata]:
-    """Generate AI response for the conversation.
+    """Generate AI response for the conversation (non-streaming).
 
-    This is a placeholder that should be replaced with actual LLM integration.
-    Returns streaming chunks via SSE.
+    This is a convenience wrapper that collects the full response.
+    For streaming, use generate_ai_response_streaming directly.
     """
-    # TODO: Replace with actual LLM integration
-    # For now, return a mock response
-    response = f"I understand you want to improve this {conversation.artifact_type}. "
-    response += f"Based on your message: '{user_message[:50]}...', "
-    response += "here are my suggestions:\n\n"
-    response += "1. Consider being more specific about the key points\n"
-    response += "2. The structure could be improved for clarity\n"
-    response += "3. Adding more context would help readers understand better"
+    content_parts: list[str] = []
+    final_metadata: MessageMetadata | None = None
 
-    metadata = MessageMetadata(
-        model=model or "claude-sonnet-4-5",
-        token_usage=150,
-        web_search_used=enable_web_search,
-        processing_time_ms=500,
-    )
+    async for chunk, metadata in generate_ai_response_streaming(
+        conversation, user_message, enable_web_search, model
+    ):
+        if metadata:
+            final_metadata = metadata
+        else:
+            content_parts.append(chunk)
 
-    return response, metadata
+    if final_metadata is None:
+        final_metadata = MessageMetadata(
+            model=model or "claude-sonnet-4-5",
+            token_usage=0,
+            web_search_used=enable_web_search,
+            processing_time_ms=0,
+        )
+
+    return "".join(content_parts), final_metadata
 
 
 # ============================================================================
@@ -250,14 +326,27 @@ async def generate_ai_response(
 
 @router.get("/config", response_model=ChatConfigResponse)
 async def get_chat_config():
-    """Get chat configuration."""
+    """Get chat configuration.
+
+    Returns available models from the model registry.
+    """
+    # Build model list from registry
+    available_models = [
+        {
+            "id": model_id,
+            "name": model_info.name,
+            "provider": model_info.family.value,  # claude, gemini, gpt
+        }
+        for model_id, model_info in MODEL_REGISTRY.items()
+    ]
+
+    # Get default from config (digest_revision for chat)
+    default_model = DEFAULT_MODELS.get("digest_revision", "claude-sonnet-4-5")
+
     return ChatConfigResponse(
-        available_models=[
-            {"id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "provider": "anthropic"},
-            {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "provider": "anthropic"},
-        ],
-        default_model="claude-sonnet-4-5",
-        web_search_enabled=True,
+        available_models=available_models,
+        default_model=default_model,
+        web_search_enabled=False,  # Web search not implemented yet
         max_message_length=2000,
         max_history_length=50,
     )
@@ -401,20 +490,33 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
             # Send start event
             yield f"data: {json.dumps({'type': 'start', 'messageId': msg_id})}\n\n"
 
-            # Generate response (with simulated streaming)
-            response_content, metadata = await generate_ai_response(
+            # Stream response using actual LLM
+            content_parts: list[str] = []
+            final_metadata: MessageMetadata | None = None
+
+            async for chunk, metadata in generate_ai_response_streaming(
                 conversation,
                 request.content,
                 enable_web_search=request.enable_web_search,
                 model=request.model,
-            )
+            ):
+                if metadata:
+                    final_metadata = metadata
+                else:
+                    content_parts.append(chunk)
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
 
-            # Simulate streaming by sending chunks
-            words = response_content.split(" ")
-            for i, word in enumerate(words):
-                chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
-                await asyncio.sleep(0.02)  # Simulate typing
+            # Combine content
+            response_content = "".join(content_parts)
+
+            # Ensure we have metadata
+            if final_metadata is None:
+                final_metadata = MessageMetadata(
+                    model=request.model or "claude-sonnet-4-5",
+                    token_usage=0,
+                    web_search_used=request.enable_web_search,
+                    processing_time_ms=0,
+                )
 
             # Save assistant message
             assistant_msg = ChatMessage(
@@ -422,10 +524,10 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
                 conversation_id=conversation_id,
                 role=MessageRole.ASSISTANT.value,
                 content=response_content,
-                model_used=metadata.model,
-                token_usage=metadata.token_usage,
-                processing_time_ms=metadata.processing_time_ms,
-                web_search_used=metadata.web_search_used,
+                model_used=final_metadata.model,
+                token_usage=final_metadata.token_usage,
+                processing_time_ms=final_metadata.processing_time_ms,
+                web_search_used=final_metadata.web_search_used,
             )
             db.add(assistant_msg)
 
@@ -434,7 +536,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
             db.commit()
 
             # Send end event with metadata
-            yield f"data: {json.dumps({'type': 'end', 'metadata': metadata.model_dump(by_alias=True)})}\n\n"
+            yield f"data: {json.dumps({'type': 'end', 'metadata': final_metadata.model_dump(by_alias=True)})}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -500,18 +602,31 @@ async def regenerate_last_message(conversation_id: str):
             # Send start event
             yield f"data: {json.dumps({'type': 'start', 'messageId': msg_id})}\n\n"
 
-            # Generate new response
-            response_content, metadata = await generate_ai_response(
+            # Stream response using actual LLM
+            content_parts: list[str] = []
+            final_metadata: MessageMetadata | None = None
+
+            async for chunk, metadata in generate_ai_response_streaming(
                 conversation,
                 user_msg.content,
-            )
+            ):
+                if metadata:
+                    final_metadata = metadata
+                else:
+                    content_parts.append(chunk)
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
 
-            # Stream response
-            words = response_content.split(" ")
-            for i, word in enumerate(words):
-                chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
-                await asyncio.sleep(0.02)
+            # Combine content
+            response_content = "".join(content_parts)
+
+            # Ensure we have metadata
+            if final_metadata is None:
+                final_metadata = MessageMetadata(
+                    model="claude-sonnet-4-5",
+                    token_usage=0,
+                    web_search_used=False,
+                    processing_time_ms=0,
+                )
 
             # Save new assistant message
             assistant_msg = ChatMessage(
@@ -519,16 +634,16 @@ async def regenerate_last_message(conversation_id: str):
                 conversation_id=conversation_id,
                 role=MessageRole.ASSISTANT.value,
                 content=response_content,
-                model_used=metadata.model,
-                token_usage=metadata.token_usage,
-                processing_time_ms=metadata.processing_time_ms,
+                model_used=final_metadata.model,
+                token_usage=final_metadata.token_usage,
+                processing_time_ms=final_metadata.processing_time_ms,
             )
             db.add(assistant_msg)
             conversation.updated_at = datetime.utcnow()
             db.commit()
 
             # Send end event
-            yield f"data: {json.dumps({'type': 'end', 'metadata': metadata.model_dump(by_alias=True)})}\n\n"
+            yield f"data: {json.dumps({'type': 'end', 'metadata': final_metadata.model_dump(by_alias=True)})}\n\n"
 
     return StreamingResponse(
         event_generator(),
