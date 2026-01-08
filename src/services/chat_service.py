@@ -265,50 +265,47 @@ class ChatService:
         system_prompt: str | None,
         start_time: float,
     ) -> AsyncGenerator[tuple[str, ChatMetadata | None], None]:
-        """Stream response from Google Generative AI API."""
-        import google.generativeai as genai
+        """Stream response from Google Gen AI API (new SDK)."""
+        from google import genai
+        from google.genai import types
 
         api_key = os.environ.get("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError("GOOGLE_API_KEY environment variable not set")
 
-        genai.configure(api_key=api_key)
+        # Create client with API key
+        client = genai.Client(api_key=api_key)
 
         # Get provider-specific model ID
         provider_model_id = self.model_config.get_provider_model_id(model, Provider.GOOGLE_AI)
 
-        # Create model with system instruction
-        gen_model = genai.GenerativeModel(
-            provider_model_id,
+        # Build contents list from messages
+        contents = []
+        for msg in messages:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
+
+        logger.debug(f"Google request: model={provider_model_id}, messages={len(contents)}")
+
+        # Configure generation with system instruction
+        config = types.GenerateContentConfig(
             system_instruction=system_prompt if system_prompt else None,
         )
 
-        # Format messages for Google
-        history = self._format_messages_google(messages[:-1])  # All but last
-        last_message = messages[-1]["content"] if messages else ""
-
-        logger.debug(f"Google request: model={provider_model_id}, history={len(history)}")
-
-        # Start chat and send message
-        chat = gen_model.start_chat(history=history)
-        response = await chat.send_message_async(last_message, stream=True)
-
-        async for chunk in response:
+        # Stream response using async API
+        input_tokens = 0
+        output_tokens = 0
+        async for chunk in await client.aio.models.generate_content_stream(
+            model=provider_model_id,
+            contents=contents,
+            config=config,
+        ):
             if chunk.text:
                 yield chunk.text, None
-
-        # Get usage metadata
-        # Note: Google's API may not provide token counts in all cases
-        input_tokens = (
-            getattr(response.usage_metadata, "prompt_token_count", 0)
-            if hasattr(response, "usage_metadata")
-            else 0
-        )
-        output_tokens = (
-            getattr(response.usage_metadata, "candidates_token_count", 0)
-            if hasattr(response, "usage_metadata")
-            else 0
-        )
+            # Track usage from final chunk
+            if hasattr(chunk, "usage_metadata") and chunk.usage_metadata:
+                input_tokens = getattr(chunk.usage_metadata, "prompt_token_count", 0) or 0
+                output_tokens = getattr(chunk.usage_metadata, "candidates_token_count", 0) or 0
 
         # Calculate metadata
         processing_time_ms = int((time.time() - start_time) * 1000)
