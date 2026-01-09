@@ -78,7 +78,7 @@ Add new settings:
 # YouTube configuration
 youtube_credentials_file: str = "youtube_credentials.json"
 youtube_token_file: str = "youtube_token.json"
-youtube_playlists: list[str] = []  # Playlist IDs to monitor
+youtube_playlists_file: str = "youtube_playlists.txt"  # Config file for playlist IDs
 youtube_api_key: str | None = None  # For public playlists only
 youtube_keyframe_extraction: bool = False  # Enable/disable keyframe extraction
 youtube_temp_dir: str = "/tmp/youtube_downloads"  # Temp storage for video downloads
@@ -88,9 +88,69 @@ youtube_slide_similarity_threshold: float = 0.85  # 0-1, higher = stricter dedup
 **Environment variables** (`.env`):
 ```bash
 YOUTUBE_API_KEY=AIza...           # Optional: for public playlists only
-YOUTUBE_PLAYLISTS=PLxxx,PLyyy     # Comma-separated playlist IDs
 YOUTUBE_KEYFRAME_EXTRACTION=false # Enable keyframe extraction
 YOUTUBE_SLIDE_SIMILARITY_THRESHOLD=0.85  # Slide dedup threshold (0-1)
+```
+
+**Playlist configuration file** (`youtube_playlists.txt`):
+```text
+# YouTube playlists to monitor for transcripts
+# Format: PLAYLIST_ID | optional description
+# Lines starting with # are comments
+
+# AI/ML Conference Talks
+PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf | Google I/O AI Sessions
+PLXtHYVsvn_b8LfVBNDz5M4v8rXhNzj7NY | AWS re:Invent ML Track
+
+# Tech Leadership
+PL-XXX | Company All-Hands Recordings
+
+# Private playlists (requires OAuth)
+PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | My Watch Later
+```
+
+**Loading playlists** (in `src/ingestion/youtube.py`):
+```python
+def load_playlists_from_config(config_file: str | None = None) -> list[dict]:
+    """
+    Load playlist IDs from configuration file.
+
+    Args:
+        config_file: Path to config file (uses settings default if None)
+
+    Returns:
+        List of dicts with 'id' and optional 'description'
+    """
+    config_path = config_file or settings.youtube_playlists_file
+
+    if not os.path.exists(config_path):
+        logger.warning(f"Playlist config file not found: {config_path}")
+        return []
+
+    playlists = []
+    with open(config_path, "r") as f:
+        for line in f:
+            line = line.strip()
+
+            # Skip empty lines and comments
+            if not line or line.startswith("#"):
+                continue
+
+            # Parse "PLAYLIST_ID | description" format
+            if "|" in line:
+                playlist_id, description = line.split("|", 1)
+                playlists.append({
+                    "id": playlist_id.strip(),
+                    "description": description.strip(),
+                })
+            else:
+                playlists.append({
+                    "id": line.strip(),
+                    "description": None,
+                })
+
+    logger.info(f"Loaded {len(playlists)} playlists from {config_path}")
+    return playlists
 ```
 
 #### Step 1.3: Install Dependencies
@@ -916,7 +976,7 @@ class YouTubeIngestionService:
         Ingest transcripts from multiple playlists.
 
         Args:
-            playlist_ids: List of playlist IDs (uses config if None)
+            playlist_ids: List of playlist IDs (uses config file if None)
             max_videos_per_playlist: Max videos per playlist
             after_date: Only process videos after this date
             force_reprocess: Reprocess existing videos
@@ -925,10 +985,12 @@ class YouTubeIngestionService:
             Total number of transcripts ingested
         """
         if playlist_ids is None:
-            playlist_ids = settings.youtube_playlists
+            # Load from config file
+            playlists = load_playlists_from_config()
+            playlist_ids = [p["id"] for p in playlists]
 
         if not playlist_ids:
-            logger.warning("No YouTube playlists configured")
+            logger.warning("No YouTube playlists configured in youtube_playlists.txt")
             return 0
 
         total = 0
@@ -1746,6 +1808,7 @@ YOUTUBE_TEMP_DIR=/tmp/youtube_downloads
 | `src/config/settings.py` | UPDATE | Add YouTube configuration |
 | `src/ingestion/youtube.py` | CREATE | YouTube client and ingestion service |
 | `src/ingestion/youtube_keyframes.py` | CREATE | Keyframe extraction (optional) |
+| `youtube_playlists.txt` | CREATE | Config file for playlist IDs |
 | `tests/test_ingestion/test_youtube.py` | CREATE | Unit and integration tests |
 | `pyproject.toml` | UPDATE | Add dependencies |
 | `alembic/versions/xxx.py` | CREATE | Database migration |
