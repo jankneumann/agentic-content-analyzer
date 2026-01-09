@@ -82,6 +82,7 @@ youtube_playlists: list[str] = []  # Playlist IDs to monitor
 youtube_api_key: str | None = None  # For public playlists only
 youtube_keyframe_extraction: bool = False  # Enable/disable keyframe extraction
 youtube_temp_dir: str = "/tmp/youtube_downloads"  # Temp storage for video downloads
+youtube_slide_similarity_threshold: float = 0.85  # 0-1, higher = stricter dedup
 ```
 
 **Environment variables** (`.env`):
@@ -89,6 +90,7 @@ youtube_temp_dir: str = "/tmp/youtube_downloads"  # Temp storage for video downl
 YOUTUBE_API_KEY=AIza...           # Optional: for public playlists only
 YOUTUBE_PLAYLISTS=PLxxx,PLyyy     # Comma-separated playlist IDs
 YOUTUBE_KEYFRAME_EXTRACTION=false # Enable keyframe extraction
+YOUTUBE_SLIDE_SIMILARITY_THRESHOLD=0.85  # Slide dedup threshold (0-1)
 ```
 
 #### Step 1.3: Install Dependencies
@@ -1043,17 +1045,30 @@ python -m src.ingestion.youtube --playlist-id PLxxxxxxx --public-only
 **File**: `src/ingestion/youtube_keyframes.py`
 
 ```python
-"""YouTube keyframe extraction for slide detection."""
+"""YouTube keyframe extraction for slide detection with deduplication."""
 
 import os
 import shutil
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 from src.config import settings
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Default similarity threshold (0-1, higher = more similar required to consider duplicate)
+DEFAULT_SIMILARITY_THRESHOLD = 0.85
+
+
+class SlideFrame(NamedTuple):
+    """A unique slide frame with metadata."""
+
+    path: str
+    timestamp: float
+    hash_value: str
+    is_representative: bool = True  # True if this is the representative frame for a slide
 
 
 class KeyframeExtractor:
@@ -1220,6 +1235,202 @@ class KeyframeExtractor:
             })
 
         return matched
+
+    def compute_image_hash(self, image_path: str) -> str | None:
+        """
+        Compute perceptual hash of an image for similarity comparison.
+
+        Uses average hash (aHash) which is fast and works well for slides.
+
+        Args:
+            image_path: Path to image file
+
+        Returns:
+            Hex string hash or None if failed
+        """
+        try:
+            import imagehash
+            from PIL import Image
+
+            img = Image.open(image_path)
+            # Use average hash - good balance of speed and accuracy for slides
+            hash_value = imagehash.average_hash(img, hash_size=16)
+            return str(hash_value)
+
+        except Exception as e:
+            logger.warning(f"Error computing hash for {image_path}: {e}")
+            return None
+
+    def compute_hash_similarity(self, hash1: str, hash2: str) -> float:
+        """
+        Compute similarity between two image hashes.
+
+        Args:
+            hash1: First hash string
+            hash2: Second hash string
+
+        Returns:
+            Similarity score between 0.0 (different) and 1.0 (identical)
+        """
+        try:
+            import imagehash
+
+            h1 = imagehash.hex_to_hash(hash1)
+            h2 = imagehash.hex_to_hash(hash2)
+
+            # Hamming distance - number of different bits
+            distance = h1 - h2
+
+            # Convert to similarity (max distance for 16x16 hash = 256)
+            max_distance = 16 * 16  # hash_size squared
+            similarity = 1.0 - (distance / max_distance)
+
+            return similarity
+
+        except Exception as e:
+            logger.warning(f"Error computing similarity: {e}")
+            return 0.0
+
+    def deduplicate_slides(
+        self,
+        frames: list[str],
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+        video_duration_seconds: float | None = None,
+    ) -> list[SlideFrame]:
+        """
+        Remove duplicate slide frames, keeping one representative per unique slide.
+
+        Uses perceptual hashing to detect similar frames. When consecutive frames
+        are similar (same slide displayed), only the first frame is kept.
+
+        Args:
+            frames: List of frame paths (should be sorted by timestamp)
+            similarity_threshold: Minimum similarity (0-1) to consider frames as same slide
+            video_duration_seconds: Optional video duration for timestamp estimation
+
+        Returns:
+            List of SlideFrame objects with unique slides only
+        """
+        if not frames:
+            return []
+
+        # Compute hashes for all frames
+        frame_hashes: list[tuple[str, str | None]] = []
+        for frame_path in frames:
+            hash_value = self.compute_image_hash(frame_path)
+            frame_hashes.append((frame_path, hash_value))
+
+        # Estimate timestamps
+        if video_duration_seconds:
+            frame_interval = video_duration_seconds / len(frames)
+        else:
+            frame_interval = 1.0  # Default 1 second if duration unknown
+
+        # Deduplicate by comparing consecutive frames
+        unique_slides: list[SlideFrame] = []
+        current_slide_hash: str | None = None
+
+        for i, (frame_path, hash_value) in enumerate(frame_hashes):
+            timestamp = i * frame_interval
+
+            if hash_value is None:
+                # Can't compare, keep the frame
+                unique_slides.append(SlideFrame(
+                    path=frame_path,
+                    timestamp=timestamp,
+                    hash_value="unknown",
+                    is_representative=True,
+                ))
+                continue
+
+            if current_slide_hash is None:
+                # First frame, always keep
+                current_slide_hash = hash_value
+                unique_slides.append(SlideFrame(
+                    path=frame_path,
+                    timestamp=timestamp,
+                    hash_value=hash_value,
+                    is_representative=True,
+                ))
+                continue
+
+            # Compare with current slide
+            similarity = self.compute_hash_similarity(current_slide_hash, hash_value)
+
+            if similarity < similarity_threshold:
+                # Different slide detected, keep this frame
+                current_slide_hash = hash_value
+                unique_slides.append(SlideFrame(
+                    path=frame_path,
+                    timestamp=timestamp,
+                    hash_value=hash_value,
+                    is_representative=True,
+                ))
+                logger.debug(
+                    f"New slide at {timestamp:.1f}s (similarity={similarity:.2f})"
+                )
+            else:
+                # Same slide, skip this frame
+                logger.debug(
+                    f"Skipping duplicate at {timestamp:.1f}s (similarity={similarity:.2f})"
+                )
+
+        logger.info(
+            f"Slide deduplication: {len(frames)} frames -> {len(unique_slides)} unique slides"
+        )
+        return unique_slides
+
+    def extract_unique_slides(
+        self,
+        video_path: str,
+        output_dir: str | None = None,
+        num_frames: int = 50,
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+        video_duration_seconds: float | None = None,
+    ) -> list[SlideFrame]:
+        """
+        Extract keyframes and deduplicate to get unique slides only.
+
+        This is the main method for slide extraction - it extracts many frames
+        then deduplicates to find distinct slides.
+
+        Args:
+            video_path: Path to video file
+            output_dir: Directory for extracted frames
+            num_frames: Number of frames to initially extract (before dedup)
+            similarity_threshold: Threshold for considering frames as same slide
+            video_duration_seconds: Video duration for timestamp calculation
+
+        Returns:
+            List of SlideFrame objects representing unique slides
+        """
+        # Extract more frames than needed, then deduplicate
+        frames = self.extract_keyframes(
+            video_path=video_path,
+            output_dir=output_dir,
+            num_frames=num_frames,
+        )
+
+        if not frames:
+            return []
+
+        # Deduplicate to get unique slides
+        unique_slides = self.deduplicate_slides(
+            frames=frames,
+            similarity_threshold=similarity_threshold,
+            video_duration_seconds=video_duration_seconds,
+        )
+
+        # Optionally clean up duplicate frame files
+        unique_paths = {slide.path for slide in unique_slides}
+        for frame_path in frames:
+            if frame_path not in unique_paths:
+                try:
+                    os.remove(frame_path)
+                except OSError:
+                    pass
+
+        return unique_slides
 ```
 
 #### Step 4.2: Integrate Keyframes with Ingestion
@@ -1232,22 +1443,50 @@ if settings.youtube_keyframe_extraction:
     from src.ingestion.youtube_keyframes import KeyframeExtractor
 
     extractor = KeyframeExtractor()
-    frames = extractor.process_video(
-        video_id=video["video_id"],
-        num_frames=10,
-        cleanup=True,
-    )
 
-    if frames:
-        # Match frames to transcript
-        video_info = self.client.get_video_details(video["video_id"])
-        duration = video_info.get("duration_seconds", 600)
+    # Download video temporarily
+    video_path = extractor.download_video(video["video_id"])
 
-        matched_frames = extractor.match_frames_to_transcript(
-            frames, segments, duration
-        )
+    if video_path:
+        try:
+            # Get video duration for timestamp calculation
+            video_info = self.client.get_video_details(video["video_id"])
+            duration = video_info.get("duration_seconds", 600)
 
-        transcript_metadata["keyframes"] = matched_frames
+            # Extract unique slides (with deduplication)
+            unique_slides = extractor.extract_unique_slides(
+                video_path=video_path,
+                num_frames=50,  # Extract many, then deduplicate
+                similarity_threshold=0.85,  # 85% similar = same slide
+                video_duration_seconds=duration,
+            )
+
+            if unique_slides:
+                # Match slides to transcript segments
+                slide_data = []
+                for slide in unique_slides:
+                    # Find transcript at this timestamp
+                    closest_segment = min(
+                        segments,
+                        key=lambda s: abs(s["start"] - slide.timestamp)
+                    )
+
+                    slide_data.append({
+                        "frame_path": slide.path,
+                        "timestamp": slide.timestamp,
+                        "timestamp_url": f"https://youtube.com/watch?v={video['video_id']}&t={int(slide.timestamp)}",
+                        "transcript_text": closest_segment["text"],
+                        "hash": slide.hash_value,
+                    })
+
+                transcript_metadata["slides"] = slide_data
+                transcript_metadata["slide_count"] = len(unique_slides)
+                logger.info(f"Extracted {len(unique_slides)} unique slides")
+
+        finally:
+            # Clean up downloaded video
+            if os.path.exists(video_path):
+                os.remove(video_path)
 ```
 
 ---
@@ -1431,6 +1670,8 @@ google-auth-oauthlib = ">=1.0.0"
 youtube-keyframes = [
     "yt-dlp>=2024.1.0",
     "katna>=0.10.0",
+    "imagehash>=4.3.0",  # Perceptual hashing for slide deduplication
+    "Pillow>=10.0.0",    # Image processing (likely already present)
 ]
 ```
 
