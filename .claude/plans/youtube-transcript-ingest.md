@@ -46,7 +46,7 @@ src/
 |----------|--------|-----------|
 | **Transcript API** | `youtube-transcript-api` | No API quota cost, no auth needed, simple to use |
 | **Playlist Access** | `google-api-python-client` | Official Google library, handles OAuth, same as Gmail |
-| **Keyframe Extraction** | `katna` + `yt-dlp` | Best Python libraries for this purpose |
+| **Keyframe Extraction** | `ffmpeg` + `yt-dlp` | Fast, reliable, scene detection built-in |
 | **Storage Model** | Extend `Newsletter` model | Consistent with existing pipeline, minimal changes |
 | **Auth Pattern** | Reuse Gmail OAuth pattern | Unified credential management |
 
@@ -102,7 +102,7 @@ youtube-transcript-api>=0.6.0
 google-api-python-client>=2.100.0  # Already present for Gmail
 google-auth-oauthlib>=1.0.0        # Already present for Gmail
 yt-dlp>=2024.1.0                   # For video downloads (keyframes)
-katna>=0.10.0                      # For keyframe extraction
+# ffmpeg: System dependency, already installed for podcast generation
 ```
 
 #### Step 1.4: Create YouTube-Specific Models
@@ -1045,13 +1045,15 @@ python -m src.ingestion.youtube --playlist-id PLxxxxxxx --public-only
 **File**: `src/ingestion/youtube_keyframes.py`
 
 ```python
-"""YouTube keyframe extraction for slide detection with deduplication."""
+"""YouTube keyframe extraction for slide detection using ffmpeg."""
 
 import os
+import re
 import shutil
+import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
 
 from src.config import settings
 from src.utils.logging import get_logger
@@ -1061,18 +1063,22 @@ logger = get_logger(__name__)
 # Default similarity threshold (0-1, higher = more similar required to consider duplicate)
 DEFAULT_SIMILARITY_THRESHOLD = 0.85
 
+# Default scene change threshold for ffmpeg (0-1, lower = more sensitive)
+DEFAULT_SCENE_THRESHOLD = 0.3
 
-class SlideFrame(NamedTuple):
+
+@dataclass
+class SlideFrame:
     """A unique slide frame with metadata."""
 
     path: str
     timestamp: float
-    hash_value: str
-    is_representative: bool = True  # True if this is the representative frame for a slide
+    hash_value: str = ""
+    is_representative: bool = True
 
 
 class KeyframeExtractor:
-    """Extract keyframes from YouTube videos for slide detection."""
+    """Extract keyframes from YouTube videos using ffmpeg scene detection."""
 
     def __init__(self, output_dir: str | None = None) -> None:
         """
@@ -1083,6 +1089,21 @@ class KeyframeExtractor:
         """
         self.output_dir = output_dir or settings.youtube_temp_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        self._verify_ffmpeg()
+
+    def _verify_ffmpeg(self) -> None:
+        """Verify ffmpeg is installed."""
+        try:
+            subprocess.run(
+                ["ffmpeg", "-version"],
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise RuntimeError(
+                "ffmpeg not found. Install with: apt install ffmpeg (Linux) "
+                "or brew install ffmpeg (macOS)"
+            )
 
     def download_video(self, video_id: str) -> str | None:
         """
@@ -1119,128 +1140,202 @@ class KeyframeExtractor:
             logger.error(f"Error downloading video {video_id}: {e}")
             return None
 
-    def extract_keyframes(
+    def get_video_duration(self, video_path: str) -> float:
+        """
+        Get video duration in seconds using ffprobe.
+
+        Args:
+            video_path: Path to video file
+
+        Returns:
+            Duration in seconds
+        """
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    video_path,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return float(result.stdout.strip())
+        except Exception as e:
+            logger.warning(f"Error getting duration: {e}")
+            return 0.0
+
+    def extract_scene_changes(
         self,
         video_path: str,
         output_dir: str | None = None,
-        num_frames: int = 20,
-    ) -> list[str]:
+        scene_threshold: float = DEFAULT_SCENE_THRESHOLD,
+        max_frames: int = 100,
+    ) -> list[SlideFrame]:
         """
-        Extract keyframes from a video.
+        Extract frames at scene changes using ffmpeg.
+
+        This is ideal for presentations where slides have clear transitions.
 
         Args:
             video_path: Path to video file
             output_dir: Directory for extracted frames
-            num_frames: Target number of keyframes
+            scene_threshold: Scene detection sensitivity (0-1, lower = more frames)
+            max_frames: Maximum frames to extract
 
         Returns:
-            List of paths to extracted keyframe images
+            List of SlideFrame objects with timestamps
         """
+        if output_dir is None:
+            video_name = Path(video_path).stem
+            output_dir = os.path.join(self.output_dir, f"{video_name}_frames")
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Use ffmpeg scene detection filter
+        # Output format: frame_TIMESTAMP.jpg
+        output_pattern = os.path.join(output_dir, "frame_%06d.jpg")
+
         try:
-            from katna.video import Video
+            # Extract frames at scene changes with timestamp metadata
+            cmd = [
+                "ffmpeg",
+                "-i", video_path,
+                "-vf", f"select='gt(scene,{scene_threshold})',showinfo",
+                "-vsync", "vfr",
+                "-frame_pts", "1",
+                "-q:v", "2",  # High quality JPEG
+                output_pattern,
+                "-y",  # Overwrite
+            ]
 
-            if output_dir is None:
-                video_name = Path(video_path).stem
-                output_dir = os.path.join(self.output_dir, f"{video_name}_frames")
-
-            os.makedirs(output_dir, exist_ok=True)
-
-            vd = Video()
-            vd.extract_video_keyframes(
-                no_of_frames=num_frames,
-                file_path=video_path,
-                writer=output_dir,
+            # Run ffmpeg and capture showinfo output for timestamps
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
             )
+
+            # Parse timestamps from showinfo output
+            timestamps = self._parse_showinfo_timestamps(result.stderr)
 
             # Get list of extracted frames
-            frames = sorted(
-                [os.path.join(output_dir, f) for f in os.listdir(output_dir)
-                 if f.endswith(('.jpg', '.png'))]
+            frame_files = sorted(
+                [f for f in os.listdir(output_dir) if f.endswith('.jpg')]
+            )[:max_frames]
+
+            slides = []
+            for i, frame_file in enumerate(frame_files):
+                frame_path = os.path.join(output_dir, frame_file)
+                # Use parsed timestamp or estimate
+                timestamp = timestamps[i] if i < len(timestamps) else i * 10.0
+
+                slides.append(SlideFrame(
+                    path=frame_path,
+                    timestamp=timestamp,
+                    is_representative=True,
+                ))
+
+            logger.info(
+                f"Extracted {len(slides)} scene-change frames from {video_path}"
             )
+            return slides
 
-            logger.info(f"Extracted {len(frames)} keyframes from {video_path}")
-            return frames
-
-        except Exception as e:
-            logger.error(f"Error extracting keyframes from {video_path}: {e}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"ffmpeg error: {e.stderr}")
             return []
 
-    def process_video(
+    def extract_interval_frames(
         self,
-        video_id: str,
-        num_frames: int = 20,
-        cleanup: bool = True,
-    ) -> list[str]:
+        video_path: str,
+        output_dir: str | None = None,
+        interval_seconds: float = 5.0,
+        max_frames: int = 100,
+    ) -> list[SlideFrame]:
         """
-        Download video and extract keyframes.
+        Extract frames at fixed intervals.
+
+        Alternative to scene detection for videos without clear transitions.
 
         Args:
-            video_id: YouTube video ID
-            num_frames: Number of keyframes to extract
-            cleanup: Remove downloaded video after extraction
+            video_path: Path to video file
+            output_dir: Directory for extracted frames
+            interval_seconds: Seconds between frame captures
+            max_frames: Maximum frames to extract
 
         Returns:
-            List of paths to extracted keyframe images
+            List of SlideFrame objects with timestamps
         """
-        video_path = self.download_video(video_id)
-        if not video_path:
-            return []
+        if output_dir is None:
+            video_name = Path(video_path).stem
+            output_dir = os.path.join(self.output_dir, f"{video_name}_frames")
+
+        os.makedirs(output_dir, exist_ok=True)
+        output_pattern = os.path.join(output_dir, "frame_%06d.jpg")
 
         try:
-            frames = self.extract_keyframes(video_path, num_frames=num_frames)
-            return frames
-        finally:
-            if cleanup and video_path and os.path.exists(video_path):
-                os.remove(video_path)
-                logger.debug(f"Cleaned up video file: {video_path}")
+            # Extract one frame every N seconds
+            cmd = [
+                "ffmpeg",
+                "-i", video_path,
+                "-vf", f"fps=1/{interval_seconds}",
+                "-q:v", "2",
+                output_pattern,
+                "-y",
+            ]
 
-    def match_frames_to_transcript(
-        self,
-        frames: list[str],
-        transcript_segments: list[dict],
-        video_duration_seconds: float,
-    ) -> list[dict]:
-        """
-        Match extracted keyframes to transcript segments.
+            subprocess.run(cmd, capture_output=True, check=True)
 
-        Args:
-            frames: List of keyframe paths (named by timestamp)
-            transcript_segments: Transcript with start times
-            video_duration_seconds: Total video duration
+            # Get list of extracted frames
+            frame_files = sorted(
+                [f for f in os.listdir(output_dir) if f.endswith('.jpg')]
+            )[:max_frames]
 
-        Returns:
-            List of dicts with frame path and matched transcript text
-        """
-        if not frames or not transcript_segments:
+            slides = []
+            for i, frame_file in enumerate(frame_files):
+                frame_path = os.path.join(output_dir, frame_file)
+                timestamp = i * interval_seconds
+
+                slides.append(SlideFrame(
+                    path=frame_path,
+                    timestamp=timestamp,
+                    is_representative=True,
+                ))
+
+            logger.info(
+                f"Extracted {len(slides)} interval frames from {video_path}"
+            )
+            return slides
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"ffmpeg error: {e}")
             return []
 
-        # Estimate frame timestamps based on even distribution
-        frame_interval = video_duration_seconds / len(frames)
+    def _parse_showinfo_timestamps(self, ffmpeg_output: str) -> list[float]:
+        """
+        Parse frame timestamps from ffmpeg showinfo filter output.
 
-        matched = []
-        for i, frame_path in enumerate(frames):
-            frame_time = i * frame_interval
+        Args:
+            ffmpeg_output: stderr output from ffmpeg with showinfo
 
-            # Find closest transcript segment
-            closest_segment = min(
-                transcript_segments,
-                key=lambda s: abs(s["start"] - frame_time)
-            )
+        Returns:
+            List of timestamps in seconds
+        """
+        timestamps = []
+        # Pattern: pts_time:123.456
+        pattern = r"pts_time:(\d+\.?\d*)"
 
-            matched.append({
-                "frame_path": frame_path,
-                "frame_time": frame_time,
-                "transcript_text": closest_segment["text"],
-                "transcript_start": closest_segment["start"],
-            })
+        for match in re.finditer(pattern, ffmpeg_output):
+            timestamps.append(float(match.group(1)))
 
-        return matched
+        return timestamps
 
     def compute_image_hash(self, image_path: str) -> str | None:
         """
         Compute perceptual hash of an image for similarity comparison.
-
-        Uses average hash (aHash) which is fast and works well for slides.
 
         Args:
             image_path: Path to image file
@@ -1253,7 +1348,6 @@ class KeyframeExtractor:
             from PIL import Image
 
             img = Image.open(image_path)
-            # Use average hash - good balance of speed and accuracy for slides
             hash_value = imagehash.average_hash(img, hash_size=16)
             return str(hash_value)
 
@@ -1277,15 +1371,9 @@ class KeyframeExtractor:
 
             h1 = imagehash.hex_to_hash(hash1)
             h2 = imagehash.hex_to_hash(hash2)
-
-            # Hamming distance - number of different bits
             distance = h1 - h2
-
-            # Convert to similarity (max distance for 16x16 hash = 256)
-            max_distance = 16 * 16  # hash_size squared
-            similarity = 1.0 - (distance / max_distance)
-
-            return similarity
+            max_distance = 16 * 16
+            return 1.0 - (distance / max_distance)
 
         except Exception as e:
             logger.warning(f"Error computing similarity: {e}")
@@ -1293,90 +1381,52 @@ class KeyframeExtractor:
 
     def deduplicate_slides(
         self,
-        frames: list[str],
+        slides: list[SlideFrame],
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
-        video_duration_seconds: float | None = None,
     ) -> list[SlideFrame]:
         """
-        Remove duplicate slide frames, keeping one representative per unique slide.
-
-        Uses perceptual hashing to detect similar frames. When consecutive frames
-        are similar (same slide displayed), only the first frame is kept.
+        Remove visually similar slides, keeping one per unique visual.
 
         Args:
-            frames: List of frame paths (should be sorted by timestamp)
-            similarity_threshold: Minimum similarity (0-1) to consider frames as same slide
-            video_duration_seconds: Optional video duration for timestamp estimation
+            slides: List of SlideFrame objects (sorted by timestamp)
+            similarity_threshold: Minimum similarity to consider as duplicate
 
         Returns:
-            List of SlideFrame objects with unique slides only
+            List of unique SlideFrame objects
         """
-        if not frames:
+        if not slides:
             return []
 
-        # Compute hashes for all frames
-        frame_hashes: list[tuple[str, str | None]] = []
-        for frame_path in frames:
-            hash_value = self.compute_image_hash(frame_path)
-            frame_hashes.append((frame_path, hash_value))
+        # Compute hashes
+        for slide in slides:
+            if not slide.hash_value:
+                slide.hash_value = self.compute_image_hash(slide.path) or "unknown"
 
-        # Estimate timestamps
-        if video_duration_seconds:
-            frame_interval = video_duration_seconds / len(frames)
-        else:
-            frame_interval = 1.0  # Default 1 second if duration unknown
-
-        # Deduplicate by comparing consecutive frames
         unique_slides: list[SlideFrame] = []
-        current_slide_hash: str | None = None
+        current_hash: str | None = None
 
-        for i, (frame_path, hash_value) in enumerate(frame_hashes):
-            timestamp = i * frame_interval
-
-            if hash_value is None:
-                # Can't compare, keep the frame
-                unique_slides.append(SlideFrame(
-                    path=frame_path,
-                    timestamp=timestamp,
-                    hash_value="unknown",
-                    is_representative=True,
-                ))
+        for slide in slides:
+            if slide.hash_value == "unknown":
+                unique_slides.append(slide)
                 continue
 
-            if current_slide_hash is None:
-                # First frame, always keep
-                current_slide_hash = hash_value
-                unique_slides.append(SlideFrame(
-                    path=frame_path,
-                    timestamp=timestamp,
-                    hash_value=hash_value,
-                    is_representative=True,
-                ))
+            if current_hash is None:
+                current_hash = slide.hash_value
+                unique_slides.append(slide)
                 continue
 
-            # Compare with current slide
-            similarity = self.compute_hash_similarity(current_slide_hash, hash_value)
+            similarity = self.compute_hash_similarity(current_hash, slide.hash_value)
 
             if similarity < similarity_threshold:
-                # Different slide detected, keep this frame
-                current_slide_hash = hash_value
-                unique_slides.append(SlideFrame(
-                    path=frame_path,
-                    timestamp=timestamp,
-                    hash_value=hash_value,
-                    is_representative=True,
-                ))
-                logger.debug(
-                    f"New slide at {timestamp:.1f}s (similarity={similarity:.2f})"
-                )
+                # New unique slide
+                current_hash = slide.hash_value
+                unique_slides.append(slide)
+                logger.debug(f"New slide at {slide.timestamp:.1f}s")
             else:
-                # Same slide, skip this frame
-                logger.debug(
-                    f"Skipping duplicate at {timestamp:.1f}s (similarity={similarity:.2f})"
-                )
+                logger.debug(f"Duplicate at {slide.timestamp:.1f}s (sim={similarity:.2f})")
 
         logger.info(
-            f"Slide deduplication: {len(frames)} frames -> {len(unique_slides)} unique slides"
+            f"Deduplicated: {len(slides)} -> {len(unique_slides)} unique slides"
         )
         return unique_slides
 
@@ -1384,53 +1434,98 @@ class KeyframeExtractor:
         self,
         video_path: str,
         output_dir: str | None = None,
-        num_frames: int = 50,
+        scene_threshold: float = DEFAULT_SCENE_THRESHOLD,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
-        video_duration_seconds: float | None = None,
+        max_frames: int = 100,
     ) -> list[SlideFrame]:
         """
-        Extract keyframes and deduplicate to get unique slides only.
+        Extract unique slides using scene detection + deduplication.
 
-        This is the main method for slide extraction - it extracts many frames
-        then deduplicates to find distinct slides.
+        This is the main method - uses ffmpeg scene detection first,
+        then deduplicates similar frames.
 
         Args:
             video_path: Path to video file
             output_dir: Directory for extracted frames
-            num_frames: Number of frames to initially extract (before dedup)
-            similarity_threshold: Threshold for considering frames as same slide
-            video_duration_seconds: Video duration for timestamp calculation
+            scene_threshold: ffmpeg scene detection sensitivity
+            similarity_threshold: Perceptual hash similarity threshold
+            max_frames: Maximum frames to extract
 
         Returns:
-            List of SlideFrame objects representing unique slides
+            List of unique SlideFrame objects
         """
-        # Extract more frames than needed, then deduplicate
-        frames = self.extract_keyframes(
+        # Step 1: Extract frames at scene changes
+        slides = self.extract_scene_changes(
             video_path=video_path,
             output_dir=output_dir,
-            num_frames=num_frames,
+            scene_threshold=scene_threshold,
+            max_frames=max_frames,
         )
 
-        if not frames:
-            return []
+        if not slides:
+            # Fallback to interval extraction if scene detection fails
+            logger.info("Scene detection found no frames, falling back to intervals")
+            duration = self.get_video_duration(video_path)
+            interval = max(5.0, duration / 50)  # Aim for ~50 frames
 
-        # Deduplicate to get unique slides
+            slides = self.extract_interval_frames(
+                video_path=video_path,
+                output_dir=output_dir,
+                interval_seconds=interval,
+                max_frames=max_frames,
+            )
+
+        # Step 2: Deduplicate similar frames
         unique_slides = self.deduplicate_slides(
-            frames=frames,
+            slides=slides,
             similarity_threshold=similarity_threshold,
-            video_duration_seconds=video_duration_seconds,
         )
 
-        # Optionally clean up duplicate frame files
-        unique_paths = {slide.path for slide in unique_slides}
-        for frame_path in frames:
-            if frame_path not in unique_paths:
+        # Step 3: Clean up duplicate files
+        unique_paths = {s.path for s in unique_slides}
+        for slide in slides:
+            if slide.path not in unique_paths:
                 try:
-                    os.remove(frame_path)
+                    os.remove(slide.path)
                 except OSError:
                     pass
 
         return unique_slides
+
+    def match_slides_to_transcript(
+        self,
+        slides: list[SlideFrame],
+        transcript_segments: list[dict],
+    ) -> list[dict]:
+        """
+        Match slides to transcript segments by timestamp.
+
+        Args:
+            slides: List of SlideFrame objects
+            transcript_segments: Transcript with start times
+
+        Returns:
+            List of dicts with slide path, timestamp, and transcript text
+        """
+        if not slides or not transcript_segments:
+            return []
+
+        matched = []
+        for slide in slides:
+            # Find closest transcript segment
+            closest = min(
+                transcript_segments,
+                key=lambda s: abs(s["start"] - slide.timestamp)
+            )
+
+            matched.append({
+                "frame_path": slide.path,
+                "timestamp": slide.timestamp,
+                "transcript_text": closest["text"],
+                "transcript_start": closest["start"],
+            })
+
+        return matched
 ```
 
 #### Step 4.2: Integrate Keyframes with Ingestion
@@ -1669,9 +1764,9 @@ google-auth-oauthlib = ">=1.0.0"
 [project.optional-dependencies]
 youtube-keyframes = [
     "yt-dlp>=2024.1.0",
-    "katna>=0.10.0",
     "imagehash>=4.3.0",  # Perceptual hashing for slide deduplication
     "Pillow>=10.0.0",    # Image processing (likely already present)
+    # ffmpeg: System dependency, already installed for podcast generation
 ]
 ```
 
@@ -1699,7 +1794,7 @@ youtube-keyframes = [
 | API quota limits | Use `youtube-transcript-api` (no quota) for transcripts, only use Data API for playlist access |
 | Private playlist OAuth complexity | Reuse Gmail OAuth pattern, clear documentation |
 | Large video downloads for keyframes | Use lowest quality, cleanup after extraction, make optional |
-| Keyframe extraction dependencies (ffmpeg) | Document system requirements, make feature optional |
+| Keyframe extraction dependencies | ffmpeg already installed for podcast generation |
 
 ---
 
