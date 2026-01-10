@@ -51,7 +51,17 @@ class Settings(BaseSettings):
     youtube_credentials_file: str = "youtube_credentials.json"
     youtube_token_file: str = "youtube_token.json"
     youtube_playlists_file: str = "youtube_playlists.txt"  # Config file for playlist IDs
-    youtube_api_key: str | None = None  # For public playlists only (no OAuth needed)
+    youtube_api_key: str | None = None  # For public playlists (falls back to google_api_key)
+
+    # YouTube Keyframe Extraction (optional feature)
+    youtube_keyframe_extraction: bool = False  # Enable/disable keyframe extraction
+    youtube_temp_dir: str = (
+        "/tmp/youtube_downloads"  # Temp storage for video downloads  # noqa: S108
+    )
+    youtube_scene_threshold: float = (
+        0.3  # Scene detection sensitivity (0-1, lower = more sensitive)
+    )
+    youtube_similarity_threshold: float = 0.85  # Slide dedup threshold (0-1, higher = stricter)
 
     # Email Delivery
     sendgrid_api_key: str | None = None
@@ -98,6 +108,15 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.environment == "production"
+
+    def get_youtube_api_key(self) -> str | None:
+        """
+        Get YouTube API key with fallback to Google API key.
+
+        Returns:
+            YOUTUBE_API_KEY if set, otherwise GOOGLE_API_KEY, or None if neither set
+        """
+        return self.youtube_api_key or self.google_api_key
 
     def get_rss_feed_urls(self) -> list[str]:
         """

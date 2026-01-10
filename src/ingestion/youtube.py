@@ -85,10 +85,13 @@ class YouTubeClient:
 
     def _authenticate_api_key(self) -> None:
         """Authenticate using API key (for public playlists only)."""
-        if not settings.youtube_api_key:
-            raise ValueError("YOUTUBE_API_KEY required for public playlist access")
+        api_key = settings.get_youtube_api_key()
+        if not api_key:
+            raise ValueError(
+                "YOUTUBE_API_KEY or GOOGLE_API_KEY required for public playlist access"
+            )
 
-        self.service = build("youtube", "v3", developerKey=settings.youtube_api_key)
+        self.service = build("youtube", "v3", developerKey=api_key)
         logger.info("YouTube API client initialized (API key)")
 
     def get_playlist_videos(
@@ -347,6 +350,14 @@ class YouTubeIngestionService:
                     # Store transcript metadata as JSON
                     transcript_metadata = transcript.to_storage_dict()
 
+                    # Optional: Extract keyframes for slide detection
+                    if settings.youtube_keyframe_extraction:
+                        transcript_metadata = self._extract_keyframes(
+                            video_id=video["video_id"],
+                            transcript=transcript,
+                            transcript_metadata=transcript_metadata,
+                        )
+
                     if existing and force_reprocess:
                         # Update existing
                         existing.title = video["title"]
@@ -455,6 +466,82 @@ class YouTubeIngestionService:
                 continue
 
         return total
+
+    def _extract_keyframes(
+        self,
+        video_id: str,
+        transcript: YouTubeTranscript,
+        transcript_metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Extract keyframes from a video and add to metadata.
+
+        Args:
+            video_id: YouTube video ID
+            transcript: YouTubeTranscript object with segments
+            transcript_metadata: Existing metadata dict to augment
+
+        Returns:
+            Updated transcript_metadata with keyframe data
+        """
+        try:
+            from src.ingestion.youtube_keyframes import KeyframeExtractor
+
+            extractor = KeyframeExtractor()
+
+            # Check if ffmpeg is available
+            if not extractor.is_available():
+                logger.warning("Keyframe extraction skipped: ffmpeg not available")
+                return transcript_metadata
+
+            # Prepare transcript segments for matching
+            segments = [
+                {"text": seg.text, "start": seg.start, "duration": seg.duration}
+                for seg in transcript.segments
+            ]
+
+            # Extract keyframes
+            result = extractor.extract_keyframes_for_video(
+                video_id=video_id,
+                transcript_segments=segments,
+            )
+
+            if result.error:
+                logger.warning(f"Keyframe extraction failed: {result.error}")
+                return transcript_metadata
+
+            if result.slides:
+                # Build slide data for storage
+                slide_data = []
+                for slide in result.slides:
+                    # Find closest transcript segment
+                    closest_segment = min(
+                        segments,
+                        key=lambda s: abs(s["start"] - slide.timestamp),
+                    )
+
+                    slide_data.append(
+                        {
+                            "frame_path": slide.path,
+                            "timestamp": slide.timestamp,
+                            "timestamp_url": f"https://youtube.com/watch?v={video_id}&t={int(slide.timestamp)}",
+                            "transcript_text": closest_segment["text"],
+                            "hash": slide.hash_value,
+                        }
+                    )
+
+                transcript_metadata["slides"] = slide_data
+                transcript_metadata["slide_count"] = result.slide_count
+                transcript_metadata["extraction_method"] = result.extraction_method
+
+                logger.info(f"Added {result.slide_count} keyframes to metadata")
+
+        except ImportError:
+            logger.warning("Keyframe extraction skipped: dependencies not installed")
+        except Exception as e:
+            logger.error(f"Keyframe extraction error: {e}")
+
+        return transcript_metadata
 
 
 def main() -> None:
