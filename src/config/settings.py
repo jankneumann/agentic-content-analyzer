@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     rss_feeds: str = ""
     rss_feeds_file: str = "rss_feeds.txt"  # Optional file with one feed per line
 
+    # YouTube Configuration
+    youtube_credentials_file: str = "youtube_credentials.json"
+    youtube_token_file: str = "youtube_token.json"
+    youtube_playlists_file: str = "youtube_playlists.txt"  # Config file for playlist IDs
+    youtube_api_key: str | None = None  # For public playlists only (no OAuth needed)
+
     # Email Delivery
     sendgrid_api_key: str | None = None
 
@@ -120,6 +126,51 @@ class Settings(BaseSettings):
 
         # Remove duplicates while preserving order
         return list(dict.fromkeys(feeds))
+
+    def get_youtube_playlists(self) -> list[dict[str, str | None]]:
+        """
+        Get list of YouTube playlist configurations from config file.
+
+        Reads from youtube_playlists.txt with format:
+        PLAYLIST_ID | optional description
+        Lines starting with # are comments
+
+        Returns:
+            List of dicts with 'id' and optional 'description'
+        """
+        import os
+
+        playlists: list[dict[str, str | None]] = []
+
+        if not os.path.exists(self.youtube_playlists_file):
+            return playlists
+
+        with open(self.youtube_playlists_file) as f:
+            for line in f:
+                line = line.strip()
+
+                # Skip empty lines and comments
+                if not line or line.startswith("#"):
+                    continue
+
+                # Parse "PLAYLIST_ID | description" format
+                if "|" in line:
+                    playlist_id, description = line.split("|", 1)
+                    playlists.append(
+                        {
+                            "id": playlist_id.strip(),
+                            "description": description.strip(),
+                        }
+                    )
+                else:
+                    playlists.append(
+                        {
+                            "id": line.strip(),
+                            "description": None,
+                        }
+                    )
+
+        return playlists
 
     def get_model_config(self) -> ModelConfig:
         """
