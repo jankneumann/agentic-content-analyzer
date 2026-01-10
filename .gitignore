@@ -211,6 +211,10 @@ __marimo__/
 credentials.json
 token.json
 
+# YouTube API credentials
+youtube_credentials.json
+youtube_token.json
+
 # Local data directories (if using bind mounts instead of named volumes)
 data/
 
