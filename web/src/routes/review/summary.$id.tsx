@@ -25,7 +25,7 @@ import { RevisionChatPanel } from "@/components/chat"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useNewsletterWithSummary } from "@/hooks/use-newsletters"
 import { useSummaryNavigation } from "@/hooks/use-summaries"
-import { useChatConfig } from "@/hooks/use-chat"
+import { useChatConfig, useChatSession } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -156,6 +156,7 @@ function SummaryReviewPage() {
   return (
     <ReviewProvider>
       <ReviewContent
+        key={summary.id}
         newsletter={newsletter}
         summary={summary}
         navigation={navigation}
@@ -191,19 +192,23 @@ function ReviewContent({
   const containerRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
 
-  // Panel expansion state
-  const [isPanelExpanded, setIsPanelExpanded] = React.useState(true)
+  // Panel expansion state - start collapsed for cleaner initial view
+  const [isPanelExpanded, setIsPanelExpanded] = React.useState(false)
 
   // Preview state
   const [previewData, setPreviewData] = React.useState<SummaryPreviewData | null>(null)
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [isAccepting, setIsAccepting] = React.useState(false)
-  const [chatError, setChatError] = React.useState<Error | null>(null)
+  const [previewError, setPreviewError] = React.useState<Error | null>(null)
 
-  // Chat messages (local state for now - could be persisted via API)
-  const [messages, setMessages] = React.useState<ChatMessage[]>([])
-  const [isStreaming, setIsStreaming] = React.useState(false)
-  const [streamingContent, setStreamingContent] = React.useState("")
+  // Chat session hook - handles persistence and messaging
+  const chat = useChatSession("summary", summary.id.toString())
+
+  // Local system messages (for preview flow feedback, not persisted)
+  const [systemMessages, setSystemMessages] = React.useState<ChatMessage[]>([])
+
+  // Streaming state for preview generation (separate from chat streaming)
+  const [previewStreamingContent, setPreviewStreamingContent] = React.useState("")
 
   // Chat config and model selection
   const { data: chatConfig } = useChatConfig()
@@ -215,6 +220,20 @@ function ReviewContent({
       setSelectedModel(chatConfig.defaultModel)
     }
   }, [chatConfig?.defaultModel, selectedModel])
+
+  // Load existing conversation on mount
+  React.useEffect(() => {
+    if (chat.hasConversation && !chat.conversationId) {
+      chat.startOrContinue()
+    }
+  }, [chat.hasConversation, chat.conversationId, chat.startOrContinue])
+
+  // Merge persisted chat messages with local system messages
+  const allMessages = React.useMemo(() => {
+    return [...chat.messages, ...systemMessages].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )
+  }, [chat.messages, systemMessages])
 
   const isPreviewMode = previewData !== null
 
@@ -252,44 +271,26 @@ function ReviewContent({
     content: string,
     options?: { enableWebSearch?: boolean }
   ) => {
-    // Add user message to chat
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content,
-      timestamp: new Date().toISOString(),
+    try {
+      await chat.send(content, {
+        enableWebSearch: options?.enableWebSearch,
+        model: selectedModel,
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error("Failed to send message")
+      toast.error("Message failed", { description: error.message })
     }
-    setMessages(prev => [...prev, userMessage])
-
-    setIsStreaming(true)
-    setChatError(null)
-    setStreamingContent("")
-
-    // TODO: Integrate with actual chat API for questions
-    // For now, simulate a response about the content
-    setTimeout(() => {
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: options?.enableWebSearch
-          ? "I searched the web and found relevant information. Chat integration with web search is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback."
-          : "I understand your question. Chat integration for Q&A is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback.",
-        timestamp: new Date().toISOString(),
-      }
-      setMessages(prev => [...prev, assistantMessage])
-      setIsStreaming(false)
-    }, 1000)
-  }, [])
+  }, [chat, selectedModel])
 
   // Handle generating a preview (explicit button click)
   const handleGeneratePreview = React.useCallback(async () => {
     setIsGenerating(true)
-    setChatError(null)
-    setStreamingContent("")
+    setPreviewError(null)
+    setPreviewStreamingContent("")
 
     try {
-      // Build feedback from conversation history
-      const conversationFeedback = messages
+      // Build feedback from conversation history (use persisted chat messages)
+      const conversationFeedback = chat.messages
         .filter(m => m.role === "user")
         .map(m => m.content)
         .join("\n\n")
@@ -310,7 +311,7 @@ function ReviewContent({
         },
         (event) => {
           if (event.message) {
-            setStreamingContent(event.message)
+            setPreviewStreamingContent(event.message)
           }
         }
       )
@@ -326,32 +327,32 @@ function ReviewContent({
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error("Failed to generate preview")
-      setChatError(error)
+      setPreviewError(error)
 
-      // Add error message to chat
+      // Add error message to local system messages
       const errorMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: `Sorry, I encountered an error generating the preview: ${error.message}. Please try again.`,
         timestamp: new Date().toISOString(),
       }
-      setMessages(prev => [...prev, errorMessage])
+      setSystemMessages(prev => [...prev, errorMessage])
 
       toast.error("Generation failed", {
         description: error.message,
       })
     } finally {
       setIsGenerating(false)
-      setStreamingContent("")
+      setPreviewStreamingContent("")
     }
-  }, [summary.id, messages, contextItems])
+  }, [summary.id, chat.messages, contextItems])
 
   // Handle accept preview
   const handleAcceptPreview = React.useCallback(async () => {
     if (!previewData) return
 
     setIsAccepting(true)
-    setChatError(null)
+    setPreviewError(null)
 
     try {
       await commitSummaryPreview(summary.id.toString(), {
@@ -371,21 +372,21 @@ function ReviewContent({
       setPreviewData(null)
       clearAllContext()
 
-      // Add confirmation to chat
+      // Add confirmation to local system messages
       const confirmMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: "Great! The changes have been saved successfully. The summary has been updated.",
         timestamp: new Date().toISOString(),
       }
-      setMessages(prev => [...prev, confirmMessage])
+      setSystemMessages(prev => [...prev, confirmMessage])
 
       toast.success("Summary updated", {
         description: "The changes have been saved.",
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error("Failed to save changes")
-      setChatError(error)
+      setPreviewError(error)
       toast.error("Save failed", {
         description: error.message,
       })
@@ -397,16 +398,16 @@ function ReviewContent({
   // Handle reject preview
   const handleRejectPreview = React.useCallback(() => {
     setPreviewData(null)
-    setChatError(null)
+    setPreviewError(null)
 
-    // Add rejection note to chat
+    // Add rejection note to local system messages
     const rejectMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
       content: "No problem, I've discarded the preview. Feel free to provide more specific feedback and I'll try again.",
       timestamp: new Date().toISOString(),
     }
-    setMessages(prev => [...prev, rejectMessage])
+    setSystemMessages(prev => [...prev, rejectMessage])
 
     toast.info("Preview rejected", {
       description: "No changes were made.",
@@ -447,11 +448,11 @@ function ReviewContent({
       {/* Unified AI Revision Panel */}
       <div className="shrink-0 border-t bg-background px-4 py-3">
         <RevisionChatPanel
-          messages={messages}
-          isLoading={false}
-          isStreaming={isStreaming}
-          streamingContent={streamingContent}
-          error={chatError}
+          messages={allMessages}
+          isLoading={chat.isLoading}
+          isStreaming={chat.isStreaming || isGenerating}
+          streamingContent={chat.streamingContent || previewStreamingContent}
+          error={chat.error || previewError}
           onSendMessage={handleSendMessage}
           onGeneratePreview={handleGeneratePreview}
           isGenerating={isGenerating}
@@ -465,6 +466,7 @@ function ReviewContent({
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           availableModels={chatConfig?.availableModels}
+          conversationId={chat.conversationId}
         />
       </div>
 

@@ -31,6 +31,15 @@ import type {
   PaginatedResponse,
 } from "@/types"
 
+/** Raw API response type (snake_case) */
+interface ChatConfigApiResponse {
+  available_models: { id: string; name: string; provider: string }[]
+  default_model: string
+  web_search_enabled: boolean
+  max_message_length: number
+  max_history_length: number
+}
+
 /**
  * Fetch chat configuration
  *
@@ -39,7 +48,16 @@ import type {
  * @returns Chat configuration
  */
 export async function fetchChatConfig(): Promise<ChatConfig> {
-  return apiClient.get<ChatConfig>("/chat/config")
+  const response = await apiClient.get<ChatConfigApiResponse>("/chat/config")
+
+  // Transform snake_case to camelCase
+  return {
+    availableModels: response.available_models,
+    defaultModel: response.default_model,
+    webSearchEnabled: response.web_search_enabled,
+    maxMessageLength: response.max_message_length,
+    maxHistoryLength: response.max_history_length,
+  }
 }
 
 /**

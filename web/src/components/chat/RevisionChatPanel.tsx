@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
+  Bug,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -37,6 +38,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { ChatMessage, StreamingMessage, TypingIndicator } from "./ChatMessage"
 import { ContextChipList } from "@/components/review/ContextChip"
 import { useReviewContext } from "@/contexts/ReviewContext"
@@ -48,6 +56,16 @@ interface ChatModelInfo {
   id: string
   name: string
   provider: string
+}
+
+/** Debug context response from the API */
+interface DebugContextData {
+  system_prompt: string
+  artifact_content: string
+  full_context: string
+  artifact_type: string
+  artifact_id: number
+  message_count: number
 }
 
 interface RevisionChatPanelProps {
@@ -91,6 +109,8 @@ interface RevisionChatPanelProps {
   onModelChange?: (model: string) => void
   /** Available models for selection */
   availableModels?: ChatModelInfo[]
+  /** Conversation ID for debug context (optional) */
+  conversationId?: string | null
 }
 
 export function RevisionChatPanel({
@@ -114,12 +134,18 @@ export function RevisionChatPanel({
   selectedModel,
   onModelChange,
   availableModels,
+  conversationId,
 }: RevisionChatPanelProps) {
   const [input, setInput] = React.useState("")
   const [webSearchEnabled, setWebSearchEnabled] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+
+  // Debug context state
+  const [debugDialogOpen, setDebugDialogOpen] = React.useState(false)
+  const [debugContext, setDebugContext] = React.useState<DebugContextData | null>(null)
+  const [isLoadingDebug, setIsLoadingDebug] = React.useState(false)
 
   // Get context from ReviewContext
   const {
@@ -201,6 +227,31 @@ export function RevisionChatPanel({
     setTimeout(() => onGeneratePreview(), 100)
   }, [onRejectPreview, onGeneratePreview])
 
+  // Handle fetching debug context
+  const handleFetchDebugContext = React.useCallback(async () => {
+    if (!conversationId) return
+
+    setIsLoadingDebug(true)
+    setDebugDialogOpen(true)
+
+    try {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
+      const response = await fetch(
+        `${baseUrl}/api/v1/chat/conversations/${conversationId}/context`
+      )
+      if (!response.ok) {
+        throw new Error(`Failed to fetch context: ${response.statusText}`)
+      }
+      const data = await response.json()
+      setDebugContext(data)
+    } catch (err) {
+      console.error("Error fetching debug context:", err)
+      setDebugContext(null)
+    } finally {
+      setIsLoadingDebug(false)
+    }
+  }, [conversationId])
+
   // Collapsed state
   if (!isExpanded) {
     return (
@@ -244,13 +295,27 @@ export function RevisionChatPanel({
             </span>
           )}
         </div>
-        <button
-          onClick={onToggle}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          Collapse
-          <ChevronUp className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Debug context button - only show when conversation exists */}
+          {conversationId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleFetchDebugContext}
+              className="h-7 w-7 p-0"
+              title="View LLM context"
+            >
+              <Bug className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          )}
+          <button
+            onClick={onToggle}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Collapse
+            <ChevronUp className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Context chips (if any selected) */}
@@ -463,6 +528,55 @@ export function RevisionChatPanel({
           </div>
         </>
       )}
+
+      {/* Debug Context Dialog */}
+      <Dialog open={debugDialogOpen} onOpenChange={setDebugDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bug className="h-5 w-5" />
+              LLM Context Debug
+            </DialogTitle>
+            <DialogDescription>
+              View the full context being sent to the LLM for this conversation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden">
+            {isLoadingDebug ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : debugContext ? (
+              <ScrollArea className="h-[60vh]">
+                <div className="space-y-4 p-1">
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Artifact Info</h4>
+                    <div className="text-xs bg-muted p-2 rounded font-mono">
+                      Type: {debugContext.artifact_type} | ID: {debugContext.artifact_id} | Messages: {debugContext.message_count}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">System Prompt</h4>
+                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono">
+                      {debugContext.system_prompt}
+                    </pre>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Artifact Content</h4>
+                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-[40vh] overflow-y-auto">
+                      {debugContext.artifact_content}
+                    </pre>
+                  </div>
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Failed to load context. Make sure the conversation exists.
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -18,6 +18,10 @@ from sqlalchemy import desc
 
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
+from src.models.digest import Digest
+from src.models.newsletter import Newsletter
+from src.models.podcast import PodcastScriptRecord
+from src.models.summary import NewsletterSummary
 from src.services.chat_service import ChatService
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
@@ -218,15 +222,195 @@ def conversation_to_list_item(conv: Conversation) -> ConversationListItem:
     )
 
 
+def get_artifact_content(db, artifact_type: str, artifact_id: int) -> str:
+    """Fetch and format artifact content for LLM context.
+
+    Args:
+        db: Database session
+        artifact_type: Type of artifact (summary, digest, script)
+        artifact_id: ID of the artifact
+
+    Returns:
+        Formatted content string for injection into system prompt
+    """
+    if artifact_type == "summary":
+        # Get the summary and its associated newsletter
+        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == artifact_id).first()
+
+        if not summary:
+            return "[Summary not found]"
+
+        # Get the associated newsletter
+        newsletter = db.query(Newsletter).filter(Newsletter.id == summary.newsletter_id).first()
+
+        # Format newsletter content (limit to ~10000 chars to avoid token overflow)
+        newsletter_content = ""
+        if newsletter:
+            raw_content = newsletter.raw_text or newsletter.raw_html or ""
+            newsletter_content = raw_content[:10000]
+            if len(raw_content) > 10000:
+                newsletter_content += "\n\n[Content truncated...]"
+
+        # Format key themes, insights, etc. as bullet lists
+        key_themes = "\n".join(f"- {t}" for t in (summary.key_themes or []))
+        strategic_insights = "\n".join(f"- {i}" for i in (summary.strategic_insights or []))
+        technical_details = "\n".join(f"- {d}" for d in (summary.technical_details or []))
+        actionable_items = "\n".join(f"- {a}" for a in (summary.actionable_items or []))
+        notable_quotes = "\n".join(f'- "{q}"' for q in (summary.notable_quotes or []))
+
+        content = f"""### Source Newsletter
+**From:** {newsletter.sender if newsletter else 'Unknown'}
+**Subject:** {newsletter.title if newsletter else 'Unknown'}
+**Date:** {newsletter.published_date if newsletter else 'Unknown'}
+
+{newsletter_content}
+
+---
+
+### Summary Being Reviewed
+
+**Executive Summary:**
+{summary.executive_summary}
+
+**Key Themes:**
+{key_themes or 'None identified'}
+
+**Strategic Insights:**
+{strategic_insights or 'None identified'}
+
+**Technical Details:**
+{technical_details or 'None identified'}
+
+**Actionable Items:**
+{actionable_items or 'None identified'}
+
+**Notable Quotes:**
+{notable_quotes or 'None identified'}
+"""
+        return content
+
+    elif artifact_type == "digest":
+        digest = db.query(Digest).filter(Digest.id == artifact_id).first()
+
+        if not digest:
+            return "[Digest not found]"
+
+        # Format strategic insights
+        strategic_insights = ""
+        if digest.strategic_insights:
+            for insight in digest.strategic_insights:
+                if isinstance(insight, dict):
+                    title = insight.get("title", "")
+                    summary = insight.get("summary", "")
+                    strategic_insights += f"**{title}**\n{summary}\n\n"
+                else:
+                    strategic_insights += f"- {insight}\n"
+
+        # Format technical developments
+        technical_developments = ""
+        if digest.technical_developments:
+            for dev in digest.technical_developments:
+                if isinstance(dev, dict):
+                    title = dev.get("title", "")
+                    summary = dev.get("summary", "")
+                    technical_developments += f"**{title}**\n{summary}\n\n"
+                else:
+                    technical_developments += f"- {dev}\n"
+
+        # Format emerging trends
+        emerging_trends = ""
+        if digest.emerging_trends:
+            for trend in digest.emerging_trends:
+                if isinstance(trend, dict):
+                    title = trend.get("title", "")
+                    summary = trend.get("summary", "")
+                    emerging_trends += f"**{title}**\n{summary}\n\n"
+                else:
+                    emerging_trends += f"- {trend}\n"
+
+        content = f"""### Digest Being Reviewed
+
+**Title:** {digest.title}
+**Type:** {digest.digest_type}
+**Period:** {digest.period_start} to {digest.period_end}
+**Newsletter Count:** {digest.newsletter_count}
+
+---
+
+**Executive Overview:**
+{digest.executive_overview}
+
+---
+
+**Strategic Insights:**
+{strategic_insights or 'None identified'}
+
+**Technical Developments:**
+{technical_developments or 'None identified'}
+
+**Emerging Trends:**
+{emerging_trends or 'None identified'}
+"""
+        return content
+
+    elif artifact_type == "script":
+        script = db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == artifact_id).first()
+
+        if not script:
+            return "[Script not found]"
+
+        # Format script content from script_json
+        script_content = ""
+        if script.script_json:
+            sections = script.script_json.get("sections", [])
+            for section in sections:
+                section_type = section.get("section_type", "")
+                section_title = section.get("title", "")
+                script_content += f"\n### {section_type.upper()}: {section_title}\n\n"
+
+                dialogue = section.get("dialogue", [])
+                for turn in dialogue:
+                    speaker = turn.get("speaker", "").upper()
+                    text = turn.get("text", "")
+                    script_content += f"**{speaker}:** {text}\n\n"
+
+        # Limit script length to ~15000 chars
+        if len(script_content) > 15000:
+            script_content = script_content[:15000] + "\n\n[Script truncated...]"
+
+        content = f"""### Podcast Script Being Reviewed
+
+**Title:** {script.title}
+**Length:** {script.length}
+**Word Count:** {script.word_count}
+**Estimated Duration:** {script.estimated_duration_seconds} seconds
+
+---
+
+{script_content}
+"""
+        return content
+
+    return "[Unknown artifact type]"
+
+
 async def generate_ai_response_streaming(
     conversation: Conversation,
     user_message: str,
     enable_web_search: bool = False,
     model: str | None = None,
+    db=None,
 ) -> AsyncGenerator[tuple[str, MessageMetadata | None], None]:
     """Generate streaming AI response for the conversation.
 
     Uses ChatService for actual LLM calls with multi-provider support.
+
+    Args:
+        conversation: The conversation object
+        user_message: The user's message
+        enable_web_search: Whether to enable web search
+        model: Model to use (defaults to digest_revision model)
+        db: Database session for fetching artifact content
 
     Yields:
         Tuples of (content_chunk, metadata_or_none)
@@ -242,9 +426,23 @@ async def generate_ai_response_streaming(
         messages.append({"role": msg.role, "content": msg.content})
     messages.append({"role": "user", "content": user_message})
 
-    # Get system prompt from PromptService
+    # Get base system prompt from PromptService
     prompt_service = PromptService()
-    system_prompt = prompt_service.get_chat_prompt(conversation.artifact_type)
+    base_prompt = prompt_service.get_chat_prompt(conversation.artifact_type)
+
+    # Fetch and inject artifact content if db session is available
+    if db is not None:
+        artifact_content = get_artifact_content(
+            db, conversation.artifact_type, conversation.artifact_id
+        )
+        system_prompt = f"""{base_prompt}
+
+## Content Being Reviewed
+
+{artifact_content}
+"""
+    else:
+        system_prompt = base_prompt
 
     # Create chat service
     model_config = get_model_config()
@@ -291,6 +489,7 @@ async def generate_ai_response(
     user_message: str,
     enable_web_search: bool = False,
     model: str | None = None,
+    db=None,
 ) -> tuple[str, MessageMetadata]:
     """Generate AI response for the conversation (non-streaming).
 
@@ -301,7 +500,7 @@ async def generate_ai_response(
     final_metadata: MessageMetadata | None = None
 
     async for chunk, metadata in generate_ai_response_streaming(
-        conversation, user_message, enable_web_search, model
+        conversation, user_message, enable_web_search, model, db=db
     ):
         if metadata:
             final_metadata = metadata
@@ -427,6 +626,7 @@ async def create_conversation(request: CreateConversationRequest):
             response_content, metadata = await generate_ai_response(
                 conversation,
                 request.initial_message,
+                db=db,
             )
 
             assistant_msg = ChatMessage(
@@ -499,6 +699,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
                 request.content,
                 enable_web_search=request.enable_web_search,
                 model=request.model,
+                db=db,
             ):
                 if metadata:
                     final_metadata = metadata
@@ -609,6 +810,7 @@ async def regenerate_last_message(conversation_id: str):
             async for chunk, metadata in generate_ai_response_streaming(
                 conversation,
                 user_msg.content,
+                db=db,
             ):
                 if metadata:
                     final_metadata = metadata
@@ -729,3 +931,54 @@ async def get_messages(
             )
             for msg in messages
         ]
+
+
+class DebugContextResponse(BaseModel):
+    """Debug context response showing what's sent to the LLM."""
+
+    system_prompt: str
+    artifact_content: str
+    full_context: str
+    artifact_type: str
+    artifact_id: int
+    message_count: int
+
+
+@router.get("/conversations/{conversation_id}/context", response_model=DebugContextResponse)
+async def get_conversation_context(conversation_id: str):
+    """Debug endpoint to view what context is sent to the LLM.
+
+    Returns the system prompt, artifact content, and full context that would be
+    sent to the LLM when generating a response.
+    """
+    with get_db() as db:
+        conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Get base system prompt
+        prompt_service = PromptService()
+        base_prompt = prompt_service.get_chat_prompt(conversation.artifact_type)
+
+        # Get artifact content
+        artifact_content = get_artifact_content(
+            db, conversation.artifact_type, conversation.artifact_id
+        )
+
+        # Build full context as it would be sent to the LLM
+        full_context = f"""{base_prompt}
+
+## Content Being Reviewed
+
+{artifact_content}
+"""
+
+        return DebugContextResponse(
+            system_prompt=base_prompt,
+            artifact_content=artifact_content,
+            full_context=full_context,
+            artifact_type=conversation.artifact_type,
+            artifact_id=conversation.artifact_id,
+            message_count=len(conversation.messages),
+        )

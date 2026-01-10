@@ -24,13 +24,13 @@ import { RevisionChatPanel } from "@/components/chat"
 import type { DigestSourceSummary } from "@/lib/api/digests"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useDigest, useDigestSources, useDigestNavigation } from "@/hooks/use-digests"
-import { useChatConfig } from "@/hooks/use-chat"
+import { useChatConfig, useChatSession } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import type { NavigationInfo } from "@/types/review"
-import type { DigestDetail, ChatMessage } from "@/types"
+import type { DigestDetail } from "@/types"
 
 /**
  * Route definition for digest review page
@@ -146,6 +146,7 @@ function DigestReviewPage() {
   return (
     <ReviewProvider>
       <DigestReviewContent
+        key={digest.id}
         digest={digest}
         sources={sources}
         isLoadingSources={isLoadingSources}
@@ -182,14 +183,14 @@ function DigestReviewContent({
 }: DigestReviewContentProps) {
   const containerRef = React.useRef<HTMLDivElement>(null)
 
-  // Panel expansion state
-  const [isPanelExpanded, setIsPanelExpanded] = React.useState(true)
+  // Panel expansion state - start collapsed for cleaner initial view
+  const [isPanelExpanded, setIsPanelExpanded] = React.useState(false)
 
-  // Chat messages (local state)
-  const [messages, setMessages] = React.useState<ChatMessage[]>([])
-  const [isStreaming, setIsStreaming] = React.useState(false)
+  // Chat session hook - handles persistence and messaging
+  const chat = useChatSession("digest", digest.id.toString())
+
+  // Local state for regeneration (separate from chat)
   const [isGenerating, setIsGenerating] = React.useState(false)
-  const [chatError, setChatError] = React.useState<Error | null>(null)
 
   // Chat config and model selection
   const { data: chatConfig } = useChatConfig()
@@ -201,6 +202,13 @@ function DigestReviewContent({
       setSelectedModel(chatConfig.defaultModel)
     }
   }, [chatConfig?.defaultModel, selectedModel])
+
+  // Load existing conversation on mount
+  React.useEffect(() => {
+    if (chat.hasConversation && !chat.conversationId) {
+      chat.startOrContinue()
+    }
+  }, [chat.hasConversation, chat.conversationId, chat.startOrContinue])
 
   // Text selection hook
   const { selection, clearSelection } = useTextSelection({
@@ -232,38 +240,20 @@ function DigestReviewContent({
     content: string,
     options?: { enableWebSearch?: boolean }
   ) => {
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content,
-      timestamp: new Date().toISOString(),
+    try {
+      await chat.send(content, {
+        enableWebSearch: options?.enableWebSearch,
+        model: selectedModel,
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error("Failed to send message")
+      toast.error("Message failed", { description: error.message })
     }
-    setMessages(prev => [...prev, userMessage])
-
-    setIsStreaming(true)
-    setChatError(null)
-
-    // TODO: Integrate with actual chat API for questions
-    // For now, simulate a response about the content
-    setTimeout(() => {
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: options?.enableWebSearch
-          ? "I searched the web and found relevant information. Chat integration with web search is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback."
-          : "I understand your question about the digest. Chat integration for Q&A is coming soon - for now, use the 'Generate Preview' button to create revisions based on your feedback.",
-        timestamp: new Date().toISOString(),
-      }
-      setMessages(prev => [...prev, assistantMessage])
-      setIsStreaming(false)
-    }, 1000)
-  }, [])
+  }, [chat, selectedModel])
 
   // Handle generating a preview (explicit button click)
   const handleGeneratePreview = React.useCallback(async () => {
     setIsGenerating(true)
-    setChatError(null)
 
     // TODO: Implement actual digest regeneration
     // For now, show placeholder response
@@ -305,10 +295,11 @@ function DigestReviewContent({
       {/* Unified AI Revision Panel */}
       <div className="shrink-0 border-t bg-background px-4 py-3">
         <RevisionChatPanel
-          messages={messages}
-          isLoading={false}
-          isStreaming={isStreaming}
-          error={chatError}
+          messages={chat.messages}
+          isLoading={chat.isLoading}
+          isStreaming={chat.isStreaming}
+          streamingContent={chat.streamingContent}
+          error={chat.error}
           onSendMessage={handleSendMessage}
           onGeneratePreview={handleGeneratePreview}
           isGenerating={isGenerating}
@@ -318,6 +309,7 @@ function DigestReviewContent({
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           availableModels={chatConfig?.availableModels}
+          conversationId={chat.conversationId}
         />
       </div>
 

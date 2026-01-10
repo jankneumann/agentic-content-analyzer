@@ -508,6 +508,94 @@ def get_rss_feed_urls(self) -> list[str]:
     return list(dict.fromkeys(feeds))
 ```
 
+## React/Frontend Patterns
+
+### Component Reset with Key Prop
+
+When a component needs to fully reset its state based on a prop change (like navigating between items in a list), use a `key` prop instead of complex `useEffect` logic.
+
+**Problem**: React doesn't remount components when only props change. Internal state persists.
+
+```tsx
+// BUG: When navigating from item 1 to item 2, the chat shows item 1's messages
+function ReviewPage({ itemId }) {
+  const chat = useChatSession("summary", itemId)  // Hook keeps old state!
+  // ...
+}
+```
+
+**Solution**: Add a `key` prop to force remounting:
+
+```tsx
+// CORRECT: Component remounts when itemId changes
+<ReviewContent
+  key={item.id}  // Forces full remount on navigation
+  item={item}
+  // ...
+/>
+```
+
+**When to use `key` for reset**:
+- Navigating between detail pages (prev/next buttons)
+- Switching between tabs with independent state
+- Any time internal hooks need to reinitialize with new props
+
+**Anti-pattern to avoid**:
+```tsx
+// AVOID: Complex useEffect reset logic
+useEffect(() => {
+  setMessages([])
+  setConversationId(null)
+  setIsStreaming(false)
+  // ... reset every piece of state
+}, [itemId])
+```
+
+### Prefer Existing Hooks Over Manual State
+
+Before implementing manual state management, check if existing hooks already handle the use case.
+
+**Example**: The `useChatSession` hook already provided:
+- Conversation fetching by artifact
+- Automatic conversation loading
+- Streaming state management
+- Error handling
+
+Instead of manually managing `messages`, `conversationId`, `isStreaming`, etc., use the hook:
+
+```tsx
+// BEFORE: 50+ lines of manual state management
+const [messages, setMessages] = useState([])
+const [conversationId, setConversationId] = useState(null)
+const [isStreaming, setIsStreaming] = useState(false)
+const [streamingContent, setStreamingContent] = useState("")
+const [error, setError] = useState(null)
+// ... complex handlers
+
+// AFTER: 3 lines
+const chat = useChatSession("summary", summaryId)
+// Use: chat.messages, chat.isStreaming, chat.send(), etc.
+```
+
+### Merging Local and Persisted State
+
+When you need both persisted state (from API) and local ephemeral state, merge them:
+
+```tsx
+// Persisted chat messages from API
+const chat = useChatSession("summary", summaryId)
+
+// Local system messages (feedback, confirmations - not persisted)
+const [systemMessages, setSystemMessages] = useState([])
+
+// Merge and sort by timestamp for display
+const allMessages = useMemo(() => {
+  return [...chat.messages, ...systemMessages].sort(
+    (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+  )
+}, [chat.messages, systemMessages])
+```
+
 ## Database Patterns
 
 ### SQLAlchemy Session Management
