@@ -77,6 +77,12 @@ models:
     supports_video: true  # Native YouTube URL support
     default_version: ""
 
+  gemini-2.0-flash:
+    family: gemini
+    name: "Gemini 2.0 Flash"
+    supports_vision: true
+    supports_video: true  # Native YouTube URL support
+    default_version: ""
 
   # OpenAI GPT-4o Family
   gpt-5.2:
@@ -196,22 +202,7 @@ provider_model_configs:
     max_output_tokens: 8192
     tier: on-demand
 
-  # Gemini 2.0 Flash
-  google_ai.gemini-2.0-flash:
-    provider_model_id: "gemini-2.0-flash-exp"  # Google AI Studio identifier
-    cost_per_mtok_input: 0.075  # Extremely cheap
-    cost_per_mtok_output: 0.30
-    context_window: 1000000  # 1M token context
-    max_output_tokens: 8192
-    tier: standard
 
-  google_vertex.gemini-2.0-flash:
-    provider_model_id: "gemini-2.0-flash-exp"  # Vertex AI identifier
-    cost_per_mtok_input: 0.075
-    cost_per_mtok_output: 0.30
-    context_window: 1000000
-    max_output_tokens: 8192
-    tier: standard
 
   # Gemini 3.0 Pro
   google_ai.gemini-3-pro:
@@ -249,6 +240,14 @@ provider_model_configs:
     max_output_tokens: 65536
     tier: standard
 
+  # Gemini 2.0 Flash
+  google_ai.gemini-2.0-flash:
+    provider_model_id: "gemini-2.0-flash"
+    cost_per_mtok_input: 0.15 # 1.00 for audio input
+    cost_per_mtok_output: 0.60
+    context_window: 1048576  # 1M token context
+    max_output_tokens: 8192
+    tier: standard
 
   # GPT-5.2
   openai.gpt-5.2:
