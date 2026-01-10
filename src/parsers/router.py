@@ -31,8 +31,9 @@ class ParserRouter:
         "md": "markitdown",
         "epub": "markitdown",
         "msg": "markitdown",
-        # MarkItDown exclusive formats
-        "youtube": "markitdown",
+        # YouTube - specialized parser with timestamp support
+        "youtube": "youtube",
+        # Audio - MarkItDown handles these
         "mp3": "markitdown",
         "wav": "markitdown",
         "m4a": "markitdown",
@@ -51,6 +52,7 @@ class ParserRouter:
         self,
         markitdown_parser: "DocumentParser",
         docling_parser: Optional["DocumentParser"] = None,
+        youtube_parser: Optional["DocumentParser"] = None,
         default_parser: str = "markitdown",
     ):
         """Initialize the parser router.
@@ -58,6 +60,7 @@ class ParserRouter:
         Args:
             markitdown_parser: MarkItDown parser instance (always required)
             docling_parser: Optional Docling parser for advanced PDF/OCR
+            youtube_parser: Optional YouTube parser for timestamped transcripts
             default_parser: Parser to use for unknown formats
         """
         self.parsers: dict[str, DocumentParser] = {
@@ -65,9 +68,12 @@ class ParserRouter:
         }
         if docling_parser:
             self.parsers["docling"] = docling_parser
+        if youtube_parser:
+            self.parsers["youtube"] = youtube_parser
 
         self.default_parser = default_parser
         self._has_docling = docling_parser is not None
+        self._has_youtube = youtube_parser is not None
 
     def route(
         self,
@@ -103,9 +109,12 @@ class ParserRouter:
         # Use routing table
         parser_name = self.ROUTING_TABLE.get(detected_format, self.default_parser)
 
-        # Fallback to markitdown if docling not available
+        # Fallback to markitdown if specialized parser not available
         if parser_name == "docling" and not self._has_docling:
             logger.debug(f"Routing {source} to markitdown (docling not available)")
+            parser_name = "markitdown"
+        elif parser_name == "youtube" and not self._has_youtube:
+            logger.debug(f"Routing {source} to markitdown (youtube parser not available)")
             parser_name = "markitdown"
         else:
             logger.debug(f"Routing {source} to {parser_name}")
@@ -183,3 +192,8 @@ class ParserRouter:
     def has_docling(self) -> bool:
         """Whether Docling parser is available."""
         return self._has_docling
+
+    @property
+    def has_youtube(self) -> bool:
+        """Whether YouTube parser is available."""
+        return self._has_youtube

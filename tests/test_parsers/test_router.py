@@ -185,9 +185,11 @@ class TestParserRouterRoutingTable:
         assert table.get("pptx") == "markitdown"
         assert table.get("xlsx") == "markitdown"
         assert table.get("html") == "markitdown"
-        assert table.get("youtube") == "markitdown"
         assert table.get("mp3") == "markitdown"
         assert table.get("epub") == "markitdown"
+
+        # YouTube - specialized parser
+        assert table.get("youtube") == "youtube"
 
         # Docling formats
         assert table.get("pdf") == "docling"

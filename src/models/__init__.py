@@ -9,6 +9,13 @@ from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
 from src.models.settings import PromptOverride
 from src.models.summary import NewsletterSummary, SummaryData
 from src.models.theme import ThemeAnalysis
+from src.models.youtube import (
+    TimestampedQuote,
+    TranscriptSegment,
+    YouTubeTranscript,
+    format_timestamp,
+    parse_timestamp,
+)
 
 __all__ = [
     # Base
@@ -47,4 +54,10 @@ __all__ = [
     "RevisionTurn",
     # Settings
     "PromptOverride",
+    # YouTube
+    "YouTubeTranscript",
+    "TranscriptSegment",
+    "TimestampedQuote",
+    "format_timestamp",
+    "parse_timestamp",
 ]
