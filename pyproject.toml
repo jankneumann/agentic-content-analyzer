@@ -53,6 +53,9 @@ dependencies = [
     "pytz>=2024.1",
     "pyyaml>=6.0.0",
     "tiktoken>=0.5.0",  # Token counting for context window management
+
+    # Document Parsing
+    "markitdown>=0.1.0",  # Microsoft's document to markdown converter
 ]
 
 [project.optional-dependencies]
