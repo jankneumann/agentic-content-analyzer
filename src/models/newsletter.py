@@ -16,6 +16,8 @@ class NewsletterSource(str, Enum):
     GMAIL = "gmail"
     RSS = "rss"
     SUBSTACK_RSS = "substack_rss"  # Deprecated: Use RSS instead
+    FILE_UPLOAD = "file_upload"  # Uploaded documents (PDF, DOCX, etc.)
+    YOUTUBE = "youtube"  # YouTube video transcripts
     OTHER = "other"
 
 

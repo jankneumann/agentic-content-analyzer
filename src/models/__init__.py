@@ -2,7 +2,8 @@
 
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.digest import Digest, DigestStatus, DigestType
-from src.models.newsletter import Base, Newsletter, ProcessingStatus
+from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
+from src.models.newsletter import Base, Newsletter, NewsletterSource, ProcessingStatus
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
 from src.models.settings import PromptOverride
@@ -14,7 +15,13 @@ __all__ = [
     "Base",
     # Newsletter
     "Newsletter",
+    "NewsletterSource",
     "ProcessingStatus",
+    # Document
+    "DocumentContent",
+    "DocumentFormat",
+    "DocumentMetadata",
+    "TableData",
     # Summary
     "NewsletterSummary",
     "SummaryData",
