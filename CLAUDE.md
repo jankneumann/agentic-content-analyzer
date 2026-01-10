@@ -119,8 +119,10 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Markdown-centric**: All parsers output markdown via `DocumentContent` model - optimized for LLM consumption
 - **ClassVar for class attributes**: Mutable class attributes (like `supported_formats`) must use `ClassVar[set[str]]` to satisfy ruff RUF012
 - **Union syntax in isinstance**: Use `isinstance(x, bytes | BinaryIO)` not `isinstance(x, (bytes, BinaryIO))` for Python 3.10+ (UP038)
-- **MarkItDown for lightweight parsing**: Office docs, HTML, audio, YouTube transcripts
-- **ParserRouter**: Routes documents to appropriate parser based on format detection
+- **MarkItDown for lightweight parsing**: Office docs, HTML, audio
+- **YouTubeParser for transcripts**: Direct youtube-transcript-api usage for timestamp preservation and deep-linking
+- **ParserRouter**: Routes documents to appropriate parser based on format detection with fallback support
+- **Type ignore for untyped libraries**: Use `# type: ignore[attr-defined]` for libraries without type stubs (e.g., youtube-transcript-api)
 
 ### Tool Usage Best Practices
 - **Always activate venv**: `source .venv/bin/activate` before running scripts
