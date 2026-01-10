@@ -108,6 +108,12 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Linting**: `ruff check src/`
 - **Prefer Edit tool over sed**: Safer, more precise
 
+### SQLAlchemy and Mypy
+- **Use SQLAlchemy 2.0's built-in mypy plugin**: Don't install `sqlalchemy-stubs` - it conflicts with SQLAlchemy 2.0
+- **Configure overrides for ORM modules**: SQLAlchemy Column types need `disable_error_code` for `assignment`, `arg-type`, `union-attr` etc.
+- **Pre-commit hooks**: All mypy dependencies (including SQLAlchemy) must be in `additional_dependencies`
+- **Type ignore comments**: Use specific error codes like `# type: ignore[no-any-return]` not generic `# type: ignore`
+
 ### Tool Usage Best Practices
 - **Always activate venv**: `source .venv/bin/activate` before running scripts
 - **Use fixtures**: Reusable test data with pytest fixtures
