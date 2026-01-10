@@ -53,6 +53,16 @@ class Settings(BaseSettings):
     youtube_playlists_file: str = "youtube_playlists.txt"  # Config file for playlist IDs
     youtube_api_key: str | None = None  # For public playlists only (no OAuth needed)
 
+    # YouTube Keyframe Extraction (optional feature)
+    youtube_keyframe_extraction: bool = False  # Enable/disable keyframe extraction
+    youtube_temp_dir: str = (
+        "/tmp/youtube_downloads"  # Temp storage for video downloads  # noqa: S108
+    )
+    youtube_scene_threshold: float = (
+        0.3  # Scene detection sensitivity (0-1, lower = more sensitive)
+    )
+    youtube_similarity_threshold: float = 0.85  # Slide dedup threshold (0-1, higher = stricter)
+
     # Email Delivery
     sendgrid_api_key: str | None = None
 
