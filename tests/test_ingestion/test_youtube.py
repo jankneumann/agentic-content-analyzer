@@ -20,7 +20,7 @@ class TestYouTubeClient:
     @patch("src.ingestion.youtube.settings")
     def test_authenticate_api_key(self, mock_settings: Mock, mock_build: Mock) -> None:
         """Test API key authentication."""
-        mock_settings.youtube_api_key = "test-api-key"
+        mock_settings.get_youtube_api_key.return_value = "test-api-key"
 
         client = YouTubeClient(use_oauth=False)
 
@@ -31,9 +31,9 @@ class TestYouTubeClient:
     @patch("src.ingestion.youtube.settings")
     def test_authenticate_api_key_missing(self, mock_settings: Mock, mock_build: Mock) -> None:
         """Test API key authentication fails when key is missing."""
-        mock_settings.youtube_api_key = None
+        mock_settings.get_youtube_api_key.return_value = None
 
-        with pytest.raises(ValueError, match="YOUTUBE_API_KEY required"):
+        with pytest.raises(ValueError, match="YOUTUBE_API_KEY or GOOGLE_API_KEY required"):
             YouTubeClient(use_oauth=False)
 
     def test_parse_date_valid(self) -> None:

@@ -85,10 +85,13 @@ class YouTubeClient:
 
     def _authenticate_api_key(self) -> None:
         """Authenticate using API key (for public playlists only)."""
-        if not settings.youtube_api_key:
-            raise ValueError("YOUTUBE_API_KEY required for public playlist access")
+        api_key = settings.get_youtube_api_key()
+        if not api_key:
+            raise ValueError(
+                "YOUTUBE_API_KEY or GOOGLE_API_KEY required for public playlist access"
+            )
 
-        self.service = build("youtube", "v3", developerKey=settings.youtube_api_key)
+        self.service = build("youtube", "v3", developerKey=api_key)
         logger.info("YouTube API client initialized (API key)")
 
     def get_playlist_videos(
