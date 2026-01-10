@@ -124,6 +124,14 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **ParserRouter**: Routes documents to appropriate parser based on format detection with fallback support
 - **Type ignore for untyped libraries**: Use `# type: ignore[attr-defined]` for libraries without type stubs (e.g., youtube-transcript-api)
 
+### YouTube Ingestion
+- **YouTubeClient**: Handles YouTube Data API authentication (OAuth for private, API key for public playlists)
+- **YouTubeIngestionService**: Processes playlists and stores transcripts as Newsletter entries
+- **CLI entry point**: `python -m src.ingestion.youtube` with `--playlist-id`, `--public-only`, `--after-date` options
+- **Playlist config file**: `youtube_playlists.txt` with `PLAYLIST_ID | description` format
+- **datetime.UTC**: Use `datetime.UTC` instead of `timezone.utc` for Python 3.11+ (ruff UP017)
+- **Mypy overrides**: Add modules to `[[tool.mypy.overrides]]` in pyproject.toml for dynamic attribute patterns
+
 ### Tool Usage Best Practices
 - **Always activate venv**: `source .venv/bin/activate` before running scripts
 - **Use fixtures**: Reusable test data with pytest fixtures
