@@ -129,8 +129,16 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **YouTubeIngestionService**: Processes playlists and stores transcripts as Newsletter entries
 - **CLI entry point**: `python -m src.ingestion.youtube` with `--playlist-id`, `--public-only`, `--after-date` options
 - **Playlist config file**: `youtube_playlists.txt` with `PLAYLIST_ID | description` format
+- **API key fallback**: `settings.get_youtube_api_key()` returns YOUTUBE_API_KEY or falls back to GOOGLE_API_KEY
 - **datetime.UTC**: Use `datetime.UTC` instead of `timezone.utc` for Python 3.11+ (ruff UP017)
 - **Mypy overrides**: Add modules to `[[tool.mypy.overrides]]` in pyproject.toml for dynamic attribute patterns
+
+### YouTube Keyframe Extraction (Optional)
+- **KeyframeExtractor**: Uses ffmpeg scene detection to extract slide frames from videos
+- **Perceptual hashing**: imagehash library for deduplicating similar slides
+- **Opt-in feature**: Enable via `YOUTUBE_KEYFRAME_EXTRACTION=true`
+- **Dependencies**: ffmpeg (system), yt-dlp, imagehash, Pillow (Python)
+- **noqa comments for security**: Use `# noqa: S108` for temp paths, `# noqa: S607` for subprocess with partial paths
 
 ### Tool Usage Best Practices
 - **Always activate venv**: `source .venv/bin/activate` before running scripts
