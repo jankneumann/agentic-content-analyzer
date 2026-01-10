@@ -114,6 +114,14 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Pre-commit hooks**: All mypy dependencies (including SQLAlchemy) must be in `additional_dependencies`
 - **Type ignore comments**: Use specific error codes like `# type: ignore[no-any-return]` not generic `# type: ignore`
 
+### Document Parsing
+- **Parser abstraction**: Use `DocumentParser` interface in `src/parsers/base.py` for all document parsing
+- **Markdown-centric**: All parsers output markdown via `DocumentContent` model - optimized for LLM consumption
+- **ClassVar for class attributes**: Mutable class attributes (like `supported_formats`) must use `ClassVar[set[str]]` to satisfy ruff RUF012
+- **Union syntax in isinstance**: Use `isinstance(x, bytes | BinaryIO)` not `isinstance(x, (bytes, BinaryIO))` for Python 3.10+ (UP038)
+- **MarkItDown for lightweight parsing**: Office docs, HTML, audio, YouTube transcripts
+- **ParserRouter**: Routes documents to appropriate parser based on format detection
+
 ### Tool Usage Best Practices
 - **Always activate venv**: `source .venv/bin/activate` before running scripts
 - **Use fixtures**: Reusable test data with pytest fixtures
