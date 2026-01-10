@@ -1,11 +1,19 @@
-# Docling Document Parsing Integration
+# Unified Document Parsing Integration
 
 **Date**: 2026-01-09
+**Updated**: 2026-01-10
 **Status**: Proposed
 
 ## Summary
 
-Integrate [Docling](https://github.com/docling-project/docling) as the primary document parsing library to enable structured ingestion of diverse document formats (PDF, DOCX, PPTX, XLSX, HTML, images) into the newsletter aggregation system. This provides unified document representation, better content extraction, and support for file uploads beyond email/RSS sources.
+Integrate a unified document parsing layer with multiple parser backends—[Docling](https://github.com/docling-project/docling) and [MarkItDown](https://github.com/microsoft/markitdown)—to enable structured ingestion of diverse document formats into the newsletter aggregation system. The architecture uses **markdown as the primary document representation** (optimized for LLM consumption) with optional structured metadata extraction when available.
+
+### Key Design Decisions
+
+1. **Markdown-centric representation**: Both parsers output markdown, which LLMs natively understand
+2. **Parser abstraction**: Unified `DocumentParser` interface allows swapping/adding parsers
+3. **Format-based routing**: Automatically select the best parser for each document type
+4. **Optional structure preservation**: Tables and metadata captured when parsers provide them
 
 ---
 
@@ -18,37 +26,115 @@ Integrate [Docling](https://github.com/docling-project/docling) as the primary d
 3. **No PDF/Office support**: Cannot process attached documents or linked reports
 4. **Basic HTML parsing**: Simple BeautifulSoup extraction loses document structure
 5. **No OCR capability**: Cannot process scanned documents or images
+6. **No multimedia support**: Cannot extract content from audio/video sources
 
-### Why Docling?
+### Why Multiple Parsers?
 
-- **Unified representation**: DoclingDocument format provides consistent structure across all formats
-- **Advanced PDF parsing**: Layout analysis, table extraction, reading order detection
-- **Multiple export formats**: Markdown, HTML, JSON (lossless), DocTags
-- **Local processing**: No external API calls, suitable for sensitive content
-- **LLM integration ready**: Native support for LangChain, LlamaIndex, Haystack
-- **Active development**: 49k+ GitHub stars, MIT license, IBM Research backing
-- **OCR support**: Built-in handling of scanned documents
+No single library excels at all document types. A hybrid approach leverages each library's strengths:
+
+| Capability | Docling | MarkItDown |
+|------------|---------|------------|
+| Complex PDF layouts | ✅ Excellent | ⚠️ Basic |
+| Table extraction | ✅ Structured data | ✅ Markdown tables |
+| OCR for scanned docs | ✅ Built-in | ❌ No |
+| YouTube transcripts | ❌ No | ✅ Yes |
+| Audio transcription | ❌ No | ✅ Yes |
+| Outlook MSG files | ❌ No | ✅ Yes |
+| EPUB ebooks | ❌ No | ✅ Yes |
+| Memory footprint | ⚠️ Heavy (ML models) | ✅ Light |
+| Processing speed | ⚠️ Slower | ✅ Fast |
 
 ---
 
-## Requirements
+## Parser Comparison
 
-### Functional Requirements
+### Docling (IBM Research)
 
-1. **Parse multiple document formats**: PDF, DOCX, PPTX, XLSX, HTML, images
-2. **Extract structured content**: Preserve headings, paragraphs, tables, lists, code blocks
-3. **Extract document metadata**: Title, author, creation date, page count
-4. **Support file uploads**: New ingestion source for user-submitted documents
-5. **Handle email attachments**: Parse PDF/Office attachments from Gmail
-6. **Preserve document hierarchy**: Maintain section/subsection relationships
-7. **Extract images and tables**: Store references for potential downstream use
+**Best for**: Complex PDFs, documents requiring layout analysis, table extraction, OCR
 
-### Non-Functional Requirements
+```python
+from docling.document_converter import DocumentConverter
 
-1. **Performance**: Process typical documents (< 50 pages) within 30 seconds
-2. **Memory efficiency**: Handle documents up to 100MB without issues
-3. **Error resilience**: Graceful degradation for partially corrupted documents
-4. **Extensibility**: Easy to add new format support as Docling evolves
+converter = DocumentConverter()
+result = converter.convert("report.pdf")
+markdown = result.document.export_to_markdown()
+```
+
+**Strengths**:
+- Advanced PDF layout understanding with ML models
+- Preserves document hierarchy (sections, subsections)
+- Extracts tables as structured data (rows/columns)
+- Built-in OCR for scanned documents
+- Lossless JSON export for full document structure
+- Native integrations with LangChain, LlamaIndex, Haystack
+
+**Trade-offs**:
+- Heavier dependencies (ML models)
+- Slower processing
+- Higher memory usage
+
+### MarkItDown (Microsoft)
+
+**Best for**: Simple conversions, multimedia content, lightweight processing
+
+```python
+from markitdown import MarkItDown
+
+md = MarkItDown()
+result = md.convert("presentation.pptx")
+markdown = result.text_content
+```
+
+**Strengths**:
+- Lightweight, fast processing
+- Designed specifically for LLM consumption
+- Unique format support: YouTube URLs, audio transcription, Outlook MSG
+- Modular dependencies (install only what you need)
+- Plugin ecosystem for community extensions
+- Stream-based processing (no temp files)
+
+**Trade-offs**:
+- No structured data extraction (markdown only)
+- Basic PDF handling (no layout analysis)
+- No OCR support
+
+### Output Format Comparison
+
+Both produce markdown, but with different characteristics:
+
+**Docling output** (from PDF with table):
+```markdown
+# Q4 Financial Report
+
+## Executive Summary
+
+Revenue increased 15% year-over-year...
+
+## Financial Highlights
+
+| Metric | Q4 2025 | Q4 2024 | Change |
+|--------|---------|---------|--------|
+| Revenue | $1.2B | $1.04B | +15% |
+| Profit | $180M | $156M | +15% |
+```
+
+**MarkItDown output** (from same PDF):
+```markdown
+# Q4 Financial Report
+
+Executive Summary
+
+Revenue increased 15% year-over-year...
+
+Financial Highlights
+
+| Metric | Q4 2025 | Q4 2024 | Change |
+|--------|---------|---------|--------|
+| Revenue | $1.2B | $1.04B | +15% |
+| Profit | $180M | $156M | +15% |
+```
+
+Key difference: Docling preserves heading hierarchy (`##`), MarkItDown may flatten structure.
 
 ---
 
@@ -57,35 +143,60 @@ Integrate [Docling](https://github.com/docling-project/docling) as the primary d
 ### High-Level Integration
 
 ```
-                                    ┌─────────────────────────────────┐
-                                    │         Document Sources        │
-                                    │ (Files, URLs, Email Attachments)│
-                                    └─────────────┬───────────────────┘
-                                                  │
-                                                  ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          DoclingParser Service                               │
-│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────────┐   │
-│  │ DocumentConverter │→ │  DoclingDocument  │→ │ Structured Extraction │   │
-│  │   (Docling Core)  │  │  (Unified Format) │  │   (Text, Tables, etc) │   │
-│  └───────────────────┘  └───────────────────┘  └───────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                                  │
-                                                  ▼
-                              ┌───────────────────────────────────┐
-                              │        Existing Pipeline          │
-                              │  Newsletter Model → Summarization │
-                              └───────────────────────────────────┘
+                         ┌─────────────────────────────────────┐
+                         │          Document Sources           │
+                         │ (Files, URLs, Attachments, YouTube) │
+                         └─────────────────┬───────────────────┘
+                                           │
+                                           ▼
+                         ┌─────────────────────────────────────┐
+                         │         ParserRouter                │
+                         │   (Format-based parser selection)   │
+                         └─────────────────┬───────────────────┘
+                                           │
+              ┌────────────────────────────┼────────────────────────────┐
+              │                            │                            │
+              ▼                            ▼                            ▼
+┌─────────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
+│     DoclingParser       │  │   MarkItDownParser      │  │    Future Parsers...    │
+│  ┌───────────────────┐  │  │  ┌───────────────────┐  │  │                         │
+│  │ - Complex PDFs    │  │  │  │ - YouTube URLs    │  │  │  (e.g., Unstructured,   │
+│  │ - OCR/scanned     │  │  │  │ - Audio files     │  │  │   LlamaParse, etc.)     │
+│  │ - Table extraction│  │  │  │ - Outlook MSG     │  │  │                         │
+│  │ - Layout analysis │  │  │  │ - Simple docs     │  │  │                         │
+│  └───────────────────┘  │  │  └───────────────────┘  │  │                         │
+└────────────┬────────────┘  └────────────┬────────────┘  └─────────────────────────┘
+             │                            │
+             └────────────┬───────────────┘
+                          │
+                          ▼
+              ┌─────────────────────────────────────┐
+              │        DocumentContent              │
+              │  (Unified markdown-centric model)   │
+              │  ┌─────────────────────────────┐    │
+              │  │ markdown_content: str       │    │  ← Primary LLM input
+              │  │ tables: list[TableData]     │    │  ← Optional structured data
+              │  │ metadata: DocumentMetadata  │    │  ← Source info
+              │  └─────────────────────────────┘    │
+              └─────────────────┬───────────────────┘
+                                │
+                                ▼
+              ┌─────────────────────────────────────┐
+              │        Existing Pipeline            │
+              │   Newsletter Model → Summarization  │
+              └─────────────────────────────────────┘
 ```
 
 ### New Components
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `DoclingParser` | `src/parsers/docling_parser.py` | Core Docling integration service |
-| `DocumentContent` | `src/models/document.py` | Structured content model for parsed documents |
-| `FileIngestionService` | `src/ingestion/files.py` | File upload handling and processing |
-| `AttachmentExtractor` | `src/ingestion/attachments.py` | Email attachment extraction |
+| `DocumentParser` | `src/parsers/base.py` | Abstract interface for all parsers |
+| `DoclingParser` | `src/parsers/docling_parser.py` | Docling integration |
+| `MarkItDownParser` | `src/parsers/markitdown_parser.py` | MarkItDown integration |
+| `ParserRouter` | `src/parsers/router.py` | Format-based parser selection |
+| `DocumentContent` | `src/models/document.py` | Unified content model |
+| `FileIngestionService` | `src/ingestion/files.py` | File upload handling |
 
 ### Data Flow
 
@@ -93,121 +204,282 @@ Integrate [Docling](https://github.com/docling-project/docling) as the primary d
 1. Document Input (file path, URL, or bytes)
           │
           ▼
-2. DoclingParser.parse(source) → DoclingDocument
+2. ParserRouter.route(source, format) → appropriate parser
           │
           ▼
-3. DoclingParser.extract_structured_content() → DocumentContent
+3. Parser.parse(source) → DocumentContent
           │
           ▼
-4. Map to Newsletter model (for pipeline compatibility)
+4. Map to Newsletter model:
+   - newsletter.raw_text = content.markdown_content
+   - newsletter.extracted_links = content.links
           │
           ▼
-5. Existing summarization pipeline processes content
+5. Existing summarization pipeline processes markdown content
 ```
 
 ---
 
 ## Data Models
 
-### DocumentContent (New Pydantic Model)
+### DocumentParser Interface (Abstract Base)
 
 ```python
-from pydantic import BaseModel
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Union, BinaryIO
+
+class DocumentParser(ABC):
+    """Abstract interface for document parsers"""
+
+    # Formats this parser handles well
+    supported_formats: set[str]
+
+    # Formats this parser handles but another may do better
+    fallback_formats: set[str]
+
+    @abstractmethod
+    def parse(
+        self,
+        source: Union[str, Path, BinaryIO, bytes],
+        format_hint: str | None = None
+    ) -> "DocumentContent":
+        """Parse document and return unified content model"""
+        pass
+
+    @abstractmethod
+    def can_parse(self, source: Union[str, Path], format_hint: str | None = None) -> bool:
+        """Check if this parser can handle the given source"""
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Parser identifier for logging/metrics"""
+        pass
+```
+
+### DocumentContent (Markdown-Centric Model)
+
+```python
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from enum import Enum
 
 class DocumentFormat(str, Enum):
+    """Supported input formats"""
     PDF = "pdf"
     DOCX = "docx"
     PPTX = "pptx"
     XLSX = "xlsx"
     HTML = "html"
+    MARKDOWN = "md"
     IMAGE = "image"
-    MARKDOWN = "markdown"
+    AUDIO = "audio"
+    VIDEO = "video"
+    YOUTUBE = "youtube"
+    OUTLOOK_MSG = "msg"
+    EPUB = "epub"
     UNKNOWN = "unknown"
 
 class TableData(BaseModel):
-    """Extracted table with structure"""
-    id: str
+    """Extracted table (optional, when parser provides structured data)"""
     caption: Optional[str] = None
-    headers: list[str]
-    rows: list[list[str]]
-    page_number: Optional[int] = None
+    headers: list[str] = []
+    rows: list[list[str]] = []
+    markdown: str  # Always available as fallback
 
-class ImageReference(BaseModel):
-    """Reference to extracted image"""
-    id: str
-    caption: Optional[str] = None
-    alt_text: Optional[str] = None
-    page_number: Optional[int] = None
-    # Actual image bytes stored separately if needed
-
-class Section(BaseModel):
-    """Document section with hierarchy"""
-    id: str
-    level: int  # 1=h1, 2=h2, etc.
-    title: str
-    content: str  # Text content within section
-    children: list["Section"] = []
-
-class DocumentContent(BaseModel):
-    """Unified structured document representation"""
-    # Identification
-    source_path: str
-    source_format: DocumentFormat
-
-    # Metadata
+class DocumentMetadata(BaseModel):
+    """Document metadata extracted during parsing"""
     title: Optional[str] = None
     author: Optional[str] = None
     created_date: Optional[datetime] = None
+    modified_date: Optional[datetime] = None
     page_count: Optional[int] = None
     word_count: Optional[int] = None
+    language: Optional[str] = None
 
-    # Content (multiple representations)
-    markdown_content: str  # Primary content as markdown
-    plain_text: str  # Fallback plain text
-    structured_sections: list[Section] = []  # Hierarchical structure
+class DocumentContent(BaseModel):
+    """
+    Unified document representation.
 
-    # Extracted elements
-    tables: list[TableData] = []
-    images: list[ImageReference] = []
-    links: list[str] = []
+    Markdown is the PRIMARY content format - optimized for LLM consumption.
+    Structured data (tables, metadata) is OPTIONAL and parser-dependent.
+    """
+    # === Required: Always populated ===
+    markdown_content: str = Field(
+        description="Primary content as markdown - the main LLM input"
+    )
+    source_path: str = Field(
+        description="Original file path, URL, or identifier"
+    )
+    source_format: DocumentFormat = Field(
+        description="Detected or specified input format"
+    )
+    parser_used: str = Field(
+        description="Which parser produced this content (docling/markitdown)"
+    )
 
-    # Processing metadata
-    docling_version: str
-    processing_time_ms: int
-    warnings: list[str] = []
+    # === Optional: Populated when available ===
+    metadata: DocumentMetadata = Field(
+        default_factory=DocumentMetadata,
+        description="Document metadata (title, author, etc.)"
+    )
+    tables: list[TableData] = Field(
+        default_factory=list,
+        description="Extracted tables with structure (Docling only)"
+    )
+    links: list[str] = Field(
+        default_factory=list,
+        description="URLs extracted from document"
+    )
+
+    # === Processing info ===
+    processing_time_ms: int = 0
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal issues during parsing"
+    )
+
+    def to_newsletter_content(self) -> tuple[str, str, list[str]]:
+        """Convert to newsletter model fields: (raw_text, raw_html, links)"""
+        return (
+            self.markdown_content,  # Goes to raw_text
+            self.markdown_content,  # Also raw_html (markdown is valid)
+            self.links
+        )
+```
+
+### ParserRouter (Format-Based Selection)
+
+```python
+from pathlib import Path
+from typing import Union
+import mimetypes
+
+class ParserRouter:
+    """Routes documents to the appropriate parser based on format"""
+
+    # Format → preferred parser mapping
+    ROUTING_TABLE: dict[str, str] = {
+        # Docling excels at these
+        "pdf": "docling",           # Complex layouts, tables, OCR
+        "docx": "docling",          # Better structure preservation
+        "pptx": "markitdown",       # MarkItDown handles well, lighter
+        "xlsx": "markitdown",       # Both work, MarkItDown lighter
+        "html": "markitdown",       # MarkItDown sufficient for most HTML
+
+        # MarkItDown exclusive formats
+        "youtube": "markitdown",    # YouTube transcript extraction
+        "mp3": "markitdown",        # Audio transcription
+        "wav": "markitdown",        # Audio transcription
+        "msg": "markitdown",        # Outlook email
+        "epub": "markitdown",       # Ebooks
+
+        # Images - depends on needs
+        "png": "docling",           # OCR capability
+        "jpg": "docling",           # OCR capability
+        "jpeg": "docling",          # OCR capability
+    }
+
+    # Formats requiring OCR should always use Docling
+    OCR_REQUIRED_INDICATORS = ["scanned", "scan", "ocr"]
+
+    def __init__(
+        self,
+        docling_parser: "DoclingParser",
+        markitdown_parser: "MarkItDownParser",
+        default_parser: str = "markitdown"  # Lighter default
+    ):
+        self.parsers = {
+            "docling": docling_parser,
+            "markitdown": markitdown_parser,
+        }
+        self.default_parser = default_parser
+
+    def route(
+        self,
+        source: Union[str, Path],
+        format_hint: str | None = None,
+        prefer_structured: bool = False,
+        ocr_needed: bool = False,
+    ) -> "DocumentParser":
+        """
+        Select the best parser for the given document.
+
+        Args:
+            source: File path or URL
+            format_hint: Explicit format override
+            prefer_structured: If True, prefer Docling for table extraction
+            ocr_needed: If True, force Docling for OCR capability
+        """
+        # Detect format
+        format = format_hint or self._detect_format(source)
+
+        # OCR always needs Docling
+        if ocr_needed or self._likely_needs_ocr(source):
+            return self.parsers["docling"]
+
+        # Prefer structured extraction for PDFs with tables
+        if prefer_structured and format == "pdf":
+            return self.parsers["docling"]
+
+        # Use routing table
+        parser_name = self.ROUTING_TABLE.get(format, self.default_parser)
+        return self.parsers[parser_name]
+
+    def _detect_format(self, source: Union[str, Path]) -> str:
+        """Detect format from file extension or URL pattern"""
+        source_str = str(source)
+
+        # YouTube URL detection
+        if "youtube.com" in source_str or "youtu.be" in source_str:
+            return "youtube"
+
+        # File extension
+        ext = Path(source_str).suffix.lower().lstrip(".")
+        return ext or "unknown"
+
+    def _likely_needs_ocr(self, source: Union[str, Path]) -> bool:
+        """Heuristic: filename contains OCR indicators"""
+        name = Path(source).stem.lower()
+        return any(ind in name for ind in self.OCR_REQUIRED_INDICATORS)
+
+    async def parse(
+        self,
+        source: Union[str, Path, bytes],
+        **routing_kwargs
+    ) -> "DocumentContent":
+        """Route and parse in one call"""
+        parser = self.route(source, **routing_kwargs)
+        return await parser.parse(source)
 ```
 
 ### Database Schema Extension
 
 ```sql
--- New table for document uploads
+-- New table for parsed documents
 CREATE TABLE documents (
     id SERIAL PRIMARY KEY,
 
     -- Source information
     filename VARCHAR(500) NOT NULL,
     source_format VARCHAR(50) NOT NULL,
+    source_url VARCHAR(2000),
     file_size_bytes INTEGER,
     file_hash VARCHAR(64),  -- SHA-256 for deduplication
 
-    -- Extracted metadata
-    title VARCHAR(1000),
-    author VARCHAR(500),
-    created_date TIMESTAMP,
-    page_count INTEGER,
-    word_count INTEGER,
+    -- Parser information
+    parser_used VARCHAR(50) NOT NULL,  -- 'docling' or 'markitdown'
 
-    -- Content storage
-    markdown_content TEXT,
-    plain_text TEXT,
-    structured_json JSONB,  -- Full DocumentContent as JSON
+    -- Content storage (markdown-centric)
+    markdown_content TEXT NOT NULL,    -- Primary content
 
-    -- Extracted elements
-    tables_json JSONB,
-    links_json JSONB,
+    -- Optional structured data (JSON, parser-dependent)
+    tables_json JSONB,                 -- Extracted tables if available
+    metadata_json JSONB,               -- Document metadata
+    links_json JSONB,                  -- Extracted URLs
 
     -- Relationship to newsletter (optional)
     newsletter_id INTEGER REFERENCES newsletters(id),
@@ -216,6 +488,7 @@ CREATE TABLE documents (
     status VARCHAR(50) DEFAULT 'pending',
     processing_time_ms INTEGER,
     error_message TEXT,
+    warnings_json JSONB,
 
     -- Timestamps
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -224,6 +497,7 @@ CREATE TABLE documents (
 
 CREATE INDEX idx_documents_file_hash ON documents(file_hash);
 CREATE INDEX idx_documents_status ON documents(status);
+CREATE INDEX idx_documents_parser ON documents(parser_used);
 CREATE INDEX idx_documents_newsletter ON documents(newsletter_id);
 ```
 
@@ -231,209 +505,231 @@ CREATE INDEX idx_documents_newsletter ON documents(newsletter_id);
 
 ## Implementation Plan
 
-### Phase 1: Core Parser Integration
+### Phase 1: Core Parser Interface & MarkItDown Integration
 
-**Goal**: Implement DoclingParser service with basic document conversion
+**Goal**: Establish parser abstraction and implement the lighter MarkItDown parser first
+
+#### Tasks
+
+1. **Create parser interface** (`src/parsers/base.py`)
+   - Define `DocumentParser` abstract base class
+   - Define `DocumentContent` model
+
+2. **Add MarkItDown dependency**
+   ```
+   markitdown>=0.1.0
+   ```
+
+3. **Implement MarkItDownParser** (`src/parsers/markitdown_parser.py`)
+   ```python
+   from markitdown import MarkItDown
+
+   class MarkItDownParser(DocumentParser):
+       supported_formats = {"docx", "pptx", "xlsx", "html", "youtube", "mp3", "wav", "msg", "epub"}
+       fallback_formats = {"pdf"}  # Can do it, but Docling better
+
+       def __init__(self, llm_client=None):
+           self.md = MarkItDown(llm_client=llm_client)
+
+       def parse(self, source) -> DocumentContent:
+           result = self.md.convert(source)
+           return DocumentContent(
+               markdown_content=result.text_content,
+               source_path=str(source),
+               source_format=self._detect_format(source),
+               parser_used="markitdown",
+               links=self._extract_links(result.text_content),
+           )
+   ```
+
+4. **Create DocumentContent model** (`src/models/document.py`)
+
+5. **Add basic tests** for MarkItDown parser
+
+### Phase 2: Docling Integration
+
+**Goal**: Add Docling for advanced PDF/OCR capabilities
 
 #### Tasks
 
 1. **Add Docling dependency**
-   - Add `docling>=2.60.0` to requirements.txt
-   - Consider optional extras for OCR: `docling[ocr]`
+   ```
+   docling>=2.60.0
+   docling[ocr]  # Optional
+   ```
 
-2. **Create DoclingParser service** (`src/parsers/docling_parser.py`)
+2. **Implement DoclingParser** (`src/parsers/docling_parser.py`)
    ```python
    from docling.document_converter import DocumentConverter
-   from docling.datamodel.document import DoclingDocument
 
-   class DoclingParser:
+   class DoclingParser(DocumentParser):
+       supported_formats = {"pdf", "docx", "png", "jpg", "jpeg", "html"}
+       fallback_formats = {"pptx", "xlsx"}
+
        def __init__(self, enable_ocr: bool = False):
            self.converter = DocumentConverter()
            self.enable_ocr = enable_ocr
 
-       def parse(self, source: str | Path | bytes) -> DoclingDocument:
-           """Parse document from file path, URL, or bytes"""
+       def parse(self, source) -> DocumentContent:
            result = self.converter.convert(source)
-           return result.document
+           doc = result.document
 
-       def extract_content(self, doc: DoclingDocument) -> DocumentContent:
-           """Extract structured content from DoclingDocument"""
-           # Implementation details below
+           return DocumentContent(
+               markdown_content=doc.export_to_markdown(),
+               source_path=str(source),
+               source_format=self._detect_format(source),
+               parser_used="docling",
+               tables=self._extract_tables(doc),
+               metadata=self._extract_metadata(doc),
+               links=self._extract_links(doc),
+           )
+
+       def _extract_tables(self, doc) -> list[TableData]:
+           """Extract structured table data from DoclingDocument"""
+           tables = []
+           for table in doc.tables:
+               tables.append(TableData(
+                   caption=table.caption,
+                   headers=[cell.text for cell in table.header_rows[0]] if table.header_rows else [],
+                   rows=[[cell.text for cell in row] for row in table.body_rows],
+                   markdown=table.export_to_markdown(),
+               ))
+           return tables
    ```
 
-3. **Implement content extraction methods**
-   - `to_markdown()`: Export as markdown
-   - `to_plain_text()`: Export as plain text
-   - `extract_tables()`: Parse table structures
-   - `extract_sections()`: Build section hierarchy
-   - `extract_metadata()`: Get document metadata
+3. **Add configuration options** (`src/config/settings.py`)
 
-4. **Create DocumentContent model** (`src/models/document.py`)
+4. **Add tests** for Docling parser
 
-5. **Add configuration options** (`src/config/settings.py`)
-   ```python
-   # Docling settings
-   DOCLING_ENABLE_OCR: bool = False
-   DOCLING_MAX_FILE_SIZE_MB: int = 100
-   DOCLING_TIMEOUT_SECONDS: int = 300
-   DOCLING_SUPPORTED_FORMATS: list = ["pdf", "docx", "pptx", "xlsx", "html"]
-   ```
+### Phase 3: Parser Router & File Ingestion
 
-### Phase 2: File Ingestion Service
-
-**Goal**: Enable file uploads as a new ingestion source
+**Goal**: Implement intelligent routing and file upload capability
 
 #### Tasks
 
-1. **Create FileIngestionService** (`src/ingestion/files.py`)
+1. **Implement ParserRouter** (`src/parsers/router.py`)
+
+2. **Create FileIngestionService** (`src/ingestion/files.py`)
    ```python
    class FileIngestionService:
-       def __init__(self, parser: DoclingParser, db: Session):
-           self.parser = parser
+       def __init__(self, router: ParserRouter, db: Session):
+           self.router = router
            self.db = db
 
        async def ingest_file(
            self,
            file_path: Path,
-           metadata: Optional[dict] = None
+           prefer_structured: bool = False,
+           ocr_needed: bool = False,
        ) -> Newsletter:
-           """Ingest a file and create newsletter record"""
-           # 1. Parse with Docling
-           # 2. Extract content
-           # 3. Create newsletter record
-           # 4. Store document metadata
+           # 1. Route to appropriate parser
+           content = await self.router.parse(
+               file_path,
+               prefer_structured=prefer_structured,
+               ocr_needed=ocr_needed,
+           )
+
+           # 2. Create newsletter record
+           newsletter = Newsletter(
+               source=NewsletterSource.FILE_UPLOAD,
+               source_id=content.file_hash,
+               title=content.metadata.title or file_path.name,
+               raw_text=content.markdown_content,
+               raw_html=content.markdown_content,
+               extracted_links=content.links,
+           )
+
+           # 3. Store and return
+           self.db.add(newsletter)
+           self.db.commit()
+           return newsletter
    ```
 
-2. **Add file upload API endpoint** (`src/api/routes/upload.py`)
-   ```python
-   @router.post("/upload")
-   async def upload_document(
-       file: UploadFile,
-       publication: Optional[str] = None,
-       db: Session = Depends(get_db)
-   ) -> UploadResponse:
-       """Upload and process a document"""
-   ```
+3. **Add file upload API endpoint** (`src/api/routes/upload.py`)
 
-3. **Implement file validation**
-   - Check file size limits
-   - Validate file format
-   - Virus/malware scanning (optional)
-   - Deduplication via file hash
+4. **Create database migration**
 
-4. **Create database migration** for `documents` table
+### Phase 4: Gmail Attachment & YouTube Support
 
-### Phase 3: Gmail Attachment Support
-
-**Goal**: Parse PDF/Office attachments from Gmail newsletters
+**Goal**: Enable attachment parsing and YouTube transcript ingestion
 
 #### Tasks
 
-1. **Extend Gmail ingestion** (`src/ingestion/gmail.py`)
-   ```python
-   def extract_attachments(self, message: dict) -> list[Attachment]:
-       """Extract file attachments from email message"""
+1. **Extend Gmail ingestion** for attachments
+   - Extract PDF/Office attachments
+   - Route through parser system
+   - Link to parent newsletter
 
-   async def process_attachment(
-       self,
-       attachment: Attachment
-   ) -> Optional[DocumentContent]:
-       """Process attachment through Docling"""
-   ```
+2. **Add YouTube ingestion capability**
+   - New source type: `NewsletterSource.YOUTUBE`
+   - Use MarkItDown for transcript extraction
+   - Store as newsletter for summarization
 
-2. **Link attachments to newsletters**
-   - Store attachment metadata in `documents` table
-   - Foreign key relationship to parent newsletter
-   - Include attachment content in summarization
-
-3. **Update summarization prompt**
-   - Include attachment content context
-   - Handle multi-document newsletters
-
-### Phase 4: Enhanced HTML Processing
-
-**Goal**: Replace BeautifulSoup with Docling for HTML parsing
-
-#### Tasks
-
-1. **Migrate HTML parsing to Docling**
-   - Replace `html_to_text()` with Docling conversion
-   - Preserve table extraction improvements
-   - Maintain link extraction functionality
-
-2. **Update existing ingestion services**
-   - Gmail: Use Docling for HTML body parsing
-   - RSS: Use Docling for entry content parsing
-
-3. **Benchmark and compare**
-   - Quality of extracted text
-   - Preservation of structure
-   - Processing speed
+3. **Update summarization** to handle multimedia content
 
 ### Phase 5: Advanced Features (Future)
 
-**Goal**: Leverage advanced Docling capabilities
+**Goal**: Leverage advanced parser capabilities
 
 #### Tasks
 
-1. **OCR integration** for scanned PDFs
-2. **VLM pipeline** for complex layouts
-3. **Image extraction and storage**
-4. **Structured information extraction** (beta feature)
-5. **LangChain/LlamaIndex integration** for RAG
+1. **OCR integration** for scanned PDFs (Docling)
+2. **Audio transcription** for podcasts (MarkItDown)
+3. **VLM pipeline** for complex layouts (Docling)
+4. **Image description** with LLM integration (MarkItDown)
+5. **Batch processing** for multiple documents
+6. **RAG chunking** using Docling's built-in chunker
 
 ---
 
-## API Design
+## Configuration
 
-### Upload Endpoint
+### Environment Variables
 
-```
-POST /api/v1/documents/upload
-Content-Type: multipart/form-data
+```bash
+# Parser selection
+DEFAULT_PARSER=markitdown              # Default parser for unknown formats
+ENABLE_DOCLING=true                    # Enable Docling (heavier dependencies)
+ENABLE_MARKITDOWN=true                 # Enable MarkItDown
 
-Parameters:
-  - file: File (required) - Document to upload
-  - publication: string (optional) - Publisher/source name
-  - title: string (optional) - Override extracted title
-  - process_immediately: boolean (default: true) - Queue for summarization
+# Docling settings (when enabled)
+DOCLING_ENABLE_OCR=false               # Enable OCR for scanned documents
+DOCLING_MAX_FILE_SIZE_MB=100           # Maximum file size
+DOCLING_TIMEOUT_SECONDS=300            # Processing timeout
+DOCLING_CACHE_DIR=/tmp/docling         # Model cache directory
 
-Response:
-{
-  "id": 123,
-  "filename": "report.pdf",
-  "status": "processing",
-  "format": "pdf",
-  "page_count": 15,
-  "word_count": 4500,
-  "newsletter_id": 456  // If linked to newsletter record
-}
+# MarkItDown settings
+MARKITDOWN_LLM_MODEL=                  # Optional LLM for image descriptions
+MARKITDOWN_ENABLE_PLUGINS=false        # Enable community plugins
+
+# General
+MAX_UPLOAD_SIZE_MB=50                  # File upload limit
 ```
 
-### Document Status Endpoint
+### Settings Class
 
-```
-GET /api/v1/documents/{id}
+```python
+class ParserSettings(BaseSettings):
+    # Parser selection
+    default_parser: str = "markitdown"
+    enable_docling: bool = True
+    enable_markitdown: bool = True
 
-Response:
-{
-  "id": 123,
-  "filename": "report.pdf",
-  "status": "completed",
-  "format": "pdf",
-  "metadata": {
-    "title": "Q4 AI Trends Report",
-    "author": "Research Team",
-    "page_count": 15
-  },
-  "content": {
-    "markdown": "...",
-    "tables_count": 3,
-    "images_count": 7
-  },
-  "newsletter_id": 456,
-  "processed_at": "2026-01-09T12:00:00Z"
-}
+    # Docling configuration
+    docling_enable_ocr: bool = False
+    docling_max_file_size_mb: int = 100
+    docling_timeout_seconds: int = 300
+    docling_cache_dir: str = "/tmp/docling"
+
+    # MarkItDown configuration
+    markitdown_llm_model: str | None = None
+    markitdown_enable_plugins: bool = False
+
+    # Routing preferences
+    prefer_structured_pdf: bool = True  # Use Docling for PDFs by default
+
+    # General
+    max_upload_size_mb: int = 50
 ```
 
 ---
@@ -444,102 +740,28 @@ Response:
 
 | File | Purpose |
 |------|---------|
-| `src/parsers/__init__.py` | Parser module init |
-| `src/parsers/docling_parser.py` | Core Docling integration |
+| `src/parsers/__init__.py` | Parser module init, exports router |
+| `src/parsers/base.py` | DocumentParser interface, DocumentContent model |
+| `src/parsers/docling_parser.py` | Docling implementation |
+| `src/parsers/markitdown_parser.py` | MarkItDown implementation |
+| `src/parsers/router.py` | ParserRouter with format-based selection |
 | `src/models/document.py` | DocumentContent and related models |
 | `src/ingestion/files.py` | File upload ingestion service |
-| `src/ingestion/attachments.py` | Email attachment extraction |
 | `src/api/routes/upload.py` | File upload API endpoints |
 | `alembic/versions/xxx_add_documents_table.py` | Database migration |
-| `tests/test_parsers/test_docling_parser.py` | Parser unit tests |
-| `tests/test_ingestion/test_files.py` | File ingestion tests |
+| `tests/test_parsers/test_base.py` | Interface tests |
+| `tests/test_parsers/test_docling.py` | Docling parser tests |
+| `tests/test_parsers/test_markitdown.py` | MarkItDown parser tests |
+| `tests/test_parsers/test_router.py` | Router tests |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
-| `requirements.txt` | Add docling dependency |
-| `src/config/settings.py` | Add Docling configuration options |
+| `requirements.txt` | Add docling, markitdown dependencies |
+| `src/config/settings.py` | Add parser configuration |
 | `src/ingestion/gmail.py` | Add attachment extraction |
 | `src/api/app.py` | Register upload routes |
-| `src/utils/html_parser.py` | Optional: integrate Docling for HTML |
-
----
-
-## Testing Strategy
-
-### Unit Tests
-
-1. **DoclingParser tests**
-   - Parse sample PDF document
-   - Parse sample DOCX document
-   - Handle corrupt/invalid files
-   - Extract tables correctly
-   - Extract sections with hierarchy
-
-2. **DocumentContent model tests**
-   - Serialization/deserialization
-   - Validation of required fields
-
-3. **FileIngestionService tests**
-   - Successful file processing
-   - Duplicate detection
-   - Error handling
-
-### Integration Tests
-
-1. **End-to-end upload flow**
-   - Upload → Parse → Store → Summarize
-
-2. **Gmail attachment processing**
-   - Fetch email with attachment
-   - Parse attachment
-   - Link to newsletter
-
-### Test Fixtures
-
-Create sample documents in `tests/fixtures/documents/`:
-- `sample.pdf` - Multi-page PDF with tables
-- `sample.docx` - Word document with formatting
-- `sample.pptx` - PowerPoint presentation
-- `sample_scanned.pdf` - Scanned document (OCR test)
-
----
-
-## Configuration
-
-### Environment Variables
-
-```bash
-# Docling settings
-DOCLING_ENABLE_OCR=false           # Enable OCR for scanned documents
-DOCLING_MAX_FILE_SIZE_MB=100       # Maximum file size to process
-DOCLING_TIMEOUT_SECONDS=300        # Processing timeout
-DOCLING_CACHE_DIR=/tmp/docling     # Cache directory for models
-
-# Optional: VLM pipeline (requires GPU)
-DOCLING_USE_VLM=false
-DOCLING_VLM_MODEL=granite_docling
-```
-
-### Settings Class Update
-
-```python
-# src/config/settings.py
-class Settings(BaseSettings):
-    # ... existing settings ...
-
-    # Docling configuration
-    docling_enable_ocr: bool = False
-    docling_max_file_size_mb: int = 100
-    docling_timeout_seconds: int = 300
-    docling_cache_dir: str = "/tmp/docling"
-    docling_use_vlm: bool = False
-    docling_vlm_model: str = "granite_docling"
-    docling_supported_formats: list[str] = [
-        "pdf", "docx", "pptx", "xlsx", "html", "md", "png", "jpg", "jpeg"
-    ]
-```
 
 ---
 
@@ -548,21 +770,82 @@ class Settings(BaseSettings):
 ### Required
 
 ```
+markitdown>=0.1.0          # Lightweight, always included
+```
+
+### Optional (feature groups)
+
+```
+# For advanced PDF processing
 docling>=2.60.0
+
+# For OCR support
+docling[ocr]
+
+# For MarkItDown audio transcription
+markitdown[audio]
+
+# For MarkItDown PDF support (if not using Docling)
+markitdown[pdf]
 ```
 
-### Optional (for advanced features)
+### Recommended Installation
+
+```bash
+# Minimal (MarkItDown only)
+pip install markitdown
+
+# Full (both parsers)
+pip install markitdown docling
+
+# With OCR
+pip install markitdown "docling[ocr]"
+```
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+
+1. **Parser interface tests**
+   - Verify both parsers implement interface correctly
+   - Test DocumentContent model validation
+
+2. **MarkItDown parser tests**
+   - Parse DOCX, PPTX, XLSX
+   - Parse YouTube URL (mock transcript)
+   - Handle invalid files gracefully
+
+3. **Docling parser tests**
+   - Parse PDF with tables
+   - Verify table extraction structure
+   - Test OCR on image (when enabled)
+
+4. **Router tests**
+   - Correct parser selected for each format
+   - OCR flag forces Docling
+   - Unknown formats use default
+
+### Integration Tests
+
+1. **End-to-end upload flow**
+   - Upload PDF → Route to Docling → Store → Summarize
+
+2. **YouTube ingestion**
+   - URL → MarkItDown → Newsletter → Summary
+
+### Test Fixtures
 
 ```
-docling[ocr]      # For OCR support
-torch             # For VLM pipeline (if using GPU)
+tests/fixtures/documents/
+├── sample.pdf              # Multi-page PDF with tables
+├── sample.docx             # Word document
+├── sample.pptx             # PowerPoint
+├── sample.xlsx             # Excel spreadsheet
+├── sample_scanned.pdf      # Scanned document (OCR test)
+└── sample.html             # HTML page
 ```
-
-### System Requirements
-
-- Python 3.10+
-- 4GB+ RAM recommended for PDF processing
-- GPU optional (for VLM pipeline)
 
 ---
 
@@ -570,38 +853,45 @@ torch             # For VLM pipeline (if using GPU)
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Large file memory issues | Medium | High | Implement file size limits, streaming where possible |
-| Slow processing for complex PDFs | Medium | Medium | Add async processing, timeout limits |
-| OCR quality on poor scans | Medium | Low | Provide fallback to original text extraction |
-| Docling breaking changes | Low | Medium | Pin version, test on upgrade |
-| GPU dependency for VLM | Low | Low | VLM is optional, CPU fallback available |
+| Parser output inconsistency | Medium | Medium | Normalize markdown output, test both parsers |
+| Docling memory issues | Medium | High | Make Docling optional, file size limits |
+| MarkItDown missing features | Low | Low | Fall back to Docling when needed |
+| Dependency conflicts | Low | Medium | Use separate optional dependency groups |
+| YouTube API changes | Medium | Low | MarkItDown handles, we just consume |
 
 ---
 
 ## Success Metrics
 
-1. **Format coverage**: Successfully parse 95%+ of uploaded PDF/Office documents
-2. **Content quality**: Extracted text matches original with 98%+ accuracy
-3. **Table extraction**: Correctly identify and structure 90%+ of tables
-4. **Processing speed**: Average document processed in < 10 seconds
-5. **Error rate**: < 5% of documents fail processing completely
+1. **Format coverage**: Support 10+ document formats
+2. **Parser routing accuracy**: Correct parser selected 95%+ of time
+3. **Markdown quality**: LLM summarization quality unchanged or improved
+4. **Processing speed**: < 5s for typical documents (MarkItDown), < 30s for complex PDFs (Docling)
+5. **Memory efficiency**: Process 50MB files without OOM
 
 ---
 
 ## Future Enhancements
 
-1. **Batch processing**: Upload and process multiple documents
-2. **Watch folders**: Automatically ingest from monitored directories
-3. **URL ingestion**: Fetch and parse documents from URLs
-4. **Image analysis**: Extract insights from document images using VLM
-5. **Cross-document linking**: Identify references between documents
-6. **RAG integration**: Use docling chunks for retrieval-augmented generation
+1. **Additional parsers**: Unstructured, LlamaParse, Azure Document Intelligence
+2. **Parser benchmarking**: Compare quality/speed across parsers for same documents
+3. **Adaptive routing**: Learn which parser works best for specific sources
+4. **Streaming processing**: Handle very large documents
+5. **Multi-modal RAG**: Use extracted tables/images in retrieval
 
 ---
 
 ## References
 
-- [Docling GitHub Repository](https://github.com/docling-project/docling)
-- [Docling Documentation](https://docling-project.github.io/docling/)
+### Docling
+- [GitHub Repository](https://github.com/docling-project/docling)
+- [Documentation](https://docling-project.github.io/docling/)
 - [DoclingDocument Schema](https://github.com/docling-project/docling-core/blob/main/docs/DoclingDocument.json)
-- [Docling Core Library](https://github.com/docling-project/docling-core)
+
+### MarkItDown
+- [GitHub Repository](https://github.com/microsoft/markitdown)
+- [PyPI Package](https://pypi.org/project/markitdown/)
+
+### Related
+- [LangChain Document Loaders](https://python.langchain.com/docs/modules/data_connection/document_loaders/)
+- [LlamaIndex Document Readers](https://docs.llamaindex.ai/en/stable/module_guides/loading/connector/)
