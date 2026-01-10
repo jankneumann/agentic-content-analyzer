@@ -225,7 +225,8 @@ class PodcastScriptReviser:
                 f"{script_record.revision_count} revisions"
             )
 
-            return script_record
+            # Cast to correct type (db.refresh ensures it's populated)
+            return script_record  # type: ignore[no-any-return]
 
     async def apply_multiple_revisions(
         self,
@@ -240,13 +241,21 @@ class PodcastScriptReviser:
 
         Returns:
             Updated PodcastScriptRecord with all revisions applied
+
+        Raises:
+            ValueError: If section_feedback is empty
         """
+        if not section_feedback:
+            raise ValueError("section_feedback cannot be empty")
+
         logger.info(f"Applying {len(section_feedback)} revisions to script {script_id}")
 
-        script_record = None
+        script_record: PodcastScriptRecord | None = None
         for section_index, feedback in sorted(section_feedback.items()):
             script_record = await self.apply_revision(script_id, int(section_index), feedback)
 
+        # At this point script_record is guaranteed to be set (non-empty dict)
+        assert script_record is not None
         return script_record
 
     def _build_revision_prompt(
@@ -533,4 +542,5 @@ Respond with ONLY the JSON object, no additional text.
             db.commit()
             db.refresh(script_record)
 
-            return script_record
+            # Cast to correct type (db.refresh ensures it's populated)
+            return script_record  # type: ignore[no-any-return]

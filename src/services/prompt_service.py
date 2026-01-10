@@ -90,7 +90,7 @@ class PromptService:
         if self.db:
             override = self.db.query(PromptOverride).filter_by(key=key).first()
             if override:
-                return override.value
+                return str(override.value)
 
         # Return default
         return self._get_nested(self._defaults, path, "")

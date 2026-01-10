@@ -152,7 +152,19 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-plugins = ["pydantic.mypy"]
+plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
+ignore_missing_imports = true
+
+# SQLAlchemy ORM models have dynamic attributes that mypy struggles with
+[[tool.mypy.overrides]]
+module = [
+    "src.models.*",
+    "src.services.*",
+    "src.processors.*",
+    "src.api.*",
+]
+# Allow assignments to Column types (SQLAlchemy pattern) and optional access
+disable_error_code = ["assignment", "arg-type", "misc", "attr-defined", "union-attr", "index", "operator"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

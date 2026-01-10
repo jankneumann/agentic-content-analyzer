@@ -55,7 +55,7 @@ class ReviewService:
             )
 
             logger.info(f"Found {len(digests)} digests pending review")
-            return digests
+            return digests  # type: ignore[no-any-return]
 
     async def get_digest(self, digest_id: int) -> Digest | None:
         """Load digest by ID.
@@ -74,7 +74,7 @@ class ReviewService:
             if not digest:
                 logger.warning(f"Digest {digest_id} not found")
 
-            return digest
+            return digest  # type: ignore[no-any-return]
 
     async def start_revision_session(
         self,
@@ -265,7 +265,7 @@ class ReviewService:
                 f"Revision count: {digest.revision_count}"
             )
 
-            return digest
+            return digest  # type: ignore[no-any-return]
 
     async def quick_review(
         self,

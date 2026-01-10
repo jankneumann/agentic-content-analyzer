@@ -9,12 +9,13 @@ import json
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
@@ -222,7 +223,7 @@ def conversation_to_list_item(conv: Conversation) -> ConversationListItem:
     )
 
 
-def get_artifact_content(db, artifact_type: str, artifact_id: int) -> str:
+def get_artifact_content(db: Session, artifact_type: str, artifact_id: int) -> str:
     """Fetch and format artifact content for LLM context.
 
     Args:
@@ -399,7 +400,7 @@ async def generate_ai_response_streaming(
     user_message: str,
     enable_web_search: bool = False,
     model: str | None = None,
-    db=None,
+    db: Session | None = None,
 ) -> AsyncGenerator[tuple[str, MessageMetadata | None], None]:
     """Generate streaming AI response for the conversation.
 
@@ -489,7 +490,7 @@ async def generate_ai_response(
     user_message: str,
     enable_web_search: bool = False,
     model: str | None = None,
-    db=None,
+    db: Session | None = None,
 ) -> tuple[str, MessageMetadata]:
     """Generate AI response for the conversation (non-streaming).
 
@@ -524,7 +525,7 @@ async def generate_ai_response(
 
 
 @router.get("/config", response_model=ChatConfigResponse)
-async def get_chat_config():
+async def get_chat_config() -> ChatConfigResponse:
     """Get chat configuration.
 
     Returns available models from the model registry.
@@ -557,7 +558,7 @@ async def list_conversations(
     artifact_id: str | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-):
+) -> PaginatedConversationsResponse:
     """List conversations with optional filtering."""
     with get_db() as db:
         query = db.query(Conversation).filter(Conversation.is_active.is_(True))
@@ -584,7 +585,7 @@ async def list_conversations(
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-async def get_conversation(conversation_id: str):
+async def get_conversation(conversation_id: str) -> ConversationResponse:
     """Get a single conversation with all messages."""
     with get_db() as db:
         conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -596,7 +597,7 @@ async def get_conversation(conversation_id: str):
 
 
 @router.post("/conversations", response_model=ConversationResponse)
-async def create_conversation(request: CreateConversationRequest):
+async def create_conversation(request: CreateConversationRequest) -> ConversationResponse:
     """Create a new conversation."""
     with get_db() as db:
         # Generate conversation ID
@@ -648,7 +649,7 @@ async def create_conversation(request: CreateConversationRequest):
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
+async def delete_conversation(conversation_id: str) -> dict[str, str]:
     """Delete a conversation."""
     with get_db() as db:
         conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -663,10 +664,10 @@ async def delete_conversation(conversation_id: str):
 
 
 @router.post("/conversations/{conversation_id}/messages")
-async def send_message(conversation_id: str, request: SendMessageRequest):
+async def send_message(conversation_id: str, request: SendMessageRequest) -> StreamingResponse:
     """Send a message and stream the response via SSE."""
 
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[str, None]:
         with get_db() as db:
             conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
 
@@ -751,10 +752,10 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
 
 
 @router.post("/conversations/{conversation_id}/regenerate")
-async def regenerate_last_message(conversation_id: str):
+async def regenerate_last_message(conversation_id: str) -> StreamingResponse:
     """Regenerate the last assistant message."""
 
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[str, None]:
         with get_db() as db:
             conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
 
@@ -859,7 +860,7 @@ async def regenerate_last_message(conversation_id: str):
 
 
 @router.post("/conversations/{conversation_id}/apply-action")
-async def apply_action(conversation_id: str, request: ApplyActionRequest):
+async def apply_action(conversation_id: str, request: ApplyActionRequest) -> dict[str, Any]:
     """Apply a suggested action from a chat message."""
     with get_db() as db:
         conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -897,7 +898,7 @@ async def get_messages(
     conversation_id: str,
     limit: int = Query(50, ge=1, le=100),
     before: str | None = Query(None),
-):
+) -> list[ChatMessageResponse]:
     """Get messages for a conversation."""
     with get_db() as db:
         query = db.query(ChatMessage).filter(ChatMessage.conversation_id == conversation_id)
@@ -945,7 +946,7 @@ class DebugContextResponse(BaseModel):
 
 
 @router.get("/conversations/{conversation_id}/context", response_model=DebugContextResponse)
-async def get_conversation_context(conversation_id: str):
+async def get_conversation_context(conversation_id: str) -> DebugContextResponse:
     """Debug endpoint to view what context is sent to the LLM.
 
     Returns the system prompt, artifact content, and full context that would be

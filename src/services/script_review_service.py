@@ -69,7 +69,7 @@ class ScriptReviewService:
             )
 
             logger.info(f"Found {len(scripts)} scripts pending review")
-            return scripts
+            return scripts  # type: ignore[no-any-return]
 
     async def list_approved_scripts(self) -> list[PodcastScriptRecord]:
         """Get all scripts that are approved and ready for audio generation.
@@ -88,7 +88,7 @@ class ScriptReviewService:
             )
 
             logger.info(f"Found {len(scripts)} approved scripts")
-            return scripts
+            return scripts  # type: ignore[no-any-return]
 
     async def get_script(self, script_id: int) -> PodcastScriptRecord | None:
         """Load script by ID.
@@ -109,7 +109,7 @@ class ScriptReviewService:
             if not script:
                 logger.warning(f"Script {script_id} not found")
 
-            return script
+            return script  # type: ignore[no-any-return]
 
     async def get_scripts_for_digest(self, digest_id: int) -> list[PodcastScriptRecord]:
         """Get all scripts generated from a specific digest.
@@ -130,7 +130,7 @@ class ScriptReviewService:
                 .all()
             )
 
-            return scripts
+            return scripts  # type: ignore[no-any-return]
 
     def get_script_for_review(self, script_id: int) -> dict[str, Any]:
         """Get script with review-friendly formatting.
@@ -298,7 +298,7 @@ class ScriptReviewService:
 
                 logger.info(f"Script {request.script_id} rejected by {request.reviewer}")
 
-            return script_record
+            return script_record  # type: ignore[no-any-return]
 
     async def revise_section(
         self,

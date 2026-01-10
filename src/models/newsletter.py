@@ -28,7 +28,7 @@ class ProcessingStatus(str, Enum):
     FAILED = "failed"
 
 
-class Newsletter(Base):
+class Newsletter(Base):  # type: ignore[valid-type, misc]
     """Newsletter database model."""
 
     __tablename__ = "newsletters"

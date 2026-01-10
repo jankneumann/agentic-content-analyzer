@@ -204,13 +204,15 @@ class DigestReviser:
                             tools_used.append(block.name)
 
                             # Handle tool call
-                            result = await self._handle_tool_call(block.name, block.input, context)
+                            tool_output = await self._handle_tool_call(
+                                block.name, block.input, context
+                            )
 
                             tool_results.append(
                                 {
                                     "type": "tool_result",
                                     "tool_use_id": block.id,
-                                    "content": result,
+                                    "content": tool_output,
                                 }
                             )
 
@@ -266,7 +268,7 @@ class DigestReviser:
             if not newsletter_id:
                 return "Error: newsletter_id is required"
 
-            if newsletter_id not in context.newsletter_ids:
+            if context.newsletter_ids is None or newsletter_id not in context.newsletter_ids:
                 return f"Error: Newsletter {newsletter_id} not in current digest period"
 
             # Fetch from database
@@ -488,7 +490,8 @@ Example response format:
         """
         # Try direct parse first
         try:
-            return json.loads(response_text)
+            parsed: dict[str, Any] = json.loads(response_text)
+            return parsed
         except json.JSONDecodeError:
             pass
 
@@ -497,12 +500,14 @@ Example response format:
             json_start = response_text.find("```json") + 7
             json_end = response_text.find("```", json_start)
             json_str = response_text[json_start:json_end].strip()
-            return json.loads(json_str)
+            parsed = json.loads(json_str)
+            return parsed
         elif "```" in response_text:
             json_start = response_text.find("```") + 3
             json_end = response_text.find("```", json_start)
             json_str = response_text[json_start:json_end].strip()
-            return json.loads(json_str)
+            parsed = json.loads(json_str)
+            return parsed
 
         raise json.JSONDecodeError("Could not extract JSON from response", response_text, 0)
 

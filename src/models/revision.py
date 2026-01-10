@@ -19,9 +19,9 @@ class RevisionContext:
     digest: Digest
     summaries: list[NewsletterSummary]  # Already condensed summaries
     theme_analysis: Any | None = None  # Theme analysis data (if available)
-    newsletter_ids: list[int] = None  # IDs for on-demand fetching via tools
+    newsletter_ids: list[int] | None = None  # IDs for on-demand fetching via tools
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize newsletter IDs if not provided."""
         if self.newsletter_ids is None:
             self.newsletter_ids = [summary.newsletter_id for summary in self.summaries]
@@ -157,11 +157,11 @@ class RevisionResult:
     section_modified: str  # Which digest section was changed
     explanation: str  # AI explanation of the change
     confidence_score: float = 1.0  # How confident the AI is (0.0-1.0)
-    tools_used: list[str] = (
+    tools_used: list[str] | None = (
         None  # Tools called during revision (e.g., ["fetch_newsletter_content"])
     )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize tools_used if not provided."""
         if self.tools_used is None:
             self.tools_used = []
@@ -181,9 +181,9 @@ class RevisionTurn:
     section_modified: str
     change_accepted: bool
     timestamp: datetime
-    tools_called: list[str] = None  # Tools used in this turn
+    tools_called: list[str] | None = None  # Tools used in this turn
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize tools_called if not provided."""
         if self.tools_called is None:
             self.tools_called = []
