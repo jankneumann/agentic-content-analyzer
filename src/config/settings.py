@@ -63,6 +63,16 @@ class Settings(BaseSettings):
     )
     youtube_similarity_threshold: float = 0.85  # Slide dedup threshold (0-1, higher = stricter)
 
+    # Document Parser Configuration
+    enable_docling: bool = True  # Enable Docling parser for advanced PDF/OCR
+    docling_enable_ocr: bool = False  # Enable OCR for scanned documents (requires docling[ocr])
+    docling_max_file_size_mb: int = 100  # Maximum file size for Docling processing
+    docling_timeout_seconds: int = 300  # Processing timeout for large documents
+    docling_cache_dir: str = "/tmp/docling"  # Cache directory for Docling models  # noqa: S108
+
+    # File Upload Configuration
+    max_upload_size_mb: int = 50  # Maximum file upload size
+
     # Email Delivery
     sendgrid_api_key: str | None = None
 
