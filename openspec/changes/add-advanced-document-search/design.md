@@ -1,5 +1,12 @@
 # Design: Advanced Document Search
 
+## Prerequisites
+
+This design assumes the **refactor-unified-content-model** change is complete:
+- Single `contents` table replaces Newsletter + Document
+- All content stored as markdown in `Content.markdown_content`
+- Summaries and digests use markdown with section conventions
+
 ## Context
 
 The newsletter aggregator ingests content from multiple sources (Gmail, RSS, file uploads, YouTube) and stores it in PostgreSQL. Users need to search across this content efficiently using natural language queries. The current ILIKE search on titles is insufficient for:
@@ -56,15 +63,15 @@ The newsletter aggregator ingests content from multiple sources (Gmail, RSS, fil
 
 **Syntax**:
 ```sql
--- Create BM25 index
-CREATE INDEX idx_newsletters_search ON newsletters
-USING bm25 (id, title, raw_text, sender, publication)
+-- Create BM25 index on unified Content table
+CREATE INDEX idx_contents_search ON contents
+USING bm25 (id, title, markdown_content, author, publication)
 WITH (key_field='id');
 
 -- Search with scoring
 SELECT id, title, pdb.score(id) as relevance
-FROM newsletters
-WHERE raw_text @@@ 'machine learning transformers'
+FROM contents
+WHERE markdown_content @@@ 'machine learning transformers'
 ORDER BY relevance DESC
 LIMIT 20;
 ```
@@ -183,12 +190,12 @@ class DocumentChunk(Base):
 
     id: int  # Primary key
 
-    # Source reference
-    source_type: str  # "newsletter", "document", "summary", "digest"
-    source_id: int  # FK to source table
+    # Source reference (simplified with unified Content model)
+    content_id: int  # FK to contents table
+    source_type: str  # "content", "summary", "digest" (for summaries/digests that also get chunked)
 
     # Chunk content
-    content: str  # Text content of the chunk
+    chunk_text: str  # Text content of the chunk
     chunk_index: int  # Order within document (0, 1, 2...)
 
     # Structural metadata

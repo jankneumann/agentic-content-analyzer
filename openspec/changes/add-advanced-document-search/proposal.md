@@ -1,5 +1,9 @@
 # Change: Add Advanced Document Search with Hybrid BM25 + Vector Search
 
+## Prerequisites
+
+- **refactor-unified-content-model**: This proposal assumes the unified Content model with markdown-first storage is implemented. The chunking service will operate on Content.markdown_content rather than multiple content fields across Newsletter/Document tables.
+
 ## Why
 
 The current search implementation is limited to simple ILIKE pattern matching on newsletter titles only, missing:
