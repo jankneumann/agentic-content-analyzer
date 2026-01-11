@@ -1,0 +1,9 @@
+# YouTube Playlists for Newsletter Aggregator
+# Format: PLAYLIST_ID | optional description
+# Lines starting with # are comments
+
+# Public playlist (API key access)
+PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6 | Public test playlist
+
+# Private playlist (OAuth required)
+PLgmaR0EXVZsLXQ30zPCMobz0p02XrNBJq | Private test playlist

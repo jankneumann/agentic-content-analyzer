@@ -12,6 +12,10 @@ from src.ingestion.youtube import (
 )
 from src.models.youtube import TranscriptSegment, YouTubeTranscript
 
+# Test playlist IDs (real playlists for integration testing)
+TEST_PUBLIC_PLAYLIST_ID = "PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6"
+TEST_PRIVATE_PLAYLIST_ID = "PLgmaR0EXVZsLXQ30zPCMobz0p02XrNBJq"
+
 
 class TestYouTubeClient:
     """Tests for YouTubeClient."""
@@ -325,3 +329,79 @@ class TestCLI:
 
         # Should initialize service with use_oauth=False
         mock_service_class.assert_called_once_with(use_oauth=False)
+
+
+@pytest.mark.integration
+class TestYouTubeIntegration:
+    """Integration tests using real YouTube API.
+
+    These tests require valid API credentials and network access.
+    Run with: pytest -m integration tests/test_ingestion/test_youtube.py
+    """
+
+    @pytest.fixture
+    def api_key_available(self) -> bool:
+        """Check if YouTube API key is available."""
+        from src.config.settings import settings
+
+        return settings.get_youtube_api_key() is not None
+
+    def test_get_public_playlist_videos(self, api_key_available: bool) -> None:
+        """Test fetching videos from public test playlist."""
+        if not api_key_available:
+            pytest.skip("YOUTUBE_API_KEY or GOOGLE_API_KEY not configured")
+
+        client = YouTubeClient(use_oauth=False)
+        videos = client.get_playlist_videos(TEST_PUBLIC_PLAYLIST_ID, max_results=5)
+
+        assert isinstance(videos, list)
+        # Public playlist should have at least some videos
+        if len(videos) > 0:
+            video = videos[0]
+            assert "video_id" in video
+            assert "title" in video
+            assert "channel_title" in video
+
+    def test_get_transcript_from_public_playlist(self, api_key_available: bool) -> None:
+        """Test fetching transcript from a video in public playlist."""
+        if not api_key_available:
+            pytest.skip("YOUTUBE_API_KEY or GOOGLE_API_KEY not configured")
+
+        client = YouTubeClient(use_oauth=False)
+        videos = client.get_playlist_videos(TEST_PUBLIC_PLAYLIST_ID, max_results=1)
+
+        if not videos:
+            pytest.skip("No videos in public test playlist")
+
+        video_id = videos[0]["video_id"]
+        transcript = client.get_transcript(video_id)
+
+        # Transcript may or may not be available
+        if transcript is not None:
+            assert isinstance(transcript, YouTubeTranscript)
+            assert transcript.video_id == video_id
+            assert len(transcript.segments) > 0
+
+    @pytest.fixture
+    def oauth_available(self) -> bool:
+        """Check if YouTube OAuth credentials are available."""
+        import os
+
+        from src.config.settings import settings
+
+        return os.path.exists(settings.youtube_token_file)
+
+    def test_get_private_playlist_videos(self, oauth_available: bool) -> None:
+        """Test fetching videos from private test playlist (requires OAuth)."""
+        if not oauth_available:
+            pytest.skip("YouTube OAuth token not configured")
+
+        client = YouTubeClient(use_oauth=True)
+        videos = client.get_playlist_videos(TEST_PRIVATE_PLAYLIST_ID, max_results=5)
+
+        assert isinstance(videos, list)
+        # Private playlist should have videos if OAuth is working
+        if len(videos) > 0:
+            video = videos[0]
+            assert "video_id" in video
+            assert "title" in video
