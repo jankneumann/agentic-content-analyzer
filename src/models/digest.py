@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Column, DateTime, Enum as SQLEnum, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text
 
 from src.models.newsletter import Base
 
@@ -83,7 +83,7 @@ class Digest(Base):
     # Hierarchical digest support (NEW)
     parent_digest_id = Column(Integer, nullable=True, index=True)  # FK added in migration
     child_digest_ids = Column(JSON, nullable=True)  # List[int] of child digest IDs
-    is_combined = Column(Integer, default=0, nullable=False)  # Boolean as integer (0/1)
+    is_combined = Column(Boolean, default=False, nullable=False)
     source_digest_count = Column(Integer, nullable=True)  # Number of sub-digests combined
 
 
