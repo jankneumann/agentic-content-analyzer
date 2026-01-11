@@ -54,6 +54,8 @@ class NewsletterDetail(BaseModel):
     url: str | None
     raw_text: str | None
     extracted_links: list[str] | None
+    # YouTube transcripts store metadata as dict in extracted_links column
+    transcript_metadata: dict | None = None
     content_hash: str | None
     canonical_newsletter_id: int | None
     status: ProcessingStatus
@@ -219,6 +221,17 @@ async def get_newsletter(newsletter_id: int) -> NewsletterDetail:
         if not newsletter:
             raise HTTPException(status_code=404, detail="Newsletter not found")
 
+        # Handle extracted_links based on type (list for normal, dict for YouTube)
+        extracted_links = newsletter.extracted_links
+        transcript_metadata = None
+
+        if isinstance(extracted_links, dict):
+            # YouTube transcript metadata stored as dict
+            transcript_metadata = extracted_links
+            extracted_links = []
+        elif not isinstance(extracted_links, list):
+            extracted_links = []
+
         return NewsletterDetail(
             id=newsletter.id,
             source=newsletter.source,
@@ -229,7 +242,8 @@ async def get_newsletter(newsletter_id: int) -> NewsletterDetail:
             published_date=newsletter.published_date,
             url=newsletter.url,
             raw_text=newsletter.raw_text,
-            extracted_links=newsletter.extracted_links or [],
+            extracted_links=extracted_links,
+            transcript_metadata=transcript_metadata,
             content_hash=newsletter.content_hash,
             canonical_newsletter_id=newsletter.canonical_newsletter_id,
             status=newsletter.status,

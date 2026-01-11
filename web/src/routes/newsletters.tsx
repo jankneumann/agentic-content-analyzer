@@ -393,12 +393,12 @@ function NewslettersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[80px]">Actions</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="w-[120px]">Source</TableHead>
                   <TableHead className="w-[150px]">Publication</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[150px]">Published</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -407,6 +407,35 @@ function NewslettersPage() {
                   const source = sourceConfig[newsletter.source]
                   return (
                     <TableRow key={newsletter.id}>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setSelectedNewsletterId(String(newsletter.id))}
+                            title="View newsletter"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {newsletter.status === "completed" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              asChild
+                            >
+                              <Link
+                                to="/review/summary/$id"
+                                params={{ id: String(newsletter.id) }}
+                                title="Review summary"
+                              >
+                                <FileSearch className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium line-clamp-1">
@@ -443,35 +472,6 @@ function NewslettersPage() {
                               })
                             : "Unknown"}
                         </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setSelectedNewsletterId(String(newsletter.id))}
-                            title="View newsletter"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {newsletter.status === "completed" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              asChild
-                            >
-                              <Link
-                                to="/review/summary/$id"
-                                params={{ id: String(newsletter.id) }}
-                                title="Review summary"
-                              >
-                                <FileSearch className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                          )}
-                        </div>
                       </TableCell>
                     </TableRow>
                   )
