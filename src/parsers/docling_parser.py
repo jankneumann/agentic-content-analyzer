@@ -135,7 +135,7 @@ class DoclingParser(DocumentParser):
 
         try:
             # Convert document using Docling
-            result: ConversionResult = self.converter.convert(source)  # type: ignore[assignment]
+            result: ConversionResult = self.converter.convert(source)  # type: ignore[assignment, attr-defined]
             doc: DoclingDocument = result.document  # type: ignore[assignment]
 
             # Export to markdown as primary content
@@ -276,9 +276,7 @@ class DoclingParser(DocumentParser):
                             # First row as headers
                             headers = [self._cell_to_text(cell) for cell in grid[0]]
                             # Rest as rows
-                            rows = [
-                                [self._cell_to_text(cell) for cell in row] for row in grid[1:]
-                            ]
+                            rows = [[self._cell_to_text(cell) for cell in row] for row in grid[1:]]
 
                 tables.append(
                     TableData(

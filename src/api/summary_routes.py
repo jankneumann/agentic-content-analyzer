@@ -522,7 +522,6 @@ async def regenerate_with_feedback(
     Returns SSE stream with progress and final result.
     """
     import json
-    import uuid
 
     with get_db() as db:
         summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()

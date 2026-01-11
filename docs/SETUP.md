@@ -149,6 +149,12 @@ MODEL_SUMMARIZATION=claude-haiku-4-5
 MODEL_THEME_ANALYSIS=claude-sonnet-4-5
 MODEL_DIGEST_CREATION=claude-sonnet-4-5
 MODEL_HISTORICAL_CONTEXT=claude-haiku-4-5
+
+# Document Parsing (Docling)
+ENABLE_DOCLING=true                    # Enable Docling parser (default: true)
+DOCLING_ENABLE_OCR=false               # Enable OCR for scanned documents (default: false)
+DOCLING_MAX_FILE_SIZE_MB=100           # Maximum file size for Docling (default: 100MB)
+DOCLING_TIMEOUT_SECONDS=300            # Processing timeout (default: 300s)
 ```
 
 See [Model Configuration](MODEL_CONFIGURATION.md) for detailed model selection options.

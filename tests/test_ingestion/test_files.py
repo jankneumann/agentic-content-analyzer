@@ -136,17 +136,22 @@ class TestFileIngestionService:
     @pytest.mark.asyncio
     async def test_ingest_file_too_large(self, service):
         """Test error when file exceeds size limit."""
-        # Create a mock Path that reports a large file size
-        mock_path = MagicMock(spec=Path)
-        mock_path.exists.return_value = True
-        mock_path.stat.return_value.st_size = 100 * 1024 * 1024  # 100MB
+        # Create a real temp file and set a low size limit
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".pdf") as f:
+            # Write some content to make the file non-empty
+            f.write(b"x" * 1024)  # 1KB file
+            temp_path = Path(f.name)
 
-        service.max_file_size_mb = 50  # 50MB limit
+        try:
+            # Set limit to less than file size (in MB)
+            service.max_file_size_mb = 0.0001  # ~100 bytes limit
 
-        with pytest.raises(ValueError) as exc_info:
-            await service.ingest_file(mock_path)
+            with pytest.raises(ValueError) as exc_info:
+                await service.ingest_file(temp_path)
 
-        assert "exceeds limit" in str(exc_info.value)
+            assert "exceeds limit" in str(exc_info.value)
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     @pytest.mark.asyncio
     async def test_ingest_file_duplicate_detection(
@@ -169,9 +174,7 @@ class TestFileIngestionService:
                 status=ProcessingStatus.COMPLETED,
                 content_hash="abc123",
             )
-            mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = (
-                existing_newsletter
-            )
+            mock_db.query.return_value.filter.return_value.filter.return_value.first.return_value = existing_newsletter
 
             result = await service.ingest_file(temp_path)
 

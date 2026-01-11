@@ -133,9 +133,7 @@ The system SHALL provide REST API endpoints for document upload and status check
 
 ---
 
-## MODIFIED Requirements
-
-### Requirement: Parser Router Selection (Modified)
+### Requirement: Parser Router Selection
 
 The parser router SHALL select the appropriate parser based on document format, with Docling as preferred parser for complex formats.
 

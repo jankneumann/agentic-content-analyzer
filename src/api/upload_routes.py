@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from src.config.settings import settings
 from src.ingestion.files import FileIngestionService
-from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
+from src.models.newsletter import Newsletter, NewsletterSource
 from src.parsers import DoclingParser, MarkItDownParser, ParserRouter, YouTubeParser
 from src.storage.database import get_db
 
@@ -113,18 +113,12 @@ def get_parser_router() -> ParserRouter:
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: Annotated[UploadFile, File(description="Document file to upload")],
-    publication: Annotated[
-        str | None, Form(description="Publisher/source name")
-    ] = None,
-    title: Annotated[
-        str | None, Form(description="Override extracted title")
-    ] = None,
+    publication: Annotated[str | None, Form(description="Publisher/source name")] = None,
+    title: Annotated[str | None, Form(description="Override extracted title")] = None,
     prefer_structured: Annotated[
         bool, Form(description="Prefer Docling for table extraction")
     ] = False,
-    ocr_needed: Annotated[
-        bool, Form(description="Force OCR processing")
-    ] = False,
+    ocr_needed: Annotated[bool, Form(description="Force OCR processing")] = False,
 ) -> DocumentUploadResponse:
     """
     Upload and process a document file.
@@ -283,7 +277,9 @@ async def get_document_status(document_id: int) -> DocumentStatusResponse:
                 "title": newsletter.title,
                 "sender": newsletter.sender,
                 "publication": newsletter.publication,
-                "published_date": newsletter.published_date.isoformat() if newsletter.published_date else None,
+                "published_date": newsletter.published_date.isoformat()
+                if newsletter.published_date
+                else None,
             },
             content_preview=content_preview,
             tables_count=0,  # Would need to store extracted tables
