@@ -95,20 +95,33 @@ class TestYouTubeClient:
         assert result is None
 
     @patch("src.ingestion.youtube.YouTubeTranscriptApi")
-    def test_get_transcript_success(self, mock_api: Mock) -> None:
+    def test_get_transcript_success(self, mock_api_class: Mock) -> None:
         """Test successful transcript retrieval."""
-        # Setup mock
+        # Setup mock snippet objects (v1.2+ API returns objects, not dicts)
+        mock_snippet1 = Mock()
+        mock_snippet1.text = "Hello"
+        mock_snippet1.start = 0.0
+        mock_snippet1.duration = 1.5
+
+        mock_snippet2 = Mock()
+        mock_snippet2.text = "World"
+        mock_snippet2.start = 1.5
+        mock_snippet2.duration = 1.5
+
+        mock_fetched = [mock_snippet1, mock_snippet2]
+
         mock_transcript = Mock()
-        mock_transcript.fetch.return_value = [
-            {"text": "Hello", "start": 0.0, "duration": 1.5},
-            {"text": "World", "start": 1.5, "duration": 1.5},
-        ]
+        mock_transcript.fetch.return_value = mock_fetched
         mock_transcript.language_code = "en"
         mock_transcript.is_generated = False
 
         mock_list = Mock()
         mock_list.find_manually_created_transcript.return_value = mock_transcript
-        mock_api.list_transcripts.return_value = mock_list
+
+        # v1.2+ API: YouTubeTranscriptApi() returns instance, then call .list()
+        mock_api_instance = Mock()
+        mock_api_instance.list.return_value = mock_list
+        mock_api_class.return_value = mock_api_instance
 
         # Create client without authentication
         client = YouTubeClient.__new__(YouTubeClient)
@@ -124,22 +137,28 @@ class TestYouTubeClient:
         assert result.is_auto_generated is False
 
     @patch("src.ingestion.youtube.YouTubeTranscriptApi")
-    def test_get_transcript_auto_generated(self, mock_api: Mock) -> None:
+    def test_get_transcript_auto_generated(self, mock_api_class: Mock) -> None:
         """Test transcript retrieval falls back to auto-generated."""
         from youtube_transcript_api._errors import NoTranscriptFound
 
-        # Setup mock
+        # Setup mock snippet object (v1.2+ API)
+        mock_snippet = Mock()
+        mock_snippet.text = "Auto generated"
+        mock_snippet.start = 0.0
+        mock_snippet.duration = 2.0
+
         mock_transcript = Mock()
-        mock_transcript.fetch.return_value = [
-            {"text": "Auto generated", "start": 0.0, "duration": 2.0},
-        ]
+        mock_transcript.fetch.return_value = [mock_snippet]
         mock_transcript.language_code = "en"
         mock_transcript.is_generated = True
 
         mock_list = Mock()
         mock_list.find_manually_created_transcript.side_effect = NoTranscriptFound("test", [], [])
         mock_list.find_generated_transcript.return_value = mock_transcript
-        mock_api.list_transcripts.return_value = mock_list
+
+        mock_api_instance = Mock()
+        mock_api_instance.list.return_value = mock_list
+        mock_api_class.return_value = mock_api_instance
 
         client = YouTubeClient.__new__(YouTubeClient)
 
@@ -149,11 +168,13 @@ class TestYouTubeClient:
         assert result.is_auto_generated is True
 
     @patch("src.ingestion.youtube.YouTubeTranscriptApi")
-    def test_get_transcript_disabled(self, mock_api: Mock) -> None:
+    def test_get_transcript_disabled(self, mock_api_class: Mock) -> None:
         """Test transcript retrieval when transcripts are disabled."""
         from youtube_transcript_api._errors import TranscriptsDisabled
 
-        mock_api.list_transcripts.side_effect = TranscriptsDisabled("test")
+        mock_api_instance = Mock()
+        mock_api_instance.list.side_effect = TranscriptsDisabled("test")
+        mock_api_class.return_value = mock_api_instance
 
         client = YouTubeClient.__new__(YouTubeClient)
 

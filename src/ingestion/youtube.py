@@ -177,8 +177,11 @@ class YouTubeClient:
             languages = DEFAULT_LANGUAGES
 
         try:
+            # Create API instance (v1.2+ API)
+            ytt_api = YouTubeTranscriptApi()
+
             # Try to get transcript in preferred languages
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)  # type: ignore[attr-defined]
+            transcript_list = ytt_api.list(video_id)
 
             # Try manual transcripts first, then auto-generated
             transcript = None
@@ -202,19 +205,19 @@ class YouTubeClient:
                 logger.warning(f"No transcript found for video {video_id}")
                 return None
 
-            # Fetch the transcript
-            raw_segments = transcript.fetch()
+            # Fetch the transcript (returns FetchedTranscript in v1.2+)
+            fetched = transcript.fetch()
             language = transcript.language_code
 
-            # Convert to our segment model
+            # Convert to our segment model (v1.2+ returns snippet objects)
             segments = [
                 TranscriptSegment(
-                    text=entry["text"],
-                    start=entry["start"],
-                    duration=entry["duration"],
+                    text=snippet.text,
+                    start=snippet.start,
+                    duration=snippet.duration,
                     is_generated=is_auto_generated,
                 )
-                for entry in raw_segments
+                for snippet in fetched
             ]
 
             logger.debug(
