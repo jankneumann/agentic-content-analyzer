@@ -16,6 +16,7 @@ import {
   Search,
   Mail,
   Rss,
+  Youtube,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -124,6 +125,10 @@ const sourceConfig: Record<
     label: "RSS",
     icon: <Rss className="h-3 w-3" />,
   },
+  youtube: {
+    label: "YouTube",
+    icon: <Youtube className="h-3 w-3" />,
+  },
 }
 
 /**
@@ -174,7 +179,7 @@ function NewslettersPage() {
     // Close dialog immediately - task runs in background
     setIngestDialogOpen(false)
 
-    const sourceName = params.source === "gmail" ? "Gmail" : "RSS"
+    const sourceName = params.source === "gmail" ? "Gmail" : params.source === "youtube" ? "YouTube" : "RSS"
 
     // Add background task
     const taskId = addTask({
@@ -249,7 +254,7 @@ function NewslettersPage() {
   return (
     <PageContainer
       title="Newsletters"
-      description="Manage ingested newsletters from Gmail and RSS feeds"
+      description="Manage ingested newsletters from Gmail, RSS feeds, and YouTube"
       actions={
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
@@ -342,6 +347,7 @@ function NewslettersPage() {
                 <SelectItem value="all">All Sources</SelectItem>
                 <SelectItem value="gmail">Gmail</SelectItem>
                 <SelectItem value="rss">RSS</SelectItem>
+                <SelectItem value="youtube">YouTube</SelectItem>
               </SelectContent>
             </Select>
           </div>

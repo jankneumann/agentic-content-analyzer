@@ -11,8 +11,9 @@
  * Source of the newsletter content
  * - gmail: Fetched from Gmail inbox
  * - rss: Fetched from RSS/Substack feed
+ * - youtube: Fetched from YouTube transcript
  */
-export type NewsletterSource = "gmail" | "rss"
+export type NewsletterSource = "gmail" | "rss" | "youtube"
 
 /**
  * Processing status of a newsletter
