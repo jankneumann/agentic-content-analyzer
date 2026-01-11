@@ -7,7 +7,7 @@
 
 ### Requirement: Docling Parser Support
 
-The system shall support Docling as an advanced document parser for complex PDFs, images with text, and documents requiring OCR.
+The system SHALL support Docling as an advanced document parser for complex PDFs, images with text, and documents requiring OCR.
 
 #### Scenario: Parse PDF with complex layout
 **Given** a PDF document with multi-column layout and tables
@@ -40,7 +40,7 @@ The system shall support Docling as an advanced document parser for complex PDFs
 
 ### Requirement: File Upload Ingestion
 
-The system shall support direct file uploads as a document source, processing them through the parser system and storing as newsletters.
+The system SHALL support direct file uploads as a document source, processing them through the parser system and storing as newsletters.
 
 #### Scenario: Upload PDF document
 **Given** a user uploads a PDF file via API
@@ -73,7 +73,7 @@ The system shall support direct file uploads as a document source, processing th
 
 ### Requirement: Structured Table Extraction
 
-The system shall extract tables from documents as structured data when using Docling parser.
+The system SHALL extract tables from documents as structured data when using Docling parser.
 
 #### Scenario: Extract table from PDF
 **Given** a PDF document containing a data table
@@ -94,7 +94,7 @@ The system shall extract tables from documents as structured data when using Doc
 
 ### Requirement: Document Metadata Extraction
 
-The system shall extract metadata from documents during parsing.
+The system SHALL extract metadata from documents during parsing.
 
 #### Scenario: Extract PDF metadata
 **Given** a PDF document with embedded metadata
@@ -115,7 +115,7 @@ The system shall extract metadata from documents during parsing.
 
 ### Requirement: File Upload REST API
 
-The system shall provide REST API endpoints for document upload and status checking.
+The system SHALL provide REST API endpoints for document upload and status checking.
 
 #### Scenario: POST upload endpoint
 **Given** a multipart form request with file attachment
@@ -137,7 +137,7 @@ The system shall provide REST API endpoints for document upload and status check
 
 ### Requirement: Parser Router Selection (Modified)
 
-The parser router shall select the appropriate parser based on document format, with Docling as preferred parser for complex formats.
+The parser router SHALL select the appropriate parser based on document format, with Docling as preferred parser for complex formats.
 
 #### Scenario: Route PDF to Docling
 **Given** Docling parser is available
