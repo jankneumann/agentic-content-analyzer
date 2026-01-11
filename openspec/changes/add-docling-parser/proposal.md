@@ -4,7 +4,7 @@
 `add-docling-parser`
 
 ## Status
-`proposed`
+`implemented` (pending validation)
 
 ## Summary
 

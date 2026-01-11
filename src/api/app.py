@@ -18,6 +18,7 @@ from src.api.script_routes import router as script_router
 from src.api.settings_routes import router as settings_router
 from src.api.summary_routes import router as summary_router
 from src.api.theme_routes import router as theme_router
+from src.api.upload_routes import router as upload_router
 
 
 @asynccontextmanager
@@ -56,6 +57,7 @@ app.include_router(podcast_router)
 app.include_router(theme_router)
 app.include_router(chat_router)
 app.include_router(settings_router)
+app.include_router(upload_router)
 
 
 @app.get("/health", tags=["system"])

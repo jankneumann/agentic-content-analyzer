@@ -139,9 +139,19 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **ClassVar for class attributes**: Mutable class attributes (like `supported_formats`) must use `ClassVar[set[str]]` to satisfy ruff RUF012
 - **Union syntax in isinstance**: Use `isinstance(x, bytes | BinaryIO)` not `isinstance(x, (bytes, BinaryIO))` for Python 3.10+ (UP038)
 - **MarkItDown for lightweight parsing**: Office docs, HTML, audio
+- **DoclingParser for advanced PDFs**: Complex layouts, table extraction, OCR support via `docling>=2.60.0`
 - **YouTubeParser for transcripts**: Direct youtube-transcript-api usage for timestamp preservation and deep-linking
 - **ParserRouter**: Routes documents to appropriate parser based on format detection with fallback support
+- **Lazy converter loading**: DoclingParser uses lazy `converter` property to defer heavy import until first use
 - **Type ignore for untyped libraries**: Use `# type: ignore[attr-defined]` for libraries without type stubs (e.g., youtube-transcript-api)
+- **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` block for Docling types to avoid import errors when docling not installed
+
+### File Upload Ingestion
+- **FileIngestionService**: Processes file uploads via `ParserRouter`, stores as Newsletter records
+- **Deduplication**: SHA-256 file hash for duplicate detection, links duplicates to canonical record
+- **API endpoint**: `POST /api/v1/documents/upload` accepts multipart form data
+- **Size limits**: Configure via `MAX_UPLOAD_SIZE_MB` and `DOCLING_MAX_FILE_SIZE_MB` settings
+- **Format validation**: Router provides `get_supported_formats()` to check available formats
 
 ### YouTube Ingestion
 - **YouTubeClient**: Handles YouTube Data API authentication (OAuth for private, API key for public playlists)
