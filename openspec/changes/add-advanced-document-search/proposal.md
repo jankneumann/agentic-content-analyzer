@@ -13,24 +13,31 @@ Users need to efficiently discover relevant content across thousands of ingested
 ## What Changes
 
 - **Add pg_search extension** for BM25 full-text search with relevance ranking
-- **Add pgvector extension** for storing and querying document embeddings
-- **Implement hybrid search** combining BM25 lexical search with vector similarity search
+- **Add pgvector extension** for storing and querying document chunk embeddings
+- **Implement semantic chunking** leveraging existing parser infrastructure (DoclingParser, YouTubeParser, MarkItDownParser) to split documents into meaningful units
+- **Create document_chunks table** to store chunks with structural metadata (section paths, page numbers, timestamps, deep-links)
+- **Implement hybrid search** combining BM25 document search with chunk-level vector similarity search
 - **Add Reciprocal Rank Fusion (RRF)** to combine and rerank results from multiple search methods
-- **Create embedding pipeline** to generate and store document embeddings at ingestion time
-- **Add search API endpoints** for unified search across all document types
-- **Add search configuration** for model selection, weighting, and filtering
+- **Create chunking service** with parser-aware strategies for PDFs, YouTube transcripts, markdown, and HTML
+- **Create embedding pipeline** to generate and store chunk embeddings at ingestion time
+- **Add search API endpoints** for unified search with chunk-level highlighting and navigation
+- **Add search configuration** for model selection, chunk sizing, weighting, and filtering
 
 ## Impact
 
 - **Affected specs**: New capability (document-search)
 - **Affected code**:
-  - `src/storage/` - New search module with BM25 and vector search
-  - `src/models/` - New embedding column for newsletters/documents
-  - `src/api/` - New search endpoints
-  - `src/config/` - Search configuration settings
-  - `alembic/versions/` - Migration for pgvector, pg_search setup
+  - `src/services/chunking.py` - New chunking service with parser-aware strategies
+  - `src/services/embedding.py` - Embedding generation service
+  - `src/services/search.py` - Hybrid search with chunk aggregation
+  - `src/models/chunk.py` - DocumentChunk SQLAlchemy model
+  - `src/models/search.py` - Search request/response Pydantic models
+  - `src/api/search_routes.py` - New search endpoints
+  - `src/config/settings.py` - Search and chunking configuration
+  - `alembic/versions/` - Migration for document_chunks, pgvector, pg_search
+  - `src/ingestion/` - Integration of chunking/embedding at ingest time
 - **Dependencies**:
   - pg_search extension (ParadeDB)
   - pgvector extension
-  - Embedding model integration (OpenAI or local)
+  - Embedding model integration (OpenAI text-embedding-3-small)
 - **Breaking changes**: None (additive feature)
