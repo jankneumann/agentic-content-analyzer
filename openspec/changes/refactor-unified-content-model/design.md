@@ -434,6 +434,175 @@ return (
 );
 ```
 
+### Decision 7: Unified Image Storage and References
+
+**What**: Store all images (extracted, keyframes, AI-generated) in a dedicated `images` table with consistent markdown references.
+
+**Why**:
+- Images come from multiple sources: extracted from articles, YouTube keyframes, future AI generation
+- Need consistent storage and referencing across content, summaries, and digests
+- Must support provenance tracking (where did this image come from?)
+- Prepares for AI-assisted image generation in revision workflows
+
+**Image Sources**:
+
+| Source | Description | Metadata |
+|--------|-------------|----------|
+| **EXTRACTED** | Pulled from article HTML/PDF | Original URL, alt text |
+| **KEYFRAME** | YouTube video frame (from KeyframeExtractor) | Video ID, timestamp, deep-link URL |
+| **AI_GENERATED** | Created by AI during revision | Prompt, model, parameters |
+
+**Image Model**:
+```python
+class Image(Base):
+    __tablename__ = "images"
+
+    id: Mapped[str]  # UUID for URL-safe references
+
+    # Source tracking
+    source_type: Mapped[ImageSource]  # EXTRACTED, KEYFRAME, AI_GENERATED
+    source_content_id: Mapped[int | None]  # FK to contents (for extracted)
+    source_summary_id: Mapped[int | None]  # FK to summaries (for AI-generated)
+    source_digest_id: Mapped[int | None]  # FK to digests (for AI-generated)
+    source_url: Mapped[str | None]  # Original URL if extracted
+
+    # YouTube keyframe metadata
+    video_id: Mapped[str | None]
+    timestamp_seconds: Mapped[float | None]
+    deep_link_url: Mapped[str | None]  # youtube.com/watch?v=xxx&t=123
+
+    # Storage
+    storage_path: Mapped[str]  # Path in object storage or filesystem
+    storage_provider: Mapped[str]  # "local", "s3"
+
+    # File metadata
+    filename: Mapped[str]
+    mime_type: Mapped[str]  # image/png, image/jpeg, image/webp
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    file_size_bytes: Mapped[int]
+
+    # Semantic metadata
+    alt_text: Mapped[str | None]  # Accessibility
+    caption: Mapped[str | None]  # Human-readable description
+    ai_description: Mapped[str | None]  # AI-generated description for search
+
+    # AI generation metadata (for future)
+    generation_prompt: Mapped[str | None]
+    generation_model: Mapped[str | None]
+    generation_params: Mapped[dict | None]  # JSON
+
+    # Deduplication
+    phash: Mapped[str | None]  # Perceptual hash (from KeyframeExtractor)
+
+    # Lifecycle
+    created_at: Mapped[datetime]
+```
+
+**Markdown Reference Patterns**:
+
+Standard image reference:
+```markdown
+The benchmark results are visualized below:
+
+[IMAGE:img-abc123]: Performance comparison chart
+
+As we can see, the new model outperforms...
+```
+
+YouTube keyframe with timestamp link:
+```markdown
+The presenter explains the architecture:
+
+[IMAGE:img-def456]: Architecture diagram at 2:34
+[Watch at 2:34](https://youtube.com/watch?v=xxx&t=154)
+
+This shows the attention mechanism...
+```
+
+Combined reference (image + video link):
+```markdown
+[IMAGE:img-def456|video=xxx&t=154]: Slide explaining attention mechanism
+```
+
+**Storage Strategy**:
+
+| Environment | Storage | Path Pattern |
+|-------------|---------|--------------|
+| Development | Local filesystem | `./uploads/images/{id}.{ext}` |
+| Production | S3-compatible | `s3://bucket/images/{id}.{ext}` |
+
+**Image Extraction Pipeline**:
+```python
+class ImageExtractor:
+    def extract_from_content(self, content: Content) -> list[Image]:
+        """Extract images from content markdown and source."""
+        images = []
+
+        # 1. Parse [IMAGE:...] references already in markdown
+        # 2. Download external images from source URLs
+        # 3. Extract embedded images from HTML/PDF
+        # 4. Generate perceptual hashes for dedup
+        # 5. Upload to storage
+        # 6. Create Image records
+
+        return images
+
+    def extract_youtube_keyframes(self, content: Content) -> list[Image]:
+        """Extract keyframes using existing KeyframeExtractor."""
+        # Leverages existing src/ingestion/youtube_keyframes.py
+        # Creates Image records with KEYFRAME source_type
+        # Includes timestamp and deep_link_url
+        pass
+```
+
+**Future AI Generation Integration**:
+```python
+class ImageGenerator:
+    def generate_for_summary(
+        self,
+        summary: Summary,
+        prompt: str,
+        style: str = "professional"
+    ) -> Image:
+        """Generate image for summary during revision workflow."""
+        # 1. Call AI image generation API (DALL-E, Midjourney, etc.)
+        # 2. Upload result to storage
+        # 3. Create Image record with AI_GENERATED source_type
+        # 4. Store prompt and parameters for reproducibility
+        pass
+
+    def suggest_images(self, content: str) -> list[ImageSuggestion]:
+        """Suggest images to generate based on content."""
+        # Analyze content for visualization opportunities
+        # Return suggestions with prompts
+        pass
+```
+
+**UI Integration**:
+```typescript
+// Render markdown with image resolution
+function renderMarkdown(markdown: string, images: Record<string, Image>) {
+  return markdown.replace(
+    /\[IMAGE:([^\]|]+)(?:\|([^\]]+))?\]: ([^\n]+)/g,
+    (match, id, params, caption) => {
+      const image = images[id];
+      if (!image) return match;
+
+      const videoLink = params?.match(/video=([^&]+)&t=(\d+)/);
+
+      return `
+        <figure>
+          <img src="${image.url}" alt="${image.alt_text || caption}" />
+          <figcaption>${caption}</figcaption>
+          ${videoLink ? `<a href="https://youtube.com/watch?v=${videoLink[1]}&t=${videoLink[2]}">Watch video</a>` : ''}
+        </figure>
+      `;
+    }
+  );
+}
+```
+
 ## Risks / Trade-offs
 
 | Risk | Impact | Mitigation |
@@ -443,6 +612,8 @@ return (
 | Markdown parsing overhead | Slower UI rendering | Cache parsed sections, parse on write |
 | Loss of query flexibility | Can't query JSON fields directly | Extract key fields to indexed columns |
 | LLM output format changes | Inconsistent markdown | Strong prompt engineering, validation |
+| Image storage costs | Increased storage needs | Compression, dedup via phash, lazy extraction |
+| External image availability | Source images may disappear | Download and store locally on extraction |
 
 ## Migration Plan
 

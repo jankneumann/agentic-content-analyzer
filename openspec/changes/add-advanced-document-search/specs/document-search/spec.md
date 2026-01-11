@@ -30,9 +30,9 @@ The system SHALL support the `@@@` operator for BM25 queries.
 
 #### Scenario: BM25 index auto-updates on insert
 
-- **WHEN** a new newsletter is ingested
+- **WHEN** new content is ingested
 - **THEN** the BM25 index is automatically updated
-- **AND** the new document is searchable immediately
+- **AND** the content is searchable immediately
 
 ---
 
@@ -44,12 +44,12 @@ The system SHALL leverage the structured output from advanced document parsers (
 
 The system SHALL store chunks in a `document_chunks` table with metadata linking back to the source document.
 
-The system SHALL use different chunking strategies based on document type:
+The system SHALL use different chunking strategies based on parser type (all content is markdown with unified model):
 - **DoclingParser output**: Split on heading boundaries (H1-H6), extract tables as separate chunks, respect page boundaries
 - **YouTubeParser output**: Use existing 30-second timestamp window groupings with sentence boundaries
 - **MarkItDownParser output**: Split on markdown heading structure, keep code blocks together
-- **Newsletter HTML**: Parse semantic HTML elements (article, section, h1-h6, blockquote)
-- **Summaries**: Split on section markers ([EXECUTIVE_SUMMARY], [KEY_THEMES], etc.)
+- **Default** (Gmail, RSS): Split on heading boundaries, fall back to paragraph splitting
+- **Summaries/Digests**: Split on `## Section` headers (Executive Summary, Key Themes, etc.)
 
 #### Scenario: PDF document chunked by structure
 

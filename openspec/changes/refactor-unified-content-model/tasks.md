@@ -22,7 +22,22 @@
 - [ ] 1.4 Add `theme_tags` JSON column to newsletter_summaries table
 - [ ] 1.5 Add `markdown_content` column to digests table
 - [ ] 1.6 Add `theme_tags` and `source_content_ids` JSON columns to digests table
-- [ ] 1.7 Update foreign keys:
+- [ ] 1.7 Create `images` table with all columns:
+  - id (UUID), source_type (EXTRACTED, KEYFRAME, AI_GENERATED)
+  - source_content_id, source_summary_id, source_digest_id (FKs)
+  - source_url, video_id, timestamp_seconds, deep_link_url
+  - storage_path, storage_provider
+  - filename, mime_type, width, height, file_size_bytes
+  - alt_text, caption, ai_description
+  - generation_prompt, generation_model, generation_params (JSON)
+  - phash (perceptual hash for dedup)
+  - created_at
+- [ ] 1.8 Create indexes on images:
+  - source_content_id, source_summary_id, source_digest_id
+  - source_type
+  - phash (for deduplication)
+  - video_id (for YouTube keyframes)
+- [ ] 1.9 Update foreign keys:
   - newsletter_summaries.newsletter_id → content_id
   - document_chunks.source_id → content_id (after search implementation)
 
@@ -46,18 +61,51 @@
 - [ ] 3.4 Implement `extract_relevance_scores(markdown) -> dict[str, float]`
 - [ ] 3.5 Implement `extract_embedded_refs(markdown) -> dict[str, list[str]]`
   - Returns {"tables": ["id1", "id2"], "images": [...], "code": [...]}
-- [ ] 3.6 Implement `render_with_embeds(markdown, tables_json, metadata_json) -> str`
+- [ ] 3.6 Implement `render_with_embeds(markdown, tables_json, images) -> str`
   - Replaces [TABLE:id] with rendered table markdown
+  - Replaces [IMAGE:id] with img tags
+  - Handles [IMAGE:id|video=xxx&t=123] for YouTube keyframes
 - [ ] 3.7 Write unit tests for markdown utilities
 
-## 4. Summary Model Refactor
+## 4. Image Model and Services
 
-- [ ] 4.1 Update `src/models/summary.py`:
+- [ ] 4.1 Create `src/models/image.py` with Image SQLAlchemy model
+- [ ] 4.2 Create ImageSource enum (EXTRACTED, KEYFRAME, AI_GENERATED)
+- [ ] 4.3 Create Pydantic schemas:
+  - ImageCreate, ImageResponse, ImageMetadata
+- [ ] 4.4 Create `src/services/image_storage.py`:
+  - Abstract storage interface
+  - Local filesystem implementation for development
+  - S3-compatible implementation for production
+  - Configure via IMAGE_STORAGE_PROVIDER env var
+- [ ] 4.5 Create `src/services/image_extractor.py`:
+  - `extract_from_html(html) -> list[Image]` - Download external images
+  - `extract_from_pdf(pdf_content) -> list[Image]` - Extract embedded images
+  - `extract_youtube_keyframes(content) -> list[Image]` - Use existing KeyframeExtractor
+  - Generate perceptual hashes for deduplication
+- [ ] 4.6 Implement image deduplication via phash:
+  - Check phash before storing new images
+  - Link to existing image if duplicate found
+- [ ] 4.7 Create `src/services/image_generator.py` (stub for future):
+  - `generate_for_summary(summary, prompt) -> Image`
+  - `suggest_images(content) -> list[ImageSuggestion]`
+  - Store generation_prompt and generation_model for reproducibility
+- [ ] 4.8 Add image configuration to settings.py:
+  - IMAGE_STORAGE_PROVIDER (local, s3)
+  - IMAGE_STORAGE_PATH (local path or S3 bucket)
+  - IMAGE_MAX_SIZE_MB
+  - ENABLE_YOUTUBE_KEYFRAMES
+  - ENABLE_IMAGE_EXTRACTION
+- [ ] 4.9 Write unit tests for image services
+
+## 5. Summary Model Refactor
+
+- [ ] 5.1 Update `src/models/summary.py`:
   - Add markdown_content column
   - Add theme_tags column
   - Rename newsletter_id → content_id
   - Keep legacy columns temporarily for migration
-- [ ] 4.2 Create markdown template for summaries:
+- [ ] 5.2 Create markdown template for summaries:
   ```
   ## Executive Summary
   ## Key Themes
@@ -67,20 +115,20 @@
   ## Notable Quotes
   ## Relevance Scores
   ```
-- [ ] 4.3 Update summarizer prompt to output markdown format
-- [ ] 4.4 Add post-processing to extract theme_tags from markdown
-- [ ] 4.5 Add post-processing to extract relevance_scores from markdown
-- [ ] 4.6 Update Summary Pydantic schemas
-- [ ] 4.7 Write unit tests for Summary model changes
+- [ ] 5.3 Update summarizer prompt to output markdown format
+- [ ] 5.4 Add post-processing to extract theme_tags from markdown
+- [ ] 5.5 Add post-processing to extract relevance_scores from markdown
+- [ ] 5.6 Update Summary Pydantic schemas
+- [ ] 5.7 Write unit tests for Summary model changes
 
-## 5. Digest Model Refactor
+## 6. Digest Model Refactor
 
-- [ ] 5.1 Update `src/models/digest.py`:
+- [ ] 6.1 Update `src/models/digest.py`:
   - Add markdown_content column
   - Add theme_tags column
   - Add source_content_ids column
   - Keep legacy columns temporarily for migration
-- [ ] 5.2 Create markdown template for digests:
+- [ ] 6.2 Create markdown template for digests:
   ```
   ## Executive Overview
   ## Strategic Insights
@@ -89,13 +137,13 @@
   ## Actionable Recommendations
   ## Sources
   ```
-- [ ] 5.3 Update digest_creator prompt to output markdown format
-- [ ] 5.4 Add post-processing to extract theme_tags
-- [ ] 5.5 Add post-processing to populate source_content_ids
-- [ ] 5.6 Update Digest Pydantic schemas
-- [ ] 5.7 Write unit tests for Digest model changes
+- [ ] 6.3 Update digest_creator prompt to output markdown format
+- [ ] 6.4 Add post-processing to extract theme_tags
+- [ ] 6.5 Add post-processing to populate source_content_ids
+- [ ] 6.6 Update Digest Pydantic schemas
+- [ ] 6.7 Write unit tests for Digest model changes
 
-## 6. Ingestion Updates
+## 7. Ingestion Updates
 
 - [ ] 6.1 Update `src/ingestion/gmail.py`:
   - Create Content record instead of Newsletter
@@ -115,7 +163,7 @@
 - [ ] 6.5 Update deduplication logic to use Content.content_hash
 - [ ] 6.6 Write integration tests for updated ingestion
 
-## 7. Processor Updates
+## 8. Processor Updates
 
 - [ ] 7.1 Update `src/processors/summarizer.py`:
   - Accept Content instead of Newsletter
@@ -130,7 +178,7 @@
 - [ ] 7.3 Update `src/processors/theme_analyzer.py` if needed
 - [ ] 7.4 Write unit tests for processor changes
 
-## 8. API Updates
+## 9. API Updates
 
 - [ ] 8.1 Create `src/api/content_routes.py`:
   - GET /api/v1/contents - List with pagination, filtering
@@ -149,7 +197,7 @@
 - [ ] 8.5 Register new routes in `src/api/app.py`
 - [ ] 8.6 Write API tests
 
-## 9. Data Migration
+## 10. Data Migration
 
 - [ ] 9.1 Create Alembic migration for new schema
 - [ ] 9.2 Create migration script `src/scripts/migrate_to_content.py`:
@@ -172,7 +220,7 @@
 - [ ] 9.6 Add rollback capability
 - [ ] 9.7 Test migrations on copy of production data
 
-## 10. Cleanup
+## 11. Cleanup
 
 - [ ] 10.1 Remove dual-write code after migration verified
 - [ ] 10.2 Create Alembic migration to:
@@ -187,7 +235,7 @@
 - [ ] 10.4 Update imports throughout codebase
 - [ ] 10.5 Update CLAUDE.md with new model documentation
 
-## 11. Documentation
+## 12. Documentation
 
 - [ ] 11.1 Update `docs/ARCHITECTURE.md` with new data model
 - [ ] 11.2 Document markdown format conventions
@@ -195,7 +243,7 @@
 - [ ] 11.4 Update API documentation
 - [ ] 11.5 Add migration guide for API clients
 
-## 12. Testing & Validation
+## 13. Testing & Validation
 
 - [ ] 12.1 Run full test suite
 - [ ] 12.2 Test ingestion from all sources (Gmail, RSS, Files, YouTube)

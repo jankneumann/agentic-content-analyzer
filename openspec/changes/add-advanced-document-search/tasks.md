@@ -60,21 +60,20 @@
   - Preserve 30-second window groupings
   - Extract timestamp metadata (start, end)
   - Generate deep-link URLs with timestamp parameter
-- [ ] 3.6 Implement `_chunk_markdown()` for MarkItDownParser output:
-  - Split on heading boundaries
+- [ ] 3.6 Implement `_chunk_markdown()` for MarkItDownParser and default content:
+  - Split on heading boundaries (H1/H2/H3)
   - Track section path (e.g., "# Intro > ## Setup")
   - Keep code blocks together
   - Handle list structures
-- [ ] 3.7 Implement `_chunk_newsletter_html()` for raw HTML content:
-  - Parse semantic HTML elements (article, section, h1-h6, blockquote)
-  - Fall back to paragraph splitting
-- [ ] 3.8 Implement `_chunk_summary()` for newsletter summaries:
-  - Split on section markers ([EXECUTIVE_SUMMARY], [KEY_THEMES], etc.)
-  - Preserve theme tags
-- [ ] 3.9 Add chunk size validation and splitting for oversized chunks
-- [ ] 3.10 Add chunk overlap logic for context continuity
-- [ ] 3.11 Write unit tests for each chunking strategy
-- [ ] 3.12 Write integration tests with real parser output
+  - Used for Gmail/RSS content parsed to markdown
+- [ ] 3.7 Implement `_chunk_section_markdown()` for summaries and digests:
+  - Split on `## Section` headers (Executive Summary, Key Themes, etc.)
+  - Preserve section type as chunk metadata
+  - Extract theme tags from Key Themes section
+- [ ] 3.8 Add chunk size validation and splitting for oversized chunks
+- [ ] 3.9 Add chunk overlap logic for context continuity
+- [ ] 3.10 Write unit tests for each chunking strategy
+- [ ] 3.11 Write integration tests with real parser output
 
 ## 4. Embedding Service
 

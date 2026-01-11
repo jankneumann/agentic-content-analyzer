@@ -175,13 +175,15 @@ CHUNK_OVERLAP_TOKENS: int = 64  # Overlap between chunks
 
 **Chunking Strategy by Source**:
 
-| Source | Chunking Approach | Boundaries | Metadata Preserved |
+With the unified Content model, all content is markdown. Chunking strategy is determined by `parser_used`:
+
+| Parser | Chunking Approach | Boundaries | Metadata Preserved |
 |--------|-------------------|------------|-------------------|
-| **DoclingParser (PDF/DOCX)** | Section + paragraph | Headings (H1-H6), page breaks, table boundaries | Page number, section title, table caption |
-| **YouTubeParser** | Timestamp segments | 30-second windows with sentence boundaries (existing `to_markdown()` logic) | Video timestamp, deep-link URL, speaker (if available) |
+| **DoclingParser** | Section + paragraph | Headings (H1-H6), page breaks, table boundaries | Page number, section title, table caption |
+| **YouTubeParser** | Timestamp segments | 30-second windows with sentence boundaries | Video timestamp, deep-link URL |
 | **MarkItDownParser** | Markdown structure | Headings, list boundaries, code blocks | Section path (e.g., "# Intro > ## Setup") |
-| **Newsletter HTML** | Semantic HTML | `<article>`, `<section>`, `<h1-h6>`, `<blockquote>` | Publication, sender |
-| **Summaries** | Pre-existing sections | `[EXECUTIVE_SUMMARY]`, `[KEY_THEMES]`, etc. | Section type, theme tags |
+| **Default** (Gmail, RSS) | Heading-based | H1/H2/H3 boundaries, paragraphs | Publication, author |
+| **Summaries/Digests** | Section headers | `## Executive Summary`, `## Key Themes`, etc. | Section type, theme tags |
 
 **Chunk Model**:
 ```python

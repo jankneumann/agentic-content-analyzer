@@ -135,10 +135,11 @@ The system SHALL use the pattern `[TYPE:id]: description` for references.
 
 Supported reference types:
 - `[TABLE:id]` - Reference to table in tables_json
-- `[IMAGE:id]` - Reference to image in metadata_json
+- `[IMAGE:id]` - Reference to image in images table
+- `[IMAGE:id|video=xxx&t=123]` - Reference to YouTube keyframe with video link
 - `[CODE:id]` - Reference to code block in metadata_json
 
-The system SHALL store referenced data in the appropriate JSON field.
+The system SHALL store referenced data in the appropriate storage location.
 
 #### Scenario: Table embedded in content
 
@@ -150,9 +151,15 @@ The system SHALL store referenced data in the appropriate JSON field.
 #### Scenario: Image embedded in content
 
 - **WHEN** content contains an image
-- **THEN** image metadata is stored in metadata_json.images
+- **THEN** an Image record is created in the images table
 - **AND** the markdown contains `[IMAGE:id]: description`
 - **AND** the reference can be resolved to render the image
+
+#### Scenario: YouTube keyframe with video link
+
+- **WHEN** a YouTube keyframe is referenced
+- **THEN** the markdown contains `[IMAGE:id|video=xxx&t=123]: description`
+- **AND** rendering includes both the image and a link to the video timestamp
 
 #### Scenario: Embedded reference rendering
 
@@ -160,6 +167,58 @@ The system SHALL store referenced data in the appropriate JSON field.
 - **THEN** references are replaced with rendered content
 - **AND** tables are rendered as markdown tables or HTML
 - **AND** images are rendered as img tags with appropriate paths
+- **AND** YouTube keyframes include video deep-links
+
+---
+
+### Requirement: Image Storage
+
+The system SHALL store all images in a dedicated `images` table with consistent references.
+
+The system SHALL support the following image sources:
+- EXTRACTED: Images pulled from article HTML or PDF
+- KEYFRAME: Frames extracted from YouTube videos
+- AI_GENERATED: Images created by AI during revision (future)
+
+The system SHALL store images in object storage (local filesystem or S3) with metadata in the database.
+
+The system SHALL support image deduplication using perceptual hashing (phash).
+
+#### Scenario: Image extracted from article
+
+- **WHEN** an article contains images
+- **THEN** images are downloaded and stored locally
+- **AND** Image records are created with source_type=EXTRACTED
+- **AND** source_url preserves the original URL
+- **AND** perceptual hash is computed for deduplication
+
+#### Scenario: YouTube keyframe extracted
+
+- **WHEN** a YouTube video is processed with keyframe extraction enabled
+- **THEN** keyframes are extracted using scene detection
+- **AND** Image records are created with source_type=KEYFRAME
+- **AND** video_id and timestamp_seconds are recorded
+- **AND** deep_link_url points to the video at the timestamp
+
+#### Scenario: Duplicate image detected
+
+- **WHEN** an image with matching phash already exists
+- **THEN** the existing Image record is reused
+- **AND** no duplicate storage is created
+
+#### Scenario: Image storage configuration
+
+- **WHEN** IMAGE_STORAGE_PROVIDER is set to "s3"
+- **THEN** images are stored in the configured S3 bucket
+- **AND** storage_path contains the S3 key
+- **AND** storage_provider is set to "s3"
+
+#### Scenario: AI-generated image (future)
+
+- **WHEN** an AI image is generated for a summary
+- **THEN** an Image record is created with source_type=AI_GENERATED
+- **AND** generation_prompt and generation_model are recorded
+- **AND** the image is stored and referenced in the summary markdown
 
 ---
 
