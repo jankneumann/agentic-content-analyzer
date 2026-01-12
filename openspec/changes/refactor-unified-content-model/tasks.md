@@ -159,22 +159,32 @@
 
 ## 7. Ingestion Updates
 
-- [ ] 6.1 Update `src/ingestion/gmail.py`:
-  - Create Content record instead of Newsletter
-  - Store raw_html in raw_content
-  - Parse to markdown immediately (or defer to processing)
-- [ ] 6.2 Update `src/ingestion/substack.py`:
-  - Create Content record
-  - Store RSS content appropriately
-- [ ] 6.3 Update `src/ingestion/files.py`:
-  - Create Content record
-  - Remove Document table creation
-  - Store parser output directly in Content
-- [ ] 6.4 Update `src/ingestion/youtube.py`:
-  - Create Content record
-  - Store transcript segments in raw_content as JSON
-  - Store formatted markdown in markdown_content
-- [ ] 6.5 Update deduplication logic to use Content.content_hash
+- [x] 6.1 Update `src/ingestion/gmail.py`:
+  - Added `GmailContentIngestionService` class for unified Content model
+  - Added `ContentData` Pydantic model for content ingestion
+  - Added `html_to_markdown()` helper using MarkItDownParser
+  - Created `fetch_content()` and `_fetch_and_parse_content()` methods
+  - Stores raw HTML in `raw_content`, markdown in `markdown_content`
+  - Uses `generate_markdown_hash()` for deduplication
+- [x] 6.2 Update `src/ingestion/rss.py` (was substack.py):
+  - Added `RSSContentIngestionService` class for unified Content model
+  - Reuses `ContentData` and `html_to_markdown` from gmail.py
+  - Added `fetch_content()`, `fetch_multiple_contents()`, `_parse_entry_content()`
+  - Creates Content records with markdown from RSS entries
+- [x] 6.3 Update `src/ingestion/files.py`:
+  - Added `FileContentIngestionService` class for unified Content model
+  - Added imports for Content, ContentSource, ContentStatus
+  - Creates Content records directly from ParserRouter output
+  - Stores tables_json, links_json, metadata from DocumentContent
+- [x] 6.4 Update `src/ingestion/youtube.py`:
+  - Added `YouTubeContentIngestionService` class for unified Content model
+  - Added `transcript_to_markdown()` helper with timestamp deep-links
+  - Stores transcript JSON in `raw_content` for re-parsing
+  - Creates markdown with timestamp links for video navigation
+- [x] 6.5 Update deduplication logic to use Content.content_hash
+  - All new *ContentIngestionService classes use `generate_markdown_hash()`
+  - Deduplication checks by source_type+source_id (exact) and content_hash (cross-source)
+  - Links duplicates via `canonical_id` FK
 - [ ] 6.6 Write integration tests for updated ingestion
 
 ## 8. Processor Updates

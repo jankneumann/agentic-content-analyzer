@@ -1,4 +1,9 @@
-"""Generic RSS feed ingestion."""
+"""Generic RSS feed ingestion.
+
+Provides both legacy Newsletter ingestion and new Content model ingestion.
+The Content-based ingestion (RSSContentIngestionService) is the preferred
+approach for new code as part of the unified content model refactor.
+"""
 
 import hashlib
 from datetime import datetime
@@ -8,9 +13,11 @@ import feedparser
 import httpx
 
 from src.config import settings
+from src.ingestion.gmail import ContentData, html_to_markdown
+from src.models.content import Content, ContentSource, ContentStatus
 from src.models.newsletter import Newsletter, NewsletterData, NewsletterSource, ProcessingStatus
 from src.storage.database import get_db
-from src.utils.content_hash import generate_content_hash
+from src.utils.content_hash import generate_content_hash, generate_markdown_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
 
@@ -136,6 +143,172 @@ class RSSClient:
             f"Fetched total of {len(all_newsletters)} newsletters from {len(feed_urls)} feeds"
         )
         return all_newsletters
+
+    def fetch_content(
+        self,
+        feed_url: str,
+        max_entries: int = 10,
+        after_date: datetime | None = None,
+    ) -> list[ContentData]:
+        """
+        Fetch content from an RSS feed as ContentData (unified Content model).
+
+        Args:
+            feed_url: RSS feed URL
+            max_entries: Maximum number of entries to fetch
+            after_date: Only fetch entries published after this date
+
+        Returns:
+            List of ContentData objects ready for Content table
+        """
+        logger.info(f"Fetching RSS content: {feed_url}")
+
+        try:
+            # Fetch feed with timeout
+            response = self.client.get(feed_url)
+            response.raise_for_status()
+
+            # Parse RSS feed
+            feed = feedparser.parse(response.content)
+
+            if feed.bozo:
+                logger.warning(
+                    f"Feed parsing error for {feed_url}: {feed.get('bozo_exception', 'Unknown error')}"
+                )
+
+            # Extract publication name from feed metadata
+            publication_name = self._extract_publication_name(feed, feed_url)
+            logger.info(f"Found publication: {publication_name}")
+
+            # Process entries
+            contents = []
+            for entry in feed.entries[:max_entries]:
+                # Check date filter
+                if after_date:
+                    entry_date = self._parse_entry_date(entry)
+                    if entry_date and entry_date < after_date:
+                        logger.debug(f"Skipping old entry: {entry.get('title', 'Unknown')}")
+                        continue
+
+                # Convert entry to ContentData
+                try:
+                    content = self._parse_entry_content(entry, publication_name, feed_url)
+                    contents.append(content)
+                    logger.debug(f"Parsed content: {content.title}")
+                except Exception as e:
+                    logger.error(
+                        f"Error parsing entry '{entry.get('title', 'Unknown')}': {e}",
+                        exc_info=True,
+                    )
+                    continue
+
+            logger.info(f"Fetched {len(contents)} content items from {feed_url}")
+            return contents
+
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error fetching feed {feed_url}: {e}", exc_info=True)
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error fetching feed {feed_url}: {e}", exc_info=True)
+            return []
+
+    def fetch_multiple_contents(
+        self,
+        feed_urls: list[str],
+        max_entries_per_feed: int = 10,
+        after_date: datetime | None = None,
+    ) -> list[ContentData]:
+        """
+        Fetch content from multiple RSS feeds as ContentData.
+
+        Args:
+            feed_urls: List of RSS feed URLs
+            max_entries_per_feed: Maximum entries to fetch per feed
+            after_date: Only fetch entries published after this date
+
+        Returns:
+            Combined list of ContentData objects from all feeds
+        """
+        logger.info(f"Fetching {len(feed_urls)} RSS feeds for Content model")
+
+        all_contents = []
+        for feed_url in feed_urls:
+            contents = self.fetch_content(
+                feed_url=feed_url,
+                max_entries=max_entries_per_feed,
+                after_date=after_date,
+            )
+            all_contents.extend(contents)
+
+        logger.info(
+            f"Fetched total of {len(all_contents)} content items from {len(feed_urls)} feeds"
+        )
+        return all_contents
+
+    def _parse_entry_content(
+        self,
+        entry: feedparser.FeedParserDict,
+        publication_name: str,
+        feed_url: str,
+    ) -> ContentData:
+        """
+        Parse a feed entry into a ContentData object.
+
+        Args:
+            entry: Feed entry
+            publication_name: Name of the publication
+            feed_url: Feed URL
+
+        Returns:
+            ContentData object
+        """
+        # Extract basic metadata
+        title = entry.get("title", "Untitled")
+        link = entry.get("link", feed_url)
+        author = entry.get("author", publication_name)
+
+        # Parse publication date
+        published_date = self._parse_entry_date(entry) or datetime.now()
+
+        # Extract content (HTML)
+        raw_html = self._extract_entry_content(entry)
+
+        # Convert HTML to markdown
+        markdown_content = ""
+        if raw_html:
+            markdown_content = html_to_markdown(raw_html)
+        if not markdown_content:
+            # Fallback: use plain text
+            markdown_content = html_to_text(raw_html) if raw_html else ""
+
+        # Extract links from HTML
+        links = extract_links(raw_html) if raw_html else []
+
+        # Generate unique source_id from link or content hash
+        source_id = self._generate_source_id(entry)
+
+        # Generate content hash from normalized markdown
+        content_hash = generate_markdown_hash(markdown_content) if markdown_content else ""
+
+        return ContentData(
+            source_type=ContentSource.RSS,
+            source_id=source_id,
+            source_url=link,
+            title=title,
+            author=author,
+            publication=publication_name,
+            published_date=published_date,
+            markdown_content=markdown_content,
+            links_json=links if links else None,
+            metadata_json={
+                "feed_url": feed_url,
+                "entry_id": entry.get("id"),
+            },
+            raw_content=raw_html,
+            raw_format="html" if raw_html else "text",
+            parser_used="markitdown",
+            content_hash=content_hash,
+        )
 
     def _extract_publication_name(self, feed: feedparser.FeedParserDict, feed_url: str) -> str:
         """
@@ -468,6 +641,176 @@ class RSSIngestionService:
                     continue
 
         logger.info(f"Successfully ingested {count} newsletters")
+        return count
+
+    def close(self) -> None:
+        """Close RSS client."""
+        self.client.close()
+
+
+class RSSContentIngestionService:
+    """Service for ingesting RSS feeds into the unified Content model.
+
+    This is the preferred ingestion service for new code. It creates Content
+    records with markdown as the primary format, enabling the unified content
+    pipeline for summarization and digest creation.
+    """
+
+    def __init__(self) -> None:
+        """Initialize RSS content ingestion service."""
+        self.client = RSSClient()
+
+    def ingest_content(
+        self,
+        feed_urls: list[str] | None = None,
+        max_entries_per_feed: int = 10,
+        after_date: datetime | None = None,
+        force_reprocess: bool = False,
+    ) -> int:
+        """
+        Ingest content from RSS feeds and store as Content records.
+
+        Args:
+            feed_urls: List of RSS feed URLs (defaults to config)
+            max_entries_per_feed: Maximum entries per feed
+            after_date: Only fetch after this date
+            force_reprocess: If True, reprocess existing content
+
+        Returns:
+            Number of content items ingested
+        """
+        logger.info("Starting RSS content ingestion (unified Content model)...")
+
+        # Get feed URLs from config if not provided
+        if feed_urls is None:
+            feed_urls = settings.get_rss_feed_urls()
+
+        if not feed_urls:
+            logger.warning(
+                "No RSS feed URLs configured. Please set RSS_FEEDS or create rss_feeds.txt"
+            )
+            return 0
+
+        logger.info(f"Fetching from {len(feed_urls)} RSS feeds for Content model")
+
+        # Fetch content from all feeds
+        contents = self.client.fetch_multiple_contents(
+            feed_urls=feed_urls,
+            max_entries_per_feed=max_entries_per_feed,
+            after_date=after_date,
+        )
+
+        if not contents:
+            logger.info("No content found")
+            return 0
+
+        # Store in database
+        count = 0
+        with get_db() as db:
+            for content_data in contents:
+                try:
+                    # Check if already exists by source_type + source_id
+                    existing = (
+                        db.query(Content)
+                        .filter(
+                            Content.source_type == content_data.source_type,
+                            Content.source_id == content_data.source_id,
+                        )
+                        .first()
+                    )
+
+                    # Check by content_hash for cross-source duplicates
+                    content_duplicate = None
+                    if not existing and content_data.content_hash:
+                        content_duplicate = (
+                            db.query(Content)
+                            .filter(Content.content_hash == content_data.content_hash)
+                            .first()
+                        )
+
+                    if existing:
+                        if force_reprocess:
+                            existing.title = content_data.title
+                            existing.author = content_data.author
+                            existing.publication = content_data.publication
+                            existing.published_date = content_data.published_date
+                            existing.markdown_content = content_data.markdown_content
+                            existing.links_json = content_data.links_json
+                            existing.metadata_json = content_data.metadata_json
+                            existing.raw_content = content_data.raw_content
+                            existing.raw_format = content_data.raw_format
+                            existing.parser_used = content_data.parser_used
+                            existing.content_hash = content_data.content_hash
+                            existing.status = ContentStatus.PARSED
+                            existing.error_message = None
+                            count += 1
+                            logger.info(f"Updated for reprocessing: {content_data.title}")
+                            continue
+                        else:
+                            logger.debug(
+                                f"Content already exists (use --force to reprocess): "
+                                f"{content_data.source_id}"
+                            )
+                            continue
+
+                    elif content_duplicate:
+                        logger.info(
+                            f"Content duplicate detected: '{content_data.title}' "
+                            f"matches existing content ID {content_duplicate.id}"
+                        )
+
+                        content = Content(
+                            source_type=content_data.source_type,
+                            source_id=content_data.source_id,
+                            source_url=content_data.source_url,
+                            title=content_data.title,
+                            author=content_data.author,
+                            publication=content_data.publication,
+                            published_date=content_data.published_date,
+                            markdown_content=content_data.markdown_content,
+                            links_json=content_data.links_json,
+                            metadata_json=content_data.metadata_json,
+                            raw_content=content_data.raw_content,
+                            raw_format=content_data.raw_format,
+                            parser_used=content_data.parser_used,
+                            content_hash=content_data.content_hash,
+                            canonical_id=content_duplicate.id,
+                            status=ContentStatus.COMPLETED,
+                        )
+                        db.add(content)
+                        count += 1
+                        logger.info(f"Linked duplicate to canonical ID {content_duplicate.id}")
+                        continue
+
+                    # Create new content
+                    content = Content(
+                        source_type=content_data.source_type,
+                        source_id=content_data.source_id,
+                        source_url=content_data.source_url,
+                        title=content_data.title,
+                        author=content_data.author,
+                        publication=content_data.publication,
+                        published_date=content_data.published_date,
+                        markdown_content=content_data.markdown_content,
+                        links_json=content_data.links_json,
+                        metadata_json=content_data.metadata_json,
+                        raw_content=content_data.raw_content,
+                        raw_format=content_data.raw_format,
+                        parser_used=content_data.parser_used,
+                        content_hash=content_data.content_hash,
+                        status=ContentStatus.PARSED,
+                    )
+
+                    db.add(content)
+                    count += 1
+                    logger.info(f"Ingested: {content_data.title}")
+
+                except Exception as e:
+                    logger.error(f"Error storing content: {e}")
+                    db.rollback()
+                    continue
+
+        logger.info(f"Successfully ingested {count} content items")
         return count
 
     def close(self) -> None:

@@ -1,6 +1,12 @@
-"""YouTube transcript ingestion."""
+"""YouTube transcript ingestion.
+
+Provides both legacy Newsletter ingestion and new Content model ingestion.
+The Content-based ingestion (YouTubeContentIngestionService) is the preferred
+approach for new code as part of the unified content model refactor.
+"""
 
 import argparse
+import json
 import os
 from datetime import UTC, datetime
 from typing import Any
@@ -14,10 +20,11 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
 
 from src.config import settings
+from src.models.content import Content, ContentSource, ContentStatus
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
 from src.models.youtube import TranscriptSegment, YouTubeTranscript
 from src.storage.database import get_db
-from src.utils.content_hash import generate_content_hash
+from src.utils.content_hash import generate_content_hash, generate_markdown_hash
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -545,6 +552,362 @@ class YouTubeIngestionService:
             logger.error(f"Keyframe extraction error: {e}")
 
         return transcript_metadata
+
+
+def transcript_to_markdown(transcript: YouTubeTranscript) -> str:
+    """Convert a YouTube transcript to markdown with timestamps.
+
+    Creates a markdown document with:
+    - Title as H1
+    - Video metadata (channel, date, URL)
+    - Transcript with timestamp deep-links
+
+    Args:
+        transcript: YouTubeTranscript object
+
+    Returns:
+        Markdown string
+    """
+    lines = []
+
+    # Title
+    lines.append(f"# {transcript.title}")
+    lines.append("")
+
+    # Metadata
+    if transcript.channel_title:
+        lines.append(f"**Channel:** {transcript.channel_title}")
+    if transcript.published_date:
+        lines.append(f"**Published:** {transcript.published_date.strftime('%Y-%m-%d')}")
+    lines.append(f"**Video:** [{transcript.video_id}]({transcript.video_url})")
+    lines.append("")
+
+    # Transcript sections
+    lines.append("## Transcript")
+    lines.append("")
+
+    # Group segments into paragraphs (by sentence endings or time gaps)
+    current_paragraph: list[str] = []
+    last_timestamp = 0.0
+
+    for segment in transcript.segments:
+        # Start new paragraph if there's a time gap > 5 seconds
+        if segment.start - last_timestamp > 5 and current_paragraph:
+            timestamp_url = f"{transcript.video_url}&t={int(last_timestamp)}"
+            lines.append(f"[{_format_timestamp(last_timestamp)}]({timestamp_url})")
+            lines.append(" ".join(current_paragraph))
+            lines.append("")
+            current_paragraph = []
+
+        current_paragraph.append(segment.text)
+        last_timestamp = segment.start
+
+    # Add remaining paragraph
+    if current_paragraph:
+        timestamp_url = f"{transcript.video_url}&t={int(last_timestamp)}"
+        lines.append(f"[{_format_timestamp(last_timestamp)}]({timestamp_url})")
+        lines.append(" ".join(current_paragraph))
+
+    return "\n".join(lines)
+
+
+def _format_timestamp(seconds: float) -> str:
+    """Format seconds as MM:SS or HH:MM:SS."""
+    total_seconds = int(seconds)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    secs = total_seconds % 60
+
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+class YouTubeContentIngestionService:
+    """Service for ingesting YouTube transcripts into the unified Content model.
+
+    This is the preferred ingestion service for new code. It creates Content
+    records with markdown as the primary format, enabling the unified content
+    pipeline for summarization and digest creation.
+    """
+
+    def __init__(self, use_oauth: bool = True) -> None:
+        """Initialize YouTube content ingestion service."""
+        self.client = YouTubeClient(use_oauth=use_oauth)
+
+    def ingest_playlist(
+        self,
+        playlist_id: str,
+        max_videos: int = 10,
+        after_date: datetime | None = None,
+        force_reprocess: bool = False,
+        languages: list[str] | None = None,
+    ) -> int:
+        """
+        Ingest transcripts from a YouTube playlist as Content records.
+
+        Args:
+            playlist_id: YouTube playlist ID
+            max_videos: Maximum videos to process
+            after_date: Only process videos after this date
+            force_reprocess: Reprocess existing videos
+            languages: Preferred transcript languages
+
+        Returns:
+            Number of content items ingested
+        """
+        logger.info(f"Starting YouTube content ingestion for playlist {playlist_id}...")
+
+        if languages is None:
+            languages = DEFAULT_LANGUAGES
+
+        # Get videos from playlist
+        videos = self.client.get_playlist_videos(
+            playlist_id=playlist_id,
+            max_results=max_videos,
+            after_date=after_date,
+        )
+
+        if not videos:
+            logger.info("No videos found in playlist")
+            return 0
+
+        # Process each video
+        count = 0
+        with get_db() as db:
+            for video in videos:
+                try:
+                    # Generate source_id
+                    source_id = f"youtube:{video['video_id']}"
+
+                    # Check if already exists in Content table
+                    existing = (
+                        db.query(Content)
+                        .filter(
+                            Content.source_type == ContentSource.YOUTUBE,
+                            Content.source_id == source_id,
+                        )
+                        .first()
+                    )
+
+                    if existing and not force_reprocess:
+                        logger.debug(f"Video already exists: {video['title']}")
+                        continue
+
+                    # Get transcript
+                    transcript = self.client.get_transcript(video["video_id"], languages)
+
+                    if not transcript:
+                        logger.warning(f"No transcript for: {video['title']}")
+                        continue
+
+                    # Update transcript with video metadata
+                    transcript.title = video["title"]
+                    transcript.channel_title = video["channel_title"]
+                    transcript.published_date = video["published_date"]
+                    transcript.thumbnail_url = video.get("thumbnail_url")
+                    transcript.playlist_id = video.get("playlist_id")
+
+                    # Convert to markdown
+                    markdown_content = transcript_to_markdown(transcript)
+
+                    # Store raw transcript as JSON for re-parsing
+                    raw_content = json.dumps(transcript.to_storage_dict())
+
+                    # Generate content hash from markdown
+                    content_hash = generate_markdown_hash(markdown_content)
+
+                    # Check for content duplicate
+                    content_duplicate = None
+                    if not existing and content_hash:
+                        content_duplicate = (
+                            db.query(Content).filter(Content.content_hash == content_hash).first()
+                        )
+
+                    video_url = transcript.video_url
+
+                    # Build metadata
+                    metadata_json = {
+                        "video_id": video["video_id"],
+                        "playlist_id": playlist_id,
+                        "language": transcript.language,
+                        "is_auto_generated": transcript.is_auto_generated,
+                        "segment_count": len(transcript.segments),
+                        "duration_seconds": sum(s.duration for s in transcript.segments),
+                        "thumbnail_url": video.get("thumbnail_url"),
+                    }
+
+                    # Optional: Extract keyframes
+                    if settings.youtube_keyframe_extraction:
+                        metadata_json = self._extract_keyframes(
+                            video_id=video["video_id"],
+                            transcript=transcript,
+                            metadata_json=metadata_json,
+                        )
+
+                    if existing and force_reprocess:
+                        # Update existing
+                        existing.title = video["title"]
+                        existing.author = video["channel_title"]
+                        existing.publication = video["channel_title"]
+                        existing.published_date = video["published_date"]
+                        existing.source_url = video_url
+                        existing.markdown_content = markdown_content
+                        existing.raw_content = raw_content
+                        existing.raw_format = "transcript_json"
+                        existing.metadata_json = metadata_json
+                        existing.content_hash = content_hash
+                        existing.parser_used = "youtube_transcript_api"
+                        existing.status = ContentStatus.PARSED
+                        existing.error_message = None
+                        count += 1
+                        logger.info(f"Updated for reprocessing: {video['title']}")
+
+                    elif content_duplicate:
+                        # Link to canonical
+                        content = Content(
+                            source_type=ContentSource.YOUTUBE,
+                            source_id=source_id,
+                            source_url=video_url,
+                            title=video["title"],
+                            author=video["channel_title"],
+                            publication=video["channel_title"],
+                            published_date=video["published_date"],
+                            markdown_content=markdown_content,
+                            raw_content=raw_content,
+                            raw_format="transcript_json",
+                            metadata_json=metadata_json,
+                            parser_used="youtube_transcript_api",
+                            content_hash=content_hash,
+                            canonical_id=content_duplicate.id,
+                            status=ContentStatus.COMPLETED,
+                        )
+                        db.add(content)
+                        count += 1
+                        logger.info(f"Linked duplicate: {video['title']}")
+
+                    else:
+                        # Create new
+                        content = Content(
+                            source_type=ContentSource.YOUTUBE,
+                            source_id=source_id,
+                            source_url=video_url,
+                            title=video["title"],
+                            author=video["channel_title"],
+                            publication=video["channel_title"],
+                            published_date=video["published_date"],
+                            markdown_content=markdown_content,
+                            raw_content=raw_content,
+                            raw_format="transcript_json",
+                            metadata_json=metadata_json,
+                            parser_used="youtube_transcript_api",
+                            content_hash=content_hash,
+                            status=ContentStatus.PARSED,
+                        )
+                        db.add(content)
+                        count += 1
+                        logger.info(f"Ingested: {video['title']}")
+
+                except Exception as e:
+                    logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
+                    db.rollback()
+                    continue
+
+        logger.info(f"Successfully ingested {count} content items")
+        return count
+
+    def ingest_all_playlists(
+        self,
+        playlist_ids: list[str] | None = None,
+        max_videos_per_playlist: int = 10,
+        after_date: datetime | None = None,
+        force_reprocess: bool = False,
+    ) -> int:
+        """Ingest transcripts from multiple playlists as Content records."""
+        if playlist_ids is None:
+            playlists = settings.get_youtube_playlists()
+            playlist_ids = [p["id"] for p in playlists if p["id"]]
+
+        if not playlist_ids:
+            logger.warning("No YouTube playlists configured")
+            return 0
+
+        total = 0
+        for playlist_id in playlist_ids:
+            try:
+                count = self.ingest_playlist(
+                    playlist_id=playlist_id,
+                    max_videos=max_videos_per_playlist,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
+                total += count
+            except Exception as e:
+                logger.error(f"Error ingesting playlist {playlist_id}: {e}")
+                continue
+
+        return total
+
+    def _extract_keyframes(
+        self,
+        video_id: str,
+        transcript: YouTubeTranscript,
+        metadata_json: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Extract keyframes from a video and add to metadata."""
+        try:
+            from src.ingestion.youtube_keyframes import KeyframeExtractor
+
+            extractor = KeyframeExtractor()
+
+            if not extractor.is_available():
+                logger.warning("Keyframe extraction skipped: ffmpeg not available")
+                return metadata_json
+
+            segments = [
+                {"text": seg.text, "start": seg.start, "duration": seg.duration}
+                for seg in transcript.segments
+            ]
+
+            result = extractor.extract_keyframes_for_video(
+                video_id=video_id,
+                transcript_segments=segments,
+            )
+
+            if result.error:
+                logger.warning(f"Keyframe extraction failed: {result.error}")
+                return metadata_json
+
+            if result.slides:
+                slide_data = []
+                for slide in result.slides:
+                    closest_segment = min(
+                        segments,
+                        key=lambda s: abs(s["start"] - slide.timestamp),
+                    )
+
+                    slide_data.append(
+                        {
+                            "frame_path": slide.path,
+                            "timestamp": slide.timestamp,
+                            "timestamp_url": f"https://youtube.com/watch?v={video_id}&t={int(slide.timestamp)}",
+                            "transcript_text": closest_segment["text"],
+                            "hash": slide.hash_value,
+                        }
+                    )
+
+                metadata_json["slides"] = slide_data
+                metadata_json["slide_count"] = result.slide_count
+                metadata_json["extraction_method"] = result.extraction_method
+
+                logger.info(f"Added {result.slide_count} keyframes to metadata")
+
+        except ImportError:
+            logger.warning("Keyframe extraction skipped: dependencies not installed")
+        except Exception as e:
+            logger.error(f"Keyframe extraction error: {e}")
+
+        return metadata_json
 
 
 def main() -> None:
