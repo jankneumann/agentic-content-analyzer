@@ -2,7 +2,7 @@
 
 ## 1. Database Schema
 
-- [ ] 1.1 Create `contents` table with all columns:
+- [x] 1.1 Create `contents` table with all columns:
   - source_type, source_id, source_url
   - title, author, publication, published_date
   - markdown_content
@@ -12,7 +12,7 @@
   - content_hash, canonical_id
   - status, error_message
   - ingested_at, parsed_at, processed_at
-- [ ] 1.2 Create indexes on contents:
+- [x] 1.2 Create indexes on contents:
   - source_type, source_id (unique composite)
   - content_hash
   - status
@@ -43,15 +43,15 @@
 
 ## 2. Content Model
 
-- [ ] 2.1 Create `src/models/content.py` with Content SQLAlchemy model
-- [ ] 2.2 Create ContentSource enum (merge NewsletterSource + new values)
-- [ ] 2.3 Add relationships: Content → Summary, Content → Chunks
-- [ ] 2.4 Create Pydantic schemas:
+- [x] 2.1 Create `src/models/content.py` with Content SQLAlchemy model
+- [x] 2.2 Create ContentSource enum (merge NewsletterSource + new values)
+- [ ] 2.3 Add relationships: Content → Summary, Content → Chunks (deferred to Phase 2)
+- [x] 2.4 Create Pydantic schemas:
   - ContentCreate, ContentUpdate, ContentResponse
   - ContentListResponse with pagination
 - [ ] 2.5 Add content_hash generation utility (SHA-256 of normalized markdown)
 - [ ] 2.6 Add canonical_id logic for deduplication
-- [ ] 2.7 Write unit tests for Content model
+- [x] 2.7 Write unit tests for Content model
 
 ## 3. Markdown Utilities
 
