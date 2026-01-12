@@ -1,16 +1,19 @@
 /**
  * Summary Review Page
  *
- * Side-by-side view for reviewing a summary against its source newsletter.
+ * Side-by-side view for reviewing a summary against its source content.
  * Supports text selection for context and AI-powered revision through chat.
  *
- * Route: /review/summary/:id (where id is the newsletter ID)
+ * Route: /review/summary/:id (where id is the newsletter or content ID)
+ * Query params:
+ *   - source: "content" to use Content model, otherwise uses Newsletter model
  */
 
 import * as React from "react"
 import { createRoute, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Loader2 } from "lucide-react"
+import ReactMarkdown from "react-markdown"
 
 import { ReviewRoute } from "../review"
 import {
@@ -20,15 +23,19 @@ import {
   SummaryPane,
   SummaryPreview,
   SelectionPopover,
+  ReviewPaneHeader,
 } from "@/components/review"
 import { RevisionChatPanel } from "@/components/chat"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useNewsletterWithSummary } from "@/hooks/use-newsletters"
+import { useContentWithSummary } from "@/hooks/use-contents"
 import { useSummaryNavigation } from "@/hooks/use-summaries"
 import { useChatConfig, useChatSession } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
 import {
   regenerateSummaryWithFeedback,
@@ -36,7 +43,14 @@ import {
   type SummaryPreviewData,
 } from "@/lib/api/summaries"
 import type { NavigationInfo } from "@/types/review"
-import type { Newsletter, NewsletterSummary, ChatMessage } from "@/types"
+import type { Newsletter, NewsletterSummary, ChatMessage, Content } from "@/types"
+
+/**
+ * Search params for the summary review route
+ */
+interface SummaryReviewSearch {
+  source?: "content" | "newsletter"
+}
 
 /**
  * Route definition for summary review page
@@ -45,24 +59,103 @@ export const SummaryReviewRoute = createRoute({
   getParentRoute: () => ReviewRoute,
   path: "summary/$id",
   component: SummaryReviewPage,
+  validateSearch: (search: Record<string, unknown>): SummaryReviewSearch => ({
+    source: (search.source as SummaryReviewSearch["source"]) || undefined,
+  }),
 })
+
+/**
+ * SourceContentPane - Renders unified Content model with markdown
+ */
+function SourceContentPane({ content }: { content: Content | null | undefined }) {
+  const hasContent = Boolean(content?.markdown_content)
+
+  return (
+    <div
+      className="flex h-full flex-col"
+      data-pane-id="left"
+      data-pane-label="Content"
+    >
+      <ReviewPaneHeader
+        title="Source Content"
+        subtitle={content?.publication || content?.author || undefined}
+        actions={
+          content?.source_type && (
+            <Badge variant="outline" className="text-xs">
+              {content.source_type}
+            </Badge>
+          )
+        }
+      />
+
+      <ScrollArea className="flex-1">
+        <div className="p-4">
+          {content?.title && (
+            <h2 className="mb-4 text-lg font-semibold">
+              <span className="text-muted-foreground font-normal">[{content.id}]</span>{" "}
+              {content.title}
+            </h2>
+          )}
+
+          {hasContent ? (
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <ReactMarkdown>
+                {content?.markdown_content || ""}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <AlertCircle className="mb-3 h-10 w-10 text-muted-foreground/50" />
+              <p className="text-sm font-medium text-muted-foreground">
+                No content available
+              </p>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
 
 /**
  * Summary Review Page Component
  */
 function SummaryReviewPage() {
   const { id } = SummaryReviewRoute.useParams()
+  const { source } = SummaryReviewRoute.useSearch()
   const navigate = useNavigate()
 
+  const isContentSource = source === "content"
+
+  // Fetch Content when source=content
+  const {
+    data: contentWithSummary,
+    isLoading: isContentLoading,
+    isError: isContentError,
+    error: contentError,
+  } = useContentWithSummary(id)
+
+  // Fetch Newsletter when source is not content (legacy flow)
   const {
     data: newsletterWithSummary,
-    isLoading,
-    isError,
-    error,
+    isLoading: isNewsletterLoading,
+    isError: isNewsletterError,
+    error: newsletterError,
   } = useNewsletterWithSummary(id)
 
+  // Use the appropriate data based on source param
+  const isLoading = isContentSource ? isContentLoading : isNewsletterLoading
+  const isError = isContentSource ? isContentError : isNewsletterError
+  const error = isContentSource ? contentError : newsletterError
+
+  // For Content source, we get content + summary
+  // For Newsletter source, we get newsletter + summary
+  const summary = isContentSource
+    ? contentWithSummary?.summary
+    : newsletterWithSummary?.summary
+
   // Get summary ID for navigation (once summary is loaded)
-  const summaryId = newsletterWithSummary?.summary?.id?.toString()
+  const summaryId = summary?.id?.toString()
 
   // Fetch navigation info using the summary ID
   const {
@@ -127,25 +220,27 @@ function SummaryReviewPage() {
     )
   }
 
-  const newsletter = newsletterWithSummary
-  const summary = newsletterWithSummary?.summary
+  // Get source data based on source param
+  const content = isContentSource ? contentWithSummary : null
+  const newsletter = !isContentSource ? newsletterWithSummary : null
+  const finalSummary = summary
 
   // No summary state
-  if (!summary) {
+  if (!finalSummary) {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <Alert className="max-w-md">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>No summary available</AlertTitle>
           <AlertDescription>
-            This newsletter hasn't been summarized yet. Generate a summary first to review it.
+            This {isContentSource ? "content" : "newsletter"} hasn't been summarized yet. Generate a summary first to review it.
           </AlertDescription>
           <div className="mt-4 flex gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate({ to: "/summaries" })}>
               Back to Summaries
             </Button>
-            <Button size="sm" onClick={() => navigate({ to: "/newsletters" })}>
-              Go to Newsletters
+            <Button size="sm" onClick={() => navigate({ to: isContentSource ? "/contents" : "/newsletters" })}>
+              Go to {isContentSource ? "Contents" : "Newsletters"}
             </Button>
           </div>
         </Alert>
@@ -156,13 +251,15 @@ function SummaryReviewPage() {
   return (
     <ReviewProvider>
       <ReviewContent
-        key={summary.id}
+        key={finalSummary.id}
         newsletter={newsletter}
-        summary={summary}
+        content={content}
+        summary={finalSummary}
         navigation={navigation}
         isNavLoading={isNavLoading}
         onPrevious={handlePrevious}
         onNext={handleNext}
+        isContentSource={isContentSource}
       />
     </ReviewProvider>
   )
@@ -173,17 +270,21 @@ function SummaryReviewPage() {
  * Separated to use ReviewContext hooks within the provider
  */
 interface ReviewContentProps {
-  newsletter: Newsletter | undefined
+  newsletter: Newsletter | null | undefined
+  content: (Content & { summary: NewsletterSummary | null }) | null | undefined
   summary: NewsletterSummary
   navigation: NavigationInfo | undefined
   isNavLoading: boolean
   onPrevious: () => void
   onNext: () => void
+  isContentSource: boolean
 }
 
 function ReviewContent({
   newsletter,
+  content,
   summary,
+  isContentSource,
   navigation,
   isNavLoading,
   onPrevious,
@@ -366,7 +467,11 @@ function ReviewContent({
 
       // Invalidate queries to refresh data
       await queryClient.invalidateQueries({ queryKey: ["summaries"] })
-      await queryClient.invalidateQueries({ queryKey: ["newsletter", newsletter?.id?.toString()] })
+      if (isContentSource && content?.id) {
+        await queryClient.invalidateQueries({ queryKey: ["contents", "detail", content.id.toString()] })
+      } else if (newsletter?.id) {
+        await queryClient.invalidateQueries({ queryKey: ["newsletter", newsletter.id.toString()] })
+      }
 
       // Reset state
       setPreviewData(null)
@@ -393,7 +498,7 @@ function ReviewContent({
     } finally {
       setIsAccepting(false)
     }
-  }, [summary.id, previewData, newsletter?.id, queryClient, clearAllContext])
+  }, [summary.id, previewData, newsletter?.id, content?.id, isContentSource, queryClient, clearAllContext])
 
   // Handle reject preview
   const handleRejectPreview = React.useCallback(() => {
@@ -430,7 +535,11 @@ function ReviewContent({
               onNext={onNext}
             />
           }
-          leftPane={<NewsletterPane newsletter={newsletter} />}
+          leftPane={
+            isContentSource
+              ? <SourceContentPane content={content} />
+              : <NewsletterPane newsletter={newsletter} />
+          }
           rightPane={
             isPreviewMode ? (
               <SummaryPreview

@@ -1,7 +1,7 @@
 """
 Document Upload API Routes
 
-File upload endpoints for document ingestion.
+File upload endpoints for document ingestion using the unified Content model.
 Supports PDF, DOCX, PPTX, XLSX, and other formats.
 """
 
@@ -13,8 +13,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from src.config.settings import settings
-from src.ingestion.files import FileIngestionService
-from src.models.newsletter import Newsletter, NewsletterSource
+from src.ingestion.files import FileContentIngestionService
+from src.models.content import Content, ContentSource
 from src.parsers import DoclingParser, MarkItDownParser, ParserRouter, YouTubeParser
 from src.storage.database import get_db
 
@@ -39,7 +39,7 @@ class DocumentUploadResponse(BaseModel):
     title: str | None
     page_count: int | None
     word_count: int | None
-    newsletter_id: int
+    content_id: int
     is_duplicate: bool = False
     canonical_id: int | None = None
     processing_time_ms: int | None = None
@@ -60,7 +60,7 @@ class DocumentStatusResponse(BaseModel):
     content_preview: str | None
     tables_count: int
     links_count: int
-    newsletter_id: int | None
+    content_id: int | None
     processed_at: datetime | None
     error_message: str | None
 
@@ -124,10 +124,10 @@ async def upload_document(
     Upload and process a document file.
 
     Supports PDF, DOCX, PPTX, XLSX, HTML, and other formats.
-    The document will be parsed and stored as a newsletter for summarization.
+    The document will be parsed and stored as Content for summarization.
 
     Returns:
-        Document metadata and associated newsletter ID
+        Document metadata and associated content ID
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
@@ -147,12 +147,12 @@ async def upload_document(
     format_ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "unknown"
 
     # Create parser router and ingestion service
-    router = get_parser_router()
+    parser_router = get_parser_router()
 
     # Check if format is supported
     supported = set()
-    for parser_name in router.available_parsers:
-        parser = router.parsers[parser_name]
+    for parser_name in parser_router.available_parsers:
+        parser = parser_router.parsers[parser_name]
         supported.update(parser.supported_formats)
         supported.update(parser.fallback_formats)
 
@@ -162,12 +162,12 @@ async def upload_document(
             detail=f"Unsupported format: {format_ext}. Supported: {sorted(supported)}",
         )
 
-    # Process the document
+    # Process the document using the unified Content model
     try:
         with get_db() as db:
-            service = FileIngestionService(router=router, db=db)
+            service = FileContentIngestionService(router=parser_router, db=db)
 
-            newsletter = await service.ingest_bytes(
+            content = await service.ingest_bytes(
                 data=contents,
                 filename=filename,
                 publication=publication,
@@ -176,20 +176,25 @@ async def upload_document(
             )
 
             # Build response
-            is_duplicate = newsletter.canonical_newsletter_id is not None
+            is_duplicate = content.canonical_id is not None
 
             return DocumentUploadResponse(
-                id=newsletter.id,
+                id=content.id,
                 filename=filename,
-                status=newsletter.status.value if newsletter.status else "pending",
+                status=content.status.value if content.status else "pending",
                 format=format_ext,
-                parser_used=router.route(filename).name if not is_duplicate else "skipped",
-                title=newsletter.title,
-                page_count=None,  # Would need to store this separately
-                word_count=len(newsletter.raw_text.split()) if newsletter.raw_text else None,
-                newsletter_id=newsletter.id,
+                parser_used=content.parser_used
+                or (parser_router.route(filename).name if not is_duplicate else "skipped"),
+                title=content.title,
+                page_count=content.metadata_json.get("page_count")
+                if content.metadata_json
+                else None,
+                word_count=len(content.markdown_content.split())
+                if content.markdown_content
+                else None,
+                content_id=content.id,
                 is_duplicate=is_duplicate,
-                canonical_id=newsletter.canonical_newsletter_id,
+                canonical_id=content.canonical_id,
                 processing_time_ms=None,  # Would need to track this
             )
 
@@ -232,59 +237,58 @@ async def get_document_status(document_id: int) -> DocumentStatusResponse:
     Get document processing status and details.
 
     Args:
-        document_id: Newsletter ID of the uploaded document
+        document_id: Content ID of the uploaded document
 
     Returns:
         Document status, metadata, and content summary
     """
     with get_db() as db:
-        newsletter = (
-            db.query(Newsletter)
-            .filter(Newsletter.id == document_id)
-            .filter(Newsletter.source == NewsletterSource.FILE_UPLOAD)
+        content = (
+            db.query(Content)
+            .filter(Content.id == document_id)
+            .filter(Content.source_type == ContentSource.FILE_UPLOAD)
             .first()
         )
 
-        if not newsletter:
+        if not content:
             raise HTTPException(
                 status_code=404,
                 detail=f"Document with ID {document_id} not found",
             )
 
-        # Extract format from source_id if available
-        format_ext = "unknown"
-        if newsletter.source_id and "_" in newsletter.source_id:
-            # source_id format: file_{hash}_{timestamp}
-            pass  # Format would need to be stored separately
+        # Extract format from metadata or raw_format
+        format_ext = content.raw_format or "unknown"
 
-        # Content preview (first 500 chars)
+        # Content preview (first 500 chars of markdown)
         content_preview = None
-        if newsletter.raw_text:
-            content_preview = newsletter.raw_text[:500]
-            if len(newsletter.raw_text) > 500:
+        if content.markdown_content:
+            content_preview = content.markdown_content[:500]
+            if len(content.markdown_content) > 500:
                 content_preview += "..."
 
-        # Count links
-        links_count = len(newsletter.extracted_links) if newsletter.extracted_links else 0
+        # Count links and tables
+        links_count = len(content.links_json) if content.links_json else 0
+        tables_count = len(content.tables_json) if content.tables_json else 0
 
         return DocumentStatusResponse(
-            id=newsletter.id,
-            filename=newsletter.title or "Unknown",
-            status=newsletter.status.value if newsletter.status else "unknown",
+            id=content.id,
+            filename=content.title or "Unknown",
+            status=content.status.value if content.status else "unknown",
             format=format_ext,
-            parser_used=None,  # Would need to store this
+            parser_used=content.parser_used,
             metadata={
-                "title": newsletter.title,
-                "sender": newsletter.sender,
-                "publication": newsletter.publication,
-                "published_date": newsletter.published_date.isoformat()
-                if newsletter.published_date
+                "title": content.title,
+                "author": content.author,
+                "publication": content.publication,
+                "published_date": content.published_date.isoformat()
+                if content.published_date
                 else None,
+                **(content.metadata_json or {}),
             },
             content_preview=content_preview,
-            tables_count=0,  # Would need to store extracted tables
+            tables_count=tables_count,
             links_count=links_count,
-            newsletter_id=newsletter.id,
-            processed_at=newsletter.processed_at,
-            error_message=newsletter.error_message,
+            content_id=content.id,
+            processed_at=content.processed_at,
+            error_message=content.error_message,
         )

@@ -291,6 +291,30 @@ async def get_summary_by_newsletter(
         return _summary_to_detail(summary, include_parsed_sections=include_parsed_sections)
 
 
+@router.get("/by-content/{content_id}", response_model=SummaryDetail)
+async def get_summary_by_content(
+    content_id: int,
+    include_parsed_sections: bool = Query(
+        False,
+        description="Include parsed sections from markdown content",
+    ),
+) -> SummaryDetail:
+    """Get summary for a specific content.
+
+    This endpoint uses the unified Content model ID to look up summaries.
+    Preferred over by-newsletter for new code using the Content model.
+    """
+    with get_db() as db:
+        summary = (
+            db.query(NewsletterSummary).filter(NewsletterSummary.content_id == content_id).first()
+        )
+
+        if not summary:
+            raise HTTPException(status_code=404, detail="Summary not found for this content")
+
+        return _summary_to_detail(summary, include_parsed_sections=include_parsed_sections)
+
+
 @router.get("/{summary_id}", response_model=SummaryDetail)
 async def get_summary(
     summary_id: int,

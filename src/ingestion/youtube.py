@@ -911,7 +911,10 @@ class YouTubeContentIngestionService:
 
 
 def main() -> None:
-    """CLI entry point for YouTube ingestion."""
+    """CLI entry point for YouTube ingestion.
+
+    Uses the unified Content model for all ingestion by default.
+    """
     parser = argparse.ArgumentParser(description="Ingest YouTube transcripts")
     parser.add_argument(
         "--playlist-id",
@@ -947,8 +950,8 @@ def main() -> None:
     if args.after_date:
         after_date = datetime.strptime(args.after_date, "%Y-%m-%d").replace(tzinfo=UTC)
 
-    # Create service
-    service = YouTubeIngestionService(use_oauth=not args.public_only)
+    # Create service (uses unified Content model)
+    service = YouTubeContentIngestionService(use_oauth=not args.public_only)
 
     # Ingest
     if args.playlist_id:
@@ -965,7 +968,7 @@ def main() -> None:
             force_reprocess=args.force,
         )
 
-    print(f"Ingested {count} transcripts")
+    print(f"Ingested {count} content items")
 
 
 if __name__ == "__main__":

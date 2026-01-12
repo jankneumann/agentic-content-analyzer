@@ -16,6 +16,9 @@ class NewsletterSummary(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     newsletter_id = Column(Integer, ForeignKey("newsletters.id"), nullable=False, unique=True)
+    content_id = Column(
+        Integer, ForeignKey("contents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Summary content
     executive_summary = Column(Text, nullable=False)

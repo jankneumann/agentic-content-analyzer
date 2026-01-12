@@ -1,26 +1,60 @@
 """Content API Routes.
 
-CRUD operations for the unified Content model. Provides endpoints for
-listing, retrieving, creating, and deleting content records.
+CRUD operations and ingestion for the unified Content model. Provides endpoints for
+listing, retrieving, creating, deleting, and ingesting content records.
 """
 
+import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 
 from src.models.content import (
     Content,
     ContentCreate,
-    ContentListItem,
-    ContentListResponse,
-    ContentResponse,
+    ContentListItem as BaseContentListItem,
+    ContentResponse as BaseContentResponse,
     ContentSource,
     ContentStatus,
 )
+from src.models.newsletter import Newsletter
 from src.services.content_service import ContentService
 from src.storage.database import get_db
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+# ============================================================================
+# Extended Response Models (with legacy newsletter ID)
+# ============================================================================
+
+
+class ContentListItem(BaseContentListItem):
+    """Extended content list item with legacy newsletter ID for navigation."""
+
+    legacy_newsletter_id: int | None = None
+
+
+class ContentListResponse(BaseModel):
+    """Paginated content list response with extended items."""
+
+    items: list[ContentListItem]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool = Field(default=False)
+    has_prev: bool = Field(default=False)
+
+
+class ContentResponse(BaseContentResponse):
+    """Extended content response with legacy newsletter ID."""
+
+    legacy_newsletter_id: int | None = None
+
 
 router = APIRouter(prefix="/api/v1/contents", tags=["contents"])
 
@@ -95,6 +129,121 @@ class ContentStats(BaseModel):
     failed_count: int
 
 
+class IngestRequest(BaseModel):
+    """Request to trigger content ingestion."""
+
+    source: ContentSource = Field(default=ContentSource.GMAIL, description="Source to ingest from")
+    max_results: int = Field(default=50, ge=1, le=200, description="Maximum items to fetch")
+    days_back: int = Field(default=7, ge=1, le=90, description="Days back to search")
+    force_reprocess: bool = Field(default=False, description="Force reprocess existing content")
+
+
+class IngestResponse(BaseModel):
+    """Response from ingestion trigger."""
+
+    task_id: str
+    message: str
+    source: ContentSource
+    max_results: int
+
+
+# ============================================================================
+# In-memory task storage (would use Redis in production)
+# ============================================================================
+
+_ingestion_tasks: dict[str, dict] = {}
+
+
+async def _run_content_ingestion(
+    task_id: str,
+    source: ContentSource,
+    max_results: int,
+    days_back: int,
+    force_reprocess: bool,
+) -> None:
+    """Background content ingestion task using unified Content model."""
+    from datetime import UTC, timedelta
+
+    try:
+        _ingestion_tasks[task_id]["status"] = "processing"
+        _ingestion_tasks[task_id]["message"] = f"Starting {source.value} content ingestion"
+
+        after_date = datetime.now(UTC) - timedelta(days=days_back)
+
+        if source == ContentSource.GMAIL:
+            from src.ingestion.gmail import GmailContentIngestionService
+
+            service = GmailContentIngestionService()
+            count = await asyncio.to_thread(
+                service.ingest_content,
+                max_results=max_results,
+                after_date=after_date,
+                force_reprocess=force_reprocess,
+            )
+
+        elif source == ContentSource.RSS:
+            from src.ingestion.rss import RSSContentIngestionService
+
+            rss_service = RSSContentIngestionService()
+            count = await asyncio.to_thread(
+                lambda: rss_service.ingest_content(
+                    max_entries_per_feed=max_results,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
+            )
+
+        elif source == ContentSource.YOUTUBE:
+            from src.ingestion.youtube import YouTubeContentIngestionService
+
+            service = YouTubeContentIngestionService(use_oauth=True)
+            count = await asyncio.to_thread(
+                service.ingest_all_playlists,
+                max_videos_per_playlist=max_results,
+                after_date=after_date,
+                force_reprocess=force_reprocess,
+            )
+
+        else:
+            _ingestion_tasks[task_id]["status"] = "error"
+            _ingestion_tasks[task_id]["message"] = (
+                f"Unsupported source for ingestion: {source.value}"
+            )
+            return
+
+        _ingestion_tasks[task_id]["status"] = "completed"
+        _ingestion_tasks[task_id]["progress"] = 100
+        _ingestion_tasks[task_id]["processed"] = count
+        _ingestion_tasks[task_id]["message"] = f"Ingested {count} content items from {source.value}"
+
+    except Exception as e:
+        logger.error(f"Content ingestion failed: {e}")
+        _ingestion_tasks[task_id]["status"] = "error"
+        _ingestion_tasks[task_id]["message"] = str(e)
+
+
+def _get_legacy_newsletter_ids(db, source_ids: list[str]) -> dict[str, int]:
+    """Look up newsletter IDs by source_id for linking to summaries.
+
+    Args:
+        db: Database session
+        source_ids: List of source IDs to look up
+
+    Returns:
+        Dict mapping source_id -> newsletter_id
+    """
+    if not source_ids:
+        return {}
+
+    newsletters = (
+        db.query(Newsletter.source_id, Newsletter.id)
+        .filter(Newsletter.source_id.in_(source_ids))
+        .all()
+    )
+
+    return {n.source_id: n.id for n in newsletters}
+
+
 class DuplicateInfo(BaseModel):
     """Information about duplicate content."""
 
@@ -108,6 +257,91 @@ class DuplicateInfo(BaseModel):
 # ============================================================================
 # Endpoints
 # ============================================================================
+
+
+@router.post("/ingest", response_model=IngestResponse)
+async def trigger_content_ingestion(
+    request: IngestRequest,
+    background_tasks: BackgroundTasks,
+) -> IngestResponse:
+    """
+    Trigger content ingestion from a source.
+
+    Starts a background task and returns a task ID for progress tracking.
+    Use the /ingest/status/{task_id} endpoint to get real-time progress via SSE.
+
+    Supported sources:
+    - gmail: Fetch newsletters from Gmail inbox
+    - rss: Fetch articles from configured RSS feeds
+    - youtube: Fetch transcripts from configured YouTube playlists
+    """
+    import uuid
+
+    task_id = str(uuid.uuid4())
+
+    # Initialize task state
+    _ingestion_tasks[task_id] = {
+        "status": "queued",
+        "progress": 0,
+        "total": 0,
+        "processed": 0,
+        "source": request.source.value,
+        "message": "Ingestion queued",
+        "started_at": datetime.utcnow().isoformat(),
+    }
+
+    # Start background ingestion
+    background_tasks.add_task(
+        _run_content_ingestion,
+        task_id,
+        request.source,
+        request.max_results,
+        request.days_back,
+        request.force_reprocess,
+    )
+
+    return IngestResponse(
+        task_id=task_id,
+        message="Content ingestion started",
+        source=request.source,
+        max_results=request.max_results,
+    )
+
+
+@router.get("/ingest/status/{task_id}")
+async def get_ingestion_status(task_id: str) -> StreamingResponse:
+    """
+    Get content ingestion task status via Server-Sent Events.
+
+    Stream real-time progress updates for the ingestion task.
+    """
+    if task_id not in _ingestion_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    async def event_generator():
+        import json
+
+        while True:
+            if task_id not in _ingestion_tasks:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
+                break
+
+            task = _ingestion_tasks[task_id]
+            yield f"data: {json.dumps(task)}\n\n"
+
+            if task["status"] in ("completed", "error"):
+                break
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("", response_model=ContentListResponse)
@@ -153,6 +387,10 @@ async def list_contents(
         # Apply pagination and ordering
         contents = query.order_by(Content.ingested_at.desc()).offset(offset).limit(page_size).all()
 
+        # Look up legacy newsletter IDs for navigation to summaries
+        source_ids = [c.source_id for c in contents]
+        newsletter_id_map = _get_legacy_newsletter_ids(db, source_ids)
+
         # Convert to response models
         items = [
             ContentListItem(
@@ -163,6 +401,7 @@ async def list_contents(
                 published_date=c.published_date,
                 status=c.status,
                 ingested_at=c.ingested_at,
+                legacy_newsletter_id=newsletter_id_map.get(c.source_id),
             )
             for c in contents
         ]
@@ -221,6 +460,12 @@ async def get_content(content_id: int) -> ContentResponse:
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
+        # Look up legacy newsletter ID for navigation to summary
+        legacy_newsletter_id = None
+        if content.source_id:
+            newsletter_id_map = _get_legacy_newsletter_ids(db, [content.source_id])
+            legacy_newsletter_id = newsletter_id_map.get(content.source_id)
+
         return ContentResponse(
             id=content.id,
             source_type=content.source_type,
@@ -242,6 +487,7 @@ async def get_content(content_id: int) -> ContentResponse:
             ingested_at=content.ingested_at,
             parsed_at=content.parsed_at,
             processed_at=content.processed_at,
+            legacy_newsletter_id=legacy_newsletter_id,
         )
 
 

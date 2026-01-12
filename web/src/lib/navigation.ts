@@ -12,6 +12,7 @@
 
 import {
   Newspaper,
+  Library,
   Sparkles,
   BarChart3,
   FileText,
@@ -77,6 +78,12 @@ export const navigation: NavGroup[] = [
         href: "/newsletters",
         icon: Newspaper,
         description: "Ingested newsletters from Gmail and RSS",
+      },
+      {
+        title: "Contents",
+        href: "/contents",
+        icon: Library,
+        description: "Unified content from all sources",
       },
       {
         title: "Summaries",

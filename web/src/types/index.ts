@@ -8,7 +8,7 @@
  * import { Newsletter, Digest, PodcastScript } from '@/types'
  */
 
-// Newsletter types
+// Newsletter types (legacy - use Content types for new code)
 export type {
   NewsletterSource,
   NewsletterStatus,
@@ -19,6 +19,19 @@ export type {
   IngestRequest,
   IngestResponse,
 } from "./newsletter"
+
+// Content types (unified content model)
+export type {
+  ContentSource,
+  ContentStatus,
+  Content,
+  ContentListItem,
+  ContentListResponse,
+  ContentFilters,
+  ContentStats,
+  ContentCreateRequest,
+  ContentDuplicateInfo,
+} from "./content"
 
 // Summary types
 export type {

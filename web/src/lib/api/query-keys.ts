@@ -24,6 +24,7 @@
 
 import type {
   NewsletterFilters,
+  ContentFilters,
   SummaryFilters,
   DigestFilters,
 } from "@/types"
@@ -47,6 +48,34 @@ export const newsletterKeys = {
   /** Key for newsletter with its summary */
   withSummary: (id: string) =>
     [...newsletterKeys.detail(id), "with-summary"] as const,
+}
+
+/**
+ * Query keys for contents (unified content model)
+ */
+export const contentKeys = {
+  /** Base key for all content queries */
+  all: ["contents"] as const,
+
+  /** Key for content lists with optional filters */
+  lists: () => [...contentKeys.all, "list"] as const,
+  list: (filters?: ContentFilters) =>
+    [...contentKeys.lists(), filters] as const,
+
+  /** Key for single content details */
+  details: () => [...contentKeys.all, "detail"] as const,
+  detail: (id: string | number) => [...contentKeys.details(), String(id)] as const,
+
+  /** Key for content with its summary */
+  withSummary: (id: string | number) =>
+    [...contentKeys.detail(id), "with-summary"] as const,
+
+  /** Key for content statistics */
+  stats: () => [...contentKeys.all, "stats"] as const,
+
+  /** Key for content duplicates */
+  duplicates: (id: string | number) =>
+    [...contentKeys.detail(id), "duplicates"] as const,
 }
 
 /**
@@ -227,6 +256,7 @@ export const systemKeys = {
  */
 export const queryKeys = {
   newsletters: newsletterKeys,
+  contents: contentKeys,
   summaries: summaryKeys,
   themes: themeKeys,
   digests: digestKeys,
