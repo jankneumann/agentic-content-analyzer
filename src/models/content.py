@@ -78,7 +78,13 @@ class Content(Base):  # type: ignore[valid-type, misc]
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     # Source identification
-    source_type = Column(SQLEnum(ContentSource), nullable=False, index=True)
+    # Note: values_callable ensures SQLAlchemy uses enum .value (lowercase)
+    # instead of .name (uppercase) to match the database enum definition
+    source_type = Column(
+        SQLEnum(ContentSource, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True,
+    )
     source_id = Column(String(500), nullable=False)  # Unique ID from source
     source_url = Column(String(2000), nullable=True)  # Original URL if available
 
@@ -115,8 +121,10 @@ class Content(Base):  # type: ignore[valid-type, misc]
     )  # FK to canonical Content if duplicate
 
     # Processing status
+    # Note: values_callable ensures SQLAlchemy uses enum .value (lowercase)
+    # instead of .name (uppercase) to match the database enum definition
     status = Column(
-        SQLEnum(ContentStatus),
+        SQLEnum(ContentStatus, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=ContentStatus.PENDING,
         index=True,

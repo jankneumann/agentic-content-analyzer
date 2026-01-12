@@ -174,6 +174,18 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Use fixtures**: Reusable test data with pytest fixtures
 - **Error handling**: Don't crash entire batch if one item fails
 
+### Utility Functions and Data Models
+- **Handle both dict and Pydantic models**: Utility functions that process data from JSON columns may receive either dicts (from raw JSON) or Pydantic model objects (from ORM relationships). Use a helper function pattern:
+  ```python
+  def _get_attr(obj: dict[str, Any] | PydanticModel, key: str) -> Any:
+      if isinstance(obj, dict):
+          return obj.get(key)
+      return getattr(obj, key, None)
+  ```
+- **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` for Pydantic model imports in utility modules to avoid circular imports
+- **Type annotations with quotes**: When using TYPE_CHECKING imports, quote the type annotations: `def foo(data: "dict | MyModel") -> str:`
+- **Test migrations on production copy**: Always run `--dry-run` first to catch type mismatches before actual migration
+
 See [Development Guide](docs/DEVELOPMENT.md#development-guidelines) for detailed best practices.
 
 ## Learning Goals

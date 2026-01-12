@@ -4,9 +4,27 @@ Generates markdown_content from digest JSON fields and extracts theme_tags
 and source_content_ids using the markdown utilities from Phase 3.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.utils.markdown import extract_theme_tags
+
+if TYPE_CHECKING:
+    from src.models.digest import DigestSection
+
+
+def _get_section_attr(section: "dict[str, Any] | DigestSection", key: str) -> Any:
+    """Get an attribute from a section that may be a dict or DigestSection.
+
+    Args:
+        section: Dictionary or DigestSection object
+        key: Attribute/key name to retrieve
+
+    Returns:
+        The value, or None if not found
+    """
+    if isinstance(section, dict):
+        return section.get(key)
+    return getattr(section, key, None)
 
 
 def generate_digest_markdown(digest_data: dict[str, Any]) -> str:
@@ -119,12 +137,12 @@ def generate_digest_markdown(digest_data: dict[str, Any]) -> str:
     return "\n".join(sections)
 
 
-def _format_digest_section(section_data: dict[str, Any] | str) -> str:
+def _format_digest_section(section_data: "dict[str, Any] | DigestSection | str") -> str:
     """Format a single digest section (insight, development, trend).
 
     Args:
-        section_data: Dictionary with title, summary, details, themes, continuity
-                     or a simple string
+        section_data: Dictionary, DigestSection object, or simple string
+                     with title, summary, details, themes, continuity
 
     Returns:
         Formatted markdown for this section
@@ -135,26 +153,26 @@ def _format_digest_section(section_data: dict[str, Any] | str) -> str:
     lines = []
 
     # Section title
-    if title := section_data.get("title"):
+    if title := _get_section_attr(section_data, "title"):
         lines.append(f"### {title}\n")
 
     # Summary
-    if summary := section_data.get("summary"):
+    if summary := _get_section_attr(section_data, "summary"):
         lines.append(f"{summary}\n")
 
     # Details
-    if details := section_data.get("details"):
+    if details := _get_section_attr(section_data, "details"):
         for detail in details:
             lines.append(f"- {detail}")
         lines.append("")
 
     # Themes (as hashtags)
-    if themes := section_data.get("themes"):
+    if themes := _get_section_attr(section_data, "themes"):
         theme_tags = " ".join(f"#{theme.replace(' ', '-')}" for theme in themes)
         lines.append(f"*Themes: {theme_tags}*\n")
 
     # Historical continuity
-    if continuity := section_data.get("continuity"):
+    if continuity := _get_section_attr(section_data, "continuity"):
         lines.append(f"> *Historical context: {continuity}*\n")
 
     return "\n".join(lines)
@@ -169,7 +187,8 @@ def extract_digest_theme_tags(digest_data: dict[str, Any]) -> list[str]:
     - emerging_trends[].themes
 
     Args:
-        digest_data: Dictionary containing digest fields
+        digest_data: Dictionary containing digest fields (sections may be
+                    dicts or DigestSection objects)
 
     Returns:
         List of unique theme tags
@@ -181,7 +200,8 @@ def extract_digest_theme_tags(digest_data: dict[str, Any]) -> list[str]:
     for section_key in ["strategic_insights", "technical_developments", "emerging_trends"]:
         if sections := digest_data.get(section_key):
             for section in sections:
-                if isinstance(section, dict) and (section_themes := section.get("themes")):
+                # Use helper to get themes from dict or DigestSection
+                if section_themes := _get_section_attr(section, "themes"):
                     for theme in section_themes:
                         normalized = theme.lower().strip()
                         if normalized and normalized not in seen:

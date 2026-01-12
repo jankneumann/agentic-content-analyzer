@@ -32,7 +32,7 @@ from typing import TypedDict
 
 from sqlalchemy import text
 
-from src.models.digest import Digest, DigestSection
+from src.models.digest import Digest
 from src.storage.database import get_db
 from src.utils.digest_markdown import (
     extract_digest_theme_tags,
@@ -114,22 +114,16 @@ def migrate_digest(
         logger.debug(f"Digest {digest.id} already has markdown_content, skipping")
         return False
 
-    # Convert JSON sections to DigestSection objects for proper handling
-    def to_section_list(items: list | None) -> list[DigestSection]:
-        if not items:
-            return []
-        return [DigestSection(**item) if isinstance(item, dict) else item for item in items]
-
-    # Build digest dict from existing fields
+    # Build digest dict from existing fields (sections may be dicts or DigestSection objects)
     digest_dict = {
         "digest_type": digest.digest_type,
         "period_start": digest.period_start,
         "period_end": digest.period_end,
         "title": digest.title,
         "executive_overview": digest.executive_overview,
-        "strategic_insights": to_section_list(digest.strategic_insights),
-        "technical_developments": to_section_list(digest.technical_developments),
-        "emerging_trends": to_section_list(digest.emerging_trends),
+        "strategic_insights": digest.strategic_insights or [],
+        "technical_developments": digest.technical_developments or [],
+        "emerging_trends": digest.emerging_trends or [],
         "actionable_recommendations": digest.actionable_recommendations or {},
         "sources": digest.sources or [],
         "historical_context": digest.historical_context,
