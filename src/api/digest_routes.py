@@ -21,6 +21,7 @@ from src.models.digest import (
 )
 from src.processors.digest_creator import DigestCreator
 from src.storage.database import get_db
+from src.utils.digest_markdown import parse_markdown_digest
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -98,6 +99,12 @@ class DigestDetail(BaseModel):
     review_notes: str | None = None
     is_combined: bool = False
     child_digest_ids: list[int] | None = None
+    # New markdown-first fields (Phase 5)
+    markdown_content: str | None = None
+    theme_tags: list[str] | None = None
+    source_content_ids: list[int] | None = None
+    # Optional parsed sections (when include_parsed_sections=True)
+    parsed_sections: dict | None = None
 
 
 class DigestStatistics(BaseModel):
@@ -198,6 +205,10 @@ async def generate_digest_task(request: DigestRequest) -> None:
             )
             digest_record.is_combined = 1 if digest_data.is_combined else 0
             digest_record.child_digest_ids = digest_data.child_digest_ids
+            # New markdown-first fields (Phase 5)
+            digest_record.markdown_content = digest_data.markdown_content
+            digest_record.theme_tags = digest_data.theme_tags
+            digest_record.source_content_ids = digest_data.source_content_ids
 
             db.commit()
 
@@ -355,7 +366,13 @@ async def get_digest_statistics() -> DigestStatistics:
 
 
 @router.get("/{digest_id}", response_model=DigestDetail)
-async def get_digest(digest_id: int) -> DigestDetail:
+async def get_digest(
+    digest_id: int,
+    include_parsed_sections: bool = Query(
+        False,
+        description="Include parsed sections from markdown content",
+    ),
+) -> DigestDetail:
     """Get full digest details."""
     with get_db() as db:
         digest = db.query(Digest).filter(Digest.id == digest_id).first()
@@ -364,7 +381,7 @@ async def get_digest(digest_id: int) -> DigestDetail:
             raise HTTPException(status_code=404, detail="Digest not found")
 
         # Convert JSON sections to response models
-        def parse_sections(sections_json: list) -> list[DigestSectionResponse]:
+        def parse_sections_json(sections_json: list) -> list[DigestSectionResponse]:
             if not sections_json:
                 return []
             return [
@@ -378,6 +395,11 @@ async def get_digest(digest_id: int) -> DigestDetail:
                 for s in sections_json
             ]
 
+        # Parse sections from markdown if requested and markdown exists
+        parsed_sections = None
+        if include_parsed_sections and digest.markdown_content:
+            parsed_sections = parse_markdown_digest(digest.markdown_content)
+
         return DigestDetail(
             id=digest.id,
             digest_type=digest.digest_type.value if digest.digest_type else "unknown",
@@ -385,9 +407,9 @@ async def get_digest(digest_id: int) -> DigestDetail:
             period_start=digest.period_start.isoformat() if digest.period_start else "",
             period_end=digest.period_end.isoformat() if digest.period_end else "",
             executive_overview=digest.executive_overview or "",
-            strategic_insights=parse_sections(digest.strategic_insights),
-            technical_developments=parse_sections(digest.technical_developments),
-            emerging_trends=parse_sections(digest.emerging_trends),
+            strategic_insights=parse_sections_json(digest.strategic_insights),
+            technical_developments=parse_sections_json(digest.technical_developments),
+            emerging_trends=parse_sections_json(digest.emerging_trends),
             actionable_recommendations=digest.actionable_recommendations or {},
             sources=digest.sources or [],
             newsletter_count=digest.newsletter_count or 0,
@@ -403,6 +425,10 @@ async def get_digest(digest_id: int) -> DigestDetail:
             review_notes=digest.review_notes,
             is_combined=bool(digest.is_combined),
             child_digest_ids=digest.child_digest_ids,
+            markdown_content=digest.markdown_content,
+            theme_tags=digest.theme_tags,
+            source_content_ids=digest.source_content_ids,
+            parsed_sections=parsed_sections,
         )
 
 

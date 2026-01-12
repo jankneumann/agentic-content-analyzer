@@ -202,15 +202,20 @@
   - GET /api/v1/contents/stats - Statistics endpoint
   - GET /api/v1/contents/{id}/duplicates - Get duplicates
   - POST /api/v1/contents/{id}/merge/{duplicate_id} - Merge duplicates
-- [ ] 8.2 Update `src/api/newsletter_routes.py`:
-  - Deprecate or redirect to content routes
-  - Add deprecation warnings
-- [ ] 8.3 Update `src/api/summary_routes.py`:
-  - Return markdown_content in response
-  - Add parsed_sections option for structured response
-- [ ] 8.4 Update `src/api/digest_routes.py`:
-  - Return markdown_content in response
-  - Add parsed_sections option
+- [x] 8.2 Update `src/api/newsletter_routes.py`:
+  - Added deprecation headers (Deprecation, Sunset, Link, X-Deprecation-Notice)
+  - Added `deprecated=True` to all endpoints in OpenAPI schema
+  - Added warning logs for deprecated endpoint usage
+- [x] 8.3 Update `src/api/summary_routes.py`:
+  - Added markdown_content and theme_tags to SummaryDetail response
+  - Added include_parsed_sections query parameter
+  - Updated _summary_to_detail() to include new fields
+  - Updated commit_preview to regenerate markdown on save
+- [x] 8.4 Update `src/api/digest_routes.py`:
+  - Added markdown_content, theme_tags, source_content_ids to DigestDetail response
+  - Added include_parsed_sections query parameter
+  - Updated get_digest() to include new fields
+  - Updated generate_digest_task to store new fields
 - [x] 8.5 Register new routes in `src/api/app.py`
 - [ ] 8.6 Write API tests
 

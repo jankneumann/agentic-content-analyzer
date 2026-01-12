@@ -16,6 +16,7 @@ from sqlalchemy import func
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.storage.database import get_db
+from src.utils.summary_markdown import parse_markdown_summary
 
 router = APIRouter(prefix="/api/v1/summaries", tags=["summaries"])
 
@@ -69,6 +70,11 @@ class SummaryDetail(BaseModel):
     created_at: datetime
     token_usage: int | None
     processing_time_seconds: float | None
+    # New markdown-first fields (Phase 5)
+    markdown_content: str | None = None
+    theme_tags: list[str] | None = None
+    # Optional parsed sections (when include_parsed_sections=True)
+    parsed_sections: dict | None = None
 
     class Config:
         from_attributes = True
@@ -264,7 +270,13 @@ async def get_summary_stats() -> SummaryStats:
 
 
 @router.get("/by-newsletter/{newsletter_id}", response_model=SummaryDetail)
-async def get_summary_by_newsletter(newsletter_id: int) -> SummaryDetail:
+async def get_summary_by_newsletter(
+    newsletter_id: int,
+    include_parsed_sections: bool = Query(
+        False,
+        description="Include parsed sections from markdown content",
+    ),
+) -> SummaryDetail:
     """Get summary for a specific newsletter."""
     with get_db() as db:
         summary = (
@@ -276,11 +288,17 @@ async def get_summary_by_newsletter(newsletter_id: int) -> SummaryDetail:
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found for this newsletter")
 
-        return _summary_to_detail(summary)
+        return _summary_to_detail(summary, include_parsed_sections=include_parsed_sections)
 
 
 @router.get("/{summary_id}", response_model=SummaryDetail)
-async def get_summary(summary_id: int) -> SummaryDetail:
+async def get_summary(
+    summary_id: int,
+    include_parsed_sections: bool = Query(
+        False,
+        description="Include parsed sections from markdown content",
+    ),
+) -> SummaryDetail:
     """Get a single summary by ID."""
     with get_db() as db:
         summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
@@ -288,7 +306,7 @@ async def get_summary(summary_id: int) -> SummaryDetail:
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
 
-        return _summary_to_detail(summary)
+        return _summary_to_detail(summary, include_parsed_sections=include_parsed_sections)
 
 
 @router.get("/{summary_id}/navigation", response_model=NavigationResponse)
@@ -610,6 +628,11 @@ async def commit_preview(
 
     Takes the preview data and saves it as the new summary.
     """
+    from src.utils.summary_markdown import (
+        extract_summary_theme_tags,
+        generate_summary_markdown,
+    )
+
     with get_db() as db:
         summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
         if not summary:
@@ -622,6 +645,20 @@ async def commit_preview(
         summary.technical_details = request.technical_details
         summary.actionable_items = request.actionable_items
         summary.notable_quotes = request.notable_quotes
+
+        # Regenerate markdown content and theme tags
+        summary_dict = {
+            "executive_summary": request.executive_summary,
+            "key_themes": request.key_themes,
+            "strategic_insights": request.strategic_insights,
+            "technical_details": request.technical_details,
+            "actionable_items": request.actionable_items,
+            "notable_quotes": request.notable_quotes,
+            "relevant_links": summary.relevant_links or [],
+            "relevance_scores": summary.relevance_scores or {},
+        }
+        summary.markdown_content = generate_summary_markdown(summary_dict)
+        summary.theme_tags = extract_summary_theme_tags(summary_dict)
 
         # Update timestamp
         summary.created_at = datetime.utcnow()
@@ -720,9 +757,26 @@ async def get_summarization_status(task_id: str):
     )
 
 
-def _summary_to_detail(summary: NewsletterSummary) -> SummaryDetail:
-    """Convert NewsletterSummary ORM object to SummaryDetail response."""
+def _summary_to_detail(
+    summary: NewsletterSummary,
+    include_parsed_sections: bool = False,
+) -> SummaryDetail:
+    """Convert NewsletterSummary ORM object to SummaryDetail response.
+
+    Args:
+        summary: The NewsletterSummary ORM object
+        include_parsed_sections: If True, parse markdown_content into structured sections
+
+    Returns:
+        SummaryDetail response model
+    """
     relevance = summary.relevance_scores or {}
+
+    # Parse sections from markdown if requested and markdown exists
+    parsed_sections = None
+    if include_parsed_sections and summary.markdown_content:
+        parsed_sections = parse_markdown_summary(summary.markdown_content)
+
     return SummaryDetail(
         id=summary.id,
         newsletter_id=summary.newsletter_id,
@@ -744,4 +798,7 @@ def _summary_to_detail(summary: NewsletterSummary) -> SummaryDetail:
         created_at=summary.created_at,
         token_usage=summary.token_usage,
         processing_time_seconds=summary.processing_time_seconds,
+        markdown_content=summary.markdown_content,
+        theme_tags=summary.theme_tags,
+        parsed_sections=parsed_sections,
     )

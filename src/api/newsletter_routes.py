@@ -3,20 +3,44 @@ Newsletter API Routes
 
 CRUD operations and ingestion endpoints for newsletters.
 Includes SSE endpoints for real-time progress tracking.
+
+DEPRECATION NOTICE:
+These endpoints are deprecated in favor of the unified /api/v1/contents endpoints.
+The Newsletter model is being replaced by the Content model as part of the
+unified content model refactor. These endpoints will be removed in a future version.
+
+See: /api/v1/contents for the new unified content API.
 """
 
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
 from src.storage.database import get_db
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/newsletters", tags=["newsletters"])
+
+# Deprecation warning message
+DEPRECATION_MESSAGE = (
+    "This endpoint is deprecated. Use /api/v1/contents instead. "
+    "The Newsletter model is being replaced by the unified Content model."
+)
+
+
+def add_deprecation_headers(response: Response) -> None:
+    """Add standard deprecation headers to response."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "2025-12-31"
+    response.headers["Link"] = '</api/v1/contents>; rel="successor-version"'
+    response.headers["X-Deprecation-Notice"] = DEPRECATION_MESSAGE
 
 
 # ============================================================================
@@ -118,8 +142,9 @@ _ingestion_tasks: dict[str, dict] = {}
 # ============================================================================
 
 
-@router.get("", response_model=PaginatedNewsletterResponse)
+@router.get("", response_model=PaginatedNewsletterResponse, deprecated=True)
 async def list_newsletters(
+    response: Response,
     source: NewsletterSource | None = Query(None, description="Filter by source"),
     status: ProcessingStatus | None = Query(None, description="Filter by status"),
     publication: str | None = Query(None, description="Filter by publication"),
@@ -132,9 +157,13 @@ async def list_newsletters(
     """
     List newsletters with optional filters.
 
+    **DEPRECATED**: Use GET /api/v1/contents instead.
+
     Supports filtering by source, status, publication, date range, and search.
     Results are paginated and sorted by published date (newest first).
     """
+    add_deprecation_headers(response)
+    logger.warning("Deprecated endpoint called: GET /api/v1/newsletters")
     with get_db() as db:
         query = db.query(Newsletter)
 
@@ -185,9 +214,14 @@ async def list_newsletters(
         )
 
 
-@router.get("/stats", response_model=NewsletterStats)
-async def get_newsletter_stats() -> NewsletterStats:
-    """Get newsletter statistics."""
+@router.get("/stats", response_model=NewsletterStats, deprecated=True)
+async def get_newsletter_stats(response: Response) -> NewsletterStats:
+    """Get newsletter statistics.
+
+    **DEPRECATED**: Use GET /api/v1/contents/stats instead.
+    """
+    add_deprecation_headers(response)
+    logger.warning("Deprecated endpoint called: GET /api/v1/newsletters/stats")
     with get_db() as db:
         total = db.query(Newsletter).count()
 
@@ -212,9 +246,14 @@ async def get_newsletter_stats() -> NewsletterStats:
         )
 
 
-@router.get("/{newsletter_id}", response_model=NewsletterDetail)
-async def get_newsletter(newsletter_id: int) -> NewsletterDetail:
-    """Get a single newsletter by ID."""
+@router.get("/{newsletter_id}", response_model=NewsletterDetail, deprecated=True)
+async def get_newsletter(newsletter_id: int, response: Response) -> NewsletterDetail:
+    """Get a single newsletter by ID.
+
+    **DEPRECATED**: Use GET /api/v1/contents/{id} instead.
+    """
+    add_deprecation_headers(response)
+    logger.warning(f"Deprecated endpoint called: GET /api/v1/newsletters/{newsletter_id}")
     with get_db() as db:
         newsletter = db.query(Newsletter).filter(Newsletter.id == newsletter_id).first()
 
@@ -253,9 +292,14 @@ async def get_newsletter(newsletter_id: int) -> NewsletterDetail:
         )
 
 
-@router.delete("/{newsletter_id}")
-async def delete_newsletter(newsletter_id: int):
-    """Delete a newsletter."""
+@router.delete("/{newsletter_id}", deprecated=True)
+async def delete_newsletter(newsletter_id: int, response: Response):
+    """Delete a newsletter.
+
+    **DEPRECATED**: Use DELETE /api/v1/contents/{id} instead.
+    """
+    add_deprecation_headers(response)
+    logger.warning(f"Deprecated endpoint called: DELETE /api/v1/newsletters/{newsletter_id}")
     with get_db() as db:
         newsletter = db.query(Newsletter).filter(Newsletter.id == newsletter_id).first()
 
@@ -268,17 +312,22 @@ async def delete_newsletter(newsletter_id: int):
         return {"message": "Newsletter deleted", "id": newsletter_id}
 
 
-@router.post("/ingest", response_model=IngestResponse)
+@router.post("/ingest", response_model=IngestResponse, deprecated=True)
 async def trigger_ingestion(
     request: IngestRequest,
     background_tasks: BackgroundTasks,
+    response: Response,
 ) -> IngestResponse:
     """
     Trigger newsletter ingestion from a source.
 
+    **DEPRECATED**: Use POST /api/v1/contents/ingest instead (coming soon).
+
     Starts a background task and returns a task ID for progress tracking.
     Use the /ingest/status/{task_id} endpoint to get real-time progress via SSE.
     """
+    add_deprecation_headers(response)
+    logger.warning("Deprecated endpoint called: POST /api/v1/newsletters/ingest")
     import uuid
 
     task_id = str(uuid.uuid4())
