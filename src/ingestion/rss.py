@@ -6,7 +6,7 @@ approach for new code as part of the unified content model refactor.
 """
 
 import hashlib
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import feedparser
@@ -341,24 +341,26 @@ class RSSClient:
         Parse entry publication date.
 
         Tries multiple date fields: published_parsed, updated_parsed.
+        Returns timezone-aware datetime in UTC for consistent comparisons.
 
         Args:
             entry: Feed entry
 
         Returns:
-            Publication datetime or None if not found
+            Publication datetime (UTC-aware) or None if not found
         """
         # Try published_parsed first
         if hasattr(entry, "published_parsed") and entry.published_parsed:
             try:
-                return datetime(*entry.published_parsed[:6])
+                # feedparser's parsed dates are in UTC, make them timezone-aware
+                return datetime(*entry.published_parsed[:6], tzinfo=UTC)
             except (ValueError, TypeError):
                 pass
 
         # Try updated_parsed
         if hasattr(entry, "updated_parsed") and entry.updated_parsed:
             try:
-                return datetime(*entry.updated_parsed[:6])
+                return datetime(*entry.updated_parsed[:6], tzinfo=UTC)
             except (ValueError, TypeError):
                 pass
 
