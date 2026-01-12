@@ -31,6 +31,10 @@ class NewsletterSummary(Base):
     # Relevance scoring
     relevance_scores = Column(JSON, nullable=False)  # Dict[str, float]
 
+    # Unified content model fields (Phase 4)
+    markdown_content = Column(Text, nullable=True)  # Full markdown representation
+    theme_tags = Column(JSON, nullable=True)  # List[str] - Extracted theme tags
+
     # Metadata
     agent_framework = Column(String(100), nullable=False)  # claude, openai, google, microsoft
     model_used = Column(String(100), nullable=False)  # General model ID (e.g., "claude-sonnet-4-5")
@@ -57,6 +61,11 @@ class SummaryData(BaseModel):
         default_factory=list
     )  # [{"title": "...", "url": "..."}]
     relevance_scores: dict[str, float] = Field(default_factory=dict)
+
+    # Unified content model fields
+    markdown_content: str | None = None
+    theme_tags: list[str] | None = None
+
     agent_framework: str
     model_used: str  # General model ID (e.g., "claude-sonnet-4-5")
     model_version: str | None = None  # Version (e.g., "20250929")

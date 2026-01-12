@@ -54,6 +54,11 @@ class Digest(Base):
     # Historical context
     historical_context = Column(JSON, nullable=True)  # List[Dict] from Graphiti
 
+    # Unified content model fields (Phase 4)
+    markdown_content = Column(Text, nullable=True)  # Full markdown representation
+    theme_tags = Column(JSON, nullable=True)  # List[str] - Extracted theme tags
+    source_content_ids = Column(JSON, nullable=True)  # List[int] - Content IDs used in digest
+
     # Metadata
     newsletter_count = Column(Integer, nullable=False)
     status = Column(
@@ -111,6 +116,12 @@ class DigestData(BaseModel):
     actionable_recommendations: dict[str, list[str]] = Field(default_factory=dict)
     sources: list[dict] = Field(default_factory=list)
     historical_context: list[dict] | None = None
+
+    # Unified content model fields
+    markdown_content: str | None = None
+    theme_tags: list[str] | None = None
+    source_content_ids: list[int] | None = None
+
     newsletter_count: int
     agent_framework: str
     model_used: str  # General model ID

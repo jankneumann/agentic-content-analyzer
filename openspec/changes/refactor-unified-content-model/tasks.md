@@ -18,10 +18,13 @@
   - status
   - published_date
   - publication
-- [ ] 1.3 Add `markdown_content` column to newsletter_summaries table
-- [ ] 1.4 Add `theme_tags` JSON column to newsletter_summaries table
-- [ ] 1.5 Add `markdown_content` column to digests table
-- [ ] 1.6 Add `theme_tags` and `source_content_ids` JSON columns to digests table
+- [x] 1.3 Add `markdown_content` column to newsletter_summaries table
+- [x] 1.4 Add `theme_tags` JSON column to newsletter_summaries table
+- [x] 1.5 Add `markdown_content` column to digests table
+- [x] 1.6 Add `theme_tags` and `source_content_ids` JSON columns to digests table
+  - Created Alembic migration `41d180035213_add_markdown_content_and_theme_tags_.py`
+  - Updated `NewsletterSummary` SQLAlchemy model and `SummaryData` Pydantic schema
+  - Updated `Digest` SQLAlchemy model and `DigestData` Pydantic schema
 - [ ] 1.7 Create `images` table with all columns:
   - id (UUID), source_type (EXTRACTED, KEYFRAME, AI_GENERATED)
   - source_content_id, source_summary_id, source_digest_id (FKs)
