@@ -59,17 +59,26 @@
 
 ## 3. Markdown Utilities
 
-- [ ] 3.1 Create `src/utils/markdown.py` with parsing utilities
-- [ ] 3.2 Implement `parse_sections(markdown) -> list[MarkdownSection]`
-- [ ] 3.3 Implement `extract_theme_tags(markdown) -> list[str]`
-- [ ] 3.4 Implement `extract_relevance_scores(markdown) -> dict[str, float]`
-- [ ] 3.5 Implement `extract_embedded_refs(markdown) -> dict[str, list[str]]`
-  - Returns {"tables": ["id1", "id2"], "images": [...], "code": [...]}
-- [ ] 3.6 Implement `render_with_embeds(markdown, tables_json, images) -> str`
-  - Replaces [TABLE:id] with rendered table markdown
-  - Replaces [IMAGE:id] with img tags
-  - Handles [IMAGE:id|video=xxx&t=123] for YouTube keyframes
-- [ ] 3.7 Write unit tests for markdown utilities
+- [x] 3.1 Create `src/utils/markdown.py` with parsing utilities
+  - Created `MarkdownSection` dataclass for structured section representation
+  - Added helper functions: `get_section_by_name()`, `sections_to_dict()`, `_flatten_sections()`
+- [x] 3.2 Implement `parse_sections(markdown) -> list[MarkdownSection]`
+  - Parses heading hierarchy (H1-H6), extracts content, list items, and nested subsections
+- [x] 3.3 Implement `extract_theme_tags(markdown) -> list[str]`
+  - Extracts from Key Themes section and hashtags (#ai, #MachineLearning)
+  - Handles camelCase and kebab-case conversion, deduplication
+- [x] 3.4 Implement `extract_relevance_scores(markdown) -> dict[str, float]`
+  - Parses Relevance Scores section with **Category**: 0.85 format
+  - Normalizes percentages (>1) to 0-1 range, clamps to valid bounds
+- [x] 3.5 Implement `extract_embedded_refs(markdown) -> dict[str, list[str]]`
+  - Extracts [TABLE:id], [IMAGE:id], [CODE:id] references
+  - Handles optional params: [IMAGE:id|video=xxx&t=123]
+- [x] 3.6 Implement `render_with_embeds(markdown, tables_json, images) -> str`
+  - Replaces [TABLE:id] with rendered markdown tables
+  - Replaces [IMAGE:id] with markdown/HTML img tags (with size params)
+  - Handles [IMAGE:id|video=xxx&t=123] for YouTube thumbnails with deep links
+- [x] 3.7 Write unit tests for markdown utilities
+  - Created `tests/test_utils/test_markdown.py` with 54 comprehensive tests
 
 ## 4. Image Model and Services
 
