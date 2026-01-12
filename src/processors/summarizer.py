@@ -1,9 +1,12 @@
 """Newsletter summarization processor."""
 
+from datetime import datetime
+
 from src.agents.base import SummarizationAgent
 from src.agents.claude import ClaudeAgent
 from src.config import settings
 from src.config.models import ModelConfig
+from src.models.content import Content, ContentStatus
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.storage.database import get_db
@@ -228,10 +231,10 @@ class NewsletterSummarizer:
         # Use new batch summarization method
         result = self.summarize_newsletters(pending_ids)
 
-        logger.info(
-            f"Successfully summarized {result['created_count']}/{len(pending_ids)} newsletters"
-        )
-        return result["created_count"]
+        created_count = result["created_count"]
+        logger.info(f"Successfully summarized {created_count}/{len(pending_ids)} newsletters")
+        # created_count is always int from summarize_newsletters
+        return int(created_count)  # type: ignore[arg-type]
 
     def summarize_with_feedback(self, newsletter_id: int, feedback_context: str) -> dict | None:
         """
@@ -285,3 +288,202 @@ class NewsletterSummarizer:
             except Exception as e:
                 logger.error(f"Error regenerating newsletter {newsletter_id}: {e}")
                 return None
+
+    # ========== Content Model Methods (Unified Content Model) ==========
+
+    def summarize_content(self, content_id: int) -> bool:
+        """
+        Summarize content from the unified Content model.
+
+        Uses Content's markdown_content for improved summarization quality.
+
+        Args:
+            content_id: Content ID to summarize
+
+        Returns:
+            True if successful, False otherwise
+        """
+        with get_db() as db:
+            # Get content
+            content = db.query(Content).filter(Content.id == content_id).first()
+
+            if not content:
+                logger.error(f"Content {content_id} not found")
+                return False
+
+            # Check if already summarized (check for existing summary with content_id)
+            # Note: For now, we use newsletter_id=0 as a marker for content-based summaries
+            # In future migration, we'll update the schema to properly link content_id
+            existing = (
+                db.query(NewsletterSummary)
+                .filter(
+                    NewsletterSummary.newsletter_id == 0,
+                    NewsletterSummary.executive_summary.contains(f"[content_id:{content_id}]"),
+                )
+                .first()
+            )
+
+            if existing:
+                logger.info(f"Content {content_id} already summarized")
+                return True
+
+            # Update status
+            content.status = ContentStatus.PROCESSING
+            db.commit()
+
+            try:
+                # Summarize using agent
+                logger.info(f"Summarizing content: {content.title}")
+                response = self.agent.summarize_content(content)
+
+                if not response.success:
+                    content.status = ContentStatus.FAILED
+                    content.error_message = response.error
+                    db.commit()
+                    logger.error(f"Summarization failed: {response.error}")
+                    return False
+
+                # Store summary
+                summary_data = response.data
+
+                # Generate markdown content and extract theme tags
+                summary_dict = {
+                    "executive_summary": summary_data.executive_summary,
+                    "key_themes": summary_data.key_themes,
+                    "strategic_insights": summary_data.strategic_insights,
+                    "technical_details": summary_data.technical_details,
+                    "actionable_items": summary_data.actionable_items,
+                    "notable_quotes": summary_data.notable_quotes,
+                    "relevant_links": summary_data.relevant_links,
+                    "relevance_scores": summary_data.relevance_scores,
+                }
+                markdown_content = generate_summary_markdown(summary_dict)
+                theme_tags = extract_summary_theme_tags(summary_dict)
+
+                # Create summary record
+                # Note: Using newsletter_id=0 as marker and embedding content_id in exec summary
+                # This is a temporary solution until proper schema migration
+                summary = NewsletterSummary(
+                    newsletter_id=0,  # Marker for content-based summaries
+                    executive_summary=f"[content_id:{content_id}] {summary_data.executive_summary}",
+                    key_themes=summary_data.key_themes,
+                    strategic_insights=summary_data.strategic_insights,
+                    technical_details=summary_data.technical_details,
+                    actionable_items=summary_data.actionable_items,
+                    notable_quotes=summary_data.notable_quotes,
+                    relevant_links=summary_data.relevant_links,
+                    relevance_scores=summary_data.relevance_scores,
+                    markdown_content=markdown_content,
+                    theme_tags=theme_tags,
+                    agent_framework=summary_data.agent_framework,
+                    model_used=summary_data.model_used,
+                    model_version=summary_data.model_version,
+                    token_usage=summary_data.token_usage,
+                    processing_time_seconds=summary_data.processing_time_seconds,
+                )
+
+                db.add(summary)
+                content.status = ContentStatus.COMPLETED
+                content.processed_at = datetime.utcnow()
+                db.commit()
+
+                logger.info(f"Successfully summarized content {content_id}: {content.title}")
+                return True
+
+            except Exception as e:
+                db.rollback()
+                content.status = ContentStatus.FAILED
+                content.error_message = str(e)
+                db.commit()
+                logger.error(f"Error summarizing content {content_id}: {e}")
+                return False
+
+    def summarize_contents(self, content_ids: list[int]) -> dict[str, int | list[int]]:
+        """
+        Summarize multiple content records with detailed tracking.
+
+        Args:
+            content_ids: List of content IDs to summarize
+
+        Returns:
+            Dictionary with:
+                - 'created_count': Number of successfully created summaries
+                - 'failed_ids': List of content IDs that failed
+                - 'skipped_count': Number of contents already summarized (skipped)
+        """
+        created_count = 0
+        failed_ids = []
+        skipped_count = 0
+
+        logger.info(f"Starting batch summarization for {len(content_ids)} content records")
+
+        for i, content_id in enumerate(content_ids, 1):
+            logger.info(f"Processing content {i}/{len(content_ids)} (ID: {content_id})...")
+
+            try:
+                # Check if already summarized
+                with get_db() as db:
+                    content = db.query(Content).filter(Content.id == content_id).first()
+                    if content and content.status == ContentStatus.COMPLETED:
+                        skipped_count += 1
+                        logger.info(f"Content {content_id} already processed, skipping")
+                        continue
+
+                # Create summary
+                success = self.summarize_content(content_id)
+
+                if success:
+                    created_count += 1
+                    logger.info(f"✓ Successfully created summary for content {content_id}")
+                else:
+                    failed_ids.append(content_id)
+                    logger.error(f"✗ Failed to create summary for content {content_id}")
+
+            except Exception as e:
+                failed_ids.append(content_id)
+                logger.error(
+                    f"✗ Exception creating summary for content {content_id}: {e}",
+                    exc_info=True,
+                )
+
+        # Log final results
+        logger.info(
+            f"Batch summarization complete: "
+            f"{created_count} created, {skipped_count} skipped, {len(failed_ids)} failed"
+        )
+
+        return {
+            "created_count": created_count,
+            "failed_ids": failed_ids,
+            "skipped_count": skipped_count,
+        }
+
+    def summarize_pending_contents(self, limit: int | None = None) -> int:
+        """
+        Summarize all pending content records.
+
+        Args:
+            limit: Maximum number to process (None = all)
+
+        Returns:
+            Number of content records successfully summarized
+        """
+        # Query for IDs of pending/parsed content
+        with get_db() as db:
+            query = db.query(Content.id).filter(
+                Content.status.in_([ContentStatus.PENDING, ContentStatus.PARSED])
+            )
+
+            if limit:
+                query = query.limit(limit)
+
+            pending_ids = [row[0] for row in query.all()]
+            logger.info(f"Found {len(pending_ids)} pending content records to summarize")
+
+        # Use batch summarization method
+        result = self.summarize_contents(pending_ids)
+
+        created_count = result["created_count"]
+        logger.info(f"Successfully summarized {created_count}/{len(pending_ids)} content records")
+        # created_count is always int from summarize_contents
+        return int(created_count)  # type: ignore[arg-type]

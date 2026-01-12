@@ -50,7 +50,8 @@ class NewsletterSummary(Base):
 class SummaryData(BaseModel):
     """Pydantic model for summary data transfer."""
 
-    newsletter_id: int
+    newsletter_id: int  # Legacy: FK to newsletters table
+    content_id: int | None = None  # New: FK to contents table (unified model)
     executive_summary: str
     key_themes: list[str] = Field(default_factory=list)
     strategic_insights: list[str] = Field(default_factory=list)

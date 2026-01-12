@@ -1,13 +1,16 @@
 """Base classes for agent implementations."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.newsletter import Newsletter
 from src.models.summary import SummaryData
+
+if TYPE_CHECKING:
+    from src.models.content import Content
 
 
 class AgentResponse(BaseModel):
@@ -66,6 +69,25 @@ class SummarizationAgent(ABC):
             AgentResponse with SummaryData
         """
         pass
+
+    def summarize_content(self, content: "Content") -> AgentResponse:
+        """
+        Summarize content from the unified Content model.
+
+        Default implementation creates a prompt from Content's markdown_content.
+        Subclasses can override for custom behavior.
+
+        Args:
+            content: Content to summarize
+
+        Returns:
+            AgentResponse with SummaryData
+        """
+        # Default implementation - subclasses should override
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement summarize_content(). "
+            "Override this method or use summarize_newsletter() with Newsletter model."
+        )
 
     def calculate_cost(self) -> float:
         """
@@ -142,19 +164,30 @@ Provide ONLY the JSON output, no additional commentary."""
 
         return prompt
 
-    def _validate_summary_data(self, data: dict[str, Any], newsletter_id: int) -> SummaryData:
+    def _validate_summary_data(
+        self,
+        data: dict[str, Any],
+        newsletter_id: int | None = None,
+        content_id: int | None = None,
+    ) -> SummaryData:
         """
         Validate and convert response data to SummaryData.
 
         Args:
             data: Raw response data
-            newsletter_id: Newsletter ID
+            newsletter_id: Newsletter ID (legacy, optional)
+            content_id: Content ID (unified model, optional)
 
         Returns:
             Validated SummaryData object
+
+        Note:
+            Either newsletter_id or content_id should be provided.
+            For backward compatibility, newsletter_id is still the primary key.
         """
         return SummaryData(
-            newsletter_id=newsletter_id,
+            newsletter_id=newsletter_id or 0,  # 0 if using content_id only
+            content_id=content_id,  # New field for unified model
             executive_summary=data.get("executive_summary", ""),
             key_themes=data.get("key_themes", []),
             strategic_insights=data.get("strategic_insights", []),
@@ -167,3 +200,70 @@ Provide ONLY the JSON output, no additional commentary."""
             model_used=self.model,
             model_version=self.model_version,
         )
+
+    def _create_content_prompt(self, content: "Content") -> str:
+        """
+        Create the summarization prompt for Content model.
+
+        Uses Content's markdown_content which is already in optimal format for LLMs.
+
+        Args:
+            content: Content to summarize
+
+        Returns:
+            Formatted prompt string
+        """
+        # Use markdown content (primary) - already optimized for LLM consumption
+        markdown_content = content.markdown_content or ""
+
+        # Truncate for token limits (markdown is more efficient than HTML)
+        max_chars = 20000  # Higher limit since markdown is more compact
+        if len(markdown_content) > max_chars:
+            markdown_content = markdown_content[:max_chars] + "\n\n[Content truncated...]"
+
+        prompt = f"""You are an expert at summarizing AI and technology content for technical leaders and developers at Comcast.
+
+Your audience ranges from CTOs needing strategic insights to individual developers seeking actionable best practices.
+
+Please analyze this content and provide a structured summary:
+
+**Content Details:**
+- Title: {content.title}
+- Publication: {content.publication or "Unknown"}
+- Author: {content.author or "Unknown"}
+- Date: {content.published_date}
+- Source: {content.source_type.value if content.source_type else "Unknown"}
+
+**Content:**
+{markdown_content}
+
+**Required Output (JSON format):**
+{{
+    "executive_summary": "2-3 sentence summary capturing the essence and why it matters",
+    "key_themes": ["theme1", "theme2", "theme3"],  # 3-5 main topics/themes
+    "strategic_insights": ["insight1", "insight2"],  # CTO-level implications
+    "technical_details": ["detail1", "detail2"],  # Developer-focused specifics
+    "actionable_items": ["action1", "action2"],  # What readers should do
+    "notable_quotes": ["quote1", "quote2"],  # Important quotes or data points
+    "relevant_links": [  # Links to referenced resources for deeper reading
+        {{"title": "Resource Title", "url": "https://..."}},
+        {{"title": "Another Resource", "url": "https://..."}}
+    ],
+    "relevance_scores": {{
+        "cto_leadership": 0.0-1.0,  # How relevant for C-level
+        "technical_teams": 0.0-1.0,  # How relevant for dev teams
+        "individual_developers": 0.0-1.0  # How relevant for individuals
+    }}
+}}
+
+Focus on:
+- Strategic implications for AI/Data leadership
+- Actionable technical insights
+- Trends and patterns in the AI/tech landscape
+- Practical applications for enterprise settings
+- Best practices and recommendations
+- Extract links to referenced papers, articles, or resources
+
+Provide ONLY the JSON output, no additional commentary."""
+
+        return prompt

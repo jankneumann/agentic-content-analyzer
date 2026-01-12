@@ -2,7 +2,7 @@
 
 import json
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from anthropic import Anthropic
 
@@ -10,6 +10,9 @@ from src.agents.base import AgentResponse, SummarizationAgent
 from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.newsletter import Newsletter
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.models.content import Content
 
 logger = get_logger(__name__)
 
@@ -160,6 +163,129 @@ class ClaudeAgent(SummarizationAgent):
         logger.error(final_error)
         return AgentResponse(success=False, error=final_error)
 
+    def summarize_content(self, content: "Content") -> AgentResponse:
+        """
+        Summarize content from the unified Content model using Claude SDK.
+
+        This method uses Content's markdown_content which is already in optimal
+        format for LLM consumption, improving summarization quality.
+
+        Args:
+            content: Content to summarize
+
+        Returns:
+            AgentResponse with SummaryData
+        """
+        source_type_str = content.source_type.value if content.source_type else "unknown"
+        logger.info(f"Summarizing content: {content.title} (source: {source_type_str})")
+        start_time = time.time()
+
+        # Get providers for this model (in priority order)
+        try:
+            providers = self.model_config.get_providers_for_model(self.model)
+        except ValueError as e:
+            return AgentResponse(success=False, error=str(e))
+
+        # Filter for Anthropic-compatible providers
+        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+
+        if not anthropic_providers:
+            error_msg = f"No Anthropic-compatible providers configured for model {self.model}"
+            logger.error(error_msg)
+            return AgentResponse(success=False, error=error_msg)
+
+        # Try each provider in order (failover support)
+        last_error = None
+        for provider_config in anthropic_providers:
+            try:
+                logger.info(f"Trying provider: {provider_config.provider.value}")
+
+                # Create client for this provider
+                client = Anthropic(api_key=provider_config.api_key)
+
+                # Get provider-specific model ID for API call
+                provider_model_id = self.model_config.get_provider_model_id(
+                    self.model, provider_config.provider
+                )
+
+                # Create prompt using Content model
+                prompt = self._create_content_prompt(content)
+
+                # Call Claude API with provider-specific model ID
+                response = client.messages.create(
+                    model=provider_model_id,
+                    max_tokens=4096,
+                    temperature=0.0,  # Deterministic for consistent summaries
+                    messages=[{"role": "user", "content": prompt}],
+                )
+
+                # Track provider and token usage for cost calculation
+                self.provider_used = provider_config.provider
+                self.input_tokens = response.usage.input_tokens
+                self.output_tokens = response.usage.output_tokens
+                self.model_version = self.model_config.get_model_version(
+                    self.model, self.provider_used
+                )
+
+                # Extract response
+                response_text = response.content[0].text
+                logger.debug(f"Claude response: {response_text[:200]}...")
+
+                # Parse JSON response
+                summary_dict = self._extract_json_from_response(response_text)
+
+                # Validate and create SummaryData with content_id
+                summary_data = self._validate_summary_data(
+                    summary_dict,
+                    content_id=content.id,
+                )
+
+                # Add processing metadata
+                processing_time = time.time() - start_time
+                summary_data.processing_time_seconds = processing_time
+                summary_data.token_usage = self.input_tokens + self.output_tokens
+
+                # Calculate actual cost
+                cost = self.calculate_cost()
+
+                logger.info(
+                    f"Summarized content in {processing_time:.2f}s, "
+                    f"tokens: {summary_data.token_usage}, "
+                    f"cost: ${cost:.4f}, "
+                    f"provider: {self.provider_used.value}"
+                )
+
+                return AgentResponse(
+                    success=True,
+                    data=summary_data,
+                    metadata={
+                        "input_tokens": self.input_tokens,
+                        "output_tokens": self.output_tokens,
+                        "processing_time": processing_time,
+                        "provider": self.provider_used.value,
+                        "cost_usd": cost,
+                        "content_id": content.id,
+                        "source_type": source_type_str,
+                    },
+                )
+
+            except json.JSONDecodeError as e:
+                error_msg = f"Failed to parse response as JSON: {e}"
+                logger.error(f"{error_msg} (provider: {provider_config.provider.value})")
+                last_error = error_msg
+                continue  # Try next provider
+
+            except Exception as e:
+                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
+                logger.error(error_msg)
+                last_error = str(e)
+                continue  # Try next provider
+
+        # All providers failed
+        final_error = f"All providers failed. Last error: {last_error}"
+        logger.error(final_error)
+        return AgentResponse(success=False, error=final_error)
+
     def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
         """
         Extract JSON from Claude response, handling markdown code blocks.
@@ -172,7 +298,7 @@ class ClaudeAgent(SummarizationAgent):
         """
         # Try direct parse first
         try:
-            return json.loads(response_text)
+            return json.loads(response_text)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
             pass
 
@@ -181,12 +307,12 @@ class ClaudeAgent(SummarizationAgent):
             json_start = response_text.find("```json") + 7
             json_end = response_text.find("```", json_start)
             json_str = response_text[json_start:json_end].strip()
-            return json.loads(json_str)
+            return json.loads(json_str)  # type: ignore[no-any-return]
         elif "```" in response_text:
             json_start = response_text.find("```") + 3
             json_end = response_text.find("```", json_start)
             json_str = response_text[json_start:json_end].strip()
-            return json.loads(json_str)
+            return json.loads(json_str)  # type: ignore[no-any-return]
 
         raise json.JSONDecodeError("Could not extract JSON from response", response_text, 0)
 

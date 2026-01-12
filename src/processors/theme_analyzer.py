@@ -8,6 +8,7 @@ from anthropic import Anthropic
 
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
+from src.models.content import Content, ContentStatus
 from src.models.newsletter import Newsletter
 from src.models.summary import NewsletterSummary
 from src.models.theme import (
@@ -202,6 +203,53 @@ class ThemeAnalyzer:
                     "published_date": n.published_date,
                 }
                 for n in newsletters
+            ]
+
+    async def _fetch_contents(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        status_filter: list[ContentStatus] | None = None,
+    ) -> list[dict]:
+        """
+        Fetch content records from database for date range.
+
+        Uses the unified Content model instead of Newsletter.
+
+        Args:
+            start_date: Period start date
+            end_date: Period end date
+            status_filter: Optional list of content statuses to include
+                          (default: COMPLETED only)
+
+        Returns:
+            List of content dicts with standard fields
+        """
+        if status_filter is None:
+            status_filter = [ContentStatus.COMPLETED]
+
+        with get_db() as db:
+            contents = (
+                db.query(Content)
+                .filter(
+                    Content.published_date >= start_date,
+                    Content.published_date <= end_date,
+                    Content.status.in_(status_filter),
+                )
+                .order_by(Content.published_date.desc())
+                .all()
+            )
+
+            return [
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "publication": c.publication,
+                    "published_date": c.published_date,
+                    "source_type": c.source_type.value,
+                    "is_content": True,  # Flag to distinguish from newsletter
+                }
+                for c in contents
             ]
 
     async def _fetch_summaries(

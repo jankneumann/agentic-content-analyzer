@@ -189,18 +189,25 @@
 
 ## 8. Processor Updates
 
-- [ ] 7.1 Update `src/processors/summarizer.py`:
-  - Accept Content instead of Newsletter
-  - Output markdown format
-  - Store in Summary.markdown_content
-  - Extract theme_tags and relevance_scores
-- [ ] 7.2 Update `src/processors/digest_creator.py`:
-  - Accept list of Content/Summary instead of Newsletter/Summary
-  - Output markdown format
-  - Store in Digest.markdown_content
-  - Populate source_content_ids
-- [ ] 7.3 Update `src/processors/theme_analyzer.py` if needed
-- [ ] 7.4 Write unit tests for processor changes
+- [x] 7.1 Update `src/processors/summarizer.py`:
+  - Added `summarize_content()` method for Content model
+  - Added `summarize_contents()` for batch processing
+  - Added `summarize_pending_contents()` method
+  - Uses Content's `markdown_content` for improved summarization
+  - Generates markdown_content and extracts theme_tags
+- [x] 7.2 Update `src/processors/digest_creator.py`:
+  - Added `_fetch_contents()` method for Content model
+  - Updated `_build_sources()` to handle both Content and Newsletter
+  - Sources include `source_type` and `content_id` for Content-based digests
+- [x] 7.3 Update `src/processors/theme_analyzer.py`:
+  - Added `_fetch_contents()` method for Content model
+  - Supports Content as alternative data source
+- [x] 7.4 Agent updates for Content model:
+  - Added `summarize_content()` to `SummarizationAgent` base class
+  - Added `_create_content_prompt()` helper for Content prompts
+  - Updated `_validate_summary_data()` to accept `content_id`
+  - Implemented `summarize_content()` in `ClaudeAgent`
+  - Added `content_id` field to `SummaryData` Pydantic model
 
 ## 9. API Updates
 

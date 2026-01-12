@@ -8,6 +8,7 @@ from anthropic import Anthropic
 
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
+from src.models.content import Content, ContentStatus
 from src.models.digest import (
     Digest,
     DigestData,
@@ -23,7 +24,6 @@ from src.processors.summarizer import NewsletterSummarizer
 from src.processors.theme_analyzer import ThemeAnalyzer
 from src.storage.database import get_db
 from src.utils.digest_markdown import (
-    enrich_digest_data,
     extract_digest_theme_tags,
     extract_source_content_ids,
     generate_digest_markdown,
@@ -360,8 +360,8 @@ class DigestCreator:
         logger.info(f"Batching {len(newsletters)} newsletters with {token_budget} token budget")
 
         counter = TokenCounter(self.model_config, self.model)
-        batches = []
-        current_batch = []
+        batches: list[list[dict]] = []
+        current_batch: list[dict] = []
         current_tokens = 0
 
         for newsletter in newsletters:
@@ -1178,17 +1178,80 @@ Provide ONLY the JSON, no other text."""
                 for n in newsletters
             ]
 
+    async def _fetch_contents(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        status_filter: list[ContentStatus] | None = None,
+    ) -> list[dict]:
+        """
+        Fetch content records for the time period.
+
+        Uses the unified Content model instead of Newsletter.
+
+        Args:
+            start_date: Period start date
+            end_date: Period end date
+            status_filter: Optional list of content statuses to include
+                          (default: COMPLETED only)
+
+        Returns:
+            List of content dicts with standard fields
+        """
+        if status_filter is None:
+            status_filter = [ContentStatus.COMPLETED]
+
+        with get_db() as db:
+            contents = (
+                db.query(Content)
+                .filter(
+                    Content.published_date >= start_date,
+                    Content.published_date <= end_date,
+                    Content.status.in_(status_filter),
+                )
+                .order_by(Content.published_date.desc())
+                .all()
+            )
+
+            return [
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "publication": c.publication,
+                    "published_date": c.published_date,
+                    "url": c.source_url,
+                    "source_type": c.source_type.value,
+                    "is_content": True,  # Flag to distinguish from newsletter
+                }
+                for c in contents
+            ]
+
     def _build_sources(self, newsletters: list[dict]) -> list[dict]:
-        """Build sources list for digest."""
-        return [
-            {
+        """
+        Build sources list for digest.
+
+        Works with both Newsletter and Content data structures.
+
+        Args:
+            newsletters: List of newsletter or content dicts
+
+        Returns:
+            List of source dicts with title, publication, date, url, and optional source_type
+        """
+        sources = []
+        for n in newsletters:
+            source = {
                 "title": n["title"],
                 "publication": n["publication"],
                 "date": n["published_date"].strftime("%Y-%m-%d"),
                 "url": n.get("url"),
             }
-            for n in newsletters
-        ]
+            # Add source_type for Content-based sources
+            if n.get("is_content"):
+                source["source_type"] = n.get("source_type")
+                source["content_id"] = n.get("id")
+            sources.append(source)
+        return sources
 
     def _create_empty_digest(self, request: DigestRequest) -> DigestData:
         """Create an empty digest when no newsletters found."""
