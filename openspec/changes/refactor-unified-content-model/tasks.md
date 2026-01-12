@@ -49,8 +49,12 @@
 - [x] 2.4 Create Pydantic schemas:
   - ContentCreate, ContentUpdate, ContentResponse
   - ContentListResponse with pagination
-- [ ] 2.5 Add content_hash generation utility (SHA-256 of normalized markdown)
-- [ ] 2.6 Add canonical_id logic for deduplication
+- [x] 2.5 Add content_hash generation utility (SHA-256 of normalized markdown)
+  - Extended `src/utils/content_hash.py` with `normalize_markdown()` and `generate_markdown_hash()`
+  - Added `generate_file_hash()` for file upload deduplication
+- [x] 2.6 Add canonical_id logic for deduplication
+  - Created `src/services/content_service.py` with `ContentService` class
+  - Implements `find_by_hash()`, `merge_duplicates()`, `get_duplicates()`
 - [x] 2.7 Write unit tests for Content model
 
 ## 3. Markdown Utilities
@@ -180,11 +184,14 @@
 
 ## 9. API Updates
 
-- [ ] 8.1 Create `src/api/content_routes.py`:
+- [x] 8.1 Create `src/api/content_routes.py`:
   - GET /api/v1/contents - List with pagination, filtering
   - GET /api/v1/contents/{id} - Get single content
   - POST /api/v1/contents - Create (for manual/API ingestion)
   - DELETE /api/v1/contents/{id} - Delete content
+  - GET /api/v1/contents/stats - Statistics endpoint
+  - GET /api/v1/contents/{id}/duplicates - Get duplicates
+  - POST /api/v1/contents/{id}/merge/{duplicate_id} - Merge duplicates
 - [ ] 8.2 Update `src/api/newsletter_routes.py`:
   - Deprecate or redirect to content routes
   - Add deprecation warnings
@@ -194,7 +201,7 @@
 - [ ] 8.4 Update `src/api/digest_routes.py`:
   - Return markdown_content in response
   - Add parsed_sections option
-- [ ] 8.5 Register new routes in `src/api/app.py`
+- [x] 8.5 Register new routes in `src/api/app.py`
 - [ ] 8.6 Write API tests
 
 ## 10. Data Migration

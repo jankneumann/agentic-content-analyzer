@@ -132,3 +132,87 @@ def should_skip_duplicate(
     """
     similarity = calculate_content_similarity(existing_text, new_text)
     return similarity >= similarity_threshold
+
+
+# --- Markdown-specific functions for unified Content model ---
+
+
+def normalize_markdown(markdown: str) -> str:
+    """
+    Normalize markdown content for consistent hashing.
+
+    Preserves semantic structure while normalizing formatting differences:
+    - Consistent heading levels
+    - Normalized whitespace
+    - Consistent list markers
+    - Removed trailing whitespace per line
+
+    Args:
+        markdown: Markdown content to normalize
+
+    Returns:
+        Normalized markdown suitable for hashing
+    """
+    if not markdown:
+        return ""
+
+    lines = markdown.split("\n")
+    normalized_lines = []
+
+    for line in lines:
+        # Strip trailing whitespace
+        line = line.rstrip()
+
+        # Normalize list markers (-, *, +) to consistent format
+        line = re.sub(r"^(\s*)[*+](\s+)", r"\1-\2", line)
+
+        # Normalize multiple spaces in content (not indentation)
+        if not line.startswith(" " * 4) and not line.startswith("\t"):
+            # Preserve leading whitespace, normalize internal
+            leading = len(line) - len(line.lstrip())
+            content = re.sub(r"  +", " ", line.lstrip())
+            line = " " * leading + content
+
+        normalized_lines.append(line)
+
+    # Join and normalize line endings
+    result = "\n".join(normalized_lines)
+
+    # Collapse multiple blank lines into single
+    result = re.sub(r"\n{3,}", "\n\n", result)
+
+    # Strip leading/trailing whitespace
+    return result.strip()
+
+
+def generate_markdown_hash(markdown: str) -> str:
+    """
+    Generate SHA-256 hash of normalized markdown content.
+
+    Used for deduplication in the unified Content model. Unlike
+    generate_content_hash (for raw text), this preserves markdown
+    structure while normalizing formatting.
+
+    Args:
+        markdown: Markdown content to hash
+
+    Returns:
+        64-character SHA-256 hash hex string
+    """
+    normalized = normalize_markdown(markdown)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def generate_file_hash(file_bytes: bytes) -> str:
+    """
+    Generate SHA-256 hash of file bytes.
+
+    Used for file upload deduplication before parsing.
+
+    Args:
+        file_bytes: Raw file content
+
+    Returns:
+        64-character SHA-256 hash hex string
+    """
+    return hashlib.sha256(file_bytes).hexdigest()
