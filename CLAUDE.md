@@ -132,6 +132,15 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Configure overrides for ORM modules**: SQLAlchemy Column types need `disable_error_code` for `assignment`, `arg-type`, `union-attr` etc.
 - **Pre-commit hooks**: All mypy dependencies (including SQLAlchemy) must be in `additional_dependencies`
 - **Type ignore comments**: Use specific error codes like `# type: ignore[no-any-return]` not generic `# type: ignore`
+- **Optional in lists**: When passing `str | None` to functions expecting `list[str]`, guard against None:
+  ```python
+  # Wrong - mypy error: List item has incompatible type "str | None"
+  func([obj.field])  # where field is str | None
+
+  # Correct - guard against None
+  if obj.field:
+      func([obj.field])
+  ```
 
 ### Document Parsing
 - **Parser abstraction**: Use `DocumentParser` interface in `src/parsers/base.py` for all document parsing
@@ -146,8 +155,14 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Type ignore for untyped libraries**: Use `# type: ignore[attr-defined]` for libraries without type stubs (e.g., youtube-transcript-api)
 - **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` block for Docling types to avoid import errors when docling not installed
 
+### Unified Content Model
+- **Prefer Content model**: Use `*ContentIngestionService` classes (e.g., `GmailContentIngestionService`, `RSSContentIngestionService`, `YouTubeContentIngestionService`, `FileContentIngestionService`) over legacy `*IngestionService` classes
+- **Content-based lookups**: Use `/summaries/by-content/{content_id}` endpoint for content-to-summary navigation
+- **Source types**: `ContentSource` enum defines: `GMAIL`, `RSS`, `YOUTUBE`, `FILE_UPLOAD`
+- **Frontend ingestion**: Content page has Ingest button with dialog for Gmail/RSS/YouTube sources
+
 ### File Upload Ingestion
-- **FileIngestionService**: Processes file uploads via `ParserRouter`, stores as Newsletter records
+- **FileContentIngestionService**: Processes file uploads via `ParserRouter`, stores as Content records
 - **Deduplication**: SHA-256 file hash for duplicate detection, links duplicates to canonical record
 - **API endpoint**: `POST /api/v1/documents/upload` accepts multipart form data
 - **Size limits**: Configure via `MAX_UPLOAD_SIZE_MB` and `DOCLING_MAX_FILE_SIZE_MB` settings
@@ -168,6 +183,28 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Opt-in feature**: Enable via `YOUTUBE_KEYFRAME_EXTRACTION=true`
 - **Dependencies**: ffmpeg (system), yt-dlp, imagehash, Pillow (Python)
 - **noqa comments for security**: Use `# noqa: S108` for temp paths, `# noqa: S607` for subprocess with partial paths
+
+### RSS Ingestion
+- **RSSContentIngestionService**: Preferred service for RSS feed ingestion using unified Content model
+- **Timezone-aware datetimes**: feedparser's `published_parsed` returns UTC time but as naive struct_time - always add `tzinfo=UTC` when converting:
+  ```python
+  datetime(*entry.published_parsed[:6], tzinfo=UTC)  # Correct
+  datetime(*entry.published_parsed[:6])  # Wrong - causes comparison errors
+  ```
+- **Date comparison errors**: `TypeError: can't compare offset-naive and offset-aware datetimes` means one datetime has timezone info and the other doesn't - make both UTC-aware
+- **Feed URL maintenance**: Check `substack_feeds.txt` periodically - feeds may become unavailable (404) or move (301)
+
+### Async/Await Patterns
+- **asyncio.to_thread() with kwargs**: When calling sync functions with keyword arguments in async context, wrap in a lambda:
+  ```python
+  # Wrong - to_thread doesn't accept keyword arguments directly
+  await asyncio.to_thread(sync_func, kwarg=value)
+
+  # Correct - wrap in lambda
+  await asyncio.to_thread(lambda: sync_func(kwarg=value))
+  ```
+- **Background tasks**: Use FastAPI's `BackgroundTasks` for fire-and-forget operations
+- **SSE for progress**: Use `StreamingResponse` with `text/event-stream` for real-time progress updates
 
 ### Tool Usage Best Practices
 - **Always activate venv**: `source .venv/bin/activate` before running scripts
