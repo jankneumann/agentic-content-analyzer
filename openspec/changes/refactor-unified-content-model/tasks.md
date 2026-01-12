@@ -116,48 +116,46 @@
 
 ## 5. Summary Model Refactor
 
-- [ ] 5.1 Update `src/models/summary.py`:
-  - Add markdown_content column
-  - Add theme_tags column
-  - Rename newsletter_id → content_id
+- [x] 5.1 Update `src/models/summary.py`:
+  - Added markdown_content column (Phase 4)
+  - Added theme_tags column (Phase 4)
+  - Rename newsletter_id → content_id (deferred to migration phase)
   - Keep legacy columns temporarily for migration
-- [ ] 5.2 Create markdown template for summaries:
-  ```
-  ## Executive Summary
-  ## Key Themes
-  ## Strategic Insights
-  ## Technical Details
-  ## Actionable Items
-  ## Notable Quotes
-  ## Relevance Scores
-  ```
-- [ ] 5.3 Update summarizer prompt to output markdown format
-- [ ] 5.4 Add post-processing to extract theme_tags from markdown
-- [ ] 5.5 Add post-processing to extract relevance_scores from markdown
-- [ ] 5.6 Update Summary Pydantic schemas
-- [ ] 5.7 Write unit tests for Summary model changes
+- [x] 5.2 Create markdown template for summaries:
+  - Created `src/utils/summary_markdown.py` with `generate_summary_markdown()`
+  - Template sections: Executive Summary, Key Themes, Strategic Insights, Technical Details, Actionable Items, Notable Quotes, Relevance Scores
+- [x] 5.3 Update summarizer prompt to output markdown format
+  - Post-processing approach: generate markdown from JSON output (backward compatible)
+- [x] 5.4 Add post-processing to extract theme_tags from markdown
+  - Created `extract_summary_theme_tags()` in `summary_markdown.py`
+- [x] 5.5 Add post-processing to extract relevance_scores from markdown
+  - Uses `extract_relevance_scores()` from `markdown.py`
+- [x] 5.6 Update Summary Pydantic schemas
+  - Added markdown_content and theme_tags to SummaryData (Phase 4)
+- [x] 5.7 Write unit tests for Summary model changes
+  - Created `tests/test_utils/test_summary_markdown.py` with 26 tests
 
 ## 6. Digest Model Refactor
 
-- [ ] 6.1 Update `src/models/digest.py`:
-  - Add markdown_content column
-  - Add theme_tags column
-  - Add source_content_ids column
+- [x] 6.1 Update `src/models/digest.py`:
+  - Added markdown_content column (Phase 4)
+  - Added theme_tags column (Phase 4)
+  - Added source_content_ids column (Phase 4)
   - Keep legacy columns temporarily for migration
-- [ ] 6.2 Create markdown template for digests:
-  ```
-  ## Executive Overview
-  ## Strategic Insights
-  ## Technical Developments
-  ## Emerging Trends
-  ## Actionable Recommendations
-  ## Sources
-  ```
-- [ ] 6.3 Update digest_creator prompt to output markdown format
-- [ ] 6.4 Add post-processing to extract theme_tags
-- [ ] 6.5 Add post-processing to populate source_content_ids
-- [ ] 6.6 Update Digest Pydantic schemas
-- [ ] 6.7 Write unit tests for Digest model changes
+- [x] 6.2 Create markdown template for digests:
+  - Created `src/utils/digest_markdown.py` with `generate_digest_markdown()`
+  - Template sections: Title (H1), Executive Overview, Strategic Insights, Technical Developments, Emerging Trends, Actionable Recommendations, Historical Context, Sources
+- [x] 6.3 Update digest_creator prompt to output markdown format
+  - Post-processing approach: generate markdown from JSON output (backward compatible)
+  - Added `_enrich_digest_data()` helper method
+- [x] 6.4 Add post-processing to extract theme_tags
+  - Created `extract_digest_theme_tags()` in `digest_markdown.py`
+- [x] 6.5 Add post-processing to populate source_content_ids
+  - Created `extract_source_content_ids()` in `digest_markdown.py`
+- [x] 6.6 Update Digest Pydantic schemas
+  - Added markdown_content, theme_tags, source_content_ids to DigestData (Phase 4)
+- [x] 6.7 Write unit tests for Digest model changes
+  - Created `tests/test_utils/test_digest_markdown.py` with 37 tests
 
 ## 7. Ingestion Updates
 

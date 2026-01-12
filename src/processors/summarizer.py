@@ -8,6 +8,10 @@ from src.models.newsletter import Newsletter, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.storage.database import get_db
 from src.utils.logging import get_logger
+from src.utils.summary_markdown import (
+    extract_summary_theme_tags,
+    generate_summary_markdown,
+)
 
 logger = get_logger(__name__)
 
@@ -85,6 +89,21 @@ class NewsletterSummarizer:
 
                 # Store summary
                 summary_data = response.data
+
+                # Generate markdown content and extract theme tags
+                summary_dict = {
+                    "executive_summary": summary_data.executive_summary,
+                    "key_themes": summary_data.key_themes,
+                    "strategic_insights": summary_data.strategic_insights,
+                    "technical_details": summary_data.technical_details,
+                    "actionable_items": summary_data.actionable_items,
+                    "notable_quotes": summary_data.notable_quotes,
+                    "relevant_links": summary_data.relevant_links,
+                    "relevance_scores": summary_data.relevance_scores,
+                }
+                markdown_content = generate_summary_markdown(summary_dict)
+                theme_tags = extract_summary_theme_tags(summary_dict)
+
                 summary = NewsletterSummary(
                     newsletter_id=newsletter_id,
                     executive_summary=summary_data.executive_summary,
@@ -95,6 +114,8 @@ class NewsletterSummarizer:
                     notable_quotes=summary_data.notable_quotes,
                     relevant_links=summary_data.relevant_links,
                     relevance_scores=summary_data.relevance_scores,
+                    markdown_content=markdown_content,
+                    theme_tags=theme_tags,
                     agent_framework=summary_data.agent_framework,
                     model_used=summary_data.model_used,
                     model_version=summary_data.model_version,

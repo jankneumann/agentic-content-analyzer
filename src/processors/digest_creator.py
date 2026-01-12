@@ -22,6 +22,12 @@ from src.models.theme import ThemeAnalysisRequest, ThemeData
 from src.processors.summarizer import NewsletterSummarizer
 from src.processors.theme_analyzer import ThemeAnalyzer
 from src.storage.database import get_db
+from src.utils.digest_markdown import (
+    enrich_digest_data,
+    extract_digest_theme_tags,
+    extract_source_content_ids,
+    generate_digest_markdown,
+)
 from src.utils.logging import get_logger
 from src.utils.token_counter import TokenCounter
 
@@ -223,6 +229,9 @@ class DigestCreator:
         processing_time = time.time() - start_time
         digest.processing_time_seconds = processing_time
 
+        # 6. Enrich with markdown content and theme tags
+        digest = self._enrich_digest_data(digest)
+
         logger.info(
             f"Digest created successfully in {processing_time:.2f}s "
             f"({theme_result.newsletter_count} newsletters)"
@@ -300,6 +309,34 @@ class DigestCreator:
         )
 
         return needs_hierarchy, budget
+
+    def _enrich_digest_data(self, digest: DigestData) -> DigestData:
+        """
+        Enrich digest data with markdown_content, theme_tags, and source_content_ids.
+
+        Args:
+            digest: DigestData object to enrich
+
+        Returns:
+            Enriched DigestData with additional fields populated
+        """
+        # Convert to dict for enrichment
+        digest_dict = digest.model_dump()
+
+        # Generate markdown content
+        if not digest_dict.get("markdown_content"):
+            digest_dict["markdown_content"] = generate_digest_markdown(digest_dict)
+
+        # Extract theme tags
+        if not digest_dict.get("theme_tags"):
+            digest_dict["theme_tags"] = extract_digest_theme_tags(digest_dict)
+
+        # Extract source content IDs
+        if not digest_dict.get("source_content_ids"):
+            digest_dict["source_content_ids"] = extract_source_content_ids(digest_dict)
+
+        # Create new DigestData with enriched fields
+        return DigestData(**digest_dict)
 
     def _batch_newsletters_by_tokens(
         self,
