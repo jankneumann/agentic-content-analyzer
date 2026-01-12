@@ -266,9 +266,23 @@
   - All scripts support --rollback flag to undo changes
   - migrate_to_content.py deletes Content records matching Newsletter source_ids
   - Summary/Digest scripts clear markdown_content and theme_tags fields
-- [ ] 9.7 Test migrations on copy of production data
+- [x] 9.7 Test migrations on copy of production data
+  - Created test database from production backup
+  - Ran dry-run validations (caught DigestSection object handling bug)
+  - Ran full migrations successfully
+  - Verified data integrity with SQL queries
+  - Tested API endpoints with new fields
+  - Tested rollback capability
+  - **Bug fixes committed**: Enum case mismatch, DigestSection handling
+- [x] 9.8 Run migrations on production database
+  - 297 contents created from newsletters
+  - 286 summaries updated with markdown_content and theme_tags
+  - 6 digests updated with markdown_content, theme_tags, source_content_ids
 
-## 11. Cleanup
+## 11. Cleanup (DEFERRED)
+
+**Note**: Phase 10 cleanup is deferred until all functionality has been verified in production.
+Legacy tables (newsletters, documents) are retained as a safety net.
 
 - [ ] 10.1 Remove dual-write code after migration verified
 - [ ] 10.2 Create Alembic migration to:
