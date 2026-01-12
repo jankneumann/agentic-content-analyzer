@@ -238,25 +238,34 @@
 
 ## 10. Data Migration
 
-- [ ] 9.1 Create Alembic migration for new schema
-- [ ] 9.2 Create migration script `src/scripts/migrate_to_content.py`:
-  - Read Newsletter + Document pairs
-  - Create Content records with merged data
-  - Handle orphaned Documents (no Newsletter)
-  - Handle Newsletters without Documents
-  - Log progress and errors
-- [ ] 9.3 Create migration script for Summary markdown:
-  - Read existing Summary records
-  - Generate markdown from JSON fields
-  - Update markdown_content column
-  - Extract and store theme_tags
-- [ ] 9.4 Create migration script for Digest markdown:
-  - Read existing Digest records
-  - Generate markdown from JSON fields
-  - Update markdown_content column
-  - Populate source_content_ids from sources JSON
-- [ ] 9.5 Add dry-run mode to all migration scripts
-- [ ] 9.6 Add rollback capability
+- [x] 9.1 Create Alembic migration for new schema
+  - Already exists: `b84e1839d132_add_contents_table.py`
+  - Already exists: `41d180035213_add_markdown_content_and_theme_tags_.py`
+- [x] 9.2 Create migration script `src/scripts/migrate_to_content.py`:
+  - Reads Newsletter + Document pairs via newsletter_id FK
+  - Creates Content records with merged data (uses Document.markdown_content if available)
+  - Handles orphaned Documents (creates Content with FILE_UPLOAD source)
+  - Handles Newsletters without Documents (converts raw_html via MarkItDown)
+  - Maps NewsletterSource → ContentSource, ProcessingStatus → ContentStatus
+  - Generates content_hash using generate_markdown_hash()
+  - Logs progress and errors with batch processing
+- [x] 9.3 Create migration script `src/scripts/migrate_summaries_markdown.py`:
+  - Reads existing NewsletterSummary records
+  - Generates markdown using generate_summary_markdown()
+  - Updates markdown_content column
+  - Extracts and stores theme_tags using extract_summary_theme_tags()
+- [x] 9.4 Create migration script `src/scripts/migrate_digests_markdown.py`:
+  - Reads existing Digest records
+  - Generates markdown using generate_digest_markdown()
+  - Updates markdown_content column
+  - Extracts theme_tags using extract_digest_theme_tags()
+  - Provides --link-content-ids to populate source_content_ids
+- [x] 9.5 Add dry-run mode to all migration scripts
+  - All scripts support --dry-run flag for validation without changes
+- [x] 9.6 Add rollback capability
+  - All scripts support --rollback flag to undo changes
+  - migrate_to_content.py deletes Content records matching Newsletter source_ids
+  - Summary/Digest scripts clear markdown_content and theme_tags fields
 - [ ] 9.7 Test migrations on copy of production data
 
 ## 11. Cleanup
