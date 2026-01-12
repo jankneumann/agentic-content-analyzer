@@ -253,3 +253,7 @@
 - [ ] 12.6 Test UI rendering of markdown sections
 - [ ] 12.7 Validate migrated data integrity
 - [ ] 12.8 Performance testing (query speed, storage size)
+- [ ] 12.9 Fix test database setup to auto-apply migrations
+  - API tests use `newsletters_test` database which needs migrations
+  - Update `tests/api/conftest.py` to run alembic migrations or use `Base.metadata.create_all()`
+  - Ensure test database includes new `contents` table and enums
