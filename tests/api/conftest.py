@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.api.app import app
 from src.config.models import MODEL_REGISTRY
+from src.models.content import Content, ContentSource, ContentStatus  # Unified Content model
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.newsletter import (
     Base,
@@ -114,6 +115,8 @@ def client(db_session) -> Generator[TestClient, None, None]:
         patch("src.api.script_routes.get_db", mock_get_db),
         patch("src.api.chat_routes.get_db", mock_get_db),
         patch("src.api.settings_routes.get_db", mock_get_db),
+        patch("src.api.content_routes.get_db", mock_get_db),
+        patch("src.api.upload_routes.get_db", mock_get_db),
         patch("src.services.script_review_service.get_db", mock_get_db),
         patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):
@@ -446,3 +449,129 @@ def sample_podcast(db_session, sample_script) -> Podcast:
     db_session.commit()
     db_session.refresh(podcast)
     return podcast
+
+
+# ==============================================================================
+# Content Model Fixtures (Unified Content Model)
+# ==============================================================================
+
+
+@pytest.fixture
+def sample_content(db_session) -> Content:
+    """Create a single sample content in the test database."""
+    content = Content(
+        source_type=ContentSource.GMAIL,
+        source_id="test-content-001",
+        source_url="https://example.com/content1",
+        title="LLM Advances Newsletter",
+        author="AI Weekly Team",
+        publication="AI Weekly",
+        published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
+        markdown_content="# LLM Advances\n\nContent about LLM advances and new models.",
+        raw_content="<html><body>Newsletter about LLM advances...</body></html>",
+        raw_format="html",
+        content_hash="abc123hash",
+        status=ContentStatus.PARSED,
+        ingested_at=datetime.now(UTC),
+        parsed_at=datetime.now(UTC),
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+    return content
+
+
+@pytest.fixture
+def sample_contents(db_session) -> list[Content]:
+    """Create multiple sample contents in the test database."""
+    contents = [
+        Content(
+            source_type=ContentSource.GMAIL,
+            source_id="test-content-001",
+            source_url="https://example.com/content1",
+            title="LLM Advances Newsletter",
+            author="AI Weekly Team",
+            publication="AI Weekly",
+            published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
+            markdown_content="# LLM Advances\n\nContent about LLM advances.",
+            content_hash="hash001",
+            status=ContentStatus.PARSED,
+            ingested_at=datetime.now(UTC),
+        ),
+        Content(
+            source_type=ContentSource.RSS,
+            source_id="test-content-002",
+            source_url="https://example.com/content2",
+            title="Vector Database Guide",
+            author="Data Engineering",
+            publication="Data Weekly",
+            published_date=datetime(2025, 1, 14, 10, 0, 0, tzinfo=UTC),
+            markdown_content="# Vector Databases\n\nGuide to vector databases.",
+            content_hash="hash002",
+            status=ContentStatus.PROCESSED,
+            ingested_at=datetime.now(UTC),
+            processed_at=datetime.now(UTC),
+        ),
+        Content(
+            source_type=ContentSource.YOUTUBE,
+            source_id="test-video-003",
+            source_url="https://youtube.com/watch?v=test123",
+            title="AI Agents Tutorial",
+            author="Tech Channel",
+            publication="Tech Channel",
+            published_date=datetime(2025, 1, 13, 10, 0, 0, tzinfo=UTC),
+            markdown_content="# AI Agents Tutorial\n\n[00:00](https://youtube.com/watch?v=test123&t=0) Introduction",
+            metadata_json={"video_id": "test123", "channel": "Tech Channel"},
+            content_hash="hash003",
+            status=ContentStatus.PARSED,
+            ingested_at=datetime.now(UTC),
+        ),
+    ]
+
+    for content in contents:
+        db_session.add(content)
+
+    db_session.commit()
+
+    for content in contents:
+        db_session.refresh(content)
+
+    return contents
+
+
+@pytest.fixture
+def sample_content_with_summary(db_session, sample_content) -> tuple[Content, NewsletterSummary]:
+    """Create a content with an associated summary."""
+    test_model = list(MODEL_REGISTRY.keys())[0]
+
+    summary = NewsletterSummary(
+        content_id=sample_content.id,
+        executive_summary="Major LLM advances including cost reduction.",
+        key_themes=["LLM Performance", "Cost Optimization"],
+        strategic_insights=["LLM costs decreasing enables broader adoption"],
+        technical_details=["Context windows expanded to 1M tokens"],
+        actionable_items=["Evaluate new pricing"],
+        notable_quotes=["Context is king in AI"],
+        relevance_scores={
+            "cto_leadership": 0.9,
+            "technical_teams": 0.85,
+            "individual_developers": 0.7,
+        },
+        markdown_content="# Newsletter Summary\n\n## Executive Summary\nMajor LLM advances.",
+        theme_tags=["llm", "cost-optimization", "performance"],
+        agent_framework="claude",
+        model_used=test_model,
+        model_version="20250929",
+        token_usage=2500,
+        processing_time_seconds=3.5,
+    )
+
+    sample_content.status = ContentStatus.PROCESSED
+    sample_content.processed_at = datetime.now(UTC)
+
+    db_session.add(summary)
+    db_session.commit()
+    db_session.refresh(summary)
+    db_session.refresh(sample_content)
+
+    return sample_content, summary
