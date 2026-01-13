@@ -311,9 +311,13 @@ class TestDefaultLanguages:
 
 
 class TestCLI:
-    """Tests for CLI entry point."""
+    """Tests for CLI entry point.
 
-    @patch("src.ingestion.youtube.YouTubeIngestionService")
+    Note: CLI now uses YouTubeContentIngestionService (unified Content model)
+    instead of legacy YouTubeIngestionService.
+    """
+
+    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     def test_main_with_playlist_id(self, mock_service_class: Mock) -> None:
         """Test CLI with specific playlist ID."""
         import sys
@@ -334,7 +338,7 @@ class TestCLI:
         assert call_kwargs["playlist_id"] == "PLtest"
         assert call_kwargs["max_videos"] == 20
 
-    @patch("src.ingestion.youtube.YouTubeIngestionService")
+    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     def test_main_public_only(self, mock_service_class: Mock) -> None:
         """Test CLI with public-only flag."""
         import sys
