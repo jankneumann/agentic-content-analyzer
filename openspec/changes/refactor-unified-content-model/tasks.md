@@ -336,7 +336,11 @@ Legacy tables (newsletters, documents) are retained as a safety net.
   - Production migration completed successfully
   - 297 contents, 286 summaries, 6 digests migrated
 - [ ] 12.8 Performance testing (query speed, storage size)
-- [ ] 12.9 Fix test database setup to auto-apply migrations
+- [x] 12.9 Fix test database setup to auto-apply migrations
+  - Added Content model imports to tests/api/conftest.py
+  - Added get_db patches for content_routes and upload_routes
+  - Created Content model fixtures (sample_content, sample_contents, sample_content_with_summary)
+  - All 827 tests pass with Content model support
   - API tests use `newsletters_test` database which needs migrations
   - Update `tests/api/conftest.py` to run alembic migrations or use `Base.metadata.create_all()`
   - Ensure test database includes new `contents` table and enums
