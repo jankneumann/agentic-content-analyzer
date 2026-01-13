@@ -295,25 +295,46 @@ Legacy tables (newsletters, documents) are retained as a safety net.
   - src/models/newsletter.py (or mark deprecated)
   - src/models/document.py (or mark deprecated)
 - [ ] 10.4 Update imports throughout codebase
-- [ ] 10.5 Update CLAUDE.md with new model documentation
+- [x] 10.5 Update CLAUDE.md with new model documentation
+  - Added Unified Content Model section
+  - Added RSS Ingestion patterns (timezone-aware datetimes)
+  - Added Async/Await patterns (asyncio.to_thread with kwargs)
+  - Updated Mypy section with Optional types handling
 
 ## 12. Documentation
 
-- [ ] 11.1 Update `docs/ARCHITECTURE.md` with new data model
-- [ ] 11.2 Document markdown format conventions
-- [ ] 11.3 Document embedded reference patterns
-- [ ] 11.4 Update API documentation
-- [ ] 11.5 Add migration guide for API clients
+- [x] 11.1 Update `docs/ARCHITECTURE.md` with new data model
+  - Added Content model as primary with field documentation
+  - Marked Newsletter as deprecated
+  - Updated system architecture with parsers/, services/, utils/
+- [x] 11.2 Document markdown format conventions
+  - Added Summary Markdown Structure template
+- [x] 11.3 Document embedded reference patterns
+  - Documented [TABLE:id], [IMAGE:id], [CODE:id] patterns
+- [x] 11.4 Update API documentation
+  - Added Content API endpoint table
+  - Added Summary API endpoint table
+  - Added Document Upload API endpoint table
+  - Marked Newsletter API as deprecated
+- [x] 11.5 Add migration guide for API clients
+  - Added Before/After code examples
+  - Documented key differences (source_type, markdown_content, deduplication)
 
 ## 13. Testing & Validation
 
-- [ ] 12.1 Run full test suite
-- [ ] 12.2 Test ingestion from all sources (Gmail, RSS, Files, YouTube)
+- [x] 12.1 Run full test suite
+  - 827 tests pass (825 + 2 fixed YouTube CLI tests)
+  - 5 skipped, 30 deselected
+- [x] 12.2 Test ingestion from all sources (Gmail, RSS, Files, YouTube)
+  - All ingestion services tested via API and CLI
+  - RSS datetime bug fixed and verified
 - [ ] 12.3 Test summarization with markdown output
 - [ ] 12.4 Test digest creation with markdown output
 - [ ] 12.5 Test API responses
 - [ ] 12.6 Test UI rendering of markdown sections
-- [ ] 12.7 Validate migrated data integrity
+- [x] 12.7 Validate migrated data integrity
+  - Production migration completed successfully
+  - 297 contents, 286 summaries, 6 digests migrated
 - [ ] 12.8 Performance testing (query speed, storage size)
 - [ ] 12.9 Fix test database setup to auto-apply migrations
   - API tests use `newsletters_test` database which needs migrations
