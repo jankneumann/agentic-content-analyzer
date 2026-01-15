@@ -53,13 +53,20 @@ SUPABASE_POOLER_MODE=transaction
 
 ## Related Proposals
 
-This is proposal 1 of 5 in the Supabase integration series:
+### Supabase Integration Series (1 of 5)
 
 1. **supabase-database** (this proposal) - Database provider abstraction
 2. **supabase-storage** - Storage provider for audio/media files
 3. **content-sharing** - Public share links for content
 4. **content-capture** - Chrome extension and bookmarklet
 5. **mobile-reader** - PWA and mobile-friendly templates
+
+### Cross-Cutting Concerns
+
+- **`add-observability`**: Database health checks (`/ready` endpoint) verify Supabase connectivity
+- **`add-deployment-pipeline`**: CI/CD handles Supabase migrations in staging/production
+- **`add-api-security-hardening`**: Single-user model simplifies auth but instance needs protection
+- **`add-test-infrastructure`**: Tests use local PostgreSQL, not Supabase
 
 ## Non-Goals
 

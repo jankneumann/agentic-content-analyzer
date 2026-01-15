@@ -46,3 +46,31 @@ Unifying to a single Content model with markdown as the canonical format will:
 - **Breaking changes**:
   - API response format changes for summaries/digests (JSON lists → markdown)
   - Database schema change (requires migration)
+
+## Status
+
+**~75% Complete** - Core implementation done, migrations run in production.
+
+Completed:
+- Database schema and Content model
+- All ingestion services updated
+- Processors updated for markdown output
+- API routes updated with deprecation headers
+- Data migration scripts and production migration
+
+Remaining:
+- Image model and services (deferred)
+- Some integration tests
+- Legacy table cleanup (deferred)
+
+## Related Proposals
+
+### API Versioning
+
+The `/api/v1/newsletters` endpoints are already marked deprecated using headers from the `add-api-versioning` pattern. When cleanup phase runs, these endpoints will be sunset.
+
+### Dependencies
+
+- Required by: `add-advanced-document-search` (depends on Content.markdown_content)
+- Related: `add-api-versioning` (deprecation headers pattern)
+- Related: `content-sharing` (adds fields to Content model)
