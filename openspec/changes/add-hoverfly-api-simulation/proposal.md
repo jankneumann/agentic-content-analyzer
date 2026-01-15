@@ -10,3 +10,18 @@ Current integration tests rely on direct mocks for external HTTP services, which
 ## Impact
 - Affected specs: test-infrastructure
 - Affected code: integration test tooling, HTTP client configuration (RSS ingestion, LLM providers, TTS)
+
+## Related Proposals
+
+This proposal is a **subset of `add-test-infrastructure`**, which provides:
+- Model factories (ContentFactory, SummaryFactory, etc.)
+- Database fixtures with transaction rollback
+- Test organization (unit/integration/e2e markers)
+- **Hoverfly integration points** (this proposal)
+
+The `add-test-infrastructure` proposal coordinates this work within a broader testing strategy.
+
+## Dependencies
+
+- Required by: `add-test-infrastructure` (Hoverfly fixtures)
+- Used by: `add-deployment-pipeline` (CI runs integration tests with Hoverfly)
