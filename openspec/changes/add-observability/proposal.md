@@ -10,37 +10,71 @@ The application lacks production observability, making it difficult to:
 
 By adding observability with OpenTelemetry and Opik:
 
-1. **LLM-specific monitoring**: Track prompts, completions, token usage, and latency per model
-2. **Distributed tracing**: Follow requests across ingestion → processing → delivery
-3. **Production debugging**: Identify issues with traces, not guesswork
-4. **Cost visibility**: Monitor token consumption to optimize model selection
+1. **Unified telemetry**: Single instrumentation layer for all traces (HTTP, DB, LLM)
+2. **LLM-specific insights**: Token usage, prompt/completion logging, hallucination detection
+3. **Distributed tracing**: Follow requests across ingestion → processing → delivery
+4. **Production debugging**: Identify issues with traces, not guesswork
 5. **Standards-based**: OpenTelemetry ensures vendor-neutral instrumentation
 
 ## Technology Stack
 
-### OpenTelemetry
-- **Purpose**: Vendor-neutral instrumentation standard
+### OpenTelemetry (Unified Instrumentation)
+- **Purpose**: Single instrumentation layer for ALL telemetry
 - **Components**: Traces, metrics, logs
-- **Why**: Future-proof, can export to any backend (Jaeger, Grafana, Datadog)
+- **Exporters**: OTLP HTTP exporter to Opik
+- **Why**: Vendor-neutral, consistent API, future-proof
 
-### Opik (comet-ml/opik)
-- **Purpose**: LLM-specific observability platform
+### Opik as OpenTelemetry Backend
+- **Purpose**: Receive and visualize OTel traces with LLM-specific features
+- **Integration**: Native OTel support via OTLP HTTP endpoint
 - **Features**:
-  - Prompt/completion logging
-  - Token usage tracking
+  - Standard trace visualization
+  - LLM-specific attributes (tokens, model, prompt/completion)
   - LLM-as-judge evaluation
   - Hallucination detection
-  - RAG metrics
+  - RAG metrics (answer relevance, context precision)
 - **Deployment**: Self-hosted (Docker Compose) or Comet Cloud
-- **Why**: Purpose-built for LLM apps, integrates with Anthropic, OpenAI, LangChain
+- **Reference**: [Opik OpenTelemetry Integration](https://www.comet.com/docs/opik/tracing/opentelemetry/overview)
+
+## Unified Telemetry Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Application Code                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  FastAPI          SQLAlchemy        LLM Calls        Custom     │
+│  Requests         Queries           (Claude, etc)    Spans      │
+│     │                │                   │             │        │
+│     └────────────────┴───────────────────┴─────────────┘        │
+│                              │                                   │
+│                    OpenTelemetry SDK                             │
+│                    (single instrumentation layer)                │
+│                              │                                   │
+│                    OTLP HTTP Exporter                            │
+│                              │                                   │
+└──────────────────────────────┼───────────────────────────────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │        Opik         │
+                    │  (OTel Backend)     │
+                    │                     │
+                    │  • Trace viewer     │
+                    │  • LLM insights     │
+                    │  • Token tracking   │
+                    │  • Evaluations      │
+                    └─────────────────────┘
+```
 
 ## What Changes
 
-### Instrumentation Layer
+### Instrumentation Layer (OpenTelemetry)
 - **NEW**: OpenTelemetry SDK configuration in `src/telemetry/`
-- **NEW**: Opik integration for LLM call tracing
-- **NEW**: Custom spans for pipeline stages (ingestion, summarization, digest)
-- **MODIFIED**: Agent implementations to use `@opik.track` decorator
+- **NEW**: OTLP HTTP exporter configured to send to Opik
+- **NEW**: Auto-instrumentation for FastAPI, SQLAlchemy, httpx
+- **NEW**: Custom spans with LLM attributes for pipeline stages
+- **MODIFIED**: Agent implementations to add OTel attributes (model, tokens)
 - **MODIFIED**: Settings for telemetry configuration
 
 ### Health & Metrics
@@ -50,54 +84,80 @@ By adding observability with OpenTelemetry and Opik:
 - **MODIFIED**: API app to expose health endpoints
 
 ### Error Handling
-- **NEW**: Structured error response format
-- **NEW**: Error context capture in traces
-- **MODIFIED**: Exception handlers to include trace IDs
+- **NEW**: Structured error response format with trace_id
+- **NEW**: Error context capture in OTel spans
+- **MODIFIED**: Exception handlers to include trace IDs in responses
 
 ## Configuration
 
 ```bash
-# OpenTelemetry
+# OpenTelemetry (unified telemetry layer)
 OTEL_ENABLED=true
 OTEL_SERVICE_NAME=newsletter-aggregator
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 
-# Opik
-OPIK_ENABLED=true
-OPIK_API_KEY=your-api-key           # For Comet Cloud
+# Opik as OTel backend
+OTEL_EXPORTER_OTLP_ENDPOINT=https://www.comet.com/opik/api  # Comet Cloud
+# OR for self-hosted Opik:
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5173/api
+
+# Opik project (via OTel headers)
+OTEL_EXPORTER_OTLP_HEADERS="opik-project-name=newsletter-aggregator"
+
+# For Comet Cloud authentication
+OPIK_API_KEY=your-api-key
 OPIK_WORKSPACE=your-workspace
-# OR for self-hosted:
-OPIK_URL=http://localhost:5173
 
 # Health Checks
 HEALTH_CHECK_TIMEOUT_SECONDS=5
+```
+
+## LLM Span Attributes
+
+For LLM calls, we add semantic conventions:
+
+```python
+from opentelemetry import trace
+
+tracer = trace.get_tracer(__name__)
+
+with tracer.start_as_current_span("llm.completion") as span:
+    span.set_attribute("gen_ai.system", "anthropic")
+    span.set_attribute("gen_ai.request.model", "claude-sonnet-4-20250514")
+    span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
+    span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
+    span.set_attribute("gen_ai.request.max_tokens", max_tokens)
+    # Opik will recognize these and provide LLM-specific visualization
 ```
 
 ## Impact
 
 - **New spec**: `observability` - Telemetry and monitoring
 - **New code**:
-  - `src/telemetry/` - OpenTelemetry setup, Opik integration
+  - `src/telemetry/` - OpenTelemetry setup, exporter config
   - `src/api/health_routes.py` - Health endpoints
 - **Modified**:
-  - `src/agents/` - Add tracing decorators
+  - `src/agents/` - Add OTel span attributes for LLM calls
   - `src/processors/` - Add span instrumentation
-  - `src/api/app.py` - Register health routes, add middleware
+  - `src/api/app.py` - Register health routes, add OTel middleware
   - `src/config/settings.py` - Telemetry settings
 - **Dependencies**:
   - `opentelemetry-api`, `opentelemetry-sdk`
+  - `opentelemetry-exporter-otlp-proto-http`
   - `opentelemetry-instrumentation-fastapi`
   - `opentelemetry-instrumentation-sqlalchemy`
-  - `opik`
+  - `opentelemetry-instrumentation-httpx`
 
 ## Related Proposals
 
-- **add-deployment-pipeline**: Includes Opik service in docker-compose
+- **add-deployment-pipeline**: Includes Opik service in docker-compose for self-hosted
 - **add-test-infrastructure**: Telemetry disabled in tests by default
-- **add-api-security-hardening**: Health endpoints need auth consideration
+- **add-api-security-hardening**: Health endpoints publicly accessible, metrics may need auth
+- **add-supabase-cloud-database**: Database health checks in `/ready` endpoint
 
 ## Non-Goals
 
+- Separate Opik SDK (use OTel for everything)
 - Full APM solution (use Datadog/New Relic if needed)
 - Log aggregation (can add ELK/Loki later)
 - Alerting rules (configure in Opik dashboard)
