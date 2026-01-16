@@ -1,5 +1,6 @@
 """Graphiti knowledge graph client for entity extraction and temporal tracking."""
 
+import asyncio
 import os
 from datetime import datetime, timedelta
 from typing import Any
@@ -184,12 +185,18 @@ class GraphitiClient:
 
         # Search for each concept and filter by time
         all_results = []
-        for concept in concepts:
-            results = await self.graphiti.search(
-                query=concept,
-                num_results=50,  # Get more to filter by time
-            )
 
+        # Create tasks for all search queries
+        search_tasks = [
+            self.graphiti.search(query=concept, num_results=50)
+            for concept in concepts
+        ]
+
+        # Execute all searches concurrently
+        search_results_list = await asyncio.gather(*search_tasks)
+
+        # Process results
+        for results in search_results_list:
             # Filter by time range
             filtered = [
                 r
