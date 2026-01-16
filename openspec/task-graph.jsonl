@@ -1,0 +1,13 @@
+{"id":"T0-REFactor-ContentModel","summary":"Finish unified Content model refactor (complete remaining items, cleanup, tests)","depends_on":[]}
+{"id":"T1-TestInfra-Core","summary":"Add test infrastructure: factories, fixtures, markers, pytest.ini","depends_on":["T0-REFactor-ContentModel"]}
+{"id":"T1-Hoverfly-Sim","summary":"Add Hoverfly API simulation for integration tests","depends_on":["T1-TestInfra-Core"]}
+{"id":"T1-CI-CD-Pipeline","summary":"Add GitHub Actions CI/CD pipeline, Docker build, migrations","depends_on":["T1-TestInfra-Core","T1-Hoverfly-Sim"]}
+{"id":"T2-API-Security","summary":"Add authentication, secure CORS defaults, hardened uploads","depends_on":["T1-CI-CD-Pipeline"]}
+{"id":"T2-Observability","summary":"Add OpenTelemetry + health/metrics endpoints + trace IDs","depends_on":["T2-API-Security"]}
+{"id":"T3-Supabase-DB","summary":"Add Supabase database provider abstraction","depends_on":["T1-CI-CD-Pipeline"]}
+{"id":"T3-Supabase-Storage","summary":"Add Supabase storage provider + local provider abstraction","depends_on":["T3-Supabase-DB"]}
+{"id":"T3-Content-Sharing","summary":"Add public share links, tokens, public endpoints, rate limits","depends_on":["T3-Supabase-Storage"]}
+{"id":"T3-Content-Capture","summary":"Add browser extension/bookmarklet + save URL API","depends_on":["T2-API-Security"]}
+{"id":"T3-Mobile-Reader","summary":"Add mobile templates + PWA + audio player","depends_on":["T3-Content-Sharing","T3-Supabase-Storage"]}
+{"id":"T4-API-Versioning","summary":"Add URL-based API versioning + deprecation headers","depends_on":["T2-API-Security"]}
+{"id":"T4-Advanced-Search","summary":"Add hybrid BM25 + vector search, chunking, embeddings, search API","depends_on":["T0-REFactor-ContentModel","T4-API-Versioning"]}

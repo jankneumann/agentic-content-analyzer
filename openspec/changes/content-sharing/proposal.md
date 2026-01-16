@@ -31,6 +31,7 @@ Following the "unlisted" pattern (like YouTube unlisted videos):
 - **NEW**: Public endpoints: `GET /shared/{type}/{token}`
 - **NEW**: Mobile-friendly HTML templates for shared content
 - **NEW**: Rate limiting on public endpoints
+- **NEW**: Abuse controls (token revocation audit log + optional allow/deny list for public access)
 - **MODIFIED**: Alembic migration for new fields
 
 ## Configuration
