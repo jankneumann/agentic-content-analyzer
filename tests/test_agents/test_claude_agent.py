@@ -313,37 +313,3 @@ def test_extract_json_from_response_malformed_markdown(test_model_config):
 
     with pytest.raises(json.JSONDecodeError):
         agent._extract_json_from_response(response)
-
-
-# TODO: Integration tests - require LLM API access
-# These tests should be moved to integration tests as they require real LLM API calls
-# The core logic is covered by unit tests above
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_success():
-#     """Test successful newsletter summarization with real LLM (INTEGRATION TEST)."""
-#     # Requires:
-#     # - Real or mocked Anthropic API
-#     # - Verify response parsing
-#     # - Verify token usage and timing
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_json_parse_error():
-#     """Test handling of malformed LLM response (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_api_error():
-#     """Test handling of API errors (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_with_haiku_model():
-#     """Test summarization with Haiku model (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_with_opus_model():
-#     """Test summarization with Opus model for higher quality (INTEGRATION TEST)."""
-#     pass
