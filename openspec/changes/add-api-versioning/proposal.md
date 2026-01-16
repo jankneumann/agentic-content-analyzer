@@ -79,7 +79,7 @@ The `refactor-unified-content-model` proposal is ~75% complete with migrations a
 
 ### Documentation
 - **MODIFIED**: OpenAPI spec per version
-- **NEW**: Migration guides in docs
+- **NEW**: Migration guides in docs (standard template for breaking changes + example diffs)
 
 ## Configuration
 

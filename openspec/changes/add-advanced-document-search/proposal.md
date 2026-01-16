@@ -24,6 +24,9 @@ Users need to efficiently discover relevant content across thousands of ingested
 - **Add Reciprocal Rank Fusion (RRF)** to combine and rerank results from multiple search methods
 - **Create chunking service** with parser-aware strategies for PDFs, YouTube transcripts, markdown, and HTML
 - **Create embedding pipeline** to generate and store chunk embeddings at ingestion time
+- **Define chunk lifecycle rules** (rechunk/re-embed on content updates; delete chunks on content removal)
+- **Add index maintenance plan** (vector index rebuild, backfill jobs, and vacuum/maintenance strategy)
+- **Add retention + cost controls** for embeddings and chunks (TTL or pruning policy, configurable by environment)
 - **Add search API endpoints** for unified search with chunk-level highlighting and navigation
 - **Add search configuration** for model selection, chunk sizing, weighting, and filtering
 

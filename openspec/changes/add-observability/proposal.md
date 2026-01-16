@@ -81,6 +81,7 @@ By adding observability with OpenTelemetry and Opik:
 - **NEW**: `/health` endpoint (liveness)
 - **NEW**: `/ready` endpoint (readiness with DB/Redis checks)
 - **NEW**: `/metrics` endpoint (Prometheus format)
+- **NEW**: Metrics protection in production (auth or IP allowlist)
 - **MODIFIED**: API app to expose health endpoints
 
 ### Error Handling
@@ -110,6 +111,10 @@ OPIK_WORKSPACE=your-workspace
 
 # Health Checks
 HEALTH_CHECK_TIMEOUT_SECONDS=5
+
+# Telemetry sampling / cost controls
+OTEL_TRACES_SAMPLER=parentbased_traceidratio
+OTEL_TRACES_SAMPLER_ARG=0.1
 ```
 
 ## LLM Span Attributes

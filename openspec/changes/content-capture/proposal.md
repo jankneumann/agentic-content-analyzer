@@ -35,6 +35,7 @@ Users discover interesting content while browsing the web. Currently, they must 
 - **NEW**: Save URL API endpoint
 - **NEW**: URL content extraction service
 - **MODIFIED**: Content ingestion to support URL source
+- **NEW**: Least-privilege API key scope for capture-only operations
 
 ## Configuration
 

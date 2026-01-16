@@ -108,6 +108,8 @@ jobs:
 | `DATABASE_URL_STAGING` | Staging database for migrations |
 | `DATABASE_URL_PRODUCTION` | Production database |
 | `ANTHROPIC_API_KEY` | For integration tests |
+| `OPIK_API_KEY` | Opik/Comet authentication for telemetry (if enabled) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry exporter endpoint (if enabled) |
 
 ## Impact
 
