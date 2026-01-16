@@ -538,22 +538,35 @@ class GmailIngestionService:
         # Store in database
         count = 0
         with get_db() as db:
+            # --- Bulk query optimization ---
+            source_ids = [n.source_id for n in newsletters if n.source_id]
+            content_hashes = [n.content_hash for n in newsletters if n.content_hash]
+
+            # Bulk fetch existing newsletters by source_id
+            existing_by_source_id = {
+                n.source_id: n
+                for n in db.query(Newsletter).filter(Newsletter.source_id.in_(source_ids)).all()
+            }
+
+            # Bulk fetch existing newsletters by content_hash (for those not found by source_id)
+            existing_by_content_hash = {
+                n.content_hash: n
+                for n in db.query(Newsletter)
+                .filter(Newsletter.content_hash.in_(content_hashes))
+                .all()
+            }
+            # --- End of optimization ---
+
             for newsletter_data in newsletters:
                 try:
                     # Check if already exists by source_id (exact match)
-                    existing = (
-                        db.query(Newsletter)
-                        .filter(Newsletter.source_id == newsletter_data.source_id)
-                        .first()
-                    )
+                    existing = existing_by_source_id.get(newsletter_data.source_id)
 
                     # If not found by source_id, check by content_hash (cross-source duplicate)
                     content_duplicate = None
                     if not existing and newsletter_data.content_hash:
-                        content_duplicate = (
-                            db.query(Newsletter)
-                            .filter(Newsletter.content_hash == newsletter_data.content_hash)
-                            .first()
+                        content_duplicate = existing_by_content_hash.get(
+                            newsletter_data.content_hash
                         )
 
                     if existing:
@@ -682,25 +695,40 @@ class GmailContentIngestionService:
         # Store in database
         count = 0
         with get_db() as db:
+            # --- Bulk query optimization ---
+            source_ids = [c.source_id for c in contents if c.source_id]
+            content_hashes = [c.content_hash for c in contents if c.content_hash]
+
+            # Bulk fetch existing content by source_id
+            existing_by_source_id = {
+                (c.source_type, c.source_id): c
+                for c in db.query(Content)
+                .filter(
+                    Content.source_type == ContentSource.GMAIL,
+                    Content.source_id.in_(source_ids),
+                )
+                .all()
+            }
+
+            # Bulk fetch existing content by content_hash
+            existing_by_content_hash = {
+                c.content_hash: c
+                for c in db.query(Content).filter(Content.content_hash.in_(content_hashes)).all()
+            }
+            # --- End of optimization ---
+
             for content_data in contents:
                 try:
                     # Check if already exists by source_type + source_id (unique composite)
-                    existing = (
-                        db.query(Content)
-                        .filter(
-                            Content.source_type == content_data.source_type,
-                            Content.source_id == content_data.source_id,
-                        )
-                        .first()
+                    existing = existing_by_source_id.get(
+                        (content_data.source_type, content_data.source_id)
                     )
 
                     # If not found by source_id, check by content_hash (cross-source duplicate)
                     content_duplicate = None
                     if not existing and content_data.content_hash:
-                        content_duplicate = (
-                            db.query(Content)
-                            .filter(Content.content_hash == content_data.content_hash)
-                            .first()
+                        content_duplicate = existing_by_content_hash.get(
+                            content_data.content_hash
                         )
 
                     if existing:
