@@ -6,6 +6,7 @@ from typing import Any
 
 from src.models.digest import Digest
 from src.models.summary import NewsletterSummary
+from src.models.theme import ThemeAnalysisResult
 
 
 @dataclass
@@ -127,8 +128,7 @@ class RevisionContext:
         # Theme analysis (if available)
         if self.theme_analysis:
             parts.append("\n\n## CROSS-NEWSLETTER THEMES\n")
-            # TODO: Format theme analysis when available
-            parts.append(str(self.theme_analysis)[:1000])  # Limit to 1K chars
+            parts.append(_format_theme_analysis(self.theme_analysis))
 
         # Available tools note
         parts.append("\n\n## AVAILABLE TOOLS\n")
@@ -143,6 +143,27 @@ class RevisionContext:
         )
 
         return "\n".join(parts)
+
+
+def _format_theme_analysis(theme_analysis: ThemeAnalysisResult) -> str:
+    """Format theme analysis into a string for LLM context."""
+    if not theme_analysis or not theme_analysis.themes:
+        return "No theme analysis available."
+
+    parts = []
+    parts.append(f"Theme Analysis ({theme_analysis.start_date} to {theme_analysis.end_date}):")
+    parts.append(f"- {theme_analysis.newsletter_count} newsletters analyzed")
+    parts.append(f"- {theme_analysis.total_themes} themes identified")
+
+    for i, theme in enumerate(theme_analysis.themes, 1):
+        parts.append(f"\n### {i}. {theme.name} ({theme.category.value})")
+        parts.append(f"   - Trend: {theme.trend.value}")
+        parts.append(f"   - Relevance: {theme.relevance_score:.2f}")
+        parts.append(f"   - Key Points:")
+        for point in theme.key_points:
+            parts.append(f"     - {point}")
+
+    return "\n".join(parts)
 
 
 @dataclass
