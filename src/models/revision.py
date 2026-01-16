@@ -26,6 +26,84 @@ class RevisionContext:
         if self.newsletter_ids is None:
             self.newsletter_ids = [summary.newsletter_id for summary in self.summaries]
 
+    def _format_theme_analysis(self) -> str:
+        """Format theme analysis into readable text.
+
+        Handles both ThemeAnalysisResult objects and dictionary representations.
+        Includes theme names, descriptions, trends, key points, and historical context.
+        """
+        if not self.theme_analysis:
+            return ""
+
+        analysis = self.theme_analysis
+
+        # Extract themes
+        themes = getattr(analysis, "themes", [])
+        if isinstance(analysis, dict):
+            themes = analysis.get("themes", [])
+
+        if not themes:
+            return "No themes detected."
+
+        parts = []
+
+        # Sort themes by relevance score
+        def get_score(t: Any) -> float:
+            if isinstance(t, dict):
+                return float(t.get("relevance_score", 0.0))
+            return getattr(t, "relevance_score", 0.0)
+
+        # Sort by relevance score descending
+        sorted_themes = sorted(themes, key=get_score, reverse=True)
+
+        parts.append(f"Analysis of {len(themes)} themes across newsletters:\n")
+
+        for idx, theme in enumerate(sorted_themes, 1):
+            # Helper to access attributes or dict keys
+            def get_val(obj: Any, key: str, default: Any = None) -> Any:
+                if isinstance(obj, dict):
+                    return obj.get(key, default)
+                return getattr(obj, key, default)
+
+            name = get_val(theme, "name", "Untitled")
+            trend = get_val(theme, "trend", "unknown")
+            description = get_val(theme, "description", "")
+            key_points = get_val(theme, "key_points", [])
+            continuity = get_val(theme, "continuity_text")
+            historical_context = get_val(theme, "historical_context")
+
+            # Format trend (handle Enum or string)
+            trend_str = str(trend).upper().replace("THEMETREND.", "")
+
+            parts.append(f"### {idx}. {name} [{trend_str}]")
+            parts.append(f"**Description**: {description}")
+
+            if key_points:
+                parts.append("**Key Points**:")
+                for point in key_points[:5]:  # Limit to top 5 points
+                    parts.append(f"- {point}")
+
+            if continuity:
+                parts.append(f"**Continuity**: {continuity}")
+            elif historical_context:
+                evolution = get_val(historical_context, "evolution_summary")
+                if evolution:
+                    parts.append(f"**Evolution**: {evolution}")
+
+            parts.append("")  # Spacing
+
+        # Cross-theme insights
+        insights = getattr(analysis, "cross_theme_insights", [])
+        if isinstance(analysis, dict):
+            insights = analysis.get("cross_theme_insights", [])
+
+        if insights:
+            parts.append("### Cross-Theme Insights")
+            for insight in insights:
+                parts.append(f"- {insight}")
+
+        return "\n".join(parts)
+
     def to_llm_context(self) -> str:
         """Format context for LLM prompt (token-optimized).
 
@@ -127,8 +205,7 @@ class RevisionContext:
         # Theme analysis (if available)
         if self.theme_analysis:
             parts.append("\n\n## CROSS-NEWSLETTER THEMES\n")
-            # TODO: Format theme analysis when available
-            parts.append(str(self.theme_analysis)[:1000])  # Limit to 1K chars
+            parts.append(self._format_theme_analysis())
 
         # Available tools note
         parts.append("\n\n## AVAILABLE TOOLS\n")
