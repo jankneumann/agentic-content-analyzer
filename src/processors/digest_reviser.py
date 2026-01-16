@@ -11,6 +11,7 @@ from src.models.digest import Digest
 from src.models.newsletter import Newsletter
 from src.models.revision import RevisionContext, RevisionResult
 from src.models.summary import NewsletterSummary
+from src.models.theme import ThemeAnalysis
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -103,8 +104,22 @@ class DigestReviser:
                 f"{len(newsletter_ids)} newsletters available for on-demand fetching"
             )
 
-            # TODO: Load theme analysis when available
-            theme_analysis = None
+            # Load theme analysis for the period
+            # We look for an analysis that covers the exact same period
+            theme_analysis = (
+                db.query(ThemeAnalysis)
+                .filter(
+                    ThemeAnalysis.start_date == digest.period_start,
+                    ThemeAnalysis.end_date == digest.period_end,
+                )
+                .order_by(ThemeAnalysis.analysis_date.desc())
+                .first()
+            )
+
+            if theme_analysis:
+                logger.info(f"Loaded theme analysis from {theme_analysis.analysis_date}")
+            else:
+                logger.info("No matching theme analysis found")
 
             return RevisionContext(
                 digest=digest,
