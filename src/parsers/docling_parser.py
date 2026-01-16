@@ -1,5 +1,7 @@
 """Docling parser implementation for advanced document parsing with table extraction."""
 
+import asyncio
+import functools
 import logging
 import re
 import time
@@ -135,7 +137,12 @@ class DoclingParser(DocumentParser):
 
         try:
             # Convert document using Docling
-            result: ConversionResult = self.converter.convert(source)  # type: ignore[assignment, attr-defined]
+            # Offload blocking conversion to executor
+            loop = asyncio.get_running_loop()
+            result: ConversionResult = await loop.run_in_executor(
+                None,
+                functools.partial(self.converter.convert, source),  # type: ignore[attr-defined]
+            )
             doc: DoclingDocument = result.document  # type: ignore[assignment]
 
             # Export to markdown as primary content
