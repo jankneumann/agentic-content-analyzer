@@ -7,7 +7,7 @@ Tests the end-to-end flow:
 4. Newsletter status updated to COMPLETED
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -143,6 +143,42 @@ def test_summarize_newsletter_llm_error(db_session, sample_newsletters, mock_get
     assert newsletter.status == ProcessingStatus.FAILED
     assert newsletter.error_message is not None
     assert "API Error" in newsletter.error_message
+
+
+@pytest.mark.integration
+def test_summarize_newsletter_database_error(
+    db_session, sample_newsletters, mock_anthropic_client, mock_get_db
+):
+    """Test handling of database errors with rollback."""
+    newsletter = sample_newsletters[0]
+
+    # We want to simulate a database error during the second commit (when saving summary)
+    # The first commit is for changing status to PROCESSING, second for COMPLETED + summary
+    # We patch the commit method on the session object
+    original_commit = db_session.commit
+
+    # First commit (PROCESSING) succeeds, second (COMPLETED) fails, third (FAILED) succeeds
+    db_session.commit = MagicMock(side_effect=[None, Exception("DB Commit Failed"), None])
+
+    try:
+        with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_class:
+            mock_anthropic_class.return_value = mock_anthropic_client
+
+            with patch("src.processors.summarizer.get_db", mock_get_db):
+                summarizer = NewsletterSummarizer()
+                result = summarizer.summarize_newsletter(newsletter.id)
+
+        assert result is False
+
+        # Verify status is FAILED
+        # Note: Since we mocked commit, the changes might still be in the session
+        # but the logic flow should have set it to FAILED
+        assert newsletter.status == ProcessingStatus.FAILED
+        assert newsletter.error_message == "DB Commit Failed"
+
+    finally:
+        # Restore commit for cleanup
+        db_session.commit = original_commit
 
 
 @pytest.mark.integration

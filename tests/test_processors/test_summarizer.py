@@ -83,48 +83,7 @@ def test_newsletter_summarizer_initialization_custom_agent():
     assert summarizer.agent.model == "mock-model"
 
 
-# TODO: Integration tests - require database setup
-# These tests should be moved to integration tests as they require real database access
-# The core logic is covered by unit tests above
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_success():
-#     """Test successful newsletter summarization (INTEGRATION TEST)."""
-#     # Requires:
-#     # - Database with Newsletter record
-#     # - Mock or real LLM agent
-#     # - Verify database updates (status, summary storage)
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_not_found():
-#     """Test handling of non-existent newsletter (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_already_summarized():
-#     """Test handling of already summarized newsletter (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_agent_failure():
-#     """Test handling of agent failure (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_newsletter_database_error():
-#     """Test handling of database errors with rollback (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_pending_newsletters():
-#     """Test batch processing of pending newsletters (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_pending_newsletters_with_limit():
-#     """Test batch processing with limit (INTEGRATION TEST)."""
-#     pass
+# Integration tests are implemented in tests/integration/test_summarization_workflow.py
 
 
 # ============================================================================
