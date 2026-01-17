@@ -4,6 +4,7 @@ import json
 import time
 from datetime import datetime
 
+import google.generativeai as genai
 from anthropic import Anthropic
 
 from src.config import settings
@@ -63,11 +64,12 @@ class ThemeAnalyzer:
         self.framework = model_family.value  # "claude", "gemini", "gpt"
 
         if use_large_context:
-            # TODO: Add Gemini Flash support in future
-            logger.warning(
-                "Large context model (Gemini) not yet implemented, "
-                "using configured theme analysis model"
-            )
+            # If large context requested but model not set to Gemini, warn but proceed
+            if self.framework != "gemini":
+                logger.info(
+                    "Large context analysis requested. Ensure a Gemini Flash model "
+                    "is configured for optimal performance."
+                )
 
         self.graphiti_client: GraphitiClient | None = None
 
@@ -315,49 +317,90 @@ class ThemeAnalyzer:
             logger.error(f"No providers configured for model {self.model}: {e}")
             return []
 
-        # Filter for Anthropic-compatible providers (for now, only Anthropic)
-        # TODO: Add support for other providers (AWS Bedrock, Vertex AI, Azure, OpenAI)
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+        # Filter supported providers
+        supported_providers = [
+            p
+            for p in providers
+            if p.provider in [Provider.ANTHROPIC, Provider.GOOGLE_AI]
+        ]
 
-        if not anthropic_providers:
-            logger.error(f"No Anthropic-compatible providers for model {self.model}")
+        if not supported_providers:
+            logger.error(f"No supported providers for model {self.model}")
             return []
 
         # Try each provider in order (failover support)
-        response = None
+        response_text = None
         last_error = None
 
-        for provider_config in anthropic_providers:
+        for provider_config in supported_providers:
             try:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
 
-                # Create client for this provider
-                client = Anthropic(api_key=provider_config.api_key)
-
-                # Get provider-specific model ID for API call
+                # Get provider-specific model ID
                 provider_model_id = self.model_config.get_provider_model_id(
                     self.model, provider_config.provider
                 )
 
-                response = client.messages.create(
-                    model=provider_model_id,
-                    max_tokens=8000,
-                    temperature=0.3,  # Lower temperature for more consistent analysis
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        }
-                    ],
-                )
+                if provider_config.provider == Provider.ANTHROPIC:
+                    # Create client for this provider
+                    client = Anthropic(api_key=provider_config.api_key)
 
-                # Track provider and token usage for cost calculation
-                self.provider_used = provider_config.provider
-                self.input_tokens = response.usage.input_tokens
-                self.output_tokens = response.usage.output_tokens
-                self.model_version = self.model_config.get_model_version(
-                    self.model, self.provider_used
-                )
+                    response = client.messages.create(
+                        model=provider_model_id,
+                        max_tokens=8000,
+                        temperature=0.3,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": prompt,
+                            }
+                        ],
+                    )
+
+                    # Track provider and token usage
+                    self.provider_used = provider_config.provider
+                    self.input_tokens = response.usage.input_tokens
+                    self.output_tokens = response.usage.output_tokens
+                    self.model_version = self.model_config.get_model_version(
+                        self.model, self.provider_used
+                    )
+
+                    response_text = response.content[0].text
+
+                elif provider_config.provider == Provider.GOOGLE_AI:
+                    # Configure Gemini
+                    genai.configure(api_key=provider_config.api_key)
+
+                    generation_config = {
+                        "temperature": 0.3,
+                        "max_output_tokens": 8192,
+                    }
+
+                    model = genai.GenerativeModel(
+                        model_name=provider_model_id,
+                        generation_config=generation_config
+                    )
+
+                    response = model.generate_content(prompt)
+
+                    # Track provider and token usage
+                    self.provider_used = provider_config.provider
+
+                    # Gemini usage metadata isn't always available in the same format
+                    # but usually response.usage_metadata is available
+                    if hasattr(response, "usage_metadata"):
+                        self.input_tokens = response.usage_metadata.prompt_token_count
+                        self.output_tokens = response.usage_metadata.candidates_token_count
+                    else:
+                        # Estimate if not available (rare for Gemini API)
+                        self.input_tokens = 0
+                        self.output_tokens = 0
+
+                    self.model_version = self.model_config.get_model_version(
+                        self.model, self.provider_used
+                    )
+
+                    response_text = response.text
 
                 # Success - break out of failover loop
                 break
@@ -368,7 +411,7 @@ class ThemeAnalyzer:
                 last_error = str(e)
                 continue  # Try next provider
 
-        if response is None:
+        if response_text is None:
             logger.error(f"All providers failed. Last error: {last_error}")
             return []
 
@@ -391,7 +434,7 @@ class ThemeAnalyzer:
 
         # Parse response
         themes = self._parse_theme_response(
-            response.content[0].text,
+            response_text,
             newsletters,
         )
 
