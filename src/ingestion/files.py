@@ -5,6 +5,7 @@ The Content-based ingestion (FileContentIngestionService) is the preferred
 approach for new code as part of the unified content model refactor.
 """
 
+import asyncio
 import hashlib
 import logging
 from datetime import UTC, datetime
@@ -21,6 +22,22 @@ from src.parsers.router import ParserRouter
 from src.utils.content_hash import generate_markdown_hash
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_file_hash_sync(file_path: Path) -> str:
+    """Calculate SHA-256 hash of file contents (blocking).
+
+    Args:
+        file_path: Path to the file
+
+    Returns:
+        Hex-encoded SHA-256 hash
+    """
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest()
 
 
 class FileIngestionService:
@@ -81,7 +98,7 @@ class FileIngestionService:
             )
 
         # Calculate file hash for deduplication
-        file_hash = self._calculate_file_hash(file_path)
+        file_hash = await self._calculate_file_hash(file_path)
 
         # Check for existing duplicate
         existing = self._find_duplicate(file_hash)
@@ -187,8 +204,8 @@ class FileIngestionService:
 
         return newsletter
 
-    def _calculate_file_hash(self, file_path: Path) -> str:
-        """Calculate SHA-256 hash of file contents.
+    async def _calculate_file_hash(self, file_path: Path) -> str:
+        """Calculate SHA-256 hash of file contents asynchronously.
 
         Args:
             file_path: Path to the file
@@ -196,11 +213,7 @@ class FileIngestionService:
         Returns:
             Hex-encoded SHA-256 hash
         """
-        sha256 = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                sha256.update(chunk)
-        return sha256.hexdigest()
+        return await asyncio.to_thread(calculate_file_hash_sync, file_path)
 
     def _find_duplicate(self, file_hash: str) -> Newsletter | None:
         """Find existing newsletter with the same content hash.
@@ -392,7 +405,7 @@ class FileContentIngestionService:
             )
 
         # Calculate file hash for deduplication
-        file_hash = self._calculate_file_hash(file_path)
+        file_hash = await self._calculate_file_hash(file_path)
 
         # Check for existing duplicate
         existing = self._find_duplicate(file_hash)
@@ -498,13 +511,9 @@ class FileContentIngestionService:
 
         return content
 
-    def _calculate_file_hash(self, file_path: Path) -> str:
-        """Calculate SHA-256 hash of file contents."""
-        sha256 = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                sha256.update(chunk)
-        return sha256.hexdigest()
+    async def _calculate_file_hash(self, file_path: Path) -> str:
+        """Calculate SHA-256 hash of file contents asynchronously."""
+        return await asyncio.to_thread(calculate_file_hash_sync, file_path)
 
     def _find_duplicate(self, file_hash: str) -> Content | None:
         """Find existing content with the same file hash."""

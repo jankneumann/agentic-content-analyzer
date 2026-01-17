@@ -64,7 +64,8 @@ class TestFileIngestionService:
 
             return FileIngestionService(router=mock_router, db=mock_db)
 
-    def test_calculate_file_hash(self, service):
+    @pytest.mark.asyncio
+    async def test_calculate_file_hash(self, service):
         """Test file hash calculation."""
         # Create a temp file with known content
         with tempfile.NamedTemporaryFile(mode="wb", delete=False) as f:
@@ -72,7 +73,7 @@ class TestFileIngestionService:
             temp_path = Path(f.name)
 
         try:
-            file_hash = service._calculate_file_hash(temp_path)
+            file_hash = await service._calculate_file_hash(temp_path)
 
             # Verify hash matches expected
             expected_hash = hashlib.sha256(b"test content").hexdigest()
