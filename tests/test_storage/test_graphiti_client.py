@@ -1,8 +1,21 @@
 """Tests for GraphitiClient."""
 
-from datetime import datetime
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# Mock graphiti_core modules BEFORE importing src.storage.graphiti_client
+sys.modules["graphiti_core"] = MagicMock()
+sys.modules["graphiti_core.cross_encoder.openai_reranker_client"] = MagicMock()
+sys.modules["graphiti_core.embedder.openai"] = MagicMock()
+sys.modules["graphiti_core.llm_client.anthropic_client"] = MagicMock()
+sys.modules["graphiti_core.nodes"] = MagicMock()
+
+# Mock src.storage.database BEFORE importing src.storage.graphiti_client
+# This is to prevent ImportError when importing src.storage.graphiti_client which imports src.storage.database
+mock_database = MagicMock()
+sys.modules["src.storage.database"] = mock_database
+
+from datetime import datetime
 import pytest
 
 from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
@@ -461,23 +474,23 @@ def test_get_previous_analyses(mock_neo4j_driver, mock_graphiti):
         with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti
 
-            # Patch get_db where it's imported in the method
-            with patch("src.storage.database.get_db") as mock_get_db:
-                mock_db = MagicMock()
-                mock_query = MagicMock()
-                mock_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-                    mock_analysis
-                ]
-                mock_db.query.return_value = mock_query
-                mock_get_db.return_value.__enter__.return_value = mock_db
+            # Setup the mocked get_db
+            mock_db = MagicMock()
+            mock_query = MagicMock()
+            mock_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+                mock_analysis
+            ]
+            mock_db.query.return_value = mock_query
 
-                client = GraphitiClient()
-                analyses = client.get_previous_analyses(before_date, limit=10)
+            mock_database.get_db.return_value.__enter__.return_value = mock_db
 
-                # Verify query
-                assert len(analyses) == 1
-                assert analyses[0]["id"] == 1
-                assert analyses[0]["total_themes"] == 1
+            client = GraphitiClient()
+            analyses = client.get_previous_analyses(before_date, limit=10)
+
+            # Verify query
+            assert len(analyses) == 1
+            assert analyses[0]["id"] == 1
+            assert analyses[0]["total_themes"] == 1
 
 
 def test_create_episode_content(sample_newsletter, sample_summary):
