@@ -1,8 +1,10 @@
 """Data models for the Newsletter Aggregator."""
 
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
+from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
+from src.models.image import Image, ImageSource
 from src.models.newsletter import Base, Newsletter, NewsletterSource, ProcessingStatus
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
@@ -20,15 +22,22 @@ from src.models.youtube import (
 __all__ = [
     # Base
     "Base",
-    # Newsletter
+    # Newsletter (deprecated - use Content)
     "Newsletter",
     "NewsletterSource",
     "ProcessingStatus",
+    # Content (unified model)
+    "Content",
+    "ContentSource",
+    "ContentStatus",
     # Document
     "DocumentContent",
     "DocumentFormat",
     "DocumentMetadata",
     "TableData",
+    # Image
+    "Image",
+    "ImageSource",
     # Summary
     "NewsletterSummary",
     "SummaryData",

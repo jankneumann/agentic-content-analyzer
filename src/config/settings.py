@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     # File Upload Configuration
     max_upload_size_mb: int = 50  # Maximum file upload size
 
+    # Image Storage Configuration
+    image_storage_provider: str = "local"  # "local" or "s3"
+    image_storage_path: str = "data/images"  # Local storage directory
+    image_storage_bucket: str = "newsletter-images"  # S3 bucket name
+    image_max_size_mb: int = 10  # Maximum image file size
+    enable_image_extraction: bool = True  # Enable extraction from HTML/PDF
+    enable_youtube_keyframes: bool = False  # Enable YouTube keyframe extraction
+
     # Email Delivery
     sendgrid_api_key: str | None = None
 

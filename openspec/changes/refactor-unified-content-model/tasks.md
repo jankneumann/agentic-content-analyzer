@@ -25,7 +25,7 @@
   - Created Alembic migration `41d180035213_add_markdown_content_and_theme_tags_.py`
   - Updated `NewsletterSummary` SQLAlchemy model and `SummaryData` Pydantic schema
   - Updated `Digest` SQLAlchemy model and `DigestData` Pydantic schema
-- [ ] 1.7 Create `images` table with all columns:
+- [x] 1.7 Create `images` table with all columns:
   - id (UUID), source_type (EXTRACTED, KEYFRAME, AI_GENERATED)
   - source_content_id, source_summary_id, source_digest_id (FKs)
   - source_url, video_id, timestamp_seconds, deep_link_url
@@ -35,7 +35,8 @@
   - generation_prompt, generation_model, generation_params (JSON)
   - phash (perceptual hash for dedup)
   - created_at
-- [ ] 1.8 Create indexes on images:
+  - Created migration: `a8b9c0d1e2f3_add_images_table.py`
+- [x] 1.8 Create indexes on images:
   - source_content_id, source_summary_id, source_digest_id
   - source_type
   - phash (for deduplication)
@@ -85,34 +86,44 @@
 
 ## 4. Image Model and Services
 
-- [ ] 4.1 Create `src/models/image.py` with Image SQLAlchemy model
-- [ ] 4.2 Create ImageSource enum (EXTRACTED, KEYFRAME, AI_GENERATED)
-- [ ] 4.3 Create Pydantic schemas:
-  - ImageCreate, ImageResponse, ImageMetadata
-- [ ] 4.4 Create `src/services/image_storage.py`:
-  - Abstract storage interface
-  - Local filesystem implementation for development
-  - S3-compatible implementation for production
-  - Configure via IMAGE_STORAGE_PROVIDER env var
-- [ ] 4.5 Create `src/services/image_extractor.py`:
-  - `extract_from_html(html) -> list[Image]` - Download external images
-  - `extract_from_pdf(pdf_content) -> list[Image]` - Extract embedded images
-  - `extract_youtube_keyframes(content) -> list[Image]` - Use existing KeyframeExtractor
-  - Generate perceptual hashes for deduplication
-- [ ] 4.6 Implement image deduplication via phash:
-  - Check phash before storing new images
-  - Link to existing image if duplicate found
+- [x] 4.1 Create `src/models/image.py` with Image SQLAlchemy model
+  - UUID primary key, polymorphic source_type discriminator
+  - Foreign keys to Content, Summary, and Digest
+  - YouTube keyframe metadata (video_id, timestamp, deep_link)
+  - AI generation metadata (prompt, model, params)
+- [x] 4.2 Create ImageSource enum (EXTRACTED, KEYFRAME, AI_GENERATED)
+- [x] 4.3 Create Pydantic schemas:
+  - ImageCreate, ImageUpdate, ImageResponse, ImageListItem, ImageListResponse
+  - ImageMetadata for extracted image metadata
+- [x] 4.4 Create `src/services/image_storage.py`:
+  - Abstract ImageStorageProvider base class
+  - LocalImageStorage for development (date-based directory structure)
+  - S3ImageStorage for production (boto3-based)
+  - `get_image_storage()` factory function
+- [x] 4.5 Create `src/services/image_extractor.py`:
+  - `extract_from_html(html) -> list[ExtractedImage]` - Download external + base64 images
+  - `extract_youtube_keyframes(video_id) -> list[ExtractedImage]` - Integrates with KeyframeExtractor
+  - `save_extracted_images()` - Save to storage and create ImageCreate schemas
+  - Async HTTP client with concurrency limiting
+- [x] 4.6 Implement image deduplication via phash:
+  - `compute_phash()` method using imagehash library
+  - `compute_phash_similarity()` for fuzzy matching
+  - phash stored on Image model for database-level dedup queries
 - [ ] 4.7 Create `src/services/image_generator.py` (stub for future):
   - `generate_for_summary(summary, prompt) -> Image`
   - `suggest_images(content) -> list[ImageSuggestion]`
   - Store generation_prompt and generation_model for reproducibility
-- [ ] 4.8 Add image configuration to settings.py:
-  - IMAGE_STORAGE_PROVIDER (local, s3)
-  - IMAGE_STORAGE_PATH (local path or S3 bucket)
-  - IMAGE_MAX_SIZE_MB
-  - ENABLE_YOUTUBE_KEYFRAMES
-  - ENABLE_IMAGE_EXTRACTION
-- [ ] 4.9 Write unit tests for image services
+- [x] 4.8 Add image configuration to settings.py:
+  - `image_storage_provider` (local, s3)
+  - `image_storage_path` (local directory)
+  - `image_storage_bucket` (S3 bucket name)
+  - `image_max_size_mb`
+  - `enable_image_extraction`
+  - `enable_youtube_keyframes`
+- [x] 4.9 Write unit tests for image services
+  - 62 tests covering Image model, schemas, storage, and extractor
+  - Tests for LocalImageStorage CRUD operations
+  - Tests for regex patterns, base64 extraction, keyframe metadata parsing
 
 ## 5. Summary Model Refactor
 
