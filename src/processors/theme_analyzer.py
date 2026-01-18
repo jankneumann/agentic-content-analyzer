@@ -5,9 +5,10 @@ import time
 from datetime import datetime
 
 from anthropic import Anthropic
+from openai import OpenAI
 
 from src.config import settings
-from src.config.models import ModelConfig, ModelStep, Provider
+from src.config.models import ModelConfig, ModelStep, Provider, get_model_config
 from src.models.content import Content, ContentStatus
 from src.models.newsletter import Newsletter
 from src.models.summary import NewsletterSummary
@@ -30,7 +31,7 @@ class ThemeAnalyzer:
     """
     Analyzes themes across multiple newsletters using knowledge graph and LLM.
 
-    Supports Claude (primary) and optionally Gemini Flash for large context.
+    Supports multiple providers (Claude, OpenAI) and optionally Gemini Flash for large context.
     """
 
     def __init__(
@@ -51,7 +52,7 @@ class ThemeAnalyzer:
 
         # Get model config from settings if not provided
         if model_config is None:
-            model_config = settings.get_model_config()
+            model_config = get_model_config()
 
         self.model_config = model_config
 
@@ -315,46 +316,77 @@ class ThemeAnalyzer:
             logger.error(f"No providers configured for model {self.model}: {e}")
             return []
 
-        # Filter for Anthropic-compatible providers (for now, only Anthropic)
-        # TODO: Add support for other providers (AWS Bedrock, Vertex AI, Azure, OpenAI)
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+        # Filter for supported providers
+        # TODO: Add support for AWS Bedrock, Vertex AI (when dependencies are available)
+        supported_providers = [
+            p for p in providers
+            if p.provider in [Provider.ANTHROPIC, Provider.OPENAI]
+        ]
 
-        if not anthropic_providers:
-            logger.error(f"No Anthropic-compatible providers for model {self.model}")
+        if not supported_providers:
+            logger.error(f"No supported providers for model {self.model}")
             return []
 
         # Try each provider in order (failover support)
-        response = None
+        response_text = None
         last_error = None
 
-        for provider_config in anthropic_providers:
+        for provider_config in supported_providers:
             try:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
 
-                # Create client for this provider
-                client = Anthropic(api_key=provider_config.api_key)
-
-                # Get provider-specific model ID for API call
+                # Get provider-specific model ID
                 provider_model_id = self.model_config.get_provider_model_id(
                     self.model, provider_config.provider
                 )
 
-                response = client.messages.create(
-                    model=provider_model_id,
-                    max_tokens=8000,
-                    temperature=0.3,  # Lower temperature for more consistent analysis
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        }
-                    ],
-                )
+                if provider_config.provider == Provider.ANTHROPIC:
+                    client = Anthropic(api_key=provider_config.api_key)
 
-                # Track provider and token usage for cost calculation
+                    response = client.messages.create(
+                        model=provider_model_id,
+                        max_tokens=8000,
+                        temperature=0.3,  # Lower temperature for more consistent analysis
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": prompt,
+                            }
+                        ],
+                    )
+
+                    self.input_tokens = response.usage.input_tokens
+                    self.output_tokens = response.usage.output_tokens
+                    response_text = response.content[0].text
+
+                elif provider_config.provider == Provider.OPENAI:
+                    client = OpenAI(api_key=provider_config.api_key)
+
+                    response = client.chat.completions.create(
+                        model=provider_model_id,
+                        temperature=0.3,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": prompt,
+                            }
+                        ],
+                        # OpenAI doesn't enforce max_tokens for completion usually,
+                        # but we can set it to avoid runaways.
+                        # Note: 'max_tokens' in OpenAI Chat Completions is for completion only.
+                        # Some new models use 'max_completion_tokens'.
+                        # We'll use 'max_tokens' for broad compatibility.
+                        max_tokens=4000,
+                    )
+
+                    if hasattr(response.usage, 'prompt_tokens'):
+                        self.input_tokens = response.usage.prompt_tokens
+                        self.output_tokens = response.usage.completion_tokens
+
+                    response_text = response.choices[0].message.content
+
+                # Track provider and version
                 self.provider_used = provider_config.provider
-                self.input_tokens = response.usage.input_tokens
-                self.output_tokens = response.usage.output_tokens
                 self.model_version = self.model_config.get_model_version(
                     self.model, self.provider_used
                 )
@@ -368,7 +400,7 @@ class ThemeAnalyzer:
                 last_error = str(e)
                 continue  # Try next provider
 
-        if response is None:
+        if response_text is None:
             logger.error(f"All providers failed. Last error: {last_error}")
             return []
 
@@ -391,7 +423,7 @@ class ThemeAnalyzer:
 
         # Parse response
         themes = self._parse_theme_response(
-            response.content[0].text,
+            response_text,
             newsletters,
         )
 

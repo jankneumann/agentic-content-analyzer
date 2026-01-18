@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.config.models import MODEL_REGISTRY
+from src.config.models import MODEL_REGISTRY, ProviderConfig, Provider
 from src.models.theme import (
     ThemeAnalysisRequest,
     ThemeCategory,
@@ -179,7 +179,7 @@ async def test_analyze_themes_insufficient_newsletters():
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti:
             mock_graphiti.return_value.close = MagicMock()
 
-            with patch("src.storage.database.get_db") as mock_get_db:
+            with patch("src.processors.theme_analyzer.get_db") as mock_get_db:
                 mock_db = MagicMock()
                 # Return only 2 newsletters (less than min_newsletters=5)
                 mock_query = MagicMock()
@@ -190,12 +190,19 @@ async def test_analyze_themes_insufficient_newsletters():
                 mock_get_db.return_value.__enter__.return_value = mock_db
 
                 analyzer = ThemeAnalyzer()
+
+                # Mock get_providers_for_model to avoid initialization failure
+                analyzer.model_config.get_providers_for_model = MagicMock(return_value=[
+                    ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")
+                ])
+
                 result = await analyzer.analyze_themes(request)
 
     # Should return empty result
     assert result.newsletter_count == 0
     assert result.total_themes == 0
     assert len(result.themes) == 0
+    assert result.model_used == analyzer.model
 
 
 @pytest.mark.skip(reason="Complex mock setup needs fixing - MagicMock format string issue")
@@ -471,6 +478,13 @@ async def test_extract_themes_with_relevance_filtering(
         mock_anthropic_class.return_value = mock_client
 
         analyzer = ThemeAnalyzer()
+
+        # MOCK THE PROVIDERS CONFIGURATION
+        analyzer.model_config.get_providers_for_model = MagicMock(return_value=[
+            ProviderConfig(provider=Provider.ANTHROPIC, api_key="test-key")
+        ])
+        analyzer.model_config.get_provider_model_id = MagicMock(return_value="claude-model")
+
         # Mock calculate_cost to return a numeric value
         analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
 
