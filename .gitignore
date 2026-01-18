@@ -217,6 +217,7 @@ youtube_token.json
 
 # Local data directories (if using bind mounts instead of named volumes)
 data/
+.dev-logs/
 
 # Database files
 *.db
