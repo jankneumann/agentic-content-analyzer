@@ -1,5 +1,6 @@
 """YouTube keyframe extraction for slide detection using ffmpeg."""
 
+import asyncio
 import os
 import re
 import subprocess
@@ -53,29 +54,33 @@ class KeyframeExtractor:
         self.output_dir = output_dir or settings.youtube_temp_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def is_available(self) -> bool:
+    async def is_available(self) -> bool:
         """Check if ffmpeg and required dependencies are available."""
         try:
-            self._verify_ffmpeg()
+            await self._verify_ffmpeg()
             return True
         except RuntimeError:
             return False
 
-    def _verify_ffmpeg(self) -> None:
+    async def _verify_ffmpeg(self) -> None:
         """Verify ffmpeg is installed."""
         try:
-            subprocess.run(
-                ["ffmpeg", "-version"],  # noqa: S607
-                capture_output=True,
-                check=True,
+            process = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            _, stderr = await process.communicate()
+            if process.returncode != 0:
+                raise OSError(stderr.decode())
+        except (OSError, FileNotFoundError) as e:
             raise RuntimeError(
                 "ffmpeg not found. Install with: apt install ffmpeg (Linux) "
                 "or brew install ffmpeg (macOS)"
             ) from e
 
-    def download_video(self, video_id: str) -> str | None:
+    async def download_video(self, video_id: str) -> str | None:
         """
         Download a YouTube video for processing.
 
@@ -91,7 +96,8 @@ class KeyframeExtractor:
             logger.error("yt-dlp not installed. Install with: pip install yt-dlp")
             return None
 
-        try:
+        def _download_sync():
+            """Run synchronous download in a separate thread."""
             video_url = f"https://www.youtube.com/watch?v={video_id}"
             output_path = os.path.join(self.output_dir, f"{video_id}.mp4")
 
@@ -110,11 +116,13 @@ class KeyframeExtractor:
                 return output_path
             return None
 
+        try:
+            return await asyncio.to_thread(_download_sync)
         except Exception as e:
             logger.error(f"Error downloading video {video_id}: {e}")
             return None
 
-    def get_video_duration(self, video_path: str) -> float:
+    async def get_video_duration(self, video_path: str) -> float:
         """
         Get video duration in seconds using ffprobe.
 
@@ -125,27 +133,31 @@ class KeyframeExtractor:
             Duration in seconds
         """
         try:
-            result = subprocess.run(
-                [  # noqa: S607
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    video_path,
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
+            cmd = [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                video_path,
+            ]
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            return float(result.stdout.strip())
+            stdout, stderr = await process.communicate()
+            if process.returncode != 0:
+                logger.warning(f"Error getting duration: {stderr.decode()}")
+                return 0.0
+            return float(stdout.decode().strip())
         except Exception as e:
             logger.warning(f"Error getting duration: {e}")
             return 0.0
 
-    def extract_scene_changes(
+    async def extract_scene_changes(
         self,
         video_path: str,
         output_dir: str | None = None,
@@ -197,14 +209,19 @@ class KeyframeExtractor:
             ]
 
             # Run ffmpeg and capture showinfo output for timestamps
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            _, stderr = await process.communicate()
+
+            if process.returncode != 0:
+                logger.error(f"ffmpeg error: {stderr.decode()}")
+                return []
 
             # Parse timestamps from showinfo output
-            timestamps = self._parse_showinfo_timestamps(result.stderr)
+            timestamps = self._parse_showinfo_timestamps(stderr.decode())
 
             # Get list of extracted frames
             frame_files = sorted([f for f in os.listdir(output_dir) if f.endswith(".jpg")])[
@@ -228,11 +245,11 @@ class KeyframeExtractor:
             logger.info(f"Extracted {len(slides)} scene-change frames from {video_path}")
             return slides
 
-        except subprocess.CalledProcessError as e:
-            logger.error(f"ffmpeg error: {e.stderr}")
+        except Exception as e:
+            logger.error(f"ffmpeg execution error: {e}")
             return []
 
-    def extract_interval_frames(
+    async def extract_interval_frames(
         self,
         video_path: str,
         output_dir: str | None = None,
@@ -274,7 +291,15 @@ class KeyframeExtractor:
                 "-y",
             ]
 
-            subprocess.run(cmd, capture_output=True, check=True)
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await process.communicate()
+            if process.returncode != 0:
+                logger.error(f"ffmpeg error: {stderr.decode()}")
+                return []
 
             # Get list of extracted frames
             frame_files = sorted([f for f in os.listdir(output_dir) if f.endswith(".jpg")])[
@@ -297,8 +322,8 @@ class KeyframeExtractor:
             logger.info(f"Extracted {len(slides)} interval frames from {video_path}")
             return slides
 
-        except subprocess.CalledProcessError as e:
-            logger.error(f"ffmpeg error: {e}")
+        except Exception as e:
+            logger.error(f"ffmpeg execution error: {e}")
             return []
 
     def _parse_showinfo_timestamps(self, ffmpeg_output: str) -> list[float]:
@@ -320,7 +345,7 @@ class KeyframeExtractor:
 
         return timestamps
 
-    def compute_image_hash(self, image_path: str) -> str | None:
+    async def compute_image_hash(self, image_path: str) -> str | None:
         """
         Compute perceptual hash of an image for similarity comparison.
 
@@ -330,23 +355,28 @@ class KeyframeExtractor:
         Returns:
             Hex string hash or None if failed
         """
-        try:
-            import imagehash
-            from PIL import Image
-        except ImportError:
-            logger.warning(
-                "imagehash/Pillow not installed. Install with: pip install imagehash Pillow"
-            )
-            return None
 
-        try:
-            img = Image.open(image_path)
-            hash_value = imagehash.average_hash(img, hash_size=16)
-            return str(hash_value)
+        def _compute_sync():
+            """Run synchronous image hashing in a separate thread."""
+            try:
+                import imagehash
+                from PIL import Image
+            except ImportError:
+                logger.warning(
+                    "imagehash/Pillow not installed. Install with: pip install imagehash Pillow"
+                )
+                return None
 
-        except Exception as e:
-            logger.warning(f"Error computing hash for {image_path}: {e}")
-            return None
+            try:
+                img = Image.open(image_path)
+                hash_value = imagehash.average_hash(img, hash_size=16)
+                return str(hash_value)
+
+            except Exception as e:
+                logger.warning(f"Error computing hash for {image_path}: {e}")
+                return None
+
+        return await asyncio.to_thread(_compute_sync)
 
     def compute_hash_similarity(self, hash1: str, hash2: str) -> float:
         """
@@ -375,7 +405,7 @@ class KeyframeExtractor:
             logger.warning(f"Error computing similarity: {e}")
             return 0.0
 
-    def deduplicate_slides(
+    async def deduplicate_slides(
         self,
         slides: list[SlideFrame],
         similarity_threshold: float | None = None,
@@ -396,10 +426,13 @@ class KeyframeExtractor:
         if similarity_threshold is None:
             similarity_threshold = settings.youtube_similarity_threshold
 
-        # Compute hashes
-        for slide in slides:
-            if not slide.hash_value:
-                slide.hash_value = self.compute_image_hash(slide.path) or "unknown"
+        # Compute hashes in parallel for slides that don't have one
+        slides_to_hash = [s for s in slides if not s.hash_value]
+        if slides_to_hash:
+            hash_tasks = [self.compute_image_hash(s.path) for s in slides_to_hash]
+            hashes = await asyncio.gather(*hash_tasks)
+            for slide, hash_value in zip(slides_to_hash, hashes):
+                slide.hash_value = hash_value or "unknown"
 
         unique_slides: list[SlideFrame] = []
         current_hash: str | None = None
@@ -427,7 +460,7 @@ class KeyframeExtractor:
         logger.info(f"Deduplicated: {len(slides)} -> {len(unique_slides)} unique slides")
         return unique_slides
 
-    def extract_unique_slides(
+    async def extract_unique_slides(
         self,
         video_path: str,
         output_dir: str | None = None,
@@ -454,7 +487,7 @@ class KeyframeExtractor:
         extraction_method = "scene_detection"
 
         # Step 1: Extract frames at scene changes
-        slides = self.extract_scene_changes(
+        slides = await self.extract_scene_changes(
             video_path=video_path,
             output_dir=output_dir,
             scene_threshold=scene_threshold,
@@ -465,10 +498,10 @@ class KeyframeExtractor:
             # Fallback to interval extraction if scene detection fails
             logger.info("Scene detection found no frames, falling back to intervals")
             extraction_method = "interval"
-            duration = self.get_video_duration(video_path)
+            duration = await self.get_video_duration(video_path)
             interval = max(5.0, duration / 50)  # Aim for ~50 frames
 
-            slides = self.extract_interval_frames(
+            slides = await self.extract_interval_frames(
                 video_path=video_path,
                 output_dir=output_dir,
                 interval_seconds=interval,
@@ -476,7 +509,7 @@ class KeyframeExtractor:
             )
 
         # Step 2: Deduplicate similar frames
-        unique_slides = self.deduplicate_slides(
+        unique_slides = await self.deduplicate_slides(
             slides=slides,
             similarity_threshold=similarity_threshold,
         )
@@ -527,7 +560,7 @@ class KeyframeExtractor:
 
         return matched
 
-    def extract_keyframes_for_video(
+    async def extract_keyframes_for_video(
         self,
         video_id: str,
         transcript_segments: list[dict[str, Any]] | None = None,
@@ -549,20 +582,20 @@ class KeyframeExtractor:
 
         # Verify ffmpeg is available
         try:
-            self._verify_ffmpeg()
+            await self._verify_ffmpeg()
         except RuntimeError as e:
             result.error = str(e)
             return result
 
         # Download video
-        video_path = self.download_video(video_id)
+        video_path = await self.download_video(video_id)
         if not video_path:
             result.error = "Failed to download video"
             return result
 
         try:
             # Extract unique slides
-            slides, method = self.extract_unique_slides(video_path)
+            slides, method = await self.extract_unique_slides(video_path)
             result.extraction_method = method
 
             if not slides:

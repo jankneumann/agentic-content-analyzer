@@ -6,6 +6,7 @@ approach for new code as part of the unified content model refactor.
 """
 
 import argparse
+import asyncio
 import json
 import os
 from datetime import UTC, datetime
@@ -271,7 +272,7 @@ class YouTubeIngestionService:
         """Initialize YouTube ingestion service."""
         self.client = YouTubeClient(use_oauth=use_oauth)
 
-    def ingest_playlist(
+    async def ingest_playlist(
         self,
         playlist_id: str,
         max_videos: int = 10,
@@ -308,132 +309,128 @@ class YouTubeIngestionService:
             logger.info("No videos found in playlist")
             return 0
 
-        # Process each video
-        count = 0
-        with get_db() as db:
-            for video in videos:
-                try:
-                    # Generate source_id
-                    source_id = f"youtube:{video['video_id']}"
+        # Process each video in parallel
+        tasks = [self._process_video(video, languages, force_reprocess) for video in videos]
+        results = await asyncio.gather(*tasks)
 
-                    # Check if already exists
-                    existing = (
-                        db.query(Newsletter).filter(Newsletter.source_id == source_id).first()
+        # Count successful ingestions
+        return sum(1 for r in results if r is True)
+
+    async def _process_video(
+        self, video: dict[str, Any], languages: list[str] | None, force_reprocess: bool
+    ) -> bool:
+        """Process a single video."""
+        with get_db() as db:
+            try:
+                # Generate source_id
+                source_id = f"youtube:{video['video_id']}"
+
+                # Check if already exists
+                existing = db.query(Newsletter).filter(Newsletter.source_id == source_id).first()
+                if existing and not force_reprocess:
+                    logger.debug(f"Video already exists: {video['title']}")
+                    return False
+
+                # Get transcript
+                transcript = self.client.get_transcript(video["video_id"], languages)
+                if not transcript:
+                    logger.warning(f"No transcript for: {video['title']}")
+                    return False
+
+                # Update transcript with video metadata
+                transcript.title = video["title"]
+                transcript.channel_title = video["channel_title"]
+                transcript.published_date = video["published_date"]
+                transcript.thumbnail_url = video.get("thumbnail_url")
+                transcript.playlist_id = video.get("playlist_id")
+
+                # Get full text for content hash
+                full_text = transcript.full_text
+
+                # Generate content hash
+                content_hash = generate_content_hash(full_text)
+
+                # Check for content duplicate
+                content_duplicate = None
+                if not existing and content_hash:
+                    content_duplicate = (
+                        db.query(Newsletter)
+                        .filter(Newsletter.content_hash == content_hash)
+                        .first()
                     )
 
-                    if existing and not force_reprocess:
-                        logger.debug(f"Video already exists: {video['title']}")
-                        continue
+                # Build metadata
+                video_url = transcript.video_url
 
-                    # Get transcript
-                    transcript = self.client.get_transcript(video["video_id"], languages)
+                # Store transcript metadata as JSON
+                transcript_metadata = transcript.to_storage_dict()
 
-                    if not transcript:
-                        logger.warning(f"No transcript for: {video['title']}")
-                        continue
+                # Optional: Extract keyframes for slide detection
+                if settings.youtube_keyframe_extraction:
+                    transcript_metadata = await self._extract_keyframes(
+                        video_id=video["video_id"],
+                        transcript=transcript,
+                        transcript_metadata=transcript_metadata,
+                    )
 
-                    # Update transcript with video metadata
-                    transcript.title = video["title"]
-                    transcript.channel_title = video["channel_title"]
-                    transcript.published_date = video["published_date"]
-                    transcript.thumbnail_url = video.get("thumbnail_url")
-                    transcript.playlist_id = video.get("playlist_id")
+                if existing and force_reprocess:
+                    # Update existing
+                    existing.title = video["title"]
+                    existing.sender = video["channel_title"]
+                    existing.publication = video["channel_title"]
+                    existing.published_date = video["published_date"]
+                    existing.url = video_url
+                    existing.raw_html = None
+                    existing.raw_text = full_text
+                    existing.extracted_links = transcript_metadata
+                    existing.content_hash = content_hash
+                    existing.status = ProcessingStatus.PENDING
+                    existing.error_message = None
+                    logger.info(f"Updated for reprocessing: {video['title']}")
+                elif content_duplicate:
+                    # Link to canonical
+                    newsletter = Newsletter(
+                        source=NewsletterSource.YOUTUBE,
+                        source_id=source_id,
+                        title=video["title"],
+                        sender=video["channel_title"],
+                        publication=video["channel_title"],
+                        published_date=video["published_date"],
+                        url=video_url,
+                        raw_html=None,
+                        raw_text=full_text,
+                        extracted_links=transcript_metadata,
+                        content_hash=content_hash,
+                        canonical_newsletter_id=content_duplicate.id,
+                        status=ProcessingStatus.COMPLETED,
+                    )
+                    db.add(newsletter)
+                    logger.info(f"Linked duplicate: {video['title']}")
+                else:
+                    # Create new
+                    newsletter = Newsletter(
+                        source=NewsletterSource.YOUTUBE,
+                        source_id=source_id,
+                        title=video["title"],
+                        sender=video["channel_title"],
+                        publication=video["channel_title"],
+                        published_date=video["published_date"],
+                        url=video_url,
+                        raw_html=None,
+                        raw_text=full_text,
+                        extracted_links=transcript_metadata,
+                        content_hash=content_hash,
+                        status=ProcessingStatus.PENDING,
+                    )
+                    db.add(newsletter)
+                    logger.info(f"Ingested: {video['title']}")
+                return True
+            except Exception as e:
+                logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
+                db.rollback()
+                return False
 
-                    # Get full text for content hash
-                    full_text = transcript.full_text
-
-                    # Generate content hash
-                    content_hash = generate_content_hash(full_text)
-
-                    # Check for content duplicate
-                    content_duplicate = None
-                    if not existing and content_hash:
-                        content_duplicate = (
-                            db.query(Newsletter)
-                            .filter(Newsletter.content_hash == content_hash)
-                            .first()
-                        )
-
-                    # Build metadata
-                    video_url = transcript.video_url
-
-                    # Store transcript metadata as JSON
-                    transcript_metadata = transcript.to_storage_dict()
-
-                    # Optional: Extract keyframes for slide detection
-                    if settings.youtube_keyframe_extraction:
-                        transcript_metadata = self._extract_keyframes(
-                            video_id=video["video_id"],
-                            transcript=transcript,
-                            transcript_metadata=transcript_metadata,
-                        )
-
-                    if existing and force_reprocess:
-                        # Update existing
-                        existing.title = video["title"]
-                        existing.sender = video["channel_title"]
-                        existing.publication = video["channel_title"]
-                        existing.published_date = video["published_date"]
-                        existing.url = video_url
-                        existing.raw_html = None
-                        existing.raw_text = full_text
-                        existing.extracted_links = transcript_metadata
-                        existing.content_hash = content_hash
-                        existing.status = ProcessingStatus.PENDING
-                        existing.error_message = None
-                        count += 1
-                        logger.info(f"Updated for reprocessing: {video['title']}")
-
-                    elif content_duplicate:
-                        # Link to canonical
-                        newsletter = Newsletter(
-                            source=NewsletterSource.YOUTUBE,
-                            source_id=source_id,
-                            title=video["title"],
-                            sender=video["channel_title"],
-                            publication=video["channel_title"],
-                            published_date=video["published_date"],
-                            url=video_url,
-                            raw_html=None,
-                            raw_text=full_text,
-                            extracted_links=transcript_metadata,
-                            content_hash=content_hash,
-                            canonical_newsletter_id=content_duplicate.id,
-                            status=ProcessingStatus.COMPLETED,
-                        )
-                        db.add(newsletter)
-                        count += 1
-                        logger.info(f"Linked duplicate: {video['title']}")
-
-                    else:
-                        # Create new
-                        newsletter = Newsletter(
-                            source=NewsletterSource.YOUTUBE,
-                            source_id=source_id,
-                            title=video["title"],
-                            sender=video["channel_title"],
-                            publication=video["channel_title"],
-                            published_date=video["published_date"],
-                            url=video_url,
-                            raw_html=None,
-                            raw_text=full_text,
-                            extracted_links=transcript_metadata,
-                            content_hash=content_hash,
-                            status=ProcessingStatus.PENDING,
-                        )
-                        db.add(newsletter)
-                        count += 1
-                        logger.info(f"Ingested: {video['title']}")
-
-                except Exception as e:
-                    logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
-                    db.rollback()
-                    continue
-
-        logger.info(f"Successfully ingested {count} transcripts")
-        return count
-
-    def ingest_all_playlists(
+    async def ingest_all_playlists(
         self,
         playlist_ids: list[str] | None = None,
         max_videos_per_playlist: int = 10,
@@ -461,23 +458,20 @@ class YouTubeIngestionService:
             logger.warning("No YouTube playlists configured")
             return 0
 
-        total = 0
-        for playlist_id in playlist_ids:
-            try:
-                count = self.ingest_playlist(
-                    playlist_id=playlist_id,
-                    max_videos=max_videos_per_playlist,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                )
-                total += count
-            except Exception as e:
-                logger.error(f"Error ingesting playlist {playlist_id}: {e}")
-                continue
+        # Process each playlist in parallel
+        tasks = [
+            self.ingest_playlist(
+                playlist_id=playlist_id,
+                max_videos=max_videos_per_playlist,
+                after_date=after_date,
+                force_reprocess=force_reprocess,
+            )
+            for playlist_id in playlist_ids
+        ]
+        results = await asyncio.gather(*tasks)
+        return sum(results)
 
-        return total
-
-    def _extract_keyframes(
+    async def _extract_keyframes(
         self,
         video_id: str,
         transcript: YouTubeTranscript,
@@ -500,7 +494,7 @@ class YouTubeIngestionService:
             extractor = KeyframeExtractor()
 
             # Check if ffmpeg is available
-            if not extractor.is_available():
+            if not await extractor.is_available():
                 logger.warning("Keyframe extraction skipped: ffmpeg not available")
                 return transcript_metadata
 
@@ -511,7 +505,7 @@ class YouTubeIngestionService:
             ]
 
             # Extract keyframes
-            result = extractor.extract_keyframes_for_video(
+            result = await extractor.extract_keyframes_for_video(
                 video_id=video_id,
                 transcript_segments=segments,
             )
@@ -635,7 +629,7 @@ class YouTubeContentIngestionService:
         """Initialize YouTube content ingestion service."""
         self.client = YouTubeClient(use_oauth=use_oauth)
 
-    def ingest_playlist(
+    async def ingest_playlist(
         self,
         playlist_id: str,
         max_videos: int = 10,
@@ -672,151 +666,149 @@ class YouTubeContentIngestionService:
             logger.info("No videos found in playlist")
             return 0
 
-        # Process each video
-        count = 0
-        with get_db() as db:
-            for video in videos:
-                try:
-                    # Generate source_id
-                    source_id = f"youtube:{video['video_id']}"
+        # Process each video in parallel
+        tasks = [self._process_video(video, languages, force_reprocess) for video in videos]
+        results = await asyncio.gather(*tasks)
 
-                    # Check if already exists in Content table
-                    existing = (
-                        db.query(Content)
-                        .filter(
-                            Content.source_type == ContentSource.YOUTUBE,
-                            Content.source_id == source_id,
-                        )
-                        .first()
+        # Count successful ingestions
+        return sum(1 for r in results if r is True)
+
+    async def _process_video(
+        self, video: dict[str, Any], languages: list[str] | None, force_reprocess: bool
+    ) -> bool:
+        """Process a single video for the Content model."""
+        with get_db() as db:
+            try:
+                # Generate source_id
+                source_id = f"youtube:{video['video_id']}"
+
+                # Check if already exists in Content table
+                existing = (
+                    db.query(Content)
+                    .filter(
+                        Content.source_type == ContentSource.YOUTUBE,
+                        Content.source_id == source_id,
+                    )
+                    .first()
+                )
+                if existing and not force_reprocess:
+                    logger.debug(f"Video already exists: {video['title']}")
+                    return False
+
+                # Get transcript
+                transcript = self.client.get_transcript(video["video_id"], languages)
+                if not transcript:
+                    logger.warning(f"No transcript for: {video['title']}")
+                    return False
+
+                # Update transcript with video metadata
+                transcript.title = video["title"]
+                transcript.channel_title = video["channel_title"]
+                transcript.published_date = video["published_date"]
+                transcript.thumbnail_url = video.get("thumbnail_url")
+                transcript.playlist_id = video.get("playlist_id")
+
+                # Convert to markdown
+                markdown_content = transcript_to_markdown(transcript)
+
+                # Store raw transcript as JSON for re-parsing
+                raw_content = json.dumps(transcript.to_storage_dict())
+
+                # Generate content hash from markdown
+                content_hash = generate_markdown_hash(markdown_content)
+
+                # Check for content duplicate
+                content_duplicate = None
+                if not existing and content_hash:
+                    content_duplicate = (
+                        db.query(Content).filter(Content.content_hash == content_hash).first()
                     )
 
-                    if existing and not force_reprocess:
-                        logger.debug(f"Video already exists: {video['title']}")
-                        continue
+                video_url = transcript.video_url
 
-                    # Get transcript
-                    transcript = self.client.get_transcript(video["video_id"], languages)
+                # Build metadata
+                metadata_json = {
+                    "video_id": video["video_id"],
+                    "playlist_id": video["playlist_id"],
+                    "language": transcript.language,
+                    "is_auto_generated": transcript.is_auto_generated,
+                    "segment_count": len(transcript.segments),
+                    "duration_seconds": sum(s.duration for s in transcript.segments),
+                    "thumbnail_url": video.get("thumbnail_url"),
+                }
 
-                    if not transcript:
-                        logger.warning(f"No transcript for: {video['title']}")
-                        continue
+                # Optional: Extract keyframes
+                if settings.youtube_keyframe_extraction:
+                    metadata_json = await self._extract_keyframes(
+                        video_id=video["video_id"],
+                        transcript=transcript,
+                        metadata_json=metadata_json,
+                    )
 
-                    # Update transcript with video metadata
-                    transcript.title = video["title"]
-                    transcript.channel_title = video["channel_title"]
-                    transcript.published_date = video["published_date"]
-                    transcript.thumbnail_url = video.get("thumbnail_url")
-                    transcript.playlist_id = video.get("playlist_id")
+                if existing and force_reprocess:
+                    # Update existing
+                    existing.title = video["title"]
+                    existing.author = video["channel_title"]
+                    existing.publication = video["channel_title"]
+                    existing.published_date = video["published_date"]
+                    existing.source_url = video_url
+                    existing.markdown_content = markdown_content
+                    existing.raw_content = raw_content
+                    existing.raw_format = "transcript_json"
+                    existing.metadata_json = metadata_json
+                    existing.content_hash = content_hash
+                    existing.parser_used = "youtube_transcript_api"
+                    existing.status = ContentStatus.PARSED
+                    existing.error_message = None
+                    logger.info(f"Updated for reprocessing: {video['title']}")
+                elif content_duplicate:
+                    # Link to canonical
+                    content = Content(
+                        source_type=ContentSource.YOUTUBE,
+                        source_id=source_id,
+                        source_url=video_url,
+                        title=video["title"],
+                        author=video["channel_title"],
+                        publication=video["channel_title"],
+                        published_date=video["published_date"],
+                        markdown_content=markdown_content,
+                        raw_content=raw_content,
+                        raw_format="transcript_json",
+                        metadata_json=metadata_json,
+                        parser_used="youtube_transcript_api",
+                        content_hash=content_hash,
+                        canonical_id=content_duplicate.id,
+                        status=ContentStatus.COMPLETED,
+                    )
+                    db.add(content)
+                    logger.info(f"Linked duplicate: {video['title']}")
+                else:
+                    # Create new
+                    content = Content(
+                        source_type=ContentSource.YOUTUBE,
+                        source_id=source_id,
+                        source_url=video_url,
+                        title=video["title"],
+                        author=video["channel_title"],
+                        publication=video["channel_title"],
+                        published_date=video["published_date"],
+                        markdown_content=markdown_content,
+                        raw_content=raw_content,
+                        raw_format="transcript_json",
+                        metadata_json=metadata_json,
+                        parser_used="youtube_transcript_api",
+                        content_hash=content_hash,
+                        status=ContentStatus.PARSED,
+                    )
+                    db.add(content)
+                    logger.info(f"Ingested: {video['title']}")
+                return True
+            except Exception as e:
+                logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
+                db.rollback()
+                return False
 
-                    # Convert to markdown
-                    markdown_content = transcript_to_markdown(transcript)
-
-                    # Store raw transcript as JSON for re-parsing
-                    raw_content = json.dumps(transcript.to_storage_dict())
-
-                    # Generate content hash from markdown
-                    content_hash = generate_markdown_hash(markdown_content)
-
-                    # Check for content duplicate
-                    content_duplicate = None
-                    if not existing and content_hash:
-                        content_duplicate = (
-                            db.query(Content).filter(Content.content_hash == content_hash).first()
-                        )
-
-                    video_url = transcript.video_url
-
-                    # Build metadata
-                    metadata_json = {
-                        "video_id": video["video_id"],
-                        "playlist_id": playlist_id,
-                        "language": transcript.language,
-                        "is_auto_generated": transcript.is_auto_generated,
-                        "segment_count": len(transcript.segments),
-                        "duration_seconds": sum(s.duration for s in transcript.segments),
-                        "thumbnail_url": video.get("thumbnail_url"),
-                    }
-
-                    # Optional: Extract keyframes
-                    if settings.youtube_keyframe_extraction:
-                        metadata_json = self._extract_keyframes(
-                            video_id=video["video_id"],
-                            transcript=transcript,
-                            metadata_json=metadata_json,
-                        )
-
-                    if existing and force_reprocess:
-                        # Update existing
-                        existing.title = video["title"]
-                        existing.author = video["channel_title"]
-                        existing.publication = video["channel_title"]
-                        existing.published_date = video["published_date"]
-                        existing.source_url = video_url
-                        existing.markdown_content = markdown_content
-                        existing.raw_content = raw_content
-                        existing.raw_format = "transcript_json"
-                        existing.metadata_json = metadata_json
-                        existing.content_hash = content_hash
-                        existing.parser_used = "youtube_transcript_api"
-                        existing.status = ContentStatus.PARSED
-                        existing.error_message = None
-                        count += 1
-                        logger.info(f"Updated for reprocessing: {video['title']}")
-
-                    elif content_duplicate:
-                        # Link to canonical
-                        content = Content(
-                            source_type=ContentSource.YOUTUBE,
-                            source_id=source_id,
-                            source_url=video_url,
-                            title=video["title"],
-                            author=video["channel_title"],
-                            publication=video["channel_title"],
-                            published_date=video["published_date"],
-                            markdown_content=markdown_content,
-                            raw_content=raw_content,
-                            raw_format="transcript_json",
-                            metadata_json=metadata_json,
-                            parser_used="youtube_transcript_api",
-                            content_hash=content_hash,
-                            canonical_id=content_duplicate.id,
-                            status=ContentStatus.COMPLETED,
-                        )
-                        db.add(content)
-                        count += 1
-                        logger.info(f"Linked duplicate: {video['title']}")
-
-                    else:
-                        # Create new
-                        content = Content(
-                            source_type=ContentSource.YOUTUBE,
-                            source_id=source_id,
-                            source_url=video_url,
-                            title=video["title"],
-                            author=video["channel_title"],
-                            publication=video["channel_title"],
-                            published_date=video["published_date"],
-                            markdown_content=markdown_content,
-                            raw_content=raw_content,
-                            raw_format="transcript_json",
-                            metadata_json=metadata_json,
-                            parser_used="youtube_transcript_api",
-                            content_hash=content_hash,
-                            status=ContentStatus.PARSED,
-                        )
-                        db.add(content)
-                        count += 1
-                        logger.info(f"Ingested: {video['title']}")
-
-                except Exception as e:
-                    logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
-                    db.rollback()
-                    continue
-
-        logger.info(f"Successfully ingested {count} content items")
-        return count
-
-    def ingest_all_playlists(
+    async def ingest_all_playlists(
         self,
         playlist_ids: list[str] | None = None,
         max_videos_per_playlist: int = 10,
@@ -832,23 +824,20 @@ class YouTubeContentIngestionService:
             logger.warning("No YouTube playlists configured")
             return 0
 
-        total = 0
-        for playlist_id in playlist_ids:
-            try:
-                count = self.ingest_playlist(
-                    playlist_id=playlist_id,
-                    max_videos=max_videos_per_playlist,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                )
-                total += count
-            except Exception as e:
-                logger.error(f"Error ingesting playlist {playlist_id}: {e}")
-                continue
+        # Process each playlist in parallel
+        tasks = [
+            self.ingest_playlist(
+                playlist_id=playlist_id,
+                max_videos=max_videos_per_playlist,
+                after_date=after_date,
+                force_reprocess=force_reprocess,
+            )
+            for playlist_id in playlist_ids
+        ]
+        results = await asyncio.gather(*tasks)
+        return sum(results)
 
-        return total
-
-    def _extract_keyframes(
+    async def _extract_keyframes(
         self,
         video_id: str,
         transcript: YouTubeTranscript,
@@ -860,7 +849,7 @@ class YouTubeContentIngestionService:
 
             extractor = KeyframeExtractor()
 
-            if not extractor.is_available():
+            if not await extractor.is_available():
                 logger.warning("Keyframe extraction skipped: ffmpeg not available")
                 return metadata_json
 
@@ -869,7 +858,7 @@ class YouTubeContentIngestionService:
                 for seg in transcript.segments
             ]
 
-            result = extractor.extract_keyframes_for_video(
+            result = await extractor.extract_keyframes_for_video(
                 video_id=video_id,
                 transcript_segments=segments,
             )
@@ -953,22 +942,23 @@ def main() -> None:
     # Create service (uses unified Content model)
     service = YouTubeContentIngestionService(use_oauth=not args.public_only)
 
-    # Ingest
-    if args.playlist_id:
-        count = service.ingest_playlist(
-            playlist_id=args.playlist_id,
-            max_videos=args.max_videos,
-            after_date=after_date,
-            force_reprocess=args.force,
-        )
-    else:
-        count = service.ingest_all_playlists(
-            max_videos_per_playlist=args.max_videos,
-            after_date=after_date,
-            force_reprocess=args.force,
-        )
+    # Asynchronously run the ingestion process
+    async def run_ingestion():
+        if args.playlist_id:
+            await service.ingest_playlist(
+                playlist_id=args.playlist_id,
+                max_videos=args.max_videos,
+                after_date=after_date,
+                force_reprocess=args.force,
+            )
+        else:
+            await service.ingest_all_playlists(
+                max_videos_per_playlist=args.max_videos,
+                after_date=after_date,
+                force_reprocess=args.force,
+            )
 
-    print(f"Ingested {count} content items")
+    asyncio.run(run_ingestion())
 
 
 if __name__ == "__main__":
