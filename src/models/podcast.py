@@ -143,6 +143,9 @@ class PodcastRequest(BaseModel):
     custom_focus_topics: list[str] = Field(
         default_factory=list, description="Optional topics to emphasize"
     )
+    custom_instructions: str | None = Field(
+        None, description="Optional instructions for script generation (e.g. from chat)"
+    )
 
 
 class ScriptRevisionRequest(BaseModel):

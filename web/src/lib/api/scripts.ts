@@ -141,6 +141,28 @@ export async function generateScript(
 }
 
 /**
+ * Regenerate a podcast script based on chat conversation
+ *
+ * @param scriptId - Original script ID
+ * @param conversationId - Conversation ID containing instructions
+ * @returns Response with new script ID
+ */
+export async function regenerateScript(
+  scriptId: number,
+  conversationId: string
+): Promise<{
+  status: string
+  script_id: number
+  message: string
+}> {
+  return apiClient.post<{
+    status: string
+    script_id: number
+    message: string
+  }>(`/scripts/${scriptId}/regenerate`, { conversation_id: conversationId })
+}
+
+/**
  * Submit a review for a script
  *
  * @param scriptId - Script ID

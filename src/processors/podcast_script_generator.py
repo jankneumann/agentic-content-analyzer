@@ -372,6 +372,7 @@ class PodcastScriptGenerator:
             "summaries": summaries,
             "length": request.length,
             "custom_focus_topics": request.custom_focus_topics,
+            "custom_instructions": request.custom_instructions,
         }
 
     async def _generate_script_with_tools(
@@ -587,6 +588,11 @@ the get_newsletter_content tool.
                 f"\n## Custom Focus Topics\nPlease emphasize these topics: {topics}\n"
             )
 
+        # Format custom instructions if any
+        instructions_text = ""
+        if context.get("custom_instructions"):
+            instructions_text = f"\n## Custom Instructions\n{context['custom_instructions']}\n"
+
         word_target = WORD_COUNT_TARGETS[length]
 
         return f"""
@@ -616,6 +622,7 @@ You can use the `get_newsletter_content` tool to retrieve full text for any of t
 ## Newsletter Summaries
 {summaries_text}
 {focus_topics_text}
+{instructions_text}
 ## Instructions
 {length_prompt}
 

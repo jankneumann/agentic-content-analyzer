@@ -17,6 +17,8 @@ from src.models.podcast import (
     ScriptReviewAction,
     ScriptReviewRequest,
 )
+from src.models.chat import Conversation, MessageRole
+from src.models.podcast import PodcastScriptRecord
 from src.processors.podcast_script_generator import PodcastScriptGenerator
 from src.services.script_review_service import ScriptReviewService
 from src.storage.database import get_db
@@ -68,6 +70,12 @@ class SectionFeedbackRequest(BaseModel):
     feedback: str = Field(..., description="Reviewer feedback for this section")
 
 
+class RegenerateScriptRequest(BaseModel):
+    """Request to regenerate a script based on chat conversation."""
+
+    conversation_id: str = Field(..., description="Conversation ID containing instructions")
+
+
 class ReviewRequest(BaseModel):
     """Request to submit a review."""
 
@@ -96,9 +104,6 @@ class ReviewStatistics(BaseModel):
 
 async def generate_script_task(request: PodcastRequest) -> None:
     """Background task for script generation."""
-    from src.models.podcast import PodcastScriptRecord
-    from src.storage.database import get_db
-
     logger.info(f"Starting background script generation for digest {request.digest_id}")
 
     # Create initial record
@@ -113,6 +118,13 @@ async def generate_script_task(request: PodcastRequest) -> None:
         db.refresh(script_record)
         script_id = script_record.id
 
+    await regenerate_script_task(script_id, request)
+
+
+async def regenerate_script_task(script_id: int, request: PodcastRequest) -> None:
+    """Background task for script regeneration."""
+    logger.info(f"Starting background script generation/regeneration for script {script_id}")
+
     try:
         # Generate script
         generator = PodcastScriptGenerator()
@@ -123,6 +135,10 @@ async def generate_script_task(request: PodcastRequest) -> None:
             script_record = (
                 db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
+            if not script_record:
+                logger.error(f"Script {script_id} not found during generation")
+                return
+
             script_record.script_json = script.model_dump()
             script_record.title = script.title
             script_record.word_count = script.word_count
@@ -137,6 +153,18 @@ async def generate_script_task(request: PodcastRequest) -> None:
                 "input_tokens": generator.input_tokens,
                 "output_tokens": generator.output_tokens,
             }
+
+            # If there are custom instructions, save them in review notes/history
+            if request.custom_instructions:
+                history_entry = {
+                   "timestamp": getattr(script_record, 'created_at', None) and script_record.created_at.isoformat(),
+                   "action": "regeneration",
+                   "instructions": request.custom_instructions
+                }
+                history = script_record.revision_history or []
+                history.append(history_entry)
+                script_record.revision_history = history
+
             db.commit()
 
         logger.info(f"Script {script_id} generated successfully")
@@ -147,9 +175,10 @@ async def generate_script_task(request: PodcastRequest) -> None:
             script_record = (
                 db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
-            script_record.status = PodcastStatus.FAILED.value
-            script_record.error_message = str(e)
-            db.commit()
+            if script_record:
+                script_record.status = PodcastStatus.FAILED.value
+                script_record.error_message = str(e)
+                db.commit()
 
 
 # --- Endpoints ---
@@ -182,6 +211,80 @@ async def generate_script(
         "status": "queued",
         "message": f"Script generation started for digest {request.digest_id}",
         "length": request.length.value if hasattr(request.length, "value") else request.length,
+    }
+
+
+@router.post("/{script_id}/regenerate", response_model=dict)
+async def regenerate_script(
+    script_id: int,
+    request: RegenerateScriptRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Regenerate a podcast script based on chat conversation.
+
+    Creates a new script record (preview) and triggers generation.
+    Returns the new script ID immediately.
+    """
+    logger.info(f"Received script regeneration request for script {script_id}")
+
+    with get_db() as db:
+        # Get original script to find digest_id
+        original_script = (
+            db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
+        )
+        if not original_script:
+            raise HTTPException(status_code=404, detail="Script not found")
+
+        digest_id = original_script.digest_id
+        length_str = original_script.length
+
+        # Get conversation to build instructions
+        conversation = (
+            db.query(Conversation).filter(Conversation.id == request.conversation_id).first()
+        )
+
+        custom_instructions = None
+        if conversation:
+            # Extract user messages as instructions
+            user_messages = [
+                msg.content
+                for msg in conversation.messages
+                if msg.role == MessageRole.USER.value
+            ]
+            if user_messages:
+                custom_instructions = "User instructions:\n" + "\n".join(f"- {msg}" for msg in user_messages)
+
+        # Create new script record
+        new_script = PodcastScriptRecord(
+            digest_id=digest_id,
+            length=length_str,
+            status=PodcastStatus.SCRIPT_GENERATING.value,
+        )
+        db.add(new_script)
+        db.commit()
+        db.refresh(new_script)
+        new_script_id = new_script.id
+
+    # Build PodcastRequest
+    try:
+        podcast_length = PodcastLength(length_str)
+    except ValueError:
+        podcast_length = PodcastLength.STANDARD
+
+    podcast_request = PodcastRequest(
+        digest_id=digest_id,
+        length=podcast_length,
+        custom_instructions=custom_instructions,
+        # Inherit other settings from original if available, otherwise defaults
+    )
+
+    # Queue background task
+    background_tasks.add_task(regenerate_script_task, new_script_id, podcast_request)
+
+    return {
+        "status": "queued",
+        "script_id": new_script_id,
+        "message": f"Script regeneration started for script {script_id}",
     }
 
 
