@@ -17,32 +17,33 @@ Phase 4 (Model Cleanup)        ──── Depends on: Phase 3 + 2 weeks produc
 
 ---
 
-## Phase 1: Soft Deprecation
+## Phase 1: Soft Deprecation ✅
 
 **Dependencies**: None - can start immediately
+**Status**: Complete
 
 ### 1.1 Frontend Navigation
-- [ ] 1.1.1 Remove "Newsletters" link from sidebar navigation in `web/src/components/layout/`
-- [ ] 1.1.2 Keep route accessible for direct URL access (don't break bookmarks)
+- [x] 1.1.1 Remove "Newsletters" link from sidebar navigation in `web/src/lib/navigation.ts`
+- [x] 1.1.2 Keep route accessible for direct URL access (don't break bookmarks)
 
 ### 1.2 Deprecation Banner
-- [ ] 1.2.1 Create `DeprecationBanner` component in `web/src/components/ui/`
-- [ ] 1.2.2 Add banner to top of `newsletters.tsx` with message and link to `/contents`
-- [ ] 1.2.3 Style banner with warning colors (amber/yellow)
+- [x] 1.2.1 Create `DeprecationBanner` component in `web/src/components/ui/deprecation-banner.tsx`
+- [x] 1.2.2 Add banner to top of `newsletters.tsx` with message and link to `/contents`
+- [x] 1.2.3 Style banner with warning colors (amber/yellow)
 
 ### 1.3 TypeScript Deprecation
-- [ ] 1.3.1 Add `@deprecated` JSDoc to all exports in `web/src/types/newsletter.ts`
-- [ ] 1.3.2 Add `@deprecated` JSDoc to Newsletter hooks in `web/src/hooks/`
-- [ ] 1.3.3 Update IDE to show deprecation strikethrough (tsconfig if needed)
+- [x] 1.3.1 Add `@deprecated` JSDoc to all exports in `web/src/types/newsletter.ts`
+- [x] 1.3.2 Add `@deprecated` JSDoc to Newsletter hooks in `web/src/hooks/` (N/A - no hooks exist)
+- [x] 1.3.3 Update IDE to show deprecation strikethrough (N/A - default behavior with @deprecated)
 
 ### 1.4 Python Deprecation Warnings
-- [ ] 1.4.1 Add `warnings.warn()` to `Newsletter` model `__init__`
-- [ ] 1.4.2 Add deprecation docstring to `src/models/newsletter.py`
-- [ ] 1.4.3 Update `src/models/__init__.py` comment to mark Newsletter as deprecated
+- [x] 1.4.1 Add `warnings.warn()` to `src/models/newsletter.py` module level
+- [x] 1.4.2 Add deprecation docstring to `src/models/newsletter.py`
+- [x] 1.4.3 Update `src/models/__init__.py` docstring to mark Newsletter as deprecated
 
 ### 1.5 Documentation
-- [ ] 1.5.1 Update CLAUDE.md to emphasize Content over Newsletter
-- [ ] 1.5.2 Add deprecation notice to any Newsletter-related docs
+- [x] 1.5.1 Update CLAUDE.md to emphasize Content over Newsletter
+- [x] 1.5.2 Add deprecation notice to any Newsletter-related docs (in model docstrings)
 
 ---
 

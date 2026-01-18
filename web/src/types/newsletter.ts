@@ -1,32 +1,38 @@
 /**
  * Newsletter Types
  *
+ * @deprecated This entire module is deprecated. Use Content types from './content.ts' instead.
+ *
  * TypeScript interfaces for newsletter-related entities.
  * These types mirror the backend Python models in src/models/newsletter.py
  *
- * @see Backend model: src/models/newsletter.py
+ * Migration guide:
+ * - Newsletter → Content
+ * - NewsletterSource → ContentSource
+ * - NewsletterStatus → ContentStatus
+ * - NewsletterListItem → ContentListItem
+ * - NewsletterFilters → ContentFilters
+ *
+ * @see openspec/changes/deprecate-newsletter-model/ for deprecation plan
+ * @see Backend model: src/models/content.py (new unified model)
  */
 
 /**
  * Source of the newsletter content
- * - gmail: Fetched from Gmail inbox
- * - rss: Fetched from RSS/Substack feed
- * - youtube: Fetched from YouTube transcript
+ * @deprecated Use ContentSource from './content.ts' instead
  */
 export type NewsletterSource = "gmail" | "rss" | "youtube"
 
 /**
  * Processing status of a newsletter
- * - pending: Awaiting processing
- * - processing: Currently being summarized
- * - completed: Successfully processed
- * - failed: Processing encountered an error
+ * @deprecated Use ContentStatus from './content.ts' instead
  */
 export type NewsletterStatus = "pending" | "processing" | "completed" | "failed"
 
 /**
  * Link extracted from newsletter content
  * Represents a hyperlink found in the newsletter body
+ * @deprecated Use ExtractedLink from './content.ts' instead
  */
 export interface ExtractedLink {
   /** Display text of the link */
@@ -39,6 +45,8 @@ export interface ExtractedLink {
 
 /**
  * Newsletter entity
+ *
+ * @deprecated Use Content from './content.ts' instead.
  *
  * Represents a single newsletter or email that has been ingested.
  * This is the primary content source for the aggregation pipeline.
@@ -100,6 +108,8 @@ export interface Newsletter {
 /**
  * Newsletter list item (summary view)
  *
+ * @deprecated Use ContentListItem from './content.ts' instead.
+ *
  * Lightweight representation for list views.
  * Omits large fields like rawHtml and rawText.
  */
@@ -118,6 +128,7 @@ export interface NewsletterListItem {
 
 /**
  * Filters for newsletter list queries
+ * @deprecated Use ContentFilters from './content.ts' instead.
  */
 export interface NewsletterFilters {
   /** Filter by processing status */
@@ -140,6 +151,7 @@ export interface NewsletterFilters {
 
 /**
  * Request to trigger newsletter ingestion
+ * @deprecated Use IngestContentRequest from './content.ts' instead.
  */
 export interface IngestRequest {
   /** Source to ingest from */
@@ -152,6 +164,7 @@ export interface IngestRequest {
 
 /**
  * Response from ingestion trigger
+ * @deprecated Use IngestContentResponse from './content.ts' instead.
  */
 export interface IngestResponse {
   /** Task ID for tracking progress */

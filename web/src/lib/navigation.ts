@@ -11,7 +11,6 @@
  */
 
 import {
-  Newspaper,
   Library,
   Sparkles,
   BarChart3,
@@ -73,14 +72,11 @@ export const navigation: NavGroup[] = [
   {
     title: "Pipeline",
     items: [
+      // NOTE: Newsletters removed from nav - deprecated in favor of Contents
+      // Route still accessible at /newsletters with deprecation banner
+      // See: openspec/changes/deprecate-newsletter-model/
       {
-        title: "Newsletters",
-        href: "/newsletters",
-        icon: Newspaper,
-        description: "Ingested newsletters from Gmail and RSS",
-      },
-      {
-        title: "Contents",
+        title: "Content",
         href: "/contents",
         icon: Library,
         description: "Unified content from all sources",

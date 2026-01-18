@@ -156,6 +156,7 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` block for Docling types to avoid import errors when docling not installed
 
 ### Unified Content Model
+- **⚠️ Newsletter model is deprecated**: Use `Content` model for all new code. The Newsletter model, its TypeScript types, and `/newsletters` route are deprecated and will be removed in a future release. See `openspec/changes/deprecate-newsletter-model/` for migration guide.
 - **Prefer Content model**: Use `*ContentIngestionService` classes (e.g., `GmailContentIngestionService`, `RSSContentIngestionService`, `YouTubeContentIngestionService`, `FileContentIngestionService`) over legacy `*IngestionService` classes
 - **Content-based lookups**: Use `/summaries/by-content/{content_id}` endpoint for content-to-summary navigation
 - **Source types**: `ContentSource` enum defines: `GMAIL`, `RSS`, `YOUTUBE`, `FILE_UPLOAD`
@@ -170,7 +171,7 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 
 ### YouTube Ingestion
 - **YouTubeClient**: Handles YouTube Data API authentication (OAuth for private, API key for public playlists)
-- **YouTubeIngestionService**: Processes playlists and stores transcripts as Newsletter entries
+- **YouTubeContentIngestionService**: Processes playlists and stores transcripts as Content entries (prefer over deprecated `YouTubeIngestionService`)
 - **CLI entry point**: `python -m src.ingestion.youtube` with `--playlist-id`, `--public-only`, `--after-date` options
 - **Playlist config file**: `youtube_playlists.txt` with `PLAYLIST_ID | description` format
 - **API key fallback**: `settings.get_youtube_api_key()` returns YOUTUBE_API_KEY or falls back to GOOGLE_API_KEY

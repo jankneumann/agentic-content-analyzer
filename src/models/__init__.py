@@ -1,4 +1,12 @@
-"""Data models for the Newsletter Aggregator."""
+"""Data models for the Newsletter Aggregator.
+
+.. note::
+    The Newsletter model is deprecated. Use :class:`Content` instead for all new code.
+    The Content model provides unified handling for all source types (Gmail, RSS,
+    YouTube, file uploads) with markdown-first storage optimized for LLM consumption.
+
+    See: openspec/changes/deprecate-newsletter-model/ for migration guide.
+"""
 
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.content import Content, ContentSource, ContentStatus

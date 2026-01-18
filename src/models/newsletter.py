@@ -1,5 +1,22 @@
-"""Newsletter data models."""
+"""Newsletter data models.
 
+.. deprecated::
+    This module is deprecated. Use :mod:`src.models.content` instead.
+
+    The Newsletter model has been superseded by the unified Content model which supports
+    multiple source types (Gmail, RSS, YouTube, file uploads, webpages) with markdown-first
+    storage optimized for LLM consumption.
+
+    Migration guide:
+    - Newsletter → Content
+    - NewsletterSource → ContentSource
+    - ProcessingStatus → ContentStatus
+    - NewsletterData → ContentCreate
+
+    See: openspec/changes/deprecate-newsletter-model/ for the full deprecation plan.
+"""
+
+import warnings
 from datetime import datetime
 from enum import Enum
 
@@ -8,6 +25,14 @@ from sqlalchemy import JSON, Column, DateTime, Enum as SQLEnum, Integer, String,
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
+
+# Module-level deprecation warning
+warnings.warn(
+    "The newsletter module is deprecated. Use src.models.content instead. "
+    "See openspec/changes/deprecate-newsletter-model/ for migration guide.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class NewsletterSource(str, Enum):
@@ -31,7 +56,12 @@ class ProcessingStatus(str, Enum):
 
 
 class Newsletter(Base):  # type: ignore[valid-type, misc]
-    """Newsletter database model."""
+    """Newsletter database model.
+
+    .. deprecated::
+        Use :class:`src.models.content.Content` instead.
+        This model will be removed in a future release.
+    """
 
     __tablename__ = "newsletters"
 

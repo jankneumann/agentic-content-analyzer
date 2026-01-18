@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { DeprecationBanner } from "@/components/ui/deprecation-banner"
 import { useNewsletters, useNewsletter, useIngestNewsletters, useNewsletterStats } from "@/hooks"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
 import {
@@ -268,6 +269,15 @@ function NewslettersPage() {
         </div>
       }
     >
+      {/* Deprecation Banner */}
+      <DeprecationBanner
+        title="This page is deprecated"
+        message="The Newsletters page has been replaced by the Content page, which provides unified management for all content sources including Gmail, RSS, YouTube, and file uploads."
+        linkText="Go to Content"
+        linkHref="/contents"
+        className="mb-6"
+      />
+
       {/* Stats cards */}
       {stats && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
