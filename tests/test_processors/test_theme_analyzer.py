@@ -157,13 +157,6 @@ def test_theme_analyzer_large_context_warning():
             assert "not yet implemented" in mock_logger.warning.call_args[0][0]
 
 
-# TODO: Integration test - requires database setup
-# This test should be moved to integration tests as it requires real database access
-# The core logic is covered by unit tests above
-# @pytest.mark.asyncio
-# async def test_analyze_themes_success_integration():
-#     """Test successful theme analysis (INTEGRATION TEST - requires database)."""
-#     pass
 
 
 @pytest.mark.asyncio
@@ -179,7 +172,8 @@ async def test_analyze_themes_insufficient_newsletters():
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti:
             mock_graphiti.return_value.close = MagicMock()
 
-            with patch("src.storage.database.get_db") as mock_get_db:
+            # Note: mocking src.processors.theme_analyzer.get_db because that is where it is imported
+            with patch("src.processors.theme_analyzer.get_db") as mock_get_db:
                 mock_db = MagicMock()
                 # Return only 2 newsletters (less than min_newsletters=5)
                 mock_query = MagicMock()
@@ -408,19 +402,6 @@ def test_parse_theme_response_invalid_json(sample_newsletters):
         assert len(themes) == 0
 
 
-# TODO: Integration tests - require database setup
-# These tests should be moved to integration tests as they require real database access
-# The core logic is covered by unit tests above
-#
-# @pytest.mark.asyncio
-# async def test_fetch_newsletters_integration():
-#     """Test fetching newsletters from database (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.asyncio
-# async def test_fetch_summaries_integration():
-#     """Test fetching summaries from database (INTEGRATION TEST)."""
-#     pass
 
 
 @pytest.mark.asyncio
