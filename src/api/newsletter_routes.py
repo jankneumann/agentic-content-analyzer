@@ -38,7 +38,7 @@ DEPRECATION_MESSAGE = (
 def add_deprecation_headers(response: Response) -> None:
     """Add standard deprecation headers to response."""
     response.headers["Deprecation"] = "true"
-    response.headers["Sunset"] = "2025-12-31"
+    response.headers["Sunset"] = "2026-06-30"  # D4 target: Newsletter model removal
     response.headers["Link"] = '</api/v1/contents>; rel="successor-version"'
     response.headers["X-Deprecation-Notice"] = DEPRECATION_MESSAGE
 

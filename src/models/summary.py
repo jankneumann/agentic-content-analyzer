@@ -10,12 +10,18 @@ from src.models.newsletter import Base
 
 
 class NewsletterSummary(Base):
-    """Newsletter summary database model."""
+    """Newsletter summary database model.
+
+    Supports both legacy Newsletter FK and new Content FK for gradual migration.
+    New summaries should use content_id; newsletter_id is deprecated.
+    """
 
     __tablename__ = "newsletter_summaries"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    newsletter_id = Column(Integer, ForeignKey("newsletters.id"), nullable=False, unique=True)
+    # Legacy FK - deprecated, nullable for content-only summaries
+    newsletter_id = Column(Integer, ForeignKey("newsletters.id"), nullable=True, index=True)
+    # New unified model FK - preferred for all new summaries
     content_id = Column(
         Integer, ForeignKey("contents.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -48,13 +54,14 @@ class NewsletterSummary(Base):
 
     # Relationships
     newsletter = relationship("Newsletter", backref="summary")
+    content = relationship("Content", backref="summary")
 
 
 class SummaryData(BaseModel):
     """Pydantic model for summary data transfer."""
 
-    newsletter_id: int  # Legacy: FK to newsletters table
-    content_id: int | None = None  # New: FK to contents table (unified model)
+    newsletter_id: int | None = None  # Legacy: FK to newsletters table (deprecated)
+    content_id: int | None = None  # New: FK to contents table (preferred)
     executive_summary: str
     key_themes: list[str] = Field(default_factory=list)
     strategic_insights: list[str] = Field(default_factory=list)

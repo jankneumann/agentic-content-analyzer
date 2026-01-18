@@ -311,15 +311,10 @@ class NewsletterSummarizer:
                 logger.error(f"Content {content_id} not found")
                 return False
 
-            # Check if already summarized (check for existing summary with content_id)
-            # Note: For now, we use newsletter_id=0 as a marker for content-based summaries
-            # In future migration, we'll update the schema to properly link content_id
+            # Check if already summarized using content_id FK
             existing = (
                 db.query(NewsletterSummary)
-                .filter(
-                    NewsletterSummary.newsletter_id == 0,
-                    NewsletterSummary.executive_summary.contains(f"[content_id:{content_id}]"),
-                )
+                .filter(NewsletterSummary.content_id == content_id)
                 .first()
             )
 
@@ -360,12 +355,10 @@ class NewsletterSummarizer:
                 markdown_content = generate_summary_markdown(summary_dict)
                 theme_tags = extract_summary_theme_tags(summary_dict)
 
-                # Create summary record
-                # Note: Using newsletter_id=0 as marker and embedding content_id in exec summary
-                # This is a temporary solution until proper schema migration
+                # Create summary record with content_id FK (newsletter_id is deprecated)
                 summary = NewsletterSummary(
-                    newsletter_id=0,  # Marker for content-based summaries
-                    executive_summary=f"[content_id:{content_id}] {summary_data.executive_summary}",
+                    content_id=content_id,
+                    executive_summary=summary_data.executive_summary,
                     key_themes=summary_data.key_themes,
                     strategic_insights=summary_data.strategic_insights,
                     technical_details=summary_data.technical_details,
