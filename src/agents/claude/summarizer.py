@@ -4,7 +4,7 @@ import json
 import time
 from typing import TYPE_CHECKING, Any
 
-from anthropic import Anthropic
+from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex
 
 from src.agents.base import AgentResponse, SummarizationAgent
 from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
@@ -47,6 +47,47 @@ class ClaudeAgent(SummarizationAgent):
         super().__init__(model_config=model_config, step=step, model=model, api_key=api_key)
         logger.info(f"Initialized Claude agent with model: {self.model}")
 
+    def _get_client(self, provider_config: ProviderConfig) -> Any:
+        """
+        Create the appropriate Anthropic client based on the provider configuration.
+
+        Args:
+            provider_config: Provider configuration details
+
+        Returns:
+            Instantiated client (Anthropic, AnthropicBedrock, or AnthropicVertex)
+
+        Raises:
+            ValueError: If the provider is not supported
+        """
+        if provider_config.provider == Provider.ANTHROPIC:
+            return Anthropic(api_key=provider_config.api_key)
+
+        elif provider_config.provider == Provider.AWS_BEDROCK:
+            # For AWS Bedrock, credentials are typically handled via environment variables
+            # (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) or IAM roles.
+            # ProviderConfig might supply region if not in env.
+            kwargs = {}
+            if provider_config.region:
+                kwargs["aws_region"] = provider_config.region
+
+            return AnthropicBedrock(**kwargs)
+
+        elif provider_config.provider == Provider.GOOGLE_VERTEX:
+            # For Vertex AI, authentication is typically handled via Application Default Credentials (ADC)
+            # or 'gcloud auth application-default login'.
+            # Project ID and region are needed.
+            kwargs = {}
+            if provider_config.region:
+                kwargs["region"] = provider_config.region
+            if provider_config.project_id:
+                kwargs["project_id"] = provider_config.project_id
+
+            return AnthropicVertex(**kwargs)
+
+        else:
+            raise ValueError(f"Unsupported provider for ClaudeAgent: {provider_config.provider}")
+
     def summarize_newsletter(self, newsletter: Newsletter) -> AgentResponse:
         """
         Summarize a newsletter using Claude SDK with provider failover.
@@ -66,24 +107,25 @@ class ClaudeAgent(SummarizationAgent):
         except ValueError as e:
             return AgentResponse(success=False, error=str(e))
 
-        # Filter for Anthropic-compatible providers (Anthropic, AWS Bedrock, etc.)
-        # For now, only support direct Anthropic API
-        # TODO: Add AWS Bedrock, Vertex AI, Azure support
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+        # Filter for Anthropic-compatible providers (Anthropic, AWS Bedrock, Vertex AI)
+        compatible_providers = [
+            p for p in providers
+            if p.provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX)
+        ]
 
-        if not anthropic_providers:
-            error_msg = f"No Anthropic-compatible providers configured for model {self.model}"
+        if not compatible_providers:
+            error_msg = f"No Anthropic-compatible providers (Anthropic, Bedrock, Vertex) configured for model {self.model}"
             logger.error(error_msg)
             return AgentResponse(success=False, error=error_msg)
 
         # Try each provider in order (failover support)
         last_error = None
-        for provider_config in anthropic_providers:
+        for provider_config in compatible_providers:
             try:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
 
                 # Create client for this provider
-                client = Anthropic(api_key=provider_config.api_key)
+                client = self._get_client(provider_config)
 
                 # Get provider-specific model ID for API call
                 provider_model_id = self.model_config.get_provider_model_id(
@@ -187,21 +229,24 @@ class ClaudeAgent(SummarizationAgent):
             return AgentResponse(success=False, error=str(e))
 
         # Filter for Anthropic-compatible providers
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+        compatible_providers = [
+            p for p in providers
+            if p.provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX)
+        ]
 
-        if not anthropic_providers:
+        if not compatible_providers:
             error_msg = f"No Anthropic-compatible providers configured for model {self.model}"
             logger.error(error_msg)
             return AgentResponse(success=False, error=error_msg)
 
         # Try each provider in order (failover support)
         last_error = None
-        for provider_config in anthropic_providers:
+        for provider_config in compatible_providers:
             try:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
 
                 # Create client for this provider
-                client = Anthropic(api_key=provider_config.api_key)
+                client = self._get_client(provider_config)
 
                 # Get provider-specific model ID for API call
                 provider_model_id = self.model_config.get_provider_model_id(
@@ -339,21 +384,24 @@ class ClaudeAgent(SummarizationAgent):
             return AgentResponse(success=False, error=str(e))
 
         # Filter for Anthropic-compatible providers
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+        compatible_providers = [
+            p for p in providers
+            if p.provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX)
+        ]
 
-        if not anthropic_providers:
+        if not compatible_providers:
             error_msg = f"No Anthropic-compatible providers configured for model {self.model}"
             logger.error(error_msg)
             return AgentResponse(success=False, error=error_msg)
 
         # Try each provider in order (failover support)
         last_error = None
-        for provider_config in anthropic_providers:
+        for provider_config in compatible_providers:
             try:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
 
                 # Create client for this provider
-                client = Anthropic(api_key=provider_config.api_key)
+                client = self._get_client(provider_config)
 
                 # Get provider-specific model ID for API call
                 provider_model_id = self.model_config.get_provider_model_id(
