@@ -57,6 +57,9 @@ dependencies = [
     # Document Parsing
     "markitdown>=0.1.0",  # Microsoft's document to markdown converter
     "docling>=2.60.0",  # IBM's advanced document parser with table extraction
+
+    # HTML to Markdown Conversion
+    "trafilatura>=2.0.0",  # Academic-quality web content extraction
 ]
 
 [project.optional-dependencies]

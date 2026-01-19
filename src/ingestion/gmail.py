@@ -60,7 +60,11 @@ class ContentData(BaseModel):
 
 
 def html_to_markdown(html: str) -> str:
-    """Convert HTML to markdown using MarkItDown parser.
+    """Convert HTML to markdown using Trafilatura-based converter.
+
+    Uses a two-tier extraction approach:
+    - Primary: Trafilatura for fast, high-quality extraction (~50ms)
+    - Fallback: MarkItDown if Trafilatura is unavailable
 
     Args:
         html: HTML content to convert
@@ -71,6 +75,37 @@ def html_to_markdown(html: str) -> str:
     if not html:
         return ""
 
+    try:
+        from src.parsers.html_markdown import convert_html_to_markdown
+
+        result = convert_html_to_markdown(html=html)
+        if result:
+            return result
+
+        # If converter returned empty, fall back to text
+        logger.debug("HTML-to-markdown converter returned empty, using text fallback")
+        return html_to_text(html)
+
+    except ImportError:
+        # Trafilatura not installed, use legacy MarkItDown approach
+        logger.debug("Trafilatura not available, using MarkItDown fallback")
+        return _html_to_markdown_markitdown(html)
+    except Exception as e:
+        logger.warning(f"HTML-to-markdown conversion failed, falling back to text: {e}")
+        return html_to_text(html)
+
+
+def _html_to_markdown_markitdown(html: str) -> str:
+    """Legacy MarkItDown-based HTML to markdown conversion.
+
+    Used as fallback when Trafilatura is not available.
+
+    Args:
+        html: HTML content to convert
+
+    Returns:
+        Markdown representation of the HTML
+    """
     try:
         from src.parsers.markitdown_parser import MarkItDownParser
 
@@ -98,7 +133,6 @@ def html_to_markdown(html: str) -> str:
 
     except Exception as e:
         logger.warning(f"MarkItDown conversion failed, falling back to text: {e}")
-        # Fallback to plain text if markdown conversion fails
         return html_to_text(html)
 
 
@@ -727,9 +761,7 @@ class GmailContentIngestionService:
                     # If not found by source_id, check by content_hash (cross-source duplicate)
                     content_duplicate = None
                     if not existing and content_data.content_hash:
-                        content_duplicate = existing_by_content_hash.get(
-                            content_data.content_hash
-                        )
+                        content_duplicate = existing_by_content_hash.get(content_data.content_hash)
 
                     if existing:
                         if force_reprocess:
