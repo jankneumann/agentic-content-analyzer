@@ -340,7 +340,7 @@ function SummariesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Newsletter</TableHead>
+                  <TableHead>Content</TableHead>
                   <TableHead className="w-[200px]">Key Themes</TableHead>
                   <TableHead className="w-[120px]">Model</TableHead>
                   <TableHead className="w-[100px]">Time</TableHead>
@@ -553,11 +553,11 @@ function SummaryRow({
       <TableCell>
         <div>
           <div className="font-medium line-clamp-1">
-            <span className="text-muted-foreground font-normal">[{summary.id}]</span>{" "}
-            {summary.newsletter_title ?? (summary.newsletter_id ? `Newsletter #${summary.newsletter_id}` : `Content #${summary.content_id ?? "?"}`)}
+            <span className="text-muted-foreground font-normal">[{summary.content_id}]</span>{" "}
+            {summary.title}
           </div>
           <div className="text-sm text-muted-foreground line-clamp-1">
-            {summary.newsletter_id ? `Newsletter [${summary.newsletter_id}]` : `Content [${summary.content_id}]`} • {summary.executive_summary_preview}
+            {summary.publication ?? "Unknown"} • {summary.executive_summary_preview}
           </div>
         </div>
       </TableCell>
@@ -617,8 +617,8 @@ function SummaryRow({
           >
             <Link
               to="/review/summary/$id"
-              params={{ id: String(summary.newsletter_id ?? summary.content_id ?? summary.id) }}
-              search={summary.newsletter_id ? undefined : { source: "content" }}
+              params={{ id: String(summary.content_id) }}
+              search={{ source: "content" }}
               title="Review summary"
             >
               <FileSearch className="h-4 w-4" />

@@ -509,3 +509,54 @@ class NewsletterSummarizer:
         logger.info(f"Successfully summarized {created_count}/{len(pending_ids)} content records")
         # created_count is always int from summarize_contents
         return int(created_count)  # type: ignore[arg-type]
+
+    def summarize_content_with_feedback(
+        self, content_id: int, feedback_context: str | None
+    ) -> dict | None:
+        """
+        Regenerate a summary with user feedback (preview mode - doesn't save to DB).
+
+        Args:
+            content_id: Content ID to summarize
+            feedback_context: Formatted feedback and context selections from user
+
+        Returns:
+            Dictionary with summary fields if successful, None otherwise
+        """
+        with get_db() as db:
+            content = db.query(Content).filter(Content.id == content_id).first()
+
+            if not content:
+                logger.error(f"Content {content_id} not found")
+                return None
+
+            try:
+                logger.info(f"Regenerating content with feedback: {content.title}")
+                response = self.agent.summarize_content_with_feedback(content, feedback_context)
+
+                if not response.success:
+                    logger.error(f"Regeneration failed: {response.error}")
+                    return None
+
+                # Return summary data as dict (without saving to DB)
+                summary_data = response.data
+                return {
+                    "content_id": content_id,
+                    "executive_summary": summary_data.executive_summary,
+                    "key_themes": summary_data.key_themes,
+                    "strategic_insights": summary_data.strategic_insights,
+                    "technical_details": summary_data.technical_details,
+                    "actionable_items": summary_data.actionable_items,
+                    "notable_quotes": summary_data.notable_quotes,
+                    "relevant_links": summary_data.relevant_links,
+                    "relevance_scores": summary_data.relevance_scores,
+                    "agent_framework": summary_data.agent_framework,
+                    "model_used": summary_data.model_used,
+                    "model_version": summary_data.model_version,
+                    "token_usage": summary_data.token_usage,
+                    "processing_time_seconds": summary_data.processing_time_seconds,
+                }
+
+            except Exception as e:
+                logger.error(f"Error regenerating content {content_id}: {e}")
+                return None

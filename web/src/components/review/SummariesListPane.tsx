@@ -110,12 +110,12 @@ function CollapsibleSummary({ summary, defaultOpen = false }: CollapsibleSummary
             )}
             <div className="flex-1 text-left min-w-0">
               <div className="font-medium truncate">
-                <span className="text-muted-foreground font-normal">[{summary.newsletter_id ?? summary.content_id}]</span>{" "}
-                {summary.newsletter_title}
+                <span className="text-muted-foreground font-normal">[{summary.content_id}]</span>{" "}
+                {summary.title}
               </div>
-              {summary.newsletter_publication && (
+              {summary.publication && (
                 <div className="text-xs text-muted-foreground truncate">
-                  {summary.newsletter_publication}
+                  {summary.publication}
                 </div>
               )}
             </div>
