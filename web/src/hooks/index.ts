@@ -4,7 +4,11 @@
  * Central export point for all custom hooks.
  */
 
-// Newsletter hooks
+/**
+ * Newsletter hooks
+ * @deprecated Use Content hooks from './use-contents' instead.
+ * These hooks will be removed in Phase 4 of Newsletter deprecation.
+ */
 export {
   useNewsletters,
   useNewsletter,

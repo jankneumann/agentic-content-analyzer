@@ -1,10 +1,10 @@
 /**
- * Newsletter Types
+ * Newsletter Types - DEPRECATED
  *
  * @deprecated This entire module is deprecated. Use Content types from './content.ts' instead.
  *
- * TypeScript interfaces for newsletter-related entities.
- * These types mirror the backend Python models in src/models/newsletter.py
+ * These types are now aliases to Content types for backward compatibility.
+ * All new code should import from './content.ts' directly.
  *
  * Migration guide:
  * - Newsletter → Content
@@ -12,27 +12,35 @@
  * - NewsletterStatus → ContentStatus
  * - NewsletterListItem → ContentListItem
  * - NewsletterFilters → ContentFilters
+ * - IngestRequest → ContentFilters (for ingestion params)
  *
  * @see openspec/changes/deprecate-newsletter-model/ for deprecation plan
  * @see Backend model: src/models/content.py (new unified model)
  */
 
+import type {
+  Content,
+  ContentSource,
+  ContentStatus,
+  ContentListItem,
+  ContentFilters,
+} from "./content"
+
 /**
  * Source of the newsletter content
  * @deprecated Use ContentSource from './content.ts' instead
  */
-export type NewsletterSource = "gmail" | "rss" | "youtube"
+export type NewsletterSource = ContentSource
 
 /**
  * Processing status of a newsletter
  * @deprecated Use ContentStatus from './content.ts' instead
  */
-export type NewsletterStatus = "pending" | "processing" | "completed" | "failed"
+export type NewsletterStatus = ContentStatus
 
 /**
  * Link extracted from newsletter content
- * Represents a hyperlink found in the newsletter body
- * @deprecated Use ExtractedLink from './content.ts' instead
+ * @deprecated Use links_json from Content instead
  */
 export interface ExtractedLink {
   /** Display text of the link */
@@ -48,110 +56,31 @@ export interface ExtractedLink {
  *
  * @deprecated Use Content from './content.ts' instead.
  *
- * Represents a single newsletter or email that has been ingested.
- * This is the primary content source for the aggregation pipeline.
- * Field names use snake_case to match the Python backend API responses.
+ * This type is an alias to Content for backward compatibility.
+ * Field mapping:
+ * - source → source_type
+ * - sender → author
+ * - raw_html/raw_text → markdown_content
+ * - canonical_newsletter_id → canonical_id
  */
-export interface Newsletter {
-  /** Unique identifier */
-  id: number
-
-  /** Source of the newsletter */
-  source: NewsletterSource
-
-  /** External ID from the source system (e.g., Gmail message ID) */
-  source_id: string
-
-  /** Subject line or title of the newsletter */
-  title: string
-
-  /** Sender email address or name */
-  sender: string | null
-
-  /** Publication name if available (e.g., "The Batch", "TLDR AI") */
-  publication: string | null
-
-  /** When the newsletter was originally published/sent */
-  published_date: string // ISO 8601 date string
-
-  /** URL if available */
-  url: string | null
-
-  /** Raw HTML content of the newsletter */
-  raw_html: string | null
-
-  /** Plain text extraction of content */
-  raw_text: string | null
-
-  /** Links extracted from the content */
-  extracted_links: string[] | null
-
-  /** SHA-256 hash for deduplication */
-  content_hash: string | null
-
-  /** Canonical newsletter ID */
-  canonical_newsletter_id: number | null
-
-  /** Current processing status */
-  status: NewsletterStatus
-
-  /** When the newsletter was ingested into the system */
-  ingested_at: string // ISO 8601 date string
-
-  /** When processing completed (if applicable) */
-  processed_at: string | null
-
-  /** Error message if status is 'failed' */
-  error_message: string | null
-}
+export type Newsletter = Content
 
 /**
  * Newsletter list item (summary view)
  *
  * @deprecated Use ContentListItem from './content.ts' instead.
- *
- * Lightweight representation for list views.
- * Omits large fields like rawHtml and rawText.
  */
-export interface NewsletterListItem {
-  id: number
-  source: NewsletterSource
-  title: string
-  sender: string | null
-  publication: string | null
-  published_date: string
-  status: NewsletterStatus
-  ingested_at: string
-  /** Whether a summary exists for this newsletter */
-  has_summary: boolean
-}
+export type NewsletterListItem = ContentListItem
 
 /**
  * Filters for newsletter list queries
  * @deprecated Use ContentFilters from './content.ts' instead.
  */
-export interface NewsletterFilters {
-  /** Filter by processing status */
-  status?: NewsletterStatus
-  /** Filter by source type */
-  source?: NewsletterSource
-  /** Filter by publication name */
-  publication?: string
-  /** Filter newsletters after this date */
-  start_date?: string
-  /** Filter newsletters before this date */
-  end_date?: string
-  /** Search in title and sender */
-  search?: string
-  /** Number of items to return */
-  limit?: number
-  /** Offset for pagination */
-  offset?: number
-}
+export type NewsletterFilters = ContentFilters
 
 /**
  * Request to trigger newsletter ingestion
- * @deprecated Use IngestContentRequest from './content.ts' instead.
+ * @deprecated Use the content ingestion API instead.
  */
 export interface IngestRequest {
   /** Source to ingest from */
@@ -164,7 +93,7 @@ export interface IngestRequest {
 
 /**
  * Response from ingestion trigger
- * @deprecated Use IngestContentResponse from './content.ts' instead.
+ * @deprecated Use the content ingestion API response instead.
  */
 export interface IngestResponse {
   /** Task ID for tracking progress */

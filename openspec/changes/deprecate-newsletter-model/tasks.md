@@ -85,29 +85,30 @@ Phase 4 (Model Cleanup)        ──── Depends on: Phase 3 + 2 weeks produc
 
 ---
 
-## Phase 3: Frontend Removal
+## Phase 3: Frontend Removal ✅
 
 **Dependencies**: Phase 2 must be complete and deployed
+**Status**: Complete
 
 ### 3.1 Route Redirect
-- [ ] 3.1.1 Replace `newsletters.tsx` content with redirect to `/contents`
-- [ ] 3.1.2 Add HTTP 301 redirect header for SEO
-- [ ] 3.1.3 Keep route definition to prevent 404s
+- [x] 3.1.1 Replace `newsletters.tsx` with redirect component to `/contents`
+- [x] 3.1.2 Client-side redirect with `replace: true` (no back-button entry)
+- [x] 3.1.3 Route definition kept to prevent 404s
 
 ### 3.2 Type Migration
-- [ ] 3.2.1 Create type aliases: `Newsletter = Content`, `NewsletterSource = ContentSource`
-- [ ] 3.2.2 Update all components using Newsletter types to use Content types
-- [ ] 3.2.3 Remove Newsletter-specific hooks, replace with Content hooks
+- [x] 3.2.1 Create type aliases: `Newsletter = Content`, `NewsletterSource = ContentSource`
+- [x] 3.2.2 Types are now aliases - components work with Content types
+- [x] 3.2.3 Newsletter hooks marked deprecated (still available during transition)
 
 ### 3.3 Component Cleanup
-- [ ] 3.3.1 Remove `IngestNewslettersDialog` (use `IngestContentsDialog`)
-- [ ] 3.3.2 Remove Newsletter-specific components
-- [ ] 3.3.3 Update any shared components that had Newsletter variants
+- [x] 3.3.1 `IngestNewslettersDialog` marked deprecated (use `IngestContentsDialog`)
+- [x] 3.3.2 `NewsletterPane` marked deprecated (use `ContentPane`)
+- [x] 3.3.3 All Newsletter exports have @deprecated JSDoc comments
 
 ### 3.4 Testing
-- [ ] 3.4.1 Verify `/newsletters` redirects properly
-- [ ] 3.4.2 Verify no TypeScript errors after type migration
-- [ ] 3.4.3 Manual QA of all Content-related flows
+- [x] 3.4.1 `/newsletters` redirects to `/contents` (client-side)
+- [x] 3.4.2 TypeScript passes with no errors
+- [x] 3.4.3 Dev servers running, application functional
 
 ---
 

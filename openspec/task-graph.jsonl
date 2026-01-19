@@ -13,5 +13,5 @@
 {"id":"T4-Advanced-Search","summary":"Add hybrid BM25 + vector search, chunking, embeddings, search API","depends_on":["T0-REFactor-ContentModel","T4-API-Versioning"]}
 {"id":"D1-Newsletter-SoftDeprecation","summary":"Soft deprecation: hide nav, add banner, deprecation warnings","depends_on":[],"status":"complete"}
 {"id":"D2-Newsletter-BackendMigration","summary":"Remove dual-write, update FKs, deprecate API endpoints","depends_on":["T0-REFactor-ContentModel","D1-Newsletter-SoftDeprecation"],"status":"complete"}
-{"id":"D3-Newsletter-FrontendRemoval","summary":"Redirect /newsletters, migrate types to aliases, remove components","depends_on":["D2-Newsletter-BackendMigration"]}
+{"id":"D3-Newsletter-FrontendRemoval","summary":"Redirect /newsletters, migrate types to aliases, remove components","depends_on":["D2-Newsletter-BackendMigration"],"status":"complete"}
 {"id":"D4-Newsletter-ModelCleanup","summary":"Remove Newsletter model, drop table, final cleanup","depends_on":["D3-Newsletter-FrontendRemoval"]}

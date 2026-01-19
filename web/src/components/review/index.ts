@@ -7,6 +7,7 @@
 export { ReviewLayout, ReviewPaneHeader } from "./ReviewLayout"
 export { ReviewHeader } from "./ReviewHeader"
 export { ContentPane } from "./ContentPane"
+/** @deprecated Use ContentPane instead - NewsletterPane will be removed in Phase 4 */
 export { NewsletterPane } from "./NewsletterPane"
 export { SummaryPane } from "./SummaryPane"
 export { SummaryPreview } from "./SummaryPreview"
