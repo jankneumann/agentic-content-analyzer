@@ -150,7 +150,7 @@ dev:  ## Start both frontend and backend for development (requires tmux or run i
 dev-bg:  ## Start frontend and backend in background (logs to .dev-logs/)
 	@mkdir -p .dev-logs
 	@echo "Starting backend API on http://localhost:8000..."
-	@nohup uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000 > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
+	@nohup bash -c 'source .venv/bin/activate && uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000' > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
 	@echo "Starting frontend on http://localhost:5173..."
 	@nohup sh -c 'cd web && npm run dev' > .dev-logs/web.log 2>&1 & echo $$! > .dev-logs/web.pid
 	@sleep 2

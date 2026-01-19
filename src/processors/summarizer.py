@@ -385,6 +385,19 @@ class NewsletterSummarizer:
 
             except Exception as e:
                 db.rollback()
+                # Check if this is a unique constraint violation (race condition)
+                # This happens when another process already created the summary
+                error_str = str(e)
+                if "UniqueViolation" in error_str or "unique constraint" in error_str.lower():
+                    logger.info(
+                        f"Content {content_id} was summarized by another process (race condition)"
+                    )
+                    # Update content status since summary exists
+                    content.status = ContentStatus.COMPLETED
+                    content.processed_at = datetime.utcnow()
+                    db.commit()
+                    return True
+
                 content.status = ContentStatus.FAILED
                 content.error_message = str(e)
                 db.commit()
@@ -414,12 +427,28 @@ class NewsletterSummarizer:
             logger.info(f"Processing content {i}/{len(content_ids)} (ID: {content_id})...")
 
             try:
-                # Check if already summarized
+                # Check if already summarized (by status or existing summary)
                 with get_db() as db:
                     content = db.query(Content).filter(Content.id == content_id).first()
                     if content and content.status == ContentStatus.COMPLETED:
                         skipped_count += 1
-                        logger.info(f"Content {content_id} already processed, skipping")
+                        logger.info(f"Content {content_id} already completed, skipping")
+                        continue
+
+                    # Also check if summary exists (in case status wasn't updated)
+                    existing_summary = (
+                        db.query(NewsletterSummary)
+                        .filter(NewsletterSummary.content_id == content_id)
+                        .first()
+                    )
+                    if existing_summary:
+                        skipped_count += 1
+                        logger.info(f"Content {content_id} already has summary, skipping")
+                        # Update content status if not already completed
+                        if content and content.status != ContentStatus.COMPLETED:
+                            content.status = ContentStatus.COMPLETED
+                            content.processed_at = datetime.utcnow()
+                            db.commit()
                         continue
 
                 # Create summary

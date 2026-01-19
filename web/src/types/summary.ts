@@ -13,8 +13,8 @@
 /**
  * Newsletter Summary entity
  *
- * Contains structured information extracted from a newsletter by the LLM.
- * Each newsletter has at most one summary (1:1 relationship).
+ * Contains structured information extracted from a newsletter or content by the LLM.
+ * Supports both legacy Newsletter model and new unified Content model.
  *
  * Note: Field names use snake_case to match the Python backend API responses.
  */
@@ -22,8 +22,11 @@ export interface NewsletterSummary {
   /** Unique identifier */
   id: number
 
-  /** ID of the newsletter this summary belongs to */
-  newsletter_id: number
+  /** ID of the newsletter this summary belongs to (null for content-only) */
+  newsletter_id: number | null
+
+  /** ID of the content this summary belongs to (null for newsletter-only) */
+  content_id?: number | null
 
   /**
    * Executive summary - 2-3 sentence high-level overview
@@ -106,12 +109,16 @@ export interface NewsletterSummary {
 /**
  * Summary list item (lightweight view)
  *
- * For displaying in lists without full content
+ * For displaying in lists without full content.
+ * Supports both newsletter-based and content-based summaries.
  */
 export interface SummaryListItem {
   id: number
-  newsletter_id: number
-  /** Newsletter title for display */
+  /** Newsletter ID (null for content-only summaries) */
+  newsletter_id: number | null
+  /** Content ID for unified Content model */
+  content_id?: number | null
+  /** Newsletter/Content title for display */
   newsletter_title?: string
   /** Newsletter publication name */
   newsletter_publication?: string | null

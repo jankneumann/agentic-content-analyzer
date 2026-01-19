@@ -33,8 +33,13 @@ import {
   fetchContentDuplicates,
   mergeContentDuplicate,
   ingestContents,
+  summarizeContents,
+  trackContentSummarization,
   type IngestContentParams,
+  type SummarizeContentParams,
+  type ContentSummarizationProgressEvent,
 } from "@/lib/api/contents"
+import { useState } from "react"
 import type { ContentFilters, ContentCreateRequest } from "@/types"
 
 /**
@@ -291,5 +296,91 @@ export function usePrefetchContent() {
       queryKey: queryKeys.contents.detail(id),
       queryFn: () => fetchContent(id),
     })
+  }
+}
+
+/**
+ * Hook to trigger content summarization with SSE progress tracking
+ *
+ * Starts a background task to summarize content records.
+ * Tracks progress via Server-Sent Events.
+ *
+ * @returns Mutation object with progress state
+ *
+ * @example
+ * const { mutate: summarize, isPending, isProcessing, progress } = useSummarizeContents()
+ *
+ * summarize({
+ *   content_ids: [1, 2, 3], // Optional: empty = all pending
+ *   force: false,
+ * }, {
+ *   onSuccess: (result) => {
+ *     console.log(`Summarized ${result.completed} items`)
+ *   },
+ * })
+ */
+export function useSummarizeContents() {
+  const queryClient = useQueryClient()
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [progress, setProgress] = useState<ContentSummarizationProgressEvent | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: async (params: SummarizeContentParams) => {
+      // Start the summarization task
+      const response = await summarizeContents(params)
+
+      if (response.queued_count === 0) {
+        // No content to summarize
+        return {
+          status: "completed" as const,
+          progress: 100,
+          total: 0,
+          processed: 0,
+          completed: 0,
+          failed: 0,
+          current_content_id: null,
+          message: response.message,
+          started_at: new Date().toISOString(),
+        }
+      }
+
+      // Track progress via SSE
+      setIsProcessing(true)
+      try {
+        const finalEvent = await trackContentSummarization(
+          response.task_id,
+          (event) => setProgress(event)
+        )
+        return finalEvent
+      } finally {
+        setIsProcessing(false)
+      }
+    },
+    onSuccess: () => {
+      // Invalidate content list to show updated statuses
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contents.lists(),
+      })
+      // Invalidate stats
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contents.stats(),
+      })
+      // Invalidate summaries list
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.summaries.lists(),
+      })
+      // Clear progress
+      setProgress(null)
+    },
+    onError: () => {
+      setIsProcessing(false)
+      setProgress(null)
+    },
+  })
+
+  return {
+    ...mutation,
+    isProcessing,
+    progress,
   }
 }

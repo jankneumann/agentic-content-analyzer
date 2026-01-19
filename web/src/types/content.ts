@@ -182,6 +182,8 @@ export interface ContentStats {
   pending_count: number
   completed_count: number
   failed_count: number
+  /** Count of content items that don't have summaries yet */
+  needs_summarization_count: number
 }
 
 /**

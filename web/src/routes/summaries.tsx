@@ -65,8 +65,8 @@ import {
   useSummaries,
   useSummary,
   useSummaryStats,
-  useTriggerSummarization,
-  useNewsletterStats,
+  useContentStats,
+  useSummarizeContents,
 } from "@/hooks"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
 import {
@@ -92,12 +92,14 @@ function SummariesPage() {
 
   const { data, isLoading, isError, error, refetch } = useSummaries(filters)
   const { data: stats } = useSummaryStats()
-  const { data: newsletterStats } = useNewsletterStats()
-  const summarizeMutation = useTriggerSummarization()
+  const { data: contentStats } = useContentStats()
+  const summarizeMutation = useSummarizeContents()
   const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
 
-  // Pending newsletters are those without summaries
-  const pendingCount = newsletterStats?.by_status?.pending ?? 0
+  // Content items that need summarization (don't have summaries yet)
+  const pendingCount = contentStats?.needs_summarization_count ?? 0
+  // Failed content items that could be retried
+  const failedCount = contentStats?.failed_count ?? 0
 
   // Fetch selected summary details
   const { data: selectedSummary, isLoading: isLoadingSummary } = useSummary(
@@ -122,12 +124,16 @@ function SummariesPage() {
     // Close dialog immediately - task runs in background
     setShowGenerateDialog(false)
 
-    const count = params.newsletter_ids.length || pendingCount
+    // Convert newsletter_ids to content_ids for the new API
+    // The dialog still uses newsletter_ids for now, but we pass empty array
+    // to summarize all pending content
+    const contentIds = params.newsletter_ids.length > 0 ? params.newsletter_ids : []
+    const count = contentIds.length || (pendingCount + (params.retry_failed ? failedCount : 0))
 
     // Add background task
     const taskId = addTask({
       type: "summary",
-      title: `Summarize ${count} newsletter${count !== 1 ? "s" : ""}`,
+      title: `Summarize ${count} content item${count !== 1 ? "s" : ""}`,
       message: "Starting summarization...",
     })
 
@@ -148,14 +154,16 @@ function SummariesPage() {
 
     summarizeMutation.mutate(
       {
-        newsletter_ids: params.newsletter_ids,
+        content_ids: contentIds,
         force: params.force,
+        retry_failed: params.retry_failed,
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           clearInterval(progressInterval)
-          completeTask(taskId, "Summarization complete")
-          toast.success(`Summarized ${count} newsletters`)
+          const completed = result?.completed ?? count
+          completeTask(taskId, `Summarization complete: ${completed} summaries created`)
+          toast.success(`Summarized ${completed} content items`)
           refetch()
         },
         onError: (err) => {
@@ -196,7 +204,7 @@ function SummariesPage() {
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               <div className="flex-1">
                 <p className="text-sm font-medium">
-                  Summarizing newsletters... ({summarizeMutation.progress.progress}%)
+                  Summarizing content... ({summarizeMutation.progress.progress}%)
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {summarizeMutation.progress.message}
@@ -316,7 +324,7 @@ function SummariesPage() {
                   No summaries generated yet
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Ingest newsletters first, then generate summaries
+                  Ingest content first, then generate summaries
                 </p>
                 <Button
                   className="mt-4"
@@ -524,6 +532,7 @@ function SummariesPage() {
         onGenerate={handleGenerateSummaries}
         isGenerating={summarizeMutation.isPending || summarizeMutation.isProcessing}
         pendingCount={pendingCount}
+        failedCount={failedCount}
       />
     </PageContainer>
   )
@@ -545,10 +554,10 @@ function SummaryRow({
         <div>
           <div className="font-medium line-clamp-1">
             <span className="text-muted-foreground font-normal">[{summary.id}]</span>{" "}
-            {summary.newsletter_title ?? `Newsletter #${summary.newsletter_id ?? "?"}`}
+            {summary.newsletter_title ?? (summary.newsletter_id ? `Newsletter #${summary.newsletter_id}` : `Content #${summary.content_id ?? "?"}`)}
           </div>
           <div className="text-sm text-muted-foreground line-clamp-1">
-            Newsletter [{summary.newsletter_id}] • {summary.executive_summary_preview}
+            {summary.newsletter_id ? `Newsletter [${summary.newsletter_id}]` : `Content [${summary.content_id}]`} • {summary.executive_summary_preview}
           </div>
         </div>
       </TableCell>
@@ -608,7 +617,8 @@ function SummaryRow({
           >
             <Link
               to="/review/summary/$id"
-              params={{ id: String(summary.newsletter_id) }}
+              params={{ id: String(summary.newsletter_id ?? summary.content_id ?? summary.id) }}
+              search={summary.newsletter_id ? undefined : { source: "content" }}
               title="Review summary"
             >
               <FileSearch className="h-4 w-4" />

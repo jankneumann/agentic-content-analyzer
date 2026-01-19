@@ -52,7 +52,7 @@ export function SummaryPane({ summary, isPreview = false, className }: SummaryPa
     >
       <ReviewPaneHeader
         title={isPreview ? "Preview" : `Summary [${summary.id}]`}
-        subtitle={`Newsletter [${summary.newsletter_id}] • Model: ${summary.model_used}`}
+        subtitle={`${summary.newsletter_id ? `Newsletter [${summary.newsletter_id}]` : `Content [${summary.content_id}]`} • Model: ${summary.model_used}`}
         actions={
           isPreview ? (
             <Badge variant="secondary" className="text-xs">

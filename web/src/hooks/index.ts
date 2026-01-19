@@ -87,3 +87,19 @@ export {
   useApplySuggestedAction,
   useChatSession,
 } from "./use-chat"
+
+// Content hooks (unified content model)
+export {
+  useContents,
+  useContent,
+  useContentWithSummary,
+  useContentStats,
+  useContentDuplicates,
+  useCreateContent,
+  useIngestContents,
+  useDeleteContent,
+  useMergeContentDuplicate,
+  usePrefetchContents,
+  usePrefetchContent,
+  useSummarizeContents,
+} from "./use-contents"

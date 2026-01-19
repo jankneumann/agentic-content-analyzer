@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
+from src.models.content import Content
 from src.models.newsletter import Newsletter, ProcessingStatus
 from src.models.summary import NewsletterSummary
 from src.storage.database import get_db
@@ -38,7 +39,8 @@ class SummaryListItem(BaseModel):
     """Lightweight summary for list views."""
 
     id: int
-    newsletter_id: int
+    newsletter_id: int | None  # Nullable for content-only summaries
+    content_id: int | None = None  # New: content ID for unified model
     newsletter_title: str
     newsletter_publication: str | None
     executive_summary_preview: str
@@ -180,6 +182,7 @@ _summarization_tasks: dict[str, dict] = {}
 @router.get("", response_model=PaginatedSummaryResponse)
 async def list_summaries(
     newsletter_id: int | None = Query(None, description="Filter by newsletter"),
+    content_id: int | None = Query(None, description="Filter by content"),
     model_used: str | None = Query(None, description="Filter by model"),
     start_date: datetime | None = Query(None, description="Filter after this date"),
     end_date: datetime | None = Query(None, description="Filter before this date"),
@@ -190,13 +193,21 @@ async def list_summaries(
     List summaries with optional filters.
 
     Results are paginated and sorted by creation date (newest first).
+    Includes both newsletter-based and content-based summaries.
     """
     with get_db() as db:
-        query = db.query(NewsletterSummary).join(Newsletter)
+        # Use outerjoin to include summaries without newsletter (content-only)
+        query = (
+            db.query(NewsletterSummary)
+            .outerjoin(Newsletter, NewsletterSummary.newsletter_id == Newsletter.id)
+            .outerjoin(Content, NewsletterSummary.content_id == Content.id)
+        )
 
         # Apply filters
         if newsletter_id:
             query = query.filter(NewsletterSummary.newsletter_id == newsletter_id)
+        if content_id:
+            query = query.filter(NewsletterSummary.content_id == content_id)
         if model_used:
             query = query.filter(NewsletterSummary.model_used == model_used)
         if start_date:
@@ -213,22 +224,35 @@ async def list_summaries(
         )
 
         # Convert to response models
-        items = [
-            SummaryListItem(
-                id=s.id,
-                newsletter_id=s.newsletter_id,
-                newsletter_title=s.newsletter.title if s.newsletter else "Unknown",
-                newsletter_publication=s.newsletter.publication if s.newsletter else None,
-                executive_summary_preview=s.executive_summary[:200] + "..."
-                if len(s.executive_summary) > 200
-                else s.executive_summary,
-                key_themes=s.key_themes or [],
-                model_used=s.model_used,
-                created_at=s.created_at,
-                processing_time_seconds=s.processing_time_seconds,
+        # Title/publication comes from Newsletter if available, otherwise from Content
+        items = []
+        for s in summaries:
+            if s.newsletter:
+                title = s.newsletter.title
+                publication = s.newsletter.publication
+            elif s.content:
+                title = s.content.title
+                publication = s.content.publication
+            else:
+                title = "Unknown"
+                publication = None
+
+            items.append(
+                SummaryListItem(
+                    id=s.id,
+                    newsletter_id=s.newsletter_id,
+                    content_id=s.content_id,
+                    newsletter_title=title,
+                    newsletter_publication=publication,
+                    executive_summary_preview=s.executive_summary[:200] + "..."
+                    if len(s.executive_summary) > 200
+                    else s.executive_summary,
+                    key_themes=s.key_themes or [],
+                    model_used=s.model_used,
+                    created_at=s.created_at,
+                    processing_time_seconds=s.processing_time_seconds,
+                )
             )
-            for s in summaries
-        ]
 
         return PaginatedSummaryResponse(
             items=items,
