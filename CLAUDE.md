@@ -43,7 +43,7 @@ An agentic AI solution for aggregating and summarizing AI newsletters into daily
 
 - **Purpose**: Help technical leaders and developers at Comcast stay informed on AI/Data trends
 - **Voice**: Strategic leadership spanning CTO-level strategy to individual practitioner best practices
-- **Sources**: Gmail and Substack RSS feeds
+- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists
 - **Output**: Structured digests with knowledge graph-powered historical context
 
 ### Key Commands
@@ -54,19 +54,25 @@ source .venv/bin/activate
 docker compose up -d
 alembic upgrade head
 
-# Ingestion
-python -m src.ingestion.gmail
-python -m src.ingestion.substack
+# Development servers (frontend + backend)
+make dev-bg        # Start in background
+make dev-logs      # View logs
+make dev-stop      # Stop servers
+
+# Content Ingestion (uses unified Content model)
+python -m src.ingestion.gmail          # Gmail newsletters
+python -m src.ingestion.substack       # RSS feeds
+python -m src.ingestion.youtube        # YouTube playlists
 
 # Processing
-python -m src.processors.summarizer --newsletter-id <id>
+python -m src.processors.summarizer    # Summarize pending content
 python -m src.processors.digest_creator --type daily
 
 # Testing
 pytest
 pytest tests/test_config/test_models.py -v
 
-# API
+# API (or use make dev-bg)
 uvicorn src.api.app:app --reload
 ```
 
@@ -100,11 +106,12 @@ See [Model Configuration](docs/MODEL_CONFIGURATION.md) for detailed options, cos
 ```
 src/
   agents/           # Multi-framework agents (Claude, OpenAI, Google, Microsoft)
-  ingestion/        # Newsletter fetching (Gmail, RSS)
+  ingestion/        # Content fetching (Gmail, RSS, YouTube)
   processors/       # Core processing (summarize, analyze, create digests)
   storage/          # PostgreSQL + Graphiti/Neo4j
   config/           # Model registry and configuration
   delivery/         # Email and web output
+  api/              # FastAPI endpoints (/contents, /summaries, /digests)
 ```
 
 See [Architecture](docs/ARCHITECTURE.md) for complete system design.
@@ -156,11 +163,29 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` block for Docling types to avoid import errors when docling not installed
 
 ### Unified Content Model
-- **⚠️ Newsletter model is deprecated**: Use `Content` model for all new code. The Newsletter model, its TypeScript types, and `/newsletters` route are deprecated and will be removed in a future release. See `openspec/changes/deprecate-newsletter-model/` for migration guide.
+- **⚠️ Newsletter model is deprecated**: Use `Content` model for all new code. The Newsletter model, its TypeScript types, and `/newsletters` route are deprecated and will be removed in a future release.
 - **Prefer Content model**: Use `*ContentIngestionService` classes (e.g., `GmailContentIngestionService`, `RSSContentIngestionService`, `YouTubeContentIngestionService`, `FileContentIngestionService`) over legacy `*IngestionService` classes
 - **Content-based lookups**: Use `/summaries/by-content/{content_id}` endpoint for content-to-summary navigation
 - **Source types**: `ContentSource` enum defines: `GMAIL`, `RSS`, `YOUTUBE`, `FILE_UPLOAD`
 - **Frontend ingestion**: Content page has Ingest button with dialog for Gmail/RSS/YouTube sources
+- **Dashboard stats**: Use `useContentStats()` hook, not `useNewsletterStats()`
+
+### Content-Based Summarization
+- **Summarization endpoint**: Use `/api/v1/contents/summarize` (not `/summaries/generate`)
+- **Summary routes use content_id only**: All summary list/detail endpoints require `content_id`, legacy `newsletter_id` summaries are excluded
+- **SSE progress tracking**: Summarization returns a `task_id`, track progress via `/contents/summarize/status/{task_id}` SSE endpoint
+- **Retry failed items**: Pass `retry_failed: true` to reset failed content to PARSED status and re-attempt
+- **Race condition handling**: Summarizer catches `UniqueViolation` when concurrent processes create same summary - treats as success
+- **Status sync**: Content status may get out of sync with summary existence. Fix with:
+  ```python
+  # Update content status for items that have summaries but aren't COMPLETED
+  db.query(Content).filter(
+      Content.id.in_(content_ids_with_summaries),
+      Content.status != ContentStatus.COMPLETED
+  ).update({Content.status: ContentStatus.COMPLETED})
+  ```
+- **Frontend types**: `SummaryListItem` uses `content_id`, `title`, `publication` (no `newsletter_id`)
+- **Navigation**: Summary list links use `/review/summary/$id` with `search={{ source: "content" }}`
 
 ### File Upload Ingestion
 - **FileContentIngestionService**: Processes file uploads via `ParserRouter`, stores as Content records

@@ -2,16 +2,39 @@
 
 ## Development Commands
 
-### Ingestion
+### Quick Start
 
 ```bash
-# Fetch newsletters from Gmail
+# Start frontend and backend in background
+make dev-bg
+
+# View logs
+make dev-logs
+
+# Stop servers
+make dev-stop
+
+# Access points:
+# - Frontend: http://localhost:5173
+# - Backend API: http://localhost:8000
+# - API Docs: http://localhost:8000/docs
+```
+
+### Content Ingestion
+
+All ingestion uses the unified Content model. The legacy Newsletter model is deprecated.
+
+```bash
+# Fetch content from Gmail newsletters
 python -m src.ingestion.gmail
 
-# Fetch newsletters from Substack RSS feeds
+# Fetch content from Substack RSS feeds
 python -m src.ingestion.substack
 
-# Force reprocess existing newsletters
+# Fetch content from YouTube playlists
+python -m src.ingestion.youtube
+
+# Force reprocess existing content
 python -m src.ingestion.gmail --force
 python -m src.ingestion.substack --force
 ```
@@ -19,8 +42,9 @@ python -m src.ingestion.substack --force
 ### Processing
 
 ```bash
-# Summarize a specific newsletter
-python -m src.processors.summarizer --newsletter-id <id>
+# Summarize all pending content (via API)
+# Use the web UI at /summaries or call:
+curl -X POST http://localhost:8000/api/v1/contents/summarize
 
 # Create a daily digest
 python -m src.processors.digest_creator --type daily
@@ -86,12 +110,22 @@ celery -A src.tasks flower  # Web UI at localhost:5555
 ### API Server
 
 ```bash
-# Start FastAPI development server
+# Recommended: Start both frontend and backend
+make dev-bg
+
+# Or start API only
 uvicorn src.api.app:app --reload
 
 # API docs available at:
 # - Swagger UI: http://localhost:8000/docs
 # - ReDoc: http://localhost:8000/redoc
+
+# Key API endpoints:
+# - GET  /api/v1/contents         - List content
+# - POST /api/v1/contents/ingest  - Trigger ingestion
+# - POST /api/v1/contents/summarize - Trigger summarization
+# - GET  /api/v1/summaries        - List summaries
+# - GET  /api/v1/digests          - List digests
 ```
 
 ### Testing
