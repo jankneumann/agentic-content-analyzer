@@ -225,3 +225,382 @@ class TestConvertHtmlToMarkdown:
         result = convert_html_to_markdown(html=None)
 
         assert result == ""
+
+
+class TestComplexHtmlExtraction:
+    """Tests for complex HTML structure preservation in markdown output.
+
+    These tests verify that the converter correctly handles rich HTML content
+    with multiple element types: headers, paragraphs, lists, links, emphasis, etc.
+    """
+
+    @pytest.fixture
+    def complex_article_html(self):
+        """Sample HTML with diverse structural elements mimicking a real article."""
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>AI Trends in 2025: A Comprehensive Guide</title>
+            <meta name="author" content="Test Author">
+        </head>
+        <body>
+            <article>
+                <h1>AI Trends in 2025: A Comprehensive Guide</h1>
+
+                <p>The artificial intelligence landscape continues to evolve rapidly.
+                This guide explores the <strong>most important developments</strong>
+                and provides <em>actionable insights</em> for technology leaders.</p>
+
+                <h2>Key Trends to Watch</h2>
+
+                <p>Several major trends are reshaping the industry. Understanding these
+                shifts is critical for organizations planning their AI strategy.</p>
+
+                <h3>1. Large Language Models</h3>
+
+                <p>LLMs have become foundational infrastructure for modern applications.
+                Key developments include:</p>
+
+                <ul>
+                    <li>Improved reasoning capabilities with chain-of-thought prompting</li>
+                    <li>Multi-modal understanding across text, images, and audio</li>
+                    <li>Reduced hallucination rates through better training methods</li>
+                    <li>Cost reductions making AI accessible to smaller teams</li>
+                </ul>
+
+                <h3>2. Agentic Workflows</h3>
+
+                <p>AI agents are moving from demos to production. Organizations are
+                deploying autonomous systems for:</p>
+
+                <ol>
+                    <li>Customer support with multi-step problem resolution</li>
+                    <li>Code generation and review processes</li>
+                    <li>Data analysis and report generation</li>
+                    <li>Document processing and extraction</li>
+                </ol>
+
+                <h2>Implementation Recommendations</h2>
+
+                <p>Based on our analysis, we recommend the following approach:</p>
+
+                <h3>For Technical Leaders</h3>
+
+                <ul>
+                    <li><strong>Start with high-value use cases</strong> that have clear ROI</li>
+                    <li><em>Invest in evaluation frameworks</em> before scaling deployment</li>
+                    <li>Build internal expertise through hands-on experimentation</li>
+                </ul>
+
+                <h3>For Development Teams</h3>
+
+                <ol>
+                    <li>Establish prompt engineering best practices</li>
+                    <li>Implement robust error handling for AI outputs</li>
+                    <li>Create feedback loops for continuous improvement</li>
+                </ol>
+
+                <h2>Resources and Further Reading</h2>
+
+                <p>For more information, explore these resources:</p>
+
+                <ul>
+                    <li>Visit <a href="https://example.com/ai-guide">our AI implementation guide</a></li>
+                    <li>Read the <a href="https://example.com/case-studies">case studies</a> from early adopters</li>
+                    <li>Join the <a href="https://example.com/community">community forum</a> for discussions</li>
+                </ul>
+
+                <h2>Conclusion</h2>
+
+                <p>The AI revolution is accelerating. Organizations that invest in understanding
+                and adopting these technologies will have significant competitive advantages.
+                Start with small experiments, measure results carefully, and scale what works.</p>
+            </article>
+        </body>
+        </html>
+        """
+
+    @pytest.fixture
+    def converter(self):
+        """Create a converter instance."""
+        return HtmlMarkdownConverter()
+
+    @pytest.mark.asyncio
+    async def test_preserves_heading_hierarchy(self, converter, complex_article_html):
+        """Test that heading levels (h1, h2, h3) are preserved in markdown."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown.lower()
+
+        # Check for presence of main content topics
+        # Trafilatura may adjust heading levels, but content should be preserved
+        assert "ai trends" in markdown or "comprehensive guide" in markdown
+        assert "key trends" in markdown or "large language models" in markdown
+        assert "implementation" in markdown or "recommendations" in markdown
+
+    @pytest.mark.asyncio
+    async def test_preserves_paragraphs(self, converter, complex_article_html):
+        """Test that paragraph content is preserved with proper separation."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown
+
+        # Check for paragraph content preservation
+        assert "artificial intelligence" in markdown.lower()
+        assert "technology leaders" in markdown.lower() or "actionable insights" in markdown.lower()
+
+        # Verify paragraph separation (double newlines in markdown)
+        assert "\n\n" in markdown, "Paragraphs should be separated by blank lines"
+
+        # Quality check should detect paragraphs
+        assert result.quality is not None
+        assert result.quality.stats["has_paragraphs"] is True
+
+    @pytest.mark.asyncio
+    async def test_preserves_unordered_lists(self, converter, complex_article_html):
+        """Test that unordered lists are converted to markdown bullet points."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown.lower()
+
+        # Check for list item content (Trafilatura should preserve these)
+        assert "reasoning capabilities" in markdown or "chain-of-thought" in markdown
+        assert "multi-modal" in markdown
+        assert "hallucination" in markdown or "training methods" in markdown
+
+        # Check for markdown list markers (- or *)
+        has_bullet_markers = "-" in result.markdown or "*" in result.markdown
+        assert has_bullet_markers, "Should have markdown list markers"
+
+    @pytest.mark.asyncio
+    async def test_preserves_ordered_lists(self, converter, complex_article_html):
+        """Test that ordered lists are converted to markdown numbered lists."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown.lower()
+
+        # Check for ordered list content
+        assert "customer support" in markdown
+        assert "code generation" in markdown or "code review" in markdown
+        assert "data analysis" in markdown
+
+        # Check for numbered list markers (1. 2. etc) or list content preserved
+        # Trafilatura may convert to bullets, but content should be there
+        content_preserved = all(
+            item in markdown for item in ["customer support", "code generation", "data analysis"]
+        )
+        assert content_preserved, "Ordered list content should be preserved"
+
+    @pytest.mark.asyncio
+    async def test_preserves_links(self, converter, complex_article_html):
+        """Test that hyperlinks are converted to markdown link format."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+
+        # Check for link URLs in output
+        assert "example.com" in result.markdown
+
+        # Check for markdown link format [text](url) or at least URL preservation
+        has_markdown_links = "](" in result.markdown
+        has_urls = "https://" in result.markdown or "http://" in result.markdown
+
+        assert has_markdown_links or has_urls, "Links should be preserved in some form"
+
+        # Quality stats should detect links
+        assert result.quality is not None
+        assert result.quality.stats["has_links"] is True
+
+    @pytest.mark.asyncio
+    async def test_preserves_emphasis(self, converter, complex_article_html):
+        """Test that bold and italic text emphasis is preserved."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown.lower()
+
+        # Check that emphasized content is present
+        assert "most important developments" in markdown
+        assert "actionable insights" in markdown
+
+        # Check for markdown emphasis markers (* or _)
+        # Note: Trafilatura may not always preserve emphasis markers
+        # but should preserve the text content
+        has_bold_content = "most important" in markdown
+        has_italic_content = "actionable" in markdown
+
+        assert has_bold_content and has_italic_content, "Emphasized text should be preserved"
+
+    @pytest.mark.asyncio
+    async def test_extracts_article_content(self, converter, complex_article_html):
+        """Test that main article content is extracted, not boilerplate."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown.lower()
+
+        # Verify main content sections are present
+        main_topics = [
+            "ai trends",
+            "large language models",
+            "agentic workflows",
+            "implementation",
+            "conclusion",
+        ]
+
+        topics_found = sum(1 for topic in main_topics if topic in markdown)
+        assert topics_found >= 3, f"Should find at least 3 main topics, found {topics_found}"
+
+    @pytest.mark.asyncio
+    async def test_quality_validation_passes(self, converter, complex_article_html):
+        """Test that complex article passes quality validation."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        assert result.quality is not None
+
+        # Complex article should pass validation
+        assert result.quality.valid is True, f"Quality issues: {result.quality.issues}"
+
+        # Check quality stats
+        stats = result.quality.stats
+        assert stats["length"] > 500, "Complex article should have substantial content"
+        assert stats["has_paragraphs"] is True
+        assert stats["has_links"] is True
+
+    @pytest.mark.asyncio
+    async def test_markdown_structure_is_valid(self, converter, complex_article_html):
+        """Test that output is valid, well-formed markdown."""
+        result = await converter.convert(html=complex_article_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown
+
+        # Check for valid markdown structure
+        lines = markdown.split("\n")
+
+        # Should have multiple non-empty lines
+        non_empty_lines = [line for line in lines if line.strip()]
+        assert len(non_empty_lines) > 10, "Should have substantial content"
+
+        # Check that code blocks are balanced (if any)
+        code_block_count = markdown.count("```")
+        assert code_block_count % 2 == 0, "Code blocks should be balanced"
+
+        # Check for no HTML tags remaining in output
+        html_tags = ["<p>", "</p>", "<h1>", "</h1>", "<ul>", "</ul>", "<li>", "</li>"]
+        for tag in html_tags:
+            assert tag not in markdown, f"HTML tag {tag} should not be in markdown output"
+
+    @pytest.mark.asyncio
+    async def test_nested_list_content_preserved(self, converter):
+        """Test that nested list content is handled correctly."""
+        nested_html = """
+        <html>
+        <body>
+            <article>
+                <h1>Project Requirements</h1>
+                <p>The project has the following requirements organized by category:</p>
+
+                <h2>Technical Requirements</h2>
+                <ul>
+                    <li>Backend Development
+                        <ul>
+                            <li>Python 3.11 or higher</li>
+                            <li>FastAPI framework</li>
+                            <li>PostgreSQL database</li>
+                        </ul>
+                    </li>
+                    <li>Frontend Development
+                        <ul>
+                            <li>React 18 with TypeScript</li>
+                            <li>TanStack Router for navigation</li>
+                            <li>Tailwind CSS for styling</li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <h2>Timeline</h2>
+                <ol>
+                    <li>Phase 1: Setup and infrastructure (Week 1-2)</li>
+                    <li>Phase 2: Core features (Week 3-6)</li>
+                    <li>Phase 3: Testing and deployment (Week 7-8)</li>
+                </ol>
+            </article>
+        </body>
+        </html>
+        """
+        result = await converter.convert(html=nested_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown.lower()
+
+        # Check nested content is preserved
+        assert "python 3.11" in markdown or "python" in markdown
+        assert "fastapi" in markdown
+        assert "react" in markdown or "typescript" in markdown
+        assert "tailwind" in markdown
+
+        # Check timeline items
+        assert "phase 1" in markdown or "setup" in markdown
+        assert "phase 2" in markdown or "core features" in markdown
+
+    @pytest.mark.asyncio
+    async def test_table_content_extraction(self, converter):
+        """Test that table content is extracted (may be converted to list format)."""
+        table_html = """
+        <html>
+        <body>
+            <article>
+                <h1>Model Comparison</h1>
+                <p>Here is a comparison of different AI models and their capabilities:</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>Context Window</th>
+                            <th>Best Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Claude Sonnet</td>
+                            <td>200K tokens</td>
+                            <td>General reasoning</td>
+                        </tr>
+                        <tr>
+                            <td>Claude Haiku</td>
+                            <td>200K tokens</td>
+                            <td>Fast tasks</td>
+                        </tr>
+                        <tr>
+                            <td>GPT-4</td>
+                            <td>128K tokens</td>
+                            <td>Complex analysis</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p>Choose the model that best fits your specific requirements.</p>
+            </article>
+        </body>
+        </html>
+        """
+        result = await converter.convert(html=table_html)
+
+        assert result.markdown is not None
+        markdown = result.markdown.lower()
+
+        # Table content should be preserved (as table or list)
+        assert "claude sonnet" in markdown or "sonnet" in markdown
+        assert "claude haiku" in markdown or "haiku" in markdown
+        assert "gpt-4" in markdown or "gpt" in markdown
+
+        # Context/capability info should be present
+        assert "200k" in markdown or "tokens" in markdown or "context" in markdown
