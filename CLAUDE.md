@@ -162,6 +162,30 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Type ignore for untyped libraries**: Use `# type: ignore[attr-defined]` for libraries without type stubs (e.g., youtube-transcript-api)
 - **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` block for Docling types to avoid import errors when docling not installed
 
+### HTML-to-Markdown Conversion
+- **HtmlMarkdownConverter**: Use `src/parsers/html_markdown.py` for web content extraction during ingestion
+- **Trafilatura-based**: Primary extraction uses Trafilatura (~50ms) for academic-quality markdown output
+- **Dual input modes**: Pass `url=` for RSS feeds (fetches and extracts), `html=` for Gmail (raw HTML)
+- **Async-native**: Use `await converter.convert()` in async contexts; sync wrapper `convert_html_to_markdown()` available for legacy code
+- **Quality validation**: `validate_markdown_quality()` checks length, structure, and code block integrity
+- **Batch processing**: `batch_convert()` processes multiple items concurrently with semaphore limiting
+- **Crawl4AI fallback**: Optional JS-rendering fallback (disabled by default, enable with `use_crawl4ai_fallback=True`)
+- **Type casting for untyped returns**: Trafilatura returns `Any`; use explicit `str(result) if result else None` to satisfy mypy
+  ```python
+  # Usage examples
+  converter = HtmlMarkdownConverter()
+
+  # From URL (RSS feeds)
+  result = await converter.convert(url="https://example.com/article")
+
+  # From raw HTML (Gmail)
+  result = await converter.convert(html="<html>...</html>")
+
+  # Sync wrapper for legacy code
+  from src.parsers.html_markdown import convert_html_to_markdown
+  markdown = convert_html_to_markdown(html=email_body)
+  ```
+
 ### Unified Content Model
 - **⚠️ Newsletter model is deprecated**: Use `Content` model for all new code. The Newsletter model, its TypeScript types, and `/newsletters` route are deprecated and will be removed in a future release.
 - **Prefer Content model**: Use `*ContentIngestionService` classes (e.g., `GmailContentIngestionService`, `RSSContentIngestionService`, `YouTubeContentIngestionService`, `FileContentIngestionService`) over legacy `*IngestionService` classes
