@@ -485,12 +485,32 @@ class GmailClient:
             html_body, text_body = self._extract_body(message["payload"])
 
             # Convert HTML to markdown (primary content format)
+            # Track which parser was used for metadata
             markdown_content = ""
+            parser_used = "trafilatura"
+
             if html_body:
-                markdown_content = html_to_markdown(html_body)
+                try:
+                    from src.parsers.html_markdown import convert_html_to_markdown
+
+                    markdown_content = convert_html_to_markdown(html=html_body)
+                    if markdown_content:
+                        logger.debug(
+                            f"Trafilatura extraction successful for {subject}: "
+                            f"{len(markdown_content)} chars"
+                        )
+                    else:
+                        # Trafilatura returned empty, fall back to text
+                        markdown_content = html_to_text(html_body)
+                        parser_used = "text_fallback"
+                except ImportError:
+                    # Trafilatura not installed, use legacy MarkItDown
+                    markdown_content = html_to_markdown(html_body)
+                    parser_used = "markitdown"
             elif text_body:
                 # If no HTML, use plain text as markdown
                 markdown_content = text_body
+                parser_used = "plaintext"
 
             if not markdown_content:
                 logger.warning(f"No content found for message {message_id}")
@@ -520,7 +540,7 @@ class GmailClient:
                 },
                 raw_content=html_body,  # Preserve original HTML
                 raw_format="html" if html_body else "text",
-                parser_used="markitdown",
+                parser_used=parser_used,
                 content_hash=content_hash,
             )
 

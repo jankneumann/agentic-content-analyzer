@@ -13,9 +13,10 @@ import feedparser
 import httpx
 
 from src.config import settings
-from src.ingestion.gmail import ContentData, html_to_markdown
+from src.ingestion.gmail import ContentData
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.newsletter import Newsletter, NewsletterData, NewsletterSource, ProcessingStatus
+from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
 from src.utils.content_hash import generate_content_hash, generate_markdown_hash
 from src.utils.html_parser import extract_links, html_to_text
@@ -254,6 +255,10 @@ class RSSClient:
         """
         Parse a feed entry into a ContentData object.
 
+        Uses two-tier extraction:
+        1. Primary: Fetch full article from URL using Trafilatura
+        2. Fallback: Use feed content if URL extraction fails
+
         Args:
             entry: Feed entry
             publication_name: Name of the publication
@@ -270,18 +275,40 @@ class RSSClient:
         # Parse publication date
         published_date = self._parse_entry_date(entry) or datetime.now()
 
-        # Extract content (HTML)
+        # Extract feed content as fallback
         raw_html = self._extract_entry_content(entry)
 
-        # Convert HTML to markdown
+        # Two-tier extraction: try URL first, fall back to feed content
         markdown_content = ""
-        if raw_html:
-            markdown_content = html_to_markdown(raw_html)
-        if not markdown_content:
-            # Fallback: use plain text
-            markdown_content = html_to_text(raw_html) if raw_html else ""
+        parser_used = "trafilatura"
+        extraction_method = "url"
 
-        # Extract links from HTML
+        # Primary: Try URL-based extraction for full article content
+        if link and link != feed_url:
+            try:
+                url_markdown = convert_html_to_markdown(url=link)
+                if url_markdown and len(url_markdown) >= 200:
+                    markdown_content = url_markdown
+                    logger.debug(f"URL extraction successful for {link}: {len(url_markdown)} chars")
+                else:
+                    logger.debug(
+                        f"URL extraction returned insufficient content for {link}, "
+                        f"falling back to feed content"
+                    )
+            except Exception as e:
+                logger.debug(f"URL extraction failed for {link}: {e}, falling back to feed content")
+
+        # Fallback: Use feed content if URL extraction didn't work
+        if not markdown_content and raw_html:
+            markdown_content = convert_html_to_markdown(html=raw_html)
+            extraction_method = "feed"
+            if not markdown_content:
+                # Last resort: plain text
+                markdown_content = html_to_text(raw_html)
+                parser_used = "text_fallback"
+                extraction_method = "text"
+
+        # Extract links from HTML (feed content for consistency)
         links = extract_links(raw_html) if raw_html else []
 
         # Generate unique source_id from link or content hash
@@ -303,10 +330,11 @@ class RSSClient:
             metadata_json={
                 "feed_url": feed_url,
                 "entry_id": entry.get("id"),
+                "extraction_method": extraction_method,
             },
             raw_content=raw_html,
             raw_format="html" if raw_html else "text",
-            parser_used="markitdown",
+            parser_used=parser_used,
             content_hash=content_hash,
         )
 
