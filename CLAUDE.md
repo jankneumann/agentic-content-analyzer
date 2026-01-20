@@ -195,6 +195,10 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Source types**: `ContentSource` enum defines: `GMAIL`, `RSS`, `YOUTUBE`, `FILE_UPLOAD`
 - **Frontend ingestion**: Content page has Ingest button with dialog for Gmail/RSS/YouTube sources
 - **Dashboard stats**: Use `useContentStats()` hook, not `useNewsletterStats()`
+- **Migration patterns**: See [Development Guide - Newsletter → Content Migration](docs/DEVELOPMENT.md#newsletter--content-migration-january-2025) for detailed lessons learned
+- **Field mapping**: Newsletter `raw_text` → Content `markdown_content`, `raw_html` → `raw_content`
+- **FK migration**: Use `NewsletterSummary.content_id` (not deprecated `newsletter_id`) for all queries
+- **LLM tools**: Use `get_content`, `search_content` (not deprecated `get_newsletter_content`, `search_newsletters`)
 
 ### Content-Based Summarization
 - **Summarization endpoint**: Use `/api/v1/contents/summarize` (not `/summaries/generate`)

@@ -1211,6 +1211,194 @@ def downgrade():
 - **Document rollback plan** in migration comments
 - **Preserve data** - concatenate back to original format, don't lose information
 
+### Newsletter → Content Migration (January 2025)
+
+Successfully migrated multiple processors from deprecated Newsletter model to unified Content model, eliminating foreign key bugs and standardizing data access patterns.
+
+#### 1. Root Cause Analysis: Deprecated FK References
+
+**Problem**: Processors were querying `newsletter_id` (deprecated FK) instead of `content_id` (new FK) in `NewsletterSummary`, causing empty results when Newsletter records didn't exist.
+
+**Symptom**: Theme analysis and digest creation returned empty summaries despite having valid Content records with summaries.
+
+**Solution**: Systematic audit and update of all FK references:
+```python
+# Before (broken) - NewsletterSummary.newsletter_id is deprecated
+summaries = db.query(NewsletterSummary).filter(
+    NewsletterSummary.newsletter_id.in_(newsletter_ids)  # ❌ Wrong FK
+).all()
+
+# After (correct) - Use NewsletterSummary.content_id
+summaries = db.query(NewsletterSummary).filter(
+    NewsletterSummary.content_id.in_(content_ids)  # ✅ Correct FK
+).all()
+```
+
+**Key Learnings**:
+- Deprecation warnings don't prevent bugs - code still compiles and runs
+- Search for ALL usages of deprecated FK before considering migration complete
+- Use `grep -r "newsletter_id"` to find remaining references
+
+#### 2. Field Naming Changes Between Models
+
+**Challenge**: Newsletter and Content models use different field names for similar data.
+
+**Mapping Table**:
+| Newsletter Model | Content Model | Notes |
+|------------------|---------------|-------|
+| `raw_text` | `markdown_content` | Primary parsed content |
+| `raw_html` | `raw_content` | Original unparsed content |
+| `source` | `publication` | Origin publication name |
+| `newsletter_ids` | `content_ids` | In tool outputs/metadata |
+| `newsletter_ids_fetched` | `content_ids_fetched` | In script records |
+
+**Key Learnings**:
+- Create a mapping table before starting migration
+- Update ALL usages - not just model access but also variable names, API responses, and metadata
+- Test output format explicitly (check JSON keys in API responses)
+
+#### 3. LLM Tool Renaming for Agent Processors
+
+**Challenge**: LLM agents have learned tool names - changing them affects prompt effectiveness and requires consistent updates to tool definitions, handlers, and prompts.
+
+**Tool Renames**:
+```python
+# Tool definitions
+"get_newsletter_content" → "get_content"
+"fetch_newsletter_content" → "fetch_content"
+"search_newsletters" → "search_content"
+
+# Handler dispatch
+if tool_name == "get_newsletter_content":  # ❌ Old
+if tool_name == "get_content":  # ✅ New
+
+# Prompt instructions
+"Use search_newsletters to find..." → "Use search_content to find..."
+```
+
+**Key Learnings**:
+- Update tool definitions, handler dispatch, AND prompts together
+- Tool names in prompts train the LLM - inconsistency confuses the model
+- Consider backwards compatibility period for API-exposed tools
+
+#### 4. Eager Loading for Detached Session Access
+
+**Problem**: Accessing relationships after SQLAlchemy session closes raises `DetachedInstanceError`.
+
+**Context**: When loading summaries, we need to access `summary.content` outside the session context.
+
+**Solution**: Use `joinedload()` to eager-load relationships:
+```python
+from sqlalchemy.orm import joinedload
+
+# Before (fails when accessing summary.content outside session)
+summaries = db.query(NewsletterSummary).filter(...).all()
+
+# After (content relationship pre-loaded)
+summaries = (
+    db.query(NewsletterSummary)
+    .options(joinedload(NewsletterSummary.content))  # Eager load
+    .filter(...)
+    .all()
+)
+
+# Now safe to access outside session
+for summary in summaries:
+    title = summary.content.title  # ✅ Works
+```
+
+**Key Learnings**:
+- Plan for session lifecycle when designing data access
+- Use `joinedload()` for relationships accessed in return values
+- Consider using `selectinload()` for one-to-many relationships to avoid N+1
+
+#### 5. Deprecation Warning Strategy
+
+**Approach**: Add warnings to deprecated methods rather than removing them immediately.
+
+```python
+import warnings
+
+def get_newsletters(self):
+    """Deprecated: Use get_contents() instead."""
+    warnings.warn(
+        "get_newsletters() is deprecated. Use get_contents() instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return self.get_contents()
+```
+
+**Key Learnings**:
+- Warnings help identify remaining callers during migration
+- Keep deprecated methods working (call the new method internally)
+- Set `stacklevel=2` so warning shows caller's line, not the deprecated function
+- Plan removal date and communicate to team
+
+#### 6. Test Fixture Migration Pattern
+
+**Challenge**: Test fixtures hardcoded Newsletter model assumptions.
+
+**Before**:
+```python
+@pytest.fixture
+def sample_summary():
+    return NewsletterSummary(
+        newsletter_id=1,  # Deprecated FK
+        # ...
+    )
+```
+
+**After**:
+```python
+@pytest.fixture
+def sample_summary(sample_content):  # Depend on content fixture
+    summary = NewsletterSummary(
+        content_id=sample_content.id,  # Use content FK
+        # ...
+    )
+    summary.content = sample_content  # Attach for eager-load tests
+    return summary
+```
+
+**Key Learnings**:
+- Update fixtures to use new FKs and attach relationships
+- Fixture dependencies should reflect model relationships
+- Create content fixtures before summary fixtures
+- Explicitly attach relationships for tests that access them
+
+#### 7. Systematic Migration Checklist
+
+Use this checklist for model deprecation migrations:
+
+```markdown
+## Pre-Migration
+- [ ] Document field name mappings (old → new)
+- [ ] Identify all FK references with grep/search
+- [ ] List all affected processors/services
+- [ ] Create test coverage for affected code paths
+
+## Code Updates
+- [ ] Update model FK references
+- [ ] Update field name access patterns
+- [ ] Rename LLM tool definitions
+- [ ] Update LLM tool handlers
+- [ ] Update prompt instructions mentioning old names
+- [ ] Add eager loading where needed
+- [ ] Add deprecation warnings to legacy methods
+
+## Testing
+- [ ] Update test fixtures
+- [ ] Run affected test modules
+- [ ] Test API responses for correct field names
+- [ ] Test LLM tool calls end-to-end
+
+## Documentation
+- [ ] Update CLAUDE.md guidelines
+- [ ] Document lessons learned in DEVELOPMENT.md
+- [ ] Update API documentation if applicable
+```
+
 ### General Refactoring Best Practices
 
 From this and other refactorings:

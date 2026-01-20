@@ -375,6 +375,12 @@ notifications/spec.md
 
 ## Best Practices
 
+### Development Documentation
+When implementing changes, consult the project's development documentation:
+- **Refactoring patterns**: See [Development Guide - Refactoring Lessons](../docs/DEVELOPMENT.md#refactoring-lessons) for migration strategies, FK updates, and test patterns
+- **Model migrations**: See [CLAUDE.md - Unified Content Model](../CLAUDE.md#unified-content-model) for Newsletter → Content migration patterns
+- **LLM tool updates**: When renaming tools, update definitions, handlers, AND prompts together
+
 ### Simplicity First
 - Default to <100 lines of new code
 - Single-file implementations until proven insufficient
