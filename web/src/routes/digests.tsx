@@ -417,7 +417,7 @@ function DigestsPage() {
         open={!!selectedDigestId}
         onOpenChange={(open) => !open && setSelectedDigestId(null)}
       >
-        <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] resize overflow-auto">
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] max-h-[90vh] resize overflow-auto">
           <DialogHeader>
             <DialogTitle>{selectedDigest?.title ?? "Digest Details"}</DialogTitle>
             <DialogDescription>

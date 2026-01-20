@@ -404,7 +404,7 @@ function SummariesPage() {
         open={!!selectedSummaryId}
         onOpenChange={(open) => !open && setSelectedSummaryId(null)}
       >
-        <DialogContent className="max-w-5xl w-[90vw] max-h-[85vh] resize overflow-auto">
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] max-h-[85vh] resize overflow-auto">
           <DialogHeader>
             <DialogTitle>Summary Details</DialogTitle>
             <DialogDescription>
