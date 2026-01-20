@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
+from src.models.content import Content, ContentSource
 from src.models.digest import Digest, DigestStatus, DigestType
-from src.models.newsletter import Newsletter, NewsletterSource
 from src.models.revision import RevisionContext
 from src.models.summary import NewsletterSummary
 from src.processors.digest_reviser import DigestReviser
@@ -58,31 +58,32 @@ def sample_digest():
 
 
 @pytest.fixture
-def sample_newsletters():
-    """Create sample newsletters."""
-    newsletters = []
+def sample_contents():
+    """Create sample content items."""
+    contents = []
     for i in range(3):
-        newsletter = Newsletter(
-            source=NewsletterSource.GMAIL,
+        content = Content(
+            source_type=ContentSource.RSS,
             source_id=f"test-{i}",
-            title=f"Newsletter {i + 1}",
+            title=f"Content Item {i + 1}",
             publication="Tech Weekly",
             published_date=datetime(2025, 1, 15, 10 + i, 0, 0),
-            raw_text=f"Content for newsletter {i + 1} about AI and RAG systems.",
+            markdown_content=f"Content for item {i + 1} about AI and RAG systems.",
+            content_hash=f"hash-{i}",
         )
-        newsletter.id = i + 1
-        newsletters.append(newsletter)
-    return newsletters
+        content.id = i + 1
+        contents.append(content)
+    return contents
 
 
 @pytest.fixture
-def sample_summaries(sample_newsletters):
+def sample_summaries(sample_contents):
     """Create sample summaries."""
     summaries = []
-    for newsletter in sample_newsletters:
+    for content in sample_contents:
         summary = NewsletterSummary(
-            newsletter_id=newsletter.id,
-            executive_summary=f"Summary for {newsletter.title}",
+            content_id=content.id,
+            executive_summary=f"Summary for {content.title}",
             key_themes=["AI", "RAG"],
             strategic_insights=["Insight 1"],
             technical_details=["Detail 1"],
@@ -92,7 +93,7 @@ def sample_summaries(sample_newsletters):
             agent_framework="claude",
             model_used="claude-haiku-4-5",
         )
-        summary.newsletter = newsletter
+        summary.content = content
         summaries.append(summary)
     return summaries
 
@@ -131,7 +132,7 @@ class TestDigestReviserLoadContext:
     """Tests for load_context method."""
 
     @pytest.mark.asyncio
-    async def test_load_context_success(self, sample_digest, sample_summaries, sample_newsletters):
+    async def test_load_context_success(self, sample_digest, sample_summaries, sample_contents):
         """Test successful context loading."""
         with patch("src.processors.digest_reviser.get_db") as mock_get_db:
             # Setup mock database session
@@ -165,7 +166,7 @@ class TestDigestReviserLoadContext:
             assert isinstance(context, RevisionContext)
             assert context.digest == sample_digest
             assert len(context.summaries) == 3
-            assert context.newsletter_ids == [1, 2, 3]
+            assert context.content_ids == [1, 2, 3]
 
     @pytest.mark.asyncio
     async def test_load_context_digest_not_found(self):
@@ -193,15 +194,15 @@ class TestDigestReviserToolDefinitions:
 
         assert len(tools) == 2
 
-        # Check fetch_newsletter_content tool
+        # Check fetch_content tool
         fetch_tool = tools[0]
-        assert fetch_tool["name"] == "fetch_newsletter_content"
+        assert fetch_tool["name"] == "fetch_content"
         assert "input_schema" in fetch_tool
-        assert fetch_tool["input_schema"]["properties"]["newsletter_id"]["type"] == "integer"
+        assert fetch_tool["input_schema"]["properties"]["content_id"]["type"] == "integer"
 
-        # Check search_newsletters tool
+        # Check search_content tool
         search_tool = tools[1]
-        assert search_tool["name"] == "search_newsletters"
+        assert search_tool["name"] == "search_content"
         assert "input_schema" in search_tool
         assert search_tool["input_schema"]["properties"]["query"]["type"] == "string"
 
@@ -210,46 +211,46 @@ class TestDigestReviserToolHandlers:
     """Tests for tool call handlers."""
 
     @pytest.mark.asyncio
-    async def test_handle_fetch_newsletter_content(self, sample_newsletters, sample_summaries):
-        """Test fetching newsletter content."""
+    async def test_handle_fetch_content(self, sample_contents, sample_summaries):
+        """Test fetching content."""
         with patch("src.processors.digest_reviser.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            # Mock newsletter query
-            newsletter = sample_newsletters[0]
-            mock_db.query.return_value.filter_by.return_value.first.return_value = newsletter
+            # Mock content query
+            content = sample_contents[0]
+            mock_db.query.return_value.filter_by.return_value.first.return_value = content
 
             reviser = DigestReviser()
             context = RevisionContext(
                 digest=MagicMock(),
                 summaries=sample_summaries,
-                newsletter_ids=[1, 2, 3],
+                content_ids=[1, 2, 3],
             )
 
             result = await reviser._handle_tool_call(
-                tool_name="fetch_newsletter_content",
-                tool_input={"newsletter_id": 1},
+                tool_name="fetch_content",
+                tool_input={"content_id": 1},
                 context=context,
             )
 
-            assert "Newsletter 1" in result
+            assert "Content Item 1" in result
             assert "Tech Weekly" in result
-            assert "Content for newsletter 1" in result
+            assert "Content for item 1" in result
 
     @pytest.mark.asyncio
-    async def test_handle_fetch_newsletter_not_in_context(self, sample_summaries):
-        """Test fetching newsletter not in current digest period."""
+    async def test_handle_fetch_content_not_in_context(self, sample_summaries):
+        """Test fetching content not in current digest period."""
         reviser = DigestReviser()
         context = RevisionContext(
             digest=MagicMock(),
             summaries=sample_summaries,
-            newsletter_ids=[1, 2, 3],
+            content_ids=[1, 2, 3],
         )
 
         result = await reviser._handle_tool_call(
-            tool_name="fetch_newsletter_content",
-            tool_input={"newsletter_id": 999},
+            tool_name="fetch_content",
+            tool_input={"content_id": 999},
             context=context,
         )
 
@@ -257,8 +258,8 @@ class TestDigestReviserToolHandlers:
         assert "not in current digest period" in result
 
     @pytest.mark.asyncio
-    async def test_handle_search_newsletters(self, sample_summaries):
-        """Test searching newsletters."""
+    async def test_handle_search_content(self, sample_summaries):
+        """Test searching content."""
         reviser = DigestReviser()
         context = RevisionContext(
             digest=MagicMock(),
@@ -266,12 +267,12 @@ class TestDigestReviserToolHandlers:
         )
 
         result = await reviser._handle_tool_call(
-            tool_name="search_newsletters",
+            tool_name="search_content",
             tool_input={"query": "RAG"},
             context=context,
         )
 
-        assert "Found" in result or "No newsletters found" in result
+        assert "Found" in result or "No content found" in result
 
     @pytest.mark.asyncio
     async def test_handle_unknown_tool(self, sample_summaries):

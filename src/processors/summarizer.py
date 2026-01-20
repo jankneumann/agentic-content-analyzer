@@ -1,5 +1,10 @@
-"""Newsletter summarization processor."""
+"""Content summarization processor.
 
+This module provides summarization for content using the unified Content model.
+Legacy Newsletter methods are deprecated and will be removed in a future release.
+"""
+
+import warnings
 from datetime import datetime
 
 from src.agents.base import SummarizationAgent
@@ -49,12 +54,21 @@ class NewsletterSummarizer:
         """
         Summarize a single newsletter.
 
+        .. deprecated::
+            Use summarize_content() with Content model instead.
+            Newsletter-based summarization will be removed in a future release.
+
         Args:
             newsletter_id: Newsletter ID to summarize
 
         Returns:
             True if successful, False otherwise
         """
+        warnings.warn(
+            "summarize_newsletter is deprecated. Use summarize_content() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         with get_db() as db:
             # Get newsletter
             newsletter = db.query(Newsletter).filter(Newsletter.id == newsletter_id).first()
@@ -147,6 +161,10 @@ class NewsletterSummarizer:
         """
         Summarize multiple newsletters with detailed tracking.
 
+        .. deprecated::
+            Use summarize_contents() with Content model instead.
+            Newsletter-based summarization will be removed in a future release.
+
         Args:
             newsletter_ids: List of newsletter IDs to summarize
 
@@ -156,6 +174,11 @@ class NewsletterSummarizer:
                 - 'failed_ids': List of newsletter IDs that failed
                 - 'skipped_count': Number of newsletters already summarized (skipped)
         """
+        warnings.warn(
+            "summarize_newsletters is deprecated. Use summarize_contents() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         created_count = 0
         failed_ids = []
         skipped_count = 0

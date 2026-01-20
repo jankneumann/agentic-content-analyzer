@@ -172,8 +172,8 @@ class ScriptReviewRequest(BaseModel):
 class PodcastGenerationMetadata(BaseModel):
     """Metadata about podcast script generation for tracking and debugging."""
 
-    newsletter_ids_fetched: list[int] = Field(
-        default_factory=list, description="Newsletter IDs fetched via tool"
+    content_ids_fetched: list[int] = Field(
+        default_factory=list, description="Content IDs fetched via get_content tool"
     )
     web_searches: list[str] = Field(default_factory=list, description="Web search queries executed")
     tool_call_count: int = Field(default=0, description="Total tool invocations")

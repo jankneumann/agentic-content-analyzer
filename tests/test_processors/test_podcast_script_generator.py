@@ -79,8 +79,8 @@ def sample_digest_data() -> dict:
 
 
 @pytest.fixture
-def sample_newsletter_metadata() -> list[dict]:
-    """Create sample newsletter metadata for testing."""
+def sample_content_metadata() -> list[dict]:
+    """Create sample content metadata for testing."""
     return [
         {
             "id": 1,
@@ -101,12 +101,12 @@ def sample_newsletter_metadata() -> list[dict]:
 
 @pytest.fixture
 def sample_summaries() -> list:
-    """Create sample newsletter summaries for testing."""
+    """Create sample content summaries for testing."""
 
     class MockSummary:
-        def __init__(self, newsletter_id):
-            self.newsletter_id = newsletter_id
-            self.executive_summary = f"Summary for newsletter {newsletter_id}"
+        def __init__(self, content_id):
+            self.content_id = content_id
+            self.executive_summary = f"Summary for content {content_id}"
             self.key_themes = ["AI", "Machine Learning"]
             self.strategic_insights = ["Strategic insight 1", "Strategic insight 2"]
             self.technical_details = ["Technical detail 1", "Technical detail 2"]
@@ -210,7 +210,7 @@ class TestPodcastScriptGenerator:
         assert generator.provider_used is None
         assert generator.input_tokens == 0
         assert generator.output_tokens == 0
-        assert generator.newsletter_ids_fetched == []
+        assert generator.content_ids_fetched == []
         assert generator.web_search_queries == []
         assert generator.tool_call_count == 0
 
@@ -250,7 +250,7 @@ class TestPodcastScriptGenerator:
         assert len(PODCAST_TOOLS) == 2
 
         tool_names = [t["name"] for t in PODCAST_TOOLS]
-        assert "get_newsletter_content" in tool_names
+        assert "get_content" in tool_names
         assert "web_search" in tool_names
 
         for tool in PODCAST_TOOLS:
@@ -279,7 +279,7 @@ class TestContextAssembly:
 
     @pytest.mark.asyncio
     async def test_assemble_lightweight_context_success(
-        self, sample_digest_data, sample_newsletter_metadata
+        self, sample_digest_data, sample_content_metadata
     ):
         """Test successful context assembly."""
         generator = PodcastScriptGenerator()
@@ -301,16 +301,16 @@ class TestContextAssembly:
         mock_digest.emerging_trends = sample_digest_data["emerging_trends"]
         mock_digest.actionable_recommendations = sample_digest_data["actionable_recommendations"]
 
-        # Create mock newsletters
-        mock_newsletters = []
-        for nl in sample_newsletter_metadata:
-            mock_nl = MagicMock()
-            mock_nl.id = nl["id"]
-            mock_nl.title = nl["title"]
-            mock_nl.publication = nl["publication"]
-            mock_nl.published_date = datetime.fromisoformat(nl["date"])
-            mock_nl.url = nl["url"]
-            mock_newsletters.append(mock_nl)
+        # Create mock content items
+        mock_contents = []
+        for c in sample_content_metadata:
+            mock_c = MagicMock()
+            mock_c.id = c["id"]
+            mock_c.title = c["title"]
+            mock_c.publication = c["publication"]
+            mock_c.published_date = datetime.fromisoformat(c["date"])
+            mock_c.url = c["url"]
+            mock_contents.append(mock_c)
 
         with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
             mock_db = MagicMock()
@@ -318,9 +318,9 @@ class TestContextAssembly:
             # Setup chain for digest query
             mock_db.query.return_value.filter.return_value.first.return_value = mock_digest
 
-            # Setup chain for newsletters query
-            nl_query = mock_db.query.return_value.filter.return_value
-            nl_query.order_by.return_value.all.return_value = mock_newsletters
+            # Setup chain for content query
+            content_query = mock_db.query.return_value.filter.return_value
+            content_query.order_by.return_value.all.return_value = mock_contents
 
             # Setup chain for summaries query
             summaries_query = mock_db.query.return_value.filter.return_value
@@ -339,16 +339,16 @@ class TestContextAssembly:
 class TestFormatting:
     """Tests for prompt formatting methods."""
 
-    def test_format_newsletter_list_empty(self):
-        """Test formatting empty newsletter list."""
+    def test_format_content_list_empty(self):
+        """Test formatting empty content list."""
         generator = PodcastScriptGenerator()
-        result = generator._format_newsletter_list([])
-        assert "No newsletters available" in result
+        result = generator._format_content_list([])
+        assert "No content available" in result
 
-    def test_format_newsletter_list(self, sample_newsletter_metadata):
-        """Test formatting newsletter list."""
+    def test_format_content_list(self, sample_content_metadata):
+        """Test formatting content list."""
         generator = PodcastScriptGenerator()
-        result = generator._format_newsletter_list(sample_newsletter_metadata)
+        result = generator._format_content_list(sample_content_metadata)
 
         assert "[1]" in result
         assert "[2]" in result
@@ -369,7 +369,7 @@ class TestFormatting:
 
         assert "[1]" in result
         assert "[2]" in result
-        assert "Summary for newsletter 1" in result
+        assert "Summary for content 1" in result
         assert "AI" in result
         assert "Machine Learning" in result
 
@@ -378,8 +378,8 @@ class TestToolHandlers:
     """Tests for tool handler methods."""
 
     @pytest.mark.asyncio
-    async def test_handle_get_newsletter_content_not_found(self):
-        """Test newsletter content retrieval when not found."""
+    async def test_handle_get_content_not_found(self):
+        """Test content retrieval when not found."""
         generator = PodcastScriptGenerator()
 
         with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
@@ -387,56 +387,60 @@ class TestToolHandlers:
             mock_db.query.return_value.filter.return_value.first.return_value = None
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            result = await generator._handle_get_newsletter_content(999)
+            result = await generator._handle_get_content(999)
 
         assert "not found" in result
-        assert 999 in generator.newsletter_ids_fetched
+        assert 999 in generator.content_ids_fetched
 
     @pytest.mark.asyncio
-    async def test_handle_get_newsletter_content_success(self):
-        """Test successful newsletter content retrieval."""
+    async def test_handle_get_content_success(self):
+        """Test successful content retrieval."""
         generator = PodcastScriptGenerator()
 
-        mock_newsletter = MagicMock()
-        mock_newsletter.id = 1
-        mock_newsletter.title = "Test Newsletter"
-        mock_newsletter.publication = "Test Publication"
-        mock_newsletter.published_date = datetime(2025, 1, 1)
-        mock_newsletter.raw_text = "This is the newsletter content with important AI news."
+        mock_content = MagicMock()
+        mock_content.id = 1
+        mock_content.title = "Test Content"
+        mock_content.publication = "Test Publication"
+        mock_content.published_date = datetime(2025, 1, 1)
+        mock_content.source_type.value = "rss"
+        mock_content.markdown_content = "This is the content with important AI news."
+        mock_content.raw_text = None
 
         with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
             mock_db = MagicMock()
-            mock_db.query.return_value.filter.return_value.first.return_value = mock_newsletter
+            mock_db.query.return_value.filter.return_value.first.return_value = mock_content
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            result = await generator._handle_get_newsletter_content(1)
+            result = await generator._handle_get_content(1)
 
-        assert "Test Newsletter" in result
+        assert "Test Content" in result
         assert "Test Publication" in result
         assert "important AI news" in result
-        assert 1 in generator.newsletter_ids_fetched
+        assert 1 in generator.content_ids_fetched
 
     @pytest.mark.asyncio
-    async def test_handle_get_newsletter_content_truncation(self):
-        """Test newsletter content is truncated for long content."""
+    async def test_handle_get_content_truncation(self):
+        """Test content is truncated for long content."""
         generator = PodcastScriptGenerator()
 
         # Create content longer than 15k chars
         long_content = "A" * 20000
 
-        mock_newsletter = MagicMock()
-        mock_newsletter.id = 1
-        mock_newsletter.title = "Long Newsletter"
-        mock_newsletter.publication = "Test"
-        mock_newsletter.published_date = datetime(2025, 1, 1)
-        mock_newsletter.raw_text = long_content
+        mock_content = MagicMock()
+        mock_content.id = 1
+        mock_content.title = "Long Content"
+        mock_content.publication = "Test"
+        mock_content.published_date = datetime(2025, 1, 1)
+        mock_content.source_type.value = "rss"
+        mock_content.markdown_content = long_content
+        mock_content.raw_text = None
 
         with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
             mock_db = MagicMock()
-            mock_db.query.return_value.filter.return_value.first.return_value = mock_newsletter
+            mock_db.query.return_value.filter.return_value.first.return_value = mock_content
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            result = await generator._handle_get_newsletter_content(1)
+            result = await generator._handle_get_content(1)
 
         assert "[Content truncated...]" in result
 
@@ -550,15 +554,13 @@ class TestFallbackScript:
 class TestUserPromptBuilding:
     """Tests for user prompt construction."""
 
-    def test_build_user_prompt(
-        self, sample_digest_data, sample_newsletter_metadata, sample_summaries
-    ):
+    def test_build_user_prompt(self, sample_digest_data, sample_content_metadata, sample_summaries):
         """Test user prompt building."""
         generator = PodcastScriptGenerator()
 
         context = {
             "digest": sample_digest_data,
-            "newsletter_metadata": sample_newsletter_metadata,
+            "content_metadata": sample_content_metadata,
             "summaries": sample_summaries,
             "length": PodcastLength.STANDARD,
             "custom_focus_topics": ["AI Agents"],
@@ -586,14 +588,14 @@ class TestUserPromptBuilding:
         assert "dialogue" in prompt
 
     def test_build_user_prompt_no_custom_topics(
-        self, sample_digest_data, sample_newsletter_metadata, sample_summaries
+        self, sample_digest_data, sample_content_metadata, sample_summaries
     ):
         """Test user prompt without custom focus topics."""
         generator = PodcastScriptGenerator()
 
         context = {
             "digest": sample_digest_data,
-            "newsletter_metadata": sample_newsletter_metadata,
+            "content_metadata": sample_content_metadata,
             "summaries": sample_summaries,
             "length": PodcastLength.BRIEF,
             "custom_focus_topics": [],
@@ -725,7 +727,7 @@ class TestGenerationMetadata:
         """Test PodcastGenerationMetadata default values."""
         metadata = PodcastGenerationMetadata()
 
-        assert metadata.newsletter_ids_fetched == []
+        assert metadata.content_ids_fetched == []
         assert metadata.web_searches == []
         assert metadata.tool_call_count == 0
         assert metadata.total_tokens_used == 0
@@ -733,13 +735,13 @@ class TestGenerationMetadata:
     def test_generation_metadata_with_data(self):
         """Test PodcastGenerationMetadata with data."""
         metadata = PodcastGenerationMetadata(
-            newsletter_ids_fetched=[1, 2, 3],
+            content_ids_fetched=[1, 2, 3],
             web_searches=["AI news", "machine learning trends"],
             tool_call_count=5,
             total_tokens_used=15000,
         )
 
-        assert metadata.newsletter_ids_fetched == [1, 2, 3]
+        assert metadata.content_ids_fetched == [1, 2, 3]
         assert len(metadata.web_searches) == 2
         assert metadata.tool_call_count == 5
         assert metadata.total_tokens_used == 15000

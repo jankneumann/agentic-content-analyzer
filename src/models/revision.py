@@ -13,18 +13,20 @@ class RevisionContext:
     """Complete context for AI-powered digest revision.
 
     Includes condensed context (digest + summaries + theme analysis) with
-    newsletter IDs available for on-demand fetching via tools.
+    content IDs available for on-demand fetching via tools.
     """
 
     digest: Digest
     summaries: list[NewsletterSummary]  # Already condensed summaries
     theme_analysis: Any | None = None  # Theme analysis data (if available)
-    newsletter_ids: list[int] | None = None  # IDs for on-demand fetching via tools
+    content_ids: list[int] | None = None  # IDs for on-demand fetching via tools
 
     def __post_init__(self) -> None:
-        """Initialize newsletter IDs if not provided."""
-        if self.newsletter_ids is None:
-            self.newsletter_ids = [summary.newsletter_id for summary in self.summaries]
+        """Initialize content IDs if not provided."""
+        if self.content_ids is None:
+            self.content_ids = [
+                summary.content_id for summary in self.summaries if summary.content_id
+            ]
 
     def to_llm_context(self) -> str:
         """Format context for LLM prompt (token-optimized).
@@ -97,20 +99,23 @@ class RevisionContext:
         else:
             parts.append(str(self.digest.actionable_recommendations))
 
-        # Newsletter summaries (condensed)
-        parts.append("\n\n## SOURCE NEWSLETTERS (CONDENSED SUMMARIES)\n")
+        # Content summaries (condensed)
+        parts.append("\n\n## SOURCE CONTENT (CONDENSED SUMMARIES)\n")
         parts.append(
-            f"Total: {len(self.summaries)} newsletters. "
+            f"Total: {len(self.summaries)} content items. "
             "Full content available on-demand via tools.\n"
         )
 
         for idx, summary in enumerate(self.summaries, 1):
-            # Get newsletter metadata
-            newsletter = summary.newsletter
-            parts.append(f"\n### [{idx}] {newsletter.title}")
-            parts.append(f"**Publication**: {newsletter.publication or 'Unknown'}")
-            parts.append(f"**Date**: {newsletter.published_date.strftime('%Y-%m-%d')}")
-            parts.append(f"**Newsletter ID**: {summary.newsletter_id}")
+            # Get content metadata
+            content = summary.content
+            if content:
+                parts.append(f"\n### [{idx}] {content.title}")
+                parts.append(f"**Publication**: {content.publication or 'Unknown'}")
+                parts.append(
+                    f"**Date**: {content.published_date.strftime('%Y-%m-%d') if content.published_date else 'Unknown'}"
+                )
+                parts.append(f"**Content ID**: {summary.content_id}")
 
             # Include condensed summary content
             parts.append(f"\n**Executive Summary**: {summary.executive_summary}")
@@ -134,12 +139,12 @@ class RevisionContext:
         parts.append("\n\n## AVAILABLE TOOLS\n")
         parts.append("You have access to the following tools to retrieve additional details:\n")
         parts.append(
-            "- **fetch_newsletter_content(newsletter_id)**: "
-            "Retrieve full content of a specific newsletter when you need detailed information"
+            "- **fetch_content(content_id)**: "
+            "Retrieve full content of a specific item when you need detailed information"
         )
         parts.append(
-            "- **search_newsletters(query)**: "
-            "Search across all newsletters for specific topics or keywords"
+            "- **search_content(query)**: "
+            "Search across all content for specific topics or keywords"
         )
 
         return "\n".join(parts)

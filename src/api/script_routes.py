@@ -128,7 +128,7 @@ async def generate_script_task(request: PodcastRequest) -> None:
             script_record.word_count = script.word_count
             script_record.estimated_duration_seconds = script.estimated_duration_seconds
             script_record.status = PodcastStatus.SCRIPT_PENDING_REVIEW.value
-            script_record.newsletter_ids_fetched = metadata.newsletter_ids_fetched
+            script_record.newsletter_ids_fetched = metadata.content_ids_fetched
             script_record.web_search_queries = metadata.web_searches
             script_record.tool_call_count = metadata.tool_call_count
             script_record.model_used = generator.model

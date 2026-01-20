@@ -119,13 +119,14 @@ class PodcastCreator:
                 script_record.estimated_duration_seconds = script.estimated_duration_seconds
                 script_record.status = PodcastStatus.SCRIPT_PENDING_REVIEW
 
-                # Store newsletter IDs available (for reference)
-                # These are the newsletters in the digest period
+                # Store content IDs available (for reference)
+                # These are the content items in the digest period
                 script_record.newsletter_ids_available = [
                     s.get("id") for s in script.sources_summary
                 ]
-                # Store which ones were actually fetched via tool
-                script_record.newsletter_ids_fetched = metadata.newsletter_ids_fetched
+                # Store which ones were actually fetched via get_content tool
+                # Note: DB column still named newsletter_ids_fetched for backwards compat
+                script_record.newsletter_ids_fetched = metadata.content_ids_fetched
                 script_record.web_search_queries = metadata.web_searches
                 script_record.tool_call_count = metadata.tool_call_count
 
