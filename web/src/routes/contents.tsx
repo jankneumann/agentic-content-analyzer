@@ -441,7 +441,6 @@ function ContentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[80px]">Actions</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="w-[120px]">Source</TableHead>
                   <TableHead className="w-[150px]">Publication</TableHead>
@@ -454,42 +453,50 @@ function ContentsPage() {
                   const status = statusConfig[content.status]
                   const source = sourceConfig[content.source_type]
                   return (
-                    <TableRow key={content.id}>
+                    <TableRow key={content.id} className="hover:bg-muted/50">
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setSelectedContentId(content.id)}
-                            title="View content"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {content.status === "completed" && (
+                        <div className="flex items-start gap-2">
+                          {/* Action buttons on the left */}
+                          <div className="flex items-center gap-1 shrink-0 pt-0.5">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
-                              asChild
+                              className="h-7 w-7"
+                              onClick={() => setSelectedContentId(content.id)}
+                              title="View content"
                             >
-                              <Link
-                                to="/review/summary/$id"
-                                params={{ id: String(content.id) }}
-                                search={{ source: "content" }}
-                                title="Review summary"
-                              >
-                                <FileSearch className="h-4 w-4" />
-                              </Link>
+                              <Eye className="h-4 w-4" />
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium line-clamp-1">
-                            <span className="text-muted-foreground font-normal">[{content.id}]</span>{" "}
-                            {content.title}
+                            {content.status === "completed" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                asChild
+                              >
+                                <Link
+                                  to="/review/summary/$id"
+                                  params={{ id: String(content.id) }}
+                                  search={{ source: "content" }}
+                                  title="Review summary"
+                                >
+                                  <FileSearch className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
+                          {/* Title - clickable to view content */}
+                          <div
+                            className="flex-1 cursor-pointer"
+                            onClick={() => setSelectedContentId(content.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => e.key === "Enter" && setSelectedContentId(content.id)}
+                          >
+                            <div className="font-medium line-clamp-1">
+                              <span className="text-muted-foreground font-normal">[{content.id}]</span>{" "}
+                              {content.title}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
