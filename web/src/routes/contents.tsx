@@ -571,7 +571,7 @@ function ContentsPage() {
         open={!!selectedContentId}
         onOpenChange={(open) => !open && setSelectedContentId(null)}
       >
-        <DialogContent className="max-w-4xl max-h-[85vh]">
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[85vh] resize overflow-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />

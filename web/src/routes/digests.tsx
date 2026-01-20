@@ -396,7 +396,6 @@ function DigestsPage() {
                   <TableHead className="w-[80px]">Sources</TableHead>
                   <TableHead className="w-[150px]">Status</TableHead>
                   <TableHead className="w-[130px]">Created</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -418,7 +417,7 @@ function DigestsPage() {
         open={!!selectedDigestId}
         onOpenChange={(open) => !open && setSelectedDigestId(null)}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] resize overflow-auto">
           <DialogHeader>
             <DialogTitle>{selectedDigest?.title ?? "Digest Details"}</DialogTitle>
             <DialogDescription>
@@ -651,14 +650,51 @@ function DigestRow({
   }
 
   return (
-    <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onView}>
+    <TableRow className="hover:bg-muted/50">
       <TableCell>
-        <div>
-          <div className="font-medium line-clamp-1">
-            {digest.title ?? `Digest #${digest.id}`}
+        <div className="flex items-start gap-2">
+          {/* Action buttons on the left */}
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onView}
+              title="View digest"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            {(digest.status === "PENDING_REVIEW" || digest.status === "COMPLETED" || digest.status === "APPROVED") && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                asChild
+              >
+                <Link
+                  to="/review/digest/$id"
+                  params={{ id: String(digest.id) }}
+                  title="Review digest"
+                >
+                  <FileSearch className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
           </div>
-          <div className="text-sm text-muted-foreground">
-            {digest.model_used}
+          {/* Title - clickable to view */}
+          <div
+            className="flex-1 cursor-pointer"
+            onClick={onView}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && onView()}
+          >
+            <div className="font-medium line-clamp-1">
+              {digest.title ?? `Digest #${digest.id}`}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {digest.model_used}
+            </div>
           </div>
         </div>
       </TableCell>
@@ -691,30 +727,6 @@ function DigestRow({
             ? formatDistanceToNow(new Date(digest.created_at), { addSuffix: true })
             : "Unknown"}
         </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <Eye className="h-4 w-4" />
-          </Button>
-          {(digest.status === "PENDING_REVIEW" || digest.status === "COMPLETED" || digest.status === "APPROVED") && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              asChild
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Link
-                to="/review/digest/$id"
-                params={{ id: String(digest.id) }}
-                title="Review digest"
-              >
-                <FileSearch className="h-4 w-4" />
-              </Link>
-            </Button>
-          )}
-        </div>
       </TableCell>
     </TableRow>
   )

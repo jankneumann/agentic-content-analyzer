@@ -425,7 +425,6 @@ function ScriptsPage() {
                   <TableHead className="w-[150px]">Status</TableHead>
                   <TableHead className="w-[100px]">Revisions</TableHead>
                   <TableHead className="w-[130px]">Created</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -447,7 +446,7 @@ function ScriptsPage() {
         open={!!selectedScriptId}
         onOpenChange={(open) => !open && setSelectedScriptId(null)}
       >
-        <DialogContent className="max-w-3xl max-h-[80vh]">
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[85vh] resize overflow-auto">
           <DialogHeader>
             <DialogTitle>Script Details</DialogTitle>
             <DialogDescription>
@@ -612,20 +611,51 @@ function ScriptRow({
     "completed",
   ].includes(script.status)
 
-  const handleReviewClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleReviewClick = () => {
     navigate({ to: "/review/script/$id", params: { id: script.id.toString() } })
   }
 
   return (
-    <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onView}>
+    <TableRow className="hover:bg-muted/50">
       <TableCell>
-        <div>
-          <div className="font-medium line-clamp-1">
-            {script.title ?? `Script #${script.id}`}
+        <div className="flex items-start gap-2">
+          {/* Action buttons on the left */}
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onView}
+              title="View script"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            {canReview && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={handleReviewClick}
+                title="Review script"
+              >
+                <FileSearch className="h-4 w-4" />
+              </Button>
+            )}
           </div>
-          <div className="text-sm text-muted-foreground">
-            Digest #{script.digest_id}
+          {/* Title - clickable to view */}
+          <div
+            className="flex-1 cursor-pointer"
+            onClick={onView}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && onView()}
+          >
+            <div className="font-medium line-clamp-1">
+              {script.title ?? `Script #${script.id}`}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Digest #{script.digest_id}
+            </div>
           </div>
         </div>
       </TableCell>
@@ -656,24 +686,6 @@ function ScriptRow({
             ? formatDistanceToNow(new Date(script.created_at), { addSuffix: true })
             : "Unknown"}
         </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <Eye className="h-4 w-4" />
-          </Button>
-          {canReview && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleReviewClick}
-              title="Review script"
-            >
-              <FileSearch className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
       </TableCell>
     </TableRow>
   )
