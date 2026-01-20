@@ -27,6 +27,8 @@ import {
   Eye,
   ExternalLink,
   Plus,
+  Code,
+  BookOpen,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"
@@ -68,6 +70,7 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Toggle } from "@/components/ui/toggle"
 import { useContents, useContent, useContentStats, useIngestContents } from "@/hooks/use-contents"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
 import {
@@ -172,6 +175,7 @@ function ContentsPage() {
   const [searchValue, setSearchValue] = useState("")
   const [selectedContentId, setSelectedContentId] = useState<number | null>(null)
   const [ingestDialogOpen, setIngestDialogOpen] = useState(false)
+  const [showRawMarkdown, setShowRawMarkdown] = useState(false)
 
   const { data, isLoading, isError, error, refetch } = useContents(filters)
   const { data: stats } = useContentStats()
@@ -576,7 +580,12 @@ function ContentsPage() {
       {/* Content detail dialog */}
       <Dialog
         open={!!selectedContentId}
-        onOpenChange={(open) => !open && setSelectedContentId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedContentId(null)
+            setShowRawMarkdown(false) // Reset to rendered view when closing
+          }
+        }}
       >
         <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
@@ -637,16 +646,50 @@ function ContentsPage() {
                 )}
               </div>
 
-              {/* Content - Markdown rendering */}
-              <div className="border rounded-lg flex-1 min-h-0 overflow-hidden">
-                <ScrollArea className="h-full">
+              {/* Content - Markdown rendering with toggle */}
+              <div className="border rounded-lg flex-1 min-h-0 overflow-hidden flex flex-col">
+                {/* View mode toggle header */}
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30 shrink-0">
+                  <span className="text-sm text-muted-foreground">
+                    {showRawMarkdown ? "Raw Markdown" : "Rendered View"}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Toggle
+                      size="sm"
+                      pressed={!showRawMarkdown}
+                      onPressedChange={() => setShowRawMarkdown(false)}
+                      aria-label="Rendered view"
+                      title="Rendered view"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </Toggle>
+                    <Toggle
+                      size="sm"
+                      pressed={showRawMarkdown}
+                      onPressedChange={() => setShowRawMarkdown(true)}
+                      aria-label="Raw markdown"
+                      title="Raw markdown"
+                    >
+                      <Code className="h-4 w-4" />
+                    </Toggle>
+                  </div>
+                </div>
+
+                {/* Content area */}
+                <ScrollArea className="flex-1">
                   <div className="p-4">
                     {selectedContent.markdown_content ? (
-                      <div className="prose prose-sm max-w-none dark:prose-invert">
-                        <ReactMarkdown>
+                      showRawMarkdown ? (
+                        <pre className="text-sm font-mono whitespace-pre-wrap break-words text-muted-foreground bg-muted/50 p-4 rounded-md overflow-x-auto">
                           {selectedContent.markdown_content}
-                        </ReactMarkdown>
-                      </div>
+                        </pre>
+                      ) : (
+                        <div className="prose prose-sm max-w-none dark:prose-invert">
+                          <ReactMarkdown>
+                            {selectedContent.markdown_content}
+                          </ReactMarkdown>
+                        </div>
+                      )
                     ) : (
                       <p className="text-muted-foreground italic">No content available</p>
                     )}
