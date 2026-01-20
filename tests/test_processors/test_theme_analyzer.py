@@ -15,28 +15,38 @@ from src.processors.theme_analyzer import ThemeAnalyzer
 
 
 @pytest.fixture
-def sample_newsletters() -> list[dict]:
-    """Create sample newsletters for testing."""
+def sample_contents() -> list[dict]:
+    """Create sample content items for testing."""
     return [
         {
             "id": 1,
             "title": "AI Advances",
             "publication": "Tech Weekly",
             "published_date": datetime(2025, 1, 15),
+            "source_type": "rss",
         },
         {
             "id": 2,
             "title": "Vector Databases",
             "publication": "Data News",
             "published_date": datetime(2025, 1, 10),
+            "source_type": "gmail",
         },
         {
             "id": 3,
             "title": "LLM Updates",
             "publication": "AI Digest",
             "published_date": datetime(2025, 1, 5),
+            "source_type": "rss",
         },
     ]
+
+
+# Legacy alias for backwards compatibility in tests
+@pytest.fixture
+def sample_newsletters(sample_contents) -> list[dict]:
+    """Alias for sample_contents (legacy tests)."""
+    return sample_contents
 
 
 @pytest.fixture
@@ -44,23 +54,26 @@ def sample_summaries() -> list[dict]:
     """Create sample summaries for testing."""
     return [
         {
-            "newsletter_id": 1,
+            "content_id": 1,
             "executive_summary": "Major AI breakthroughs this week.",
             "key_themes": ["LLMs", "AI Agents"],
+            "theme_tags": [],
             "strategic_insights": ["Cost reduction in LLMs", "Agent adoption growing"],
             "technical_details": ["New context windows", "Better embeddings"],
         },
         {
-            "newsletter_id": 2,
+            "content_id": 2,
             "executive_summary": "Vector database performance improvements.",
             "key_themes": ["Vector Search", "Embeddings"],
+            "theme_tags": [],
             "strategic_insights": ["Database selection critical"],
             "technical_details": ["Hybrid search techniques"],
         },
         {
-            "newsletter_id": 3,
+            "content_id": 3,
             "executive_summary": "Latest LLM releases.",
             "key_themes": ["GPT", "Claude"],
+            "theme_tags": [],
             "strategic_insights": ["Model selection matters"],
             "technical_details": ["API updates", "Pricing changes"],
         },
@@ -425,7 +438,7 @@ def test_parse_theme_response_invalid_json(sample_newsletters):
 
 @pytest.mark.asyncio
 async def test_extract_themes_with_relevance_filtering(
-    sample_newsletters, sample_summaries, sample_graphiti_themes
+    sample_contents, sample_summaries, sample_graphiti_themes
 ):
     """Test that themes below relevance threshold are filtered out."""
     # Response with one theme above and one below threshold
@@ -475,7 +488,7 @@ async def test_extract_themes_with_relevance_filtering(
         analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
 
         themes = await analyzer._extract_themes_with_llm(
-            newsletters=sample_newsletters,
+            contents=sample_contents,
             summaries=sample_summaries,
             graphiti_themes=sample_graphiti_themes,
             max_themes=10,
