@@ -446,15 +446,15 @@ function ScriptsPage() {
         open={!!selectedScriptId}
         onOpenChange={(open) => !open && setSelectedScriptId(null)}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] max-h-[85vh] resize overflow-auto">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Script Details</DialogTitle>
             <DialogDescription>
               Review script content and approve or request revisions
             </DialogDescription>
           </DialogHeader>
           {isLoadingScript ? (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 flex-1">
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
@@ -463,7 +463,7 @@ function ScriptsPage() {
             (() => {
               const script = scriptDetail
               return (
-                <ScrollArea className="max-h-[60vh] pr-4">
+                <ScrollArea className="flex-1 min-h-0 pr-4">
                   <div className="space-y-6 py-4">
                     {/* Script metadata */}
                     <div className="grid grid-cols-3 gap-4">
@@ -539,7 +539,7 @@ function ScriptsPage() {
               )
             })()
           ) : null}
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="shrink-0 flex gap-2">
             <Button
               variant="outline"
               onClick={() => setSelectedScriptId(null)}

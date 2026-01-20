@@ -417,8 +417,8 @@ function DigestsPage() {
         open={!!selectedDigestId}
         onOpenChange={(open) => !open && setSelectedDigestId(null)}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] max-h-[90vh] resize overflow-auto">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{selectedDigest?.title ?? "Digest Details"}</DialogTitle>
             <DialogDescription>
               {selectedDigest?.digest_type === "daily" ? "Daily" : "Weekly"} digest
@@ -428,13 +428,13 @@ function DigestsPage() {
             </DialogDescription>
           </DialogHeader>
           {isLoadingDigest ? (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 flex-1">
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
           ) : selectedDigest ? (
-            <ScrollArea className="max-h-[60vh] pr-4">
+            <ScrollArea className="flex-1 min-h-0 pr-4">
               <div className="space-y-6 py-4">
                 {/* Metadata row */}
                 <div className="grid grid-cols-4 gap-4 text-sm">
@@ -552,7 +552,7 @@ function DigestsPage() {
               </div>
             </ScrollArea>
           ) : null}
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="shrink-0 flex gap-2">
             <Button variant="outline" onClick={() => setSelectedDigestId(null)}>
               Close
             </Button>

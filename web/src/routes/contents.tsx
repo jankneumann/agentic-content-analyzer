@@ -578,8 +578,8 @@ function ContentsPage() {
         open={!!selectedContentId}
         onOpenChange={(open) => !open && setSelectedContentId(null)}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] max-h-[85vh] resize overflow-auto">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
               Content Details
@@ -590,13 +590,13 @@ function ContentsPage() {
           </DialogHeader>
 
           {isLoadingContent ? (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center py-8 flex-1">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : selectedContent ? (
-            <div className="space-y-4">
+            <div className="flex flex-col flex-1 min-h-0 space-y-4">
               {/* Metadata */}
-              <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex flex-wrap gap-4 text-sm shrink-0">
                 {selectedContent.author && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">Author:</span>
@@ -638,8 +638,8 @@ function ContentsPage() {
               </div>
 
               {/* Content - Markdown rendering */}
-              <div className="border rounded-lg">
-                <ScrollArea className="h-[400px]">
+              <div className="border rounded-lg flex-1 min-h-0 overflow-hidden">
+                <ScrollArea className="h-full">
                   <div className="p-4">
                     {selectedContent.markdown_content ? (
                       <div className="prose prose-sm max-w-none dark:prose-invert">
@@ -655,7 +655,7 @@ function ContentsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 shrink-0">
                 {selectedContent.source_url && (
                   <Button variant="outline" asChild>
                     <a
@@ -683,7 +683,7 @@ function ContentsPage() {
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center py-8 flex-1">
               <p className="text-muted-foreground">Content not found</p>
             </div>
           )}

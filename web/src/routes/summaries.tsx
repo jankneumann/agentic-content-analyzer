@@ -404,21 +404,21 @@ function SummariesPage() {
         open={!!selectedSummaryId}
         onOpenChange={(open) => !open && setSelectedSummaryId(null)}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] max-h-[85vh] resize overflow-auto">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Summary Details</DialogTitle>
             <DialogDescription>
               AI-generated summary with key insights and themes
             </DialogDescription>
           </DialogHeader>
           {isLoadingSummary ? (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 flex-1">
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
           ) : selectedSummary ? (
-            <ScrollArea className="max-h-[65vh] pr-4">
+            <ScrollArea className="flex-1 min-h-0 pr-4">
               <div className="space-y-6 py-4">
                 {/* Executive Summary */}
                 <div>
@@ -516,7 +516,7 @@ function SummariesPage() {
               </div>
             </ScrollArea>
           ) : null}
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setSelectedSummaryId(null)}>
               Close
             </Button>
