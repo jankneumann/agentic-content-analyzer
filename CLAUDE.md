@@ -28,6 +28,7 @@ Comprehensive documentation is available in the `/docs` directory:
 - **[Overview & Quick Start](docs/README.md)** - Project introduction and getting started
 - **[Setup Guide](docs/SETUP.md)** - Development environment setup and configuration
 - **[Architecture](docs/ARCHITECTURE.md)** - System design, tech stack, and workflows
+- **[Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md)** - End-to-end markdown flow from ingestion to rendering
 - **[Model Configuration](docs/MODEL_CONFIGURATION.md)** - LLM selection, providers, and cost optimization
 - **[Content Guidelines](docs/CONTENT_GUIDELINES.md)** - Digest quality standards and formatting
 - **[Development Guide](docs/DEVELOPMENT.md)** - Commands, patterns, and best practices

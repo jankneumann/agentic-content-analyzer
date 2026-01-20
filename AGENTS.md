@@ -17,6 +17,17 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
+## Key Documentation
+
+Before making significant changes, review the relevant documentation:
+
+| Document | Purpose |
+|----------|---------|
+| [CLAUDE.md](CLAUDE.md) | Primary agent instructions and codebase guidance |
+| [Architecture](docs/ARCHITECTURE.md) | System design, tech stack, data flows |
+| [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow from ingestion to rendering |
+| [Development Guide](docs/DEVELOPMENT.md) | Commands, patterns, best practices |
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
