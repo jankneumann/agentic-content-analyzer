@@ -85,6 +85,11 @@ class KeyframeExtractor:
         Returns:
             Path to downloaded video or None if failed
         """
+        # Security check: Prevent path traversal
+        if not re.match(r"^[a-zA-Z0-9_-]+$", video_id):
+            logger.error(f"Invalid video_id format: {video_id}")
+            return None
+
         try:
             import yt_dlp
         except ImportError:
@@ -598,6 +603,11 @@ class KeyframeExtractor:
         Args:
             video_id: YouTube video ID
         """
+        # Security check: Prevent path traversal
+        if not re.match(r"^[a-zA-Z0-9_-]+$", video_id):
+            logger.warning(f"Skipping cleanup for invalid video_id: {video_id}")
+            return
+
         frames_dir = os.path.join(self.output_dir, f"{video_id}_frames")
         if os.path.exists(frames_dir):
             try:
