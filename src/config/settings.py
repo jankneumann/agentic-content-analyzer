@@ -7,6 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
 
+# Type alias for database provider
+DatabaseProviderType = Literal["local", "supabase"]
+PoolerModeType = Literal["transaction", "session"]
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -26,6 +30,18 @@ class Settings(BaseSettings):
         "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
     )
     redis_url: str = "redis://localhost:6379/0"
+
+    # Database Provider Configuration
+    database_provider: DatabaseProviderType | None = (
+        None  # Explicit override (auto-detects if None)
+    )
+
+    # Supabase Cloud Database Configuration
+    supabase_project_ref: str | None = None  # Supabase project reference ID
+    supabase_db_password: str | None = None  # Supabase database password
+    supabase_region: str = "us-east-1"  # AWS region for Supabase project
+    supabase_pooler_mode: PoolerModeType = "transaction"  # Connection pooling mode
+    supabase_direct_url: str | None = None  # Direct URL for migrations (bypasses pooler)
 
     # Neo4j / Graphiti
     neo4j_uri: str = "bolt://localhost:7687"
@@ -126,6 +142,74 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.environment == "production"
+
+    @property
+    def detected_database_provider(self) -> DatabaseProviderType:
+        """Detect which database provider to use.
+
+        Detection order:
+        1. Explicit database_provider setting (if set)
+        2. SUPABASE_PROJECT_REF env var present -> Supabase
+        3. DATABASE_URL contains ".supabase." -> Supabase
+        4. Default -> Local PostgreSQL
+        """
+        # 1. Explicit override takes precedence
+        if self.database_provider:
+            return self.database_provider
+
+        # 2. Supabase project reference indicates Supabase provider
+        if self.supabase_project_ref:
+            return "supabase"
+
+        # 3. URL contains Supabase domain
+        if ".supabase." in self.database_url:
+            return "supabase"
+
+        # 4. Default to local PostgreSQL
+        return "local"
+
+    def get_effective_database_url(self) -> str:
+        """Get the effective database URL based on provider configuration.
+
+        For Supabase with component-based config, constructs the pooler URL.
+        Otherwise returns the configured DATABASE_URL.
+
+        Returns:
+            The database connection URL to use
+        """
+        if self.supabase_project_ref and self.supabase_db_password:
+            # Construct Supabase pooler URL from components
+            port = 6543 if self.supabase_pooler_mode == "transaction" else 5432
+            return (
+                f"postgresql://postgres.{self.supabase_project_ref}:"
+                f"{self.supabase_db_password}@"
+                f"aws-0-{self.supabase_region}.pooler.supabase.com:"
+                f"{port}/postgres"
+            )
+        return self.database_url
+
+    def get_migration_database_url(self) -> str:
+        """Get the database URL for Alembic migrations.
+
+        For Supabase, returns the direct connection URL (bypasses pooler)
+        since DDL operations require direct connections.
+
+        Returns:
+            Database URL suitable for migrations
+        """
+        # Use explicit direct URL if provided
+        if self.supabase_direct_url:
+            return self.supabase_direct_url
+
+        # For Supabase with component config, construct direct URL
+        if self.supabase_project_ref and self.supabase_db_password:
+            return (
+                f"postgresql://postgres:{self.supabase_db_password}@"
+                f"db.{self.supabase_project_ref}.supabase.co:5432/postgres"
+            )
+
+        # For local or URL-based config, use the standard URL
+        return self.database_url
 
     def get_youtube_api_key(self) -> str | None:
         """

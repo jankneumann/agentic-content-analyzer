@@ -83,12 +83,133 @@ pytest tests/test_config/
 # Should see: "29 passed"
 ```
 
+## Supabase Cloud Database (Bring Your Own)
+
+The newsletter aggregator supports **Supabase** as a cloud PostgreSQL option. This follows the "bring your own backend" pattern - each user connects their own Supabase instance and owns all their data.
+
+### Why Supabase?
+
+- **Free tier**: 500MB database, 50 concurrent connections
+- **Zero infrastructure**: No Docker or local PostgreSQL needed
+- **Production-ready**: Managed backups, automatic SSL, connection pooling
+- **Quick start**: Get running in minutes
+
+### Setup Guide
+
+#### 1. Create Supabase Project
+
+1. Go to [supabase.com](https://supabase.com) and sign up
+2. Create a new project (note your **project reference ID**)
+3. Wait for database provisioning (~2 minutes)
+
+#### 2. Get Database Credentials
+
+1. Go to **Project Settings > Database**
+2. Note these values:
+   - **Project Reference**: `your-project-ref` (in the URL: `supabase.com/dashboard/project/your-project-ref`)
+   - **Database Password**: Set during project creation
+   - **Region**: e.g., `us-east-1`
+
+#### 3. Configure Environment
+
+**Option A: Component-based config (Recommended)**
+
+```bash
+# .env
+SUPABASE_PROJECT_REF=your-project-ref
+SUPABASE_DB_PASSWORD=your-database-password
+SUPABASE_REGION=us-east-1
+SUPABASE_POOLER_MODE=transaction  # or "session" for prepared statements
+```
+
+**Option B: Direct connection string**
+
+```bash
+# .env - Get from Supabase Dashboard > Settings > Database > Connection string
+DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+```
+
+#### 4. Run Migrations
+
+Supabase requires a **direct connection** for migrations (bypasses the connection pooler):
+
+```bash
+# Set direct URL for migrations
+export SUPABASE_DIRECT_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+
+# Or use the component config (auto-generates direct URL)
+alembic upgrade head
+```
+
+#### 5. Verify Connection
+
+```bash
+# Test database connectivity
+python -c "from src.storage.database import health_check, get_provider_name; print(f'Provider: {get_provider_name()}'); print(f'Health: {health_check()}')"
+
+# Expected output:
+# Provider: supabase
+# Health: True
+```
+
+### Connection Pooling Modes
+
+Supabase uses **Supavisor** for connection pooling with two modes:
+
+| Mode | Port | Use Case |
+|------|------|----------|
+| **Transaction** (default) | 6543 | Most applications - efficient connection reuse |
+| **Session** | 5432 | Apps using prepared statements or LISTEN/NOTIFY |
+
+Configure via `SUPABASE_POOLER_MODE=transaction` or `session`.
+
+### Supabase Free Tier Limits
+
+| Resource | Limit |
+|----------|-------|
+| Database size | 500MB |
+| Concurrent connections | 50 (via pooler) |
+| Direct connections | 10 |
+| Bandwidth | 2GB/month |
+
+For production workloads, consider upgrading to a paid plan.
+
+### Troubleshooting Supabase
+
+**Connection refused**:
+```bash
+# Verify your project is active (not paused)
+# Free tier projects pause after 7 days of inactivity
+```
+
+**SSL required error**:
+```bash
+# Ensure sslmode=require (automatic with Supabase provider)
+# If using direct URL, add: ?sslmode=require
+```
+
+**Migration fails through pooler**:
+```bash
+# Use direct connection for DDL operations
+export SUPABASE_DIRECT_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+alembic upgrade head
+```
+
+**Connection limit exceeded**:
+```bash
+# Check current connections in Supabase Dashboard
+# Reduce pool_size in code or use transaction pooling mode
+```
+
+---
+
 ## Cloud Production (When Ready)
 
 ### Deployment Platforms
 
 - **Railway / Render / Fly.io**: Application hosting
-- **Managed PostgreSQL**: Primary database (AWS RDS, Google Cloud SQL, etc.)
+- **Supabase**: Managed PostgreSQL with connection pooling (see above)
+- **Managed PostgreSQL**: Alternative databases (AWS RDS, Google Cloud SQL, etc.)
 - **Managed Redis**: Task queue (Redis Cloud, AWS ElastiCache)
 - **Neo4j Aura**: Managed knowledge graph (or self-hosted Neo4j)
 
@@ -133,6 +254,20 @@ GOOGLE_API_KEY=...            # Optional for framework comparison
 # Environment
 ENVIRONMENT=development  # or production
 ```
+
+### Supabase Variables (Optional Cloud Database)
+
+```bash
+# Supabase Cloud Database (alternative to local PostgreSQL)
+SUPABASE_PROJECT_REF=your-project-ref    # Project reference ID
+SUPABASE_DB_PASSWORD=your-db-password    # Database password
+SUPABASE_REGION=us-east-1                # AWS region (default: us-east-1)
+SUPABASE_POOLER_MODE=transaction         # Connection pooling mode (default: transaction)
+SUPABASE_DIRECT_URL=...                  # Direct connection for migrations (optional)
+DATABASE_PROVIDER=supabase               # Explicit provider override (optional, auto-detected)
+```
+
+See [Supabase Cloud Database](#supabase-cloud-database-bring-your-own) for setup instructions.
 
 ### Optional Variables
 
