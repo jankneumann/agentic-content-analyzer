@@ -129,18 +129,24 @@ export function GenerateScriptDialog({
               value={digestId ? String(digestId) : ""}
               onValueChange={(v) => setDigestId(Number(v))}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select a digest..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-w-[calc(500px-3rem)]">
                 {approvedDigests.length === 0 ? (
                   <SelectItem value="" disabled>
                     No approved digests available
                   </SelectItem>
                 ) : (
                   approvedDigests.map((digest) => (
-                    <SelectItem key={digest.id} value={String(digest.id)}>
-                      [{digest.id}] {digest.title}
+                    <SelectItem
+                      key={digest.id}
+                      value={String(digest.id)}
+                      className="max-w-full"
+                    >
+                      <span className="truncate">
+                        [{digest.id}] {digest.title}
+                      </span>
                     </SelectItem>
                   ))
                 )}

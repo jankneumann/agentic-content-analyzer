@@ -246,17 +246,17 @@ class TestPodcastScriptGenerator:
         assert "Distinguished Engineer" in PODCAST_SCRIPT_SYSTEM_PROMPT
 
     def test_tools_definition(self):
-        """Test tools are properly defined."""
+        """Test tools are properly defined using ToolDefinition dataclass."""
         assert len(PODCAST_TOOLS) == 2
 
-        tool_names = [t["name"] for t in PODCAST_TOOLS]
+        tool_names = [t.name for t in PODCAST_TOOLS]
         assert "get_content" in tool_names
         assert "web_search" in tool_names
 
         for tool in PODCAST_TOOLS:
-            assert "description" in tool
-            assert "input_schema" in tool
-            assert tool["input_schema"]["type"] == "object"
+            assert tool.name  # Non-empty name
+            assert tool.description  # Non-empty description
+            assert tool.parameters["type"] == "object"
 
 
 class TestContextAssembly:

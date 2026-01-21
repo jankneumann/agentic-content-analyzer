@@ -1399,6 +1399,164 @@ Use this checklist for model deprecation migrations:
 - [ ] Update API documentation if applicable
 ```
 
+### Multi-Provider LLM Routing (January 2025)
+
+Created a unified `LLMRouter` class to abstract LLM provider differences and enable easy provider switching across all pipeline processors.
+
+#### 1. Provider-Agnostic Tool Definitions
+
+**Challenge**: Each LLM provider uses different formats for function/tool calling:
+- Anthropic: `input_schema` key, tools list in API call
+- Gemini: `FunctionDeclaration` with `parameters` property
+- OpenAI: `function` wrapper with `parameters` schema
+
+**Solution**: Create a provider-agnostic `ToolDefinition` dataclass:
+```python
+@dataclass
+class ToolDefinition:
+    name: str
+    description: str
+    parameters: dict[str, Any]  # JSON Schema format
+
+# Usage in processors
+PODCAST_TOOLS = [
+    ToolDefinition(
+        name="get_content",
+        description="Retrieve content by ID...",
+        parameters={
+            "type": "object",
+            "properties": {"content_id": {"type": "integer"}},
+            "required": ["content_id"],
+        },
+    ),
+]
+```
+
+**Key Learnings**:
+- Use JSON Schema as the universal parameter format (all providers support it)
+- Convert to provider-specific format at the router level, not in processors
+- Keep tool definitions with the processors that use them, not in the router
+
+#### 2. Dual Parameterization: Model AND Provider
+
+**Challenge**: Users need control over both model choice AND provider (same model can be served by multiple providers).
+
+**Example**: `claude-sonnet-4-5` available via:
+- Anthropic direct API
+- AWS Bedrock
+- Google Vertex AI
+
+**Solution**: Make provider explicitly configurable with sensible defaults:
+```python
+class LLMRouter:
+    DEFAULT_PROVIDERS = {
+        ModelFamily.CLAUDE: Provider.ANTHROPIC,
+        ModelFamily.GEMINI: Provider.GOOGLE_AI,
+        ModelFamily.GPT: Provider.OPENAI,
+    }
+
+    def resolve_provider(
+        self,
+        model: str,
+        provider: Provider | None = None
+    ) -> Provider:
+        """Return explicit provider or infer from model family."""
+        if provider is not None:
+            return provider  # Explicit choice honored
+
+        family = ModelRegistry.get_family(model)
+        return self.DEFAULT_PROVIDERS.get(family, Provider.ANTHROPIC)
+```
+
+**Key Learnings**:
+- Don't force users to specify provider if they don't care
+- Always allow explicit override for when defaults don't apply
+- Provider-specific model IDs should be in configuration, not code
+
+#### 3. API Rate Limit Mitigation Through Provider Switching
+
+**Problem**: Anthropic API returned 529 (Overloaded) and 429 (Rate Limit: 30k tokens/min) errors during script generation.
+
+**Symptoms**:
+- Script generation reported "successful but empty"
+- Backend logs showed API errors, but generation loop continued
+- Default retry logic insufficient for sustained load
+
+**Solution**: Switch to provider with higher rate limits:
+```yaml
+# model_registry.yaml
+defaults:
+  # Before: claude-sonnet-4-5 (30k tokens/min on Anthropic)
+  podcast_script: gemini-2.5-flash  # Higher rate limits
+```
+
+**Key Learnings**:
+- Different providers have vastly different rate limits
+- Gemini's rate limits are generally higher for equivalent tasks
+- Configuration-based model selection enables quick mitigation
+- Monitor backend logs for API errors - they may not surface to frontend
+- Consider implementing automatic provider fallback for resilience
+
+#### 4. Agentic Loop Abstraction
+
+**Challenge**: Implementing tool-calling loops varies significantly by provider:
+- Anthropic: `tool_use` blocks with `tool_use_id`
+- Gemini: `function_call` parts requiring `FunctionResponse`
+- OpenAI: `tool_calls` with `tool_call_id`
+
+**Solution**: Unified interface hiding provider differences:
+```python
+async def generate_with_tools(
+    self,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    tools: list[ToolDefinition],
+    tool_executor: Callable[[str, dict], Any],
+    provider: Provider | None = None,
+) -> LLMResponse:
+    """Run agentic loop with tool calling until completion."""
+
+    # Router handles:
+    # 1. Converting ToolDefinition to provider format
+    # 2. Making API calls with correct structure
+    # 3. Parsing tool calls from response
+    # 4. Formatting tool results for next iteration
+    # 5. Detecting completion (no more tool calls)
+```
+
+**Key Learnings**:
+- Agentic loop structure is similar across providers - abstract it once
+- Tool executor callback keeps business logic in processors
+- Return structured `LLMResponse` with both content and metadata
+
+#### 5. CSS Overflow Handling in Select Components
+
+**Problem**: Long titles in Select dropdown (dialog context) caused layout overflow - white background didn't resize properly.
+
+**Context**: React dialogs with Radix UI Select components displaying digest/script titles.
+
+**Solution**: Constrain width and truncate text:
+```tsx
+// Constrain dropdown to dialog width minus padding
+<SelectContent className="max-w-[calc(500px-3rem)]">
+  {items.map((item) => (
+    <SelectItem key={item.id} value={String(item.id)} className="max-w-full">
+      {/* Truncate long titles with ellipsis */}
+      <span className="truncate">
+        [{item.id}] {item.title}
+      </span>
+    </SelectItem>
+  ))}
+</SelectContent>
+```
+
+**Key Learnings**:
+- `max-w-[calc(container - padding)]` constrains dropdown to parent bounds
+- `truncate` class adds `text-overflow: ellipsis` and `overflow: hidden`
+- Wrap text content in `<span className="truncate">` for reliable truncation
+- `max-w-full` on SelectItem ensures it respects parent constraints
+
 ### General Refactoring Best Practices
 
 From this and other refactorings:
