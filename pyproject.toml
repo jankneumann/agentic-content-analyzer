@@ -37,6 +37,7 @@ dependencies = [
     # Agent Frameworks
     "anthropic>=0.40.0",  # Claude SDK
     "openai>=1.51.0",     # OpenAI SDK
+    "tavily-python>=0.3.0", # Tavily Web Search
 
     # HTTP/Requests
     "httpx>=0.26.0",

@@ -826,8 +826,7 @@ Source: {content.source_type.value if content.source_type else 'unknown'}
     async def _handle_web_search(self, query: str) -> str:
         """Tool handler: Perform web search.
 
-        Note: This is a stub implementation. In production, integrate with
-        a web search service (Tavily, Brave Search, SerpAPI, etc.)
+        Uses Tavily for web search.
 
         Args:
             query: Search query
@@ -835,23 +834,15 @@ Source: {content.source_type.value if content.source_type else 'unknown'}
         Returns:
             Search results or placeholder
         """
+        from src.services.tavily_service import get_tavily_service
+
         logger.debug(f"Web search requested for query: {query}")
         self.web_search_queries.append(query)
 
-        # TODO: Integrate with actual web search service
-        # For now, return a placeholder that indicates the feature is pending
-        return f"""
-Web search for: "{query}"
+        tavily = get_tavily_service()
+        results = tavily.search(query)
 
-Note: Web search integration is pending implementation.
-The search service will provide:
-- Top 3 recent articles matching the query
-- Title, snippet, and URL for each result
-- Publication date for recency context
-
-For now, please rely on the newsletter content available through
-the get_newsletter_content tool.
-"""
+        return tavily.format_results(results)
 
     def _build_user_prompt(
         self,
