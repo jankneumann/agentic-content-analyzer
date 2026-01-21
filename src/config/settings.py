@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     google_api_key: str | None = None
 
+    # Tavily Web Search
+    tavily_api_key: str | None = None
+
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
     gmail_token_file: str = "token.json"

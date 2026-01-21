@@ -14,6 +14,7 @@ Two personas drive the conversation:
 - Dr. Sam Rodriguez: Distinguished Engineer (technical deep-dives)
 """
 
+import asyncio
 import json
 import os
 import time
@@ -826,8 +827,8 @@ Source: {content.source_type.value if content.source_type else 'unknown'}
     async def _handle_web_search(self, query: str) -> str:
         """Tool handler: Perform web search.
 
-        Note: This is a stub implementation. In production, integrate with
-        a web search service (Tavily, Brave Search, SerpAPI, etc.)
+        Integrates with Tavily search service if configured.
+        Falls back to a placeholder if no API key is available.
 
         Args:
             query: Search query
@@ -838,20 +839,51 @@ Source: {content.source_type.value if content.source_type else 'unknown'}
         logger.debug(f"Web search requested for query: {query}")
         self.web_search_queries.append(query)
 
-        # TODO: Integrate with actual web search service
-        # For now, return a placeholder that indicates the feature is pending
-        return f"""
+        if not settings.tavily_api_key:
+            logger.warning("Tavily API key not configured, returning placeholder")
+            return f"""
 Web search for: "{query}"
 
-Note: Web search integration is pending implementation.
-The search service will provide:
-- Top 3 recent articles matching the query
-- Title, snippet, and URL for each result
-- Publication date for recency context
+Note: Web search integration is pending configuration.
+Please set TAVILY_API_KEY environment variable.
 
 For now, please rely on the newsletter content available through
 the get_newsletter_content tool.
 """
+
+        try:
+            from tavily import TavilyClient
+
+            tavily = TavilyClient(api_key=settings.tavily_api_key)
+            response = await asyncio.to_thread(
+                tavily.search,
+                query=query,
+                search_depth="advanced",
+                max_results=3,
+                include_answer=True,
+            )
+
+            results_text = []
+
+            # Add AI-generated answer if available
+            if response.get("answer"):
+                results_text.append(f"Summary: {response['answer']}\n")
+
+            # Add individual results
+            for result in response.get("results", []):
+                results_text.append(
+                    f"Title: {result.get('title')}\n"
+                    f"URL: {result.get('url')}\n"
+                    f"Date: {result.get('published_date', 'Unknown')}\n"
+                    f"Content: {result.get('content')}\n"
+                )
+
+            formatted_results = "\n---\n".join(results_text)
+            return f"Web Search Results for '{query}':\n\n{formatted_results}"
+
+        except Exception as e:
+            logger.error(f"Web search failed: {e}", exc_info=True)
+            return f"Error performing web search for '{query}': {str(e)}"
 
     def _build_user_prompt(
         self,
