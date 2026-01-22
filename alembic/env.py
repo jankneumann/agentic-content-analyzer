@@ -2,13 +2,11 @@
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from src.config import settings
-from src.models.digest import Digest
-from src.models.newsletter import Base, Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.newsletter import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -24,7 +22,16 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Set sqlalchemy.url from settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Use get_effective_database_url() which handles both local and Supabase configs
+# Note: For Supabase, this uses the pooler URL. If migrations fail, try:
+#   1. Enabling direct connections in Supabase Dashboard > Project Settings > Database
+#   2. Setting SUPABASE_DIRECT_URL to bypass the pooler
+if settings.supabase_direct_url:
+    # User explicitly set a direct URL for migrations
+    config.set_main_option("sqlalchemy.url", settings.supabase_direct_url)
+else:
+    # Use the effective database URL (pooler for Supabase, direct for local)
+    config.set_main_option("sqlalchemy.url", settings.get_effective_database_url())
 
 
 def run_migrations_offline() -> None:
