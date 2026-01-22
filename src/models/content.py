@@ -132,7 +132,9 @@ class Content(Base):  # type: ignore[valid-type, misc]
     error_message = Column(Text, nullable=True)
 
     # Timestamps
-    ingested_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    ingested_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, index=True
+    )
     parsed_at = Column(DateTime, nullable=True)
     processed_at = Column(DateTime, nullable=True)  # When summarization completed
 
