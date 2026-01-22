@@ -120,13 +120,16 @@ SUPABASE_PROJECT_REF=your-project-ref
 SUPABASE_DB_PASSWORD=your-database-password
 SUPABASE_REGION=us-east-1
 SUPABASE_POOLER_MODE=transaction  # or "session" for prepared statements
+SUPABASE_AZ=1                     # availability zone (see note below)
 ```
+
+> **Finding your AZ**: Look at your Supabase connection string - it shows `aws-{AZ}-{region}.pooler.supabase.com`. The number after `aws-` is your AZ (usually 0 or 1).
 
 **Option B: Direct connection string**
 
 ```bash
 # .env - Get from Supabase Dashboard > Settings > Database > Connection string
-DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-1-[region].pooler.supabase.com:6543/postgres
 ```
 
 #### 4. Run Migrations
@@ -263,6 +266,7 @@ SUPABASE_PROJECT_REF=your-project-ref    # Project reference ID
 SUPABASE_DB_PASSWORD=your-db-password    # Database password
 SUPABASE_REGION=us-east-1                # AWS region (default: us-east-1)
 SUPABASE_POOLER_MODE=transaction         # Connection pooling mode (default: transaction)
+SUPABASE_AZ=1                            # AWS availability zone from connection string (default: 0)
 SUPABASE_DIRECT_URL=...                  # Direct connection for migrations (optional)
 DATABASE_PROVIDER=supabase               # Explicit provider override (optional, auto-detected)
 ```
