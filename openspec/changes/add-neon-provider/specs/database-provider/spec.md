@@ -86,22 +86,28 @@ The system SHALL provide pytest fixtures for ephemeral database branches in inte
 
 ## MODIFIED Requirements
 
+> **Base spec**: `add-supabase-cloud-database/specs/database-provider/spec.md`
+
 ### Requirement: Provider Factory
 
-The system SHALL provide a factory function that returns the appropriate database provider.
+> Extends the base Provider Factory requirement to include Neon in the detection chain.
 
-#### Scenario: Automatic provider detection
+#### Scenario: Automatic provider detection (MODIFIED)
+> **Change**: Adds Neon detection at priority 2 (env var) and 4 (URL pattern).
+
 - **GIVEN** no explicit `DATABASE_PROVIDER` is set
 - **WHEN** the provider factory is called
 - **THEN** the provider SHALL be detected based on configuration in order:
   1. Explicit `DATABASE_PROVIDER` override
-  2. `NEON_PROJECT_ID` present → Neon provider
+  2. `NEON_PROJECT_ID` present → Neon provider *(NEW)*
   3. `SUPABASE_PROJECT_REF` present → Supabase provider
-  4. `.neon.tech` in DATABASE_URL → Neon provider
+  4. `.neon.tech` in DATABASE_URL → Neon provider *(NEW)*
   5. `.supabase.` in DATABASE_URL → Supabase provider
   6. Default → Local PostgreSQL provider
 
-#### Scenario: Provider initialization failure
+#### Scenario: Provider initialization failure (MODIFIED)
+> **Change**: Adds diagnostic information to error messages.
+
 - **WHEN** provider configuration is invalid
 - **THEN** a clear error message SHALL be raised
 - **AND** the error SHALL indicate which provider was detected and what configuration is missing
