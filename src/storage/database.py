@@ -41,6 +41,7 @@ def _get_provider() -> "DatabaseProvider":
             supabase_db_password=settings.supabase_db_password,
             supabase_region=settings.supabase_region,
             supabase_pooler_mode=settings.supabase_pooler_mode,
+            supabase_az=settings.supabase_az,
         )
         logger.info(f"Database provider initialized: {_provider.name}")
     return _provider

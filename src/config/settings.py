@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     supabase_region: str = "us-east-1"  # AWS region for Supabase project
     supabase_pooler_mode: PoolerModeType = "transaction"  # Connection pooling mode
     supabase_direct_url: str | None = None  # Direct URL for migrations (bypasses pooler)
+    supabase_az: str = (
+        "0"  # AWS availability zone (0, 1, etc.) - check your Supabase connection string
+    )
 
     # Neo4j / Graphiti
     neo4j_uri: str = "bolt://localhost:7687"
@@ -183,7 +186,7 @@ class Settings(BaseSettings):
             return (
                 f"postgresql://postgres.{self.supabase_project_ref}:"
                 f"{self.supabase_db_password}@"
-                f"aws-0-{self.supabase_region}.pooler.supabase.com:"
+                f"aws-{self.supabase_az}-{self.supabase_region}.pooler.supabase.com:"
                 f"{port}/postgres"
             )
         return self.database_url

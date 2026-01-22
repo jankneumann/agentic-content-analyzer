@@ -24,6 +24,7 @@ class SupabaseProvider:
         db_password: str | None = None,
         region: str = "us-east-1",
         pooler_mode: Literal["transaction", "session"] = "transaction",
+        az: str = "0",
     ) -> None:
         """Initialize Supabase provider.
 
@@ -35,12 +36,14 @@ class SupabaseProvider:
             db_password: Database password
             region: AWS region for the Supabase project
             pooler_mode: Connection pooling mode ("transaction" or "session")
+            az: AWS availability zone number (found in Supabase connection string as aws-{az}-{region})
         """
         self._database_url = database_url
         self._project_ref = project_ref
         self._db_password = db_password
         self._region = region
         self._pooler_mode = pooler_mode
+        self._az = az
 
     @property
     def name(self) -> str:
@@ -68,7 +71,7 @@ class SupabaseProvider:
         return (
             f"postgresql://postgres.{self._project_ref}:"
             f"{self._db_password}@"
-            f"aws-0-{self._region}.pooler.supabase.com:"
+            f"aws-{self._az}-{self._region}.pooler.supabase.com:"
             f"{port}/postgres"
         )
 

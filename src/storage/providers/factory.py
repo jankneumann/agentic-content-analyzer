@@ -54,6 +54,7 @@ def get_provider(
     supabase_db_password: str | None = None,
     supabase_region: str = "us-east-1",
     supabase_pooler_mode: Literal["transaction", "session"] = "transaction",
+    supabase_az: str = "0",
 ) -> "DatabaseProvider":
     """Get the appropriate database provider based on configuration.
 
@@ -67,6 +68,7 @@ def get_provider(
         supabase_db_password: Supabase database password
         supabase_region: Supabase AWS region
         supabase_pooler_mode: Supabase connection pooling mode
+        supabase_az: Supabase AWS availability zone (0, 1, etc.)
 
     Returns:
         DatabaseProvider implementation (LocalPostgresProvider or SupabaseProvider)
@@ -89,6 +91,7 @@ def get_provider(
                 db_password=supabase_db_password,
                 region=supabase_region,
                 pooler_mode=supabase_pooler_mode,
+                az=supabase_az,
             )
         elif ".supabase." in database_url:
             # Use the provided Supabase URL directly
