@@ -134,15 +134,14 @@ DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-1-[region].poole
 
 #### 4. Run Migrations
 
-Supabase requires a **direct connection** for migrations (bypasses the connection pooler):
+Migrations work through the **pooler connection** (default):
 
 ```bash
-# Set direct URL for migrations
-export SUPABASE_DIRECT_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
-
-# Or use the component config (auto-generates direct URL)
+# Just run - uses the pooler URL automatically
 alembic upgrade head
 ```
+
+> **Note on Direct Connections**: Supabase free tier direct connections (`db.{project}.supabase.co`) use **IPv6 only**. If your network is IPv4-only, you must use the pooler (which supports both). Most migrations work fine through the pooler.
 
 #### 5. Verify Connection
 
@@ -171,9 +170,11 @@ Configure via `SUPABASE_POOLER_MODE=transaction` or `session`.
 | Resource | Limit |
 |----------|-------|
 | Database size | 500MB |
-| Concurrent connections | 50 (via pooler) |
-| Direct connections | 10 |
+| Pooler connections | 50 (IPv4 + IPv6) |
+| Direct connections | 10 (IPv6 only) |
 | Bandwidth | 2GB/month |
+
+> **IPv6 Note**: Direct connections on free tier resolve to IPv6 only. Use the pooler (default) if your network is IPv4-only.
 
 For production workloads, consider upgrading to a paid plan.
 
@@ -191,11 +192,12 @@ For production workloads, consider upgrading to a paid plan.
 # If using direct URL, add: ?sslmode=require
 ```
 
-**Migration fails through pooler**:
+**Direct connection refused (IPv6 issue)**:
 ```bash
-# Use direct connection for DDL operations
-export SUPABASE_DIRECT_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
-alembic upgrade head
+# Supabase free tier direct connections use IPv6 only
+# If your network is IPv4-only, use the pooler (default)
+# Migrations work fine through the pooler for most DDL operations
+alembic upgrade head  # Uses pooler automatically
 ```
 
 **Connection limit exceeded**:

@@ -23,9 +23,8 @@ target_metadata = Base.metadata
 
 # Set sqlalchemy.url from settings
 # Use get_effective_database_url() which handles both local and Supabase configs
-# Note: For Supabase, this uses the pooler URL. If migrations fail, try:
-#   1. Enabling direct connections in Supabase Dashboard > Project Settings > Database
-#   2. Setting SUPABASE_DIRECT_URL to bypass the pooler
+# Note: For Supabase free tier, direct connections (db.{project}.supabase.co) use IPv6 only.
+# If your network is IPv4-only, use the pooler URL (default) which supports both IPv4/IPv6.
 if settings.supabase_direct_url:
     # User explicitly set a direct URL for migrations
     config.set_main_option("sqlalchemy.url", settings.supabase_direct_url)
