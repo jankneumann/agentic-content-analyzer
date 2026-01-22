@@ -56,6 +56,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -81,7 +82,7 @@ import {
   GenerateDigestDialog,
   type DigestGenerationParams,
 } from "@/components/generation"
-import type { DigestListItem, DigestStatus, DigestSection } from "@/types"
+import type { DigestListItem, DigestStatus, DigestSection, DigestFilters } from "@/types"
 
 export const DigestsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -139,18 +140,20 @@ const statusConfig: Record<
 }
 
 function DigestsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [typeFilter, setTypeFilter] = useState<string>("all")
+  const [filters, setFilters] = useState<DigestFilters>({})
   const [searchValue, setSearchValue] = useState("")
   const [selectedDigestId, setSelectedDigestId] = useState<number | null>(null)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
-  const { data: digests, isLoading, isError, error, refetch } = useDigests(
-    {
-      status: statusFilter === "all" ? undefined : (statusFilter as DigestStatus),
-      digest_type: typeFilter === "all" ? undefined : (typeFilter as "daily" | "weekly"),
-    }
-  )
+  const handleSort = (column: string, order: "asc" | "desc" | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+    }))
+  }
+
+  const { data: digests, isLoading, isError, error, refetch } = useDigests(filters)
   const { data: stats } = useDigestStats()
   const { data: selectedDigest, isLoading: isLoadingDigest } = useDigest(
     selectedDigestId ?? 0,
@@ -329,7 +332,15 @@ function DigestsPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <Select
+              value={filters.digest_type ?? "all"}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  digest_type: value === "all" ? undefined : (value as "daily" | "weekly"),
+                }))
+              }
+            >
               <SelectTrigger className="w-[140px]">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
@@ -339,7 +350,15 @@ function DigestsPage() {
                 <SelectItem value="weekly">Weekly</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select
+              value={filters.status ?? "all"}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status: value === "all" ? undefined : (value as DigestStatus),
+                }))
+              }
+            >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -391,11 +410,39 @@ function DigestsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead className="w-[100px]">Type</TableHead>
-                  <TableHead className="w-[200px]">Period</TableHead>
+                  <SortableTableHead
+                    column="digest_type"
+                    label="Type"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
+                  <SortableTableHead
+                    column="period_start"
+                    label="Period"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[200px]"
+                  />
                   <TableHead className="w-[80px]">Sources</TableHead>
-                  <TableHead className="w-[150px]">Status</TableHead>
-                  <TableHead className="w-[130px]">Created</TableHead>
+                  <SortableTableHead
+                    column="status"
+                    label="Status"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
+                  <SortableTableHead
+                    column="created_at"
+                    label="Created"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[130px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>

@@ -252,6 +252,11 @@ export interface ReviseDigestSectionRequest {
 }
 
 /**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
+
+/**
  * Filters for digest list queries
  */
 export interface DigestFilters {
@@ -263,6 +268,10 @@ export interface DigestFilters {
   limit?: number
   /** Pagination offset */
   offset?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**

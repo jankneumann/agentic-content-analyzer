@@ -23,6 +23,11 @@ import type {
 import type { ScriptDetail } from "@/types/review"
 
 /**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
+
+/**
  * Script filters for list queries
  */
 export interface ScriptFilters {
@@ -32,6 +37,10 @@ export interface ScriptFilters {
   digest_id?: number
   /** Maximum results */
   limit?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**

@@ -52,6 +52,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -76,7 +77,7 @@ import {
   type AudioGenerationParams,
 } from "@/components/generation"
 import { getAudioUrl } from "@/lib/api/podcasts"
-import type { PodcastListItem, ScriptListItem } from "@/types"
+import type { PodcastListItem, ScriptListItem, SortOrder } from "@/types"
 
 export const PodcastsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -128,13 +129,35 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+interface PodcastFilters {
+  status?: string
+  sort_by?: string
+  sort_order?: SortOrder
+  offset?: number
+}
+
 function PodcastsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [filters, setFilters] = useState<PodcastFilters>({})
   const [selectedPodcastId, setSelectedPodcastId] = useState<number | null>(null)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
+  const handleSort = (column: string, order: SortOrder | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+      offset: 0,
+    }))
+  }
+
   const { data: podcasts, isLoading, isError, error, refetch } = usePodcasts(
-    statusFilter === "all" ? undefined : { status: statusFilter }
+    filters.status || filters.sort_by
+      ? {
+          status: filters.status,
+          sort_by: filters.sort_by,
+          sort_order: filters.sort_order,
+        }
+      : undefined
   )
   const { data: stats } = usePodcastStats()
   const { data: selectedPodcast, isLoading: isLoadingPodcast } = usePodcast(
@@ -291,7 +314,16 @@ function PodcastsPage() {
         <CardContent>
           {/* Filter row */}
           <div className="mb-4 flex gap-4">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select
+              value={filters.status ?? "all"}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status: value === "all" ? undefined : value,
+                  offset: 0,
+                }))
+              }
+            >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -349,11 +381,39 @@ function PodcastsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead className="w-[100px]">Duration</TableHead>
-                  <TableHead className="w-[100px]">Size</TableHead>
+                  <SortableTableHead
+                    column="duration_seconds"
+                    label="Duration"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
+                  <SortableTableHead
+                    column="file_size_bytes"
+                    label="Size"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
                   <TableHead className="w-[120px]">Provider</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[130px]">Created</TableHead>
+                  <SortableTableHead
+                    column="status"
+                    label="Status"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[120px]"
+                  />
+                  <SortableTableHead
+                    column="created_at"
+                    label="Created"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[130px]"
+                  />
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>

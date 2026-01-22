@@ -26,6 +26,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/scripts", tags=["podcast-scripts"])
 
+# Allowed sort fields for script listing
+SCRIPT_SORT_FIELDS = {"id", "digest_id", "status", "created_at"}
+
 # Initialize services
 review_service = ScriptReviewService()
 script_generator = PodcastScriptGenerator()
@@ -190,6 +193,8 @@ async def list_scripts(
     status: PodcastStatus | None = Query(None, description="Filter by status"),
     digest_id: int | None = Query(None, description="Filter by digest ID"),
     limit: int = Query(50, le=100, description="Maximum results"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[ScriptSummary]:
     """List podcast scripts with optional filtering."""
     from src.models.podcast import PodcastScriptRecord
@@ -202,7 +207,17 @@ async def list_scripts(
         if digest_id:
             query = query.filter(PodcastScriptRecord.digest_id == digest_id)
 
-        scripts = query.order_by(PodcastScriptRecord.created_at.desc()).limit(limit).all()
+        # Apply dynamic sorting
+        if sort_by not in SCRIPT_SORT_FIELDS:
+            sort_by = "created_at"
+
+        sort_column = getattr(PodcastScriptRecord, sort_by, PodcastScriptRecord.created_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        scripts = query.limit(limit).all()
 
         return [
             ScriptSummary(

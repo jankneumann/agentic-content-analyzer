@@ -53,6 +53,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -70,7 +71,8 @@ import {
   GenerateScriptDialog,
   type ScriptGenerationParams,
 } from "@/components/generation"
-import type { ScriptListItem, DigestListItem } from "@/types"
+import type { ScriptListItem, DigestListItem, SortOrder } from "@/types"
+import type { ScriptFilters } from "@/lib/api/scripts"
 
 /**
  * Script detail type for display
@@ -160,13 +162,24 @@ const statusConfig: Record<
 }
 
 function ScriptsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [filters, setFilters] = useState<ScriptFilters>({})
   const [searchValue, setSearchValue] = useState("")
   const [selectedScriptId, setSelectedScriptId] = useState<number | null>(null)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
+  const handleSort = (column: string, order: SortOrder | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+    }))
+  }
+
   const { data: scripts, isLoading, isError, error, refetch } = useScripts(
-    statusFilter === "all" ? undefined : { status: statusFilter }
+    Object.keys(filters).length === 0 ||
+    (filters.status === undefined && filters.sort_by === undefined)
+      ? undefined
+      : filters
   )
   const { data: stats } = useScriptStats()
   const { data: selectedScript, isLoading: isLoadingScript } = useScript(
@@ -366,8 +379,13 @@ function ScriptsPage() {
               />
             </div>
             <Select
-              value={statusFilter}
-              onValueChange={setStatusFilter}
+              value={filters.status ?? "all"}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status: value === "all" ? undefined : value,
+                }))
+              }
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Status" />
@@ -420,11 +438,33 @@ function ScriptsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
+                  <SortableTableHead
+                    column="digest_id"
+                    label="Digest ID"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
                   <TableHead className="w-[100px]">Length</TableHead>
                   <TableHead className="w-[100px]">Duration</TableHead>
-                  <TableHead className="w-[150px]">Status</TableHead>
+                  <SortableTableHead
+                    column="status"
+                    label="Status"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
                   <TableHead className="w-[100px]">Revisions</TableHead>
-                  <TableHead className="w-[130px]">Created</TableHead>
+                  <SortableTableHead
+                    column="created_at"
+                    label="Created Date"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[130px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -653,11 +693,13 @@ function ScriptRow({
             <div className="font-medium line-clamp-1">
               {script.title ?? `Script #${script.id}`}
             </div>
-            <div className="text-sm text-muted-foreground">
-              Digest #{script.digest_id}
-            </div>
           </div>
         </div>
+      </TableCell>
+      <TableCell>
+        <span className="text-sm text-muted-foreground">
+          #{script.digest_id}
+        </span>
       </TableCell>
       <TableCell>
         <Badge variant="outline" className="capitalize">

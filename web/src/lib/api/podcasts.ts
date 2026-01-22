@@ -22,6 +22,11 @@ import type {
 } from "@/types"
 
 /**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
+
+/**
  * Podcast filters for list queries
  */
 export interface PodcastFilters {
@@ -31,6 +36,10 @@ export interface PodcastFilters {
   limit?: number
   /** Pagination offset */
   offset?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**

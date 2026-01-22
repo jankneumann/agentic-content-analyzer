@@ -20,6 +20,9 @@ from src.utils.summary_markdown import parse_markdown_summary
 
 router = APIRouter(prefix="/api/v1/summaries", tags=["summaries"])
 
+# Allowed fields for sorting
+SUMMARY_SORT_FIELDS = {"id", "content_id", "model_used", "created_at"}
+
 
 # ============================================================================
 # Request/Response Models
@@ -150,6 +153,8 @@ async def list_summaries(
     model_used: str | None = Query(None, description="Filter by model"),
     start_date: datetime | None = Query(None, description="Filter after this date"),
     end_date: datetime | None = Query(None, description="Filter before this date"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> PaginatedSummaryResponse:
@@ -177,10 +182,18 @@ async def list_summaries(
         # Get total count
         total = query.count()
 
-        # Apply pagination and ordering
-        summaries = (
-            query.order_by(NewsletterSummary.created_at.desc()).offset(offset).limit(limit).all()
-        )
+        # Validate and apply dynamic sorting
+        if sort_by not in SUMMARY_SORT_FIELDS:
+            sort_by = "created_at"
+
+        sort_column = getattr(NewsletterSummary, sort_by, NewsletterSummary.created_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        # Apply pagination
+        summaries = query.offset(offset).limit(limit).all()
 
         # Convert to response models
         items = []

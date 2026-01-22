@@ -151,6 +151,11 @@ export interface ContentListResponse {
 }
 
 /**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
+
+/**
  * Filters for content list queries
  */
 export interface ContentFilters {
@@ -170,6 +175,10 @@ export interface ContentFilters {
   page?: number
   /** Items per page */
   page_size?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**

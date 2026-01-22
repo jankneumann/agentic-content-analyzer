@@ -56,6 +56,17 @@ class ContentResponse(BaseContentResponse):
     legacy_newsletter_id: int | None = None
 
 
+# Allowed fields for sorting content list
+CONTENT_SORT_FIELDS = {
+    "id",
+    "title",
+    "source_type",
+    "publication",
+    "status",
+    "published_date",
+    "ingested_at",
+}
+
 router = APIRouter(prefix="/api/v1/contents", tags=["contents"])
 
 
@@ -356,12 +367,14 @@ async def list_contents(
     search: str | None = Query(None, description="Search in title"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    sort_by: str = Query("ingested_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> ContentListResponse:
     """
     List contents with optional filters.
 
     Supports filtering by source type, status, publication, date range, and search.
-    Results are paginated and sorted by ingested date (newest first).
+    Results are paginated and sorted by the specified field (default: ingested_at desc).
     """
     with get_db() as db:
         query = db.query(Content)
@@ -386,8 +399,19 @@ async def list_contents(
         # Calculate offset from page
         offset = (page - 1) * page_size
 
-        # Apply pagination and ordering
-        contents = query.order_by(Content.ingested_at.desc()).offset(offset).limit(page_size).all()
+        # Validate sort_by field
+        if sort_by not in CONTENT_SORT_FIELDS:
+            sort_by = "ingested_at"
+
+        # Get sort column dynamically
+        sort_column = getattr(Content, sort_by, Content.ingested_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        # Apply pagination
+        contents = query.offset(offset).limit(page_size).all()
 
         # Look up legacy newsletter IDs for navigation to summaries
         source_ids = [c.source_id for c in contents]

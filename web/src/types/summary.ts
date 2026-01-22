@@ -146,6 +146,11 @@ export interface SummarizationProgress {
 }
 
 /**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
+
+/**
  * Filters for summary list queries
  */
 export interface SummaryFilters {
@@ -161,6 +166,10 @@ export interface SummaryFilters {
   limit?: number
   /** Pagination offset */
   offset?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**

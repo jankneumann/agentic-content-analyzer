@@ -28,6 +28,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/digests", tags=["digests"])
 
+# Allowed fields for sorting digests
+DIGEST_SORT_FIELDS = {"id", "digest_type", "status", "created_at", "period_start", "period_end"}
+
 
 # --- Request/Response Models ---
 
@@ -290,6 +293,8 @@ async def list_digests(
     digest_type: str | None = Query(None, description="Filter by type"),
     limit: int = Query(50, le=100, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[DigestSummary]:
     """List digests with optional filtering."""
     with get_db() as db:
@@ -312,7 +317,17 @@ async def list_digests(
             except ValueError:
                 pass  # Invalid type, ignore filter
 
-        digests = query.order_by(Digest.created_at.desc()).offset(offset).limit(limit).all()
+        # Apply dynamic sorting
+        if sort_by not in DIGEST_SORT_FIELDS:
+            sort_by = "created_at"
+
+        sort_column = getattr(Digest, sort_by, Digest.created_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        digests = query.offset(offset).limit(limit).all()
 
         return [
             DigestSummary(

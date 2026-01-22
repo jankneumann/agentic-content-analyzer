@@ -168,3 +168,8 @@ export interface TaskResponse {
   /** Status message */
   message: string
 }
+
+/**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"

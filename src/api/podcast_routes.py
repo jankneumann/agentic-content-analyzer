@@ -29,6 +29,16 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/podcasts", tags=["podcasts"])
 
+# Allowed sort fields for podcast listing
+PODCAST_SORT_FIELDS = {
+    "id",
+    "script_id",
+    "status",
+    "duration_seconds",
+    "file_size_bytes",
+    "created_at",
+}
+
 
 # --- Request/Response Models ---
 
@@ -187,6 +197,8 @@ async def list_podcasts(
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(50, le=100, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[PodcastListItem]:
     """List podcasts with optional filtering."""
     with get_db() as db:
@@ -197,7 +209,17 @@ async def list_podcasts(
         if status:
             query = query.filter(Podcast.status == status)
 
-        results = query.order_by(Podcast.created_at.desc()).offset(offset).limit(limit).all()
+        # Apply dynamic sorting
+        if sort_by not in PODCAST_SORT_FIELDS:
+            sort_by = "created_at"
+
+        sort_column = getattr(Podcast, sort_by, Podcast.created_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        results = query.offset(offset).limit(limit).all()
 
         return [
             PodcastListItem(
