@@ -52,17 +52,17 @@ The xAI Grok API provides server-side agentic tool calling with `x_search` for s
 
 ### Decision 3: ContentSource Enum Value
 
-**What**: Add `XPOST = "xpost"` to `ContentSource` enum.
+**What**: Add `XSEARCH = "xsearch"` to `ContentSource` enum.
 
 **Why**:
+- Describes the discovery method (Grok X search), distinguishing from potential future direct X API integrations
 - Clear, concise identifier matching our naming convention (lowercase)
-- Distinguishes from potential future Twitter/X integrations (e.g., direct API)
 - Aligns with other sources: `gmail`, `rss`, `youtube`
 
 **Alternatives considered**:
 - `X = "x"`: Too short, unclear
 - `TWITTER = "twitter"`: Outdated branding
-- `X_SEARCH = "x_search"`: Describes method not source
+- `XPOST = "xpost"`: Describes content type, not discovery method
 
 ### Decision 4: Agentic Prompt-Based Discovery
 
@@ -206,7 +206,7 @@ Conclusion and links.
 ## Migration Plan
 
 1. Add `xai-sdk>=1.3.1` to dependencies
-2. Create Alembic migration to add `xpost` to content_source enum
+2. Create Alembic migration to add `xsearch` to content_source enum
 3. Implement client and service classes
 4. Add configuration settings and environment variables
 5. No data migration needed (additive feature)

@@ -12,7 +12,7 @@ The system SHALL support ingestion of X (Twitter) posts using the xAI Grok API's
 - **THEN** the system connects to xAI Grok API using `grok-4-1-fast` model
 - **AND** executes the `x_search` tool with the provided prompt
 - **AND** for each discovered post, fetches the complete thread if applicable
-- **AND** creates one Content record per thread (or single post) with `source_type=xpost`
+- **AND** creates one Content record per thread (or single post) with `source_type=xsearch`
 - **AND** uses root_post_id as source_id for stable thread identification
 - **AND** stores the complete thread in markdown_content with numbered sections
 - **AND** stores structured metadata in metadata_json including root_post_id, thread_post_ids array, author info, and engagement metrics
@@ -80,10 +80,10 @@ The system SHALL provide configuration options to control xAI API costs.
 - **THEN** the system limits the number of agentic tool calling turns to the configured value
 - **AND** Grok generates a response with available information when the limit is reached
 
-#### Scenario: Limiting maximum posts
+#### Scenario: Limiting maximum threads
 
-- **WHEN** GROK_X_MAX_POSTS is configured
-- **THEN** the system stops processing after ingesting the configured maximum posts
+- **WHEN** GROK_X_MAX_THREADS is configured
+- **THEN** the system stops processing after ingesting the configured maximum threads
 - **AND** logs the limit was reached
 
 #### Scenario: Cost tracking in metadata
@@ -129,6 +129,6 @@ The system SHALL provide a command-line interface for X post ingestion.
 
 #### Scenario: CLI with custom options
 
-- **WHEN** the user provides CLI arguments (--prompt, --max-posts, --force)
+- **WHEN** the user provides CLI arguments (--prompt, --max-threads, --force)
 - **THEN** the system uses the provided options for the ingestion run
 - **AND** validates argument values before execution

@@ -8,15 +8,15 @@
   - `GROK_MODEL`: Model to use (default: `grok-4-1-fast`)
   - `GROK_X_SEARCH_PROMPT`: Default search prompt template
   - `GROK_X_MAX_TURNS`: Max tool calling turns (default: 5)
-  - `GROK_X_MAX_POSTS`: Max posts per search (default: 50)
+  - `GROK_X_MAX_THREADS`: Max threads per search (default: 50)
 - [ ] 1.3 Document environment variables in `.env.example`
 
 ## 2. Database Schema
 
-- [ ] 2.1 Add `XPOST = "xpost"` to `ContentSource` enum in `src/models/content.py`
-- [ ] 2.2 Create Alembic migration to add `xpost` value to `content_source` enum type in PostgreSQL:
+- [ ] 2.1 Add `XSEARCH = "xsearch"` to `ContentSource` enum in `src/models/content.py`
+- [ ] 2.2 Create Alembic migration to add `xsearch` value to `content_source` enum type in PostgreSQL:
   ```sql
-  ALTER TYPE content_source ADD VALUE 'xpost';
+  ALTER TYPE content_source ADD VALUE 'xsearch';
   ```
 - [ ] 2.3 Run migration and verify enum update
 
@@ -83,10 +83,10 @@
 
 - [ ] 5.1 Create `src/ingestion/xsearch.py` `__main__` block for CLI usage:
   ```bash
-  python -m src.ingestion.xsearch                    # Use default prompt
-  python -m src.ingestion.xsearch --prompt "..."     # Custom prompt
-  python -m src.ingestion.xsearch --max-posts 100    # Limit results
-  python -m src.ingestion.xsearch --force            # Reprocess existing
+  python -m src.ingestion.xsearch                      # Use default prompt
+  python -m src.ingestion.xsearch --prompt "..."       # Custom prompt
+  python -m src.ingestion.xsearch --max-threads 100    # Limit results
+  python -m src.ingestion.xsearch --force              # Reprocess existing
   ```
 - [ ] 5.2 Add argument parsing with argparse
 - [ ] 5.3 Add progress output and summary statistics

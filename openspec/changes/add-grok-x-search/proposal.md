@@ -6,7 +6,7 @@ X (Twitter) is a primary source for real-time AI news, announcements, and discus
 
 ## What Changes
 
-- **New Content Source**: Add `XPOST` (or `X_POST`) to the `ContentSource` enum for X/Twitter posts
+- **New Content Source**: Add `XSEARCH = "xsearch"` to the `ContentSource` enum for X/Twitter content discovered via Grok search
 - **Grok API Client**: Create `GrokXClient` using the official `xai-sdk` Python package with `x_search` tool calling
 - **Ingestion Service**: Create `GrokXContentIngestionService` following the Client-Service pattern
 - **Configurable Search**: Support custom prompts for AI news discovery (e.g., "Find AI research announcements, model releases, and technical insights")
@@ -19,7 +19,7 @@ X (Twitter) is a primary source for real-time AI news, announcements, and discus
 ## Impact
 
 - **Affected code**:
-  - `src/models/content.py`: Add `ContentSource.XPOST` enum value
+  - `src/models/content.py`: Add `ContentSource.XSEARCH` enum value
   - `src/ingestion/`: New `xsearch.py` module with client and service
   - `src/config/settings.py`: Add `XAI_API_KEY` and search configuration
   - `alembic/`: Migration to add new enum value to database
