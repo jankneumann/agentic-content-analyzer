@@ -81,13 +81,19 @@ MODEL_DIGEST_CREATION=claude-sonnet-4-5    # Customer-facing
 
 ## Database Providers
 
-Three PostgreSQL providers are supported:
+Three PostgreSQL providers are supported. **Set `DATABASE_PROVIDER` explicitly** in your `.env`:
 
-| Provider | Use Case | Detection |
-|----------|----------|-----------|
-| Local | Development, Docker | Default |
-| Supabase | Cloud hosting | `.supabase.` in URL |
-| Neon | Agent workflows, branching | `.neon.tech` in URL |
+| Provider | `DATABASE_PROVIDER` | Use Case |
+|----------|---------------------|----------|
+| Local | `local` (default) | Development, Docker |
+| Supabase | `supabase` | Cloud hosting |
+| Neon | `neon` | Agent workflows, branching |
+
+```bash
+# .env - explicit provider selection (required for cloud)
+DATABASE_PROVIDER=neon  # or "supabase" or "local"
+DATABASE_URL=postgresql://...
+```
 
 **Neon Branching for Agents**: Create isolated database branches for feature work or testing:
 ```bash

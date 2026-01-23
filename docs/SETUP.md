@@ -459,13 +459,13 @@ ENVIRONMENT=development  # or production
 
 ```bash
 # Supabase Cloud Database (alternative to local PostgreSQL)
+DATABASE_PROVIDER=supabase               # Required: explicit provider selection
 SUPABASE_PROJECT_REF=your-project-ref    # Project reference ID
 SUPABASE_DB_PASSWORD=your-db-password    # Database password
 SUPABASE_REGION=us-east-1                # AWS region (default: us-east-1)
 SUPABASE_POOLER_MODE=transaction         # Connection pooling mode (default: transaction)
 SUPABASE_AZ=1                            # AWS availability zone from connection string (default: 0)
 SUPABASE_DIRECT_URL=...                  # Direct connection for migrations (optional)
-DATABASE_PROVIDER=supabase               # Explicit provider override (optional, auto-detected)
 ```
 
 See [Supabase Cloud Database](#supabase-cloud-database-bring-your-own) for setup instructions.
@@ -474,12 +474,13 @@ See [Supabase Cloud Database](#supabase-cloud-database-bring-your-own) for setup
 
 ```bash
 # Neon Serverless PostgreSQL (alternative to local or Supabase)
+DATABASE_PROVIDER=neon                   # Required: explicit provider selection
+DATABASE_URL=postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/dbname
 NEON_API_KEY=neon_api_key_...            # API key for branch management (optional)
 NEON_PROJECT_ID=proud-paper-123456       # Project ID for branch management (optional)
 NEON_DEFAULT_BRANCH=main                 # Default parent branch (default: main)
 NEON_REGION=us-east-2                    # Region (auto-detected from URL)
 NEON_DIRECT_URL=...                      # Direct connection for migrations (optional)
-DATABASE_PROVIDER=neon                   # Explicit provider override (optional, auto-detected)
 ```
 
 See [Neon Serverless PostgreSQL](#neon-serverless-postgresql-bring-your-own) for setup instructions.

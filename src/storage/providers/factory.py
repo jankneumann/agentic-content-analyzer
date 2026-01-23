@@ -1,5 +1,10 @@
-"""Database provider factory with automatic detection."""
+"""Database provider factory.
 
+Provider selection is determined by the DATABASE_PROVIDER environment variable.
+See src/config/settings.py for configuration and validation.
+"""
+
+import warnings
 from typing import TYPE_CHECKING, Literal
 
 from src.storage.providers.local import LocalPostgresProvider
@@ -16,47 +21,32 @@ def detect_provider(
     supabase_project_ref: str | None = None,
     neon_project_id: str | None = None,
 ) -> Literal["local", "supabase", "neon"]:
-    """Detect which database provider to use.
+    """Return the database provider type.
 
-    Detection order:
-    1. Explicit provider_override (if set)
-    2. SUPABASE_PROJECT_REF env var present -> Supabase
-    3. NEON_PROJECT_ID env var present -> Neon
-    4. DATABASE_URL contains ".supabase." -> Supabase
-    5. DATABASE_URL contains ".neon.tech" -> Neon
-    6. Default -> Local PostgreSQL
+    .. deprecated::
+        This function is deprecated. Use settings.database_provider directly.
+        Provider selection should be explicit via DATABASE_PROVIDER env var.
 
     Args:
-        database_url: The database connection URL
-        provider_override: Explicit provider selection
-        supabase_project_ref: Supabase project reference if configured
-        neon_project_id: Neon project ID if configured
+        database_url: The database connection URL (unused, kept for compatibility)
+        provider_override: Explicit provider selection - use this
+        supabase_project_ref: Deprecated, ignored
+        neon_project_id: Deprecated, ignored
 
     Returns:
-        "local", "supabase", or "neon" indicating which provider to use
+        The provider_override if set, otherwise "local"
     """
-    # 1. Explicit override takes precedence
-    if provider_override:
-        return provider_override
+    # Warn if using implicit detection parameters
+    if supabase_project_ref or neon_project_id:
+        warnings.warn(
+            "detect_provider() implicit detection via supabase_project_ref/neon_project_id "
+            "is deprecated. Set DATABASE_PROVIDER explicitly in your environment.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
-    # 2. Supabase project reference indicates Supabase provider
-    if supabase_project_ref:
-        return "supabase"
-
-    # 3. Neon project ID indicates Neon provider
-    if neon_project_id:
-        return "neon"
-
-    # 4. URL contains Supabase domain
-    if ".supabase." in database_url:
-        return "supabase"
-
-    # 5. URL contains Neon domain
-    if ".neon.tech" in database_url:
-        return "neon"
-
-    # 6. Default to local PostgreSQL
-    return "local"
+    # Return explicit override or default to local
+    return provider_override if provider_override else "local"
 
 
 def get_provider(
@@ -71,14 +61,22 @@ def get_provider(
     neon_project_id: str | None = None,
     neon_region: str | None = None,
 ) -> "DatabaseProvider":
-    """Get the appropriate database provider based on configuration.
+    """Get the appropriate database provider based on explicit configuration.
 
-    This factory function returns the correct provider implementation
-    based on environment configuration and auto-detection.
+    Provider selection is determined by the provider_override parameter,
+    which should be set from settings.database_provider.
+
+    Example:
+        from src.config import settings
+        provider = get_provider(
+            database_url=settings.get_effective_database_url(),
+            provider_override=settings.database_provider,
+            ...
+        )
 
     Args:
         database_url: Base database connection URL
-        provider_override: Explicit provider selection (overrides auto-detection)
+        provider_override: Explicit provider selection (required for cloud providers)
         supabase_project_ref: Supabase project reference ID
         supabase_db_password: Supabase database password
         supabase_region: Supabase AWS region
@@ -93,12 +91,8 @@ def get_provider(
     Raises:
         ValueError: If Supabase is selected but required config is missing
     """
-    provider_type = detect_provider(
-        database_url=database_url,
-        provider_override=provider_override,
-        supabase_project_ref=supabase_project_ref,
-        neon_project_id=neon_project_id,
-    )
+    # Use explicit provider or default to local
+    provider_type = provider_override or "local"
 
     if provider_type == "supabase":
         # Supabase can use either a full URL or component-based config

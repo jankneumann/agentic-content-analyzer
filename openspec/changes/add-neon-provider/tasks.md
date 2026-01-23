@@ -96,4 +96,7 @@
 - [x] 7.2 Test with real Neon account (manual verification)
   - 17 real integration tests pass against actual Neon API
   - Tests cover: branch creation, deletion, connection strings, SQL execution, transactions, branch isolation
-- [ ] 7.3 Verify Alembic migrations work with Neon direct connection
+- [x] 7.3 Verify Alembic migrations work with Neon direct connection
+  - Direct URL connection verified against PostgreSQL 17.7 on Neon
+  - Alembic context initialization and SQL generation working
+  - Pooler bypass confirmed (using non-pooler hostname)

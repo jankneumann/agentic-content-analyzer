@@ -1,5 +1,6 @@
 """Tests for database provider abstraction."""
 
+import warnings
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +15,12 @@ from src.storage.providers.factory import detect_provider
 
 
 class TestDetectProvider:
-    """Tests for provider auto-detection logic."""
+    """Tests for provider detection logic.
+
+    Note: detect_provider() is deprecated. Provider selection should be
+    explicit via DATABASE_PROVIDER env var and settings.database_provider.
+    These tests verify the deprecation behavior.
+    """
 
     def test_explicit_override_takes_precedence(self):
         """Explicit provider override should always be used."""
@@ -25,20 +31,37 @@ class TestDetectProvider:
         )
         assert result == "supabase"
 
-    def test_supabase_project_ref_indicates_supabase(self):
-        """SUPABASE_PROJECT_REF presence indicates Supabase provider."""
-        result = detect_provider(
-            database_url="postgresql://localhost/db",
-            provider_override=None,
-            supabase_project_ref="test-project-ref",
-        )
-        assert result == "supabase"
+    def test_supabase_project_ref_emits_deprecation_warning(self):
+        """SUPABASE_PROJECT_REF triggers deprecation warning and returns local."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = detect_provider(
+                database_url="postgresql://localhost/db",
+                provider_override=None,
+                supabase_project_ref="test-project-ref",
+            )
+            # Should return local (not supabase) - implicit detection removed
+            assert result == "local"
+            # Should emit deprecation warning
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
 
-    def test_supabase_url_detected(self):
-        """DATABASE_URL containing .supabase. indicates Supabase provider."""
+    def test_supabase_url_without_override_returns_local(self):
+        """DATABASE_URL containing .supabase. returns local without explicit override."""
+        # Implicit URL detection is removed - must use explicit provider_override
         result = detect_provider(
             database_url="postgresql://postgres.abc@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
             provider_override=None,
+            supabase_project_ref=None,
+        )
+        assert result == "local"
+
+    def test_supabase_url_with_override_returns_supabase(self):
+        """DATABASE_URL with explicit override returns correct provider."""
+        result = detect_provider(
+            database_url="postgresql://postgres.abc@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
+            provider_override="supabase",
             supabase_project_ref=None,
         )
         assert result == "supabase"
@@ -61,21 +84,37 @@ class TestDetectProvider:
         )
         assert result == "local"
 
-    def test_neon_project_id_indicates_neon(self):
-        """NEON_PROJECT_ID presence indicates Neon provider."""
-        result = detect_provider(
-            database_url="postgresql://localhost/db",
-            provider_override=None,
-            supabase_project_ref=None,
-            neon_project_id="test-neon-project",
-        )
-        assert result == "neon"
+    def test_neon_project_id_emits_deprecation_warning(self):
+        """NEON_PROJECT_ID triggers deprecation warning and returns local."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = detect_provider(
+                database_url="postgresql://localhost/db",
+                provider_override=None,
+                supabase_project_ref=None,
+                neon_project_id="test-neon-project",
+            )
+            # Should return local (not neon) - implicit detection removed
+            assert result == "local"
+            # Should emit deprecation warning
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
 
-    def test_neon_url_detected(self):
-        """DATABASE_URL containing .neon.tech indicates Neon provider."""
+    def test_neon_url_without_override_returns_local(self):
+        """DATABASE_URL containing .neon.tech returns local without explicit override."""
+        # Implicit URL detection is removed - must use explicit provider_override
         result = detect_provider(
             database_url="postgresql://user:pass@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname",
             provider_override=None,
+            supabase_project_ref=None,
+        )
+        assert result == "local"
+
+    def test_neon_url_with_override_returns_neon(self):
+        """DATABASE_URL with explicit override returns correct provider."""
+        result = detect_provider(
+            database_url="postgresql://user:pass@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname",
+            provider_override="neon",
             supabase_project_ref=None,
         )
         assert result == "neon"
@@ -311,24 +350,32 @@ class TestNeonProvider:
 
 
 class TestGetProvider:
-    """Tests for provider factory function."""
+    """Tests for provider factory function.
+
+    Provider selection now requires explicit provider_override parameter.
+    This mirrors the required DATABASE_PROVIDER env var in settings.
+    """
 
     def test_returns_local_provider_by_default(self):
-        """Should return LocalPostgresProvider for standard URLs."""
+        """Should return LocalPostgresProvider when no override specified."""
         provider = get_provider(database_url="postgresql://user:pass@localhost:5432/db")
         assert isinstance(provider, LocalPostgresProvider)
         assert provider.name == "local"
 
-    def test_returns_supabase_provider_from_url(self):
-        """Should return SupabaseProvider when URL contains supabase domain."""
-        provider = get_provider(database_url="postgresql://postgres@pooler.supabase.com:6543/db")
+    def test_returns_supabase_provider_with_explicit_override(self):
+        """Should return SupabaseProvider with explicit override and URL."""
+        provider = get_provider(
+            database_url="postgresql://postgres@pooler.supabase.com:6543/db",
+            provider_override="supabase",
+        )
         assert isinstance(provider, SupabaseProvider)
         assert provider.name == "supabase"
 
     def test_returns_supabase_provider_from_components(self):
-        """Should return SupabaseProvider when project_ref is provided."""
+        """Should return SupabaseProvider with explicit override and components."""
         provider = get_provider(
-            database_url="postgresql://localhost/db",  # Ignored
+            database_url="postgresql://localhost/db",  # Ignored when components provided
+            provider_override="supabase",
             supabase_project_ref="test-ref",
             supabase_db_password="test-pass",
         )
@@ -354,6 +401,7 @@ class TestGetProvider:
         """Should pass pooler_mode to SupabaseProvider."""
         provider = get_provider(
             database_url="postgresql://localhost/db",
+            provider_override="supabase",
             supabase_project_ref="test-ref",
             supabase_db_password="test-pass",
             supabase_pooler_mode="session",
@@ -362,10 +410,11 @@ class TestGetProvider:
         # Verify session mode port in URL
         assert ":5432" in provider.get_engine_url()
 
-    def test_returns_neon_provider_from_url(self):
-        """Should return NeonProvider when URL contains .neon.tech."""
+    def test_returns_neon_provider_with_explicit_override(self):
+        """Should return NeonProvider with explicit override."""
         provider = get_provider(
-            database_url="postgresql://user:pass@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname"
+            database_url="postgresql://user:pass@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname",
+            provider_override="neon",
         )
         assert isinstance(provider, NeonProvider)
         assert provider.name == "neon"
@@ -379,9 +428,10 @@ class TestGetProvider:
         assert isinstance(provider, NeonProvider)
 
     def test_neon_project_id_config_works(self):
-        """Should pass neon_project_id to provider."""
+        """Should pass neon_project_id to provider with explicit override."""
         provider = get_provider(
             database_url="postgresql://user:pass@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname",
+            provider_override="neon",
             neon_project_id="my-neon-project",
         )
         assert isinstance(provider, NeonProvider)

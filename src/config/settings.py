@@ -1,11 +1,17 @@
 """Application configuration management."""
 
+import logging
+import warnings
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
+
+logger = logging.getLogger(__name__)
 
 # Type alias for database provider
 DatabaseProviderType = Literal["local", "supabase", "neon"]
@@ -32,9 +38,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # Database Provider Configuration
-    database_provider: DatabaseProviderType | None = (
-        None  # Explicit override (auto-detects if None)
-    )
+    # Explicit provider selection - no auto-detection magic
+    database_provider: DatabaseProviderType = "local"
 
     # Supabase Cloud Database Configuration
     supabase_project_ref: str | None = None  # Supabase project reference ID
@@ -143,6 +148,62 @@ class Settings(BaseSettings):
     elevenlabs_voice_sam_male: str = ""
     elevenlabs_voice_sam_female: str = ""
 
+    @model_validator(mode="after")
+    def validate_database_provider_config(self) -> "Settings":
+        """Validate database provider configuration at startup.
+
+        Ensures the configured provider matches the DATABASE_URL pattern
+        and required provider-specific settings are present.
+
+        Raises:
+            ValueError: If provider configuration is invalid
+        """
+        match self.database_provider:
+            case "neon":
+                if ".neon.tech" not in self.database_url:
+                    raise ValueError(
+                        f"DATABASE_PROVIDER=neon requires DATABASE_URL containing .neon.tech. "
+                        f"Got: {self._mask_url(self.database_url)}"
+                    )
+            case "supabase":
+                has_supabase_config = self.supabase_project_ref or ".supabase." in self.database_url
+                if not has_supabase_config:
+                    raise ValueError(
+                        "DATABASE_PROVIDER=supabase requires SUPABASE_PROJECT_REF "
+                        "or DATABASE_URL containing .supabase."
+                    )
+            case "local":
+                # Warn if URL looks like a cloud provider but local is selected
+                if ".neon.tech" in self.database_url:
+                    logger.warning(
+                        "DATABASE_URL contains .neon.tech but DATABASE_PROVIDER=local. "
+                        "Set DATABASE_PROVIDER=neon to use Neon features (branching, etc.)."
+                    )
+                elif ".supabase." in self.database_url:
+                    logger.warning(
+                        "DATABASE_URL contains .supabase. but DATABASE_PROVIDER=local. "
+                        "Set DATABASE_PROVIDER=supabase to use Supabase features."
+                    )
+        return self
+
+    def _mask_url(self, url: str) -> str:
+        """Mask password in database URL for safe logging/errors.
+
+        Args:
+            url: Database URL potentially containing password
+
+        Returns:
+            URL with password replaced by ***
+        """
+        try:
+            parsed = urlparse(url)
+            if parsed.password:
+                masked = url.replace(f":{parsed.password}@", ":***@")
+                return masked
+        except Exception:
+            pass
+        return url
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""
@@ -155,50 +216,45 @@ class Settings(BaseSettings):
 
     @property
     def detected_database_provider(self) -> DatabaseProviderType:
-        """Detect which database provider to use.
+        """Return the configured database provider.
 
-        Detection order:
-        1. Explicit database_provider setting (if set)
-        2. SUPABASE_PROJECT_REF env var present -> Supabase
-        3. NEON_PROJECT_ID env var present -> Neon
-        4. DATABASE_URL contains ".supabase." -> Supabase
-        5. DATABASE_URL contains ".neon.tech" -> Neon
-        6. Default -> Local PostgreSQL
+        .. deprecated::
+            Use `settings.database_provider` directly instead.
+            This property will be removed in a future version.
+
+        Returns:
+            The configured database provider ("local", "supabase", or "neon")
         """
-        # 1. Explicit override takes precedence
-        if self.database_provider:
-            return self.database_provider
-
-        # 2. Supabase project reference indicates Supabase provider
-        if self.supabase_project_ref:
-            return "supabase"
-
-        # 3. Neon project ID indicates Neon provider
-        if self.neon_project_id:
-            return "neon"
-
-        # 4. URL contains Supabase domain
-        if ".supabase." in self.database_url:
-            return "supabase"
-
-        # 5. URL contains Neon domain
-        if ".neon.tech" in self.database_url:
-            return "neon"
-
-        # 6. Default to local PostgreSQL
-        return "local"
+        warnings.warn(
+            "detected_database_provider is deprecated. " "Use settings.database_provider directly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.database_provider
 
     def get_effective_database_url(self) -> str:
         """Get the effective database URL based on provider configuration.
 
-        For Supabase with component-based config, constructs the pooler URL.
-        Otherwise returns the configured DATABASE_URL.
+        Returns the appropriate connection URL for the configured provider:
+        - Local: Returns DATABASE_URL directly
+        - Supabase: Constructs pooler URL from components, or uses DATABASE_URL
+        - Neon: Returns DATABASE_URL (pooler conversion handled by NeonProvider)
 
         Returns:
             The database connection URL to use
         """
+        match self.database_provider:
+            case "supabase":
+                return self._get_supabase_pooler_url()
+            case "neon":
+                # Neon provider handles pooler URL internally
+                return self.database_url
+            case _:  # "local" or any other value
+                return self.database_url
+
+    def _get_supabase_pooler_url(self) -> str:
+        """Construct Supabase pooler URL from components or return DATABASE_URL."""
         if self.supabase_project_ref and self.supabase_db_password:
-            # Construct Supabase pooler URL from components
             port = 6543 if self.supabase_pooler_mode == "transaction" else 5432
             return (
                 f"postgresql://postgres.{self.supabase_project_ref}:"
@@ -211,32 +267,47 @@ class Settings(BaseSettings):
     def get_migration_database_url(self) -> str:
         """Get the database URL for Alembic migrations.
 
-        For Supabase and Neon, returns the direct connection URL (bypasses pooler)
-        since DDL operations require direct connections.
+        Returns the direct (non-pooled) connection URL for the configured provider.
+        DDL operations require direct connections, not pooled ones.
 
         Returns:
             Database URL suitable for migrations
         """
-        # Use explicit Neon direct URL if provided
-        if self.neon_direct_url:
-            return self.neon_direct_url
+        match self.database_provider:
+            case "supabase":
+                return self._get_supabase_direct_url()
+            case "neon":
+                return self._get_neon_direct_url()
+            case _:  # "local" or any other value
+                return self.database_url
 
-        # Use explicit Supabase direct URL if provided
+    def _get_supabase_direct_url(self) -> str:
+        """Get Supabase direct URL for migrations (bypasses pooler)."""
+        # Explicit direct URL takes precedence
         if self.supabase_direct_url:
             return self.supabase_direct_url
 
-        # For Supabase with component config, construct direct URL
+        # Construct from components
         if self.supabase_project_ref and self.supabase_db_password:
             return (
                 f"postgresql://postgres:{self.supabase_db_password}@"
                 f"db.{self.supabase_project_ref}.supabase.co:5432/postgres"
             )
 
-        # For Neon URLs, convert pooled to direct by removing -pooler suffix
-        if ".neon.tech" in self.database_url and "-pooler." in self.database_url:
+        # Fall back to DATABASE_URL
+        return self.database_url
+
+    def _get_neon_direct_url(self) -> str:
+        """Get Neon direct URL for migrations (bypasses pooler)."""
+        # Explicit direct URL takes precedence
+        if self.neon_direct_url:
+            return self.neon_direct_url
+
+        # Convert pooled URL to direct by removing -pooler suffix
+        if "-pooler." in self.database_url:
             return self.database_url.replace("-pooler.", ".")
 
-        # For local or URL-based config, use the standard URL
+        # URL is already direct
         return self.database_url
 
     def get_youtube_api_key(self) -> str | None:
@@ -376,7 +447,12 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
-    return Settings()
+    s = Settings()
+    # Log provider configuration at startup
+    logger.info(
+        f"Database provider: {s.database_provider} | " f"URL: {s._mask_url(s.database_url)}"
+    )
+    return s
 
 
 # Global settings instance
