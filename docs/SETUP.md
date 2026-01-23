@@ -206,6 +206,33 @@ alembic upgrade head  # Uses pooler automatically
 # Reduce pool_size in code or use transaction pooling mode
 ```
 
+### Supabase Test Architecture
+
+The Supabase provider has integration tests that verify real cloud connections:
+
+| Test File | Type | Tests | Requires Credentials |
+|-----------|------|-------|---------------------|
+| `tests/test_storage/test_providers.py` | Unit (local) | 44 | No |
+| `tests/integration/test_supabase_provider.py` | Integration (real API) | 17 | Yes |
+
+**Integration tests** verify:
+- **Connection**: Pooled and direct connections, SSL enforcement
+- **Health checks**: Provider health check passes
+- **Pooling**: Sequential, concurrent, and pool exhaustion recovery
+- **Transaction isolation**: Uncommitted data visibility
+- **DDL operations**: CREATE/DROP TABLE for migrations
+- **Configuration**: URLs, engine options, provider identification
+
+```bash
+# Run unit tests only (no credentials needed)
+pytest tests/test_storage/test_providers.py -v
+
+# Run integration tests (requires Supabase credentials in .env)
+pytest tests/integration/test_supabase_provider.py -v
+```
+
+**Auto-skip behavior**: Tests are automatically skipped if `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD` are not configured, allowing the full test suite to run without Supabase access.
+
 ---
 
 ## Neon Serverless PostgreSQL (Bring Your Own)

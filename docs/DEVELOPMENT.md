@@ -1119,12 +1119,12 @@ def create_mock_transport(responses):
 **Tier 2: Integration Tests (Real APIs)**
 - Location: `tests/integration/`
 - Run with: `pytest tests/integration/ -v`
-- Creates real resources (e.g., Neon branches)
+- Creates real resources (e.g., Neon branches, Supabase connections)
 - Verifies actual API behavior, SSL, connection handling
 - Auto-skips when credentials not configured
 
 ```python
-# Integration tests use the @requires_neon decorator
+# Neon integration tests use @requires_neon decorator
 @requires_neon
 @pytest.mark.asyncio
 class TestNeonDatabaseOperations:
@@ -1132,9 +1132,41 @@ class TestNeonDatabaseOperations:
         # neon_test_branch creates a real ephemeral branch
         engine = create_async_engine(convert_to_asyncpg_url(neon_test_branch))
         # ... test real database operations
+
+# Supabase integration tests use @requires_supabase decorator
+@requires_supabase
+class TestSupabaseConnection:
+    def test_pooled_connection_works(self, supabase_engine):
+        # supabase_engine connects to real Supabase instance
+        with supabase_engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            assert result.scalar() == 1
 ```
 
+**Test coverage by provider:**
+
+| Provider | Unit Tests | Integration Tests | Fixtures |
+|----------|------------|-------------------|----------|
+| Local | `test_providers.py` | `conftest.py` | `test_db_engine`, `db_session` |
+| Neon | `test_neon_branch.py` | `test_neon_integration.py` | `neon_test_branch`, `neon_manager` |
+| Supabase | `test_providers.py` | `test_supabase_provider.py` | `supabase_engine`, `supabase_direct_engine` |
+
 **Key insight**: Unit tests catch logic errors fast; integration tests catch API compatibility issues. Both are necessary for reliable database providers.
+
+**Session-scoped fixtures for cloud providers**: Cloud provider fixtures use `scope="session"` to create connections once per test session, avoiding repeated connection overhead while still cleaning up properly:
+
+```python
+@pytest.fixture(scope="session")
+def supabase_engine(supabase_provider):
+    if supabase_provider is None:
+        pytest.skip("Supabase not configured")
+    engine = create_engine(
+        supabase_provider.get_engine_url(),
+        **supabase_provider.get_engine_options(),
+    )
+    yield engine
+    engine.dispose()  # Clean up at session end
+```
 
 ### Testing Output Formatters
 

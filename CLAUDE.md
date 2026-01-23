@@ -121,6 +121,8 @@ See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-pos
 | feedparser dates are naive | Always add `tzinfo=UTC` when converting `published_parsed` |
 | mypy + SQLAlchemy stubs | Don't install `sqlalchemy-stubs` - conflicts with 2.0 |
 | Neon first connection slow | Scale-to-zero may take 2-5s to wake up; increase timeout |
+| Supabase free tier IPv6 only | Direct connections use IPv6; use pooler if on IPv4-only network |
+| DATABASE_PROVIDER required for cloud | Must explicitly set `DATABASE_PROVIDER=supabase` or `neon` |
 
 ## Quick Links by Task
 
@@ -139,6 +141,7 @@ See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-pos
 - Testing best practices: [docs/DEVELOPMENT.md#testing-best-practices](docs/DEVELOPMENT.md#testing-best-practices)
 - Database provider tests: [docs/DEVELOPMENT.md#database-provider-testing](docs/DEVELOPMENT.md#database-provider-testing)
 - Neon integration tests: [docs/SETUP.md#test-architecture](docs/SETUP.md#test-architecture)
+- Supabase integration tests: [docs/SETUP.md#supabase-test-architecture](docs/SETUP.md#supabase-test-architecture)
 
 ### Review & Delivery
 - Digest review workflow: [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md)
