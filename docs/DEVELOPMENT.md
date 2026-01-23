@@ -156,6 +156,40 @@ pytest --cov=src --cov-report=html
 pytest tests/test_config/test_models.py -v
 ```
 
+#### Testing Best Practices
+
+**Resilient test database setup**: Session-scoped fixtures should drop tables before creating them to handle interrupted previous runs. Without this, `create_all()` fails on existing tables/indexes:
+
+```python
+@pytest.fixture(scope="session")
+def test_db_engine():
+    engine = create_engine(TEST_DATABASE_URL)
+    # Safety check - always include "test" in database name
+    if "test" not in engine.url.database.lower():
+        raise ValueError("Must use test database")
+    # Drop first for clean state (handles interrupted runs)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    yield engine
+    Base.metadata.drop_all(engine)
+```
+
+**Transaction rollback isolation**: Each test gets a fresh session with transaction rollback:
+
+```python
+@pytest.fixture
+def db_session(test_db_engine):
+    connection = test_db_engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()
+```
+
+**Sort fallback behavior**: When testing API sort parameters, invalid `sort_by` values fall back to the default field, but `sort_order` is still respected. Don't assume both fall back.
+
 ### Linting & Type Checking
 
 ```bash
@@ -809,6 +843,44 @@ def ingest(force: bool):
 - Iteration: Refine extraction logic
 - Recovery: Fix failed processing
 
+### SQLAlchemy and Mypy
+
+**Configuration:**
+- Use SQLAlchemy 2.0's built-in mypy plugin - don't install `sqlalchemy-stubs` (conflicts with 2.0)
+- Configure overrides for ORM modules: SQLAlchemy Column types need `disable_error_code` for `assignment`, `arg-type`, `union-attr`
+- Pre-commit hooks: All mypy dependencies (including SQLAlchemy) must be in `additional_dependencies`
+- Type ignore comments: Use specific error codes like `# type: ignore[no-any-return]` not generic `# type: ignore`
+
+**Optional in lists:**
+```python
+# Wrong - mypy error: List item has incompatible type "str | None"
+func([obj.field])  # where field is str | None
+
+# Correct - guard against None
+if obj.field:
+    func([obj.field])
+```
+
+### SQLAlchemy Index Definitions
+
+**Avoid duplicate index definitions**: Don't use both `index=True` on a column AND an explicit `Index()` in `__table_args__` with the same name. SQLAlchemy's `index=True` creates an implicit index named `ix_{table}_{column}`:
+
+```python
+# WRONG - creates duplicate index 'ix_images_video_id'
+video_id = Column(String(20), index=True)  # Creates ix_images_video_id
+__table_args__ = (
+    Index("ix_images_video_id", "video_id"),  # Conflicts!
+)
+
+# CORRECT - use only one method
+video_id = Column(String(20))  # No index=True
+__table_args__ = (
+    Index("ix_images_video_id", "video_id"),  # Explicit index only
+)
+```
+
+**PostgreSQL enum sorting**: Enums sort by ordinal position (declaration order), not alphabetically. Keep this in mind for ORDER BY queries on enum columns.
+
 ## Error Handling
 
 ### Individual Item Failures
@@ -861,6 +933,39 @@ logging.getLogger("graphiti_core").setLevel(logging.WARNING)
 logging.getLogger("neo4j").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 ```
+
+## Code Patterns
+
+### Async/Await Patterns
+
+**asyncio.to_thread() with kwargs**: When calling sync functions with keyword arguments in async context, wrap in a lambda:
+
+```python
+# Wrong - to_thread doesn't accept keyword arguments directly
+await asyncio.to_thread(sync_func, kwarg=value)
+
+# Correct - wrap in lambda
+await asyncio.to_thread(lambda: sync_func(kwarg=value))
+```
+
+**Background tasks**: Use FastAPI's `BackgroundTasks` for fire-and-forget operations.
+
+**SSE for progress**: Use `StreamingResponse` with `text/event-stream` for real-time progress updates.
+
+### Utility Functions and Data Models
+
+**Handle both dict and Pydantic models**: Utility functions that process data from JSON columns may receive either dicts (from raw JSON) or Pydantic model objects (from ORM relationships). Use a helper function pattern:
+
+```python
+def _get_attr(obj: dict[str, Any] | PydanticModel, key: str) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+```
+
+**TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` for Pydantic model imports in utility modules to avoid circular imports.
+
+**Type annotations with quotes**: When using TYPE_CHECKING imports, quote the type annotations: `def foo(data: "dict | MyModel") -> str:`
 
 ## Content Extraction Patterns
 

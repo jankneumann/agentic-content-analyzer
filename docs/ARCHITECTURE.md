@@ -199,6 +199,65 @@ Content can embed references to tables and images:
 
 The `render_with_embeds()` utility replaces these with actual content.
 
+## Ingestion Services
+
+### Gmail Ingestion (`GmailContentIngestionService`)
+- Uses Gmail API with OAuth2 credentials
+- Filters by labels/sender for newsletter detection
+- Extracts HTML body → converts to markdown via `HtmlMarkdownConverter`
+- Deduplicates by `source_id` (message ID)
+
+### RSS Ingestion (`RSSContentIngestionService`)
+- Processes feeds from `substack_feeds.txt` configuration
+- Uses feedparser for Atom/RSS parsing
+- **Timezone handling**: `published_parsed` returns UTC but as naive struct_time - always add `tzinfo=UTC`:
+  ```python
+  datetime(*entry.published_parsed[:6], tzinfo=UTC)  # Correct
+  ```
+- Supports `--after-date` filtering for incremental ingestion
+
+### YouTube Ingestion (`YouTubeContentIngestionService`)
+- Uses YouTube Data API (OAuth for private, API key for public playlists)
+- Fetches video metadata and transcripts via `youtube-transcript-api`
+- Generates timestamped markdown with deep links (`youtu.be/xxx?t=123`)
+- Playlist config file: `youtube_playlists.txt` with `PLAYLIST_ID | description` format
+- API key fallback: `settings.get_youtube_api_key()` returns YOUTUBE_API_KEY or falls back to GOOGLE_API_KEY
+
+### File Upload Ingestion (`FileContentIngestionService`)
+- Processes uploads via `ParserRouter` → stores as Content records
+- SHA-256 file hash for deduplication, links duplicates to canonical record
+- API endpoint: `POST /api/v1/documents/upload` (multipart form data)
+- Size limits: `MAX_UPLOAD_SIZE_MB`, `DOCLING_MAX_FILE_SIZE_MB` settings
+
+## Parser Ecosystem
+
+### Parser Interface
+All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
+- Input: File bytes or URL
+- Output: `DocumentContent` with markdown_content, tables, metadata
+
+### Parser Router
+`ParserRouter` selects appropriate parser based on file format:
+1. Checks file extension/MIME type
+2. Routes to specialized parser (or default)
+3. Fallback chain for resilience
+
+### Available Parsers
+
+| Parser | Formats | Use Case |
+|--------|---------|----------|
+| `MarkItDownParser` | Office docs, HTML, audio | Lightweight, fast (~50ms) |
+| `DoclingParser` | PDF, complex layouts | OCR support, table extraction |
+| `YouTubeParser` | YouTube URLs | Transcript with timestamps |
+
+### HTML-to-Markdown Conversion
+`HtmlMarkdownConverter` in `src/parsers/html_markdown.py`:
+- Primary: Trafilatura extraction (~50ms) for academic-quality markdown
+- Dual input: `url=` for RSS feeds, `html=` for Gmail
+- Async-native: `await converter.convert()` in async contexts
+- Quality validation: `validate_markdown_quality()` checks structure
+- Batch processing: `batch_convert()` with semaphore limiting
+
 ## Processing Stages
 
 ### Stage 1: Ingestion
