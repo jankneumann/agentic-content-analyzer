@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from src.config.models import ModelConfig, Provider, ProviderConfig
 
 # Type alias for database provider
-DatabaseProviderType = Literal["local", "supabase"]
+DatabaseProviderType = Literal["local", "supabase", "neon"]
 PoolerModeType = Literal["transaction", "session"]
 
 
@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     supabase_az: str = (
         "0"  # AWS availability zone (0, 1, etc.) - check your Supabase connection string
     )
+
+    # Neon Serverless PostgreSQL Configuration
+    neon_api_key: str | None = None  # API key for branch management
+    neon_project_id: str | None = None  # Project ID for branch management
+    neon_default_branch: str = "main"  # Default parent branch for new branches
+    neon_region: str | None = None  # Region (auto-detected from URL if not set)
+    neon_direct_url: str | None = None  # Direct URL for migrations (bypasses pooler)
 
     # Neo4j / Graphiti
     neo4j_uri: str = "bolt://localhost:7687"
@@ -153,8 +160,10 @@ class Settings(BaseSettings):
         Detection order:
         1. Explicit database_provider setting (if set)
         2. SUPABASE_PROJECT_REF env var present -> Supabase
-        3. DATABASE_URL contains ".supabase." -> Supabase
-        4. Default -> Local PostgreSQL
+        3. NEON_PROJECT_ID env var present -> Neon
+        4. DATABASE_URL contains ".supabase." -> Supabase
+        5. DATABASE_URL contains ".neon.tech" -> Neon
+        6. Default -> Local PostgreSQL
         """
         # 1. Explicit override takes precedence
         if self.database_provider:
@@ -164,11 +173,19 @@ class Settings(BaseSettings):
         if self.supabase_project_ref:
             return "supabase"
 
-        # 3. URL contains Supabase domain
+        # 3. Neon project ID indicates Neon provider
+        if self.neon_project_id:
+            return "neon"
+
+        # 4. URL contains Supabase domain
         if ".supabase." in self.database_url:
             return "supabase"
 
-        # 4. Default to local PostgreSQL
+        # 5. URL contains Neon domain
+        if ".neon.tech" in self.database_url:
+            return "neon"
+
+        # 6. Default to local PostgreSQL
         return "local"
 
     def get_effective_database_url(self) -> str:
@@ -194,13 +211,17 @@ class Settings(BaseSettings):
     def get_migration_database_url(self) -> str:
         """Get the database URL for Alembic migrations.
 
-        For Supabase, returns the direct connection URL (bypasses pooler)
+        For Supabase and Neon, returns the direct connection URL (bypasses pooler)
         since DDL operations require direct connections.
 
         Returns:
             Database URL suitable for migrations
         """
-        # Use explicit direct URL if provided
+        # Use explicit Neon direct URL if provided
+        if self.neon_direct_url:
+            return self.neon_direct_url
+
+        # Use explicit Supabase direct URL if provided
         if self.supabase_direct_url:
             return self.supabase_direct_url
 
@@ -210,6 +231,10 @@ class Settings(BaseSettings):
                 f"postgresql://postgres:{self.supabase_db_password}@"
                 f"db.{self.supabase_project_ref}.supabase.co:5432/postgres"
             )
+
+        # For Neon URLs, convert pooled to direct by removing -pooler suffix
+        if ".neon.tech" in self.database_url and "-pooler." in self.database_url:
+            return self.database_url.replace("-pooler.", ".")
 
         # For local or URL-based config, use the standard URL
         return self.database_url

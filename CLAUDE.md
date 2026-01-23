@@ -79,6 +79,30 @@ MODEL_THEME_ANALYSIS=claude-sonnet-4-5     # Quality reasoning
 MODEL_DIGEST_CREATION=claude-sonnet-4-5    # Customer-facing
 ```
 
+## Database Providers
+
+Three PostgreSQL providers are supported:
+
+| Provider | Use Case | Detection |
+|----------|----------|-----------|
+| Local | Development, Docker | Default |
+| Supabase | Cloud hosting | `.supabase.` in URL |
+| Neon | Agent workflows, branching | `.neon.tech` in URL |
+
+**Neon Branching for Agents**: Create isolated database branches for feature work or testing:
+```bash
+# Create ephemeral branch
+neonctl branches create --name claude/feature-xyz --project-id $NEON_PROJECT_ID
+
+# Get connection string and work with isolated database
+DATABASE_URL=$(neonctl connection-string claude/feature-xyz)
+
+# Delete when done
+neonctl branches delete claude/feature-xyz
+```
+
+See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-postgresql-bring-your-own) for full setup.
+
 ## Critical Gotchas
 
 ⚠️ **These will bite you if ignored:**
@@ -90,6 +114,7 @@ MODEL_DIGEST_CREATION=claude-sonnet-4-5    # Customer-facing
 | Test DB fails on second run | Fixtures must drop tables before creating (handles interrupted runs) |
 | feedparser dates are naive | Always add `tzinfo=UTC` when converting `published_parsed` |
 | mypy + SQLAlchemy stubs | Don't install `sqlalchemy-stubs` - conflicts with 2.0 |
+| Neon first connection slow | Scale-to-zero may take 2-5s to wake up; increase timeout |
 
 ## Quick Links by Task
 

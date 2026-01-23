@@ -208,6 +208,174 @@ alembic upgrade head  # Uses pooler automatically
 
 ---
 
+## Neon Serverless PostgreSQL (Bring Your Own)
+
+The newsletter aggregator supports **Neon** as a serverless PostgreSQL option. Neon's architecture is particularly well-suited for AI coding agent workflows, offering instant copy-on-write database branching.
+
+### Why Neon?
+
+- **Instant branching**: Create isolated database copies in milliseconds (any size)
+- **Agent-native testing**: Each agent session can use ephemeral branches with real data
+- **Scale-to-zero**: Compute automatically suspends when idle, reducing costs
+- **Time-travel**: Restore database state to any point within retention window
+- **Free tier**: 100 CU-hours/month with 500MB storage
+
+### Setup Guide
+
+#### 1. Create Neon Project
+
+1. Go to [console.neon.tech](https://console.neon.tech) and sign up
+2. Create a new project (note your **project ID**)
+3. Database is ready immediately (no provisioning wait)
+
+#### 2. Get Connection String
+
+1. Go to **Dashboard > Connection Details**
+2. Copy the connection string (pooled recommended for applications)
+
+**Connection string formats**:
+- **Pooled** (recommended): `postgresql://user:pass@ep-cool-name-123456-pooler.region.aws.neon.tech/dbname`
+- **Direct**: `postgresql://user:pass@ep-cool-name-123456.region.aws.neon.tech/dbname`
+
+#### 3. Configure Environment
+
+**Option A: Connection string only (Simple)**
+
+```bash
+# .env - For basic usage
+DATABASE_URL=postgresql://user:pass@ep-cool-name-123456-pooler.us-east-2.aws.neon.tech/dbname?sslmode=require
+```
+
+**Option B: With branch management (For agent workflows)**
+
+```bash
+# .env - For programmatic branch management
+DATABASE_URL=postgresql://user:pass@ep-cool-name-123456-pooler.us-east-2.aws.neon.tech/dbname?sslmode=require
+NEON_API_KEY=neon_api_key_...           # From Account Settings > API Keys
+NEON_PROJECT_ID=proud-paper-123456      # From Project Settings
+NEON_DEFAULT_BRANCH=main                # Default parent for new branches
+NEON_DIRECT_URL=...                     # Direct URL for migrations (optional)
+```
+
+#### 4. Run Migrations
+
+```bash
+# Using pooled connection (works for most migrations)
+alembic upgrade head
+
+# If you need direct connection (for complex DDL)
+NEON_DIRECT_URL=postgresql://user:pass@ep-cool-name-123456.us-east-2.aws.neon.tech/dbname alembic upgrade head
+```
+
+#### 5. Verify Connection
+
+```bash
+python -c "from src.storage.database import health_check, get_provider_name; print(f'Provider: {get_provider_name()}'); print(f'Health: {health_check()}')"
+
+# Expected output:
+# Provider: neon
+# Health: True
+```
+
+### Branching for Agent Workflows
+
+Neon's killer feature is instant database branching. Each branch is a copy-on-write clone that shares storage with the parent.
+
+#### Create Feature Branch (CLI)
+
+```bash
+# Create branch for feature development
+neonctl branches create --name claude/feature-xyz --project-id $NEON_PROJECT_ID
+
+# Get connection string for branch
+DATABASE_URL=$(neonctl connection-string claude/feature-xyz --project-id $NEON_PROJECT_ID)
+
+# Work with isolated database...
+
+# Delete when done
+neonctl branches delete claude/feature-xyz --project-id $NEON_PROJECT_ID
+```
+
+#### Programmatic Branch Management (Python)
+
+```python
+from src.storage.providers.neon_branch import NeonBranchManager
+
+manager = NeonBranchManager()
+
+# Create ephemeral branch for testing
+async with manager.branch_context("test/my-feature") as conn_str:
+    # conn_str is the connection string for the new branch
+    # Run tests against isolated database
+    pass  # Branch auto-deleted when context exits
+```
+
+#### Test Fixtures
+
+```python
+import pytest
+from tests.integration.fixtures.neon import neon_test_branch
+
+@pytest.mark.asyncio
+async def test_with_isolated_database(neon_test_branch):
+    """Test runs against ephemeral Neon branch."""
+    # neon_test_branch is the connection string
+    # Branch is created before test, deleted after
+```
+
+### Branch Naming Conventions
+
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `claude/` | Claude Code agent sessions | `claude/feature-auth` |
+| `test/` | Automated test isolation | `test/abc123` |
+| `preview/` | PR preview environments | `preview/pr-42` |
+
+### Pooled vs Direct Connections
+
+| Connection Type | Use Case | URL Pattern |
+|-----------------|----------|-------------|
+| **Pooled** (default) | Application queries | `...-pooler.region.aws.neon.tech` |
+| **Direct** | Migrations, DDL operations | `...region.aws.neon.tech` (no `-pooler`) |
+
+The provider automatically handles pooled connections. Use `NEON_DIRECT_URL` for migrations if needed.
+
+### Neon Free Tier Limits
+
+| Resource | Limit |
+|----------|-------|
+| Compute | 100 CU-hours/month |
+| Storage | 500MB |
+| Branches | 10 |
+| Projects | 1 |
+
+Branches share storage with parent, so they don't consume additional storage unless you write new data.
+
+### Troubleshooting Neon
+
+**Connection timeout**:
+```bash
+# Neon computes scale to zero after 5 minutes of inactivity
+# First connection may take 2-5 seconds to "wake up"
+# Increase connection timeout if needed
+```
+
+**Branch limit reached**:
+```bash
+# Free tier: 10 branches max
+# Delete unused branches:
+neonctl branches list --project-id $NEON_PROJECT_ID
+neonctl branches delete <branch-name> --project-id $NEON_PROJECT_ID
+```
+
+**SSL required error**:
+```bash
+# Ensure ?sslmode=require in connection string
+# Neon requires SSL for all connections
+```
+
+---
+
 ## Cloud Production (When Ready)
 
 ### Deployment Platforms
@@ -274,6 +442,20 @@ DATABASE_PROVIDER=supabase               # Explicit provider override (optional,
 ```
 
 See [Supabase Cloud Database](#supabase-cloud-database-bring-your-own) for setup instructions.
+
+### Neon Variables (Optional Cloud Database)
+
+```bash
+# Neon Serverless PostgreSQL (alternative to local or Supabase)
+NEON_API_KEY=neon_api_key_...            # API key for branch management (optional)
+NEON_PROJECT_ID=proud-paper-123456       # Project ID for branch management (optional)
+NEON_DEFAULT_BRANCH=main                 # Default parent branch (default: main)
+NEON_REGION=us-east-2                    # Region (auto-detected from URL)
+NEON_DIRECT_URL=...                      # Direct connection for migrations (optional)
+DATABASE_PROVIDER=neon                   # Explicit provider override (optional, auto-detected)
+```
+
+See [Neon Serverless PostgreSQL](#neon-serverless-postgresql-bring-your-own) for setup instructions.
 
 ### Optional Variables
 
