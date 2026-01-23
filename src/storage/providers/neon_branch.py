@@ -298,13 +298,28 @@ class NeonBranchManager:
 
         data = response.json()
         branch_data = data.get("branch", {})
+        branch_id = branch_data["id"]
 
-        # Extract connection string from endpoints if available
+        # Extract connection string from the response
+        # The create branch API returns connection_uris directly
         connection_string = None
         endpoints = data.get("endpoints", [])
+
+        # Wait for endpoint to become active before returning connection string
+        # This ensures the database is ready to accept connections
         if endpoints:
             endpoint = endpoints[0]
-            connection_string = await self._build_connection_string(endpoint.get("id"), pooled=True)
+            endpoint_id = endpoint.get("id")
+            await self._wait_for_endpoint_ready(endpoint_id)
+
+        connection_uris = data.get("connection_uris", [])
+        if connection_uris:
+            connection_string = connection_uris[0].get("connection_uri")
+        elif endpoints:
+            # Fallback: build connection string manually
+            connection_string = await self._build_connection_string(
+                endpoint_id, branch_id=branch_id, pooled=True
+            )
 
         branch = NeonBranch(
             id=branch_data["id"],
@@ -367,22 +382,113 @@ class NeonBranchManager:
 
         return branches
 
-    async def _build_connection_string(self, endpoint_id: str, pooled: bool = True) -> str:
+    async def _get_branch_roles(self, branch_id: str) -> list[dict[str, Any]]:
+        """Get all roles for a specific branch.
+
+        Args:
+            branch_id: The branch ID to get roles for
+
+        Returns:
+            List of role data dictionaries
+        """
+        response = await self._request_with_retry(
+            "GET",
+            f"/projects/{self._project_id}/branches/{branch_id}/roles",
+        )
+        data = response.json()
+        roles: list[dict[str, Any]] = data.get("roles", [])
+        return roles
+
+    async def _wait_for_endpoint_ready(
+        self, endpoint_id: str, max_wait_seconds: float = 60.0, poll_interval: float = 2.0
+    ) -> None:
+        """Wait for an endpoint to become active.
+
+        Neon endpoints take a few seconds to become ready after creation.
+        This method polls the endpoint status until it's active or times out.
+
+        Args:
+            endpoint_id: The endpoint ID to wait for
+            max_wait_seconds: Maximum time to wait (default 60 seconds)
+            poll_interval: Time between status checks (default 2 seconds)
+
+        Raises:
+            NeonAPIError: If endpoint doesn't become ready within timeout
+        """
+        import time
+
+        start_time = time.monotonic()
+
+        while (time.monotonic() - start_time) < max_wait_seconds:
+            try:
+                response = await self._request_with_retry(
+                    "GET",
+                    f"/projects/{self._project_id}/endpoints/{endpoint_id}",
+                )
+                data = response.json()
+                endpoint = data.get("endpoint", {})
+                current_state = endpoint.get("current_state")
+
+                if current_state == "active":
+                    logger.debug(f"Endpoint {endpoint_id} is now active")
+                    return
+
+                logger.debug(f"Endpoint {endpoint_id} state: {current_state}, waiting...")
+                await asyncio.sleep(poll_interval)
+
+            except NeonAPIError as e:
+                if e.status_code == 404:
+                    # Endpoint might not be created yet, keep waiting
+                    logger.debug(f"Endpoint {endpoint_id} not found yet, waiting...")
+                    await asyncio.sleep(poll_interval)
+                else:
+                    raise
+
+        raise NeonAPIError(
+            f"Endpoint {endpoint_id} did not become active within {max_wait_seconds}s",
+            status_code=408,
+        )
+
+    async def _build_connection_string(
+        self,
+        endpoint_id: str,
+        branch_id: str,
+        pooled: bool = True,
+        database_name: str = "neondb",
+        role_name: str | None = None,
+    ) -> str:
         """Build a connection string for a branch endpoint.
 
         Args:
             endpoint_id: Endpoint ID to get connection string for
+            branch_id: Branch ID (used to look up roles)
             pooled: Whether to use connection pooling (default True)
+            database_name: Name of the database (default "neondb")
+            role_name: Database role name (auto-detected if not provided)
 
         Returns:
             PostgreSQL connection string
         """
-        params = {"pooled": str(pooled).lower()}
+        # Auto-detect role name if not provided
+        if role_name is None:
+            roles = await self._get_branch_roles(branch_id)
+            if roles:
+                # Use the first available role (usually the owner role)
+                role_name = roles[0].get("name", "neondb_owner")
+            else:
+                role_name = "neondb_owner"  # Default fallback
+
+        params = {
+            "pooled": str(pooled).lower(),
+            "endpoint_id": endpoint_id,
+            "database_name": database_name,
+            "role_name": role_name,
+        }
 
         response = await self._request_with_retry(
             "GET",
             f"/projects/{self._project_id}/connection_uri",
-            params={**params, "endpoint_id": endpoint_id},
+            params=params,
         )
 
         data = response.json()
@@ -420,7 +526,11 @@ class NeonBranchManager:
 
         # Get connection string for the first endpoint
         endpoint_id = endpoints[0]["id"]
-        return await self._build_connection_string(endpoint_id, pooled=pooled)
+
+        # Wait for endpoint to become active before getting connection string
+        await self._wait_for_endpoint_ready(endpoint_id)
+
+        return await self._build_connection_string(endpoint_id, branch_id=branch_id, pooled=pooled)
 
     @asynccontextmanager
     async def branch_context(self, name: str, parent: str | None = None) -> AsyncIterator[str]:

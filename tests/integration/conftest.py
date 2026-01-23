@@ -12,6 +12,11 @@ Test Database Isolation:
   - Automatic cleanup (DETACH DELETE all nodes) after each test
   - Safety check: prevents connecting to port 7687
   - Completely separate Docker container with own data volume
+- Neon: Creates ephemeral database branches for testing
+  - Environment variables: NEON_API_KEY, NEON_PROJECT_ID
+  - Automatic branch cleanup after tests
+  - Uses copy-on-write branching for fast, isolated test environments
+  - See tests/integration/fixtures/neon.py for fixtures
 
 Setup:
 1. Create PostgreSQL test database: createdb newsletters_test
@@ -396,3 +401,16 @@ def mock_graphiti_client():
     mock_client.close = AsyncMock(return_value=None)
 
     return mock_client
+
+
+# Import Neon fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/neon.py
+from tests.integration.fixtures.neon import (  # noqa: E402, F401
+    _detect_default_branch,
+    neon_available,
+    neon_default_branch,
+    neon_isolated_branch,
+    neon_manager,
+    neon_test_branch,
+    requires_neon,
+)

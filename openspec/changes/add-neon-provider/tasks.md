@@ -93,5 +93,7 @@
 
 - [x] 7.1 Run existing provider tests to ensure no regressions
   - All 72 storage tests pass
-- [ ] 7.2 Test with real Neon account (manual verification)
+- [x] 7.2 Test with real Neon account (manual verification)
+  - 17 real integration tests pass against actual Neon API
+  - Tests cover: branch creation, deletion, connection strings, SQL execution, transactions, branch isolation
 - [ ] 7.3 Verify Alembic migrations work with Neon direct connection

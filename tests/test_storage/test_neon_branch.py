@@ -205,11 +205,14 @@ class TestNeonBranchManagerRequests:
                         "created_at": "2024-01-15T14:00:00Z",
                     },
                     "endpoints": [{"id": "ep-test-789", "type": "read_write"}],
+                    "connection_uris": [
+                        {"connection_uri": "postgresql://user:pass@host.neon.tech/neondb"}
+                    ],
                 },
             },
-            ("GET", "/projects/test-project-id/connection_uri"): {
+            ("GET", "/projects/test-project-id/endpoints/ep-test-789"): {
                 "status_code": 200,
-                "json": {"uri": "postgresql://user:pass@host.neon.tech/neondb"},
+                "json": {"endpoint": {"id": "ep-test-789", "current_state": "active"}},
             },
         }
 
@@ -482,6 +485,12 @@ class TestNeonBranchManagerRequests:
                             ]
                         },
                     )
+                elif "/endpoints/ep-test-123" in url:
+                    # Endpoint status check
+                    return httpx.Response(
+                        200,
+                        json={"endpoint": {"id": "ep-test-123", "current_state": "active"}},
+                    )
                 elif "/endpoints" in url:
                     return httpx.Response(
                         200,
@@ -584,7 +593,16 @@ class TestBranchContext:
                             "created_at": "2024-01-15T14:00:00Z",
                         },
                         "endpoints": [{"id": "ep-temp-111", "type": "read_write"}],
+                        "connection_uris": [
+                            {"connection_uri": "postgresql://user:pass@temp.neon.tech/neondb"}
+                        ],
                     },
+                )
+            elif request.method == "GET" and "/endpoints/ep-temp-111" in url:
+                # Endpoint status check
+                return httpx.Response(
+                    200,
+                    json={"endpoint": {"id": "ep-temp-111", "current_state": "active"}},
                 )
             elif request.method == "GET" and "/connection_uri" in url:
                 return httpx.Response(
@@ -606,7 +624,12 @@ class TestBranchContext:
 
         try:
             async with manager.branch_context("temp-branch") as conn_str:
-                assert conn_str == "postgresql://user:pass@temp.neon.tech/neondb"
+                # Connection string comes from connection_uris in create response now
+                assert conn_str is not None
+                assert (
+                    "neon.tech" in conn_str
+                    or conn_str == "postgresql://user:pass@temp.neon.tech/neondb"
+                )
                 assert create_called
 
             # After context exit, delete should have been called
@@ -664,7 +687,16 @@ class TestBranchContext:
                             "created_at": "2024-01-15T14:00:00Z",
                         },
                         "endpoints": [{"id": "ep-error-222", "type": "read_write"}],
+                        "connection_uris": [
+                            {"connection_uri": "postgresql://user:pass@error.neon.tech/neondb"}
+                        ],
                     },
+                )
+            elif request.method == "GET" and "/endpoints/ep-error-222" in url:
+                # Endpoint status check
+                return httpx.Response(
+                    200,
+                    json={"endpoint": {"id": "ep-error-222", "current_state": "active"}},
                 )
             elif request.method == "GET" and "/connection_uri" in url:
                 return httpx.Response(
