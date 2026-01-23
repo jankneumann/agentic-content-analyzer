@@ -90,6 +90,8 @@ The system SHALL provide pytest fixtures for ephemeral database branches in inte
 
 ### Requirement: Provider Factory
 
+The provider factory SHALL detect and instantiate the appropriate database provider based on configuration, with Neon added to the detection chain.
+
 > Extends the base Provider Factory requirement to include Neon in the detection chain.
 
 #### Scenario: Automatic provider detection (MODIFIED)
