@@ -17,6 +17,10 @@ Test Database Isolation:
   - Automatic branch cleanup after tests
   - Uses copy-on-write branching for fast, isolated test environments
   - See tests/integration/fixtures/neon.py for fixtures
+- Supabase: Tests cloud database connection and pooling
+  - Environment variables: SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD
+  - Tests skipped if credentials not configured
+  - See tests/integration/fixtures/supabase.py for fixtures
 
 Setup:
 1. Create PostgreSQL test database: createdb newsletters_test
@@ -413,4 +417,14 @@ from tests.integration.fixtures.neon import (  # noqa: E402, F401
     neon_manager,
     neon_test_branch,
     requires_neon,
+)
+
+# Import Supabase fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/supabase.py
+from tests.integration.fixtures.supabase import (  # noqa: E402, F401
+    requires_supabase,
+    supabase_available,
+    supabase_direct_engine,
+    supabase_engine,
+    supabase_provider,
 )
