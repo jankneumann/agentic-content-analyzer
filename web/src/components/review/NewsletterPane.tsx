@@ -12,6 +12,7 @@
  */
 
 import * as React from "react"
+import DOMPurify from "dompurify"
 import { FileText, Code } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,14 @@ import {
 import { ReviewPaneHeader } from "./ReviewLayout"
 import type { Newsletter } from "@/types"
 
+// Temporary type definition for legacy fields during Content migration
+// TODO: Remove this once migration to Content model is complete
+type LegacyNewsletter = Newsletter & {
+  raw_html?: string
+  raw_text?: string
+  sender?: string
+}
+
 interface NewsletterPaneProps {
   newsletter: Newsletter | null | undefined
   className?: string
@@ -32,7 +41,8 @@ interface NewsletterPaneProps {
 
 type ViewMode = "text" | "html"
 
-export function NewsletterPane({ newsletter, className }: NewsletterPaneProps) {
+export function NewsletterPane({ newsletter: propNewsletter, className }: NewsletterPaneProps) {
+  const newsletter = propNewsletter as LegacyNewsletter | null | undefined
   const [viewMode, setViewMode] = React.useState<ViewMode>("text")
 
   // Check if HTML content is available
@@ -47,6 +57,14 @@ export function NewsletterPane({ newsletter, className }: NewsletterPaneProps) {
   // Determine what content to show
   const showHtml = viewMode === "html" && hasHtml
   const content = showHtml ? newsletter?.raw_html : newsletter?.raw_text
+
+  // 🛡️ SENTINEL: Sanitize HTML content to prevent XSS attacks from malicious feeds
+  const sanitizedContent = React.useMemo(() => {
+    if (showHtml && content) {
+      return DOMPurify.sanitize(content)
+    }
+    return content
+  }, [content, showHtml])
 
   return (
     <div
@@ -105,7 +123,7 @@ export function NewsletterPane({ newsletter, className }: NewsletterPaneProps) {
             showHtml ? (
               <div
                 className="prose prose-sm max-w-none dark:prose-invert"
-                dangerouslySetInnerHTML={{ __html: content }}
+                dangerouslySetInnerHTML={{ __html: sanitizedContent || "" }}
               />
             ) : (
               <div className="whitespace-pre-wrap text-sm leading-relaxed">
