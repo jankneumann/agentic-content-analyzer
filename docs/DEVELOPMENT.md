@@ -126,6 +126,12 @@ uvicorn src.api.app:app --reload
 # - POST /api/v1/contents/summarize - Trigger summarization
 # - GET  /api/v1/summaries        - List summaries
 # - GET  /api/v1/digests          - List digests
+# - GET  /api/v1/scripts          - List podcast scripts
+# - GET  /api/v1/podcasts         - List podcasts
+#
+# All list endpoints support sorting via query parameters:
+# - sort_by: Field to sort by (varies by endpoint)
+# - sort_order: 'asc' or 'desc' (default: desc)
 ```
 
 ### Testing
