@@ -50,11 +50,12 @@ def test_db_engine():
     """Create test database engine.
 
     Uses newsletters_test database (separate from development).
-    Creates all tables at session start, drops them at session end.
+    Drops and recreates all tables at session start for clean state.
+    This handles interrupted previous runs that left stale data.
     """
     engine = create_engine(TEST_DATABASE_URL, echo=False)
 
-    # Verify we're using test database
+    # Verify we're using test database (safety check)
     db_name = engine.url.database
     if not db_name or "test" not in db_name.lower():
         raise ValueError(
@@ -62,7 +63,10 @@ def test_db_engine():
             f"Set TEST_DATABASE_URL to a test database to proceed."
         )
 
-    # Create all tables
+    # Drop all tables first for clean state (handles interrupted previous runs)
+    Base.metadata.drop_all(engine)
+
+    # Create all tables fresh
     Base.metadata.create_all(engine)
 
     yield engine

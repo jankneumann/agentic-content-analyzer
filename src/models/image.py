@@ -103,7 +103,8 @@ class Image(Base):  # type: ignore[valid-type, misc]
     source_url = Column(String(2000), nullable=True)  # Original image URL if extracted
 
     # YouTube-specific metadata (for keyframes)
-    video_id = Column(String(20), nullable=True, index=True)  # YouTube video ID
+    # Note: index defined in __table_args__ as ix_images_video_id
+    video_id = Column(String(20), nullable=True)  # YouTube video ID
     timestamp_seconds = Column(Float, nullable=True)  # Timestamp in video
     deep_link_url = Column(String(500), nullable=True)  # youtu.be/xxx?t=123
 
@@ -129,7 +130,8 @@ class Image(Base):  # type: ignore[valid-type, misc]
     generation_params = Column(JSON, nullable=True)
 
     # Perceptual hash for deduplication
-    phash = Column(String(64), nullable=True, index=True)
+    # Note: index defined in __table_args__ as ix_images_phash
+    phash = Column(String(64), nullable=True)
 
     # Timestamp
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

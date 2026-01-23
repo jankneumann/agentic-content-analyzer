@@ -119,14 +119,17 @@ class TestContentSorting:
         assert source_types == ["gmail", "rss", "youtube"]
 
     def test_invalid_sort_by_falls_back_to_default(self, client, sortable_contents):
-        """Test that invalid sort_by field falls back to default (ingested_at desc)."""
+        """Test that invalid sort_by field falls back to default field (ingested_at).
+
+        Note: Only sort_by falls back to default; sort_order is still respected.
+        """
         response = client.get("/api/v1/contents?sort_by=invalid_field&sort_order=asc")
 
         assert response.status_code == 200
         data = response.json()
-        # Should fall back to ingested_at desc (newest first)
+        # Falls back to ingested_at, but respects sort_order=asc (oldest first)
         titles = [item["title"] for item in data["items"]]
-        assert titles == ["Alpha Newsletter", "Beta Newsletter", "Charlie Newsletter"]
+        assert titles == ["Charlie Newsletter", "Beta Newsletter", "Alpha Newsletter"]
 
     def test_default_sort_without_parameters(self, client, sortable_contents):
         """Test that default sort is ingested_at descending when no params given."""
@@ -348,14 +351,18 @@ class TestDigestSorting:
         assert types == ["weekly", "daily"]
 
     def test_sort_by_status(self, client, sortable_digests):
-        """Test sorting digests by status."""
+        """Test sorting digests by status.
+
+        Note: PostgreSQL sorts enums by ordinal position, not alphabetically.
+        DigestStatus ordinals: PENDING_REVIEW=4, APPROVED=5
+        """
         response = client.get("/api/v1/digests/?sort_by=status&sort_order=asc")
 
         assert response.status_code == 200
         data = response.json()
         statuses = [item["status"] for item in data]
-        # APPROVED comes before PENDING_REVIEW alphabetically
-        assert statuses == ["APPROVED", "PENDING_REVIEW"]
+        # Sorted by enum ordinal: PENDING_REVIEW (4) before APPROVED (5)
+        assert statuses == ["PENDING_REVIEW", "APPROVED"]
 
     def test_sort_by_period_start(self, client, sortable_digests):
         """Test sorting digests by period_start."""

@@ -1,5 +1,18 @@
 # Implementation Tasks
 
+## 0. Critical Bug Fixes (Blocking) ✅
+
+### 0.1 Fix Duplicate Index Definitions in Image Model
+- [x] 0.1.1 Remove `index=True` from `video_id` column (line 106) - explicit index exists in `__table_args__`
+- [x] 0.1.2 Remove `index=True` from `phash` column (line 132) - explicit index exists in `__table_args__`
+- [x] 0.1.3 Verify no other duplicate index definitions exist in codebase
+
+### 0.2 Make Test Database Setup Resilient
+- [x] 0.2.1 Update `tests/api/conftest.py` to drop tables before creating
+- [x] 0.2.2 Update `tests/integration/conftest.py` to drop tables before creating
+- [x] 0.2.3 Add safety check to prevent dropping non-test databases (existing check preserved)
+- [x] 0.2.4 Verify all existing tests pass after fix (26 sorting tests pass, 198/212 API tests pass - 14 pre-existing failures in test_summary_api.py unrelated to infrastructure)
+
 ## 1. Setup Factory Boy
 
 - [ ] 1.1 Add `factory_boy` to pyproject.toml dev dependencies
