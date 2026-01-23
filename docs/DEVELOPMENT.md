@@ -1094,6 +1094,48 @@ def test_to_markdown(sample_digest_data):
     assert "Summary text..." in result
 ```
 
+### Database Provider Testing
+
+Database providers have a two-tier testing strategy:
+
+**Tier 1: Unit Tests (Mocked)**
+- Location: `tests/test_storage/`
+- Run with: `pytest tests/test_storage/ -v`
+- Uses mock transports to simulate API responses
+- Tests edge cases, error handling, retries
+- Fast (~1 second), works offline
+
+```python
+# Example: Mocking Neon API responses
+def create_mock_transport(responses):
+    def handler(request):
+        for (method, pattern), data in responses.items():
+            if method == request.method and pattern in str(request.url):
+                return httpx.Response(data["status_code"], json=data["json"])
+        return httpx.Response(404)
+    return httpx.MockTransport(handler)
+```
+
+**Tier 2: Integration Tests (Real APIs)**
+- Location: `tests/integration/`
+- Run with: `pytest tests/integration/ -v`
+- Creates real resources (e.g., Neon branches)
+- Verifies actual API behavior, SSL, connection handling
+- Auto-skips when credentials not configured
+
+```python
+# Integration tests use the @requires_neon decorator
+@requires_neon
+@pytest.mark.asyncio
+class TestNeonDatabaseOperations:
+    async def test_execute_sql_on_branch(self, neon_test_branch):
+        # neon_test_branch creates a real ephemeral branch
+        engine = create_async_engine(convert_to_asyncpg_url(neon_test_branch))
+        # ... test real database operations
+```
+
+**Key insight**: Unit tests catch logic errors fast; integration tests catch API compatibility issues. Both are necessary for reliable database providers.
+
 ### Testing Output Formatters
 
 For text/HTML/markdown formatters, verify:

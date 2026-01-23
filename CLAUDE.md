@@ -131,6 +131,8 @@ See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-pos
 ### Testing
 - Test commands: [docs/DEVELOPMENT.md#testing](docs/DEVELOPMENT.md#testing)
 - Testing best practices: [docs/DEVELOPMENT.md#testing-best-practices](docs/DEVELOPMENT.md#testing-best-practices)
+- Database provider tests: [docs/DEVELOPMENT.md#database-provider-testing](docs/DEVELOPMENT.md#database-provider-testing)
+- Neon integration tests: [docs/SETUP.md#test-architecture](docs/SETUP.md#test-architecture)
 
 ### Review & Delivery
 - Digest review workflow: [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md)

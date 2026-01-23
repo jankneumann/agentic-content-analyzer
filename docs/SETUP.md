@@ -323,6 +323,33 @@ async def test_with_isolated_database(neon_test_branch):
     # Branch is created before test, deleted after
 ```
 
+#### Test Architecture
+
+The Neon provider has two test suites with different purposes:
+
+| Test File | Type | Speed | Requires Credentials |
+|-----------|------|-------|---------------------|
+| `tests/test_storage/test_neon_branch.py` | Unit (mocked) | ~1 second | No |
+| `tests/integration/test_neon_integration.py` | Integration (real API) | ~30-60 seconds | Yes |
+
+**Unit tests** use `httpx.MockTransport` to simulate API responses:
+- Test edge cases (rate limiting, error handling, retries)
+- Work offline without Neon credentials
+- Run as part of standard `pytest` suite
+
+**Integration tests** create real ephemeral branches:
+- Verify actual Neon API behavior
+- Test SSL/connection handling with real database
+- Auto-skip when `NEON_API_KEY`/`NEON_PROJECT_ID` not set
+
+```bash
+# Run unit tests only (no credentials needed)
+pytest tests/test_storage/test_neon_branch.py -v
+
+# Run integration tests (requires Neon credentials in .env)
+pytest tests/integration/test_neon_integration.py -v
+```
+
 ### Branch Naming Conventions
 
 | Prefix | Purpose | Example |
