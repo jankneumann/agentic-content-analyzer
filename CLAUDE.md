@@ -151,6 +151,23 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
       func([obj.field])
   ```
 
+### SQLAlchemy Index Definitions
+- **Avoid duplicate index definitions**: Don't use both `index=True` on a column AND an explicit `Index()` in `__table_args__` with the same name. SQLAlchemy's `index=True` creates an implicit index named `ix_{table}_{column}`, which conflicts with an explicit index of the same name:
+  ```python
+  # WRONG - creates duplicate index 'ix_images_video_id'
+  video_id = Column(String(20), index=True)  # Creates ix_images_video_id
+  __table_args__ = (
+      Index("ix_images_video_id", "video_id"),  # Conflicts!
+  )
+
+  # CORRECT - use only one method
+  video_id = Column(String(20))  # No index=True
+  __table_args__ = (
+      Index("ix_images_video_id", "video_id"),  # Explicit index only
+  )
+  ```
+- **PostgreSQL enum sorting**: Enums sort by ordinal position (declaration order), not alphabetically. Keep this in mind for ORDER BY queries on enum columns.
+
 ### Document Parsing
 - **Parser abstraction**: Use `DocumentParser` interface in `src/parsers/base.py` for all document parsing
 - **Markdown-centric**: All parsers output markdown via `DocumentContent` model - optimized for LLM consumption
@@ -266,6 +283,36 @@ See [Architecture](docs/ARCHITECTURE.md) for complete system design.
 - **Always activate venv**: `source .venv/bin/activate` before running scripts
 - **Use fixtures**: Reusable test data with pytest fixtures
 - **Error handling**: Don't crash entire batch if one item fails
+
+### Testing Best Practices
+- **Resilient test database setup**: Session-scoped fixtures should drop tables before creating them to handle interrupted previous runs. Without this, `create_all()` fails on existing tables/indexes:
+  ```python
+  @pytest.fixture(scope="session")
+  def test_db_engine():
+      engine = create_engine(TEST_DATABASE_URL)
+      # Safety check
+      if "test" not in engine.url.database.lower():
+          raise ValueError("Must use test database")
+      # Drop first for clean state (handles interrupted runs)
+      Base.metadata.drop_all(engine)
+      Base.metadata.create_all(engine)
+      yield engine
+      Base.metadata.drop_all(engine)
+  ```
+- **Sort fallback behavior**: When testing API sort parameters, note that invalid `sort_by` values fall back to the default field, but `sort_order` is still respected. Don't assume both fall back.
+- **Test database naming**: Always include "test" in the database name (e.g., `newsletters_test`) and add safety checks to prevent accidental drops of production data.
+- **Transaction rollback isolation**: Each test should get a fresh session with transaction rollback for isolation:
+  ```python
+  @pytest.fixture
+  def db_session(test_db_engine):
+      connection = test_db_engine.connect()
+      transaction = connection.begin()
+      session = Session(bind=connection)
+      yield session
+      session.close()
+      transaction.rollback()
+      connection.close()
+  ```
 
 ### Utility Functions and Data Models
 - **Handle both dict and Pydantic models**: Utility functions that process data from JSON columns may receive either dicts (from raw JSON) or Pydantic model objects (from ORM relationships). Use a helper function pattern:
