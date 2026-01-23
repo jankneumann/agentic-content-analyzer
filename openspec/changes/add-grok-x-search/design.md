@@ -84,21 +84,37 @@ The xAI Grok API provides server-side agentic tool calling with `x_search` for s
 Return detailed information including author handles and engagement metrics."
 ```
 
-### Decision 5: Content Structure for X Posts
+### Decision 5: Thread as Unit of Content
 
-**What**: Store X posts with the following structure:
+**What**: Each Content record represents a complete thread (or single post if not a thread). The thread is the atomic unit that gets summarized.
+
+**Content Structure**:
 
 ```python
-# markdown_content example
+# markdown_content example for a thread
 """
-# @author_handle - Post Title or First Line
+# @author_handle - Thread Title or First Line
 
 **Posted**: 2025-01-23 14:30 UTC
-**Engagement**: 1.2K likes, 450 retweets, 89 replies
+**Thread**: 5 posts
+**Engagement**: 1.2K likes, 450 retweets, 89 replies (root post)
 
-## Content
+## Thread Content
 
-The full post text goes here, including any threads...
+### 1/5
+The first post in the thread...
+
+### 2/5
+Continuing the discussion...
+
+### 3/5
+More details here...
+
+### 4/5
+Technical specifics...
+
+### 5/5
+Conclusion and links.
 
 ## Media
 
@@ -111,17 +127,24 @@ The full post text goes here, including any threads...
 
 ## Source
 
-[View on X](https://x.com/author/status/123456789)
+[View thread on X](https://x.com/author/status/123456789)
 """
 
 # metadata_json structure
 {
-    "post_id": "123456789",
+    "root_post_id": "123456789",           # First/root post ID (used as source_id)
+    "thread_post_ids": [                    # ALL post IDs in thread (for deduplication)
+        "123456789",
+        "123456790",
+        "123456791",
+        "123456792",
+        "123456793"
+    ],
     "author_handle": "author_handle",
     "author_name": "Author Display Name",
     "author_followers": 50000,
     "posted_at": "2025-01-23T14:30:00Z",
-    "likes": 1200,
+    "likes": 1200,                          # Root post engagement
     "retweets": 450,
     "replies": 89,
     "is_thread": true,
@@ -135,19 +158,30 @@ The full post text goes here, including any threads...
 ```
 
 **Why**:
-- markdown_content provides human-readable format and works with existing summarization
+- Thread is the natural unit of discourse on X - splitting threads loses context
+- markdown_content provides complete narrative for summarization
+- Summarizer receives full thread context to generate meaningful summary
 - metadata_json enables filtering, sorting, and analysis
-- Engagement metrics help prioritize high-signal posts
-- Thread support captures full context
+- Engagement metrics help prioritize high-signal content
 
-### Decision 6: Deduplication Strategy
+### Decision 6: Thread-Aware Deduplication Strategy
 
-**What**: Deduplicate using post_id as source_id, with content_hash as backup.
+**What**: Use root_post_id as source_id for stable thread identification, and check incoming post IDs against all stored thread_post_ids arrays to prevent duplicate thread records.
+
+**Deduplication algorithm**:
+1. For each discovered post, determine if it's part of a thread
+2. If thread: fetch the complete thread and use root_post_id as source_id
+3. Before inserting, check if source_id (root_post_id) already exists
+4. Also query metadata_json to check if ANY of the thread's post_ids exist in any stored thread_post_ids array
+5. If match found: skip (or update if force_reprocess)
+6. Content hash serves as final fallback for edge cases
 
 **Why**:
-- X post IDs are globally unique and stable
-- Content hash catches edge cases (same content from different search runs)
-- Matches existing Content deduplication pattern
+- Root post ID provides stable, canonical identifier for threads
+- Storing all thread_post_ids enables deduplication when different posts from the same thread are encountered on separate runs
+- Example: Run 1 finds post #3 of thread T → stores thread with root_id and all post_ids
+- Run 2 finds post #1 of same thread T → detects post #1 exists in stored thread_post_ids → skips
+- Content hash catches remaining edge cases (deleted/recreated posts)
 
 ### Decision 7: Rate Limiting and Cost Control
 

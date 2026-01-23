@@ -26,37 +26,57 @@
 - [ ] 3.2 Implement `GrokXClient` class:
   ```python
   class GrokXClient:
-      """Client for searching X posts using Grok API."""
+      """Client for searching X threads using Grok API."""
 
       def __init__(self, api_key: str | None = None, model: str = "grok-4-1-fast")
-      def search_posts(self, prompt: str, max_turns: int = 5) -> list[XPostData]
-      def _parse_response(self, response) -> list[XPostData]
+      def search_threads(self, prompt: str, max_turns: int = 5) -> list[XThreadData]
+      def _fetch_complete_thread(self, post_id: str) -> XThreadData
+      def _parse_response(self, response) -> list[XThreadData]
       def close(self) -> None
   ```
-- [ ] 3.3 Implement `XPostData` Pydantic model for parsed post data
+- [ ] 3.3 Implement `XThreadData` Pydantic model for parsed thread data:
+  ```python
+  class XThreadData(BaseModel):
+      root_post_id: str                    # First post ID (used as source_id)
+      thread_post_ids: list[str]           # All post IDs in thread
+      author_handle: str
+      author_name: str
+      posts: list[XPostContent]            # Ordered list of post contents
+      posted_at: datetime
+      is_thread: bool
+      thread_length: int
+      # ... engagement metrics, media, etc.
+  ```
 - [ ] 3.4 Implement streaming response handling with tool call logging
 - [ ] 3.5 Add error handling for API failures, rate limits, authentication errors
 - [ ] 3.6 Add retry logic with exponential backoff
+- [ ] 3.7 Implement thread fetching: when a post is discovered, fetch its complete thread
 
 ## 4. Service Implementation
 
 - [ ] 4.1 Implement `GrokXContentIngestionService` class:
   ```python
   class GrokXContentIngestionService:
-      """Service for ingesting X posts into the Content model."""
+      """Service for ingesting X threads into the Content model."""
 
       def __init__(self)
-      def ingest_posts(
+      def ingest_threads(
           self,
           prompt: str | None = None,
           max_turns: int | None = None,
-          max_posts: int | None = None,
+          max_threads: int | None = None,
           force_reprocess: bool = False,
       ) -> int
       def close(self) -> None
   ```
-- [ ] 4.2 Implement post-to-ContentData conversion with markdown formatting
-- [ ] 4.3 Implement deduplication by post_id (source_id) and content_hash
+- [ ] 4.2 Implement thread-to-ContentData conversion with markdown formatting:
+  - Use root_post_id as source_id
+  - Format thread posts with numbered sections (### 1/5, ### 2/5, etc.)
+  - Store complete thread in markdown_content for summarization
+- [ ] 4.3 Implement thread-aware deduplication:
+  - Primary: Check if root_post_id exists as source_id
+  - Secondary: Query metadata_json to check if ANY incoming post_id exists in stored thread_post_ids arrays
+  - Fallback: Content hash for edge cases
 - [ ] 4.4 Add cost tracking in metadata_json (tool calls made, estimated cost)
 
 ## 5. CLI Interface
@@ -74,11 +94,14 @@
 ## 6. Testing
 
 - [ ] 6.1 Create `tests/test_ingestion/test_xsearch.py`
-- [ ] 6.2 Write unit tests for `XPostData` model validation
-- [ ] 6.3 Write unit tests for markdown content generation
-- [ ] 6.4 Write unit tests for deduplication logic
+- [ ] 6.2 Write unit tests for `XThreadData` model validation
+- [ ] 6.3 Write unit tests for thread markdown content generation (numbered sections)
+- [ ] 6.4 Write unit tests for thread-aware deduplication:
+  - Dedupe by root_post_id (source_id match)
+  - Dedupe by thread member post_id (found in thread_post_ids array)
+  - Verify different posts from same thread don't create duplicate Content records
 - [ ] 6.5 Write integration tests with mocked xAI SDK responses
-- [ ] 6.6 Add test fixtures for sample X post data
+- [ ] 6.6 Add test fixtures for sample thread data (single post, multi-post threads)
 
 ## 7. Documentation
 

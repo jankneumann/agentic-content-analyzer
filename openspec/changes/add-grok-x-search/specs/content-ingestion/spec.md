@@ -6,29 +6,39 @@
 
 The system SHALL support ingestion of X (Twitter) posts using the xAI Grok API's `x_search` tool for AI-relevant content discovery.
 
-#### Scenario: Successful X post search and ingestion
+#### Scenario: Successful X thread search and ingestion
 
 - **WHEN** the user runs the X search ingestion with a valid API key and search prompt
 - **THEN** the system connects to xAI Grok API using `grok-4-1-fast` model
 - **AND** executes the `x_search` tool with the provided prompt
-- **AND** parses the returned posts into Content records with `source_type=xpost`
-- **AND** stores posts with markdown_content containing formatted post text, author, timestamp, and engagement metrics
-- **AND** stores structured metadata in metadata_json including post_id, author info, likes, retweets, and media URLs
-- **AND** returns the count of newly ingested posts
+- **AND** for each discovered post, fetches the complete thread if applicable
+- **AND** creates one Content record per thread (or single post) with `source_type=xpost`
+- **AND** uses root_post_id as source_id for stable thread identification
+- **AND** stores the complete thread in markdown_content with numbered sections
+- **AND** stores structured metadata in metadata_json including root_post_id, thread_post_ids array, author info, and engagement metrics
+- **AND** returns the count of newly ingested threads
 
-#### Scenario: Deduplication of existing posts
+#### Scenario: Thread-aware deduplication by root post ID
 
-- **WHEN** ingesting X posts that already exist in the database (by post_id)
-- **THEN** the system skips duplicate posts without creating new records
+- **WHEN** ingesting a thread whose root_post_id already exists as source_id in the database
+- **THEN** the system skips the duplicate thread without creating new records
 - **AND** logs a debug message indicating the duplicate was skipped
 - **AND** does not count duplicates in the ingestion count
 
-#### Scenario: Force reprocessing of existing posts
+#### Scenario: Thread-aware deduplication by thread member post ID
+
+- **WHEN** ingesting a post that belongs to a thread already stored in the database
+- **AND** the post's ID exists in the thread_post_ids array of an existing Content record
+- **THEN** the system recognizes this as a duplicate thread
+- **AND** skips without creating new records
+- **AND** logs a debug message indicating the thread was already ingested via a different post
+
+#### Scenario: Force reprocessing of existing threads
 
 - **WHEN** the user specifies the force reprocess flag
-- **THEN** the system updates existing Content records with fresh data
+- **THEN** the system updates existing Content records with fresh thread data
 - **AND** resets the status to PARSED for re-summarization
-- **AND** counts reprocessed posts in the ingestion count
+- **AND** counts reprocessed threads in the ingestion count
 
 #### Scenario: API authentication failure
 
@@ -100,8 +110,11 @@ The system SHALL format X posts as markdown content suitable for LLM summarizati
 
 - **WHEN** an X thread (multiple connected posts) is ingested
 - **THEN** the system combines all thread posts into a single Content record
+- **AND** uses the root (first) post ID as source_id
+- **AND** stores all post IDs in metadata_json.thread_post_ids array for deduplication
 - **AND** indicates thread_length in metadata_json
-- **AND** formats the markdown with numbered sections for each post in the thread
+- **AND** formats the markdown with numbered sections (e.g., "### 1/5", "### 2/5") for each post in the thread
+- **AND** the complete thread is passed to the summarizer as a single unit
 
 ### Requirement: X Search CLI Interface
 
