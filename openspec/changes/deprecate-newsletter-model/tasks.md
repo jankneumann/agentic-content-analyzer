@@ -125,10 +125,12 @@ Phase 4 (Model Cleanup)        ──── Depends on: Phase 3 + 2 weeks produc
   - Owner confirmed data can be re-ingested if needed; clean slate preferred
 
 ### 4.2 Backend Removal
-- [ ] 4.2.1 Remove `src/models/newsletter.py`
-- [ ] 4.2.2 Remove `src/api/newsletter_routes.py`
-- [ ] 4.2.3 Remove Newsletter from `src/models/__init__.py` exports
-- [ ] 4.2.4 Remove Newsletter from API router registration
+- [x] 4.2.1 Remove `src/models/newsletter.py`
+- [x] 4.2.2 Remove `src/api/newsletter_routes.py`
+  - Already unregistered from router; file didn't exist
+- [x] 4.2.3 Remove Newsletter from `src/models/__init__.py` exports
+- [x] 4.2.4 Remove Newsletter from API router registration
+  - Already done in previous work
 
 ### 4.3 Database Cleanup
 - [x] 4.3.1 Create Alembic migration to drop `newsletter_id` FK from `newsletter_summaries`
@@ -144,10 +146,14 @@ Phase 4 (Model Cleanup)        ──── Depends on: Phase 3 + 2 weeks produc
   - Updated all indexes and FK constraints
 
 ### 4.4 Frontend Removal
-- [ ] 4.4.1 Delete `web/src/routes/newsletters.tsx`
-- [ ] 4.4.2 Delete `web/src/types/newsletter.ts`
-- [ ] 4.4.3 Delete Newsletter hooks from `web/src/hooks/`
-- [ ] 4.4.4 Remove Newsletter route from router configuration
+- [x] 4.4.1 Delete `web/src/routes/newsletters.tsx`
+- [x] 4.4.2 Delete `web/src/types/newsletter.ts`
+- [x] 4.4.3 Delete Newsletter hooks from `web/src/hooks/`
+  - Deleted `use-newsletters.ts`
+  - Deleted `NewsletterPane.tsx` component
+  - Updated exports in `hooks/index.ts`
+- [x] 4.4.4 Remove Newsletter route from router configuration
+  - `routeTree.gen.ts` auto-regenerated without Newsletter route
 
 ### 4.5 Final Cleanup
 - [ ] 4.5.1 Search codebase for any remaining "newsletter" references
