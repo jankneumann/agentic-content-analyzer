@@ -59,9 +59,11 @@ Completed:
 - Data migration scripts and production migration
 
 Remaining:
-- Image model and services (deferred)
-- Some integration tests
-- Legacy table cleanup (deferred)
+- Legacy table cleanup (deferred until production verification)
+- UI rendering tests (manual testing)
+- Performance testing
+
+Note: Image generator service (AI generation) moved to separate proposal: `add-image-generator-service`
 
 ## Related Proposals
 
@@ -72,5 +74,6 @@ The `/api/v1/newsletters` endpoints are already marked deprecated using headers 
 ### Dependencies
 
 - Required by: `add-advanced-document-search` (depends on Content.markdown_content)
+- Required by: `add-image-generator-service` (depends on Image model)
 - Related: `add-api-versioning` (deprecation headers pattern)
 - Related: `content-sharing` (adds fields to Content model)
