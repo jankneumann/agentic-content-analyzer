@@ -154,7 +154,7 @@ export function GenerateScriptDialog({
             </Select>
             {selectedDigest && (
               <p className="text-xs text-muted-foreground">
-                {selectedDigest.digest_type} • {selectedDigest.newsletter_count} newsletters
+                {selectedDigest.digest_type} • {selectedDigest.content_count} content items
               </p>
             )}
           </div>

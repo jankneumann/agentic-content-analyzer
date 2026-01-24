@@ -1,4 +1,4 @@
-"""Theme analysis processor for multi-newsletter analysis."""
+"""Theme analysis processor for multi-content analysis."""
 
 import json
 import time
@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 class ThemeAnalyzer:
     """
-    Analyzes themes across multiple newsletters using knowledge graph and LLM.
+    Analyzes themes across multiple content items using knowledge graph and LLM.
 
     Supports Claude (primary) and optionally Gemini Flash for large context.
     """
@@ -84,7 +84,7 @@ class ThemeAnalyzer:
         include_historical_context: bool = True,
     ) -> ThemeAnalysisResult:
         """
-        Analyze themes across newsletters in a date range.
+        Analyze themes across content items in a date range.
 
         Args:
             request: Theme analysis request parameters
@@ -452,9 +452,9 @@ class ThemeAnalyzer:
         """Build prompt for LLM theme extraction."""
         return f"""You are an AI analyst specializing in technology trends for enterprise technical leaders at Comcast.
 
-Analyze the following newsletter summaries and knowledge graph insights to identify the most important themes, trends, and topics.
+Analyze the following content summaries and knowledge graph insights to identify the most important themes, trends, and topics.
 
-# Newsletter Summaries
+# Content Summaries
 
 {summary_context}
 
@@ -462,7 +462,7 @@ Analyze the following newsletter summaries and knowledge graph insights to ident
 
 # Your Task
 
-Extract up to {max_themes} distinct themes from these newsletters. For each theme:
+Extract up to {max_themes} distinct themes from this content. For each theme:
 
 1. **Identify the theme** - What is the core topic or trend?
 2. **Categorize it** - Choose from: ml_ai, devops_infra, data_engineering, business_strategy, tools_products, research_academia, security, other
@@ -474,7 +474,7 @@ Extract up to {max_themes} distinct themes from these newsletters. For each them
    - Novelty (how new vs. established)
    - Cross-functional impact (affects multiple teams)
 5. **Find related themes** - What other themes connect to this one?
-6. **Extract key points** - 2-4 bullet points about what newsletters say about this theme
+6. **Extract key points** - 2-4 bullet points about what the content says about this theme
 
 # Output Format
 
@@ -507,7 +507,7 @@ Respond with a JSON array of themes. Each theme should have this structure:
 
 - Focus on themes relevant to enterprise AI/data/engineering teams
 - Prioritize strategic significance over tactical details
-- Look for cross-cutting themes that appear in multiple newsletters
+- Look for cross-cutting themes that appear in multiple content items
 - Identify emerging trends that leaders should know about
 - Only include themes with relevance_score >= {relevance_threshold}
 - Be specific - "RAG Architecture Evolution" not just "AI"

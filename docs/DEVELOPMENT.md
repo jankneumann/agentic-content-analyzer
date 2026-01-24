@@ -22,7 +22,7 @@ make dev-stop
 
 ### Content Ingestion
 
-All ingestion uses the unified Content model. The legacy Newsletter model is deprecated.
+All ingestion uses the unified Content model.
 
 ```bash
 # Fetch content from Gmail newsletters
@@ -76,7 +76,7 @@ python -m scripts.generate_daily_digest --save --auto-approve
 
 **Interactive Revision Session:**
 - Multi-turn conversational refinement with AI
-- On-demand newsletter content fetching via LLM tools
+- On-demand content fetching via LLM tools
 - Token-efficient context loading (summaries + themes)
 - Complete audit trail stored in `revision_history` JSON field
 - Cost tracking for revision sessions
@@ -528,7 +528,7 @@ For data ingestion, use two-layer architecture:
 
 **1. Client Layer** - Fetches/parses data from external source
 - Classes: `GmailClient`, `SubstackRSSClient`
-- Returns: `NewsletterData` (Pydantic model)
+- Returns: `ContentData` (Pydantic model)
 - No database interaction
 - Pure data fetching and parsing
 
@@ -542,11 +542,11 @@ For data ingestion, use two-layer architecture:
 ```python
 # Client - data fetching only
 client = SubstackRSSClient()
-newsletters = client.fetch_feed(url)
+content_items = client.fetch_feed(url)
 
 # Service - business logic + persistence
-service = SubstackIngestionService()
-count = service.ingest_newsletters(feed_urls)
+service = RSSContentIngestionService()
+count = service.ingest_content(feed_urls)
 ```
 
 **Benefits**:
@@ -696,22 +696,22 @@ SessionLocal = sessionmaker(
 ```python
 # WITHOUT expire_on_commit=False, this would fail:
 with get_db() as db:
-    newsletter = db.query(Newsletter).first()
-    newsletter.status = ProcessingStatus.PROCESSING
+    content = db.query(Content).first()
+    content.status = ProcessingStatus.PROCESSING
     db.commit()  # Object expires here!
 
     # This would raise DetachedInstanceError:
-    print(newsletter.title)  # ERROR!
+    print(content.title)  # ERROR!
 ```
 
 ```python
 # WITH expire_on_commit=False, this works:
 with get_db() as db:
-    newsletter = db.query(Newsletter).first()
-    newsletter.status = ProcessingStatus.PROCESSING
+    content = db.query(Content).first()
+    content.status = ProcessingStatus.PROCESSING
     db.commit()  # Object remains usable
 
-    print(newsletter.title)  # Works!
+    print(content.title)  # Works!
 ```
 
 **Best Practices:**
@@ -723,32 +723,32 @@ with get_db() as db:
 ```python
 from sqlalchemy.orm import joinedload
 
-# Load newsletter relationship when querying summaries
+# Load content relationship when querying summaries
 summaries = (
-    db.query(NewsletterSummary)
-    .options(joinedload(NewsletterSummary.newsletter))
+    db.query(Summary)
+    .options(joinedload(Summary.content))
     .all()
 )
 
-# Now summary.newsletter works even after session closes
+# Now summary.content works even after session closes
 for summary in summaries:
-    print(summary.newsletter.title)  # Works!
+    print(summary.content.title)  # Works!
 ```
 
 3. **Convert to dicts for API responses**: When returning data through APIs, convert ORM objects to dictionaries/Pydantic models within the session:
 
 ```python
 with get_db() as db:
-    newsletters = db.query(Newsletter).all()
+    contents = db.query(Content).all()
 
     # Convert to dicts inside session - safe pattern
     return [
         {
-            "id": n.id,
-            "title": n.title,
-            "published_date": n.published_date,
+            "id": c.id,
+            "title": c.title,
+            "published_date": c.published_date,
         }
-        for n in newsletters
+        for c in contents
     ]
 ```
 
@@ -777,7 +777,7 @@ process_digest(digest_id)
 
 | Pattern | Problem | Solution |
 |---------|---------|----------|
-| `summary.newsletter.title` after session close | Lazy-loaded relationship fails | Use `joinedload()` |
+| `summary.content.title` after session close | Lazy-loaded relationship fails | Use `joinedload()` |
 | Accessing object after `db.commit()` | Object would be expired | Global `expire_on_commit=False` |
 | Returning ORM objects from functions | Detached from session | Convert to dict/Pydantic |
 | Adding `db.expire_on_commit = False` inline | Inconsistent, clutters code | Use global setting |
@@ -787,16 +787,16 @@ process_digest(digest_id)
 Always check for existing records before inserting:
 
 ```python
-existing = db.query(Newsletter).filter(
-    Newsletter.source_id == newsletter_data.source_id
+existing = db.query(Content).filter(
+    Content.source_id == content_data.source_id
 ).first()
 
 if existing:
     if force_reprocess:
         # Update and reset status for reprocessing
         existing.status = ProcessingStatus.PENDING
-        existing.raw_html = newsletter_data.raw_html
-        existing.raw_text = newsletter_data.raw_text
+        existing.markdown_content = content_data.markdown_content
+        existing.raw_content = content_data.raw_content
         db.commit()
         logger.info(f"Reset for reprocessing: {existing.title}")
     else:
@@ -804,8 +804,8 @@ if existing:
         continue  # Skip, already exists
 else:
     # Create new record
-    newsletter = Newsletter(**newsletter_data.dict())
-    db.add(newsletter)
+    content = Content(**content_data.dict())
+    db.add(content)
 ```
 
 ### Session Management
@@ -815,8 +815,8 @@ Use context managers for proper cleanup:
 ```python
 with get_db() as db:
     # Database operations
-    newsletter = Newsletter(...)
-    db.add(newsletter)
+    content = Content(...)
+    db.add(content)
     db.commit()
     # Auto-commits on success, rolls back on exception
 ```
@@ -832,10 +832,10 @@ Provide `--force` flag in CLI scripts for reprocessing:
 
 ```python
 @click.command()
-@click.option('--force', is_flag=True, help='Force reprocess existing newsletters')
+@click.option('--force', is_flag=True, help='Force reprocess existing content')
 def ingest(force: bool):
-    service = GmailIngestionService(force_reprocess=force)
-    count = service.ingest_newsletters()
+    service = GmailContentIngestionService(force_reprocess=force)
+    count = service.ingest_content()
 ```
 
 **Use cases**:
@@ -914,7 +914,7 @@ logger = get_logger(__name__)  # Module-level logger
 
 # Log levels:
 logger.debug("Parsing entry: %s", entry.id)          # Detailed info
-logger.info("Ingested %d newsletters", count)         # Major operations
+logger.info("Ingested %d content items", count)       # Major operations
 logger.warning("Missing field 'summary', using ''")   # Unexpected but handled
 logger.error("Failed to parse: %s", error)            # Failures with context
 ```
@@ -1080,7 +1080,7 @@ def sample_digest_data() -> DigestData:
         executive_overview="Summary text...",
         strategic_insights=[...],
         technical_developments=[...],
-        newsletter_count=5,
+        content_count=5,
         agent_framework="claude",
         model_used="claude-sonnet-4-5",
     )
@@ -1187,7 +1187,7 @@ def test_markdown_empty_sections():
         technical_developments=[],  # Empty
         emerging_trends=[],
         actionable_recommendations={},
-        newsletter_count=0,
+        content_count=0,
         agent_framework="claude",
         model_used="claude-haiku-4-5",
     )

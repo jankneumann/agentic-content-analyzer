@@ -5,7 +5,7 @@
 - **Language**: Python 3.11+
 - **Package Management**: uv
 - **Databases**:
-  - PostgreSQL + SQLAlchemy (structured data: newsletters, summaries, digests)
+  - PostgreSQL + SQLAlchemy (structured data: contents, summaries, digests)
   - Graphiti + Neo4j (knowledge graph: concepts, themes, temporal relationships)
 - **Storage**:
   - **Database Providers**: Local PostgreSQL, Supabase (cloud), Neon (serverless/branching)
@@ -36,12 +36,11 @@ src/
     youtube.py      # YouTube playlist/transcript ingestion
     files.py        # File upload processing
   models/           # Data models (Pydantic + SQLAlchemy)
-    content.py      # Unified Content model (primary)
-    newsletter.py   # Legacy Newsletter model (deprecated)
-    summary.py      # NewsletterSummary model
+    content.py      # Unified Content model (all content)
+    summary.py      # Summary model
     digest.py       # Digest model
     theme.py        # ThemeAnalysis model
-    document.py     # Legacy Document model (deprecated)
+    document.py     # DocumentContent dataclass (parser output)
   parsers/          # Document parsing
     base.py         # DocumentParser interface
     markitdown_parser.py  # Office docs, HTML, audio
@@ -76,10 +75,10 @@ src/
 
 ## Key Workflows
 
-### Newsletter Processing Pipeline
+### Content Processing Pipeline
 
-1. **Ingestion**: Fetch from Gmail/Substack → Parse content → Store raw
-2. **Summarization**: Individual newsletter → Structured summary → Extract entities
+1. **Ingestion**: Fetch from Gmail/Substack/YouTube → Parse content → Store raw
+2. **Summarization**: Individual content → Structured summary → Extract entities
 3. **Knowledge Graph**: Store entities/relationships in Graphiti (concepts, temporal evolution)
 4. **Theme Analysis**: Query Graphiti for common themes, trending topics, historical context
 5. **Digest Generation**: Multi-audience formatting (CTO strategy + developer tactics)
@@ -96,7 +95,7 @@ src/
 ### Agent Framework Pattern
 
 Each framework implementation provides:
-- Newsletter summarization agent
+- Content summarization agent
 - Theme analysis agent
 - Digest generation agent
 - Consistent interfaces for comparison
@@ -110,8 +109,8 @@ This enables **direct performance comparisons** across frameworks:
 
 ## Data Models
 
-### Content (Primary - Unified Model)
-The unified Content model is the primary data model for all ingested content:
+### Content
+The Content model is the data model for all ingested content:
 
 - **Source Types**: GMAIL, RSS, YOUTUBE, FILE_UPLOAD
 - **Source Tracking**: source_id, source_url for deduplication
@@ -130,24 +129,18 @@ class ContentSource(str, Enum):
     FILE_UPLOAD = "file_upload"
 ```
 
-### Newsletter (Deprecated)
-Legacy model retained for backward compatibility. New code should use Content model.
-
-- Source metadata (Gmail, RSS)
-- Raw content (HTML, text)
-- Processing status
-- Publication information
-
-### NewsletterSummary
-- Linked to Content via content_id (and legacy newsletter_id)
+### Summary
+- Linked to Content via content_id
 - **markdown_content**: Full summary as structured markdown
 - **theme_tags**: Extracted theme tags for cross-referencing
 - Structured extraction with key themes, insights, technical details
 - Relevance scores (CTO, teams, individuals)
 - Model and cost tracking
 
+Note: `NewsletterSummary` is a backwards-compatible alias for `Summary`.
+
 ### ThemeAnalysis
-- Cross-newsletter theme detection
+- Cross-content theme detection
 - Trend classification (emerging, growing, established)
 - Historical context integration
 - Relevance scoring
@@ -168,7 +161,7 @@ All processed content uses markdown for LLM-optimized storage and rendering.
 
 ### Summary Markdown Structure
 ```markdown
-# Newsletter Summary: {title}
+# Content Summary: {title}
 
 ## Executive Summary
 Brief 2-3 sentence overview for leadership.
@@ -206,7 +199,7 @@ The `render_with_embeds()` utility replaces these with actual content.
 
 ### Gmail Ingestion (`GmailContentIngestionService`)
 - Uses Gmail API with OAuth2 credentials
-- Filters by labels/sender for newsletter detection
+- Filters by labels/sender for content detection
 - Extracts HTML body → converts to markdown via `HtmlMarkdownConverter`
 - Deduplicates by `source_id` (message ID)
 
@@ -275,12 +268,12 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 
 ### Stage 2: Summarization
 **Input**: Content markdown_content
-**Output**: NewsletterSummary with markdown_content and theme_tags
+**Output**: Summary with markdown_content and theme_tags
 **Technology**: Claude Haiku (default), Pydantic validation
 **Cost**: ~$0.01-0.02 per content item
 
 ### Stage 3: Knowledge Graph Population
-**Input**: Newsletter summaries
+**Input**: Content summaries
 **Output**: Entities and relationships in Graphiti
 **Technology**: Graphiti MCP, Neo4j
 **Purpose**: Enable temporal analysis and historical context
@@ -289,7 +282,7 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 **Input**: Multiple summaries + Graphiti context
 **Output**: Cross-cutting themes with trends and relevance
 **Technology**: Claude Sonnet (default), Graphiti queries
-**Cost**: ~$0.05-0.10 per analysis (5-10 newsletters)
+**Cost**: ~$0.05-0.10 per analysis (5-10 content items)
 
 ### Stage 5: Digest Creation
 **Input**: Theme analysis + historical context
@@ -317,7 +310,7 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/contents` | List contents with pagination and filtering |
-| GET | `/contents/{id}` | Get single content with legacy newsletter ID |
+| GET | `/contents/{id}` | Get single content by ID |
 | POST | `/contents` | Create content manually |
 | DELETE | `/contents/{id}` | Delete content |
 | GET | `/contents/stats` | Statistics by source type and status |
@@ -335,9 +328,8 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 | POST | `/summaries/trigger` | Trigger summarization |
 | GET | `/summaries/stats` | Summary statistics |
 
-### Newsletter API (`/api/v1/newsletters`) - DEPRECATED
-All newsletter endpoints are deprecated with `Sunset: 2026-06-01` header.
-Use Content API instead. Legacy endpoints maintained for backward compatibility.
+### Newsletter API (`/api/v1/newsletters`) - REMOVED
+The legacy Newsletter API has been removed. Use the Content API instead.
 
 ### Document Upload API (`/api/v1/documents`)
 | Method | Endpoint | Description |
@@ -346,34 +338,11 @@ Use Content API instead. Legacy endpoints maintained for backward compatibility.
 | GET | `/documents/formats` | List supported formats |
 | GET | `/documents/{id}` | Get document status |
 
-## Migration Guide for API Clients
+## Content API Features
 
-### From Newsletter to Content API
+The Content API provides:
 
-**Before (deprecated):**
-```python
-# List newsletters
-response = requests.get("/api/v1/newsletters")
-
-# Get newsletter
-response = requests.get(f"/api/v1/newsletters/{newsletter_id}")
-```
-
-**After (recommended):**
-```python
-# List contents
-response = requests.get("/api/v1/contents")
-
-# Get content
-response = requests.get(f"/api/v1/contents/{content_id}")
-
-# Get summary by content
-response = requests.get(f"/api/v1/summaries/by-content/{content_id}")
-```
-
-### Key Differences
-
-1. **Source Types**: Content has explicit `source_type` field (gmail, rss, youtube, file_upload)
+1. **Source Types**: Explicit `source_type` field (gmail, rss, youtube, file_upload)
 2. **Markdown First**: `markdown_content` is primary, `raw_content` stored for re-parsing
 3. **Deduplication**: Built-in via `content_hash` and `canonical_id`
 4. **Richer Metadata**: `tables_json`, `links_json`, `metadata_json` for structured data

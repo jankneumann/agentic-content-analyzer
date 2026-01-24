@@ -21,11 +21,10 @@ from src.utils.summary_markdown import (
 logger = get_logger(__name__)
 
 
-class NewsletterSummarizer:
+class ContentSummarizer:
     """Service for summarizing content.
 
-    Despite the name (kept for backwards compatibility), this class now
-    works exclusively with the unified Content model.
+    Works exclusively with the unified Content model.
     """
 
     def __init__(
@@ -314,3 +313,7 @@ class NewsletterSummarizer:
             except Exception as e:
                 logger.error(f"Error regenerating content {content_id}: {e}")
                 return None
+
+
+# Backwards compatibility alias
+NewsletterSummarizer = ContentSummarizer

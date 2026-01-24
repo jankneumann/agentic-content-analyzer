@@ -1,7 +1,9 @@
-"""Tests for NewsletterSummarizer - Functional tests only.
+"""Tests for ContentSummarizer (NewsletterSummarizer) - Functional tests only.
 
 Integration tests (database operations, LLM calls) are documented but not implemented.
 These should be added to a separate integration test suite.
+
+Note: NewsletterSummarizer is a backwards compatibility alias for ContentSummarizer.
 """
 
 from datetime import UTC, datetime

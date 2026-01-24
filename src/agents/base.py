@@ -22,7 +22,7 @@ class AgentResponse(BaseModel):
 
 
 class SummarizationAgent(ABC):
-    """Abstract base class for newsletter summarization agents."""
+    """Abstract base class for content summarization agents."""
 
     def __init__(
         self,
@@ -102,7 +102,6 @@ class SummarizationAgent(ABC):
             Validated SummaryData object
         """
         return SummaryData(
-            newsletter_id=0,  # Legacy field, no longer used
             content_id=content_id,
             executive_summary=data.get("executive_summary", ""),
             key_themes=data.get("key_themes", []),

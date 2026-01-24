@@ -151,7 +151,6 @@ See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage
 
 | Issue | Solution |
 |-------|----------|
-| Newsletter model is deprecated | Use `Content` model for all new code |
 | SQLAlchemy duplicate indexes | Don't use `index=True` AND explicit `Index()` with same name |
 | Test DB fails on second run | Fixtures must drop tables before creating (handles interrupted runs) |
 | feedparser dates are naive | Always add `tzinfo=UTC` when converting `published_parsed` |

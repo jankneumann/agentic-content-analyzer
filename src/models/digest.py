@@ -49,7 +49,7 @@ class Digest(Base):
     technical_developments = Column(JSON, nullable=False)  # List[Dict]
     emerging_trends = Column(JSON, nullable=False)  # List[Dict]
     actionable_recommendations = Column(JSON, nullable=False)  # Dict[str, List[str]]
-    sources = Column(JSON, nullable=False)  # List[Dict] with newsletter references
+    sources = Column(JSON, nullable=False)  # List[Dict] with content references
 
     # Historical context
     historical_context = Column(JSON, nullable=True)  # List[Dict] from Graphiti
@@ -60,7 +60,7 @@ class Digest(Base):
     source_content_ids = Column(JSON, nullable=True)  # List[int] - Content IDs used in digest
 
     # Metadata
-    newsletter_count = Column(Integer, nullable=False)
+    newsletter_count = Column(Integer, nullable=False)  # Legacy name, now represents content count
     status = Column(
         SQLEnum(DigestStatus),
         nullable=False,

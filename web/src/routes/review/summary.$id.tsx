@@ -354,7 +354,7 @@ function ReviewContent({
       // Convert context chips to API format
       const contextSelections = contextItems.map(item => ({
         text: item.text,
-        source: item.source === "left" ? "newsletter" as const : "summary" as const,
+        source: item.source === "left" ? "content" as const : "summary" as const,
       }))
 
       // Generate preview with feedback

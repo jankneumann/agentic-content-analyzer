@@ -196,11 +196,13 @@ def downgrade():
 
 ## Newsletter → Content Migration (January 2025)
 
-Successfully migrated multiple processors from deprecated Newsletter model to unified Content model, eliminating foreign key bugs and standardizing data access patterns.
+> **Historical Note**: The Newsletter model has since been completely removed (January 2026). These lessons remain valuable for understanding the migration patterns and for future similar migrations.
 
-### 1. Root Cause Analysis: Deprecated FK References
+Successfully migrated multiple processors from the legacy Newsletter model to the unified Content model, eliminating foreign key bugs and standardizing data access patterns.
 
-**Problem**: Processors were querying `newsletter_id` (deprecated FK) instead of `content_id` (new FK) in `NewsletterSummary`, causing empty results when Newsletter records didn't exist.
+### 1. Root Cause Analysis: Legacy FK References
+
+**Problem**: Processors were querying `newsletter_id` (legacy FK) instead of `content_id` (new FK) in `NewsletterSummary`, causing empty results when Newsletter records didn't exist.
 
 **Symptom**: Theme analysis and digest creation returned empty summaries despite having valid Content records with summaries.
 
@@ -219,7 +221,7 @@ summaries = db.query(NewsletterSummary).filter(
 
 **Key Learnings**:
 - Deprecation warnings don't prevent bugs - code still compiles and runs
-- Search for ALL usages of deprecated FK before considering migration complete
+- Search for ALL usages of legacy FK before considering migration complete
 - Use `grep -r "newsletter_id"` to find remaining references
 
 ### 2. Field Naming Changes Between Models
@@ -297,7 +299,7 @@ for summary in summaries:
 
 ### 5. Deprecation Warning Strategy
 
-**Approach**: Add warnings to deprecated methods rather than removing them immediately.
+**Approach**: Add warnings to deprecated methods rather than removing them immediately. This allows gradual migration.
 
 ```python
 import warnings
@@ -317,6 +319,7 @@ def get_newsletters(self):
 - Keep deprecated methods working (call the new method internally)
 - Set `stacklevel=2` so warning shows caller's line, not the deprecated function
 - Plan removal date and communicate to team
+- Eventually remove the deprecated code entirely (as we did in January 2026)
 
 ### 6. Test Fixture Migration Pattern
 
@@ -704,7 +707,7 @@ Add to your model migration process:
 
 ## Legacy Model Cleanup & Idempotent Migrations (January 2026)
 
-Successfully removed deprecated Newsletter model infrastructure and renamed `newsletter_summaries` table to `summaries`, including handling of complex migration edge cases.
+Successfully removed the Newsletter model infrastructure entirely and renamed `newsletter_summaries` table to `summaries`, including handling of complex migration edge cases. The Newsletter model no longer exists in the codebase.
 
 ### 1. Isolating Deprecated Models from Shared SQLAlchemy Base
 
@@ -881,21 +884,20 @@ class Summary(Base):
     __tablename__ = "summaries"
     ...
 
-# Backwards compatibility alias (deprecated)
+# Backwards compatibility alias
 NewsletterSummary = Summary
 ```
 
 **Benefits**:
 - Existing code continues to work unchanged
 - New code uses the new name
-- Deprecation warnings can be added later
 - Full rename can happen incrementally
 
 **Key Learnings**:
 - **Aliases enable gradual migration** without big-bang changes
 - **Both names point to same class** - no duplicate definitions
-- **Document deprecation** in docstring/comments
-- **Plan removal timeline** for the alias
+- **Document the alias** in docstring/comments
+- The alias `NewsletterSummary` remains for backwards compatibility but new code should use `Summary`
 
 ### 6. Parallel Code Updates with Subagents
 

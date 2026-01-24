@@ -114,10 +114,6 @@ export interface Content {
   /** When processing completed */
   processed_at: string | null
 
-  /** Legacy newsletter ID for navigating to summary review.
-   * During migration, content is linked to newsletters via source_id.
-   * This field provides direct access to the newsletter_id for summary lookups. */
-  legacy_newsletter_id: number | null
 }
 
 /**
@@ -134,8 +130,6 @@ export interface ContentListItem {
   published_date: string | null
   status: ContentStatus
   ingested_at: string
-  /** Legacy newsletter ID for navigating to summary review */
-  legacy_newsletter_id: number | null
 }
 
 /**

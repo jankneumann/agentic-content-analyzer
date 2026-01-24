@@ -6,8 +6,8 @@ The review system provides human-in-the-loop quality control for AI-generated di
 
 **Key Features:**
 - **Interactive AI Revision**: Multi-turn conversational refinement with Claude
-- **Token-Efficient Context**: Loads condensed summaries, fetches full newsletters on-demand
-- **Tool Use**: LLM can call tools to retrieve specific newsletter content when needed
+- **Token-Efficient Context**: Loads condensed summaries, fetches full content on-demand
+- **Tool Use**: LLM can call tools to retrieve specific content when needed
 - **Complete Audit Trail**: Full conversation history stored for transparency
 - **Service Layer Architecture**: Web-ready design for future UI integration
 - **Batch & Interactive Modes**: Quick approve/reject or detailed revision sessions
@@ -42,14 +42,14 @@ The review system provides human-in-the-loop quality control for AI-generated di
 │        (src/processors/digest_reviser.py)                │
 │  - Context loading (digest + summaries + themes)         │
 │  - LLM-powered revision with tool use                    │
-│  - On-demand newsletter fetching                         │
+│  - On-demand content fetching                            │
 │  - Section-level content updates                         │
 └──────────────────┬──────────────────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────────────────┐
 │                   Data Layer                             │
-│  - PostgreSQL (digests, summaries, newsletters)          │
+│  - PostgreSQL (digests, summaries, contents)             │
 │  - Revision history (JSON)                               │
 │  - Audit trail                                           │
 └─────────────────────────────────────────────────────────┘
@@ -63,9 +63,9 @@ The review system provides human-in-the-loop quality control for AI-generated di
 - Same service can be called from FastAPI endpoints
 
 **AI Agent with Tool Use**: DigestReviser uses Anthropic SDK tool calling pattern:
-- Loads efficient context (summaries, not raw newsletters)
-- LLM can call `fetch_newsletter_content(newsletter_id)` when details needed
-- LLM can call `search_newsletters(query)` to find relevant content
+- Loads efficient context (summaries, not raw content)
+- LLM can call `fetch_content(content_id)` when details needed
+- LLM can call `search_content(query)` to find relevant content
 - Reduces initial token usage, retrieves details on-demand
 
 ## Database Schema
@@ -118,16 +118,16 @@ The `revision_history` JSON field stores complete audit trail of all review sess
           "section_modified": "executive_overview",
           "change_accepted": true,
           "timestamp": "2025-12-28T10:05:00Z",
-          "tools_called": ["search_newsletters"]
+          "tools_called": ["search_content"]
         },
         {
           "turn": 2,
           "user_input": "Add technical details about RAG architecture",
-          "ai_response": "Added detailed RAG implementation patterns from newsletters 3 and 7",
+          "ai_response": "Added detailed RAG implementation patterns from content items 3 and 7",
           "section_modified": "technical_developments",
           "change_accepted": true,
           "timestamp": "2025-12-28T10:12:00Z",
-          "tools_called": ["fetch_newsletter_content", "fetch_newsletter_content"]
+          "tools_called": ["fetch_content", "fetch_content"]
         }
       ],
       "final_action": "approved"
@@ -222,14 +222,14 @@ python -m scripts.review_digest --id 42 --revise-interactive --reviewer "user@ex
 
 ```
 Loading digest #42 and context...
-✓ Loaded 15 summaries, 1 theme analysis (15 newsletters available for on-demand fetching)
+✓ Loaded 15 summaries, 1 theme analysis (15 content items available for on-demand fetching)
 ```
 
 The system loads:
 - The current digest (all sections)
-- Newsletter summaries (condensed, ~200 words each)
-- Theme analysis (cross-newsletter patterns)
-- Newsletter IDs (for on-demand fetching)
+- Content summaries (condensed, ~200 words each)
+- Theme analysis (cross-content patterns)
+- Content IDs (for on-demand fetching)
 
 **2. Initial Digest Display**
 
@@ -280,11 +280,11 @@ Keep this change? [yes/no/edit]: yes
 You: Add more technical details about the RAG patterns mentioned
 
 AI: [Analyzing request with full context...]
-[Calling tool: fetch_newsletter_content(newsletter_id=7)]
-[Calling tool: fetch_newsletter_content(newsletter_id=12)]
+[Calling tool: fetch_content(content_id=7)]
+[Calling tool: fetch_content(content_id=12)]
 
 AI: I've added detailed technical information about RAG implementation patterns,
-including hybrid search strategies and chunking approaches from newsletters 7 and 12.
+including hybrid search strategies and chunking approaches from content items 7 and 12.
 
 ================================================================================
 PROPOSED CHANGE TO: technical_developments
@@ -324,7 +324,7 @@ Action [approve/save-draft/discard]: approve
 Review Summary:
 - Session ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 - Revisions: 2
-- Tools called: 2x fetch_newsletter_content, 1x search_newsletters
+- Tools called: 2x fetch_content, 1x search_content
 - Status: APPROVED
 - Reviewer: user@example.com
 - Reviewed at: 2025-12-28 10:15:23 UTC
@@ -354,9 +354,9 @@ After revisions:
 
 1. **Context Assembly**: Loads token-efficient context
    - Digest content (all sections)
-   - Newsletter summaries (~200 words each)
+   - Content summaries (~200 words each)
    - Theme analysis
-   - Newsletter IDs for tool use
+   - Content IDs for tool use
 
 2. **User Request**: Natural language revision request
    - "Make executive summary shorter"
@@ -369,8 +369,8 @@ After revisions:
    - Calls tools if necessary
 
 4. **Tool Use** (on-demand):
-   - `fetch_newsletter_content(newsletter_id)`: Get full newsletter text
-   - `search_newsletters(query)`: Find relevant newsletters
+   - `fetch_content(content_id)`: Get full content text
+   - `search_content(query)`: Find relevant content
 
 5. **Revision Generation**: LLM produces updated content
    - Modified section with changes
@@ -384,33 +384,33 @@ After revisions:
 
 ### Tool Use Examples
 
-**Example 1: Fetch Newsletter Content**
+**Example 1: Fetch Content**
 
 ```
 User: Add details about the new OpenAI model mentioned
 
-AI: [Calls fetch_newsletter_content(newsletter_id=5)]
-    [Retrieves full newsletter about OpenAI GPT-5 announcement]
+AI: [Calls fetch_content(content_id=5)]
+    [Retrieves full content about OpenAI GPT-5 announcement]
 
 AI: I've added detailed information about GPT-5's capabilities,
-    pricing, and availability based on newsletter #5 from OpenAI Weekly.
+    pricing, and availability based on content #5 from OpenAI Weekly.
 ```
 
-**Example 2: Search Newsletters**
+**Example 2: Search Content**
 
 ```
 User: Include more about agent frameworks
 
-AI: [Calls search_newsletters(query="agent frameworks")]
-    [Finds 3 newsletters discussing LangChain, CrewAI, AutoGen]
+AI: [Calls search_content(query="agent frameworks")]
+    [Finds 3 content items discussing LangChain, CrewAI, AutoGen]
 
-AI: I found 3 newsletters covering agent frameworks. I've added a new
+AI: I found 3 content items covering agent frameworks. I've added a new
     section comparing LangChain, CrewAI, and AutoGen based on those sources.
 ```
 
 ### Token Efficiency
 
-**Initial Context** (~15K tokens for 15 newsletters):
+**Initial Context** (~15K tokens for 15 content items):
 - Digest: ~2K tokens
 - 15 summaries @ 500 tokens each: ~7.5K tokens
 - Theme analysis: ~3K tokens
@@ -418,11 +418,11 @@ AI: I found 3 newsletters covering agent frameworks. I've added a new
 - System prompt: ~1.5K tokens
 
 **With On-Demand Fetching** (when needed):
-- Tool call for full newsletter: +5K tokens (only when needed)
+- Tool call for full content: +5K tokens (only when needed)
 - Tool call for search: +2K tokens (condensed results)
 
-**Comparison to Loading All Newsletters Upfront**:
-- Without tool use: ~150K tokens (15 newsletters × 10K tokens each)
+**Comparison to Loading All Content Upfront**:
+- Without tool use: ~150K tokens (15 content items x 10K tokens each)
 - With tool use: ~15K base + ~5-10K per fetch = 20-25K average
 - **Savings: ~83% token reduction**
 
@@ -472,7 +472,7 @@ async def list_pending_reviews() -> List[Digest]
 ```python
 digests = await service.list_pending_reviews()
 for digest in digests:
-    print(f"{digest.id}: {digest.title} ({digest.newsletter_count} newsletters)")
+    print(f"{digest.id}: {digest.title} ({digest.content_count} content items)")
 ```
 
 #### get_digest(digest_id)
@@ -727,7 +727,7 @@ function DigestReviewer({ digestId }: { digestId: number }) {
 
 **Multi-Turn Strategies**:
 1. Start broad: "Make executive summary shorter"
-2. Then specific: "Add details about cost optimization mentioned in newsletter 7"
+2. Then specific: "Add details about cost optimization mentioned in content item 7"
 3. Refine further: "Emphasize ROI implications for leadership"
 
 ### Review Workflow Recommendations
@@ -770,9 +770,9 @@ print(f"Status: {digest.status}")
 
 **Issue: Tool calls failing during revision**
 
-**Cause**: Newsletter ID not in current digest period
+**Cause**: Content ID not in current digest period
 
-**Solution**: LLM will receive error message and work with available context. If critical, manually add newsletter to digest period.
+**Solution**: LLM will receive error message and work with available context. If critical, manually add content to digest period.
 
 **Issue: Revision session timeout**
 

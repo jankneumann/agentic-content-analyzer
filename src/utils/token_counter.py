@@ -68,28 +68,28 @@ class TokenCounter:
             # Fallback: rough approximation (1 token ≈ 4 characters)
             return len(text) // 4
 
-    def estimate_newsletter_batch_tokens(
+    def estimate_content_batch_tokens(
         self,
-        newsletters: list[dict],
+        contents: list[dict],
         themes: list | None = None,
         prompt_template: str | None = None,
         summaries: list | None = None,
     ) -> int:
         """
-        Estimate total tokens for newsletter batch including all context.
+        Estimate total tokens for content batch including all context.
 
         Args:
-            newsletters: List of newsletter dicts (with title, publication)
+            contents: List of content dicts (with title, publication)
             themes: Optional list of theme objects
             prompt_template: Optional prompt template string
-            summaries: Optional list of newsletter summary objects (Summary)
+            summaries: Optional list of content summary objects (Summary)
 
         Returns:
             Total estimated tokens for full context
         """
         total_tokens = 0
 
-        # 1. Newsletter summary tokens (if provided - this is the main content)
+        # 1. Content summary tokens (if provided - this is the main content)
         if summaries:
             summary_tokens = 0
             for summary in summaries:
@@ -109,14 +109,14 @@ class TokenCounter:
             total_tokens += summary_tokens
             logger.debug(f"Summary tokens: {summary_tokens} for {len(summaries)} summaries")
         else:
-            # Fallback: estimate based on newsletter references only
+            # Fallback: estimate based on content references only
             # (This is just title/publication, not the full summary content)
-            for newsletter in newsletters:
-                nl_text = f"{newsletter.get('publication', '')} - {newsletter.get('title', '')}"
-                total_tokens += self.estimate_text_tokens(nl_text)
+            for content in contents:
+                c_text = f"{content.get('publication', '')} - {content.get('title', '')}"
+                total_tokens += self.estimate_text_tokens(c_text)
 
             logger.debug(
-                f"Newsletter reference tokens: {total_tokens} for {len(newsletters)} newsletters "
+                f"Content reference tokens: {total_tokens} for {len(contents)} content items "
                 f"(Note: summary content not included, may underestimate)"
             )
 
@@ -149,7 +149,7 @@ class TokenCounter:
 
         logger.info(
             f"Total estimated tokens: {total_tokens} "
-            f"({len(newsletters)} newsletters, {len(themes or [])} themes)"
+            f"({len(contents)} content items, {len(themes or [])} themes)"
         )
 
         return total_tokens
@@ -173,7 +173,7 @@ class TokenCounter:
             {
                 "total_context": 200000,
                 "available_for_input": 100000,  # 50% of context
-                "newsletter_budget": 60000,     # 60% of input budget
+                "content_budget": 60000,        # 60% of input budget
                 "theme_budget": 30000,          # 30% of input budget
                 "prompt_overhead": 10000,       # 10% of input budget
                 "max_output_tokens": 8192,      # From model config
@@ -205,17 +205,17 @@ class TokenCounter:
         available_for_input = int(total_context * context_window_percentage)
 
         # Allocate input budget:
-        # - 60% for newsletters
+        # - 60% for content
         # - 30% for themes
         # - 10% for prompt overhead
-        newsletter_budget = int(available_for_input * 0.6)
+        content_budget = int(available_for_input * 0.6)
         theme_budget = int(available_for_input * 0.3)
         prompt_overhead = int(available_for_input * 0.1)
 
         budget = {
             "total_context": total_context,
             "available_for_input": available_for_input,
-            "newsletter_budget": newsletter_budget,
+            "content_budget": content_budget,
             "theme_budget": theme_budget,
             "prompt_overhead": prompt_overhead,
             "max_output_tokens": max_output,
@@ -225,46 +225,65 @@ class TokenCounter:
             f"Token budget calculated: "
             f"total={total_context}, "
             f"input={available_for_input} ({context_window_percentage * 100:.0f}%), "
-            f"newsletters={newsletter_budget}, "
+            f"content={content_budget}, "
             f"themes={theme_budget}, "
             f"overhead={prompt_overhead}"
         )
 
         return budget
 
+    def calculate_contents_that_fit(
+        self,
+        contents: list[dict],
+        token_budget: int,
+    ) -> int:
+        """
+        Calculate how many content items fit within token budget.
+
+        Uses greedy approach: count content items until budget exceeded.
+
+        Args:
+            contents: List of content dicts
+            token_budget: Maximum tokens allowed
+
+        Returns:
+            Number of content items that fit in budget
+        """
+        total_tokens = 0
+        count = 0
+
+        for content in contents:
+            c_text = f"{content.get('publication', '')} - {content.get('title', '')}"
+            c_tokens = self.estimate_text_tokens(c_text)
+
+            if total_tokens + c_tokens > token_budget:
+                break
+
+            total_tokens += c_tokens
+            count += 1
+
+        logger.debug(
+            f"Calculated {count} content items fit in {token_budget} tokens "
+            f"(using {total_tokens} tokens)"
+        )
+
+        return count
+
+    # Backwards compatibility aliases
+    def estimate_newsletter_batch_tokens(
+        self,
+        newsletters: list[dict],
+        themes: list | None = None,
+        prompt_template: str | None = None,
+        summaries: list | None = None,
+    ) -> int:
+        """Backwards compatibility alias for estimate_content_batch_tokens."""
+        return self.estimate_content_batch_tokens(newsletters, themes, prompt_template, summaries)
+
     def calculate_newsletters_that_fit(
         self,
         newsletters: list[dict],
         token_budget: int,
     ) -> int:
-        """
-        Calculate how many newsletters fit within token budget.
-
-        Uses greedy approach: count newsletters until budget exceeded.
-
-        Args:
-            newsletters: List of newsletter dicts
-            token_budget: Maximum tokens allowed
-
-        Returns:
-            Number of newsletters that fit in budget
-        """
-        total_tokens = 0
-        count = 0
-
-        for newsletter in newsletters:
-            nl_text = f"{newsletter.get('publication', '')} - {newsletter.get('title', '')}"
-            nl_tokens = self.estimate_text_tokens(nl_text)
-
-            if total_tokens + nl_tokens > token_budget:
-                break
-
-            total_tokens += nl_tokens
-            count += 1
-
-        logger.debug(
-            f"Calculated {count} newsletters fit in {token_budget} tokens "
-            f"(using {total_tokens} tokens)"
-        )
-
-        return count
+        """Backwards compatibility alias for calculate_contents_that_fit."""
+        return self.calculate_contents_that_fit(newsletters, token_budget)

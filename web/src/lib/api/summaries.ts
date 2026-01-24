@@ -172,7 +172,7 @@ export async function fetchSummaryNavigation(
  */
 export interface ContextSelection {
   text: string
-  source: "newsletter" | "summary"
+  source: "content" | "summary"
 }
 
 /**

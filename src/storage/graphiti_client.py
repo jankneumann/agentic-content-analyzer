@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 
 class GraphitiClient:
-    """Client for managing newsletter knowledge graph with Graphiti."""
+    """Client for managing content knowledge graph with Graphiti."""
 
     def __init__(
         self,
@@ -205,7 +205,7 @@ class GraphitiClient:
         Get temporal context for concepts within a date range.
 
         Useful for analyzing how concepts evolved over time across
-        multiple newsletters.
+        multiple content items.
 
         Args:
             concepts: List of concepts to track
@@ -242,22 +242,22 @@ class GraphitiClient:
         logger.info(f"Found {len(all_results)} temporal entities")
         return all_results
 
-    async def get_newsletters_in_range(
+    async def get_contents_in_range(
         self,
         start_date: datetime,
         end_date: datetime,
     ) -> list[dict[str, Any]]:
         """
-        Get all newsletter episodes within a date range from Graphiti.
+        Get all content episodes within a date range from Graphiti.
 
         Args:
             start_date: Start of date range
             end_date: End of date range
 
         Returns:
-            List of newsletter episodes with their content
+            List of content episodes with their content
         """
-        logger.info(f"Fetching newsletters from {start_date} to {end_date}")
+        logger.info(f"Fetching content from {start_date} to {end_date}")
 
         # Use Neo4j directly to query episodes in time range
         with self.driver.session() as session:
@@ -284,8 +284,17 @@ class GraphitiClient:
                 for record in result
             ]
 
-        logger.info(f"Found {len(episodes)} newsletter episodes")
+        logger.info(f"Found {len(episodes)} content episodes")
         return episodes
+
+    # Backwards compatibility alias
+    async def get_newsletters_in_range(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[dict[str, Any]]:
+        """Backwards compatibility alias for get_contents_in_range."""
+        return await self.get_contents_in_range(start_date, end_date)
 
     async def extract_themes_from_range(
         self,
@@ -294,10 +303,10 @@ class GraphitiClient:
         query: str = "AI and technology themes, trends, and topics",
     ) -> list[dict[str, Any]]:
         """
-        Extract common themes from newsletters in a date range.
+        Extract common themes from content items in a date range.
 
         Uses Graphiti's semantic search to find related concepts and entities
-        across multiple newsletter episodes.
+        across multiple content episodes.
 
         Args:
             start_date: Start of date range
@@ -307,7 +316,7 @@ class GraphitiClient:
         Returns:
             List of related entities, facts, and themes
         """
-        logger.info(f"Extracting themes from newsletters between {start_date} and {end_date}")
+        logger.info(f"Extracting themes from content between {start_date} and {end_date}")
 
         # Search for broad AI/tech themes
         results = await self.graphiti.search(
@@ -326,7 +335,7 @@ class GraphitiClient:
         """
         Get facts about specific entities from the knowledge graph.
 
-        Useful for understanding what the newsletters say about specific
+        Useful for understanding what the content says about specific
         topics, companies, or concepts.
 
         Args:

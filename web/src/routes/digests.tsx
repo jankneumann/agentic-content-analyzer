@@ -486,8 +486,8 @@ function DigestsPage() {
                 {/* Metadata row */}
                 <div className="grid grid-cols-4 gap-4 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Newsletters:</span>{" "}
-                    <span className="font-medium">{selectedDigest.newsletter_count}</span>
+                    <span className="text-muted-foreground">Content Items:</span>{" "}
+                    <span className="font-medium">{selectedDigest.content_count}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Model:</span>{" "}
@@ -759,7 +759,7 @@ function DigestRow({
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground">
-          {digest.newsletter_count}
+          {digest.content_count}
         </span>
       </TableCell>
       <TableCell>
