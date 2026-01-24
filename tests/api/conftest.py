@@ -207,12 +207,12 @@ def sample_newsletters(db_session) -> list[Newsletter]:
 
 
 @pytest.fixture
-def sample_summary(db_session, sample_newsletter) -> NewsletterSummary:
-    """Create a single sample summary linked to a newsletter."""
+def sample_summary(db_session, sample_content) -> NewsletterSummary:
+    """Create a single sample summary linked to content."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
     summary = NewsletterSummary(
-        newsletter_id=sample_newsletter.id,
+        content_id=sample_content.id,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
         strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -231,8 +231,8 @@ def sample_summary(db_session, sample_newsletter) -> NewsletterSummary:
         processing_time_seconds=3.5,
     )
 
-    # Update newsletter status to reflect it has been summarized
-    sample_newsletter.status = ProcessingStatus.COMPLETED
+    # Update content status to reflect it has been summarized
+    sample_content.status = ContentStatus.COMPLETED
     db_session.add(summary)
     db_session.commit()
     db_session.refresh(summary)
@@ -240,13 +240,13 @@ def sample_summary(db_session, sample_newsletter) -> NewsletterSummary:
 
 
 @pytest.fixture
-def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
-    """Create multiple sample summaries linked to newsletters."""
+def sample_summaries(db_session, sample_contents) -> list[NewsletterSummary]:
+    """Create multiple sample summaries linked to contents."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
     summaries = [
         NewsletterSummary(
-            newsletter_id=sample_newsletters[0].id,
+            content_id=sample_contents[0].id,
             executive_summary="Major LLM advances summary.",
             key_themes=["LLM Performance", "Cost Optimization"],
             strategic_insights=["LLM costs decreasing"],
@@ -260,7 +260,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             processing_time_seconds=3.5,
         ),
         NewsletterSummary(
-            newsletter_id=sample_newsletters[1].id,
+            content_id=sample_contents[1].id,
             executive_summary="Vector database performance summary.",
             key_themes=["Vector Search", "Performance"],
             strategic_insights=["Database selection critical"],
@@ -323,7 +323,7 @@ def sample_digest(db_session) -> Digest:
             "leadership": ["Review AI strategy"],
             "technical": ["Evaluate new tools"],
         },
-        sources=[{"newsletter_id": 1, "title": "AI Weekly"}],
+        sources=[{"content_id": 1, "title": "AI Weekly"}],
         newsletter_count=3,
         status=DigestStatus.PENDING_REVIEW,
         agent_framework="claude",

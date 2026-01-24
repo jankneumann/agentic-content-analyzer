@@ -454,11 +454,9 @@ async def get_digest_sources(
 ) -> list[dict]:
     """Get all source summaries used to create a digest.
 
-    Returns full summaries from content/newsletters within the digest's period.
-    Supports both the new Content model and legacy Newsletter model.
+    Returns full summaries from content within the digest's period.
     """
     from src.models.content import Content
-    from src.models.newsletter import Newsletter
     from src.models.summary import NewsletterSummary
 
     with get_db() as db:
@@ -484,7 +482,6 @@ async def get_digest_sources(
                     {
                         "id": s.id,
                         "content_id": s.content_id,
-                        "newsletter_id": s.newsletter_id,
                         "newsletter_title": s.content.title if s.content else "Unknown",
                         "newsletter_publication": s.content.publication if s.content else None,
                         "executive_summary": s.executive_summary,
@@ -515,42 +512,8 @@ async def get_digest_sources(
                     {
                         "id": s.id,
                         "content_id": s.content_id,
-                        "newsletter_id": s.newsletter_id,
                         "newsletter_title": s.content.title if s.content else "Unknown",
                         "newsletter_publication": s.content.publication if s.content else None,
-                        "executive_summary": s.executive_summary,
-                        "key_themes": s.key_themes or [],
-                        "strategic_insights": s.strategic_insights or [],
-                        "technical_details": s.technical_details or [],
-                        "actionable_items": s.actionable_items or [],
-                        "notable_quotes": s.notable_quotes or [],
-                        "model_used": s.model_used,
-                        "created_at": s.created_at.isoformat() if s.created_at else None,
-                        "processing_time_seconds": s.processing_time_seconds,
-                    }
-                )
-
-        # Strategy 3: Fallback to legacy Newsletter join (for old digests)
-        if not results and digest.period_start and digest.period_end:
-            newsletter_summaries = (
-                db.query(NewsletterSummary)
-                .join(Newsletter, NewsletterSummary.newsletter_id == Newsletter.id)
-                .filter(Newsletter.published_date >= digest.period_start)
-                .filter(Newsletter.published_date <= digest.period_end)
-                .order_by(Newsletter.published_date.desc())
-                .limit(limit)
-                .all()
-            )
-            for s in newsletter_summaries:
-                results.append(
-                    {
-                        "id": s.id,
-                        "content_id": s.content_id,
-                        "newsletter_id": s.newsletter_id,
-                        "newsletter_title": s.newsletter.title if s.newsletter else "Unknown",
-                        "newsletter_publication": s.newsletter.publication
-                        if s.newsletter
-                        else None,
                         "executive_summary": s.executive_summary,
                         "key_themes": s.key_themes or [],
                         "strategic_insights": s.strategic_insights or [],

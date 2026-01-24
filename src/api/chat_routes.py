@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session
 
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
+from src.models.content import Content
 from src.models.digest import Digest
-from src.models.newsletter import Newsletter
 from src.models.podcast import PodcastScriptRecord
 from src.models.summary import NewsletterSummary
 from src.services.chat_service import ChatService
@@ -235,22 +235,22 @@ def get_artifact_content(db: Session, artifact_type: str, artifact_id: int) -> s
         Formatted content string for injection into system prompt
     """
     if artifact_type == "summary":
-        # Get the summary and its associated newsletter
+        # Get the summary and its associated content
         summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == artifact_id).first()
 
         if not summary:
             return "[Summary not found]"
 
-        # Get the associated newsletter
-        newsletter = db.query(Newsletter).filter(Newsletter.id == summary.newsletter_id).first()
+        # Get the associated content
+        source_content = db.query(Content).filter(Content.id == summary.content_id).first()
 
-        # Format newsletter content (limit to ~10000 chars to avoid token overflow)
-        newsletter_content = ""
-        if newsletter:
-            raw_content = newsletter.raw_text or newsletter.raw_html or ""
-            newsletter_content = raw_content[:10000]
+        # Format content (limit to ~10000 chars to avoid token overflow)
+        source_text = ""
+        if source_content:
+            raw_content = source_content.markdown_content or source_content.raw_content or ""
+            source_text = raw_content[:10000]
             if len(raw_content) > 10000:
-                newsletter_content += "\n\n[Content truncated...]"
+                source_text += "\n\n[Content truncated...]"
 
         # Format key themes, insights, etc. as bullet lists
         key_themes = "\n".join(f"- {t}" for t in (summary.key_themes or []))
@@ -259,12 +259,12 @@ def get_artifact_content(db: Session, artifact_type: str, artifact_id: int) -> s
         actionable_items = "\n".join(f"- {a}" for a in (summary.actionable_items or []))
         notable_quotes = "\n".join(f'- "{q}"' for q in (summary.notable_quotes or []))
 
-        content = f"""### Source Newsletter
-**From:** {newsletter.sender if newsletter else 'Unknown'}
-**Subject:** {newsletter.title if newsletter else 'Unknown'}
-**Date:** {newsletter.published_date if newsletter else 'Unknown'}
+        content = f"""### Source Content
+**From:** {source_content.author if source_content else 'Unknown'}
+**Title:** {source_content.title if source_content else 'Unknown'}
+**Date:** {source_content.published_date if source_content else 'Unknown'}
 
-{newsletter_content}
+{source_text}
 
 ---
 
