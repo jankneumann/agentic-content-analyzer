@@ -12,7 +12,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config import settings
-from src.models.newsletter import Base
+from src.models.base import Base
 from src.storage.providers import get_provider
 from src.utils.logging import get_logger
 

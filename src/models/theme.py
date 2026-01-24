@@ -6,7 +6,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 
 class ThemeCategory(str, Enum):

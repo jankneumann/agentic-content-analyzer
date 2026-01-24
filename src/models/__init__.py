@@ -8,12 +8,16 @@
     See: openspec/changes/deprecate-newsletter-model/ for migration guide.
 """
 
+from src.models.base import Base
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
 from src.models.image import Image, ImageSource
-from src.models.newsletter import Base, Newsletter, NewsletterSource, ProcessingStatus
+
+# Legacy Newsletter imports - deprecated, will be removed
+# These are kept temporarily for backwards compatibility during migration
+from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
 from src.models.settings import PromptOverride

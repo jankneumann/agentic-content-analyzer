@@ -21,10 +21,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.api.app import app
 from src.config.models import MODEL_REGISTRY
+from src.models.base import Base
 from src.models.content import Content, ContentSource, ContentStatus  # Unified Content model
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.newsletter import (
-    Base,
     Newsletter,
     NewsletterSource,
     ProcessingStatus,

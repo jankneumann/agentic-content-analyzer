@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
-from src.models.content import Base
+from src.models.base import Base
 
 
 class NewsletterSummary(Base):

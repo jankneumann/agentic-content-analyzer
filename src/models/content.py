@@ -30,7 +30,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, relationship
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 if TYPE_CHECKING:
     from src.models.image import Image

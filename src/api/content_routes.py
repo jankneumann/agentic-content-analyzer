@@ -15,12 +15,11 @@ from sqlalchemy import func
 from src.models.content import (
     Content,
     ContentCreate,
-    ContentListItem as BaseContentListItem,
-    ContentResponse as BaseContentResponse,
+    ContentListItem,
+    ContentResponse,
     ContentSource,
     ContentStatus,
 )
-from src.models.newsletter import Newsletter
 from src.services.content_service import ContentService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -29,18 +28,12 @@ logger = get_logger(__name__)
 
 
 # ============================================================================
-# Extended Response Models (with legacy newsletter ID)
+# Response Models
 # ============================================================================
 
 
-class ContentListItem(BaseContentListItem):
-    """Extended content list item with legacy newsletter ID for navigation."""
-
-    legacy_newsletter_id: int | None = None
-
-
 class ContentListResponse(BaseModel):
-    """Paginated content list response with extended items."""
+    """Paginated content list response."""
 
     items: list[ContentListItem]
     total: int
@@ -48,12 +41,6 @@ class ContentListResponse(BaseModel):
     page_size: int
     has_next: bool = Field(default=False)
     has_prev: bool = Field(default=False)
-
-
-class ContentResponse(BaseContentResponse):
-    """Extended content response with legacy newsletter ID."""
-
-    legacy_newsletter_id: int | None = None
 
 
 # Allowed fields for sorting content list
@@ -235,28 +222,6 @@ async def _run_content_ingestion(
         _ingestion_tasks[task_id]["message"] = str(e)
 
 
-def _get_legacy_newsletter_ids(db, source_ids: list[str]) -> dict[str, int]:
-    """Look up newsletter IDs by source_id for linking to summaries.
-
-    Args:
-        db: Database session
-        source_ids: List of source IDs to look up
-
-    Returns:
-        Dict mapping source_id -> newsletter_id
-    """
-    if not source_ids:
-        return {}
-
-    newsletters = (
-        db.query(Newsletter.source_id, Newsletter.id)
-        .filter(Newsletter.source_id.in_(source_ids))
-        .all()
-    )
-
-    return {n.source_id: n.id for n in newsletters}
-
-
 class DuplicateInfo(BaseModel):
     """Information about duplicate content."""
 
@@ -413,10 +378,6 @@ async def list_contents(
         # Apply pagination
         contents = query.offset(offset).limit(page_size).all()
 
-        # Look up legacy newsletter IDs for navigation to summaries
-        source_ids = [c.source_id for c in contents]
-        newsletter_id_map = _get_legacy_newsletter_ids(db, source_ids)
-
         # Convert to response models
         items = [
             ContentListItem(
@@ -427,7 +388,6 @@ async def list_contents(
                 published_date=c.published_date,
                 status=c.status,
                 ingested_at=c.ingested_at,
-                legacy_newsletter_id=newsletter_id_map.get(c.source_id),
             )
             for c in contents
         ]
@@ -500,12 +460,6 @@ async def get_content(content_id: int) -> ContentResponse:
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        # Look up legacy newsletter ID for navigation to summary
-        legacy_newsletter_id = None
-        if content.source_id:
-            newsletter_id_map = _get_legacy_newsletter_ids(db, [content.source_id])
-            legacy_newsletter_id = newsletter_id_map.get(content.source_id)
-
         return ContentResponse(
             id=content.id,
             source_type=content.source_type,
@@ -527,7 +481,6 @@ async def get_content(content_id: int) -> ContentResponse:
             ingested_at=content.ingested_at,
             parsed_at=content.parsed_at,
             processed_at=content.processed_at,
-            legacy_newsletter_id=legacy_newsletter_id,
         )
 
 

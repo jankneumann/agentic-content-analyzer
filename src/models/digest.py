@@ -6,7 +6,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 
 class DigestType(str, Enum):

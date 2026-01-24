@@ -43,12 +43,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config.models import MODEL_REGISTRY
-from src.models.digest import Digest  # noqa: F401 - registers with Base.metadata
 
 # Import Base and all models that use it to ensure they're registered with metadata
-# All models share the same Base from newsletter.py
+# All models share the same Base from base.py
+from src.models.base import Base
+from src.models.digest import Digest  # noqa: F401 - registers with Base.metadata
 from src.models.newsletter import (
-    Base,
     Newsletter,
     NewsletterSource,
     ProcessingStatus,
