@@ -22,13 +22,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from src.api.app import app
 from src.config.models import MODEL_REGISTRY
 from src.models.base import Base
-from src.models.content import Content, ContentSource, ContentStatus  # Unified Content model
+from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
-from src.models.newsletter import (
-    Newsletter,
-    NewsletterSource,
-    ProcessingStatus,
-)
 from src.models.podcast import (
     Podcast,
     PodcastScriptRecord,
@@ -130,80 +125,6 @@ def client(db_session) -> Generator[TestClient, None, None]:
 # ==============================================================================
 # Sample Data Fixtures
 # ==============================================================================
-
-
-@pytest.fixture
-def sample_newsletter(db_session) -> Newsletter:
-    """Create a single sample newsletter in the test database."""
-    newsletter = Newsletter(
-        source=NewsletterSource.GMAIL,
-        source_id="test-msg-001",
-        sender="ai-weekly@example.com",
-        publication="AI Weekly",
-        title="Latest LLM Advances",
-        raw_html="<html><body>Newsletter about LLM advances...</body></html>",
-        raw_text="Newsletter content about LLM advances and new models.",
-        published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
-        url="https://example.com/newsletter1",
-        status=ProcessingStatus.PENDING,
-    )
-    db_session.add(newsletter)
-    db_session.commit()
-    db_session.refresh(newsletter)
-    return newsletter
-
-
-@pytest.fixture
-def sample_newsletters(db_session) -> list[Newsletter]:
-    """Create multiple sample newsletters in the test database."""
-    newsletters = [
-        Newsletter(
-            source=NewsletterSource.GMAIL,
-            source_id="test-msg-001",
-            sender="ai-weekly@example.com",
-            publication="AI Weekly",
-            title="Latest LLM Advances",
-            raw_html="<html><body>Newsletter about LLM advances...</body></html>",
-            raw_text="Newsletter content about LLM advances.",
-            published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
-            url="https://example.com/newsletter1",
-            status=ProcessingStatus.PENDING,
-        ),
-        Newsletter(
-            source=NewsletterSource.GMAIL,
-            source_id="test-msg-002",
-            sender="data-eng@example.com",
-            publication="Data Engineering Weekly",
-            title="Vector Database Performance",
-            raw_html="<html><body>Newsletter about vector databases...</body></html>",
-            raw_text="Newsletter about vector database optimizations.",
-            published_date=datetime(2025, 1, 14, 10, 0, 0, tzinfo=UTC),
-            url="https://example.com/newsletter2",
-            status=ProcessingStatus.COMPLETED,
-        ),
-        Newsletter(
-            source=NewsletterSource.RSS,
-            source_id="test-rss-003",
-            sender="tech-trends@substack.com",
-            publication="Tech Trends",
-            title="AI Agent Frameworks",
-            raw_html="<html><body>Newsletter about AI agent frameworks...</body></html>",
-            raw_text="Comparison of AI agent frameworks.",
-            published_date=datetime(2025, 1, 13, 10, 0, 0, tzinfo=UTC),
-            url="https://example.com/newsletter3",
-            status=ProcessingStatus.PENDING,
-        ),
-    ]
-
-    for newsletter in newsletters:
-        db_session.add(newsletter)
-
-    db_session.commit()
-
-    for newsletter in newsletters:
-        db_session.refresh(newsletter)
-
-    return newsletters
 
 
 @pytest.fixture

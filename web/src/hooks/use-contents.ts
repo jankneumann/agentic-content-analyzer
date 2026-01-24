@@ -184,14 +184,10 @@ export function useCreateContent() {
  * })
  */
 export function useIngestContents() {
-  const queryClient = useQueryClient()
-
   return useMutation({
     mutationFn: (params: IngestContentParams) => ingestContents(params),
-    onSuccess: () => {
-      // The actual ingestion happens in the background,
-      // so we don't invalidate immediately - the UI will poll for updates
-    },
+    // The actual ingestion happens in the background,
+    // so we don't invalidate immediately - the UI will poll for updates
     // Caller can provide onSuccess callback that triggers polling
   })
 }

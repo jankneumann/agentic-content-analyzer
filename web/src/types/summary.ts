@@ -183,3 +183,27 @@ export interface SummaryNavigation {
   position: number
   total: number
 }
+
+/**
+ * Request to trigger summarization
+ */
+export interface SummarizeRequest {
+  /** Content IDs to summarize */
+  content_ids?: number[]
+  /** Whether to re-summarize already summarized content */
+  force?: boolean
+  /** Maximum number of items to process */
+  limit?: number
+}
+
+/**
+ * Response from summarization trigger
+ */
+export interface SummarizeResponse {
+  /** Task ID for tracking progress */
+  task_id: string
+  /** Message from the server */
+  message: string
+  /** Count of items queued for summarization */
+  queued_count: number
+}

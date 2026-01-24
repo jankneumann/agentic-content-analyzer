@@ -21,11 +21,7 @@ import type {
   GenerateScriptResponse,
 } from "@/types"
 import type { ScriptDetail } from "@/types/review"
-
-/**
- * Sort order for table sorting
- */
-export type SortOrder = "asc" | "desc"
+import type { SortOrder } from "@/types"
 
 /**
  * Script filters for list queries

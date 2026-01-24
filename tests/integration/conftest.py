@@ -47,12 +47,8 @@ from src.config.models import MODEL_REGISTRY
 # Import Base and all models that use it to ensure they're registered with metadata
 # All models share the same Base from base.py
 from src.models.base import Base
+from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest  # noqa: F401 - registers with Base.metadata
-from src.models.newsletter import (
-    Newsletter,
-    NewsletterSource,
-    ProcessingStatus,
-)
 from src.models.podcast import (  # noqa: F401 - registers with Base.metadata
     Podcast,
     PodcastScriptRecord,
@@ -202,68 +198,68 @@ def clean_neo4j(neo4j_driver):
 
 
 @pytest.fixture
-def sample_newsletters(db_session) -> list[Newsletter]:
-    """Create sample newsletters in the test database."""
-    newsletters = [
-        Newsletter(
-            source=NewsletterSource.GMAIL,
+def sample_contents(db_session) -> list[Content]:
+    """Create sample contents in the test database."""
+    contents = [
+        Content(
+            source_type=ContentSource.GMAIL,
             source_id="msg-001",
-            sender="ai-weekly@example.com",
-            publication="AI Weekly",
+            source_url="https://example.com/newsletter1",
             title="Latest LLM Advances",
-            raw_html="<html><body>Newsletter about LLM advances...</body></html>",
-            raw_text="Newsletter content about LLM advances and new models. Context windows are expanding to 1M tokens. Costs are decreasing by 40%. Multimodal capabilities are becoming standard.",
+            author="ai-weekly@example.com",
+            publication="AI Weekly",
             published_date=datetime(2025, 1, 15, 10, 0, 0),
-            url="https://example.com/newsletter1",
-            status=ProcessingStatus.PENDING,
+            markdown_content="Newsletter content about LLM advances and new models. Context windows are expanding to 1M tokens. Costs are decreasing by 40%. Multimodal capabilities are becoming standard.",
+            content_hash="hash001",
+            status=ContentStatus.PARSED,
         ),
-        Newsletter(
-            source=NewsletterSource.GMAIL,
+        Content(
+            source_type=ContentSource.GMAIL,
             source_id="msg-002",
-            sender="data-eng@example.com",
-            publication="Data Engineering Weekly",
+            source_url="https://example.com/newsletter2",
             title="Vector Database Performance",
-            raw_html="<html><body>Newsletter about vector databases...</body></html>",
-            raw_text="Newsletter about vector database optimizations and benchmarks. Hybrid search combining vector and keyword search is critical. Performance matters at scale.",
+            author="data-eng@example.com",
+            publication="Data Engineering Weekly",
             published_date=datetime(2025, 1, 14, 10, 0, 0),
-            url="https://example.com/newsletter2",
-            status=ProcessingStatus.PENDING,
+            markdown_content="Newsletter about vector database optimizations and benchmarks. Hybrid search combining vector and keyword search is critical. Performance matters at scale.",
+            content_hash="hash002",
+            status=ContentStatus.PARSED,
         ),
-        Newsletter(
-            source=NewsletterSource.RSS,
+        Content(
+            source_type=ContentSource.RSS,
             source_id="rss-003",
-            sender="tech-trends@substack.com",
-            publication="Tech Trends",
+            source_url="https://example.com/newsletter3",
             title="AI Agent Frameworks",
-            raw_html="<html><body>Newsletter about AI agent frameworks...</body></html>",
-            raw_text="Comparison of AI agent frameworks including Claude SDK and OpenAI. Framework choice impacts development velocity. Tool use patterns vary significantly.",
+            author="tech-trends@substack.com",
+            publication="Tech Trends",
             published_date=datetime(2025, 1, 13, 10, 0, 0),
-            url="https://example.com/newsletter3",
-            status=ProcessingStatus.PENDING,
+            markdown_content="Comparison of AI agent frameworks including Claude SDK and OpenAI. Framework choice impacts development velocity. Tool use patterns vary significantly.",
+            content_hash="hash003",
+            status=ContentStatus.PARSED,
         ),
     ]
 
-    for newsletter in newsletters:
-        db_session.add(newsletter)
+    for content in contents:
+        db_session.add(content)
 
     db_session.commit()
 
     # Refresh to get IDs
-    for newsletter in newsletters:
-        db_session.refresh(newsletter)
+    for content in contents:
+        db_session.refresh(content)
 
-    return newsletters
+    return contents
 
 
 @pytest.fixture
-def sample_summaries(db_session, sample_newsletters) -> list[Summary]:
-    """Create sample summaries for the newsletters."""
+def sample_summaries(db_session, sample_contents) -> list[Summary]:
+    """Create sample summaries for the contents."""
     # Use any valid model from the registry for test data
     test_model = list(MODEL_REGISTRY.keys())[0]
 
     summaries = [
         Summary(
-            newsletter_id=sample_newsletters[0].id,
+            content_id=sample_contents[0].id,
             executive_summary="Major LLM advances including cost reduction and performance improvements.",
             key_themes=["LLM Performance", "Cost Optimization", "Multimodal AI"],
             strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -282,7 +278,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[Summary]:
             processing_time_seconds=3.5,
         ),
         Summary(
-            newsletter_id=sample_newsletters[1].id,
+            content_id=sample_contents[1].id,
             executive_summary="Vector database performance benchmarks and optimization techniques.",
             key_themes=["Vector Search", "Performance", "Hybrid Search"],
             strategic_insights=["Database selection critical for production"],
@@ -301,7 +297,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[Summary]:
             processing_time_seconds=3.2,
         ),
         Summary(
-            newsletter_id=sample_newsletters[2].id,
+            content_id=sample_contents[2].id,
             executive_summary="Comparison of major AI agent frameworks and their capabilities.",
             key_themes=["AI Agents", "Framework Comparison", "Tool Use"],
             strategic_insights=["Framework choice impacts development velocity"],
@@ -387,7 +383,7 @@ def mock_graphiti_client():
     mock_client = MagicMock()
 
     # Mock async methods using AsyncMock
-    mock_client.add_newsletter_summary = AsyncMock(return_value=None)
+    mock_client.add_content_summary = AsyncMock(return_value=None)
     mock_client.search_related_concepts = AsyncMock(
         return_value=[
             {"name": "LLM", "relevance": 0.9},

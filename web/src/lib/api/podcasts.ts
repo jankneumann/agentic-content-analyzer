@@ -19,12 +19,8 @@ import type {
   PodcastDetail,
   PodcastStatistics,
   ApprovedScript,
+  SortOrder,
 } from "@/types"
-
-/**
- * Sort order for table sorting
- */
-export type SortOrder = "asc" | "desc"
 
 /**
  * Podcast filters for list queries

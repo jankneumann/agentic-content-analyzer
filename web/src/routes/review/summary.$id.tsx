@@ -4,9 +4,7 @@
  * Side-by-side view for reviewing a summary against its source content.
  * Supports text selection for context and AI-powered revision through chat.
  *
- * Route: /review/summary/:id (where id is the newsletter or content ID)
- * Query params:
- *   - source: "content" to use Content model, otherwise uses Newsletter model
+ * Route: /review/summary/:id (where id is the content ID)
  */
 
 import * as React from "react"
@@ -19,7 +17,6 @@ import { ReviewRoute } from "../review"
 import {
   ReviewLayout,
   ReviewHeader,
-  NewsletterPane,
   SummaryPane,
   SummaryPreview,
   SelectionPopover,
@@ -27,7 +24,6 @@ import {
 } from "@/components/review"
 import { RevisionChatPanel } from "@/components/chat"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
-import { useNewsletterWithSummary } from "@/hooks/use-newsletters"
 import { useContentWithSummary } from "@/hooks/use-contents"
 import { useSummaryNavigation } from "@/hooks/use-summaries"
 import { useChatConfig, useChatSession } from "@/hooks/use-chat"
@@ -43,14 +39,7 @@ import {
   type SummaryPreviewData,
 } from "@/lib/api/summaries"
 import type { NavigationInfo } from "@/types/review"
-import type { Newsletter, Summary, ChatMessage, Content } from "@/types"
-
-/**
- * Search params for the summary review route
- */
-interface SummaryReviewSearch {
-  source?: "content" | "newsletter"
-}
+import type { Summary, ChatMessage, Content } from "@/types"
 
 /**
  * Route definition for summary review page
@@ -59,9 +48,6 @@ export const SummaryReviewRoute = createRoute({
   getParentRoute: () => ReviewRoute,
   path: "summary/$id",
   component: SummaryReviewPage,
-  validateSearch: (search: Record<string, unknown>): SummaryReviewSearch => ({
-    source: (search.source as SummaryReviewSearch["source"]) || undefined,
-  }),
 })
 
 /**
@@ -122,37 +108,17 @@ function SourceContentPane({ content }: { content: Content | null | undefined })
  */
 function SummaryReviewPage() {
   const { id } = SummaryReviewRoute.useParams()
-  const { source } = SummaryReviewRoute.useSearch()
   const navigate = useNavigate()
 
-  const isContentSource = source === "content"
-
-  // Fetch Content when source=content
+  // Fetch Content with its summary
   const {
     data: contentWithSummary,
-    isLoading: isContentLoading,
-    isError: isContentError,
-    error: contentError,
+    isLoading,
+    isError,
+    error,
   } = useContentWithSummary(id)
 
-  // Fetch Newsletter when source is not content (legacy flow)
-  const {
-    data: newsletterWithSummary,
-    isLoading: isNewsletterLoading,
-    isError: isNewsletterError,
-    error: newsletterError,
-  } = useNewsletterWithSummary(id)
-
-  // Use the appropriate data based on source param
-  const isLoading = isContentSource ? isContentLoading : isNewsletterLoading
-  const isError = isContentSource ? isContentError : isNewsletterError
-  const error = isContentSource ? contentError : newsletterError
-
-  // For Content source, we get content + summary
-  // For Newsletter source, we get newsletter + summary
-  const summary = isContentSource
-    ? contentWithSummary?.summary
-    : newsletterWithSummary?.summary
+  const summary = contentWithSummary?.summary
 
   // Get summary ID for navigation (once summary is loaded)
   const summaryId = summary?.id?.toString()
@@ -178,13 +144,13 @@ function SummaryReviewPage() {
   // Navigation handlers - use content IDs since route is based on content ID
   const handlePrevious = React.useCallback(() => {
     if (navInfo?.prev_content_id) {
-      navigate({ to: "/review/summary/$id", params: { id: navInfo.prev_content_id.toString() }, search: { source: "content" } })
+      navigate({ to: "/review/summary/$id", params: { id: navInfo.prev_content_id.toString() } })
     }
   }, [navInfo?.prev_content_id, navigate])
 
   const handleNext = React.useCallback(() => {
     if (navInfo?.next_content_id) {
-      navigate({ to: "/review/summary/$id", params: { id: navInfo.next_content_id.toString() }, search: { source: "content" } })
+      navigate({ to: "/review/summary/$id", params: { id: navInfo.next_content_id.toString() } })
     }
   }, [navInfo?.next_content_id, navigate])
 
@@ -208,7 +174,7 @@ function SummaryReviewPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Error loading content</AlertTitle>
           <AlertDescription>
-            {error instanceof Error ? error.message : "Failed to load the newsletter and summary."}
+            {error instanceof Error ? error.message : "Failed to load the content and summary."}
           </AlertDescription>
           <div className="mt-4">
             <Button variant="outline" size="sm" onClick={() => navigate({ to: "/summaries" })}>
@@ -220,27 +186,22 @@ function SummaryReviewPage() {
     )
   }
 
-  // Get source data based on source param
-  const content = isContentSource ? contentWithSummary : null
-  const newsletter = !isContentSource ? newsletterWithSummary : null
-  const finalSummary = summary
-
   // No summary state
-  if (!finalSummary) {
+  if (!summary) {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <Alert className="max-w-md">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>No summary available</AlertTitle>
           <AlertDescription>
-            This {isContentSource ? "content" : "newsletter"} hasn't been summarized yet. Generate a summary first to review it.
+            This content hasn't been summarized yet. Generate a summary first to review it.
           </AlertDescription>
           <div className="mt-4 flex gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate({ to: "/summaries" })}>
               Back to Summaries
             </Button>
-            <Button size="sm" onClick={() => navigate({ to: isContentSource ? "/contents" : "/newsletters" })}>
-              Go to {isContentSource ? "Contents" : "Newsletters"}
+            <Button size="sm" onClick={() => navigate({ to: "/contents" })}>
+              Go to Contents
             </Button>
           </div>
         </Alert>
@@ -251,15 +212,13 @@ function SummaryReviewPage() {
   return (
     <ReviewProvider>
       <ReviewContent
-        key={finalSummary.id}
-        newsletter={newsletter}
-        content={content}
-        summary={finalSummary}
+        key={summary.id}
+        content={contentWithSummary}
+        summary={summary}
         navigation={navigation}
         isNavLoading={isNavLoading}
         onPrevious={handlePrevious}
         onNext={handleNext}
-        isContentSource={isContentSource}
       />
     </ReviewProvider>
   )
@@ -270,21 +229,17 @@ function SummaryReviewPage() {
  * Separated to use ReviewContext hooks within the provider
  */
 interface ReviewContentProps {
-  newsletter: Newsletter | null | undefined
   content: (Content & { summary: Summary | null }) | null | undefined
   summary: Summary
   navigation: NavigationInfo | undefined
   isNavLoading: boolean
   onPrevious: () => void
   onNext: () => void
-  isContentSource: boolean
 }
 
 function ReviewContent({
-  newsletter,
   content,
   summary,
-  isContentSource,
   navigation,
   isNavLoading,
   onPrevious,
@@ -467,10 +422,8 @@ function ReviewContent({
 
       // Invalidate queries to refresh data
       await queryClient.invalidateQueries({ queryKey: ["summaries"] })
-      if (isContentSource && content?.id) {
+      if (content?.id) {
         await queryClient.invalidateQueries({ queryKey: ["contents", "detail", content.id.toString()] })
-      } else if (newsletter?.id) {
-        await queryClient.invalidateQueries({ queryKey: ["newsletter", newsletter.id.toString()] })
       }
 
       // Reset state
@@ -498,7 +451,7 @@ function ReviewContent({
     } finally {
       setIsAccepting(false)
     }
-  }, [summary.id, previewData, newsletter?.id, content?.id, isContentSource, queryClient, clearAllContext])
+  }, [summary.id, previewData, content?.id, queryClient, clearAllContext])
 
   // Handle reject preview
   const handleRejectPreview = React.useCallback(() => {
@@ -535,11 +488,7 @@ function ReviewContent({
               onNext={onNext}
             />
           }
-          leftPane={
-            isContentSource
-              ? <SourceContentPane content={content} />
-              : <NewsletterPane newsletter={newsletter} />
-          }
+          leftPane={<SourceContentPane content={content} />}
           rightPane={
             isPreviewMode ? (
               <SummaryPreview

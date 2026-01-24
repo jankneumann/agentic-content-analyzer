@@ -90,7 +90,7 @@ async def test_digest_creates_missing_summaries_refactored(db_session, mock_get_
 
                         request = DigestRequest(
                             digest_type=DigestType.DAILY,
-                            period_start=datetime(2025, 1, 13, 0, 0, 0, tzinfo=UTC),
+                            period_start=datetime(2025, 1, 12, 0, 0, 0, tzinfo=UTC),
                             period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
                             max_strategic_insights=5,
                             max_technical_developments=5,

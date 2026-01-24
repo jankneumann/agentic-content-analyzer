@@ -15,7 +15,6 @@ from neo4j import GraphDatabase
 
 from src.config import settings
 from src.models.content import Content
-from src.models.newsletter import Newsletter
 from src.models.summary import Summary
 from src.utils.logging import get_logger
 
@@ -94,47 +93,6 @@ class GraphitiClient:
         if self.driver:
             self.driver.close()
             logger.info("Closed Graphiti client connection")
-
-    async def add_newsletter_summary(
-        self,
-        newsletter: Newsletter,
-        summary: Summary,
-    ) -> str:
-        """
-        Add a newsletter summary to the knowledge graph.
-
-        Extracts entities, relationships, and concepts from the summary
-        and stores them as a timestamped episode in Graphiti.
-
-        Args:
-            newsletter: Newsletter object
-            summary: Newsletter summary object
-
-        Returns:
-            Episode ID in Graphiti
-        """
-        logger.info(f"Adding newsletter to knowledge graph: {newsletter.title}")
-
-        # Create structured episode content with section headers
-        episode_content = self._create_episode_content(newsletter, summary)
-
-        # Use newsletter published date as episode timestamp
-        reference_time = newsletter.published_date or datetime.now()
-
-        # Add episode to Graphiti
-        episode_id = await self.graphiti.add_episode(
-            name=f"{newsletter.publication or newsletter.sender}: {newsletter.title}",
-            episode_body=episode_content,
-            source_description=f"Newsletter from {newsletter.sender}",
-            reference_time=reference_time,
-            source=EpisodeType.text,
-        )
-
-        logger.info(
-            f"Added episode {episode_id} for newsletter {newsletter.id} ({newsletter.title})"
-        )
-
-        return str(episode_id)
 
     async def add_content_summary(
         self,
@@ -553,57 +511,6 @@ class GraphitiClient:
                 }
                 for a in analyses
             ]
-
-    def _create_episode_content(
-        self,
-        newsletter: Newsletter,
-        summary: Summary,
-    ) -> str:
-        """
-        Create structured episode content from newsletter summary.
-
-        Uses clear section headers so the LLM understands context during
-        entity extraction. Sections are marked with [SECTION_TYPE] headers.
-
-        Args:
-            newsletter: Newsletter object
-            summary: Summary object
-
-        Returns:
-            Formatted episode content with section markers
-        """
-        sections = []
-
-        # Executive summary
-        if summary.executive_summary:
-            sections.append(f"[EXECUTIVE_SUMMARY]\n{summary.executive_summary}")
-
-        # Key themes
-        if summary.key_themes:
-            themes_text = "; ".join(summary.key_themes)
-            sections.append(f"[KEY_THEMES]\n{themes_text}")
-
-        # Strategic insights (for CTO/leadership)
-        if summary.strategic_insights:
-            insights_text = " ".join(summary.strategic_insights)
-            sections.append(f"[STRATEGIC_INSIGHTS]\n{insights_text}")
-
-        # Technical details (for developers)
-        if summary.technical_details:
-            details_text = " ".join(summary.technical_details)
-            sections.append(f"[TECHNICAL_DETAILS]\n{details_text}")
-
-        # Actionable items
-        if summary.actionable_items:
-            actions_text = " ".join(summary.actionable_items)
-            sections.append(f"[ACTIONABLE_ITEMS]\n{actions_text}")
-
-        # Notable quotes and data points
-        if summary.notable_quotes:
-            quotes_text = " ".join(summary.notable_quotes)
-            sections.append(f"[NOTABLE_DATA]\n{quotes_text}")
-
-        return "\n\n".join(sections)
 
     async def __aenter__(self):
         """Async context manager entry."""

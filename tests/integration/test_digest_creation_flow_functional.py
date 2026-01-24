@@ -57,7 +57,7 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
     # Create summaries for all newsletters
     for i, newsletter in enumerate(newsletters, 1):
         summary = Summary(
-            newsletter_id=newsletter.id,
+            content_id=newsletter.id,
             executive_summary=f"Summary for newsletter {i}",
             key_themes=[f"Theme {i}A", f"Theme {i}B"],
             strategic_insights=[f"Insight {i}"],
@@ -113,7 +113,7 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
 
                             request = DigestRequest(
                                 digest_type=DigestType.DAILY,
-                                period_start=datetime(2025, 1, 13, 0, 0, 0),
+                                period_start=datetime(2025, 1, 12, 0, 0, 0),
                                 period_end=datetime(2025, 1, 15, 23, 59, 59),
                                 max_strategic_insights=5,
                                 max_technical_developments=5,
@@ -178,7 +178,7 @@ async def test_create_weekly_digest(db_session, mock_get_db):
     # Create summaries
     for i, newsletter in enumerate(newsletters, 1):
         summary = Summary(
-            newsletter_id=newsletter.id,
+            content_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],
             strategic_insights=[f"Insight {i}"],
@@ -229,7 +229,7 @@ async def test_create_weekly_digest(db_session, mock_get_db):
 
                             request = DigestRequest(
                                 digest_type=DigestType.WEEKLY,
-                                period_start=datetime(2025, 1, 13, 0, 0, 0),
+                                period_start=datetime(2025, 1, 12, 0, 0, 0),
                                 period_end=datetime(2025, 1, 19, 23, 59, 59),  # 7 days
                                 max_strategic_insights=10,
                                 max_technical_developments=10,
@@ -337,7 +337,7 @@ async def test_digest_includes_all_newsletter_sources(db_session, mock_get_db):
     # Create summaries
     for i, newsletter in enumerate(newsletters, 1):
         summary = Summary(
-            newsletter_id=newsletter.id,
+            content_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],
             strategic_insights=[f"Insight {i}"],
@@ -387,7 +387,7 @@ async def test_digest_includes_all_newsletter_sources(db_session, mock_get_db):
 
                             request = DigestRequest(
                                 digest_type=DigestType.DAILY,
-                                period_start=datetime(2025, 1, 13, 0, 0, 0),
+                                period_start=datetime(2025, 1, 12, 0, 0, 0),
                                 period_end=datetime(2025, 1, 15, 23, 59, 59),
                                 max_strategic_insights=5,
                                 max_technical_developments=5,
@@ -446,7 +446,7 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
 
     for i, newsletter in enumerate(newsletters, 1):
         summary = Summary(
-            newsletter_id=newsletter.id,
+            content_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],
             strategic_insights=[f"Insight {i}"],
@@ -492,7 +492,7 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
                             # ============================================================
                             request = DigestRequest(
                                 digest_type=DigestType.DAILY,
-                                period_start=datetime(2025, 1, 13, 0, 0, 0),
+                                period_start=datetime(2025, 1, 12, 0, 0, 0),
                                 period_end=datetime(2025, 1, 15, 23, 59, 59),
                                 max_strategic_insights=5,
                                 max_technical_developments=5,
@@ -538,7 +538,7 @@ async def test_digest_with_custom_limits(db_session, mock_get_db):
 
     for i, newsletter in enumerate(newsletters, 1):
         summary = Summary(
-            newsletter_id=newsletter.id,
+            content_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],
             strategic_insights=[f"Insight {i}"],
@@ -586,7 +586,7 @@ async def test_digest_with_custom_limits(db_session, mock_get_db):
 
                             request = DigestRequest(
                                 digest_type=DigestType.DAILY,
-                                period_start=datetime(2025, 1, 13, 0, 0, 0),
+                                period_start=datetime(2025, 1, 12, 0, 0, 0),
                                 period_end=datetime(2025, 1, 15, 23, 59, 59),
                                 max_strategic_insights=10,  # Custom
                                 max_technical_developments=15,  # Custom

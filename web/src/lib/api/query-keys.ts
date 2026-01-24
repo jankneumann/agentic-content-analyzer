@@ -6,49 +6,27 @@
  * across the application and makes cache invalidation predictable.
  *
  * Key structure follows the pattern: [entity, scope, ...params]
- * - entity: The data type (e.g., 'newsletters', 'summaries')
+ * - entity: The data type (e.g., 'contents', 'summaries')
  * - scope: The operation scope (e.g., 'list', 'detail', 'infinite')
  * - params: Additional parameters for uniqueness
  *
  * @example
  * // Use in useQuery
  * const { data } = useQuery({
- *   queryKey: queryKeys.newsletters.list(filters),
- *   queryFn: () => fetchNewsletters(filters),
+ *   queryKey: queryKeys.contents.list(filters),
+ *   queryFn: () => fetchContents(filters),
  * })
  *
  * @example
- * // Invalidate all newsletter queries
- * queryClient.invalidateQueries({ queryKey: queryKeys.newsletters.all })
+ * // Invalidate all content queries
+ * queryClient.invalidateQueries({ queryKey: queryKeys.contents.all })
  */
 
 import type {
-  NewsletterFilters,
   ContentFilters,
   SummaryFilters,
   DigestFilters,
 } from "@/types"
-
-/**
- * Query keys for newsletters
- */
-export const newsletterKeys = {
-  /** Base key for all newsletter queries */
-  all: ["newsletters"] as const,
-
-  /** Key for newsletter lists with optional filters */
-  lists: () => [...newsletterKeys.all, "list"] as const,
-  list: (filters?: NewsletterFilters) =>
-    [...newsletterKeys.lists(), filters] as const,
-
-  /** Key for single newsletter details */
-  details: () => [...newsletterKeys.all, "detail"] as const,
-  detail: (id: string) => [...newsletterKeys.details(), id] as const,
-
-  /** Key for newsletter with its summary */
-  withSummary: (id: string) =>
-    [...newsletterKeys.detail(id), "with-summary"] as const,
-}
 
 /**
  * Query keys for contents (unified content model)
@@ -94,9 +72,9 @@ export const summaryKeys = {
   details: () => [...summaryKeys.all, "detail"] as const,
   detail: (id: string) => [...summaryKeys.details(), id] as const,
 
-  /** Key for summary by newsletter ID */
-  byNewsletter: (newsletterId: string) =>
-    [...summaryKeys.all, "by-newsletter", newsletterId] as const,
+  /** Key for summary by content ID */
+  byContent: (contentId: string) =>
+    [...summaryKeys.all, "by-content", contentId] as const,
 }
 
 /**
@@ -255,7 +233,6 @@ export const systemKeys = {
  * Use this for easy access to all query key factories.
  */
 export const queryKeys = {
-  newsletters: newsletterKeys,
   contents: contentKeys,
   summaries: summaryKeys,
   themes: themeKeys,

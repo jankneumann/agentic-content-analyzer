@@ -7,7 +7,6 @@
 
 import { Route as rootRoute } from "./routes/__root"
 import { IndexRoute } from "./routes/index"
-import { NewslettersRoute } from "./routes/newsletters"
 import { ContentsRoute } from "./routes/contents"
 import { SummariesRoute } from "./routes/summaries"
 import { ThemesRoute } from "./routes/themes"
@@ -37,7 +36,6 @@ const ReviewRouteWithChildren = ReviewRoute.addChildren([
 
 export const routeTree = rootRoute.addChildren([
   IndexRoute,
-  NewslettersRoute,
   ContentsRoute,
   SummariesRoute,
   ThemesRoute,

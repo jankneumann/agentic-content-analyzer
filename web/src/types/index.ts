@@ -5,20 +5,8 @@
  * Import types from here for cleaner imports:
  *
  * @example
- * import { Newsletter, Digest, PodcastScript } from '@/types'
+ * import { Content, Digest, PodcastScript } from '@/types'
  */
-
-// Newsletter types (legacy - use Content types for new code)
-export type {
-  NewsletterSource,
-  NewsletterStatus,
-  ExtractedLink,
-  Newsletter,
-  NewsletterListItem,
-  NewsletterFilters,
-  IngestRequest,
-  IngestResponse,
-} from "./newsletter"
 
 // Content types (unified content model)
 export type {

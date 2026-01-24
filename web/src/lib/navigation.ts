@@ -72,9 +72,6 @@ export const navigation: NavGroup[] = [
   {
     title: "Pipeline",
     items: [
-      // NOTE: Newsletters removed from nav - deprecated in favor of Contents
-      // Route still accessible at /newsletters with deprecation banner
-      // See: openspec/changes/deprecate-newsletter-model/
       {
         title: "Content",
         href: "/contents",
