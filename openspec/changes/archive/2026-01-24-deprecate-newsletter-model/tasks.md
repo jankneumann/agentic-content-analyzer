@@ -156,10 +156,23 @@ Phase 4 (Model Cleanup)        ──── Depends on: Phase 3 + 2 weeks produc
   - `routeTree.gen.ts` auto-regenerated without Newsletter route
 
 ### 4.5 Final Cleanup
-- [ ] 4.5.1 Search codebase for any remaining "newsletter" references
-- [ ] 4.5.2 Update all documentation to remove Newsletter mentions
-- [ ] 4.5.3 Update CLAUDE.md to remove Newsletter guidance
-- [ ] 4.5.4 Archive this proposal
+- [x] 4.5.1 Search codebase for any remaining "newsletter" references
+  - Updated 37+ files with content terminology
+  - Preserved backwards-compatible aliases (NewsletterSummary, NewsletterSummarizer)
+- [x] 4.5.2 Update all documentation to remove Newsletter mentions
+  - Updated ARCHITECTURE.md, DEVELOPMENT.md, MODEL_CONFIGURATION.md
+  - Updated REVIEW_SYSTEM.md, MARKDOWN_PIPELINE_DESIGN.md
+  - Added historical notes to CASE_STUDIES.md
+- [x] 4.5.3 Update CLAUDE.md to remove Newsletter guidance
+  - Removed "Newsletter model is deprecated" gotcha (it's gone, not deprecated)
+- [x] 4.5.4 Archive this proposal
+  - Moved to openspec/changes/archive/2026-01-24-deprecate-newsletter-model/
+
+---
+
+## ✅ PROPOSAL COMPLETE
+
+All phases completed on 2026-01-24. The Newsletter model has been fully removed from the codebase.
 
 ---
 
