@@ -9,6 +9,7 @@ from typing import Any
 
 from src.config import settings
 from src.utils.logging import get_logger
+from src.utils.youtube_links import validate_video_id_format
 
 logger = get_logger(__name__)
 
@@ -77,7 +78,7 @@ class KeyframeExtractor:
 
     def _validate_video_id(self, video_id: str) -> None:
         """Validate video ID format to prevent path traversal and injection."""
-        if not re.match(r"^[a-zA-Z0-9_-]+$", video_id):
+        if not validate_video_id_format(video_id):
             raise ValueError(f"Invalid video ID: {video_id}")
 
     def download_video(self, video_id: str) -> str | None:
