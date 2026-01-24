@@ -41,9 +41,11 @@
   - source_type
   - phash (for deduplication)
   - video_id (for YouTube keyframes)
-- [ ] 1.9 Update foreign keys:
-  - newsletter_summaries.newsletter_id → content_id
-  - document_chunks.source_id → content_id (after search implementation)
+- [x] 1.9 Update foreign keys:
+  - ✅ newsletter_summaries now has dual FKs (newsletter_id + content_id)
+  - ✅ New summaries use content_id, legacy data migrated via scripts
+  - ⏳ Final newsletter_id drop deferred to Phase 10 cleanup
+  - ⏳ document_chunks.source_id → content_id (after search implementation)
 
 ## 2. Content Model
 
@@ -196,7 +198,10 @@
   - All new *ContentIngestionService classes use `generate_markdown_hash()`
   - Deduplication checks by source_type+source_id (exact) and content_hash (cross-source)
   - Links duplicates via `canonical_id` FK
-- [ ] 6.6 Write integration tests for updated ingestion
+- [x] 6.6 Write integration tests for updated ingestion
+  - Created `tests/integration/test_content_ingestion.py` with 12 tests
+  - Tests for Gmail, RSS, YouTube, File ingestion services
+  - Cross-source deduplication tests
 
 ## 8. Processor Updates
 
@@ -245,7 +250,12 @@
   - Updated get_digest() to include new fields
   - Updated generate_digest_task to store new fields
 - [x] 8.5 Register new routes in `src/api/app.py`
-- [ ] 8.6 Write API tests
+- [x] 8.6 Write API tests
+  - Created `tests/api/test_content_api.py` with 34 tests
+  - Tests for CRUD, filtering, pagination, sorting
+  - Tests for duplicate detection/merging, statistics
+  - Tests for ingestion and summarization triggers
+  - Created `tests/api/test_markdown_api.py` with 6 tests
 
 ## 10. Data Migration
 
@@ -339,9 +349,15 @@ Legacy tables (newsletters, documents) are retained as a safety net.
 - [x] 12.2 Test ingestion from all sources (Gmail, RSS, Files, YouTube)
   - All ingestion services tested via API and CLI
   - RSS datetime bug fixed and verified
-- [ ] 12.3 Test summarization with markdown output
-- [ ] 12.4 Test digest creation with markdown output
-- [ ] 12.5 Test API responses
+- [x] 12.3 Test summarization with markdown output
+  - Created `tests/integration/test_markdown_outputs.py::TestSummarizationMarkdownOutput`
+  - Tests for summary markdown generation, theme tag extraction, stored markdown
+- [x] 12.4 Test digest creation with markdown output
+  - Created `tests/integration/test_markdown_outputs.py::TestDigestMarkdownOutput`
+  - Tests for digest markdown generation, theme tags, source content IDs
+- [x] 12.5 Test API responses
+  - Created `tests/api/test_markdown_api.py`
+  - Tests for summary and digest API markdown field responses
 - [ ] 12.6 Test UI rendering of markdown sections
 - [x] 12.7 Validate migrated data integrity
   - Production migration completed successfully
