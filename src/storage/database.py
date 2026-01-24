@@ -35,7 +35,7 @@ def _get_provider() -> "DatabaseProvider":
     global _provider
     if _provider is None:
         _provider = get_provider(
-            database_url=settings.database_url,
+            database_url=settings.get_effective_database_url(),
             provider_override=settings.database_provider,
             supabase_project_ref=settings.supabase_project_ref,
             supabase_db_password=settings.supabase_db_password,

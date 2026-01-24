@@ -161,6 +161,9 @@ class NeonProvider:
         - Serverless cold start considerations
         - Required SSL connections
         - Appropriate timeouts for serverless latency
+
+        Note: statement_timeout cannot be set in connect_args options when using
+        Neon's pooled connections (PgBouncer). Set at session level if needed.
         """
         return {
             "pool_pre_ping": True,  # Essential for serverless connections
@@ -171,7 +174,7 @@ class NeonProvider:
             "echo": False,
             "connect_args": {
                 "sslmode": "require",  # Neon requires SSL
-                "options": "-c statement_timeout=30000",  # 30s query timeout
+                # Note: statement_timeout not supported on pooled connections
             },
         }
 
