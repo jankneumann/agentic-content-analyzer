@@ -112,7 +112,6 @@ def client(db_session) -> Generator[TestClient, None, None]:
 
     # Patch get_db in all route modules and services that use it directly
     with (
-        patch("src.api.newsletter_routes.get_db", mock_get_db),
         patch("src.api.summary_routes.get_db", mock_get_db),
         patch("src.api.digest_routes.get_db", mock_get_db),
         patch("src.api.podcast_routes.get_db", mock_get_db),
