@@ -54,7 +54,7 @@ class NewsletterSummary(Base):
 
     # Relationships
     newsletter = relationship("Newsletter", backref="summary")
-    content = relationship("Content", backref="summary")
+    content = relationship("Content", back_populates="summaries")
 
 
 class SummaryData(BaseModel):

@@ -140,7 +140,7 @@ class Image(Base):  # type: ignore[valid-type, misc]
     source_content: Mapped["Content | None"] = relationship(
         "Content",
         foreign_keys=[source_content_id],
-        backref="images",
+        back_populates="images",
     )
     source_summary: Mapped["NewsletterSummary | None"] = relationship(
         "NewsletterSummary",

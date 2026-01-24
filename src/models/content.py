@@ -14,6 +14,7 @@ Content Sources:
 
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (
@@ -30,6 +31,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, relationship
 
 from src.models.newsletter import Base
+
+if TYPE_CHECKING:
+    from src.models.image import Image
+    from src.models.summary import NewsletterSummary
 
 
 class ContentSource(str, Enum):
@@ -142,8 +147,23 @@ class Content(Base):  # type: ignore[valid-type, misc]
         remote_side="Content.id",
         foreign_keys=[canonical_id],
     )
-    # Note: Summary relationship will be added in Phase 2 when we create
-    # a new Summary model that links to Content instead of Newsletter
+
+    # Content → Summary relationship (one-to-many, typically one summary per content)
+    summaries: Mapped[list["NewsletterSummary"]] = relationship(
+        "NewsletterSummary",
+        back_populates="content",
+        foreign_keys="NewsletterSummary.content_id",
+    )
+
+    # Content → Image relationship (one-to-many for extracted images)
+    images: Mapped[list["Image"]] = relationship(
+        "Image",
+        back_populates="source_content",
+        foreign_keys="Image.source_content_id",
+    )
+
+    # Note: Content → Chunks relationship will be added when DocumentChunk model
+    # is created for search/RAG functionality
 
     # Composite unique constraint on source_type + source_id
     __table_args__ = (

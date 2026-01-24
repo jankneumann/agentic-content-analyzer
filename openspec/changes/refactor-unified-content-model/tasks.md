@@ -51,7 +51,13 @@
 
 - [x] 2.1 Create `src/models/content.py` with Content SQLAlchemy model
 - [x] 2.2 Create ContentSource enum (merge NewsletterSource + new values)
-- [ ] 2.3 Add relationships: Content → Summary, Content → Chunks (deferred to Phase 2)
+- [x] 2.3 Add relationships: Content → Summary, Content → Chunks
+  - Added `Content.summaries` relationship with `back_populates`
+  - Added `Content.images` relationship with `back_populates`
+  - Updated `NewsletterSummary.content` to use `back_populates`
+  - Updated `Image.source_content` to use `back_populates`
+  - Added 6 relationship tests in `test_content.py`
+  - Note: Content → Chunks deferred until DocumentChunk model created
 - [x] 2.4 Create Pydantic schemas:
   - ContentCreate, ContentUpdate, ContentResponse
   - ContentListResponse with pagination
