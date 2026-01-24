@@ -360,7 +360,10 @@ Legacy tables (newsletters, documents) are retained as a safety net.
 - [x] 12.5 Test API responses
   - Created `tests/api/test_markdown_api.py`
   - Tests for summary and digest API markdown field responses
-- [ ] 12.6 Test UI rendering of markdown sections
+- [x] 12.6 Test UI rendering of markdown sections
+  - Fixed summary review navigation (frontend-backend field name mismatch)
+  - Fixed digest sources display (Content join strategy for new model)
+  - Documented learnings in docs/CASE_STUDIES.md
 - [x] 12.7 Validate migrated data integrity
   - Production migration completed successfully
   - 297 contents, 286 summaries, 6 digests migrated
