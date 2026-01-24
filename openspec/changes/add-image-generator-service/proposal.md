@@ -21,11 +21,13 @@ The Image model already has fields for:
   - `generate_for_summary()` - Generate images for newsletter summaries
   - `generate_for_digest()` - Generate images for digests
   - `suggest_images()` - Analyze content and suggest image generation opportunities
-  - Provider abstraction for multiple AI services (OpenAI DALL-E, Stability AI, etc.)
+  - Provider abstraction for multiple AI services
+  - **First implementation**: Google Gemini/Imagen (via Vertex AI)
+  - Future: OpenAI DALL-E, Stability AI
 
 - **Add configuration** for:
-  - Default image generation model
-  - API keys for image providers
+  - Default image generation model (Gemini Imagen)
+  - Google Cloud credentials for Vertex AI
   - Generation parameters (style, quality, size)
 
 - **Integrate with revision workflow**:
@@ -41,8 +43,9 @@ The Image model already has fields for:
   - `src/api/image_routes.py` - API endpoints for generation
   - `src/services/review_service.py` - Integration with review workflow
 - **Dependencies**:
-  - OpenAI Python SDK (for DALL-E)
-  - Optional: Stability AI SDK
+  - Google Cloud Vertex AI SDK (`google-cloud-aiplatform`)
+  - Optional: OpenAI Python SDK (for DALL-E, future)
+  - Optional: Stability AI SDK (future)
 - **Breaking changes**: None (additive feature)
 
 ## Status

@@ -25,8 +25,8 @@
               ┌───────────────┼───────────────┐
               ▼               ▼               ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ OpenAI DALL-E   │ │ Stability AI    │ │ Mock Provider   │
-│ Provider        │ │ Provider        │ │ (Testing)       │
+│ Google Gemini   │ │ OpenAI DALL-E   │ │ Mock Provider   │
+│ Imagen (First)  │ │ (Future)        │ │ (Testing)       │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
                               │
                               ▼
@@ -90,11 +90,19 @@ class ImageGeneratorProvider(ABC):
         pass
 
 
-class OpenAIImageGenerator(ImageGeneratorProvider):
-    """DALL-E 3 image generation provider."""
+class GeminiImageGenerator(ImageGeneratorProvider):
+    """Google Gemini/Imagen image generation provider via Vertex AI."""
 
-    def __init__(self, api_key: str, model: str = "dall-e-3"):
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(
+        self,
+        project_id: str,
+        location: str = "us-central1",
+        model: str = "imagen-3.0-generate-001"
+    ):
+        from google.cloud import aiplatform
+        aiplatform.init(project=project_id, location=location)
+        self.project_id = project_id
+        self.location = location
         self.model = model
 
     async def generate(
@@ -102,19 +110,33 @@ class OpenAIImageGenerator(ImageGeneratorProvider):
         prompt: str,
         params: GenerationParams
     ) -> bytes:
-        response = await self.client.images.generate(
-            model=self.model,
+        from vertexai.preview.vision_models import ImageGenerationModel
+
+        model = ImageGenerationModel.from_pretrained(self.model)
+
+        # Generate image
+        response = await asyncio.to_thread(
+            model.generate_images,
             prompt=prompt,
-            size=params.size,
-            quality=params.quality,
-            style=params.style,
-            response_format="b64_json",
+            number_of_images=1,
+            aspect_ratio=self._size_to_aspect_ratio(params.size),
         )
-        return base64.b64decode(response.data[0].b64_json)
+
+        # Get image bytes
+        return response.images[0]._image_bytes
+
+    def _size_to_aspect_ratio(self, size: str) -> str:
+        """Convert size string to Imagen aspect ratio."""
+        ratios = {
+            "1024x1024": "1:1",
+            "1024x1792": "9:16",
+            "1792x1024": "16:9",
+        }
+        return ratios.get(size, "1:1")
 
     @property
     def model_name(self) -> str:
-        return self.model
+        return f"gemini/{self.model}"
 
 
 class ImageGenerator:
@@ -278,13 +300,17 @@ class Settings(BaseSettings):
 
     # Image Generation
     image_generation_enabled: bool = False
-    image_generation_provider: str = "openai"  # "openai", "stability"
-    image_generation_model: str = "dall-e-3"
+    image_generation_provider: str = "gemini"  # "gemini", "openai", "stability"
+    image_generation_model: str = "imagen-3.0-generate-001"
     image_generation_default_size: str = "1024x1024"
     image_generation_default_quality: str = "standard"
     image_generation_default_style: str = "natural"
 
-    # Provider API Keys
+    # Google Cloud / Vertex AI (primary provider)
+    google_cloud_project: str | None = None
+    google_cloud_location: str = "us-central1"
+
+    # Alternative Provider API Keys (future)
     openai_api_key: str | None = None
     stability_api_key: str | None = None
 ```

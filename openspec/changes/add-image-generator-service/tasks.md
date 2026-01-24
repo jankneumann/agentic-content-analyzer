@@ -4,7 +4,7 @@
 
 - [ ] 1.1 Create `src/services/image_generator.py`:
   - Abstract `ImageGeneratorProvider` base class
-  - `OpenAIImageGenerator` implementation (DALL-E 3)
+  - `GeminiImageGenerator` implementation (Imagen via Vertex AI)
   - Factory function `get_image_generator()`
 - [ ] 1.2 Implement `generate_for_summary(summary, prompt) -> Image`:
   - Accept summary context and generation prompt
@@ -24,14 +24,15 @@
 
 - [ ] 2.1 Add settings to `src/config/settings.py`:
   - `IMAGE_GENERATION_ENABLED: bool` - Feature flag
-  - `IMAGE_GENERATION_PROVIDER: str` - "openai", "stability", etc.
-  - `IMAGE_GENERATION_MODEL: str` - Model ID (e.g., "dall-e-3")
+  - `IMAGE_GENERATION_PROVIDER: str` - "gemini", "openai", "stability"
+  - `IMAGE_GENERATION_MODEL: str` - Model ID (e.g., "imagen-3.0-generate-001")
   - `IMAGE_GENERATION_DEFAULT_SIZE: str` - Default dimensions
   - `IMAGE_GENERATION_DEFAULT_QUALITY: str` - "standard" or "hd"
-  - `IMAGE_GENERATION_DEFAULT_STYLE: str` - "natural" or "vivid"
-- [ ] 2.2 Add API keys to environment:
-  - `OPENAI_API_KEY` (may already exist for Claude)
-  - `STABILITY_API_KEY` (optional)
+  - `IMAGE_GENERATION_DEFAULT_STYLE: str` - Generation style
+- [ ] 2.2 Add credentials to environment:
+  - `GOOGLE_CLOUD_PROJECT` - GCP project ID for Vertex AI
+  - `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON
+  - `OPENAI_API_KEY` (optional, for future DALL-E support)
 
 ## 3. Pydantic Schemas
 
