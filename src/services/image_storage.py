@@ -15,7 +15,7 @@ import hashlib
 import os
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
@@ -138,7 +138,7 @@ class LocalImageStorage(ImageStorageProvider):
         Returns:
             Tuple of (full_path, relative_path)
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         date_dir = f"{now.year}/{now.month:02d}/{now.day:02d}"
 
         # Generate unique filename with UUID prefix (preserves original extension)
@@ -234,6 +234,11 @@ class S3ImageStorage(ImageStorageProvider):
 
     Supports AWS S3, MinIO, and other S3-compatible services.
     Requires boto3 to be installed.
+
+    Authentication methods (in order of precedence):
+    1. Explicit credentials passed to constructor
+    2. Settings (aws_access_key_id, aws_secret_access_key)
+    3. boto3 default credential chain (env vars, ~/.aws/credentials, IAM role)
     """
 
     def __init__(
@@ -241,6 +246,8 @@ class S3ImageStorage(ImageStorageProvider):
         bucket: str | None = None,
         endpoint_url: str | None = None,
         region: str | None = None,
+        access_key_id: str | None = None,
+        secret_access_key: str | None = None,
     ) -> None:
         """
         Initialize S3 storage provider.
@@ -249,10 +256,16 @@ class S3ImageStorage(ImageStorageProvider):
             bucket: S3 bucket name. Defaults to settings.image_storage_bucket
             endpoint_url: Custom endpoint for S3-compatible services
             region: AWS region
+            access_key_id: AWS access key ID (optional, uses boto3 defaults)
+            secret_access_key: AWS secret access key (optional, uses boto3 defaults)
         """
         self.bucket = bucket or getattr(settings, "image_storage_bucket", "newsletter-images")
         self.endpoint_url = endpoint_url or getattr(settings, "s3_endpoint_url", None)
         self.region = region or getattr(settings, "aws_region", "us-east-1")
+        self.access_key_id = access_key_id or getattr(settings, "aws_access_key_id", None)
+        self.secret_access_key = secret_access_key or getattr(
+            settings, "aws_secret_access_key", None
+        )
         self._client = None
         logger.debug(f"S3ImageStorage initialized for bucket {self.bucket}")
 
@@ -264,19 +277,27 @@ class S3ImageStorage(ImageStorageProvider):
                 import boto3
             except ImportError:
                 raise ImportError(
-                    "boto3 is required for S3 storage. " "Install with: pip install boto3"
+                    "boto3 is required for S3 storage. Install with: pip install boto3"
                 )
 
-            self._client = boto3.client(
-                "s3",
-                endpoint_url=self.endpoint_url,
-                region_name=self.region,
-            )
+            # Build client kwargs
+            client_kwargs: dict[str, str | None] = {
+                "region_name": self.region,
+            }
+            if self.endpoint_url:
+                client_kwargs["endpoint_url"] = self.endpoint_url
+
+            # Only pass credentials if explicitly provided
+            if self.access_key_id and self.secret_access_key:
+                client_kwargs["aws_access_key_id"] = self.access_key_id
+                client_kwargs["aws_secret_access_key"] = self.secret_access_key
+
+            self._client = boto3.client("s3", **client_kwargs)
         return self._client
 
     def _generate_key(self, filename: str) -> str:
         """Generate S3 key with date-based organization."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         date_prefix = f"{now.year}/{now.month:02d}/{now.day:02d}"
         unique_filename = f"{uuid.uuid4().hex[:12]}_{filename}"
         return f"images/{date_prefix}/{unique_filename}"
@@ -356,23 +377,178 @@ class S3ImageStorage(ImageStorageProvider):
         return "s3"
 
 
-def get_image_storage() -> ImageStorageProvider:
+class SupabaseImageStorage(S3ImageStorage):
+    """Supabase Storage provider using S3-compatible API.
+
+    Supabase Storage exposes an S3-compatible endpoint for each project.
+    This provider configures the S3 client with Supabase-specific settings.
+
+    Configuration:
+    - Endpoint: https://{project_ref}.supabase.co/storage/v1/s3
+    - Access Key ID: From SUPABASE_ACCESS_KEY_ID
+    - Secret Access Key: From SUPABASE_SECRET_ACCESS_KEY
+
+    Credentials can be obtained from:
+    Supabase Dashboard > Project Settings > API > S3 Access Keys
+    """
+
+    def __init__(
+        self,
+        bucket: str | None = None,
+        project_ref: str | None = None,
+        access_key_id: str | None = None,
+        secret_access_key: str | None = None,
+        region: str | None = None,
+        public: bool | None = None,
+    ) -> None:
+        """
+        Initialize Supabase storage provider.
+
+        Args:
+            bucket: Storage bucket name. Defaults to settings.supabase_storage_bucket
+            project_ref: Supabase project reference. Defaults to settings.supabase_project_ref
+            access_key_id: S3 access key ID. Defaults to settings.supabase_access_key_id
+            secret_access_key: S3 secret access key. Defaults to settings.supabase_secret_access_key
+            region: Supabase region. Defaults to settings.supabase_region
+            public: Whether bucket is public. Defaults to settings.supabase_storage_public
+        """
+        self._project_ref = project_ref or getattr(settings, "supabase_project_ref", None)
+        self._access_key_id = access_key_id or getattr(settings, "supabase_access_key_id", None)
+        self._secret_access_key = secret_access_key or getattr(
+            settings, "supabase_secret_access_key", None
+        )
+        self._supabase_region = region or getattr(settings, "supabase_region", "us-east-1")
+        self._is_public = (
+            public if public is not None else getattr(settings, "supabase_storage_public", False)
+        )
+
+        if not self._project_ref:
+            raise ValueError(
+                "Supabase project reference is required. "
+                "Set SUPABASE_PROJECT_REF in environment."
+            )
+
+        if not self._access_key_id or not self._secret_access_key:
+            raise ValueError(
+                "Supabase S3 access credentials are required for storage. "
+                "Set SUPABASE_ACCESS_KEY_ID and SUPABASE_SECRET_ACCESS_KEY in environment. "
+                "Get these from Supabase Dashboard > Project Settings > API > S3 Access Keys."
+            )
+
+        # Construct Supabase S3 endpoint
+        endpoint_url = f"https://{self._project_ref}.supabase.co/storage/v1/s3"
+        bucket_name = bucket or getattr(settings, "supabase_storage_bucket", "images")
+
+        # Initialize parent S3 client with Supabase credentials
+        super().__init__(
+            bucket=bucket_name,
+            endpoint_url=endpoint_url,
+            region=self._supabase_region,
+            access_key_id=self._access_key_id,
+            secret_access_key=self._secret_access_key,
+        )
+
+        logger.debug(
+            f"SupabaseImageStorage initialized for project {self._project_ref}, "
+            f"bucket {bucket_name}"
+        )
+
+    def get_url(self, path: str) -> str:
+        """Get public or authenticated URL for Supabase image.
+
+        For public buckets, returns the direct public URL.
+        For private buckets, returns a URL that requires authentication.
+
+        Args:
+            path: Storage path (key) of the image
+
+        Returns:
+            URL string for accessing the image
+        """
+        if self._is_public:
+            # Public bucket URL format
+            return (
+                f"https://{self._project_ref}.supabase.co/storage/v1/object/public/"
+                f"{self.bucket}/{path}"
+            )
+        else:
+            # Authenticated bucket URL format (requires auth header)
+            return (
+                f"https://{self._project_ref}.supabase.co/storage/v1/object/authenticated/"
+                f"{self.bucket}/{path}"
+            )
+
+    async def get_signed_url(self, path: str, expires_in: int = 3600) -> str:
+        """Generate a signed URL for temporary access to private objects.
+
+        Args:
+            path: Storage path (key) of the image
+            expires_in: URL expiration time in seconds (default: 1 hour)
+
+        Returns:
+            Pre-signed URL with temporary access
+        """
+
+        def _generate_presigned() -> str:
+            return self.client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket, "Key": path},
+                ExpiresIn=expires_in,
+            )
+
+        return await asyncio.to_thread(_generate_presigned)
+
+    async def create_bucket_if_not_exists(self) -> bool:
+        """Create the storage bucket if it doesn't exist.
+
+        Returns:
+            True if bucket was created, False if it already existed
+        """
+
+        def _create_bucket() -> bool:
+            try:
+                self.client.head_bucket(Bucket=self.bucket)
+                return False  # Bucket exists
+            except Exception:
+                # Bucket doesn't exist, create it
+                self.client.create_bucket(Bucket=self.bucket)
+                logger.info(f"Created Supabase storage bucket: {self.bucket}")
+                return True
+
+        return await asyncio.to_thread(_create_bucket)
+
+    @property
+    def provider_name(self) -> str:
+        return "supabase"
+
+
+def get_image_storage(provider: str | None = None) -> ImageStorageProvider:
     """
     Get configured image storage provider.
 
     Returns provider based on IMAGE_STORAGE_PROVIDER setting:
     - "local" (default): LocalImageStorage
     - "s3": S3ImageStorage
+    - "supabase": SupabaseImageStorage
+
+    Args:
+        provider: Override the configured provider (optional)
 
     Returns:
         ImageStorageProvider instance
-    """
-    provider = getattr(settings, "image_storage_provider", "local")
 
-    if provider == "s3":
-        return S3ImageStorage()
-    else:
-        return LocalImageStorage()
+    Raises:
+        ValueError: If Supabase provider is requested but not configured
+    """
+    provider = provider or getattr(settings, "image_storage_provider", "local")
+
+    match provider:
+        case "s3":
+            return S3ImageStorage()
+        case "supabase":
+            return SupabaseImageStorage()
+        case _:  # "local" or any other value
+            return LocalImageStorage()
 
 
 def compute_file_hash(data: bytes) -> str:

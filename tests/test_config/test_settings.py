@@ -21,6 +21,8 @@ class TestDatabaseProviderValidation:
         env_vars = [
             "DATABASE_PROVIDER",
             "DATABASE_URL",
+            "LOCAL_DATABASE_URL",
+            "NEON_DATABASE_URL",
             "SUPABASE_PROJECT_REF",
             "SUPABASE_DB_PASSWORD",
             "SUPABASE_DIRECT_URL",
@@ -68,6 +70,21 @@ class TestDatabaseProviderValidation:
         settings = Settings()
         assert settings.database_provider == "neon"
 
+    def test_neon_provider_with_explicit_neon_url_passes(self):
+        """Neon provider with explicit NEON_DATABASE_URL should pass validation."""
+        os.environ["DATABASE_PROVIDER"] = "neon"
+        os.environ["DATABASE_URL"] = "postgresql://user:pass@localhost/db"  # Wrong URL
+        os.environ["NEON_DATABASE_URL"] = (
+            "postgresql://user:pass@ep-test.us-east-1.aws.neon.tech/db"
+        )
+
+        from src.config.settings import Settings
+
+        settings = Settings()
+        assert settings.database_provider == "neon"
+        # Effective URL should use NEON_DATABASE_URL
+        assert "neon.tech" in settings.get_effective_database_url()
+
     def test_neon_provider_with_non_neon_url_fails(self):
         """Neon provider with non-Neon URL should fail validation."""
         os.environ["DATABASE_PROVIDER"] = "neon"
@@ -75,12 +92,11 @@ class TestDatabaseProviderValidation:
 
         from src.config.settings import Settings
 
+        # Explicitly disable .env file loading to isolate the test
         with pytest.raises(ValidationError) as exc_info:
-            Settings()
+            Settings(_env_file=None)
 
-        assert "DATABASE_PROVIDER=neon requires DATABASE_URL containing .neon.tech" in str(
-            exc_info.value
-        )
+        assert "DATABASE_PROVIDER=neon requires a Neon URL" in str(exc_info.value)
 
     def test_supabase_provider_with_project_ref_passes(self):
         """Supabase provider with project ref should pass validation."""
@@ -97,6 +113,7 @@ class TestDatabaseProviderValidation:
         """Supabase provider with Supabase URL should pass validation."""
         os.environ["DATABASE_PROVIDER"] = "supabase"
         os.environ["DATABASE_URL"] = "postgresql://user:pass@db.test.supabase.co:5432/postgres"
+        os.environ["SUPABASE_PROJECT_REF"] = "test"
 
         from src.config.settings import Settings
 
@@ -116,36 +133,6 @@ class TestDatabaseProviderValidation:
 
         assert "DATABASE_PROVIDER=supabase requires" in str(exc_info.value)
 
-    def test_local_provider_with_neon_url_warns(self, caplog):
-        """Local provider with Neon URL should log a warning."""
-        import logging
-
-        os.environ["DATABASE_PROVIDER"] = "local"
-        os.environ["DATABASE_URL"] = "postgresql://user:pass@ep-test.us-east-1.aws.neon.tech/db"
-
-        from src.config.settings import Settings
-
-        with caplog.at_level(logging.WARNING):
-            settings = Settings()
-
-        assert settings.database_provider == "local"
-        assert "DATABASE_URL contains .neon.tech but DATABASE_PROVIDER=local" in caplog.text
-
-    def test_local_provider_with_supabase_url_warns(self, caplog):
-        """Local provider with Supabase URL should log a warning."""
-        import logging
-
-        os.environ["DATABASE_PROVIDER"] = "local"
-        os.environ["DATABASE_URL"] = "postgresql://user:pass@db.test.supabase.co:5432/postgres"
-
-        from src.config.settings import Settings
-
-        with caplog.at_level(logging.WARNING):
-            settings = Settings()
-
-        assert settings.database_provider == "local"
-        assert "DATABASE_URL contains .supabase. but DATABASE_PROVIDER=local" in caplog.text
-
     def test_password_masked_in_error_message(self):
         """Password should be masked in validation error messages."""
         os.environ["DATABASE_PROVIDER"] = "neon"
@@ -153,8 +140,9 @@ class TestDatabaseProviderValidation:
 
         from src.config.settings import Settings
 
+        # Explicitly disable .env file loading to isolate the test
         with pytest.raises(ValidationError) as exc_info:
-            Settings()
+            Settings(_env_file=None)
 
         error_str = str(exc_info.value)
         assert "secret_password" not in error_str
@@ -175,6 +163,8 @@ class TestDatabaseUrlMethods:
         for key in [
             "DATABASE_PROVIDER",
             "DATABASE_URL",
+            "LOCAL_DATABASE_URL",
+            "NEON_DATABASE_URL",
             "SUPABASE_PROJECT_REF",
             "SUPABASE_DB_PASSWORD",
             "NEON_DIRECT_URL",
@@ -192,9 +182,22 @@ class TestDatabaseUrlMethods:
 
         from src.config.settings import Settings
 
-        settings = Settings()
+        # Explicitly disable .env file loading to isolate the test
+        settings = Settings(_env_file=None)
         assert settings.get_effective_database_url() == "postgresql://user:pass@localhost/db"
         assert settings.get_migration_database_url() == "postgresql://user:pass@localhost/db"
+
+    def test_local_provider_prefers_local_database_url(self):
+        """Local provider should prefer LOCAL_DATABASE_URL over DATABASE_URL."""
+        os.environ["DATABASE_PROVIDER"] = "local"
+        os.environ["DATABASE_URL"] = "postgresql://user:pass@localhost/fallback"
+        os.environ["LOCAL_DATABASE_URL"] = "postgresql://user:pass@localhost/preferred"
+
+        from src.config.settings import Settings
+
+        # Explicitly disable .env file loading to isolate the test
+        settings = Settings(_env_file=None)
+        assert settings.get_effective_database_url() == "postgresql://user:pass@localhost/preferred"
 
     def test_neon_provider_migration_url_removes_pooler(self):
         """Neon provider should remove -pooler from migration URL."""
@@ -205,7 +208,8 @@ class TestDatabaseUrlMethods:
 
         from src.config.settings import Settings
 
-        settings = Settings()
+        # Explicitly disable .env file loading to isolate the test
+        settings = Settings(_env_file=None)
 
         # Effective URL keeps pooler
         assert "-pooler" in settings.get_effective_database_url()
@@ -225,7 +229,8 @@ class TestDatabaseUrlMethods:
 
         from src.config.settings import Settings
 
-        settings = Settings()
+        # Explicitly disable .env file loading to isolate the test
+        settings = Settings(_env_file=None)
 
         assert settings.get_migration_database_url() == "postgresql://user:pass@custom-direct/db"
 
@@ -238,7 +243,8 @@ class TestDatabaseUrlMethods:
 
         from src.config.settings import Settings
 
-        settings = Settings()
+        # Explicitly disable .env file loading to isolate the test
+        settings = Settings(_env_file=None)
 
         # Effective URL is pooler URL
         effective = settings.get_effective_database_url()

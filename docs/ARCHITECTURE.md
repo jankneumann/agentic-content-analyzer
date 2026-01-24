@@ -7,12 +7,15 @@
 - **Databases**:
   - PostgreSQL + SQLAlchemy (structured data: newsletters, summaries, digests)
   - Graphiti + Neo4j (knowledge graph: concepts, themes, temporal relationships)
+- **Storage**:
+  - **Database Providers**: Local PostgreSQL, Supabase (cloud), Neon (serverless/branching)
+  - **Image Storage**: Local filesystem, AWS S3, Supabase Storage (S3-compatible)
 - **Agent Frameworks**: Multi-framework approach for comparison
   - Claude SDK (Anthropic) - Primary
   - OpenAI SDK (Agents/Assistants API)
   - Google ADK (Agent Development Kit)
   - Microsoft Agent Framework (Semantic Kernel or AutoGen)
-- **Ingestion**: Gmail API, feedparser (RSS)
+- **Ingestion**: Gmail API, feedparser (RSS), YouTube Data API
 - **Task Queue**: Celery + Redis
 - **Web**: FastAPI (APIs, web UI)
 - **Testing**: pytest

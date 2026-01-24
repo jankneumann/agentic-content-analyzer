@@ -93,6 +93,10 @@ Three PostgreSQL providers are supported. **Set `DATABASE_PROVIDER` explicitly**
 # .env - explicit provider selection (required for cloud)
 DATABASE_PROVIDER=neon  # or "supabase" or "local"
 DATABASE_URL=postgresql://...
+
+# Optional: Provider-specific URL overrides (take precedence over DATABASE_URL)
+# LOCAL_DATABASE_URL=postgresql://...   # Override for local
+# NEON_DATABASE_URL=postgresql://...    # Override for neon
 ```
 
 **Neon Branching for Agents**: Create isolated database branches for feature work or testing:
@@ -109,6 +113,38 @@ neonctl branches delete claude/feature-xyz
 
 See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-postgresql-bring-your-own) for full setup.
 
+## Image Storage Providers
+
+Three image storage providers are supported for extracted images (from newsletters, YouTube keyframes, etc.):
+
+| Provider | `IMAGE_STORAGE_PROVIDER` | Use Case |
+|----------|--------------------------|----------|
+| Local | `local` (default) | Development, local storage |
+| S3 | `s3` | AWS S3 or S3-compatible (MinIO) |
+| Supabase | `supabase` | Supabase Storage (S3-compatible) |
+
+```bash
+# .env - Local storage (default)
+IMAGE_STORAGE_PROVIDER=local
+IMAGE_STORAGE_PATH=data/images
+
+# .env - S3 storage
+IMAGE_STORAGE_PROVIDER=s3
+IMAGE_STORAGE_BUCKET=newsletter-images
+AWS_REGION=us-east-1
+
+# .env - Supabase storage (uses S3-compatible API)
+IMAGE_STORAGE_PROVIDER=supabase
+SUPABASE_STORAGE_BUCKET=images
+SUPABASE_ACCESS_KEY_ID=your-access-key      # From Dashboard > Settings > API > S3 Access Keys
+SUPABASE_SECRET_ACCESS_KEY=your-secret-key  # From Dashboard > Settings > API > S3 Access Keys
+SUPABASE_STORAGE_PUBLIC=false               # true for public URLs
+```
+
+**Important**: Supabase Storage uses S3-compatible credentials (not the service role key). Get these from **Supabase Dashboard > Project Settings > API > S3 Access Keys**.
+
+See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional) for full setup.
+
 ## Critical Gotchas
 
 ⚠️ **These will bite you if ignored:**
@@ -123,6 +159,10 @@ See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-pos
 | Neon first connection slow | Scale-to-zero may take 2-5s to wake up; increase timeout |
 | Supabase free tier IPv6 only | Direct connections use IPv6; use pooler if on IPv4-only network |
 | DATABASE_PROVIDER required for cloud | Must explicitly set `DATABASE_PROVIDER=supabase` or `neon` |
+| Supabase Storage uses S3 API | Use `SUPABASE_ACCESS_KEY_ID`/`SUPABASE_SECRET_ACCESS_KEY`, NOT service role key |
+| datetime.utcnow() is deprecated | Use `datetime.now(UTC)` instead (Python 3.12+) |
+| Settings tests pick up .env | Pass `_env_file=None` to `Settings()` to isolate tests |
+| Pydantic property vs field conflict | Don't make a property with same name as a field in Pydantic models |
 
 ## Quick Links by Task
 
@@ -142,6 +182,11 @@ See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-pos
 - Database provider tests: [docs/DEVELOPMENT.md#database-provider-testing](docs/DEVELOPMENT.md#database-provider-testing)
 - Neon integration tests: [docs/SETUP.md#test-architecture](docs/SETUP.md#test-architecture)
 - Supabase integration tests: [docs/SETUP.md#supabase-test-architecture](docs/SETUP.md#supabase-test-architecture)
+
+### Storage & Infrastructure
+- Image storage configuration: [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional)
+- Database providers: [docs/SETUP.md#environment-configuration](docs/SETUP.md#environment-configuration)
+- Supabase storage setup: [docs/SETUP.md#supabase-storage-setup](docs/SETUP.md#supabase-storage-setup)
 
 ### Review & Delivery
 - Digest review workflow: [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md)

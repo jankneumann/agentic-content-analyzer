@@ -466,8 +466,9 @@ neonctl branches delete <branch-name> --project-id $NEON_PROJECT_ID
 ### Required Variables
 
 ```bash
-# Databases
-DATABASE_URL=postgresql://localhost/newsletters
+# Databases - DATABASE_URL is the primary connection URL
+# Provider-specific URLs (LOCAL_DATABASE_URL, NEON_DATABASE_URL) override DATABASE_URL when set
+DATABASE_URL=postgresql://localhost/newsletters  # Default connection URL
 REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
 NEO4J_USER=neo4j
@@ -503,6 +504,8 @@ See [Supabase Cloud Database](#supabase-cloud-database-bring-your-own) for setup
 # Neon Serverless PostgreSQL (alternative to local or Supabase)
 DATABASE_PROVIDER=neon                   # Required: explicit provider selection
 DATABASE_URL=postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/dbname
+# Or use explicit override:
+# NEON_DATABASE_URL=postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/dbname
 NEON_API_KEY=neon_api_key_...            # API key for branch management (optional)
 NEON_PROJECT_ID=proud-paper-123456       # Project ID for branch management (optional)
 NEON_DEFAULT_BRANCH=main                 # Default parent branch (default: main)
@@ -511,6 +514,51 @@ NEON_DIRECT_URL=...                      # Direct connection for migrations (opt
 ```
 
 See [Neon Serverless PostgreSQL](#neon-serverless-postgresql-bring-your-own) for setup instructions.
+
+### Image Storage Variables (Optional)
+
+The newsletter aggregator can store extracted images from content (newsletter images, YouTube keyframes, etc.). Three storage providers are supported:
+
+```bash
+# Image Storage Provider: "local" (default), "s3", or "supabase"
+IMAGE_STORAGE_PROVIDER=local
+
+# Local Storage (default - good for development)
+IMAGE_STORAGE_PATH=data/images           # Local directory for images (default: data/images)
+
+# S3 Storage (for AWS S3 or S3-compatible services like MinIO)
+IMAGE_STORAGE_PROVIDER=s3
+IMAGE_STORAGE_BUCKET=newsletter-images   # S3 bucket name
+AWS_REGION=us-east-1                     # AWS region (default: us-east-1)
+AWS_ACCESS_KEY_ID=...                    # Optional - uses boto3 defaults if not set
+AWS_SECRET_ACCESS_KEY=...                # Optional - uses boto3 defaults if not set
+S3_ENDPOINT_URL=...                      # Optional - for S3-compatible services (MinIO, etc.)
+
+# Supabase Storage (uses Supabase's S3-compatible object storage)
+IMAGE_STORAGE_PROVIDER=supabase
+SUPABASE_STORAGE_BUCKET=images           # Supabase bucket name (default: images)
+SUPABASE_ACCESS_KEY_ID=xxx               # S3 access key ID (from Supabase Dashboard)
+SUPABASE_SECRET_ACCESS_KEY=xxx           # S3 secret access key (from Supabase Dashboard)
+SUPABASE_STORAGE_PUBLIC=false            # Whether bucket is public (default: false)
+# Note: Also requires SUPABASE_PROJECT_REF and SUPABASE_REGION from database config
+
+# Common Settings
+IMAGE_MAX_SIZE_MB=10                     # Maximum image file size (default: 10MB)
+ENABLE_IMAGE_EXTRACTION=true             # Enable extraction from HTML/PDF (default: true)
+ENABLE_YOUTUBE_KEYFRAMES=false           # Enable YouTube keyframe extraction (default: false)
+```
+
+#### Supabase Storage Setup
+
+1. In Supabase Dashboard, go to **Storage** > **New bucket**
+2. Create a bucket named `images` (or your preferred name)
+3. Set bucket privacy (public for direct URLs, private for authenticated access)
+4. Go to **Project Settings > API > S3 Access Keys**
+5. Generate S3 access keys and add to your `.env`:
+   - `SUPABASE_ACCESS_KEY_ID`
+   - `SUPABASE_SECRET_ACCESS_KEY`
+
+> **Note**: S3 access keys provide full storage access. Keep them secure and never expose them to clients.
 
 ### Optional Variables
 

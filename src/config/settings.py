@@ -32,9 +32,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Database
+    # DATABASE_URL is the primary connection URL (backward compatible)
+    # Provider-specific URLs (LOCAL_DATABASE_URL, NEON_DATABASE_URL) take precedence when set
     database_url: str = (
         "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
     )
+    local_database_url: str | None = None  # Override for local provider
+    neon_database_url: str | None = None  # Override for neon provider
     redis_url: str = "redis://localhost:6379/0"
 
     # Database Provider Configuration
@@ -63,6 +67,12 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "newsletter_password"
     semaphore_limit: int = 1  # Graphiti concurrency limit for LLM API calls
+
+    # Test Database Configuration (for integration tests)
+    test_database_url: str | None = None
+    test_neo4j_uri: str | None = None
+    test_neo4j_user: str | None = None
+    test_neo4j_password: str | None = None
 
     # Agent Framework API Keys
     anthropic_api_key: str
@@ -105,12 +115,26 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 50  # Maximum file upload size
 
     # Image Storage Configuration
-    image_storage_provider: str = "local"  # "local" or "s3"
+    image_storage_provider: str = "local"  # "local", "s3", or "supabase"
     image_storage_path: str = "data/images"  # Local storage directory
-    image_storage_bucket: str = "newsletter-images"  # S3 bucket name
+    image_storage_bucket: str = "newsletter-images"  # S3/Supabase bucket name
     image_max_size_mb: int = 10  # Maximum image file size
     enable_image_extraction: bool = True  # Enable extraction from HTML/PDF
     enable_youtube_keyframes: bool = False  # Enable YouTube keyframe extraction
+
+    # S3 Storage Configuration (for image_storage_provider="s3")
+    s3_endpoint_url: str | None = None  # Custom endpoint for S3-compatible services
+    aws_region: str = "us-east-1"  # AWS region for S3
+    aws_access_key_id: str | None = None  # AWS access key (uses boto3 defaults if not set)
+    aws_secret_access_key: str | None = None  # AWS secret key (uses boto3 defaults if not set)
+
+    # Supabase Storage Configuration (for image_storage_provider="supabase")
+    # Requires supabase_project_ref from database config
+    supabase_storage_bucket: str = "images"  # Supabase storage bucket name
+    supabase_service_role_key: str | None = None  # Service role key (legacy, use access keys)
+    supabase_access_key_id: str | None = None  # Supabase S3 access key ID
+    supabase_secret_access_key: str | None = None  # Supabase S3 secret access key
+    supabase_storage_public: bool = False  # Whether bucket is public (affects URL generation)
 
     # Email Delivery
     sendgrid_api_key: str | None = None
@@ -152,38 +176,31 @@ class Settings(BaseSettings):
     def validate_database_provider_config(self) -> "Settings":
         """Validate database provider configuration at startup.
 
-        Ensures the configured provider matches the DATABASE_URL pattern
-        and required provider-specific settings are present.
+        Ensures the configured provider has the required URL configured.
+        Provider-specific URLs (NEON_DATABASE_URL, LOCAL_DATABASE_URL) take precedence
+        over the generic DATABASE_URL when set.
 
         Raises:
             ValueError: If provider configuration is invalid
         """
         match self.database_provider:
             case "neon":
-                if ".neon.tech" not in self.database_url:
+                # Check neon_database_url first, then database_url
+                effective_url = self.neon_database_url or self.database_url
+                if ".neon.tech" not in effective_url:
                     raise ValueError(
-                        f"DATABASE_PROVIDER=neon requires DATABASE_URL containing .neon.tech. "
-                        f"Got: {self._mask_url(self.database_url)}"
+                        f"DATABASE_PROVIDER=neon requires a Neon URL containing .neon.tech. "
+                        f"Set NEON_DATABASE_URL or DATABASE_URL appropriately. "
+                        f"Got: {self._mask_url(effective_url)}"
                     )
             case "supabase":
-                has_supabase_config = self.supabase_project_ref or ".supabase." in self.database_url
-                if not has_supabase_config:
+                if not self.supabase_project_ref:
                     raise ValueError(
-                        "DATABASE_PROVIDER=supabase requires SUPABASE_PROJECT_REF "
-                        "or DATABASE_URL containing .supabase."
+                        "DATABASE_PROVIDER=supabase requires SUPABASE_PROJECT_REF to be set."
                     )
             case "local":
-                # Warn if URL looks like a cloud provider but local is selected
-                if ".neon.tech" in self.database_url:
-                    logger.warning(
-                        "DATABASE_URL contains .neon.tech but DATABASE_PROVIDER=local. "
-                        "Set DATABASE_PROVIDER=neon to use Neon features (branching, etc.)."
-                    )
-                elif ".supabase." in self.database_url:
-                    logger.warning(
-                        "DATABASE_URL contains .supabase. but DATABASE_PROVIDER=local. "
-                        "Set DATABASE_PROVIDER=supabase to use Supabase features."
-                    )
+                # Local provider uses local_database_url or database_url
+                pass
         return self
 
     def _mask_url(self, url: str) -> str:
@@ -235,10 +252,10 @@ class Settings(BaseSettings):
     def get_effective_database_url(self) -> str:
         """Get the effective database URL based on provider configuration.
 
-        Returns the appropriate connection URL for the configured provider:
-        - Local: Returns DATABASE_URL directly
+        Provider-specific URLs take precedence over database_url when set:
+        - Local: LOCAL_DATABASE_URL > DATABASE_URL
         - Supabase: Constructs pooler URL from components, or uses DATABASE_URL
-        - Neon: Returns DATABASE_URL (pooler conversion handled by NeonProvider)
+        - Neon: NEON_DATABASE_URL > DATABASE_URL
 
         Returns:
             The database connection URL to use
@@ -247,13 +264,12 @@ class Settings(BaseSettings):
             case "supabase":
                 return self._get_supabase_pooler_url()
             case "neon":
-                # Neon provider handles pooler URL internally
-                return self.database_url
+                return self.neon_database_url or self.database_url
             case _:  # "local" or any other value
-                return self.database_url
+                return self.local_database_url or self.database_url
 
     def _get_supabase_pooler_url(self) -> str:
-        """Construct Supabase pooler URL from components or return DATABASE_URL."""
+        """Construct Supabase pooler URL from components."""
         if self.supabase_project_ref and self.supabase_db_password:
             port = 6543 if self.supabase_pooler_mode == "transaction" else 5432
             return (
@@ -279,7 +295,7 @@ class Settings(BaseSettings):
             case "neon":
                 return self._get_neon_direct_url()
             case _:  # "local" or any other value
-                return self.database_url
+                return self.local_database_url or self.database_url
 
     def _get_supabase_direct_url(self) -> str:
         """Get Supabase direct URL for migrations (bypasses pooler)."""
@@ -294,7 +310,7 @@ class Settings(BaseSettings):
                 f"db.{self.supabase_project_ref}.supabase.co:5432/postgres"
             )
 
-        # Fall back to DATABASE_URL
+        # Fall back to database_url
         return self.database_url
 
     def _get_neon_direct_url(self) -> str:
@@ -303,12 +319,14 @@ class Settings(BaseSettings):
         if self.neon_direct_url:
             return self.neon_direct_url
 
+        neon_url = self.neon_database_url or self.database_url
+
         # Convert pooled URL to direct by removing -pooler suffix
-        if "-pooler." in self.database_url:
-            return self.database_url.replace("-pooler.", ".")
+        if "-pooler." in neon_url:
+            return neon_url.replace("-pooler.", ".")
 
         # URL is already direct
-        return self.database_url
+        return neon_url
 
     def get_youtube_api_key(self) -> str | None:
         """

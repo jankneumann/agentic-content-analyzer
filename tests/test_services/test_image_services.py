@@ -23,6 +23,8 @@ from src.services.image_extractor import (
 )
 from src.services.image_storage import (
     LocalImageStorage,
+    S3ImageStorage,
+    SupabaseImageStorage,
     compute_file_hash,
     get_image_storage,
 )
@@ -188,6 +190,387 @@ class TestGetImageStorage:
         """Create a temporary directory for storage tests."""
         with tempfile.TemporaryDirectory() as tmpdir:
             yield tmpdir
+
+
+class TestS3ImageStorage:
+    """Tests for S3ImageStorage provider."""
+
+    def test_initialization_with_defaults(self):
+        """Test S3 storage initializes with default settings."""
+        with patch("src.services.image_storage.settings") as mock_settings:
+            mock_settings.image_storage_bucket = "test-bucket"
+            mock_settings.s3_endpoint_url = None
+            mock_settings.aws_region = "us-west-2"
+            mock_settings.aws_access_key_id = None
+            mock_settings.aws_secret_access_key = None
+
+            storage = S3ImageStorage()
+
+            assert storage.bucket == "test-bucket"
+            assert storage.region == "us-west-2"
+            assert storage.endpoint_url is None
+
+    def test_initialization_with_custom_endpoint(self):
+        """Test S3 storage with custom endpoint (MinIO, etc.)."""
+        storage = S3ImageStorage(
+            bucket="minio-bucket",
+            endpoint_url="http://localhost:9000",
+            region="us-east-1",
+            access_key_id="minioadmin",
+            secret_access_key="minioadmin",
+        )
+
+        assert storage.bucket == "minio-bucket"
+        assert storage.endpoint_url == "http://localhost:9000"
+        assert storage.access_key_id == "minioadmin"
+        assert storage.secret_access_key == "minioadmin"
+
+    def test_generate_key_creates_date_path(self):
+        """Test that _generate_key creates date-based paths."""
+        storage = S3ImageStorage(
+            bucket="test",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        key = storage._generate_key("test.jpg")
+
+        assert key.startswith("images/")
+        parts = key.split("/")
+        assert len(parts) == 5  # images/YYYY/MM/DD/uuid_filename
+        assert parts[0] == "images"
+        assert "test.jpg" in key
+
+    def test_get_url_standard_s3(self):
+        """Test URL generation for standard AWS S3."""
+        storage = S3ImageStorage(
+            bucket="my-bucket",
+            region="eu-west-1",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        url = storage.get_url("images/2025/01/15/test.jpg")
+
+        assert url == "https://my-bucket.s3.eu-west-1.amazonaws.com/images/2025/01/15/test.jpg"
+
+    def test_get_url_custom_endpoint(self):
+        """Test URL generation for custom S3-compatible endpoint."""
+        storage = S3ImageStorage(
+            bucket="my-bucket",
+            endpoint_url="https://s3.custom.com",
+            region="us-east-1",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        url = storage.get_url("images/2025/01/15/test.jpg")
+
+        assert url == "https://s3.custom.com/my-bucket/images/2025/01/15/test.jpg"
+
+    def test_provider_name(self):
+        """Test provider_name returns 's3'."""
+        storage = S3ImageStorage(
+            bucket="test",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        assert storage.provider_name == "s3"
+
+    @pytest.mark.asyncio
+    async def test_save_calls_put_object(self):
+        """Test that save calls S3 put_object."""
+        storage = S3ImageStorage(
+            bucket="test-bucket",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        # Mock the boto3 client
+        mock_client = AsyncMock()
+        mock_client.put_object = lambda **kwargs: None
+        storage._client = mock_client
+
+        with patch.object(storage, "_generate_key", return_value="images/2025/01/15/test.jpg"):
+            with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+                mock_thread.return_value = None
+                path = await storage.save(b"test data", "test.jpg", "image/jpeg")
+
+                assert path == "images/2025/01/15/test.jpg"
+                mock_thread.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_calls_get_object(self):
+        """Test that get calls S3 get_object."""
+        storage = S3ImageStorage(
+            bucket="test-bucket",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        # Mock the boto3 client
+        mock_body = AsyncMock()
+        mock_body.read.return_value = b"image data"
+        mock_client = AsyncMock()
+        mock_client.get_object.return_value = {"Body": mock_body}
+        storage._client = mock_client
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = b"image data"
+            data = await storage.get("images/2025/01/15/test.jpg")
+
+            assert data == b"image data"
+
+    @pytest.mark.asyncio
+    async def test_exists_calls_head_object(self):
+        """Test that exists calls S3 head_object."""
+        storage = S3ImageStorage(
+            bucket="test-bucket",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = True
+            result = await storage.exists("images/2025/01/15/test.jpg")
+
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_delete_calls_delete_object(self):
+        """Test that delete calls S3 delete_object."""
+        storage = S3ImageStorage(
+            bucket="test-bucket",
+            access_key_id="fake",
+            secret_access_key="fake",
+        )
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = None
+            result = await storage.delete("images/2025/01/15/test.jpg")
+
+            assert result is True
+
+
+class TestSupabaseImageStorage:
+    """Tests for SupabaseImageStorage provider."""
+
+    def test_initialization_requires_project_ref(self):
+        """Test that initialization fails without project ref."""
+        with patch("src.services.image_storage.settings") as mock_settings:
+            mock_settings.supabase_project_ref = None
+            mock_settings.supabase_access_key_id = "test-key-id"
+            mock_settings.supabase_secret_access_key = "test-secret"
+            mock_settings.supabase_storage_bucket = "images"
+            mock_settings.supabase_region = "us-east-1"
+            mock_settings.supabase_storage_public = False
+
+            with pytest.raises(ValueError, match="project reference is required"):
+                SupabaseImageStorage()
+
+    def test_initialization_requires_access_credentials(self):
+        """Test that initialization fails without access credentials."""
+        with patch("src.services.image_storage.settings") as mock_settings:
+            mock_settings.supabase_project_ref = "test-project"
+            mock_settings.supabase_access_key_id = None
+            mock_settings.supabase_secret_access_key = None
+            mock_settings.supabase_storage_bucket = "images"
+            mock_settings.supabase_region = "us-east-1"
+            mock_settings.supabase_storage_public = False
+
+            with pytest.raises(ValueError, match="S3 access credentials are required"):
+                SupabaseImageStorage()
+
+    def test_initialization_with_valid_config(self):
+        """Test successful initialization with valid config."""
+        storage = SupabaseImageStorage(
+            project_ref="abcdefghijklmnop",
+            access_key_id="test-access-key-id",
+            secret_access_key="test-secret-access-key",
+            bucket="my-images",
+            region="eu-central-1",
+            public=True,
+        )
+
+        assert storage.bucket == "my-images"
+        assert storage._project_ref == "abcdefghijklmnop"
+        assert storage._supabase_region == "eu-central-1"
+        assert storage._is_public is True
+        assert storage.endpoint_url == "https://abcdefghijklmnop.supabase.co/storage/v1/s3"
+
+    def test_get_url_public_bucket(self):
+        """Test URL generation for public bucket."""
+        storage = SupabaseImageStorage(
+            project_ref="abcdefghijklmnop",
+            access_key_id="test-key-id",
+            secret_access_key="test-secret",
+            bucket="images",
+            public=True,
+        )
+
+        url = storage.get_url("images/2025/01/15/test.jpg")
+
+        assert url == (
+            "https://abcdefghijklmnop.supabase.co/storage/v1/object/public/"
+            "images/images/2025/01/15/test.jpg"
+        )
+
+    def test_get_url_private_bucket(self):
+        """Test URL generation for private bucket."""
+        storage = SupabaseImageStorage(
+            project_ref="abcdefghijklmnop",
+            access_key_id="test-key-id",
+            secret_access_key="test-secret",
+            bucket="images",
+            public=False,
+        )
+
+        url = storage.get_url("images/2025/01/15/test.jpg")
+
+        assert url == (
+            "https://abcdefghijklmnop.supabase.co/storage/v1/object/authenticated/"
+            "images/images/2025/01/15/test.jpg"
+        )
+
+    def test_provider_name(self):
+        """Test provider_name returns 'supabase'."""
+        storage = SupabaseImageStorage(
+            project_ref="test-project",
+            access_key_id="test-key-id",
+            secret_access_key="test-secret",
+        )
+
+        assert storage.provider_name == "supabase"
+
+    def test_inherits_s3_operations(self):
+        """Test that Supabase storage inherits S3 operations."""
+        storage = SupabaseImageStorage(
+            project_ref="test-project",
+            access_key_id="test-key-id",
+            secret_access_key="test-secret",
+        )
+
+        # Should have S3 parent methods
+        assert hasattr(storage, "save")
+        assert hasattr(storage, "get")
+        assert hasattr(storage, "delete")
+        assert hasattr(storage, "exists")
+        assert hasattr(storage, "_generate_key")
+
+    @pytest.mark.asyncio
+    async def test_get_signed_url(self):
+        """Test signed URL generation."""
+        storage = SupabaseImageStorage(
+            project_ref="test-project",
+            access_key_id="test-key-id",
+            secret_access_key="test-secret",
+        )
+
+        # Mock the client's presigned URL generation
+        mock_client = AsyncMock()
+        mock_client.generate_presigned_url.return_value = "https://presigned.url"
+        storage._client = mock_client
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = "https://presigned.url"
+            url = await storage.get_signed_url("images/test.jpg", expires_in=7200)
+
+            assert url == "https://presigned.url"
+
+    @pytest.mark.asyncio
+    async def test_create_bucket_if_not_exists_when_exists(self):
+        """Test create_bucket_if_not_exists when bucket already exists."""
+        storage = SupabaseImageStorage(
+            project_ref="test-project",
+            access_key_id="test-key-id",
+            secret_access_key="test-secret",
+            bucket="existing-bucket",
+        )
+
+        # Mock client where head_bucket succeeds (bucket exists)
+        mock_client = AsyncMock()
+        mock_client.head_bucket.return_value = {}
+        storage._client = mock_client
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = False
+            result = await storage.create_bucket_if_not_exists()
+
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_create_bucket_if_not_exists_creates(self):
+        """Test create_bucket_if_not_exists creates bucket when missing."""
+        storage = SupabaseImageStorage(
+            project_ref="test-project",
+            access_key_id="test-key-id",
+            secret_access_key="test-secret",
+            bucket="new-bucket",
+        )
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = True
+            result = await storage.create_bucket_if_not_exists()
+
+            assert result is True
+
+
+class TestGetImageStorageFactory:
+    """Extended tests for get_image_storage factory function."""
+
+    @patch("src.services.image_storage.settings")
+    def test_returns_s3_when_configured(self, mock_settings):
+        """Test that s3 provider returns S3ImageStorage."""
+        mock_settings.image_storage_provider = "s3"
+        mock_settings.image_storage_bucket = "test-bucket"
+        mock_settings.s3_endpoint_url = None
+        mock_settings.aws_region = "us-east-1"
+        mock_settings.aws_access_key_id = None
+        mock_settings.aws_secret_access_key = None
+
+        storage = get_image_storage()
+
+        assert storage.provider_name == "s3"
+        assert isinstance(storage, S3ImageStorage)
+
+    @patch("src.services.image_storage.settings")
+    def test_returns_supabase_when_configured(self, mock_settings):
+        """Test that supabase provider returns SupabaseImageStorage."""
+        mock_settings.image_storage_provider = "supabase"
+        mock_settings.supabase_project_ref = "test-project"
+        mock_settings.supabase_access_key_id = "test-key-id"
+        mock_settings.supabase_secret_access_key = "test-secret"
+        mock_settings.supabase_storage_bucket = "images"
+        mock_settings.supabase_region = "us-east-1"
+        mock_settings.supabase_storage_public = False
+
+        storage = get_image_storage()
+
+        assert storage.provider_name == "supabase"
+        assert isinstance(storage, SupabaseImageStorage)
+
+    @patch("src.services.image_storage.settings")
+    def test_provider_override_parameter(self, mock_settings):
+        """Test that provider parameter overrides settings."""
+        mock_settings.image_storage_provider = "s3"
+        mock_settings.image_storage_path = "/tmp/test"  # noqa: S108
+
+        storage = get_image_storage(provider="local")
+
+        assert storage.provider_name == "local"
+        assert isinstance(storage, LocalImageStorage)
+
+    @patch("src.services.image_storage.settings")
+    def test_unknown_provider_falls_back_to_local(self, mock_settings):
+        """Test that unknown provider falls back to local."""
+        mock_settings.image_storage_provider = "unknown_provider"
+        mock_settings.image_storage_path = "/tmp/test"  # noqa: S108
+
+        storage = get_image_storage()
+
+        assert storage.provider_name == "local"
+        assert isinstance(storage, LocalImageStorage)
 
 
 class TestImageExtractorPatterns:
