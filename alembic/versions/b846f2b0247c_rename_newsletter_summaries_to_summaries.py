@@ -12,6 +12,7 @@ Create Date: 2026-01-23 23:49:40.805483
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 
@@ -24,30 +25,44 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Rename newsletter_summaries to summaries."""
-    # Step 1: Drop the old foreign key constraint on content_id
-    op.drop_constraint(
-        "fk_newsletter_summaries_content_id",
-        "newsletter_summaries",
-        type_="foreignkey",
+    conn = op.get_bind()
+
+    # Check if source table exists
+    result = conn.execute(
+        sa.text(
+            """
+            SELECT table_name FROM information_schema.tables
+            WHERE table_name = 'newsletter_summaries'
+            """
+        )
+    )
+    if not result.fetchone():
+        # Table already renamed or doesn't exist
+        return
+
+    # Step 1: Drop the old foreign key constraint on content_id (if exists)
+    conn.execute(
+        sa.text(
+            """
+            ALTER TABLE newsletter_summaries
+            DROP CONSTRAINT IF EXISTS fk_newsletter_summaries_content_id
+            """
+        )
     )
 
     # Step 2: Drop the images table's FK to newsletter_summaries (if exists)
-    # The images table has a summary_id column that references newsletter_summaries
-    try:
-        op.drop_constraint(
-            "images_summary_id_fkey",
-            "images",
-            type_="foreignkey",
+    conn.execute(
+        sa.text(
+            """
+            ALTER TABLE images
+            DROP CONSTRAINT IF EXISTS images_summary_id_fkey
+            """
         )
-    except Exception:
-        # Constraint may not exist or have different name
-        pass
+    )
 
     # Step 3: Drop indexes before renaming (will recreate with new names)
-    op.drop_index(
-        "ix_newsletter_summaries_content_id",
-        table_name="newsletter_summaries",
-    )
+    conn.execute(sa.text("DROP INDEX IF EXISTS ix_newsletter_summaries_content_id"))
+    conn.execute(sa.text("DROP INDEX IF EXISTS ix_newsletter_summaries_content_id_unique"))
 
     # Step 4: Rename the table
     op.rename_table("newsletter_summaries", "summaries")
@@ -69,41 +84,65 @@ def upgrade() -> None:
         ondelete="SET NULL",
     )
 
-    # Step 7: Recreate images table's FK to summaries
-    op.create_foreign_key(
-        "images_summary_id_fkey",
-        "images",
-        "summaries",
-        ["summary_id"],
-        ["id"],
-        ondelete="SET NULL",
+    # Step 7: Recreate images table's FK to summaries (only if column exists)
+    result = conn.execute(
+        sa.text(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'images' AND column_name = 'summary_id'
+            """
+        )
     )
+    if result.fetchone():
+        op.create_foreign_key(
+            "images_summary_id_fkey",
+            "images",
+            "summaries",
+            ["summary_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:
     """Revert summaries back to newsletter_summaries."""
+    conn = op.get_bind()
+
+    # Check if summaries table exists
+    result = conn.execute(
+        sa.text(
+            """
+            SELECT table_name FROM information_schema.tables
+            WHERE table_name = 'summaries'
+            """
+        )
+    )
+    if not result.fetchone():
+        # Table doesn't exist or already renamed back
+        return
+
     # Step 1: Drop the new foreign key constraint
-    op.drop_constraint(
-        "fk_summaries_content_id",
-        "summaries",
-        type_="foreignkey",
+    conn.execute(
+        sa.text(
+            """
+            ALTER TABLE summaries
+            DROP CONSTRAINT IF EXISTS fk_summaries_content_id
+            """
+        )
     )
 
     # Step 2: Drop images FK
-    try:
-        op.drop_constraint(
-            "images_summary_id_fkey",
-            "images",
-            type_="foreignkey",
+    conn.execute(
+        sa.text(
+            """
+            ALTER TABLE images
+            DROP CONSTRAINT IF EXISTS images_summary_id_fkey
+            """
         )
-    except Exception:
-        pass
+    )
 
     # Step 3: Drop the new index
-    op.drop_index(
-        "ix_summaries_content_id",
-        table_name="summaries",
-    )
+    conn.execute(sa.text("DROP INDEX IF EXISTS ix_summaries_content_id"))
 
     # Step 4: Rename table back
     op.rename_table("summaries", "newsletter_summaries")
@@ -125,12 +164,21 @@ def downgrade() -> None:
         ondelete="SET NULL",
     )
 
-    # Step 7: Recreate images FK
-    op.create_foreign_key(
-        "images_summary_id_fkey",
-        "images",
-        "newsletter_summaries",
-        ["summary_id"],
-        ["id"],
-        ondelete="SET NULL",
+    # Step 7: Recreate images FK (only if column exists)
+    result = conn.execute(
+        sa.text(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'images' AND column_name = 'summary_id'
+            """
+        )
     )
+    if result.fetchone():
+        op.create_foreign_key(
+            "images_summary_id_fkey",
+            "images",
+            "newsletter_summaries",
+            ["summary_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )

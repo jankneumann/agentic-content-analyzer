@@ -3,7 +3,7 @@
 Drop the legacy Newsletter model and its references.
 
 This migration:
-1. Drops the newsletter_id FK column from newsletter_summaries
+1. Drops the newsletter_id FK column from newsletter_summaries (if exists)
 2. Drops the newsletters table entirely
 
 IMPORTANT: This migration is IRREVERSIBLE in production without data backup.
@@ -18,8 +18,8 @@ Create Date: 2026-01-23 23:33:32.519427
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 
@@ -32,25 +32,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Drop Newsletter table and newsletter_id FK from summaries."""
-    # Step 1: Drop the foreign key constraint from newsletter_summaries
-    # The constraint name follows the naming convention: fk_<table>_<column>_<referenced_table>
-    op.drop_constraint(
-        "newsletter_summaries_newsletter_id_fkey",
-        "newsletter_summaries",
-        type_="foreignkey",
+    # Use raw SQL with IF EXISTS for idempotent operations
+    conn = op.get_bind()
+
+    # Step 1: Drop the foreign key constraint if it exists
+    conn.execute(
+        sa.text(
+            """
+            ALTER TABLE newsletter_summaries
+            DROP CONSTRAINT IF EXISTS newsletter_summaries_newsletter_id_fkey
+            """
+        )
     )
 
-    # Step 2: Drop the index on newsletter_id
-    op.drop_index(
-        "ix_newsletter_summaries_newsletter_id",
-        table_name="newsletter_summaries",
+    # Step 2: Drop the index on newsletter_id if it exists
+    conn.execute(sa.text("DROP INDEX IF EXISTS ix_newsletter_summaries_newsletter_id"))
+
+    # Step 3: Drop the newsletter_id column if it exists
+    # Check if column exists first
+    result = conn.execute(
+        sa.text(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'newsletter_summaries' AND column_name = 'newsletter_id'
+            """
+        )
     )
+    if result.fetchone():
+        op.drop_column("newsletter_summaries", "newsletter_id")
 
-    # Step 3: Drop the newsletter_id column from newsletter_summaries
-    op.drop_column("newsletter_summaries", "newsletter_id")
-
-    # Step 4: Drop the newsletters table
-    op.drop_table("newsletters")
+    # Step 4: Drop the newsletters table if it exists
+    conn.execute(sa.text("DROP TABLE IF EXISTS newsletters CASCADE"))
 
 
 def downgrade() -> None:
