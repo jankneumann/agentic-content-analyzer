@@ -367,7 +367,13 @@ Legacy tables (newsletters, documents) are retained as a safety net.
 - [x] 12.7 Validate migrated data integrity
   - Production migration completed successfully
   - 297 contents, 286 summaries, 6 digests migrated
-- [ ] 12.8 Performance testing (query speed, storage size)
+- [x] 12.8 Performance testing (query speed, storage size)
+  - Created `scripts/performance_test.py` benchmark suite
+  - **Key finding**: Summary+Content join 3x faster than Summary+Newsletter (13ms vs 40ms)
+  - Simple list queries: Content ~29% slower (acceptable, more columns)
+  - Storage: Content 17MB vs Newsletter 10MB (stores both markdown + raw)
+  - API endpoints all <20ms response time
+  - Index usage healthy - content_id indexes well-utilized
 - [x] 12.9 Fix test database setup to auto-apply migrations
   - Added Content model imports to tests/api/conftest.py
   - Added get_db patches for content_routes and upload_routes
