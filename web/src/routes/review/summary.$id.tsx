@@ -175,18 +175,18 @@ function SummaryReviewPage() {
       }
     : undefined
 
-  // Navigation handlers - use newsletter IDs since route is based on newsletter ID
+  // Navigation handlers - use content IDs since route is based on content ID
   const handlePrevious = React.useCallback(() => {
-    if (navInfo?.prev_newsletter_id) {
-      navigate({ to: "/review/summary/$id", params: { id: navInfo.prev_newsletter_id.toString() } })
+    if (navInfo?.prev_content_id) {
+      navigate({ to: "/review/summary/$id", params: { id: navInfo.prev_content_id.toString() }, search: { source: "content" } })
     }
-  }, [navInfo?.prev_newsletter_id, navigate])
+  }, [navInfo?.prev_content_id, navigate])
 
   const handleNext = React.useCallback(() => {
-    if (navInfo?.next_newsletter_id) {
-      navigate({ to: "/review/summary/$id", params: { id: navInfo.next_newsletter_id.toString() } })
+    if (navInfo?.next_content_id) {
+      navigate({ to: "/review/summary/$id", params: { id: navInfo.next_content_id.toString() }, search: { source: "content" } })
     }
-  }, [navInfo?.next_newsletter_id, navigate])
+  }, [navInfo?.next_content_id, navigate])
 
   // Loading state
   if (isLoading) {

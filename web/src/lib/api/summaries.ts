@@ -131,8 +131,8 @@ export async function fetchSummaryStats(): Promise<{
 export interface SummaryNavigationInfo {
   prev_id: number | null
   next_id: number | null
-  prev_newsletter_id: number | null
-  next_newsletter_id: number | null
+  prev_content_id: number | null
+  next_content_id: number | null
   position: number
   total: number
 }

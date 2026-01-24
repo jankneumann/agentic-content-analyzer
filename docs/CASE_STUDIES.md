@@ -9,6 +9,7 @@ Historical documentation of major refactoring efforts and lessons learned. This 
 - [Model ID Refactoring (December 2024)](#model-id-refactoring-december-2024)
 - [Newsletter → Content Migration (January 2025)](#newsletter--content-migration-january-2025)
 - [Multi-Provider LLM Routing (January 2025)](#multi-provider-llm-routing-january-2025)
+- [Frontend-Backend API Field Mismatch Debugging (January 2025)](#frontend-backend-api-field-mismatch-debugging-january-2025)
 - [General Refactoring Best Practices](#general-refactoring-best-practices)
 
 ---
@@ -539,6 +540,164 @@ async def generate_with_tools(
 - `truncate` class adds `text-overflow: ellipsis` and `overflow: hidden`
 - Wrap text content in `<span className="truncate">` for reliable truncation
 - `max-w-full` on SelectItem ensures it respects parent constraints
+
+---
+
+## Frontend-Backend API Field Mismatch Debugging (January 2025)
+
+Diagnosed and fixed three interconnected UX issues in the review pages caused by field name mismatches between frontend TypeScript interfaces and backend API responses.
+
+### 1. The Symptom vs Root Cause Pattern
+
+**Symptoms reported by user**:
+1. Navigation arrows in summary review not working
+2. AI assistant not responding in summary review
+3. Digest showing "123 newsletters" but "none can be displayed"
+
+**Root causes discovered**:
+1. Frontend expected `prev_newsletter_id`, backend returned `prev_content_id`
+2. Navigation fix cascaded to fix AI assistant (was secondary effect)
+3. Backend endpoint queried only legacy `Newsletter` join, not new `Content` model
+
+**Key Learning**: When multiple features break together, look for a shared root cause. The navigation and AI assistant issues were both caused by the same underlying field name mismatch.
+
+### 2. Frontend-Backend Field Name Alignment
+
+**Problem**: After the Newsletter → Content migration, the backend API was updated to return `content_id` fields, but frontend TypeScript interfaces still expected `newsletter_id` fields.
+
+**Before (mismatched)**:
+```typescript
+// Frontend interface (summaries.ts)
+export interface SummaryNavigationInfo {
+  prev_newsletter_id: number | null  // ❌ Doesn't match backend
+  next_newsletter_id: number | null
+}
+```
+
+```python
+# Backend response (summary_routes.py)
+class NavigationResponse(BaseModel):
+    prev_content_id: int | None  # ✓ Backend updated correctly
+    next_content_id: int | None
+```
+
+**After (aligned)**:
+```typescript
+// Frontend interface updated to match backend
+export interface SummaryNavigationInfo {
+  prev_content_id: number | null  // ✓ Now matches
+  next_content_id: number | null
+}
+```
+
+**Key Learnings**:
+- When migrating models, update BOTH backend responses AND frontend interfaces
+- Use grep/search across entire codebase: `grep -r "newsletter_id" web/src/`
+- TypeScript won't catch the mismatch - fields become silently `undefined`
+- Add integration tests that verify API response structure matches frontend types
+
+### 3. Query Strategy for Dual-Model Support
+
+**Problem**: The digest sources endpoint only queried summaries via `Newsletter` join, failing to find summaries linked to the new `Content` model.
+
+**Original query (broken for Content-linked summaries)**:
+```python
+summaries = (
+    db.query(NewsletterSummary)
+    .join(Newsletter)  # ❌ Only finds newsletter-linked summaries
+    .filter(Newsletter.published_date >= digest.period_start)
+    .all()
+)
+```
+
+**Solution: Multi-strategy query with fallbacks**:
+```python
+# Strategy 1: Use source_content_ids if available (new flow)
+if digest.source_content_ids:
+    summaries = db.query(NewsletterSummary).filter(
+        NewsletterSummary.content_id.in_(digest.source_content_ids)
+    ).all()
+
+# Strategy 2: Query Content by period (fallback)
+if not results:
+    summaries = db.query(NewsletterSummary).join(Content).filter(
+        Content.published_date.between(period_start, period_end)
+    ).all()
+
+# Strategy 3: Legacy Newsletter join (backwards compatibility)
+if not results:
+    summaries = db.query(NewsletterSummary).join(Newsletter).filter(
+        Newsletter.published_date.between(period_start, period_end)
+    ).all()
+```
+
+**Key Learnings**:
+- During model migration, queries must handle BOTH old and new relationships
+- Use cascading fallback strategies for backwards compatibility
+- Track metadata (like `source_content_ids`) to enable efficient direct lookups
+- Eventually remove legacy fallbacks once migration is complete
+
+### 4. URL Parameter Preservation During Navigation
+
+**Problem**: Navigation handlers updated the route but lost the `source=content` query parameter, causing the next page to use wrong data source.
+
+**Before (lost query param)**:
+```typescript
+navigate({
+  to: "/review/summary/$id",
+  params: { id: navInfo.prev_content_id.toString() }
+  // ❌ Missing search param - defaults to newsletter source
+})
+```
+
+**After (preserves query param)**:
+```typescript
+navigate({
+  to: "/review/summary/$id",
+  params: { id: navInfo.prev_content_id.toString() },
+  search: { source: "content" }  // ✓ Maintains content source
+})
+```
+
+**Key Learnings**:
+- When navigating, preserve query parameters that affect data loading
+- Review all navigation handlers when changing URL parameter semantics
+- Consider using a custom navigation hook that automatically preserves key params
+
+### 5. Debugging Strategy for Multi-Symptom Issues
+
+**Approach used**:
+1. **Map symptoms to code paths**: Navigation → ReviewHeader → handlers → API
+2. **Compare working vs broken**: Digest review (working) vs Summary review (broken)
+3. **Find the divergence point**: Same components, different data loading
+4. **Trace data flow end-to-end**: Frontend type → API call → Backend response → Frontend handler
+
+**Diff technique**:
+```bash
+# Quick comparison to find differences
+diff -y <(grep -n "navInfo" digest.$id.tsx) <(grep -n "navInfo" summary.$id.tsx)
+```
+
+**Key Learnings**:
+- Side-by-side comparison of working vs broken code is highly effective
+- The bug is often at the interface boundary (API response ↔ frontend type)
+- When symptoms seem unrelated, look for shared dependencies
+- Check browser Network tab to see actual API response vs expected structure
+
+### 6. Migration Verification Checklist
+
+Add to your model migration process:
+
+```markdown
+## API Interface Verification
+- [ ] Backend response model field names updated
+- [ ] Frontend TypeScript interfaces updated to match
+- [ ] Navigation/routing handlers use correct field names
+- [ ] Query parameters preserved during navigation
+- [ ] Queries handle both old AND new model relationships
+- [ ] Integration tests verify end-to-end data flow
+- [ ] Manual testing of affected UI flows
+```
 
 ---
 
