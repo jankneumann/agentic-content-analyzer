@@ -163,6 +163,8 @@ See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage
 | datetime.utcnow() is deprecated | Use `datetime.now(UTC)` instead (Python 3.12+) |
 | Settings tests pick up .env | Pass `_env_file=None` to `Settings()` to isolate tests |
 | Pydantic property vs field conflict | Don't make a property with same name as a field in Pydantic models |
+| Alembic migrations not idempotent | Use `IF EXISTS` for drops; check `information_schema` before FK operations |
+| Model-schema drift breaks migrations | Don't assume columns exist in DB; check before creating FK constraints |
 
 ## Quick Links by Task
 

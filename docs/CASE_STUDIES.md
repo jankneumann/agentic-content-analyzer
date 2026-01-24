@@ -10,6 +10,7 @@ Historical documentation of major refactoring efforts and lessons learned. This 
 - [Newsletter → Content Migration (January 2025)](#newsletter--content-migration-january-2025)
 - [Multi-Provider LLM Routing (January 2025)](#multi-provider-llm-routing-january-2025)
 - [Frontend-Backend API Field Mismatch Debugging (January 2025)](#frontend-backend-api-field-mismatch-debugging-january-2025)
+- [Legacy Model Cleanup & Idempotent Migrations (January 2026)](#legacy-model-cleanup--idempotent-migrations-january-2026)
 - [General Refactoring Best Practices](#general-refactoring-best-practices)
 
 ---
@@ -701,6 +702,253 @@ Add to your model migration process:
 
 ---
 
+## Legacy Model Cleanup & Idempotent Migrations (January 2026)
+
+Successfully removed deprecated Newsletter model infrastructure and renamed `newsletter_summaries` table to `summaries`, including handling of complex migration edge cases.
+
+### 1. Isolating Deprecated Models from Shared SQLAlchemy Base
+
+**Problem**: All models imported from a shared `newsletter.py` file, causing SQLAlchemy to auto-register Newsletter tables in new databases even without migrations.
+
+**Impact**: Fresh databases (Neon branches, new Supabase projects) would create legacy `newsletters` table automatically via `Base.metadata.create_all()`.
+
+**Solution**: Create a separate `base.py` file for the shared declarative base:
+
+```python
+# src/models/base.py (NEW)
+"""SQLAlchemy declarative base - shared by all models."""
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+```
+
+```python
+# src/models/content.py (UPDATED)
+from src.models.base import Base  # Instead of from .newsletter import Base
+
+class Content(Base):
+    ...
+```
+
+```python
+# src/models/newsletter.py (ISOLATED)
+from sqlalchemy.orm import declarative_base
+
+# Newsletter uses its OWN Base - not registered with other models
+LegacyBase = declarative_base()
+
+class Newsletter(LegacyBase):  # Won't be auto-created
+    ...
+```
+
+**Key Learnings**:
+- SQLAlchemy auto-registers models with `Base.metadata` at import time
+- Importing ANY model that shares a Base with deprecated models includes those deprecated tables
+- Isolation via separate Base prevents auto-creation in fresh databases
+- This is a **zero-migration** fix - no schema changes required
+
+### 2. Renaming Tables with Dependent Objects
+
+**Challenge**: Renaming `newsletter_summaries` to `summaries` required coordinated updates to:
+- Table name itself
+- All indexes referencing the table
+- All foreign key constraints (both inbound and outbound)
+- Foreign key references from other tables (like `images`)
+
+**Migration Order Matters**:
+```python
+def upgrade():
+    # Step 1: Drop FKs that reference this table first
+    conn.execute(sa.text(
+        "ALTER TABLE images DROP CONSTRAINT IF EXISTS images_summary_id_fkey"
+    ))
+
+    # Step 2: Drop outbound FKs from the table
+    conn.execute(sa.text(
+        "ALTER TABLE newsletter_summaries "
+        "DROP CONSTRAINT IF EXISTS fk_newsletter_summaries_content_id"
+    ))
+
+    # Step 3: Drop indexes (they reference the old table name)
+    conn.execute(sa.text("DROP INDEX IF EXISTS ix_newsletter_summaries_content_id"))
+
+    # Step 4: Rename the table
+    op.rename_table("newsletter_summaries", "summaries")
+
+    # Step 5: Recreate indexes with new naming
+    op.create_index("ix_summaries_content_id", "summaries", ["content_id"])
+
+    # Step 6: Recreate FKs with new naming
+    op.create_foreign_key(
+        "fk_summaries_content_id", "summaries", "contents",
+        ["content_id"], ["id"], ondelete="SET NULL"
+    )
+```
+
+**Key Learnings**:
+- **Drop before rename**: FKs and indexes must be dropped before table rename
+- **Recreate after rename**: New FKs/indexes reference new table name
+- **Order: inbound FKs → outbound FKs → indexes → rename → recreate**
+- PostgreSQL doesn't auto-rename dependent objects
+
+### 3. Writing Idempotent Migrations
+
+**Problem**: Migrations failed when run against databases in partial/different states:
+- Index didn't exist (already dropped or never created)
+- Column didn't exist (different migration history)
+- Table already renamed (migration partially completed)
+
+**Pattern**: Use `IF EXISTS` and existence checks:
+
+```python
+def upgrade():
+    conn = op.get_bind()
+
+    # Check if source table exists before any operations
+    result = conn.execute(sa.text(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_name = 'newsletter_summaries'"
+    ))
+    if not result.fetchone():
+        return  # Already migrated or never existed
+
+    # Use IF EXISTS for drops - safe if already gone
+    conn.execute(sa.text(
+        "DROP INDEX IF EXISTS ix_newsletter_summaries_content_id"
+    ))
+
+    conn.execute(sa.text(
+        "ALTER TABLE newsletter_summaries "
+        "DROP CONSTRAINT IF EXISTS fk_newsletter_summaries_content_id"
+    ))
+
+    # Check column exists before dropping
+    result = conn.execute(sa.text(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'newsletter_summaries' "
+        "AND column_name = 'newsletter_id'"
+    ))
+    if result.fetchone():
+        op.drop_column("newsletter_summaries", "newsletter_id")
+```
+
+**Key Learnings**:
+- **Always use `IF EXISTS`** for drops (indexes, constraints, tables)
+- **Query `information_schema`** to check existence before operations that don't support IF EXISTS
+- **Return early** if migration already applied (table renamed, etc.)
+- **Idempotent migrations** can be safely re-run without errors
+
+### 4. Handling Schema vs Model Drift
+
+**Problem**: Migration tried to create FK constraint on `images.summary_id` column that didn't exist in the database (was defined in model but never migrated).
+
+**Error**:
+```
+column "summary_id" referenced in foreign key constraint does not exist
+```
+
+**Solution**: Conditionally create FKs only when the referenced column exists:
+
+```python
+# Step 7: Recreate images FK (only if column exists)
+result = conn.execute(sa.text(
+    "SELECT column_name FROM information_schema.columns "
+    "WHERE table_name = 'images' AND column_name = 'summary_id'"
+))
+if result.fetchone():
+    op.create_foreign_key(
+        "images_summary_id_fkey", "images", "summaries",
+        ["summary_id"], ["id"], ondelete="SET NULL"
+    )
+```
+
+**Key Learnings**:
+- **Models and schemas can drift** when migrations aren't generated for all changes
+- **Never assume FK target columns exist** - check first
+- **Different environments may have different schemas** (dev, staging, prod, feature branches)
+- **Conditional FK creation** ensures migration works across all database states
+
+### 5. Backwards Compatibility via Class Aliases
+
+**Challenge**: 61 files referenced `NewsletterSummary` - needed gradual migration path.
+
+**Solution**: Create alias for backwards compatibility:
+
+```python
+# src/models/summary.py
+class Summary(Base):
+    """Content summary database model."""
+    __tablename__ = "summaries"
+    ...
+
+# Backwards compatibility alias (deprecated)
+NewsletterSummary = Summary
+```
+
+**Benefits**:
+- Existing code continues to work unchanged
+- New code uses the new name
+- Deprecation warnings can be added later
+- Full rename can happen incrementally
+
+**Key Learnings**:
+- **Aliases enable gradual migration** without big-bang changes
+- **Both names point to same class** - no duplicate definitions
+- **Document deprecation** in docstring/comments
+- **Plan removal timeline** for the alias
+
+### 6. Parallel Code Updates with Subagents
+
+**Challenge**: Updating 61 files with consistent changes (import paths, class names, variable names).
+
+**Approach**: Use parallel agents for different file categories:
+```
+Agent 1: src/ Python files (services, processors, API)
+Agent 2: tests/ Python files (fixtures, assertions)
+Agent 3: scripts/ Python files (legacy scripts)
+Agent 4: web/src/ TypeScript files (type definitions)
+```
+
+**Key Learnings**:
+- **Categorize files** by type/location for parallel processing
+- **Consistent patterns** within each category (tests have fixtures, src has services)
+- **Validate after each agent** completes to catch inconsistencies
+- **Run linter/type-checker** to find remaining issues
+
+### 7. Migration Testing Checklist
+
+Use this checklist for table rename/cleanup migrations:
+
+```markdown
+## Pre-Migration
+- [ ] Identify all dependent objects (FKs, indexes, views)
+- [ ] Map inbound FK references from other tables
+- [ ] List all code references to old table/class names
+- [ ] Check for model-schema drift (columns in model but not DB)
+
+## Migration Script
+- [ ] Check source table exists before operations
+- [ ] Use IF EXISTS for all drops
+- [ ] Check column existence before FK creation
+- [ ] Proper ordering: drop FKs → drop indexes → rename → recreate
+- [ ] Implement downgrade() with reverse ordering
+
+## Code Updates
+- [ ] Create backwards-compatible alias
+- [ ] Update imports in all files
+- [ ] Update foreign key column references
+- [ ] Update TypeScript interfaces
+
+## Validation
+- [ ] Run migration on fresh database
+- [ ] Run migration on existing database
+- [ ] Run migration twice (idempotency test)
+- [ ] Verify all tests pass
+- [ ] Verify API responses use correct field names
+```
+
+---
+
 ## General Refactoring Best Practices
 
 From the above case studies and other refactorings:
@@ -713,3 +961,7 @@ From the above case studies and other refactorings:
 6. **Update tests early** - Don't leave test updates for last phase
 7. **Document as you go** - Update docs in final phase while context fresh
 8. **Review the plan** - Check success criteria match actual implementation
+9. **Write idempotent migrations** - Always use `IF EXISTS` and existence checks
+10. **Handle schema drift** - Don't assume DB matches model; check before FK operations
+11. **Use backwards-compatible aliases** - Enable gradual migration over big-bang changes
+12. **Isolate deprecated models** - Separate Base classes prevent unwanted auto-creation
