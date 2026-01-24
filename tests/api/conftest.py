@@ -512,7 +512,7 @@ def sample_contents(db_session) -> list[Content]:
             published_date=datetime(2025, 1, 14, 10, 0, 0, tzinfo=UTC),
             markdown_content="# Vector Databases\n\nGuide to vector databases.",
             content_hash="hash002",
-            status=ContentStatus.PROCESSED,
+            status=ContentStatus.COMPLETED,
             ingested_at=datetime.now(UTC),
             processed_at=datetime.now(UTC),
         ),
@@ -570,7 +570,7 @@ def sample_content_with_summary(db_session, sample_content) -> tuple[Content, Ne
         processing_time_seconds=3.5,
     )
 
-    sample_content.status = ContentStatus.PROCESSED
+    sample_content.status = ContentStatus.COMPLETED
     sample_content.processed_at = datetime.now(UTC)
 
     db_session.add(summary)
