@@ -55,6 +55,28 @@ class Settings(BaseSettings):
         "0"  # AWS availability zone (0, 1, etc.) - check your Supabase connection string
     )
 
+    # Local Supabase Development Configuration
+    supabase_local: bool = False  # Enable local Supabase development mode
+    # When True, auto-configures:
+    #   - supabase_url -> http://127.0.0.1:54321
+    #   - supabase_db_url -> postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    #   - supabase_anon_key / supabase_service_role_key -> local dev keys (from supabase status)
+    supabase_url: str | None = None  # Supabase API URL (auto-configured for local)
+    supabase_anon_key: str | None = None  # Supabase anon key (for local dev)
+
+    # Default local Supabase keys (from supabase init - these are public test keys)
+    # These are the default JWT tokens used by local Supabase for development
+    _local_supabase_anon_key: str = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9."
+        "CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
+    )
+    _local_supabase_service_role_key: str = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0."
+        "EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU"
+    )
+
     # Neon Serverless PostgreSQL Configuration
     neon_api_key: str | None = None  # API key for branch management
     neon_project_id: str | None = None  # Project ID for branch management
@@ -135,6 +157,24 @@ class Settings(BaseSettings):
     supabase_access_key_id: str | None = None  # Supabase S3 access key ID
     supabase_secret_access_key: str | None = None  # Supabase S3 secret access key
     supabase_storage_public: bool = False  # Whether bucket is public (affects URL generation)
+    # Note: supabase_local is defined in Local Supabase Development Configuration section above
+
+    # Unified File Storage Configuration (supports multiple buckets)
+    # Default provider for all buckets (can be overridden per-bucket)
+    storage_provider: str = "local"  # "local", "s3", or "supabase"
+
+    # Per-bucket provider overrides (JSON dict in env: STORAGE_BUCKET_PROVIDERS='{"podcasts": "s3"}')
+    # If not specified, uses storage_provider (or image_storage_provider for backward compat)
+    storage_bucket_providers: dict[str, str] | None = None
+
+    # Local storage paths per bucket (defaults to data/{bucket})
+    storage_local_paths: dict[str, str] | None = None
+
+    # S3 bucket names per logical bucket (defaults to image_storage_bucket)
+    storage_s3_buckets: dict[str, str] | None = None
+
+    # Supabase bucket names per logical bucket (defaults to supabase_storage_bucket)
+    storage_supabase_buckets: dict[str, str] | None = None
 
     # Email Delivery
     sendgrid_api_key: str | None = None
@@ -173,6 +213,62 @@ class Settings(BaseSettings):
     elevenlabs_voice_sam_female: str = ""
 
     @model_validator(mode="after")
+    def configure_local_supabase(self) -> "Settings":
+        """Auto-configure settings when local Supabase mode is enabled.
+
+        When SUPABASE_LOCAL=true, automatically sets:
+        - supabase_url -> http://127.0.0.1:54321
+        - database_url -> postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        - supabase_anon_key / supabase_service_role_key -> local dev keys
+
+        Also warns if mixing local flag with cloud URLs.
+        """
+        if not self.supabase_local:
+            return self
+
+        # Auto-configure local Supabase endpoints
+        if self.supabase_url is None:
+            object.__setattr__(self, "supabase_url", "http://127.0.0.1:54321")
+
+        # Auto-configure local database URL if provider is supabase
+        if self.database_provider == "supabase":
+            local_db_url = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+            object.__setattr__(self, "database_url", local_db_url)
+            # Set a placeholder project ref for local (validation requires it)
+            if not self.supabase_project_ref:
+                object.__setattr__(self, "supabase_project_ref", "local")
+            # Set a placeholder password for local
+            if not self.supabase_db_password:
+                object.__setattr__(self, "supabase_db_password", "postgres")
+
+        # Auto-configure local Supabase keys
+        if self.supabase_anon_key is None:
+            object.__setattr__(self, "supabase_anon_key", self._local_supabase_anon_key)
+        if self.supabase_service_role_key is None:
+            object.__setattr__(
+                self, "supabase_service_role_key", self._local_supabase_service_role_key
+            )
+
+        # Warn if mixing local flag with cloud URLs
+        if self.supabase_url and "supabase.co" in self.supabase_url:
+            logger.warning(
+                "SUPABASE_LOCAL=true but SUPABASE_URL contains 'supabase.co'. "
+                "This may indicate mixing local and cloud configuration."
+            )
+        if self.database_url and "supabase.com" in self.database_url:
+            logger.warning(
+                "SUPABASE_LOCAL=true but DATABASE_URL contains 'supabase.com'. "
+                "This may indicate mixing local and cloud configuration."
+            )
+
+        logger.info(
+            f"Local Supabase mode enabled. API: {self.supabase_url}, "
+            f"DB: postgresql://postgres:***@127.0.0.1:54322/postgres"
+        )
+
+        return self
+
+    @model_validator(mode="after")
     def validate_database_provider_config(self) -> "Settings":
         """Validate database provider configuration at startup.
 
@@ -194,9 +290,11 @@ class Settings(BaseSettings):
                         f"Got: {self._mask_url(effective_url)}"
                     )
             case "supabase":
-                if not self.supabase_project_ref:
+                # Skip validation for local Supabase (project_ref is auto-set to "local")
+                if not self.supabase_local and not self.supabase_project_ref:
                     raise ValueError(
-                        "DATABASE_PROVIDER=supabase requires SUPABASE_PROJECT_REF to be set."
+                        "DATABASE_PROVIDER=supabase requires SUPABASE_PROJECT_REF to be set "
+                        "(or set SUPABASE_LOCAL=true for local development)."
                     )
             case "local":
                 # Local provider uses local_database_url or database_url
@@ -230,6 +328,23 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.environment == "production"
+
+    @property
+    def is_local_supabase(self) -> bool:
+        """Check if using local Supabase development mode."""
+        return self.supabase_local
+
+    def get_supabase_storage_endpoint(self) -> str:
+        """Get the Supabase Storage S3 endpoint URL.
+
+        Returns:
+            Local endpoint for local mode, cloud endpoint otherwise.
+        """
+        if self.supabase_local:
+            return "http://127.0.0.1:54321/storage/v1/s3"
+        if self.supabase_project_ref:
+            return f"https://{self.supabase_project_ref}.supabase.co/storage/v1/s3"
+        raise ValueError("Supabase project reference is required for storage.")
 
     @property
     def detected_database_provider(self) -> DatabaseProviderType:
@@ -270,6 +385,10 @@ class Settings(BaseSettings):
 
     def _get_supabase_pooler_url(self) -> str:
         """Construct Supabase pooler URL from components."""
+        # Local Supabase uses direct connection (no pooler)
+        if self.supabase_local:
+            return "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
         if self.supabase_project_ref and self.supabase_db_password:
             port = 6543 if self.supabase_pooler_mode == "transaction" else 5432
             return (
@@ -299,6 +418,10 @@ class Settings(BaseSettings):
 
     def _get_supabase_direct_url(self) -> str:
         """Get Supabase direct URL for migrations (bypasses pooler)."""
+        # Local Supabase uses direct connection
+        if self.supabase_local:
+            return "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
         # Explicit direct URL takes precedence
         if self.supabase_direct_url:
             return self.supabase_direct_url

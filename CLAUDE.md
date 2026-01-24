@@ -86,7 +86,7 @@ Three PostgreSQL providers are supported. **Set `DATABASE_PROVIDER` explicitly**
 | Provider | `DATABASE_PROVIDER` | Use Case |
 |----------|---------------------|----------|
 | Local | `local` (default) | Development, Docker |
-| Supabase | `supabase` | Cloud hosting |
+| Supabase | `supabase` | Cloud hosting, local dev with `SUPABASE_LOCAL=true` |
 | Neon | `neon` | Agent workflows, branching |
 
 ```bash
@@ -97,6 +97,10 @@ DATABASE_URL=postgresql://...
 # Optional: Provider-specific URL overrides (take precedence over DATABASE_URL)
 # LOCAL_DATABASE_URL=postgresql://...   # Override for local
 # NEON_DATABASE_URL=postgresql://...    # Override for neon
+
+# Local Supabase development (auto-configures URLs and keys)
+SUPABASE_LOCAL=true
+DATABASE_PROVIDER=supabase
 ```
 
 **Neon Branching for Agents**: Create isolated database branches for feature work or testing:
@@ -113,33 +117,44 @@ neonctl branches delete claude/feature-xyz
 
 See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-postgresql-bring-your-own) for full setup.
 
-## Image Storage Providers
+## File Storage Providers
 
-Three image storage providers are supported for extracted images (from newsletters, YouTube keyframes, etc.):
+Unified file storage supporting multiple buckets (images, podcasts, audio-digests):
 
-| Provider | `IMAGE_STORAGE_PROVIDER` | Use Case |
-|----------|--------------------------|----------|
+| Provider | `STORAGE_PROVIDER` | Use Case |
+|----------|-------------------|----------|
 | Local | `local` (default) | Development, local storage |
 | S3 | `s3` | AWS S3 or S3-compatible (MinIO) |
 | Supabase | `supabase` | Supabase Storage (S3-compatible) |
 
 ```bash
 # .env - Local storage (default)
-IMAGE_STORAGE_PROVIDER=local
-IMAGE_STORAGE_PATH=data/images
+STORAGE_PROVIDER=local
+# Default paths: data/images, data/podcasts, data/audio-digests
 
 # .env - S3 storage
-IMAGE_STORAGE_PROVIDER=s3
+STORAGE_PROVIDER=s3
 IMAGE_STORAGE_BUCKET=newsletter-images
 AWS_REGION=us-east-1
 
 # .env - Supabase storage (uses S3-compatible API)
-IMAGE_STORAGE_PROVIDER=supabase
+STORAGE_PROVIDER=supabase
 SUPABASE_STORAGE_BUCKET=images
 SUPABASE_ACCESS_KEY_ID=your-access-key      # From Dashboard > Settings > API > S3 Access Keys
 SUPABASE_SECRET_ACCESS_KEY=your-secret-key  # From Dashboard > Settings > API > S3 Access Keys
 SUPABASE_STORAGE_PUBLIC=false               # true for public URLs
+
+# .env - Per-bucket provider overrides (optional)
+STORAGE_BUCKET_PROVIDERS='{"podcasts": "s3"}'  # Use S3 for podcasts only
+
+# Legacy image storage config (still works for backward compatibility)
+IMAGE_STORAGE_PROVIDER=local
+IMAGE_STORAGE_PATH=data/images
 ```
+
+**API Endpoints**:
+- `GET /api/v1/files/{bucket}/{path}` - Retrieve files with range request support
+- Buckets: `images`, `podcasts`, `audio-digests`
 
 **Important**: Supabase Storage uses S3-compatible credentials (not the service role key). Get these from **Supabase Dashboard > Project Settings > API > S3 Access Keys**.
 
@@ -158,6 +173,7 @@ See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage
 | Neon first connection slow | Scale-to-zero may take 2-5s to wake up; increase timeout |
 | Supabase free tier IPv6 only | Direct connections use IPv6; use pooler if on IPv4-only network |
 | DATABASE_PROVIDER required for cloud | Must explicitly set `DATABASE_PROVIDER=supabase` or `neon` |
+| Local Supabase needs SUPABASE_LOCAL | Set `SUPABASE_LOCAL=true` for auto-configured local endpoints |
 | Supabase Storage uses S3 API | Use `SUPABASE_ACCESS_KEY_ID`/`SUPABASE_SECRET_ACCESS_KEY`, NOT service role key |
 | datetime.utcnow() is deprecated | Use `datetime.now(UTC)` instead (Python 3.12+) |
 | Settings tests pick up .env | Pass `_env_file=None` to `Settings()` to isolate tests |

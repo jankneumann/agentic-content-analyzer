@@ -83,6 +83,148 @@ pytest tests/test_config/
 # Should see: "29 passed"
 ```
 
+## Local Supabase Development
+
+For full Supabase dev/prod parity without cloud dependencies, you can run Supabase locally. This provides:
+
+- **Offline development**: No internet connection required
+- **Dev/prod parity**: Same APIs as production Supabase
+- **CI/CD testing**: Run integration tests against real Supabase APIs
+- **Cost savings**: No cloud usage during development
+
+### Quick Start
+
+```bash
+# Start local Supabase services
+docker compose --profile supabase up -d
+
+# Configure environment for local Supabase
+export SUPABASE_LOCAL=true
+export DATABASE_PROVIDER=supabase
+
+# Run your application
+python -m src.main
+```
+
+### Using Supabase CLI (Recommended)
+
+The Supabase CLI provides the most complete local development experience:
+
+```bash
+# Install Supabase CLI (macOS)
+brew install supabase/tap/supabase
+
+# Initialize Supabase in your project (one-time)
+supabase init
+
+# Start local Supabase
+supabase start
+
+# Get local credentials
+supabase status
+```
+
+**Local Service Ports** (Supabase CLI defaults):
+| Service | Port | Description |
+|---------|------|-------------|
+| API Gateway | 54321 | Main Supabase API endpoint |
+| PostgreSQL | 54322 | Database (direct connection) |
+| Studio | 54323 | Admin UI |
+| Inbucket | 54324 | Email testing |
+
+### Docker Compose (Alternative)
+
+For simpler setups without the CLI:
+
+```bash
+# Start local Supabase via Docker Compose
+docker compose --profile supabase up -d
+
+# Verify services are running
+docker ps | grep supabase
+```
+
+### Environment Configuration
+
+```bash
+# .env for local Supabase development
+SUPABASE_LOCAL=true                  # Enable local mode
+DATABASE_PROVIDER=supabase           # Use Supabase as database provider
+IMAGE_STORAGE_PROVIDER=supabase      # Use Supabase Storage (optional)
+
+# These are auto-configured when SUPABASE_LOCAL=true:
+# SUPABASE_URL=http://127.0.0.1:54321
+# DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+# SUPABASE_ANON_KEY=<local dev key>
+# SUPABASE_SERVICE_ROLE_KEY=<local dev key>
+```
+
+### Schema Synchronization
+
+Use the Supabase CLI to sync schema between local and cloud:
+
+```bash
+# Generate migration from local changes
+supabase db diff -f my_migration
+
+# Push local schema to cloud
+supabase db push
+
+# Pull cloud schema to local
+supabase db pull
+
+# Link to cloud project (one-time)
+supabase link --project-ref your-project-ref
+```
+
+### Switching Between Local and Cloud
+
+```bash
+# Local development
+export SUPABASE_LOCAL=true
+supabase start
+python -m src.main
+
+# Cloud deployment
+export SUPABASE_LOCAL=false
+export SUPABASE_PROJECT_REF=your-project-ref
+export SUPABASE_DB_PASSWORD=your-password
+python -m src.main
+```
+
+### Local Supabase Requirements
+
+- Docker Desktop or Docker Engine
+- ~2GB RAM for full stack
+- Supabase CLI (optional but recommended)
+- Ports 54321-54324 available
+
+### Troubleshooting Local Supabase
+
+**Port already in use**:
+```bash
+# Check what's using the port
+lsof -i :54322
+
+# Stop existing containers
+docker compose --profile supabase down
+```
+
+**Services not starting**:
+```bash
+# Check container logs
+docker compose --profile supabase logs supabase-db
+docker compose --profile supabase logs supabase-storage
+```
+
+**Storage not working**:
+```bash
+# Ensure bucket exists (create via API or Studio)
+# Local Supabase Storage uses the service role key for auth
+```
+
+---
+
 ## Supabase Cloud Database (Bring Your Own)
 
 The newsletter aggregator supports **Supabase** as a cloud PostgreSQL option. This follows the "bring your own backend" pattern - each user connects their own Supabase instance and owns all their data.
@@ -515,38 +657,68 @@ NEON_DIRECT_URL=...                      # Direct connection for migrations (opt
 
 See [Neon Serverless PostgreSQL](#neon-serverless-postgresql-bring-your-own) for setup instructions.
 
-### Image Storage Variables (Optional)
+### File Storage Variables (Optional)
 
-The newsletter aggregator can store extracted images from content (newsletter images, YouTube keyframes, etc.). Three storage providers are supported:
+The newsletter aggregator supports unified file storage for images, podcasts, and audio digests. Three storage providers are supported with multiple bucket support:
+
+**Buckets**:
+- `images` - Newsletter images, YouTube keyframes (default path: `data/images`)
+- `podcasts` - Generated podcast audio files (default path: `data/podcasts`)
+- `audio-digests` - Audio versions of digests (default path: `data/audio-digests`)
 
 ```bash
-# Image Storage Provider: "local" (default), "s3", or "supabase"
-IMAGE_STORAGE_PROVIDER=local
+# Unified Storage Provider: "local" (default), "s3", or "supabase"
+STORAGE_PROVIDER=local
+
+# Per-bucket provider overrides (JSON format, optional)
+# Example: Store podcasts on S3 while keeping images local
+STORAGE_BUCKET_PROVIDERS='{"podcasts": "s3"}'
 
 # Local Storage (default - good for development)
-IMAGE_STORAGE_PATH=data/images           # Local directory for images (default: data/images)
+# Default paths are data/{bucket} for each bucket
 
 # S3 Storage (for AWS S3 or S3-compatible services like MinIO)
-IMAGE_STORAGE_PROVIDER=s3
-IMAGE_STORAGE_BUCKET=newsletter-images   # S3 bucket name
+STORAGE_PROVIDER=s3
+IMAGE_STORAGE_BUCKET=newsletter-images   # S3 bucket name for images
 AWS_REGION=us-east-1                     # AWS region (default: us-east-1)
 AWS_ACCESS_KEY_ID=...                    # Optional - uses boto3 defaults if not set
 AWS_SECRET_ACCESS_KEY=...                # Optional - uses boto3 defaults if not set
 S3_ENDPOINT_URL=...                      # Optional - for S3-compatible services (MinIO, etc.)
 
 # Supabase Storage (uses Supabase's S3-compatible object storage)
-IMAGE_STORAGE_PROVIDER=supabase
+STORAGE_PROVIDER=supabase
 SUPABASE_STORAGE_BUCKET=images           # Supabase bucket name (default: images)
 SUPABASE_ACCESS_KEY_ID=xxx               # S3 access key ID (from Supabase Dashboard)
 SUPABASE_SECRET_ACCESS_KEY=xxx           # S3 secret access key (from Supabase Dashboard)
 SUPABASE_STORAGE_PUBLIC=false            # Whether bucket is public (default: false)
 # Note: Also requires SUPABASE_PROJECT_REF and SUPABASE_REGION from database config
 
+# Legacy image storage config (still works for backward compatibility)
+IMAGE_STORAGE_PROVIDER=local
+IMAGE_STORAGE_PATH=data/images           # Local directory for images (default: data/images)
+
 # Common Settings
 IMAGE_MAX_SIZE_MB=10                     # Maximum image file size (default: 10MB)
 ENABLE_IMAGE_EXTRACTION=true             # Enable extraction from HTML/PDF (default: true)
 ENABLE_YOUTUBE_KEYFRAMES=false           # Enable YouTube keyframe extraction (default: false)
 ```
+
+#### File Serving API
+
+Files are served via a unified endpoint with range request support for audio streaming:
+
+```
+GET /api/v1/files/{bucket}/{path}
+```
+
+- **bucket**: One of `images`, `podcasts`, or `audio-digests`
+- **path**: File path within the bucket (e.g., `2025/01/24/filename.mp3`)
+
+Features:
+- Content-Type detection via file extension
+- Range request support for audio/video seeking
+- Signed URL redirect for cloud storage (S3, Supabase)
+- Cache headers for performance
 
 #### Supabase Storage Setup
 

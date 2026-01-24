@@ -1,5 +1,7 @@
 # Change: Refactor to Unified File Storage with Multi-Bucket Support
 
+**Status: COMPLETE**
+
 ## Why
 
 The codebase has two separate storage patterns:

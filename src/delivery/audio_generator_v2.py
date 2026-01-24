@@ -91,11 +91,11 @@ class PodcastAudioGeneratorV2:
             f"SSML support: {self.use_ssml}, format={output_format}"
         )
 
-    def _load_silence_templates(self):
+    def _load_silence_templates(self) -> None:
         """Load pre-generated silent MP3 files for pauses."""
         assets_dir = Path(__file__).parent / "assets"
 
-        self.silence_cache = {}
+        self.silence_cache: dict[float, bytes] = {}
         silence_files = {
             0.1: "silence_0_1s.mp3",
             0.5: "silence_0_5s.mp3",
@@ -131,7 +131,7 @@ class PodcastAudioGeneratorV2:
 
         # Find closest duration
         closest = min(self.silence_cache.keys(), key=lambda x: abs(x - duration))
-        return self.silence_cache[closest]
+        return bytes(self.silence_cache[closest])
 
     async def generate_audio(
         self,
@@ -284,6 +284,11 @@ class PodcastAudioGeneratorV2:
 def get_output_path(podcast_id: int, base_dir: Path | None = None) -> Path:
     """Get output path for a podcast audio file.
 
+    .. deprecated::
+        This function is deprecated. Podcast audio is now stored via the
+        unified file storage system. Use `get_storage(bucket="podcasts")`
+        instead for cloud-compatible storage.
+
     Args:
         podcast_id: ID of the podcast
         base_dir: Base directory for podcast storage (defaults to settings)
@@ -291,6 +296,14 @@ def get_output_path(podcast_id: int, base_dir: Path | None = None) -> Path:
     Returns:
         Path to the output MP3 file
     """
+    import warnings
+
+    warnings.warn(
+        "get_output_path is deprecated. Use get_storage(bucket='podcasts') instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     if base_dir is None:
         base_dir = Path(settings.podcast_storage_path)
 

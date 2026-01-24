@@ -11,6 +11,7 @@ Each provider requires specific API keys and configuration.
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from typing import Any
 
 from src.config import settings
 from src.models.podcast import VoicePersona, VoiceProvider
@@ -63,7 +64,7 @@ class TTSProvider(ABC):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text to audio bytes.
 
@@ -78,11 +79,11 @@ class TTSProvider(ABC):
         pass
 
     @abstractmethod
-    async def synthesize_stream(
+    def synthesize_stream(
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis for long content.
 
@@ -94,7 +95,7 @@ class TTSProvider(ABC):
         Yields:
             Audio data chunks as bytes
         """
-        pass
+        ...
 
     @abstractmethod
     def get_voice_id(self, persona: VoicePersona) -> str:
@@ -141,7 +142,7 @@ class OpenAITTSProvider(TTSProvider):
         model: str = "tts-1",
         speed: float = 1.0,
         response_format: str = "mp3",
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using OpenAI TTS.
 
@@ -163,19 +164,19 @@ class OpenAITTSProvider(TTSProvider):
 
         response = await client.audio.speech.create(
             model=model,
-            voice=voice_id,
+            voice=voice_id,  # type: ignore[arg-type]
             input=text,
             speed=speed,
-            response_format=response_format,
+            response_format=response_format,  # type: ignore[arg-type]
         )
 
-        return response.content
+        return bytes(response.content)
 
     async def synthesize_stream(
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis.
 
@@ -218,7 +219,7 @@ class ElevenLabsTTSProvider(TTSProvider):
         similarity_boost: float = 0.75,
         style: float = 0.0,
         use_speaker_boost: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using ElevenLabs.
 
@@ -235,6 +236,9 @@ class ElevenLabsTTSProvider(TTSProvider):
             Audio data as bytes (MP3)
         """
         import aiohttp
+
+        if not self.api_key:
+            raise RuntimeError("ElevenLabs API key not configured")
 
         logger.debug(f"ElevenLabs TTS: synthesizing {len(text)} chars with voice {voice_id}")
 
@@ -261,19 +265,22 @@ class ElevenLabsTTSProvider(TTSProvider):
             if response.status != 200:
                 error_text = await response.text()
                 raise RuntimeError(f"ElevenLabs TTS failed ({response.status}): {error_text}")
-            return await response.read()
+            return bytes(await response.read())
 
     async def synthesize_stream(
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis from ElevenLabs.
 
         ElevenLabs supports true streaming for lower latency.
         """
         import aiohttp
+
+        if not self.api_key:
+            raise RuntimeError("ElevenLabs API key not configured")
 
         model_id = kwargs.get("model_id", "eleven_turbo_v2_5")
 
@@ -331,7 +338,7 @@ class GoogleTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using Google Cloud TTS.
 
@@ -346,10 +353,11 @@ class GoogleTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis from Google Cloud TTS."""
         raise NotImplementedError("Google Cloud TTS streaming not implemented")
+        yield b""  # Make it a generator for type checking
 
     def get_voice_id(self, persona: VoicePersona) -> str:
         """Get Google Cloud voice ID for a persona."""
@@ -374,7 +382,7 @@ class AWSPollyTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using AWS Polly.
 
@@ -388,10 +396,11 @@ class AWSPollyTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis from AWS Polly."""
         raise NotImplementedError("AWS Polly streaming not implemented")
+        yield b""  # Make it a generator for type checking
 
     def get_voice_id(self, persona: VoicePersona) -> str:
         """Get AWS Polly voice ID for a persona."""
@@ -466,7 +475,7 @@ class TTSService:
         self,
         text: str,
         speaker: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize speech for a speaker.
 
@@ -485,7 +494,7 @@ class TTSService:
         self,
         text: str,
         speaker: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream speech synthesis for a speaker.
 
@@ -501,7 +510,7 @@ class TTSService:
         async for chunk in self._provider.synthesize_stream(text, voice_id, **kwargs):
             yield chunk
 
-    def get_voice_config(self) -> dict:
+    def get_voice_config(self) -> dict[str, str]:
         """Get current voice configuration.
 
         Returns:

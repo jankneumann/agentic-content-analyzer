@@ -14,6 +14,11 @@ class SupabaseProvider:
 
     The provider automatically configures SQLAlchemy for optimal
     performance with Supabase's connection pooler.
+
+    Local Development Mode:
+    - When local=True, connects to local Supabase at 127.0.0.1:54322
+    - No SSL required for local connections
+    - Uses postgres:postgres credentials
     """
 
     def __init__(
@@ -25,6 +30,7 @@ class SupabaseProvider:
         region: str = "us-east-1",
         pooler_mode: Literal["transaction", "session"] = "transaction",
         az: str = "0",
+        local: bool = False,
     ) -> None:
         """Initialize Supabase provider.
 
@@ -37,6 +43,7 @@ class SupabaseProvider:
             region: AWS region for the Supabase project
             pooler_mode: Connection pooling mode ("transaction" or "session")
             az: AWS availability zone number (found in Supabase connection string as aws-{az}-{region})
+            local: Whether to use local Supabase (127.0.0.1:54322)
         """
         self._database_url = database_url
         self._project_ref = project_ref
@@ -44,25 +51,37 @@ class SupabaseProvider:
         self._region = region
         self._pooler_mode = pooler_mode
         self._az = az
+        self._local = local
 
     @property
     def name(self) -> str:
         """Return the provider name."""
         return "supabase"
 
+    @property
+    def is_local(self) -> bool:
+        """Check if using local Supabase mode."""
+        return self._local
+
     def get_engine_url(self) -> str:
         """Return the Supabase connection URL.
 
+        If local mode, returns local connection URL.
         If a full URL was provided, returns it directly.
         Otherwise, constructs the URL from component parts.
         """
+        # Local Supabase mode
+        if self._local:
+            return "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
         if self._database_url:
             return self._database_url
 
         if not self._project_ref or not self._db_password:
             raise ValueError(
                 "Supabase provider requires either database_url or "
-                "both project_ref and db_password"
+                "both project_ref and db_password "
+                "(or set local=True for local development)"
             )
 
         # Transaction mode uses port 6543, session mode uses 5432
@@ -79,11 +98,28 @@ class SupabaseProvider:
         """Return engine configuration optimized for Supabase.
 
         Configuration is tuned for:
-        - Supavisor connection pooling
+        - Supavisor connection pooling (cloud)
         - Free tier connection limits
-        - Required SSL connections
+        - Required SSL connections (cloud only)
         - Appropriate timeouts for cloud latency
+
+        Local mode uses simpler configuration without SSL.
         """
+        if self._local:
+            # Local Supabase configuration - no SSL, shorter timeouts
+            return {
+                "pool_pre_ping": True,
+                "pool_size": 5,
+                "max_overflow": 5,
+                "pool_recycle": 300,
+                "pool_timeout": 10,  # Shorter timeout for local
+                "echo": False,
+                "connect_args": {
+                    "options": "-c statement_timeout=30000",  # 30s query timeout
+                },
+            }
+
+        # Cloud Supabase configuration
         return {
             "pool_pre_ping": True,  # Essential for cloud connections
             "pool_size": 5,  # Conservative for Supabase free tier
@@ -122,9 +158,15 @@ class SupabaseProvider:
         Alembic migrations require direct database connections, not pooled ones.
         Users should set SUPABASE_DIRECT_URL for migration operations.
 
+        For local mode, returns the local connection URL (same as pooled).
+
         Returns:
             Direct URL if project_ref and password are available, None otherwise
         """
+        # Local Supabase uses direct connection
+        if self._local:
+            return "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
         if not self._project_ref or not self._db_password:
             return None
 
