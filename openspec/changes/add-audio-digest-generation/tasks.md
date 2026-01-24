@@ -2,12 +2,12 @@
 
 ## Phase 1: Shared Text Chunking Utility (Benefits Podcasts Too)
 
-- [ ] 1.1 Create `src/delivery/text_chunker.py`
+- [x] 1.1 Create `src/delivery/text_chunker.py`
   - Generic text splitting at paragraph/sentence boundaries
   - Configurable max length per provider (OpenAI: 4096, ElevenLabs: 5000)
   - SSML pause injection between chunks
-- [ ] 1.2 Add `TextChunk` dataclass with text, position, estimated_duration
-- [ ] 1.3 Add unit tests for chunking edge cases
+- [x] 1.2 Add `TextChunk` dataclass with text, position, estimated_duration
+- [x] 1.3 Add unit tests for chunking edge cases
 - [ ] 1.4 Update `DialogueBatcher` to use `TextChunker` for long turns
 
 ## Phase 2: TTSService Long-Form Synthesis

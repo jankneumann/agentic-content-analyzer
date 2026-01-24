@@ -2,11 +2,16 @@
 
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text
+from sqlalchemy.orm import Mapped, relationship
 
 from src.models.base import Base
+
+if TYPE_CHECKING:
+    from src.models.audio_digest import AudioDigest
 
 
 class DigestType(str, Enum):
@@ -90,6 +95,13 @@ class Digest(Base):
     child_digest_ids = Column(JSON, nullable=True)  # List[int] of child digest IDs
     is_combined = Column(Boolean, default=False, nullable=False)
     source_digest_count = Column(Integer, nullable=True)  # Number of sub-digests combined
+
+    # Relationships
+    audio_digests: Mapped[list["AudioDigest"]] = relationship(
+        "AudioDigest",
+        back_populates="digest",
+        foreign_keys="AudioDigest.digest_id",
+    )
 
 
 class DigestSection(BaseModel):

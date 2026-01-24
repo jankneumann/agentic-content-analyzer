@@ -4,6 +4,13 @@ The Content model provides unified handling for all source types (Gmail, RSS,
 YouTube, file uploads) with markdown-first storage optimized for LLM consumption.
 """
 
+from src.models.audio_digest import (
+    AudioDigest,
+    AudioDigestCreate,
+    AudioDigestListItem,
+    AudioDigestResponse,
+    AudioDigestStatus,
+)
 from src.models.base import Base
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.content import Content, ContentSource, ContentStatus
@@ -26,6 +33,12 @@ from src.models.youtube import (
 __all__ = [
     # Base
     "Base",
+    # Audio Digest
+    "AudioDigest",
+    "AudioDigestCreate",
+    "AudioDigestListItem",
+    "AudioDigestResponse",
+    "AudioDigestStatus",
     # Content (unified model)
     "Content",
     "ContentSource",

@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.audio_digest_routes import router as audio_digest_router
 from src.api.chat_routes import router as chat_router
 from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
@@ -50,6 +51,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(audio_digest_router)
 app.include_router(content_router)
 app.include_router(summary_router)
 app.include_router(script_router)

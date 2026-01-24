@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 DatabaseProviderType = Literal["local", "supabase", "neon"]
 PoolerModeType = Literal["transaction", "session"]
 
+# Audio digest voice presets (maps friendly names to provider-specific voice IDs)
+AUDIO_DIGEST_VOICE_PRESETS: dict[str, dict[str, str]] = {
+    "professional": {"openai": "onyx", "elevenlabs": "nPczCjzI2devNBz1zQrb"},
+    "warm": {"openai": "nova", "elevenlabs": "XrExE9yKIg1WjnnlVkGX"},
+    "energetic": {"openai": "shimmer", "elevenlabs": "SAz9YHcvj6GT2YYXdXww"},
+    "calm": {"openai": "alloy", "elevenlabs": "CwhRBWXzGAHq8TQ4Fs17"},
+}
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -200,6 +208,12 @@ class Settings(BaseSettings):
     podcast_sample_rate: int = 44100
     podcast_words_per_minute: int = 150  # Average speaking rate
     podcast_storage_path: str = "data/podcasts"  # Local storage path
+
+    # Audio Digest Configuration
+    audio_digest_provider: str = "openai"  # TTS provider for digests
+    audio_digest_default_voice: str = "nova"  # Default voice for narration
+    audio_digest_speed: float = 1.0  # Playback speed (0.5 - 2.0)
+    audio_digest_max_duration_minutes: int = 30  # Max digest length to convert
 
     # TTS Provider API Keys
     elevenlabs_api_key: str | None = None
@@ -583,6 +597,22 @@ class Settings(BaseSettings):
         # - Microsoft Azure (requires endpoint, region, credentials)
 
         return config
+
+    def get_audio_digest_voice_id(self, preset: str | None = None) -> str:
+        """Get the voice ID for audio digest generation.
+
+        Args:
+            preset: Optional preset name (professional, warm, energetic, calm)
+                    Falls back to audio_digest_default_voice if not preset or unknown.
+
+        Returns:
+            Provider-specific voice ID
+        """
+        if preset and preset in AUDIO_DIGEST_VOICE_PRESETS:
+            provider_voices = AUDIO_DIGEST_VOICE_PRESETS[preset]
+            if self.audio_digest_provider in provider_voices:
+                return provider_voices[self.audio_digest_provider]
+        return self.audio_digest_default_voice
 
 
 @lru_cache

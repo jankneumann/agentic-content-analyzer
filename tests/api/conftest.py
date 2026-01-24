@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.api.app import app
 from src.config.models import MODEL_REGISTRY
+from src.models.audio_digest import AudioDigest  # noqa: F401 - registers with Base.metadata
 from src.models.base import Base
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
@@ -107,6 +108,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
 
     # Patch get_db in all route modules and services that use it directly
     with (
+        patch("src.api.audio_digest_routes.get_db", mock_get_db),
         patch("src.api.summary_routes.get_db", mock_get_db),
         patch("src.api.digest_routes.get_db", mock_get_db),
         patch("src.api.podcast_routes.get_db", mock_get_db),

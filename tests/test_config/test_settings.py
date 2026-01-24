@@ -428,3 +428,136 @@ class TestLocalSupabaseSettings:
 
         # Should use explicit URL, not auto-configured
         assert settings.supabase_url == "http://custom:9999"
+
+
+class TestAudioDigestSettings:
+    """Tests for audio digest configuration settings."""
+
+    @pytest.fixture(autouse=True)
+    def setup_env(self):
+        """Set up required env vars and clear caches."""
+        from src.config.settings import get_settings
+
+        get_settings.cache_clear()
+
+        # Set required env vars
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
+        os.environ["DATABASE_PROVIDER"] = "local"
+        os.environ["DATABASE_URL"] = "postgresql://user:pass@localhost/db"
+
+        yield
+        get_settings.cache_clear()
+
+    def test_default_audio_digest_settings(self):
+        """Test default values for audio digest settings."""
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        assert settings.audio_digest_provider == "openai"
+        assert settings.audio_digest_default_voice == "nova"
+        assert settings.audio_digest_speed == 1.0
+        assert settings.audio_digest_max_duration_minutes == 30
+
+    def test_audio_digest_settings_from_env(self):
+        """Test audio digest settings can be configured via environment."""
+        os.environ["AUDIO_DIGEST_PROVIDER"] = "elevenlabs"
+        os.environ["AUDIO_DIGEST_DEFAULT_VOICE"] = "custom_voice"
+        os.environ["AUDIO_DIGEST_SPEED"] = "1.25"
+        os.environ["AUDIO_DIGEST_MAX_DURATION_MINUTES"] = "45"
+
+        try:
+            from src.config.settings import Settings
+
+            settings = Settings(_env_file=None)
+
+            assert settings.audio_digest_provider == "elevenlabs"
+            assert settings.audio_digest_default_voice == "custom_voice"
+            assert settings.audio_digest_speed == 1.25
+            assert settings.audio_digest_max_duration_minutes == 45
+        finally:
+            # Clean up
+            os.environ.pop("AUDIO_DIGEST_PROVIDER", None)
+            os.environ.pop("AUDIO_DIGEST_DEFAULT_VOICE", None)
+            os.environ.pop("AUDIO_DIGEST_SPEED", None)
+            os.environ.pop("AUDIO_DIGEST_MAX_DURATION_MINUTES", None)
+
+    def test_voice_preset_resolution_openai(self):
+        """Test voice preset resolution for OpenAI provider."""
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        # Default provider is openai
+        assert settings.get_audio_digest_voice_id("professional") == "onyx"
+        assert settings.get_audio_digest_voice_id("warm") == "nova"
+        assert settings.get_audio_digest_voice_id("energetic") == "shimmer"
+        assert settings.get_audio_digest_voice_id("calm") == "alloy"
+
+    def test_voice_preset_resolution_elevenlabs(self):
+        """Test voice preset resolution for ElevenLabs provider."""
+        os.environ["AUDIO_DIGEST_PROVIDER"] = "elevenlabs"
+
+        try:
+            from src.config.settings import Settings
+
+            settings = Settings(_env_file=None)
+
+            assert settings.get_audio_digest_voice_id("professional") == "nPczCjzI2devNBz1zQrb"
+            assert settings.get_audio_digest_voice_id("warm") == "XrExE9yKIg1WjnnlVkGX"
+            assert settings.get_audio_digest_voice_id("energetic") == "SAz9YHcvj6GT2YYXdXww"
+            assert settings.get_audio_digest_voice_id("calm") == "CwhRBWXzGAHq8TQ4Fs17"
+        finally:
+            os.environ.pop("AUDIO_DIGEST_PROVIDER", None)
+
+    def test_voice_preset_fallback_unknown_preset(self):
+        """Test fallback to default voice when preset is unknown."""
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        # Unknown preset should fall back to default voice
+        assert settings.get_audio_digest_voice_id("unknown_preset") == "nova"
+
+    def test_voice_preset_fallback_none_preset(self):
+        """Test fallback to default voice when preset is None."""
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        assert settings.get_audio_digest_voice_id(None) == "nova"
+        assert settings.get_audio_digest_voice_id() == "nova"
+
+    def test_voice_preset_fallback_unknown_provider(self):
+        """Test fallback when provider is not in preset mapping."""
+        os.environ["AUDIO_DIGEST_PROVIDER"] = "unknown_provider"
+        os.environ["AUDIO_DIGEST_DEFAULT_VOICE"] = "fallback_voice"
+
+        try:
+            from src.config.settings import Settings
+
+            settings = Settings(_env_file=None)
+
+            # Provider not in preset mapping should fall back to default voice
+            assert settings.get_audio_digest_voice_id("professional") == "fallback_voice"
+        finally:
+            os.environ.pop("AUDIO_DIGEST_PROVIDER", None)
+            os.environ.pop("AUDIO_DIGEST_DEFAULT_VOICE", None)
+
+
+class TestAudioDigestVoicePresets:
+    """Tests for the AUDIO_DIGEST_VOICE_PRESETS constant."""
+
+    def test_voice_presets_structure(self):
+        """Test that voice presets have the expected structure."""
+        from src.config.settings import AUDIO_DIGEST_VOICE_PRESETS
+
+        expected_presets = ["professional", "warm", "energetic", "calm"]
+        expected_providers = ["openai", "elevenlabs"]
+
+        for preset in expected_presets:
+            assert preset in AUDIO_DIGEST_VOICE_PRESETS
+            for provider in expected_providers:
+                assert provider in AUDIO_DIGEST_VOICE_PRESETS[preset]
+                assert isinstance(AUDIO_DIGEST_VOICE_PRESETS[preset][provider], str)
+                assert len(AUDIO_DIGEST_VOICE_PRESETS[preset][provider]) > 0
