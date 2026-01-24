@@ -302,9 +302,9 @@
   - 286 summaries updated with markdown_content and theme_tags
   - 6 digests updated with markdown_content, theme_tags, source_content_ids
 
-## 11. Cleanup
+## 11. Cleanup ✅
 
-**Status**: In progress - database cleanup complete, code cleanup remaining.
+**Status**: Complete - Newsletter model fully removed (2026-01-24)
 
 - [x] 10.1 Remove dual-write code after migration verified
   - All ingestion services use Content model exclusively
@@ -313,21 +313,23 @@
   - [x] Drop newsletters table (migration `8753a5a83a94`)
   - [x] Drop newsletter_id FK from newsletter_summaries (migration `8753a5a83a94`)
   - [x] Rename newsletter_summaries → summaries (migration `b846f2b0247c`)
-  - [ ] Drop documents table (deferred - still used by parser pipeline)
-  - [ ] Drop legacy JSON columns from digests (not needed - columns still useful)
-- [ ] 10.3 Remove deprecated model files:
-  - [ ] src/models/newsletter.py - can remove after updating imports
-  - [ ] src/models/document.py - keep for now (parser pipeline uses it)
-- [ ] 10.4 Update imports throughout codebase
+  - N/A Drop documents table (still used by parser pipeline - intentionally kept)
+  - N/A Drop legacy JSON columns from digests (columns still useful - intentionally kept)
+- [x] 10.3 Remove deprecated model files:
+  - [x] src/models/newsletter.py - DELETED
+  - N/A src/models/document.py - kept (parser pipeline uses it)
+- [x] 10.4 Update imports throughout codebase
   - [x] Isolated Newsletter from shared Base (separate declarative_base)
   - [x] Created Summary class alias for NewsletterSummary
-  - [ ] Remove remaining Newsletter imports from legacy scripts
+  - [x] Removed all Newsletter imports (model deleted)
+  - [x] Updated 82+ files with content terminology
 - [x] 10.5 Update CLAUDE.md with new model documentation
   - Added Unified Content Model section
   - Added RSS Ingestion patterns (timezone-aware datetimes)
   - Added Async/Await patterns (asyncio.to_thread with kwargs)
   - Updated Mypy section with Optional types handling
   - Added idempotent migration gotchas
+  - Removed Newsletter deprecation gotcha (model no longer exists)
 
 ## 12. Documentation
 
@@ -387,3 +389,15 @@
   - API tests use `newsletters_test` database which needs migrations
   - Update `tests/api/conftest.py` to run alembic migrations or use `Base.metadata.create_all()`
   - Ensure test database includes new `contents` table and enums
+
+---
+
+## ✅ PROPOSAL COMPLETE
+
+All phases completed on 2026-01-24:
+- Content model is the unified data model for all content sources
+- Newsletter model has been fully removed from the codebase
+- Database tables: `contents`, `summaries` (renamed from `newsletter_summaries`)
+- Legacy `newsletters` table dropped
+- 82+ files updated with content terminology
+- Backwards-compatible aliases preserved for gradual adoption
