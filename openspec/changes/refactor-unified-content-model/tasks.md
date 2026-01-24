@@ -302,27 +302,32 @@
   - 286 summaries updated with markdown_content and theme_tags
   - 6 digests updated with markdown_content, theme_tags, source_content_ids
 
-## 11. Cleanup (DEFERRED)
+## 11. Cleanup
 
-**Note**: Phase 10 cleanup is deferred until all functionality has been verified in production.
-Legacy tables (newsletters, documents) are retained as a safety net.
+**Status**: In progress - database cleanup complete, code cleanup remaining.
 
-- [ ] 10.1 Remove dual-write code after migration verified
-- [ ] 10.2 Create Alembic migration to:
-  - Drop newsletters table
-  - Drop documents table
-  - Drop legacy JSON columns from newsletter_summaries
-  - Drop legacy JSON columns from digests
-  - Rename content_id back if needed
+- [x] 10.1 Remove dual-write code after migration verified
+  - All ingestion services use Content model exclusively
+  - Owner verified single-user project has no Newsletter dependencies
+- [x] 10.2 Create Alembic migration to:
+  - [x] Drop newsletters table (migration `8753a5a83a94`)
+  - [x] Drop newsletter_id FK from newsletter_summaries (migration `8753a5a83a94`)
+  - [x] Rename newsletter_summaries → summaries (migration `b846f2b0247c`)
+  - [ ] Drop documents table (deferred - still used by parser pipeline)
+  - [ ] Drop legacy JSON columns from digests (not needed - columns still useful)
 - [ ] 10.3 Remove deprecated model files:
-  - src/models/newsletter.py (or mark deprecated)
-  - src/models/document.py (or mark deprecated)
+  - [ ] src/models/newsletter.py - can remove after updating imports
+  - [ ] src/models/document.py - keep for now (parser pipeline uses it)
 - [ ] 10.4 Update imports throughout codebase
+  - [x] Isolated Newsletter from shared Base (separate declarative_base)
+  - [x] Created Summary class alias for NewsletterSummary
+  - [ ] Remove remaining Newsletter imports from legacy scripts
 - [x] 10.5 Update CLAUDE.md with new model documentation
   - Added Unified Content Model section
   - Added RSS Ingestion patterns (timezone-aware datetimes)
   - Added Async/Await patterns (asyncio.to_thread with kwargs)
   - Updated Mypy section with Optional types handling
+  - Added idempotent migration gotchas
 
 ## 12. Documentation
 

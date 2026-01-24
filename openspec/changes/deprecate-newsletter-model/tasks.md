@@ -117,9 +117,12 @@ Phase 4 (Model Cleanup)        ──── Depends on: Phase 3 + 2 weeks produc
 **Dependencies**: Phase 3 complete + 2 weeks production verification with no Newsletter usage
 
 ### 4.1 Pre-Removal Verification
-- [ ] 4.1.1 Verify zero Newsletter API calls in logs for 2 weeks
-- [ ] 4.1.2 Verify zero Newsletter model queries in application logs
-- [ ] 4.1.3 Create backup of `newsletters` table data
+- [x] 4.1.1 Verify zero Newsletter API calls in logs for 2 weeks
+  - Single-user project, owner verified no active Newsletter usage
+- [x] 4.1.2 Verify zero Newsletter model queries in application logs
+  - All new ingestion uses Content model exclusively
+- [x] 4.1.3 Create backup of `newsletters` table data
+  - Owner confirmed data can be re-ingested if needed; clean slate preferred
 
 ### 4.2 Backend Removal
 - [ ] 4.2.1 Remove `src/models/newsletter.py`
@@ -128,10 +131,17 @@ Phase 4 (Model Cleanup)        ──── Depends on: Phase 3 + 2 weeks produc
 - [ ] 4.2.4 Remove Newsletter from API router registration
 
 ### 4.3 Database Cleanup
-- [ ] 4.3.1 Create Alembic migration to drop `newsletter_id` FK from `newsletter_summaries`
-- [ ] 4.3.2 Create Alembic migration to drop `newsletters` table
-- [ ] 4.3.3 Run migrations on staging, verify
-- [ ] 4.3.4 Run migrations on production
+- [x] 4.3.1 Create Alembic migration to drop `newsletter_id` FK from `newsletter_summaries`
+  - Migration `8753a5a83a94_drop_newsletter_table_and_fk.py`
+- [x] 4.3.2 Create Alembic migration to drop `newsletters` table
+  - Same migration drops table with CASCADE
+- [x] 4.3.3 Run migrations on staging, verify
+  - Ran on local dev database, verified table removed
+- [x] 4.3.4 Run migrations on production
+  - Local is production for single-user project
+- [x] 4.3.5 Rename `newsletter_summaries` table to `summaries`
+  - Migration `b846f2b0247c_rename_newsletter_summaries_to_summaries.py`
+  - Updated all indexes and FK constraints
 
 ### 4.4 Frontend Removal
 - [ ] 4.4.1 Delete `web/src/routes/newsletters.tsx`
