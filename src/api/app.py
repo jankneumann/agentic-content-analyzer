@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.chat_routes import router as chat_router
 from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
-from src.api.newsletter_routes import router as newsletter_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.script_routes import router as script_router
 from src.api.settings_routes import router as settings_router
@@ -50,8 +49,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(newsletter_router)
-app.include_router(content_router)  # Unified content model (will replace newsletter_router)
+app.include_router(content_router)
 app.include_router(summary_router)
 app.include_router(script_router)
 app.include_router(digest_router)

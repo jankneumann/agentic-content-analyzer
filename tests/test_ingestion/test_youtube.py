@@ -1,16 +1,15 @@
 """Tests for YouTube ingestion."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from src.ingestion.youtube import (
     DEFAULT_LANGUAGES,
     YouTubeClient,
-    YouTubeIngestionService,
 )
-from src.models.youtube import TranscriptSegment, YouTubeTranscript
+from src.models.youtube import YouTubeTranscript
 
 # Test playlist IDs (real playlists for integration testing)
 TEST_PUBLIC_PLAYLIST_ID = "PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6"
@@ -181,123 +180,6 @@ class TestYouTubeClient:
         result = client.get_transcript("test-video-id")
 
         assert result is None
-
-
-class TestYouTubeIngestionService:
-    """Tests for YouTubeIngestionService."""
-
-    @pytest.fixture
-    def mock_service(self) -> YouTubeIngestionService:
-        """Create mock ingestion service."""
-        with patch.object(YouTubeIngestionService, "__init__", lambda x, **k: None):
-            service = YouTubeIngestionService()
-            service.client = Mock()
-            return service
-
-    def test_ingest_playlist_empty(self, mock_service: YouTubeIngestionService) -> None:
-        """Test ingestion with empty playlist."""
-        mock_service.client.get_playlist_videos.return_value = []
-
-        count = mock_service.ingest_playlist("PLtest")
-
-        assert count == 0
-
-    @patch("src.ingestion.youtube.get_db")
-    def test_ingest_playlist_success(
-        self, mock_get_db: Mock, mock_service: YouTubeIngestionService
-    ) -> None:
-        """Test successful playlist ingestion."""
-        # Setup mock videos
-        mock_service.client.get_playlist_videos.return_value = [
-            {
-                "video_id": "vid123",
-                "title": "Test Video",
-                "channel_title": "Test Channel",
-                "published_date": datetime.now(UTC),
-                "thumbnail_url": "http://thumb.jpg",
-                "playlist_id": "PLtest",
-            }
-        ]
-
-        # Setup mock transcript
-        mock_transcript = YouTubeTranscript(
-            video_id="vid123",
-            title="Test Video",
-            segments=[
-                TranscriptSegment(text="Hello", start=0.0, duration=1.5),
-            ],
-            language="en",
-            is_auto_generated=False,
-        )
-        mock_service.client.get_transcript.return_value = mock_transcript
-
-        # Setup mock database
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-        mock_get_db.return_value.__enter__.return_value = mock_db
-
-        count = mock_service.ingest_playlist("PLtest")
-
-        assert count == 1
-        mock_db.add.assert_called_once()
-
-    @patch("src.ingestion.youtube.get_db")
-    def test_ingest_playlist_skip_existing(
-        self, mock_get_db: Mock, mock_service: YouTubeIngestionService
-    ) -> None:
-        """Test ingestion skips existing videos."""
-        mock_service.client.get_playlist_videos.return_value = [
-            {
-                "video_id": "vid123",
-                "title": "Test Video",
-                "channel_title": "Test Channel",
-                "published_date": datetime.now(UTC),
-            }
-        ]
-
-        # Mock that video already exists
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = Mock()
-        mock_get_db.return_value.__enter__.return_value = mock_db
-
-        count = mock_service.ingest_playlist("PLtest", force_reprocess=False)
-
-        assert count == 0
-        mock_db.add.assert_not_called()
-
-    @patch("src.ingestion.youtube.get_db")
-    def test_ingest_playlist_no_transcript(
-        self, mock_get_db: Mock, mock_service: YouTubeIngestionService
-    ) -> None:
-        """Test ingestion handles videos without transcripts."""
-        mock_service.client.get_playlist_videos.return_value = [
-            {
-                "video_id": "vid123",
-                "title": "Test Video",
-                "channel_title": "Test Channel",
-                "published_date": datetime.now(UTC),
-            }
-        ]
-        mock_service.client.get_transcript.return_value = None
-
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-        mock_get_db.return_value.__enter__.return_value = mock_db
-
-        count = mock_service.ingest_playlist("PLtest")
-
-        assert count == 0
-
-    @patch("src.ingestion.youtube.settings")
-    def test_ingest_all_playlists_empty_config(
-        self, mock_settings: Mock, mock_service: YouTubeIngestionService
-    ) -> None:
-        """Test ingestion with no configured playlists."""
-        mock_settings.get_youtube_playlists.return_value = []
-
-        count = mock_service.ingest_all_playlists()
-
-        assert count == 0
 
 
 class TestDefaultLanguages:
