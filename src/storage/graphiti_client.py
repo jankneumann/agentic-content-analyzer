@@ -1,4 +1,5 @@
 """Graphiti knowledge graph client for entity extraction and temporal tracking."""
+# mypy: disable-error-code="no-any-return,no-untyped-def"
 
 import asyncio
 import os
@@ -13,8 +14,9 @@ from graphiti_core.nodes import EpisodeType
 from neo4j import GraphDatabase
 
 from src.config import settings
+from src.models.content import Content
 from src.models.newsletter import Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -96,7 +98,7 @@ class GraphitiClient:
     async def add_newsletter_summary(
         self,
         newsletter: Newsletter,
-        summary: NewsletterSummary,
+        summary: Summary,
     ) -> str:
         """
         Add a newsletter summary to the knowledge graph.
@@ -132,7 +134,83 @@ class GraphitiClient:
             f"Added episode {episode_id} for newsletter {newsletter.id} ({newsletter.title})"
         )
 
-        return episode_id
+        return str(episode_id)
+
+    async def add_content_summary(
+        self,
+        content: Content,
+        summary: Summary,
+    ) -> str:
+        """
+        Add a content summary to the knowledge graph.
+
+        Extracts entities, relationships, and concepts from the summary
+        and stores them as a timestamped episode in Graphiti.
+
+        Args:
+            content: Content object
+            summary: Summary object
+
+        Returns:
+            Episode ID in Graphiti
+        """
+        logger.info(f"Adding content to knowledge graph: {content.title}")
+
+        # Create structured episode content with section headers
+        episode_content = self._create_content_episode(content, summary)
+
+        # Use content published date as episode timestamp
+        reference_time = content.published_date or datetime.now()
+
+        # Add episode to Graphiti
+        source_type = content.source_type.value if content.source_type else "unknown"
+        episode_id = await self.graphiti.add_episode(
+            name=f"{content.publication or content.author}: {content.title}",
+            episode_body=episode_content,
+            source_description=f"Content from {source_type}",
+            reference_time=reference_time,
+            source=EpisodeType.text,
+        )
+
+        logger.info(f"Added episode {episode_id} for content {content.id} ({content.title})")
+
+        return str(episode_id)
+
+    def _create_content_episode(self, content: Content, summary: Summary) -> str:
+        """Create structured episode content from Content and Summary."""
+        source_type = content.source_type.value if content.source_type else "unknown"
+        sections: list[str] = [
+            f"# {content.title}",
+            "",
+            f"**Source:** {source_type}",
+            f"**Publication:** {content.publication or 'Unknown'}",
+            f"**Author:** {content.author or 'Unknown'}",
+            f"**Date:** {content.published_date.isoformat() if content.published_date else 'Unknown'}",
+            "",
+            "## Executive Summary",
+            summary.executive_summary or "",
+            "",
+        ]
+
+        if summary.key_themes:
+            sections.extend(["## Key Themes", ""])
+            for theme in summary.key_themes:
+                sections.append(f"- {theme}")
+            sections.append("")
+
+        if summary.strategic_insights:
+            sections.extend(["## Strategic Insights", ""])
+            for insight in summary.strategic_insights:
+                sections.append(f"- {insight}")
+            sections.append("")
+
+        if summary.technical_details:
+            sections.extend(["## Technical Details", ""])
+            for detail in summary.technical_details:
+                sections.append(f"- {detail}")
+            sections.append("")
+
+        return "\n".join(sections)
 
     async def search_related_concepts(
         self,
@@ -187,10 +265,7 @@ class GraphitiClient:
         all_results = []
 
         # Create tasks for all search queries
-        search_tasks = [
-            self.graphiti.search(query=concept, num_results=50)
-            for concept in concepts
-        ]
+        search_tasks = [self.graphiti.search(query=concept, num_results=50) for concept in concepts]
 
         # Execute all searches concurrently
         search_results_list = await asyncio.gather(*search_tasks)
@@ -482,7 +557,7 @@ class GraphitiClient:
     def _create_episode_content(
         self,
         newsletter: Newsletter,
-        summary: NewsletterSummary,
+        summary: Summary,
     ) -> str:
         """
         Create structured episode content from newsletter summary.

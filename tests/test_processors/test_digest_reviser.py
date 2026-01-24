@@ -10,7 +10,7 @@ from src.config.models import ModelConfig, Provider, ProviderConfig
 from src.models.content import Content, ContentSource
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.revision import RevisionContext
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.digest_reviser import DigestReviser
 
 
@@ -81,7 +81,7 @@ def sample_summaries(sample_contents):
     """Create sample summaries."""
     summaries = []
     for content in sample_contents:
-        summary = NewsletterSummary(
+        summary = Summary(
             content_id=content.id,
             executive_summary=f"Summary for {content.title}",
             key_themes=["AI", "RAG"],
@@ -139,7 +139,7 @@ class TestDigestReviserLoadContext:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            # Create separate query mocks for Digest and NewsletterSummary
+            # Create separate query mocks for Digest and Summary
             digest_query_mock = MagicMock()
             digest_query_mock.filter_by.return_value.first.return_value = sample_digest
 
@@ -154,7 +154,7 @@ class TestDigestReviserLoadContext:
             def query_side_effect(model):
                 if model.__name__ == "Digest":
                     return digest_query_mock
-                elif model.__name__ == "NewsletterSummary":
+                elif model.__name__ == "Summary":
                     return summary_query_mock
                 return MagicMock()
 

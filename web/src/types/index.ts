@@ -35,7 +35,7 @@ export type {
 
 // Summary types
 export type {
-  NewsletterSummary,
+  Summary,
   SummaryListItem,
   SummarizeRequest,
   SummarizeResponse,

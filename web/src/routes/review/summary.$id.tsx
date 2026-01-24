@@ -43,7 +43,7 @@ import {
   type SummaryPreviewData,
 } from "@/lib/api/summaries"
 import type { NavigationInfo } from "@/types/review"
-import type { Newsletter, NewsletterSummary, ChatMessage, Content } from "@/types"
+import type { Newsletter, Summary, ChatMessage, Content } from "@/types"
 
 /**
  * Search params for the summary review route
@@ -271,8 +271,8 @@ function SummaryReviewPage() {
  */
 interface ReviewContentProps {
   newsletter: Newsletter | null | undefined
-  content: (Content & { summary: NewsletterSummary | null }) | null | undefined
-  summary: NewsletterSummary
+  content: (Content & { summary: Summary | null }) | null | undefined
+  summary: Summary
   navigation: NavigationInfo | undefined
   isNavLoading: boolean
   onPrevious: () => void

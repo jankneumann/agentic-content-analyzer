@@ -280,7 +280,7 @@ async def test_analyze_themes_without_historical_context(
                     def query_side_effect(model):
                         if model.__name__ == "Newsletter":
                             return newsletter_query
-                        elif model.__name__ == "NewsletterSummary":
+                        elif model.__name__ == "Summary":
                             return summary_query
                         return MagicMock()
 

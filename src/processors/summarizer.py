@@ -10,7 +10,7 @@ from src.agents.claude import ClaudeAgent
 from src.config import settings
 from src.config.models import ModelConfig
 from src.models.content import Content, ContentStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 from src.utils.summary_markdown import (
@@ -72,11 +72,7 @@ class NewsletterSummarizer:
                 return False
 
             # Check if already summarized using content_id FK
-            existing = (
-                db.query(NewsletterSummary)
-                .filter(NewsletterSummary.content_id == content_id)
-                .first()
-            )
+            existing = db.query(Summary).filter(Summary.content_id == content_id).first()
 
             if existing:
                 logger.info(f"Content {content_id} already summarized")
@@ -116,7 +112,7 @@ class NewsletterSummarizer:
                 theme_tags = extract_summary_theme_tags(summary_dict)
 
                 # Create summary record with content_id FK
-                summary = NewsletterSummary(
+                summary = Summary(
                     content_id=content_id,
                     executive_summary=summary_data.executive_summary,
                     key_themes=summary_data.key_themes,
@@ -197,9 +193,7 @@ class NewsletterSummarizer:
 
                     # Also check if summary exists (in case status wasn't updated)
                     existing_summary = (
-                        db.query(NewsletterSummary)
-                        .filter(NewsletterSummary.content_id == content_id)
-                        .first()
+                        db.query(Summary).filter(Summary.content_id == content_id).first()
                     )
                     if existing_summary:
                         skipped_count += 1

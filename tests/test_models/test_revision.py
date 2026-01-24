@@ -7,7 +7,7 @@ import pytest
 from src.models.content import Content, ContentSource
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ def sample_summaries(sample_contents):
     """Create sample content summaries for testing."""
     summaries = []
     for content in sample_contents:
-        summary = NewsletterSummary(
+        summary = Summary(
             content_id=content.id,
             executive_summary=f"Summary for {content.title}",
             key_themes=["Theme 1", "Theme 2"],

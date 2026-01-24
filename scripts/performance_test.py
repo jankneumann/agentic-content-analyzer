@@ -8,19 +8,20 @@ Usage:
     python scripts/performance_test.py
     python scripts/performance_test.py --iterations 100
 """
+# mypy: disable-error-code="no-untyped-def"
 
 import argparse
 import statistics
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.orm import joinedload
 
 from src.models.content import Content, ContentStatus
 from src.models.digest import Digest
 from src.models.newsletter import Newsletter, ProcessingStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.storage.database import get_db
 
 
@@ -61,9 +62,15 @@ def run_query_benchmarks(iterations: int = 10):
         content_stats = time_query(query_contents_list, iterations)
         newsletter_stats = time_query(query_newsletters_list, iterations)
 
-        print(f"Content list (50 items):    {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms)")
-        print(f"Newsletter list (50 items): {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms)")
-        print(f"  → Difference: {((content_stats['mean'] - newsletter_stats['mean']) / newsletter_stats['mean'] * 100):+.1f}%")
+        print(
+            f"Content list (50 items):    {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms)"
+        )
+        print(
+            f"Newsletter list (50 items): {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms)"
+        )
+        print(
+            f"  → Difference: {((content_stats['mean'] - newsletter_stats['mean']) / newsletter_stats['mean'] * 100):+.1f}%"
+        )
 
         # 2. Filtered queries with status
         print("\n--- Filtered Queries (by status) ---")
@@ -89,28 +96,32 @@ def run_query_benchmarks(iterations: int = 10):
         content_stats = time_query(query_contents_filtered, iterations)
         newsletter_stats = time_query(query_newsletters_filtered, iterations)
 
-        print(f"Content filtered:    {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms)")
-        print(f"Newsletter filtered: {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms)")
+        print(
+            f"Content filtered:    {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms)"
+        )
+        print(
+            f"Newsletter filtered: {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms)"
+        )
 
         # 3. Join queries (Summary with source)
         print("\n--- Join Queries (Summary + Source) ---")
 
         def query_summaries_with_content():
             return (
-                db.query(NewsletterSummary)
-                .options(joinedload(NewsletterSummary.content))
-                .filter(NewsletterSummary.content_id.isnot(None))
-                .order_by(NewsletterSummary.created_at.desc())
+                db.query(Summary)
+                .options(joinedload(Summary.content))
+                .filter(Summary.content_id.isnot(None))
+                .order_by(Summary.created_at.desc())
                 .limit(50)
                 .all()
             )
 
         def query_summaries_with_newsletter():
             return (
-                db.query(NewsletterSummary)
-                .options(joinedload(NewsletterSummary.newsletter))
-                .filter(NewsletterSummary.newsletter_id.isnot(None))
-                .order_by(NewsletterSummary.created_at.desc())
+                db.query(Summary)
+                .options(joinedload(Summary.newsletter))
+                .filter(Summary.newsletter_id.isnot(None))
+                .order_by(Summary.created_at.desc())
                 .limit(50)
                 .all()
             )
@@ -118,8 +129,12 @@ def run_query_benchmarks(iterations: int = 10):
         content_stats = time_query(query_summaries_with_content, iterations)
         newsletter_stats = time_query(query_summaries_with_newsletter, iterations)
 
-        print(f"Summary+Content join:    {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms) [{content_stats['result_count']} results]")
-        print(f"Summary+Newsletter join: {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms) [{newsletter_stats['result_count']} results]")
+        print(
+            f"Summary+Content join:    {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms) [{content_stats['result_count']} results]"
+        )
+        print(
+            f"Summary+Newsletter join: {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms) [{newsletter_stats['result_count']} results]"
+        )
 
         # 4. Digest sources query (the one we just fixed)
         print("\n--- Digest Sources Query ---")
@@ -130,17 +145,17 @@ def run_query_benchmarks(iterations: int = 10):
 
             def query_digest_sources_content():
                 return (
-                    db.query(NewsletterSummary)
-                    .join(Content, NewsletterSummary.content_id == Content.id)
-                    .filter(NewsletterSummary.content_id.in_(digest.source_content_ids))
+                    db.query(Summary)
+                    .join(Content, Summary.content_id == Content.id)
+                    .filter(Summary.content_id.in_(digest.source_content_ids))
                     .order_by(Content.published_date.desc())
                     .all()
                 )
 
             def query_digest_sources_period():
                 return (
-                    db.query(NewsletterSummary)
-                    .join(Content, NewsletterSummary.content_id == Content.id)
+                    db.query(Summary)
+                    .join(Content, Summary.content_id == Content.id)
                     .filter(Content.published_date >= digest.period_start)
                     .filter(Content.published_date <= digest.period_end)
                     .order_by(Content.published_date.desc())
@@ -150,8 +165,12 @@ def run_query_benchmarks(iterations: int = 10):
             id_stats = time_query(query_digest_sources_content, iterations)
             period_stats = time_query(query_digest_sources_period, iterations)
 
-            print(f"By source_content_ids: {id_stats['mean']:.2f}ms (±{id_stats['stdev']:.2f}ms) [{id_stats['result_count']} results]")
-            print(f"By period date range:  {period_stats['mean']:.2f}ms (±{period_stats['stdev']:.2f}ms) [{period_stats['result_count']} results]")
+            print(
+                f"By source_content_ids: {id_stats['mean']:.2f}ms (±{id_stats['stdev']:.2f}ms) [{id_stats['result_count']} results]"
+            )
+            print(
+                f"By period date range:  {period_stats['mean']:.2f}ms (±{period_stats['stdev']:.2f}ms) [{period_stats['result_count']} results]"
+            )
         else:
             print("No digest with source_content_ids found - skipping")
 
@@ -159,26 +178,20 @@ def run_query_benchmarks(iterations: int = 10):
         print("\n--- Text Search Queries ---")
 
         def query_content_search():
-            return (
-                db.query(Content)
-                .filter(Content.markdown_content.ilike("%AI%"))
-                .limit(20)
-                .all()
-            )
+            return db.query(Content).filter(Content.markdown_content.ilike("%AI%")).limit(20).all()
 
         def query_newsletter_search():
-            return (
-                db.query(Newsletter)
-                .filter(Newsletter.raw_text.ilike("%AI%"))
-                .limit(20)
-                .all()
-            )
+            return db.query(Newsletter).filter(Newsletter.raw_text.ilike("%AI%")).limit(20).all()
 
         content_stats = time_query(query_content_search, iterations)
         newsletter_stats = time_query(query_newsletter_search, iterations)
 
-        print(f"Content markdown search: {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms) [{content_stats['result_count']} results]")
-        print(f"Newsletter text search:  {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms) [{newsletter_stats['result_count']} results]")
+        print(
+            f"Content markdown search: {content_stats['mean']:.2f}ms (±{content_stats['stdev']:.2f}ms) [{content_stats['result_count']} results]"
+        )
+        print(
+            f"Newsletter text search:  {newsletter_stats['mean']:.2f}ms (±{newsletter_stats['stdev']:.2f}ms) [{newsletter_stats['result_count']} results]"
+        )
 
 
 def run_storage_analysis():
@@ -204,7 +217,9 @@ def run_storage_analysis():
             """)
             )
             for row in result:
-                print(f"  {row.table_name:25} Total: {row.total_size:>10}  Data: {row.data_size:>10}  Index: {row.index_size:>10}")
+                print(
+                    f"  {row.table_name:25} Total: {row.total_size:>10}  Data: {row.data_size:>10}  Index: {row.index_size:>10}"
+                )
         except Exception as e:
             print(f"  (Table size query not supported: {e})")
 
@@ -331,7 +346,9 @@ def run_api_benchmarks(iterations: int = 5):
 
 def main():
     parser = argparse.ArgumentParser(description="Performance testing for Content model")
-    parser.add_argument("--iterations", "-n", type=int, default=10, help="Number of iterations per test")
+    parser.add_argument(
+        "--iterations", "-n", type=int, default=10, help="Number of iterations per test"
+    )
     parser.add_argument("--skip-api", action="store_true", help="Skip API benchmarks")
     args = parser.parse_args()
 

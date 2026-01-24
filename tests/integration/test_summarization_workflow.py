@@ -13,7 +13,7 @@ import pytest
 
 from src.config.models import MODEL_REGISTRY
 from src.models.newsletter import Newsletter, ProcessingStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.summarizer import NewsletterSummarizer
 
 
@@ -28,11 +28,7 @@ def test_summarize_newsletter_success(
     assert newsletter.status == ProcessingStatus.PENDING
 
     # Ensure no summary exists
-    existing = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    existing = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
     assert existing is None
 
     # Run summarization with mocked LLM and database
@@ -51,11 +47,7 @@ def test_summarize_newsletter_success(
     assert newsletter.status == ProcessingStatus.COMPLETED
 
     # Verify summary was created
-    summary = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
 
     assert summary is not None
     assert summary.executive_summary == "Test summary of newsletter content."
@@ -93,11 +85,7 @@ def test_summarize_newsletter_already_summarized(
     newsletter = sample_newsletters[0]
 
     # Verify summary already exists
-    existing = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    existing = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
     assert existing is not None
 
     # Run summarization
@@ -110,11 +98,7 @@ def test_summarize_newsletter_already_summarized(
     assert result is True
 
     # Verify only one summary exists (no duplicate created)
-    summaries = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .all()
-    )
+    summaries = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).all()
     assert len(summaries) == 1
 
 
@@ -171,7 +155,7 @@ def test_summarize_pending_newsletters(
         assert newsletter.status == ProcessingStatus.COMPLETED
 
     # Verify summaries were created
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 3
 
 
@@ -192,7 +176,7 @@ def test_summarize_pending_newsletters_with_limit(
     assert count == 2
 
     # Verify summaries created
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 2
 
     # Verify one newsletter still pending

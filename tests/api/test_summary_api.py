@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from src.config.models import MODEL_REGISTRY
 from src.models.content import Content, ContentSource, ContentStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 
 class TestListSummaries:
@@ -95,7 +95,7 @@ class TestListSummaries:
             db_session.commit()
             db_session.refresh(content)
 
-            summary = NewsletterSummary(
+            summary = Summary(
                 content_id=content.id,
                 executive_summary=f"Executive summary {i}.",
                 key_themes=[f"Theme {i}A", f"Theme {i}B"],
@@ -249,11 +249,7 @@ class TestSummaryNavigation:
         contents = TestListSummaries()._create_contents_with_summaries(db_session, count=2)
 
         # Get the summary for the first content
-        summary = (
-            db_session.query(NewsletterSummary)
-            .filter(NewsletterSummary.content_id == contents[0].id)
-            .first()
-        )
+        summary = db_session.query(Summary).filter(Summary.content_id == contents[0].id).first()
 
         response = client.get(f"/api/v1/summaries/{summary.id}/navigation")
 
@@ -269,7 +265,7 @@ class TestSummaryNavigation:
         contents = TestListSummaries()._create_contents_with_summaries(db_session, count=2)
 
         # Get the second summary (which should have prev based on sort order)
-        summaries = db_session.query(NewsletterSummary).order_by(NewsletterSummary.created_at.desc()).all()
+        summaries = db_session.query(Summary).order_by(Summary.created_at.desc()).all()
         summary_id = summaries[1].id  # Second in desc order
 
         response = client.get(f"/api/v1/summaries/{summary_id}/navigation")

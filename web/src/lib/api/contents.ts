@@ -26,7 +26,7 @@ import type {
   ContentCreateRequest,
   ContentDuplicateInfo,
   ContentSource,
-  NewsletterSummary,
+  Summary,
 } from "@/types"
 
 /**
@@ -81,7 +81,7 @@ export async function fetchContent(id: string | number): Promise<Content> {
  */
 export async function fetchContentWithSummary(
   id: string | number
-): Promise<Content & { summary: NewsletterSummary | null }> {
+): Promise<Content & { summary: Summary | null }> {
   const [content, summary] = await Promise.all([
     fetchContent(id),
     fetchContentSummary(id).catch(() => null),
@@ -100,8 +100,8 @@ export async function fetchContentWithSummary(
  */
 export async function fetchContentSummary(
   contentId: string | number
-): Promise<NewsletterSummary> {
-  return apiClient.get<NewsletterSummary>(`/summaries/by-content/${contentId}`)
+): Promise<Summary> {
+  return apiClient.get<Summary>(`/summaries/by-content/${contentId}`)
 }
 
 /**

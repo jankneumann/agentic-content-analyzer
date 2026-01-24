@@ -35,7 +35,7 @@ from src.models.podcast import (
     PodcastStatus,
 )
 from src.models.settings import PromptOverride  # noqa: F401 - registers with Base.metadata
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 
 # Test database configuration
@@ -207,11 +207,11 @@ def sample_newsletters(db_session) -> list[Newsletter]:
 
 
 @pytest.fixture
-def sample_summary(db_session, sample_content) -> NewsletterSummary:
+def sample_summary(db_session, sample_content) -> Summary:
     """Create a single sample summary linked to content."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
-    summary = NewsletterSummary(
+    summary = Summary(
         content_id=sample_content.id,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
@@ -240,12 +240,12 @@ def sample_summary(db_session, sample_content) -> NewsletterSummary:
 
 
 @pytest.fixture
-def sample_summaries(db_session, sample_contents) -> list[NewsletterSummary]:
+def sample_summaries(db_session, sample_contents) -> list[Summary]:
     """Create multiple sample summaries linked to contents."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
     summaries = [
-        NewsletterSummary(
+        Summary(
             content_id=sample_contents[0].id,
             executive_summary="Major LLM advances summary.",
             key_themes=["LLM Performance", "Cost Optimization"],
@@ -259,7 +259,7 @@ def sample_summaries(db_session, sample_contents) -> list[NewsletterSummary]:
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
-        NewsletterSummary(
+        Summary(
             content_id=sample_contents[1].id,
             executive_summary="Vector database performance summary.",
             key_themes=["Vector Search", "Performance"],
@@ -543,11 +543,11 @@ def sample_contents(db_session) -> list[Content]:
 
 
 @pytest.fixture
-def sample_content_with_summary(db_session, sample_content) -> tuple[Content, NewsletterSummary]:
+def sample_content_with_summary(db_session, sample_content) -> tuple[Content, Summary]:
     """Create a content with an associated summary."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
-    summary = NewsletterSummary(
+    summary = Summary(
         content_id=sample_content.id,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],

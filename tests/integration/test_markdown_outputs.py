@@ -14,7 +14,7 @@ import pytest
 
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ The cost of running LLMs has decreased by 40% in the past quarter.
 
 
 @pytest.fixture
-def summaries_for_digest(db_session) -> list[NewsletterSummary]:
+def summaries_for_digest(db_session) -> list[Summary]:
     """Create summaries ready for digest generation."""
     from src.config.models import MODEL_REGISTRY
 
@@ -95,7 +95,7 @@ def summaries_for_digest(db_session) -> list[NewsletterSummary]:
         db_session.refresh(content)
 
     summaries = [
-        NewsletterSummary(
+        Summary(
             content_id=contents[0].id,
             executive_summary="Major LLM cost reductions announced.",
             key_themes=["LLM Costs", "Optimization", "Cloud Infrastructure"],
@@ -129,7 +129,7 @@ Cost reduction enables broader AI adoption.
             model_used=test_model,
             token_usage=2000,
         ),
-        NewsletterSummary(
+        Summary(
             content_id=contents[1].id,
             executive_summary="Vector database performance improvements.",
             key_themes=["Vector DB", "Performance", "Hybrid Search"],
@@ -159,7 +159,7 @@ Vector database performance improvements.
             model_used=test_model,
             token_usage=1800,
         ),
-        NewsletterSummary(
+        Summary(
             content_id=contents[2].id,
             executive_summary="AI agent frameworks compared.",
             key_themes=["AI Agents", "Frameworks", "Tool Use"],
@@ -280,7 +280,7 @@ class TestSummarizationMarkdownOutput:
         markdown = generate_summary_markdown(summary_data)
         theme_tags = extract_summary_theme_tags(summary_data)
 
-        summary = NewsletterSummary(
+        summary = Summary(
             content_id=content_for_summarization.id,
             executive_summary=summary_data["executive_summary"],
             key_themes=summary_data["key_themes"],

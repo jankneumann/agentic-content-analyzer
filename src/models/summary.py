@@ -9,14 +9,13 @@ from sqlalchemy.orm import relationship
 from src.models.base import Base
 
 
-class NewsletterSummary(Base):
+class Summary(Base):
     """Content summary database model.
 
     Summaries are linked to Content records via content_id.
-    Despite the legacy name, this model now works exclusively with Content.
     """
 
-    __tablename__ = "newsletter_summaries"
+    __tablename__ = "summaries"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     # Content FK - links summary to source content
@@ -52,6 +51,10 @@ class NewsletterSummary(Base):
 
     # Relationships
     content = relationship("Content", back_populates="summaries")
+
+
+# Backwards compatibility alias (deprecated)
+NewsletterSummary = Summary
 
 
 class SummaryData(BaseModel):

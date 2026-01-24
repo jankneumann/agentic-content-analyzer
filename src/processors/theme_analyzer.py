@@ -9,7 +9,7 @@ from anthropic import Anthropic
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.content import Content, ContentStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import (
     ThemeAnalysisRequest,
     ThemeAnalysisResult,
@@ -233,11 +233,7 @@ class ThemeAnalyzer:
             return []
 
         with get_db() as db:
-            summaries = (
-                db.query(NewsletterSummary)
-                .filter(NewsletterSummary.content_id.in_(content_ids))
-                .all()
-            )
+            summaries = db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
 
             logger.info(f"Found {len(summaries)} summaries for {len(content_ids)} content items")
 

@@ -14,7 +14,7 @@ import logging
 from unittest.mock import MagicMock, patch
 
 from src.models.newsletter import Newsletter, ProcessingStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.summarizer import NewsletterSummarizer
 from tests.helpers.simple_mocks import create_simple_summary_response
 from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
@@ -47,7 +47,7 @@ def test_summarize_single_newsletter(db_session, mock_get_db):
     logger.info(f"Loaded newsletter {newsletter.id}: {newsletter.title}")
 
     # Verify no summaries exist
-    assert db_session.query(NewsletterSummary).count() == 0
+    assert db_session.query(Summary).count() == 0
     assert newsletter.status == ProcessingStatus.PENDING
     logger.info("✓ Verified initial state")
 
@@ -82,11 +82,7 @@ def test_summarize_single_newsletter(db_session, mock_get_db):
     db_session.refresh(newsletter)
 
     # Check summary exists
-    summary = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
 
     assert summary is not None, "Summary should be created"
     assert success is True, "Summarization should succeed"
@@ -126,7 +122,7 @@ def test_summarize_multiple_newsletters_batch(db_session, mock_get_db):
     logger.info(f"Loaded {len(newsletters)} newsletters: {newsletter_ids}")
 
     # Verify no summaries exist
-    assert db_session.query(NewsletterSummary).count() == 0
+    assert db_session.query(Summary).count() == 0
     logger.info("✓ Verified no summaries exist initially")
 
     # ============================================================
@@ -162,17 +158,13 @@ def test_summarize_multiple_newsletters_batch(db_session, mock_get_db):
     assert len(result["failed_ids"]) == 0, f"Expected 0 failures, got {result['failed_ids']}"
 
     # Check database
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 3, f"Expected 3 summaries in DB, found {len(summaries)}"
 
     # Verify each newsletter has a summary
     for newsletter in newsletters:
         db_session.refresh(newsletter)
-        summary = (
-            db_session.query(NewsletterSummary)
-            .filter(NewsletterSummary.newsletter_id == newsletter.id)
-            .first()
-        )
+        summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
 
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
         assert newsletter.status == ProcessingStatus.COMPLETED
@@ -203,7 +195,7 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
 
     # Create summary for first newsletter manually
     logger.info(f"Creating manual summary for newsletter {newsletters[0].id}...")
-    existing_summary = NewsletterSummary(
+    existing_summary = Summary(
         newsletter_id=newsletters[0].id,
         executive_summary="Existing summary",
         key_themes=["Existing theme"],
@@ -223,7 +215,7 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
     db_session.add(existing_summary)
     db_session.commit()
 
-    initial_count = db_session.query(NewsletterSummary).count()
+    initial_count = db_session.query(Summary).count()
     assert initial_count == 1, "Expected 1 existing summary"
     logger.info("✓ Created 1 existing summary")
 
@@ -262,16 +254,12 @@ def test_summarize_skips_existing_summaries(db_session, mock_get_db):
     assert len(result["failed_ids"]) == 0, f"Expected 0 failures, got {result['failed_ids']}"
 
     # Check database - should have exactly 3 summaries total
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 3, f"Expected 3 total summaries, found {len(summaries)}"
 
     # Verify all newsletters have summaries
     for newsletter in newsletters:
-        summary = (
-            db_session.query(NewsletterSummary)
-            .filter(NewsletterSummary.newsletter_id == newsletter.id)
-            .first()
-        )
+        summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
 
     logger.info("✓ Exactly 3 summaries exist (1 existing + 2 created)")
@@ -302,7 +290,7 @@ def test_summarize_handles_api_failures(db_session, mock_get_db):
     newsletter = newsletters[0]
     logger.info(f"Loaded newsletter {newsletter.id}")
 
-    assert db_session.query(NewsletterSummary).count() == 0
+    assert db_session.query(Summary).count() == 0
     logger.info("✓ Verified no summaries exist")
 
     # ============================================================
@@ -335,11 +323,7 @@ def test_summarize_handles_api_failures(db_session, mock_get_db):
     db_session.refresh(newsletter)
 
     # Check that summary was NOT created
-    summary = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
 
     assert summary is None, "Summary should NOT be created on failure"
     assert success is False, "Summarization should return False on failure"
@@ -369,7 +353,7 @@ def test_summarize_invalid_newsletter_id(db_session, mock_get_db):
     # ============================================================
     logger.info("Starting with empty database...")
     assert db_session.query(Newsletter).count() == 0
-    assert db_session.query(NewsletterSummary).count() == 0
+    assert db_session.query(Summary).count() == 0
     logger.info("✓ Verified database is empty")
 
     # ============================================================
@@ -390,7 +374,7 @@ def test_summarize_invalid_newsletter_id(db_session, mock_get_db):
     logger.info("Verifying invalid ID was handled...")
 
     assert success is False, "Should return False for invalid ID"
-    assert db_session.query(NewsletterSummary).count() == 0, "No summary should be created"
+    assert db_session.query(Summary).count() == 0, "No summary should be created"
 
     logger.info("✓ Invalid ID handled gracefully")
     logger.info("=== TEST PASSED ===\n")
@@ -419,7 +403,7 @@ def test_summarize_batch_with_partial_failures(db_session, mock_get_db):
     newsletter_ids = [nl.id for nl in newsletters]
     logger.info(f"Loaded {len(newsletters)} newsletters: {newsletter_ids}")
 
-    assert db_session.query(NewsletterSummary).count() == 0
+    assert db_session.query(Summary).count() == 0
     logger.info("✓ Verified no summaries exist")
 
     # ============================================================
@@ -471,7 +455,7 @@ def test_summarize_batch_with_partial_failures(db_session, mock_get_db):
     assert newsletters[1].id in result["failed_ids"], "Failed ID should be in failed_ids list"
 
     # Check database - should have 2 summaries
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 2, f"Expected 2 summaries, found {len(summaries)}"
 
     # Verify newsletters 1 and 3 have summaries, 2 does not

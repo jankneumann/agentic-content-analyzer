@@ -35,7 +35,7 @@ from src.models.base import Base
 if TYPE_CHECKING:
     from src.models.content import Content
     from src.models.digest import Digest
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
 
 class ImageSource(str, Enum):
@@ -88,7 +88,7 @@ class Image(Base):  # type: ignore[valid-type, misc]
     )
     source_summary_id = Column(
         Integer,
-        ForeignKey("newsletter_summaries.id", ondelete="CASCADE"),
+        ForeignKey("summaries.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -142,8 +142,8 @@ class Image(Base):  # type: ignore[valid-type, misc]
         foreign_keys=[source_content_id],
         back_populates="images",
     )
-    source_summary: Mapped["NewsletterSummary | None"] = relationship(
-        "NewsletterSummary",
+    source_summary: Mapped["Summary | None"] = relationship(
+        "Summary",
         foreign_keys=[source_summary_id],
         backref="images",
     )

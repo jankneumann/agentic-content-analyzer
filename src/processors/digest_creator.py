@@ -17,7 +17,7 @@ from src.models.digest import (
     DigestStatus,
     DigestType,
 )
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisRequest, ThemeData
 from src.processors.theme_analyzer import ThemeAnalyzer
 from src.storage.database import get_db
@@ -124,9 +124,7 @@ class DigestCreator:
 
         with get_db() as db:
             summaries = (
-                db.query(NewsletterSummary)
-                .filter(NewsletterSummary.content_id.in_(content_ids))
-                .all()
+                db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
                 if content_ids
                 else []
             )
@@ -256,11 +254,7 @@ class DigestCreator:
         try:
             content_ids = [c["id"] for c in contents]
             with get_db() as db:
-                summaries = (
-                    db.query(NewsletterSummary)
-                    .filter(NewsletterSummary.content_id.in_(content_ids))
-                    .all()
-                )
+                summaries = db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
             logger.debug(f"Loaded {len(summaries)} summaries for token estimation")
         except Exception as e:
             logger.warning(f"Failed to load summaries for token estimation: {e}")
@@ -387,7 +381,7 @@ class DigestCreator:
         contents: list[dict],
         themes: list[ThemeData],
         batches: list[list[dict]],
-        summaries: list[NewsletterSummary],
+        summaries: list[Summary],
     ) -> DigestData:
         """
         Create hierarchical digest from content batches.
@@ -774,7 +768,7 @@ Output only the JSON object, no additional text.
         request: DigestRequest,
         themes: list[ThemeData],
         contents: list[dict],
-        summaries: list[NewsletterSummary],
+        summaries: list[Summary],
     ) -> dict:
         """Generate digest content using LLM."""
         logger.info("Generating digest content with LLM...")
@@ -923,9 +917,7 @@ Output only the JSON object, no additional text.
 
         return "\n\n".join(context_parts)
 
-    def _build_contents_context(
-        self, contents: list[dict], summaries: list[NewsletterSummary]
-    ) -> str:
+    def _build_contents_context(self, contents: list[dict], summaries: list[Summary]) -> str:
         """Build context string from content summaries."""
         # Create lookup dict for quick access by content_id
         summaries_by_id = {s.content_id: s for s in summaries if s.content_id}

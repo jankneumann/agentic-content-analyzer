@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.models.digest import Digest, DigestRequest, DigestType
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.digest_creator import DigestCreator
 from tests.helpers.simple_mocks import (
     create_simple_digest_response,
@@ -56,7 +56,7 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
 
     # Create summaries for all newsletters
     for i, newsletter in enumerate(newsletters, 1):
-        summary = NewsletterSummary(
+        summary = Summary(
             newsletter_id=newsletter.id,
             executive_summary=f"Summary for newsletter {i}",
             key_themes=[f"Theme {i}A", f"Theme {i}B"],
@@ -79,7 +79,7 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
     logger.info(f"✓ Created summaries for {len(newsletters)} newsletters")
 
     # Verify setup
-    assert db_session.query(NewsletterSummary).count() == 3
+    assert db_session.query(Summary).count() == 3
     assert db_session.query(Digest).count() == 0
 
     # ============================================================
@@ -177,7 +177,7 @@ async def test_create_weekly_digest(db_session, mock_get_db):
 
     # Create summaries
     for i, newsletter in enumerate(newsletters, 1):
-        summary = NewsletterSummary(
+        summary = Summary(
             newsletter_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],
@@ -336,7 +336,7 @@ async def test_digest_includes_all_newsletter_sources(db_session, mock_get_db):
 
     # Create summaries
     for i, newsletter in enumerate(newsletters, 1):
-        summary = NewsletterSummary(
+        summary = Summary(
             newsletter_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],
@@ -445,7 +445,7 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
     )
 
     for i, newsletter in enumerate(newsletters, 1):
-        summary = NewsletterSummary(
+        summary = Summary(
             newsletter_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],
@@ -510,9 +510,9 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
 
     assert digest.processing_time_seconds is not None, "Processing time should be tracked"
     assert digest.processing_time_seconds > 0, "Processing time should be positive"
-    assert digest.processing_time_seconds < 60, (
-        "Processing time should be reasonable (< 60s for test)"
-    )
+    assert (
+        digest.processing_time_seconds < 60
+    ), "Processing time should be reasonable (< 60s for test)"
 
     logger.info(f"✓ Processing time tracked: {digest.processing_time_seconds:.2f}s")
     logger.info("=== TEST PASSED ===\n")
@@ -537,7 +537,7 @@ async def test_digest_with_custom_limits(db_session, mock_get_db):
     )
 
     for i, newsletter in enumerate(newsletters, 1):
-        summary = NewsletterSummary(
+        summary = Summary(
             newsletter_id=newsletter.id,
             executive_summary=f"Summary {i}",
             key_themes=[f"Theme {i}"],

@@ -15,12 +15,13 @@ sys.modules["graphiti_core.nodes"] = MagicMock()
 mock_database = MagicMock()
 sys.modules["src.storage.database"] = mock_database
 
-from datetime import datetime
-import pytest
+from datetime import datetime  # noqa: E402
 
-from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
-from src.models.summary import NewsletterSummary
-from src.storage.graphiti_client import GraphitiClient
+import pytest  # noqa: E402
+
+from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus  # noqa: E402
+from src.models.summary import Summary  # noqa: E402
+from src.storage.graphiti_client import GraphitiClient  # noqa: E402
 
 
 @pytest.fixture
@@ -62,9 +63,9 @@ def sample_newsletter() -> Newsletter:
 
 
 @pytest.fixture
-def sample_summary() -> NewsletterSummary:
+def sample_summary() -> Summary:
     """Create sample newsletter summary for testing."""
-    return NewsletterSummary(
+    return Summary(
         newsletter_id=1,
         executive_summary="Major AI breakthroughs announced this week.",
         key_themes=["Large Language Models", "AI Agents", "RAG"],
@@ -522,7 +523,7 @@ def test_create_episode_content(sample_newsletter, sample_summary):
 
 def test_create_episode_content_minimal(sample_newsletter):
     """Test episode content creation with minimal summary."""
-    minimal_summary = NewsletterSummary(
+    minimal_summary = Summary(
         newsletter_id=1,
         executive_summary="Brief summary.",
         key_themes=[],  # Empty

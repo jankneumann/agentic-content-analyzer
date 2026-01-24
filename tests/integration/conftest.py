@@ -57,7 +57,7 @@ from src.models.podcast import (  # noqa: F401 - registers with Base.metadata
     Podcast,
     PodcastScriptRecord,
 )
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 
 # Test database configuration
@@ -256,13 +256,13 @@ def sample_newsletters(db_session) -> list[Newsletter]:
 
 
 @pytest.fixture
-def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
+def sample_summaries(db_session, sample_newsletters) -> list[Summary]:
     """Create sample summaries for the newsletters."""
     # Use any valid model from the registry for test data
     test_model = list(MODEL_REGISTRY.keys())[0]
 
     summaries = [
-        NewsletterSummary(
+        Summary(
             newsletter_id=sample_newsletters[0].id,
             executive_summary="Major LLM advances including cost reduction and performance improvements.",
             key_themes=["LLM Performance", "Cost Optimization", "Multimodal AI"],
@@ -281,7 +281,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
-        NewsletterSummary(
+        Summary(
             newsletter_id=sample_newsletters[1].id,
             executive_summary="Vector database performance benchmarks and optimization techniques.",
             key_themes=["Vector Search", "Performance", "Hybrid Search"],
@@ -300,7 +300,7 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             token_usage=2200,
             processing_time_seconds=3.2,
         ),
-        NewsletterSummary(
+        Summary(
             newsletter_id=sample_newsletters[2].id,
             executive_summary="Comparison of major AI agent frameworks and their capabilities.",
             key_themes=["AI Agents", "Framework Comparison", "Tool Use"],

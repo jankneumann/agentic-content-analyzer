@@ -405,7 +405,7 @@ async def list_contents(
 @router.get("/stats", response_model=ContentStats)
 async def get_content_stats() -> ContentStats:
     """Get content statistics."""
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
     with get_db() as db:
         total = db.query(Content).count()
@@ -425,11 +425,9 @@ async def get_content_stats() -> ContentStats:
         by_source = {source.value: count for source, count in source_counts}
 
         # Count content items that don't have summaries yet
-        # This is content with no matching NewsletterSummary.content_id
+        # This is content with no matching Summary.content_id
         content_with_summaries = (
-            db.query(NewsletterSummary.content_id)
-            .filter(NewsletterSummary.content_id.isnot(None))
-            .subquery()
+            db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).subquery()
         )
         needs_summarization_count = (
             db.query(Content).filter(~Content.id.in_(content_with_summaries)).count()
@@ -691,7 +689,7 @@ async def trigger_content_summarization(
     """
     import uuid
 
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
     task_id = str(uuid.uuid4())
 
@@ -700,9 +698,7 @@ async def trigger_content_summarization(
         # Get all content IDs that already have summaries
         existing_summary_ids = {
             s.content_id
-            for s in db.query(NewsletterSummary.content_id)
-            .filter(NewsletterSummary.content_id.isnot(None))
-            .all()
+            for s in db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).all()
         }
 
         if request.content_ids:

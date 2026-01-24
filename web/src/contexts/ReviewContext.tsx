@@ -12,7 +12,7 @@ import * as React from "react"
 import { createContext, useContext, useReducer, useCallback } from "react"
 import type { ContextItem } from "@/types/review"
 import { REVIEW_LIMITS } from "@/types/review"
-import type { NewsletterSummary } from "@/types/summary"
+import type { Summary } from "@/types/summary"
 
 // Generate unique IDs for context items
 let contextIdCounter = 0
@@ -36,7 +36,7 @@ interface ReviewState {
   /** Current feedback text */
   feedback: string
   /** Preview of regenerated summary (null if not in preview mode) */
-  previewContent: NewsletterSummary | null
+  previewContent: Summary | null
   /** Whether preview generation is in progress */
   isGenerating: boolean
   /** Error message if generation failed */
@@ -50,7 +50,7 @@ type ReviewAction =
   | { type: "REMOVE_CONTEXT_ITEM"; payload: string }
   | { type: "CLEAR_ALL_CONTEXT" }
   | { type: "SET_FEEDBACK"; payload: string }
-  | { type: "SET_PREVIEW"; payload: NewsletterSummary | null }
+  | { type: "SET_PREVIEW"; payload: Summary | null }
   | { type: "SET_GENERATING"; payload: boolean }
   | { type: "SET_ERROR"; payload: string | null }
   | { type: "RESET" }
@@ -162,7 +162,7 @@ interface ReviewContextValue extends ReviewState {
   removeContextItem: (id: string) => void
   clearAllContext: () => void
   setFeedback: (text: string) => void
-  setPreview: (preview: NewsletterSummary | null) => void
+  setPreview: (preview: Summary | null) => void
   setGenerating: (generating: boolean) => void
   setError: (error: string | null) => void
   reset: () => void
@@ -223,7 +223,7 @@ export function ReviewProvider({ children }: ReviewProviderProps) {
     dispatch({ type: "SET_FEEDBACK", payload: text })
   }, [])
 
-  const setPreview = useCallback((preview: NewsletterSummary | null) => {
+  const setPreview = useCallback((preview: Summary | null) => {
     dispatch({ type: "SET_PREVIEW", payload: preview })
   }, [])
 

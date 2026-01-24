@@ -21,7 +21,7 @@ from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
 from src.models.settings import PromptOverride
-from src.models.summary import NewsletterSummary, SummaryData
+from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
 from src.models.youtube import (
     TimestampedQuote,
@@ -51,7 +51,8 @@ __all__ = [
     "Image",
     "ImageSource",
     # Summary
-    "NewsletterSummary",
+    "Summary",
+    "NewsletterSummary",  # Deprecated alias for Summary
     "SummaryData",
     # Digest
     "Digest",

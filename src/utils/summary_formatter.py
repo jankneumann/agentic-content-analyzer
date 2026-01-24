@@ -1,14 +1,14 @@
 """Summary formatting utilities for multi-format output."""
 
 from src.models.newsletter import Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 
 class SummaryFormatter:
     """Formats newsletter summaries for different output types (markdown, HTML, plain text)."""
 
     @staticmethod
-    def to_plain_text(summary: NewsletterSummary, newsletter: Newsletter) -> str:
+    def to_plain_text(summary: Summary, newsletter: Newsletter) -> str:
         """Format summary as plain text."""
         lines = []
 
@@ -108,7 +108,7 @@ class SummaryFormatter:
         return "\n".join(lines)
 
     @staticmethod
-    def to_markdown(summary: NewsletterSummary, newsletter: Newsletter) -> str:
+    def to_markdown(summary: Summary, newsletter: Newsletter) -> str:
         """Format summary as Markdown."""
         md_parts = []
 
@@ -194,7 +194,7 @@ class SummaryFormatter:
         return "\n".join(md_parts)
 
     @staticmethod
-    def to_html(summary: NewsletterSummary, newsletter: Newsletter) -> str:
+    def to_html(summary: Summary, newsletter: Newsletter) -> str:
         """Format summary as HTML for email delivery or web display."""
         html_parts = []
 

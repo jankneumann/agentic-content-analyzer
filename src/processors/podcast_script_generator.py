@@ -31,7 +31,7 @@ from src.models.podcast import (
     PodcastScript,
     PodcastSection,
 )
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.services.llm_router import ToolDefinition
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -347,11 +347,7 @@ class PodcastScriptGenerator:
             # Load summaries (these ARE included - they're already condensed)
             content_ids = [c.id for c in contents]
             summaries = (
-                (
-                    db.query(NewsletterSummary)
-                    .filter(NewsletterSummary.content_id.in_(content_ids))
-                    .all()
-                )
+                (db.query(Summary).filter(Summary.content_id.in_(content_ids)).all())
                 if content_ids
                 else []
             )
@@ -987,7 +983,7 @@ when you need more detail for compelling quotes or to verify/enrich specific poi
         """Format content summaries for the prompt.
 
         Args:
-            summaries: List of NewsletterSummary objects
+            summaries: List of Summary objects
 
         Returns:
             Formatted string

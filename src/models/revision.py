@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from src.models.digest import Digest
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 
 @dataclass
@@ -17,7 +17,7 @@ class RevisionContext:
     """
 
     digest: Digest
-    summaries: list[NewsletterSummary]  # Already condensed summaries
+    summaries: list[Summary]  # Already condensed summaries
     theme_analysis: Any | None = None  # Theme analysis data (if available)
     content_ids: list[int] | None = None  # IDs for on-demand fetching via tools
 

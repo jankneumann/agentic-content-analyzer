@@ -82,7 +82,7 @@ class TokenCounter:
             newsletters: List of newsletter dicts (with title, publication)
             themes: Optional list of theme objects
             prompt_template: Optional prompt template string
-            summaries: Optional list of newsletter summary objects (NewsletterSummary)
+            summaries: Optional list of newsletter summary objects (Summary)
 
         Returns:
             Total estimated tokens for full context

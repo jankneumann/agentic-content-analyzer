@@ -23,7 +23,7 @@ from src.models.content import (
     ContentUpdate,
 )
 from src.models.image import Image
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 
 class TestContentSourceEnum:
@@ -476,15 +476,15 @@ class TestContentRelationships:
         assert hasattr(Content, "images")
 
     def test_summary_has_content_relationship(self):
-        """Test NewsletterSummary model has content relationship attribute."""
-        assert hasattr(NewsletterSummary, "content")
+        """Test Summary model has content relationship attribute."""
+        assert hasattr(Summary, "content")
 
     def test_image_has_source_content_relationship(self):
         """Test Image model has source_content relationship attribute."""
         assert hasattr(Image, "source_content")
 
     def test_content_summaries_back_populates(self):
-        """Test Content.summaries and NewsletterSummary.content are linked."""
+        """Test Content.summaries and Summary.content are linked."""
         # Create content
         content = Content(
             source_type=ContentSource.GMAIL,
@@ -496,7 +496,7 @@ class TestContentRelationships:
         content.id = 1  # Simulate database assignment
 
         # Create summary linked to content
-        summary = NewsletterSummary(
+        summary = Summary(
             content_id=1,
             executive_summary="Test summary",
             key_themes=["test"],
@@ -512,7 +512,7 @@ class TestContentRelationships:
         # Verify relationship attribute names match back_populates
         # This confirms the relationship configuration is correct
         # (actual ORM linking requires a database session)
-        assert NewsletterSummary.content.property.back_populates == "summaries"
+        assert Summary.content.property.back_populates == "summaries"
 
     def test_content_images_back_populates(self):
         """Test Content.images and Image.source_content are linked."""

@@ -22,7 +22,7 @@ from src.models.chat import ChatMessage, Conversation, MessageRole
 from src.models.content import Content
 from src.models.digest import Digest
 from src.models.podcast import PodcastScriptRecord
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.services.chat_service import ChatService
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
@@ -236,7 +236,7 @@ def get_artifact_content(db: Session, artifact_type: str, artifact_id: int) -> s
     """
     if artifact_type == "summary":
         # Get the summary and its associated content
-        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == artifact_id).first()
+        summary = db.query(Summary).filter(Summary.id == artifact_id).first()
 
         if not summary:
             return "[Summary not found]"

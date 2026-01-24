@@ -22,7 +22,7 @@ import type {
   IngestRequest,
   IngestResponse,
   PaginatedResponse,
-  NewsletterSummary,
+  Summary,
 } from "@/types"
 
 /**
@@ -57,7 +57,7 @@ export async function fetchNewsletter(id: string): Promise<Newsletter> {
  */
 export async function fetchNewsletterWithSummary(
   id: string
-): Promise<Newsletter & { summary: NewsletterSummary | null }> {
+): Promise<Newsletter & { summary: Summary | null }> {
   const [newsletter, summary] = await Promise.all([
     fetchNewsletter(id),
     fetchNewsletterSummary(id).catch(() => null),
@@ -74,8 +74,8 @@ export async function fetchNewsletterWithSummary(
  */
 export async function fetchNewsletterSummary(
   newsletterId: string
-): Promise<NewsletterSummary> {
-  return apiClient.get<NewsletterSummary>(`/summaries/by-newsletter/${newsletterId}`)
+): Promise<Summary> {
+  return apiClient.get<Summary>(`/summaries/by-newsletter/${newsletterId}`)
 }
 
 /**

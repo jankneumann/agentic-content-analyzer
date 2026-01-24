@@ -13,7 +13,7 @@
  * Contains structured information extracted from content by the LLM.
  * Each content has at most one summary (1:1 relationship).
  */
-export interface NewsletterSummary {
+export interface Summary {
   /** Unique identifier */
   id: number
 

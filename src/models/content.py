@@ -34,7 +34,7 @@ from src.models.base import Base
 
 if TYPE_CHECKING:
     from src.models.image import Image
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
 
 class ContentSource(str, Enum):
@@ -149,10 +149,10 @@ class Content(Base):  # type: ignore[valid-type, misc]
     )
 
     # Content → Summary relationship (one-to-many, typically one summary per content)
-    summaries: Mapped[list["NewsletterSummary"]] = relationship(
-        "NewsletterSummary",
+    summaries: Mapped[list["Summary"]] = relationship(
+        "Summary",
         back_populates="content",
-        foreign_keys="NewsletterSummary.content_id",
+        foreign_keys="Summary.content_id",
     )
 
     # Content → Image relationship (one-to-many for extracted images)

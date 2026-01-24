@@ -16,7 +16,7 @@
 
 import { apiClient } from "./client"
 import type {
-  NewsletterSummary,
+  Summary,
   SummaryListItem,
   SummarizeRequest,
   SummarizeResponse,
@@ -47,8 +47,8 @@ export async function fetchSummaries(
  * @param id - Summary ID
  * @returns Full summary details
  */
-export async function fetchSummary(id: string): Promise<NewsletterSummary> {
-  return apiClient.get<NewsletterSummary>(`/summaries/${id}`)
+export async function fetchSummary(id: string): Promise<Summary> {
+  return apiClient.get<Summary>(`/summaries/${id}`)
 }
 
 /**
@@ -59,9 +59,9 @@ export async function fetchSummary(id: string): Promise<NewsletterSummary> {
  */
 export async function fetchSummaryByNewsletter(
   newsletterId: string
-): Promise<NewsletterSummary | null> {
+): Promise<Summary | null> {
   try {
-    return await apiClient.get<NewsletterSummary>(
+    return await apiClient.get<Summary>(
       `/summaries/by-newsletter/${newsletterId}`
     )
   } catch (error) {
@@ -320,6 +320,6 @@ export interface CommitPreviewRequest {
 export async function commitSummaryPreview(
   summaryId: string,
   preview: CommitPreviewRequest
-): Promise<NewsletterSummary> {
-  return apiClient.post<NewsletterSummary>(`/summaries/${summaryId}/commit-preview`, preview)
+): Promise<Summary> {
+  return apiClient.post<Summary>(`/summaries/${summaryId}/commit-preview`, preview)
 }

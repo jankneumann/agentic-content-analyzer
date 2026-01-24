@@ -10,7 +10,7 @@ from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.content import Content
 from src.models.digest import Digest
 from src.models.revision import RevisionContext, RevisionResult
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -84,9 +84,9 @@ class DigestReviser:
             # Load summaries for the period with eager loading of content relationship
             # to prevent DetachedInstanceError when accessing summary.content
             summaries = (
-                db.query(NewsletterSummary)
-                .options(joinedload(NewsletterSummary.content))
-                .join(Content, NewsletterSummary.content_id == Content.id)
+                db.query(Summary)
+                .options(joinedload(Summary.content))
+                .join(Content, Summary.content_id == Content.id)
                 .filter(
                     Content.published_date >= digest.period_start,
                     Content.published_date <= digest.period_end,

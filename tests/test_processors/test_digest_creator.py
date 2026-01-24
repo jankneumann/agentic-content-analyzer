@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.models.digest import DigestData, DigestRequest, DigestType
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisResult, ThemeCategory, ThemeData, ThemeTrend
 from src.processors.digest_creator import DigestCreator
 
@@ -90,11 +90,11 @@ def sample_newsletters(sample_contents) -> list[dict]:
 
 
 @pytest.fixture
-def sample_summaries() -> list[NewsletterSummary]:
+def sample_summaries() -> list[Summary]:
     """Create sample content summaries for testing."""
     summaries = []
     for i, content_id in enumerate([1, 2]):
-        summary = NewsletterSummary(
+        summary = Summary(
             content_id=content_id,
             executive_summary=f"Summary for content {content_id}",
             key_themes=["AI", "Machine Learning"],

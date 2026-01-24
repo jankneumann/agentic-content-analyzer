@@ -15,7 +15,7 @@ import pytest
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.podcast import Podcast, PodcastScriptRecord, PodcastStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 # ==============================================================================
 # Content Sorting Tests
@@ -170,11 +170,11 @@ class TestSummarySorting:
     """Tests for GET /api/v1/summaries sorting functionality."""
 
     @pytest.fixture
-    def sortable_summaries(self, db_session, sortable_contents) -> list[NewsletterSummary]:
+    def sortable_summaries(self, db_session, sortable_contents) -> list[Summary]:
         """Create summaries with different values for sorting tests."""
         # Need to use the sortable_contents fixture
         summaries = [
-            NewsletterSummary(
+            Summary(
                 content_id=sortable_contents[0].id,
                 executive_summary="Alpha summary",
                 key_themes=["Theme A"],
@@ -188,7 +188,7 @@ class TestSummarySorting:
                 token_usage=1000,
                 processing_time_seconds=2.0,
             ),
-            NewsletterSummary(
+            Summary(
                 content_id=sortable_contents[1].id,
                 executive_summary="Beta summary",
                 key_themes=["Theme B"],

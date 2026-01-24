@@ -457,7 +457,7 @@ async def get_digest_sources(
     Returns full summaries from content within the digest's period.
     """
     from src.models.content import Content
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
     with get_db() as db:
         digest = db.query(Digest).filter(Digest.id == digest_id).first()
@@ -470,9 +470,9 @@ async def get_digest_sources(
         # Strategy 1: Use source_content_ids if available (new flow)
         if digest.source_content_ids:
             content_summaries = (
-                db.query(NewsletterSummary)
-                .join(Content, NewsletterSummary.content_id == Content.id)
-                .filter(NewsletterSummary.content_id.in_(digest.source_content_ids))
+                db.query(Summary)
+                .join(Content, Summary.content_id == Content.id)
+                .filter(Summary.content_id.in_(digest.source_content_ids))
                 .order_by(Content.published_date.desc())
                 .limit(limit)
                 .all()
@@ -499,8 +499,8 @@ async def get_digest_sources(
         # Strategy 2: Query Content by period (if no explicit source_content_ids)
         if not results and digest.period_start and digest.period_end:
             content_summaries = (
-                db.query(NewsletterSummary)
-                .join(Content, NewsletterSummary.content_id == Content.id)
+                db.query(Summary)
+                .join(Content, Summary.content_id == Content.id)
                 .filter(Content.published_date >= digest.period_start)
                 .filter(Content.published_date <= digest.period_end)
                 .order_by(Content.published_date.desc())
