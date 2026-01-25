@@ -546,7 +546,7 @@ async def get_chat_config() -> ChatConfigResponse:
     return ChatConfigResponse(
         available_models=available_models,
         default_model=default_model,
-        web_search_enabled=False,  # Web search not implemented yet
+        web_search_enabled=bool(get_model_config().settings.tavily_api_key),
         max_message_length=2000,
         max_history_length=50,
     )
