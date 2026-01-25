@@ -144,6 +144,84 @@ class SectionRevisionRequest(BaseModel):
 # --- Background Tasks ---
 
 
+async def regenerate_digest_task(digest_id: int) -> None:
+    """Background task for digest regeneration."""
+    logger.info(f"Starting background digest regeneration for ID: {digest_id}")
+
+    # Fetch existing digest
+    with get_db() as db:
+        digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
+        if not digest_record:
+            logger.error(f"Digest {digest_id} not found for regeneration")
+            return
+
+        # Update status
+        digest_record.status = DigestStatus.GENERATING
+        digest_record.title = f"Regenerating {digest_record.digest_type.value} digest..."
+        db.commit()
+
+        # Create request from existing digest data
+        request = DigestRequest(
+            digest_type=digest_record.digest_type,
+            period_start=digest_record.period_start,
+            period_end=digest_record.period_end,
+            include_historical_context=True,  # Default to True for now
+        )
+
+    try:
+        # Generate digest
+        creator = DigestCreator()
+        digest_data = await creator.create_digest(request)
+
+        # Update record with generated content
+        with get_db() as db:
+            digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
+
+            # Convert DigestSection objects to dicts
+            digest_record.title = digest_data.title
+            digest_record.executive_overview = digest_data.executive_overview
+            digest_record.strategic_insights = [
+                s.model_dump() for s in digest_data.strategic_insights
+            ]
+            digest_record.technical_developments = [
+                s.model_dump() for s in digest_data.technical_developments
+            ]
+            digest_record.emerging_trends = [s.model_dump() for s in digest_data.emerging_trends]
+            digest_record.actionable_recommendations = digest_data.actionable_recommendations
+            digest_record.sources = digest_data.sources
+            digest_record.newsletter_count = digest_data.newsletter_count
+            digest_record.status = DigestStatus.PENDING_REVIEW
+            digest_record.completed_at = datetime.utcnow()
+            digest_record.agent_framework = digest_data.agent_framework
+            digest_record.model_used = digest_data.model_used
+            digest_record.model_version = digest_data.model_version
+            digest_record.processing_time_seconds = (
+                int(digest_data.processing_time_seconds)
+                if digest_data.processing_time_seconds
+                else None
+            )
+            digest_record.is_combined = 1 if digest_data.is_combined else 0
+            digest_record.child_digest_ids = digest_data.child_digest_ids
+            # New markdown-first fields (Phase 5)
+            digest_record.markdown_content = digest_data.markdown_content
+            digest_record.theme_tags = digest_data.theme_tags
+            digest_record.source_content_ids = digest_data.source_content_ids
+            digest_record.revision_count = (digest_record.revision_count or 0) + 1
+
+            db.commit()
+
+        logger.info(f"Digest {digest_id} regenerated successfully")
+
+    except Exception as e:
+        logger.error(f"Digest regeneration failed: {e}")
+        with get_db() as db:
+            digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
+            if digest_record:
+                digest_record.status = DigestStatus.FAILED
+                digest_record.review_notes = str(e)
+                db.commit()
+
+
 async def generate_digest_task(request: DigestRequest) -> None:
     """Background task for digest generation."""
     logger.info(
@@ -284,6 +362,44 @@ async def generate_digest(
         "message": f"{digest_type.value.title()} digest generation started",
         "period_start": period_start.isoformat(),
         "period_end": period_end.isoformat(),
+    }
+
+
+@router.post("/{digest_id}/regenerate", response_model=dict)
+async def regenerate_digest(
+    digest_id: int,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Regenerate an existing digest.
+
+    Starts digest regeneration in background and returns immediately.
+    This re-runs the full generation process for the existing digest ID.
+    Poll GET /digests/{digest_id} for status.
+    """
+    logger.info(f"Received digest regeneration request for ID: {digest_id}")
+
+    with get_db() as db:
+        digest = db.query(Digest).filter(Digest.id == digest_id).first()
+        if not digest:
+            raise HTTPException(status_code=404, detail="Digest not found")
+
+        if digest.status == DigestStatus.GENERATING:
+            raise HTTPException(
+                status_code=400,
+                detail="Digest is already generating",
+            )
+
+        # Set status to generating immediately
+        digest.status = DigestStatus.GENERATING
+        db.commit()
+
+    # Queue background task
+    background_tasks.add_task(regenerate_digest_task, digest_id)
+
+    return {
+        "status": "queued",
+        "message": "Digest regeneration started",
+        "digest_id": digest_id,
     }
 
 

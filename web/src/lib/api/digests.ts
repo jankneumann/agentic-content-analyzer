@@ -99,6 +99,22 @@ export async function generateDigest(
 }
 
 /**
+ * Regenerate an existing digest
+ *
+ * @param digestId - Digest ID to regenerate
+ * @returns Status response
+ */
+export async function regenerateDigest(
+  digestId: number
+): Promise<{
+  status: string
+  message: string
+  digest_id: number
+}> {
+  return apiClient.post(`/digests/${digestId}/regenerate`)
+}
+
+/**
  * Submit a review for a digest
  *
  * @param digestId - Digest ID
