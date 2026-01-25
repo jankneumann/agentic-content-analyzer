@@ -7,14 +7,14 @@ We don't care about the actual content quality - just that the structure is vali
 from unittest.mock import MagicMock
 
 
-def create_simple_summary_response(newsletter_id: int = 1) -> MagicMock:
+def create_simple_summary_response(content_id: int = 1) -> MagicMock:
     """
     Create minimal valid Anthropic summary response.
 
     For functional tests - just needs valid JSON structure, content doesn't matter.
     """
     mock_response = MagicMock()
-    mock_response.id = f"msg_test_{newsletter_id}"
+    mock_response.id = f"msg_test_{content_id}"
     mock_response.type = "message"
     mock_response.role = "assistant"
     mock_response.model = "claude-haiku-4-5"
@@ -118,7 +118,7 @@ def create_simple_theme_analysis_response(theme_count: int = 3) -> MagicMock:
                 "description": f"Description for theme {i + 1}",
                 "category": "ml_ai",  # Required ThemeCategory
                 "mention_count": 3,  # Required
-                "newsletter_ids": [1, 2, 3],
+                "content_ids": [1, 2, 3],
                 "first_seen": "2025-01-13T00:00:00Z",  # Required
                 "last_seen": "2025-01-15T00:00:00Z",  # Required
                 "trend": "established",  # Required ThemeTrend

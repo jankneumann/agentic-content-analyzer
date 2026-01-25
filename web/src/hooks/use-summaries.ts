@@ -1,7 +1,7 @@
 /**
  * Summary React Query Hooks
  *
- * Custom hooks for fetching and managing newsletter summaries.
+ * Custom hooks for fetching and managing content summaries.
  * Includes progress tracking for long-running summarization tasks.
  *
  * @example
@@ -11,7 +11,7 @@
  * @example
  * // Trigger summarization with progress
  * const { mutate, isPending } = useTriggerSummarization()
- * mutate({ newsletterIds: ['id1'] })
+ * mutate({ contentIds: ['id1'] })
  */
 
 import { useState, useCallback } from "react"
@@ -63,20 +63,31 @@ export function useSummary(id: string, options?: { enabled?: boolean }) {
 }
 
 /**
- * Hook to fetch summary by newsletter ID
+ * Hook to fetch summary by content ID
  *
- * @param newsletterId - Newsletter ID
+ * @param contentId - Content ID
  * @returns Query result with summary (or null)
+ */
+export function useSummaryByContent(
+  contentId: string,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.summaries.byContent(contentId),
+    queryFn: () => fetchSummaryByNewsletter(contentId),
+    enabled: options?.enabled ?? !!contentId,
+  })
+}
+
+/**
+ * Hook to fetch summary by newsletter ID
+ * @deprecated Use useSummaryByContent instead
  */
 export function useSummaryByNewsletter(
   newsletterId: string,
   options?: { enabled?: boolean }
 ) {
-  return useQuery({
-    queryKey: queryKeys.summaries.byNewsletter(newsletterId),
-    queryFn: () => fetchSummaryByNewsletter(newsletterId),
-    enabled: options?.enabled ?? !!newsletterId,
-  })
+  return useSummaryByContent(newsletterId, options)
 }
 
 /**
@@ -142,12 +153,12 @@ export function useTriggerSummarization() {
       return response
     },
     onSuccess: () => {
-      // Invalidate summaries and newsletters lists
+      // Invalidate summaries and contents lists
       queryClient.invalidateQueries({
         queryKey: queryKeys.summaries.lists(),
       })
       queryClient.invalidateQueries({
-        queryKey: queryKeys.newsletters.lists(),
+        queryKey: queryKeys.contents.lists(),
       })
     },
   })

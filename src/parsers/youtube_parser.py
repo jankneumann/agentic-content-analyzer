@@ -11,7 +11,7 @@ from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisable
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata
 from src.models.youtube import TranscriptSegment, YouTubeTranscript
 from src.parsers.base import DocumentParser
-from src.utils.youtube_links import extract_video_id, is_youtube_url
+from src.utils.youtube_links import extract_video_id, is_youtube_url, validate_video_id_format
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class YouTubeParser(DocumentParser):
         if not video_id:
             # Assume it's a direct video ID
             video_id = source_str.strip()
-            if len(video_id) != 11:
+            if not validate_video_id_format(video_id):
                 raise ValueError(f"Invalid YouTube video ID or URL: {source_str}")
 
         try:

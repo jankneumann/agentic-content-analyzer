@@ -9,6 +9,7 @@ from typing import Any
 
 from src.config import settings
 from src.utils.logging import get_logger
+from src.utils.youtube_links import validate_video_id_format
 
 logger = get_logger(__name__)
 
@@ -75,6 +76,11 @@ class KeyframeExtractor:
                 "or brew install ffmpeg (macOS)"
             ) from e
 
+    def _validate_video_id(self, video_id: str) -> None:
+        """Validate video ID format to prevent path traversal and injection."""
+        if not validate_video_id_format(video_id):
+            raise ValueError(f"Invalid video ID: {video_id}")
+
     def download_video(self, video_id: str) -> str | None:
         """
         Download a YouTube video for processing.
@@ -85,6 +91,8 @@ class KeyframeExtractor:
         Returns:
             Path to downloaded video or None if failed
         """
+        self._validate_video_id(video_id)
+
         try:
             import yt_dlp
         except ImportError:
@@ -545,6 +553,12 @@ class KeyframeExtractor:
         Returns:
             KeyframeExtractionResult with slides and metadata
         """
+        # Validate ID first
+        try:
+            self._validate_video_id(video_id)
+        except ValueError as e:
+            return KeyframeExtractionResult(video_id=video_id, error=str(e))
+
         result = KeyframeExtractionResult(video_id=video_id)
 
         # Verify ffmpeg is available
@@ -598,6 +612,8 @@ class KeyframeExtractor:
         Args:
             video_id: YouTube video ID
         """
+        self._validate_video_id(video_id)
+
         frames_dir = os.path.join(self.output_dir, f"{video_id}_frames")
         if os.path.exists(frames_dir):
             try:

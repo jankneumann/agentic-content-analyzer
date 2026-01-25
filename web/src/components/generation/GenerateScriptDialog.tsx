@@ -124,23 +124,29 @@ export function GenerateScriptDialog({
         <div className="space-y-6 py-4">
           {/* Source Digest */}
           <div className="space-y-2">
-            <Label>Source Digest</Label>
+            <Label htmlFor="digest-select">Source Digest</Label>
             <Select
               value={digestId ? String(digestId) : ""}
               onValueChange={(v) => setDigestId(Number(v))}
             >
-              <SelectTrigger>
+              <SelectTrigger id="digest-select" className="w-full">
                 <SelectValue placeholder="Select a digest..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-w-[calc(500px-3rem)]">
                 {approvedDigests.length === 0 ? (
-                  <SelectItem value="" disabled>
+                  <SelectItem value="none" disabled>
                     No approved digests available
                   </SelectItem>
                 ) : (
                   approvedDigests.map((digest) => (
-                    <SelectItem key={digest.id} value={String(digest.id)}>
-                      [{digest.id}] {digest.title}
+                    <SelectItem
+                      key={digest.id}
+                      value={String(digest.id)}
+                      className="max-w-full"
+                    >
+                      <span className="truncate">
+                        [{digest.id}] {digest.title}
+                      </span>
                     </SelectItem>
                   ))
                 )}
@@ -148,7 +154,7 @@ export function GenerateScriptDialog({
             </Select>
             {selectedDigest && (
               <p className="text-xs text-muted-foreground">
-                {selectedDigest.digest_type} • {selectedDigest.newsletter_count} newsletters
+                {selectedDigest.digest_type} • {selectedDigest.content_count} content items
               </p>
             )}
           </div>
@@ -182,15 +188,22 @@ export function GenerateScriptDialog({
 
           {/* Focus Topics */}
           <div className="space-y-2">
-            <Label>Focus Topics (Optional)</Label>
+            <Label htmlFor="topic-input">Focus Topics (Optional)</Label>
             <div className="flex gap-2">
               <Input
+                id="topic-input"
                 placeholder="Add a topic to emphasize..."
                 value={newTopic}
                 onChange={(e) => setNewTopic(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTopic())}
               />
-              <Button variant="outline" size="icon" onClick={handleAddTopic} disabled={!newTopic.trim()}>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleAddTopic}
+                disabled={!newTopic.trim()}
+                aria-label="Add topic"
+              >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -202,6 +215,7 @@ export function GenerateScriptDialog({
                     <button
                       onClick={() => handleRemoveTopic(topic)}
                       className="ml-1 hover:text-destructive"
+                      aria-label={`Remove topic ${topic}`}
                     >
                       <X className="h-3 w-3" />
                     </button>

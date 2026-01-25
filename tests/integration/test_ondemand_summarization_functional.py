@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.models.digest import DigestRequest, DigestType
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.digest_creator import DigestCreator
 from tests.helpers.simple_mocks import (
     create_simple_digest_response,
@@ -55,7 +55,7 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
     logger.info(f"Loaded {len(newsletters)} newsletters: {[nl.id for nl in newsletters]}")
 
     # Verify no summaries exist
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     assert summary_count == 0, "Expected 0 summaries initially"
     logger.info("✓ Verified no summaries exist initially")
 
@@ -136,17 +136,13 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
     logger.info("Verifying summaries were created...")
 
     # Check summary count
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 3, f"Expected 3 summaries, found {len(summaries)}"
     logger.info(f"✓ Found {len(summaries)} summaries in database")
 
     # Verify each newsletter has a summary
     for newsletter in newsletters:
-        summary = (
-            db_session.query(NewsletterSummary)
-            .filter(NewsletterSummary.newsletter_id == newsletter.id)
-            .first()
-        )
+        summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
 
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
         assert summary.executive_summary is not None
@@ -186,7 +182,7 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
 
     # Create summary for first newsletter manually
     logger.info(f"Creating manual summary for newsletter {newsletters[0].id}...")
-    existing_summary = NewsletterSummary(
+    existing_summary = Summary(
         newsletter_id=newsletters[0].id,
         executive_summary="Existing summary",
         key_themes=["Existing theme"],
@@ -206,7 +202,7 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
     db_session.add(existing_summary)
     db_session.commit()
 
-    initial_count = db_session.query(NewsletterSummary).count()
+    initial_count = db_session.query(Summary).count()
     assert initial_count == 1, "Expected 1 existing summary"
     logger.info("✓ Created 1 existing summary")
 
@@ -271,16 +267,12 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
     # ============================================================
     logger.info("Verifying summary counts...")
 
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 3, f"Expected 3 total summaries, found {len(summaries)}"
 
     # Verify all newsletters have summaries
     for newsletter in newsletters:
-        summary = (
-            db_session.query(NewsletterSummary)
-            .filter(NewsletterSummary.newsletter_id == newsletter.id)
-            .first()
-        )
+        summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
 
     logger.info("✓ Exactly 3 summaries exist (1 existing + 2 created)")
@@ -308,7 +300,7 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
         db_session, filenames=get_default_test_newsletters()
     )
 
-    assert db_session.query(NewsletterSummary).count() == 0
+    assert db_session.query(Summary).count() == 0
     logger.info("✓ 0 summaries initially")
 
     # ============================================================
@@ -401,7 +393,7 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
     # ============================================================
     logger.info("Verifying partial success...")
 
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
 
     # Should have 2 summaries (1st and 3rd succeeded)
     assert len(summaries) == 2, f"Expected 2 summaries (partial success), found {len(summaries)}"
@@ -466,7 +458,7 @@ async def test_ondemand_summarization_no_newsletters_in_period(db_session):
     assert digest.newsletter_count == 0, f"Expected 0 newsletters, found {digest.newsletter_count}"
 
     # No summaries should be created
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     assert summary_count == 0, f"Expected 0 summaries, found {summary_count}"
 
     logger.info("✓ Empty digest created gracefully with no newsletters")

@@ -1,118 +1,97 @@
-"""Test data helpers for loading and ingesting test newsletters."""
+"""Test data helpers for integration tests.
 
-import json
-from datetime import datetime
-from pathlib import Path
+Provides helper functions to create Content test records.
+"""
+
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
-
-# Path to test data directory
-TEST_DATA_DIR = Path(__file__).parent.parent / "test_data"
-NEWSLETTERS_DIR = TEST_DATA_DIR / "newsletters"
+from src.models.content import Content, ContentSource, ContentStatus
 
 
-def load_test_newsletter_data(filename: str) -> dict:
-    """
-    Load test newsletter data from JSON file.
-
-    Args:
-        filename: Name of JSON file in tests/test_data/newsletters/
+def get_default_test_contents() -> list[str]:
+    """Return default list of test content titles.
 
     Returns:
-        Dictionary with newsletter data
+        List of content title strings for test content creation
     """
-    file_path = NEWSLETTERS_DIR / filename
+    return [
+        "Latest LLM Advances",
+        "Vector Database Performance",
+        "AI Agent Frameworks",
+    ]
 
-    if not file_path.exists():
-        raise FileNotFoundError(f"Test newsletter not found: {file_path}")
 
-    with open(file_path) as f:
-        data = json.load(f)
+def create_test_contents_batch(
+    db_session: Session,
+    titles: list[str] | None = None,
+    source_type: ContentSource = ContentSource.GMAIL,
+    status: ContentStatus = ContentStatus.COMPLETED,
+) -> list[Content]:
+    """Create a batch of test Content records in the database.
 
-    # Convert ISO date string to datetime if needed
-    if isinstance(data.get("published_date"), str):
-        data["published_date"] = datetime.fromisoformat(
-            data["published_date"].replace("Z", "+00:00")
+    Args:
+        db_session: Database session for creating records
+        titles: List of content titles (defaults to get_default_test_contents())
+        source_type: ContentSource type for all records
+        status: ContentStatus for all records (default: COMPLETED for digest tests)
+
+    Returns:
+        List of created Content records with IDs assigned
+    """
+    if titles is None:
+        titles = get_default_test_contents()
+
+    contents = []
+    for i, title in enumerate(titles, 1):
+        content = Content(
+            source_type=source_type,
+            source_id=f"test-content-{i:03d}",
+            source_url=f"https://example.com/content-{i}",
+            title=title,
+            author=f"author{i}@example.com",
+            publication=f"Publication {i}",
+            published_date=datetime(2025, 1, 15 - i, 10, 0, 0, tzinfo=UTC),
+            markdown_content=f"# {title}\n\nTest content about {title.lower()}.",
+            content_hash=f"hash{i:03d}",
+            status=status,
+            ingested_at=datetime.now(UTC),
         )
+        db_session.add(content)
+        contents.append(content)
 
-    return data
+    db_session.commit()
+
+    # Refresh to get IDs
+    for content in contents:
+        db_session.refresh(content)
+
+    return contents
 
 
-def create_test_newsletter(
-    db: Session, filename: str, status: ProcessingStatus = ProcessingStatus.PENDING
-) -> Newsletter:
+# Backwards compatibility aliases (deprecated - use Content-based functions)
+def get_default_test_newsletters() -> list[str]:
+    """Alias for get_default_test_contents().
+
+    Deprecated: Use get_default_test_contents() instead.
     """
-    Load test newsletter from JSON and insert into database.
-
-    Args:
-        db: Database session
-        filename: Name of JSON file in tests/test_data/newsletters/
-        status: Initial processing status
-
-    Returns:
-        Created Newsletter object
-    """
-    data = load_test_newsletter_data(filename)
-
-    newsletter = Newsletter(
-        source=NewsletterSource[data["source"]],
-        source_id=data["source_id"],
-        sender=data["sender"],
-        publication=data["publication"],
-        title=data["title"],
-        published_date=data["published_date"],
-        url=data.get("url"),
-        raw_html=data.get("raw_html"),
-        raw_text=data.get("raw_text"),
-        status=status,
-    )
-
-    db.add(newsletter)
-    db.commit()
-    db.refresh(newsletter)
-
-    return newsletter
+    return get_default_test_contents()
 
 
 def create_test_newsletters_batch(
-    db: Session,
+    db_session: Session,
     filenames: list[str] | None = None,
-    status: ProcessingStatus = ProcessingStatus.PENDING,
-) -> list[Newsletter]:
-    """
-    Load multiple test newsletters and insert into database.
+) -> list[Content]:
+    """Create a batch of test Content records (backwards compatibility alias).
+
+    Deprecated: Use create_test_contents_batch() instead.
 
     Args:
-        db: Database session
-        filenames: List of JSON filenames. If None, loads all newsletters in test_data
-        status: Initial processing status
+        db_session: Database session for creating records
+        filenames: List of content titles (parameter name kept for backwards compatibility)
 
     Returns:
-        List of created Newsletter objects
+        List of created Content records with IDs assigned
     """
-    if filenames is None:
-        # Load all JSON files from newsletters directory
-        filenames = sorted([f.name for f in NEWSLETTERS_DIR.glob("*.json")])
-
-    newsletters = []
-    for filename in filenames:
-        newsletter = create_test_newsletter(db, filename, status)
-        newsletters.append(newsletter)
-
-    return newsletters
-
-
-def get_default_test_newsletters() -> list[str]:
-    """
-    Get list of default test newsletter filenames.
-
-    Returns:
-        List of JSON filenames
-    """
-    return [
-        "newsletter_1_llm_advances.json",
-        "newsletter_2_vector_databases.json",
-        "newsletter_3_agent_frameworks.json",
-    ]
+    return create_test_contents_batch(db_session, titles=filenames)

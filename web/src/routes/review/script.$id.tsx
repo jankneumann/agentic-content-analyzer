@@ -22,7 +22,7 @@ import {
 } from "@/components/review"
 import { RevisionChatPanel } from "@/components/chat"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
-import { useScript, useScriptNavigation } from "@/hooks/use-scripts"
+import { useScript, useScriptNavigation, useRegenerateScript } from "@/hooks/use-scripts"
 import { useDigest } from "@/hooks/use-digests"
 import { useChatConfig, useChatSession } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
@@ -173,7 +173,7 @@ interface ScriptReviewContentProps {
 }
 
 function ScriptReviewContent({
-  script,
+  script: initialScript,
   digest,
   isLoadingDigest,
   navigation,
@@ -181,16 +181,55 @@ function ScriptReviewContent({
   onPrevious,
   onNext,
 }: ScriptReviewContentProps) {
+  const navigate = useNavigate()
   const containerRef = React.useRef<HTMLDivElement>(null)
 
   // Panel expansion state - start collapsed for cleaner initial view
   const [isPanelExpanded, setIsPanelExpanded] = React.useState(false)
 
   // Chat session hook - handles persistence and messaging
-  const chat = useChatSession("script", script.id.toString())
+  const chat = useChatSession("script", initialScript.id.toString())
 
-  // Local state for regeneration (separate from chat)
-  const [isGenerating, setIsGenerating] = React.useState(false)
+  // Preview state
+  const [previewScriptId, setPreviewScriptId] = React.useState<number | null>(null)
+
+  // Determine if we should poll for preview updates
+  // We poll if we have a preview ID and it's in a generating/pending state
+  // We can't know the state before fetching, but if we just requested it, it's likely generating.
+  // So we default to polling if previewScriptId is set, until we get a completed status.
+  const shouldPollPreview = !!previewScriptId
+
+  // Fetch preview script if available
+  const { data: previewScript } = useScript(previewScriptId ?? 0, {
+    enabled: !!previewScriptId,
+    refetchInterval: (query) => {
+        const data = query.state.data as ScriptDetail | undefined
+        // Poll every 2s if generating or pending
+        if (data && (data.status === 'script_generating' || data.status === 'pending')) {
+            return 2000
+        }
+        // Also poll if we have an ID but no data yet (initial load of preview)
+        if (!data && previewScriptId) {
+            return 1000
+        }
+        return false
+    }
+  })
+
+  // Determine active script (preview or initial)
+  const activeScript = (previewScript as ScriptDetail) || initialScript
+  const isPreviewMode = !!previewScriptId
+
+  // Regeneration hook
+  const { mutate: regenerate, isPending: isStartingRegeneration } = useRegenerateScript()
+
+  // Poll for preview status
+  const isGenerating = isStartingRegeneration || (
+    !!previewScript &&
+    (previewScript.status === 'script_generating' || previewScript.status === 'pending')
+  )
+
+  // Poll handled by useScript refetchInterval
 
   // Chat config and model selection
   const { data: chatConfig } = useChatConfig()
@@ -252,18 +291,47 @@ function ScriptReviewContent({
   }, [chat, selectedModel])
 
   // Handle generating a preview (explicit button click)
-  const handleGeneratePreview = React.useCallback(async () => {
-    setIsGenerating(true)
-
-    // TODO: Implement actual script regeneration
-    // For now, show placeholder response
-    setTimeout(() => {
-      setIsGenerating(false)
-
-      toast.info("Script regeneration coming soon", {
-        description: "This feature is under development.",
+  const handleGeneratePreview = React.useCallback(() => {
+    if (!chat.conversationId) {
+      toast.error("No conversation started", {
+        description: "Please start a conversation before regenerating."
       })
-    }, 1000)
+      return
+    }
+
+    regenerate({
+      scriptId: initialScript.id,
+      conversationId: chat.conversationId,
+    }, {
+      onSuccess: (data) => {
+        setPreviewScriptId(data.script_id)
+        toast.info("Regeneration started", {
+          description: "Creating a preview based on your conversation..."
+        })
+      },
+      onError: (err) => {
+        toast.error("Regeneration failed", {
+          description: err instanceof Error ? err.message : "Unknown error"
+        })
+      }
+    })
+  }, [chat.conversationId, initialScript.id, regenerate])
+
+  const handleAcceptPreview = React.useCallback(() => {
+    if (previewScriptId) {
+      navigate({ to: "/review/script/$id", params: { id: previewScriptId.toString() } })
+      setPreviewScriptId(null)
+      toast.success("Script updated", {
+        description: "You are now viewing the new version."
+      })
+    }
+  }, [previewScriptId, navigate])
+
+  const handleRejectPreview = React.useCallback(() => {
+    setPreviewScriptId(null)
+    toast.info("Preview discarded", {
+      description: "Returned to original script."
+    })
   }, [])
 
   return (
@@ -273,7 +341,7 @@ function ScriptReviewContent({
         <ReviewLayout
           header={
             <ReviewHeader
-              title="Review Script"
+              title={isPreviewMode ? "Review Script (Preview)" : "Review Script"}
               backLabel="Back to Scripts"
               backTo="/scripts"
               navigation={navigation}
@@ -288,7 +356,7 @@ function ScriptReviewContent({
               isLoading={isLoadingDigest}
             />
           }
-          rightPane={<ScriptPane script={script} />}
+          rightPane={<ScriptPane script={activeScript} />}
         />
       </div>
 
@@ -310,6 +378,9 @@ function ScriptReviewContent({
           onModelChange={setSelectedModel}
           availableModels={chatConfig?.availableModels}
           conversationId={chat.conversationId}
+          isPreviewMode={isPreviewMode}
+          onAcceptPreview={handleAcceptPreview}
+          onRejectPreview={handleRejectPreview}
         />
       </div>
 

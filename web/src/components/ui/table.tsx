@@ -102,6 +102,10 @@ function TableCaption({
   )
 }
 
+// Re-export sortable table head for convenience
+export { SortableTableHead, useSortState } from "./sortable-table-head"
+export type { SortableTableHeadProps } from "./sortable-table-head"
+
 export {
   Table,
   TableHeader,

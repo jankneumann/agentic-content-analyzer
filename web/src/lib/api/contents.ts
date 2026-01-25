@@ -24,9 +24,8 @@ import type {
   ContentFilters,
   ContentStats,
   ContentCreateRequest,
-  ContentDuplicateInfo,
   ContentSource,
-  NewsletterSummary,
+  Summary,
 } from "@/types"
 
 /**
@@ -81,7 +80,7 @@ export async function fetchContent(id: string | number): Promise<Content> {
  */
 export async function fetchContentWithSummary(
   id: string | number
-): Promise<Content & { summary: NewsletterSummary | null }> {
+): Promise<Content & { summary: Summary | null }> {
   const [content, summary] = await Promise.all([
     fetchContent(id),
     fetchContentSummary(id).catch(() => null),
@@ -100,8 +99,8 @@ export async function fetchContentWithSummary(
  */
 export async function fetchContentSummary(
   contentId: string | number
-): Promise<NewsletterSummary> {
-  return apiClient.get<NewsletterSummary>(`/summaries/by-content/${contentId}`)
+): Promise<Summary> {
+  return apiClient.get<Summary>(`/summaries/by-content/${contentId}`)
 }
 
 /**
@@ -175,4 +174,133 @@ export async function ingestContents(
   params: IngestContentParams
 ): Promise<IngestContentResponse> {
   return apiClient.post<IngestContentResponse>("/contents/ingest", params)
+}
+
+// ============================================================================
+// Content Summarization API
+// ============================================================================
+
+/**
+ * Parameters for content summarization
+ */
+export interface SummarizeContentParams {
+  /** Specific content IDs to summarize (empty = all pending) */
+  content_ids?: number[]
+  /** Force re-summarization even if summary exists */
+  force?: boolean
+  /** Include failed content items (reset to PARSED and retry) */
+  retry_failed?: boolean
+}
+
+/**
+ * Response from content summarization trigger
+ */
+export interface SummarizeContentResponse {
+  task_id: string
+  message: string
+  queued_count: number
+  content_ids: number[]
+}
+
+/**
+ * SSE progress event from content summarization
+ */
+export interface ContentSummarizationProgressEvent {
+  status: "queued" | "processing" | "completed" | "error"
+  progress: number
+  total: number
+  processed: number
+  completed: number
+  failed: number
+  current_content_id: number | null
+  message: string
+  started_at: string
+}
+
+/**
+ * Trigger summarization for content records
+ *
+ * If content_ids is empty, summarizes all pending/parsed content.
+ * Returns a task ID for tracking progress via SSE.
+ *
+ * @param params - Summarization parameters
+ * @returns Summarization task response with task_id
+ */
+export async function summarizeContents(
+  params: SummarizeContentParams = {}
+): Promise<SummarizeContentResponse> {
+  return apiClient.post<SummarizeContentResponse>("/contents/summarize", params)
+}
+
+/**
+ * Track content summarization progress via SSE
+ *
+ * @param taskId - Task ID from summarizeContents response
+ * @param onProgress - Callback for progress updates
+ * @returns Promise that resolves when summarization completes
+ */
+export function trackContentSummarization(
+  taskId: string,
+  onProgress?: (event: ContentSummarizationProgressEvent) => void
+): Promise<ContentSummarizationProgressEvent> {
+  return new Promise((resolve, reject) => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
+
+    fetch(`${baseUrl}/api/v1/contents/summarize/status/${taskId}`, {
+      headers: {
+        Accept: "text/event-stream",
+      },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error("No response body")
+        }
+
+        const decoder = new TextDecoder()
+        let buffer = ""
+
+        const processStream = async () => {
+          while (true) {
+            const { done, value } = await reader.read()
+
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+
+            // Process complete SSE messages
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || "" // Keep incomplete line in buffer
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const event = JSON.parse(
+                    line.slice(6)
+                  ) as ContentSummarizationProgressEvent
+                  onProgress?.(event)
+
+                  if (event.status === "completed" || event.status === "error") {
+                    resolve(event)
+                    return
+                  }
+                } catch {
+                  // Skip malformed JSON
+                }
+              }
+            }
+          }
+
+          // Stream ended without completion event
+          reject(new Error("Stream ended unexpectedly"))
+        }
+
+        processStream().catch(reject)
+      })
+      .catch(reject)
+  })
 }

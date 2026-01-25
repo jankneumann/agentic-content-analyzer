@@ -62,7 +62,7 @@ def mock_theme_llm_response():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_analyze_themes_success(
+async def test_analyze_themes_success_integration(
     db_session,
     sample_newsletters,
     sample_summaries,
@@ -70,7 +70,16 @@ async def test_analyze_themes_success(
     mock_theme_llm_response,
     mock_get_db,
 ):
-    """Test successful theme analysis workflow."""
+    """Test successful theme analysis (INTEGRATION TEST - requires database).
+
+    This test verifies the full workflow using a real database session (mock_get_db
+    fixture wraps the test db_session which connects to the real test DB).
+    It ensures that:
+    1. Newsletters are fetched from the DB
+    2. Summaries are fetched from the DB
+    3. Themes are extracted (using mocked LLM/Graphiti)
+    4. Results are correctly formatted
+    """
     # Create request for the date range covering our sample data
     request = ThemeAnalysisRequest(
         start_date=datetime(2025, 1, 1),
@@ -207,7 +216,9 @@ async def test_analyze_themes_insufficient_newsletters(
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 analyzer = ThemeAnalyzer()
-                result = await analyzer.analyze_themes(request)
+                # Mock calculate_cost to return a numeric value
+                analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
+                result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Should return empty result
     assert result.newsletter_count == 0
@@ -282,7 +293,9 @@ async def test_analyze_themes_relevance_filtering(
 
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
                 analyzer = ThemeAnalyzer()
-                result = await analyzer.analyze_themes(request)
+                # Mock calculate_cost to return a numeric value
+                analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
+                result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Only high relevance theme should be included
     assert result.total_themes == 1

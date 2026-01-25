@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.models.digest import DigestData, DigestRequest, DigestType
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisResult, ThemeCategory, ThemeData, ThemeTrend
 from src.processors.digest_creator import DigestCreator
 
@@ -60,8 +60,8 @@ def sample_themes() -> list[ThemeData]:
 
 
 @pytest.fixture
-def sample_newsletters() -> list[dict]:
-    """Create sample newsletter data for testing."""
+def sample_contents() -> list[dict]:
+    """Create sample content data for testing."""
     return [
         {
             "id": 1,
@@ -69,6 +69,7 @@ def sample_newsletters() -> list[dict]:
             "publication": "AI Weekly",
             "published_date": datetime(2025, 1, 1),
             "url": "https://example.com/article1",
+            "source_type": "rss",
         },
         {
             "id": 2,
@@ -76,18 +77,26 @@ def sample_newsletters() -> list[dict]:
             "publication": "TechCrunch",
             "published_date": datetime(2025, 1, 2),
             "url": "https://example.com/article2",
+            "source_type": "gmail",
         },
     ]
 
 
+# Legacy alias for backwards compatibility
 @pytest.fixture
-def sample_summaries() -> list[NewsletterSummary]:
-    """Create sample newsletter summaries for testing."""
+def sample_newsletters(sample_contents) -> list[dict]:
+    """Alias for sample_contents."""
+    return sample_contents
+
+
+@pytest.fixture
+def sample_summaries() -> list[Summary]:
+    """Create sample content summaries for testing."""
     summaries = []
-    for i, newsletter_id in enumerate([1, 2]):
-        summary = NewsletterSummary(
-            newsletter_id=newsletter_id,
-            executive_summary=f"Summary for newsletter {newsletter_id}",
+    for i, content_id in enumerate([1, 2]):
+        summary = Summary(
+            content_id=content_id,
+            executive_summary=f"Summary for content {content_id}",
             key_themes=["AI", "Machine Learning"],
             strategic_insights=["Strategic insight 1"],
             technical_details=["Technical detail 1"],
@@ -98,7 +107,7 @@ def sample_summaries() -> list[NewsletterSummary]:
             agent_framework="claude",
             model_used="claude-sonnet-4-5",
         )
-        summary.id = newsletter_id
+        summary.id = content_id
         summaries.append(summary)
     return summaries
 
@@ -170,7 +179,7 @@ def mock_llm_response() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_digest_success(sample_themes, sample_newsletters, mock_llm_response):
+async def test_create_digest_success(sample_themes, sample_contents, mock_llm_response):
     """Test successful digest creation."""
     request = DigestRequest(
         digest_type=DigestType.DAILY,
@@ -198,8 +207,8 @@ async def test_create_digest_success(sample_themes, sample_newsletters, mock_llm
         mock_analyzer.analyze_themes.return_value = theme_result
         mock_analyzer_class.return_value = mock_analyzer
 
-        # Mock newsletter fetch
-        with patch.object(DigestCreator, "_fetch_newsletters", return_value=sample_newsletters):
+        # Mock content fetch
+        with patch.object(DigestCreator, "_fetch_contents", return_value=sample_contents):
             # Mock LLM generation
             with patch.object(
                 DigestCreator,
@@ -267,7 +276,7 @@ async def test_create_digest_no_newsletters():
 
     # Should return empty digest
     assert digest.newsletter_count == 0
-    assert "No newsletters" in digest.executive_overview
+    assert "No content" in digest.executive_overview
     assert len(digest.strategic_insights) == 0
     assert len(digest.technical_developments) == 0
     assert len(digest.emerging_trends) == 0
@@ -330,12 +339,12 @@ def test_build_themes_context(sample_themes):
     assert "Performance optimization" in context
 
 
-def test_build_newsletters_context(sample_newsletters, sample_summaries):
-    """Test newsletters context string building."""
+def test_build_contents_context(sample_contents, sample_summaries):
+    """Test contents context string building."""
     creator = DigestCreator()
-    context = creator._build_newsletters_context(sample_newsletters, sample_summaries)
+    context = creator._build_contents_context(sample_contents, sample_summaries)
 
-    # Check that newsletters are listed
+    # Check that content items are listed
     assert "AI Weekly" in context
     assert "TechCrunch" in context
     assert "Latest in LLMs" in context
@@ -358,7 +367,7 @@ def test_build_digest_prompt():
     prompt = creator._build_digest_prompt(
         request=request,
         themes_context="Test themes context",
-        newsletters_context="Test newsletters context",
+        contents_context="Test contents context",
         theme_count=5,
     )
 
@@ -368,9 +377,9 @@ def test_build_digest_prompt():
     assert "2025-01-01" in prompt
     assert "2025-01-07" in prompt
 
-    # Check themes and newsletters context included
+    # Check themes and contents context included
     assert "Test themes context" in prompt
-    assert "Test newsletters context" in prompt
+    assert "Test contents context" in prompt
 
     # Check guidance for weekly digest
     assert "broader context" in prompt or "patterns" in prompt
@@ -387,32 +396,35 @@ def test_build_digest_prompt():
     assert "actionable_recommendations" in prompt
 
 
-def test_build_sources(sample_newsletters):
+def test_build_sources(sample_contents):
     """Test sources list building."""
     creator = DigestCreator()
-    sources = creator._build_sources(sample_newsletters)
+    sources = creator._build_sources(sample_contents)
 
     assert len(sources) == 2
     assert sources[0]["title"] == "AI Weekly - Latest in LLMs"
     assert sources[0]["publication"] == "AI Weekly"
     assert sources[0]["date"] == "2025-01-01"
     assert sources[0]["url"] == "https://example.com/article1"
+    assert sources[0]["content_id"] == 1
+    assert sources[0]["source_type"] == "rss"
 
 
 def test_build_sources_without_url():
     """Test sources list building when URL is missing."""
-    newsletters = [
+    contents = [
         {
             "id": 1,
             "title": "Test Article",
             "publication": "Test Pub",
             "published_date": datetime(2025, 1, 1),
+            "source_type": "gmail",
             # No URL
         }
     ]
 
     creator = DigestCreator()
-    sources = creator._build_sources(newsletters)
+    sources = creator._build_sources(contents)
 
     assert len(sources) == 1
     assert sources[0]["url"] is None
@@ -432,6 +444,6 @@ def test_create_empty_digest():
 
     assert digest.newsletter_count == 0
     assert "No Content" in digest.title
-    assert "No newsletters" in digest.executive_overview
+    assert "No content" in digest.executive_overview
     assert len(digest.strategic_insights) == 0
     assert digest.agent_framework == "claude"

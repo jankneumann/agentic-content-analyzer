@@ -1,0 +1,668 @@
+"""Tests for table sorting functionality across all API endpoints.
+
+Tests the sort_by and sort_order query parameters for:
+- GET /api/v1/contents
+- GET /api/v1/summaries
+- GET /api/v1/digests/
+- GET /api/v1/scripts/
+- GET /api/v1/podcasts/
+"""
+
+from datetime import UTC, datetime
+
+import pytest
+
+from src.models.content import Content, ContentSource, ContentStatus
+from src.models.digest import Digest, DigestStatus, DigestType
+from src.models.podcast import Podcast, PodcastScriptRecord, PodcastStatus
+from src.models.summary import Summary
+
+# ==============================================================================
+# Content Sorting Tests
+# ==============================================================================
+
+
+class TestContentSorting:
+    """Tests for GET /api/v1/contents sorting functionality."""
+
+    @pytest.fixture
+    def sortable_contents(self, db_session) -> list[Content]:
+        """Create contents with different values for sorting tests."""
+        contents = [
+            Content(
+                source_type=ContentSource.GMAIL,
+                source_id="sort-test-001",
+                title="Alpha Newsletter",
+                publication="Alpha Pub",
+                published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
+                markdown_content="# Alpha content",
+                content_hash="hash-alpha",
+                status=ContentStatus.PARSED,
+                ingested_at=datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC),
+            ),
+            Content(
+                source_type=ContentSource.RSS,
+                source_id="sort-test-002",
+                title="Beta Newsletter",
+                publication="Beta Pub",
+                published_date=datetime(2025, 1, 14, 10, 0, 0, tzinfo=UTC),
+                markdown_content="# Beta content",
+                content_hash="hash-beta",
+                status=ContentStatus.COMPLETED,
+                ingested_at=datetime(2025, 1, 14, 12, 0, 0, tzinfo=UTC),
+            ),
+            Content(
+                source_type=ContentSource.YOUTUBE,
+                source_id="sort-test-003",
+                title="Charlie Newsletter",
+                publication="Charlie Pub",
+                published_date=datetime(2025, 1, 13, 10, 0, 0, tzinfo=UTC),
+                markdown_content="# Charlie content",
+                content_hash="hash-charlie",
+                status=ContentStatus.PENDING,
+                ingested_at=datetime(2025, 1, 13, 12, 0, 0, tzinfo=UTC),
+            ),
+        ]
+        for content in contents:
+            db_session.add(content)
+        db_session.commit()
+        for content in contents:
+            db_session.refresh(content)
+        return contents
+
+    def test_sort_by_title_ascending(self, client, sortable_contents):
+        """Test sorting contents by title in ascending order."""
+        response = client.get("/api/v1/contents?sort_by=title&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Alpha Newsletter", "Beta Newsletter", "Charlie Newsletter"]
+
+    def test_sort_by_title_descending(self, client, sortable_contents):
+        """Test sorting contents by title in descending order."""
+        response = client.get("/api/v1/contents?sort_by=title&sort_order=desc")
+
+        assert response.status_code == 200
+        data = response.json()
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Charlie Newsletter", "Beta Newsletter", "Alpha Newsletter"]
+
+    def test_sort_by_ingested_at_ascending(self, client, sortable_contents):
+        """Test sorting contents by ingested_at in ascending order."""
+        response = client.get("/api/v1/contents?sort_by=ingested_at&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Oldest first (Charlie → Beta → Alpha)
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Charlie Newsletter", "Beta Newsletter", "Alpha Newsletter"]
+
+    def test_sort_by_ingested_at_descending(self, client, sortable_contents):
+        """Test sorting contents by ingested_at in descending order (default)."""
+        response = client.get("/api/v1/contents?sort_by=ingested_at&sort_order=desc")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Newest first (Alpha → Beta → Charlie)
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Alpha Newsletter", "Beta Newsletter", "Charlie Newsletter"]
+
+    def test_sort_by_source_type(self, client, sortable_contents):
+        """Test sorting contents by source_type."""
+        response = client.get("/api/v1/contents?sort_by=source_type&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Source types sorted alphabetically: gmail, rss, youtube
+        source_types = [item["source_type"] for item in data["items"]]
+        assert source_types == ["gmail", "rss", "youtube"]
+
+    def test_invalid_sort_by_falls_back_to_default(self, client, sortable_contents):
+        """Test that invalid sort_by field falls back to default field (ingested_at).
+
+        Note: Only sort_by falls back to default; sort_order is still respected.
+        """
+        response = client.get("/api/v1/contents?sort_by=invalid_field&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Falls back to ingested_at, but respects sort_order=asc (oldest first)
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Charlie Newsletter", "Beta Newsletter", "Alpha Newsletter"]
+
+    def test_default_sort_without_parameters(self, client, sortable_contents):
+        """Test that default sort is ingested_at descending when no params given."""
+        response = client.get("/api/v1/contents")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Default: ingested_at desc (newest first)
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Alpha Newsletter", "Beta Newsletter", "Charlie Newsletter"]
+
+    def test_sort_with_pagination(self, client, sortable_contents):
+        """Test that sorting works correctly with pagination."""
+        # Get first page sorted by title ascending
+        response = client.get("/api/v1/contents?sort_by=title&sort_order=asc&page=1&page_size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 2
+        titles = [item["title"] for item in data["items"]]
+        assert titles == ["Alpha Newsletter", "Beta Newsletter"]
+
+        # Get second page
+        response = client.get("/api/v1/contents?sort_by=title&sort_order=asc&page=2&page_size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["title"] == "Charlie Newsletter"
+
+
+# ==============================================================================
+# Summary Sorting Tests
+# ==============================================================================
+
+
+class TestSummarySorting:
+    """Tests for GET /api/v1/summaries sorting functionality."""
+
+    @pytest.fixture
+    def sortable_summaries(self, db_session, sortable_contents) -> list[Summary]:
+        """Create summaries with different values for sorting tests."""
+        # Need to use the sortable_contents fixture
+        summaries = [
+            Summary(
+                content_id=sortable_contents[0].id,
+                executive_summary="Alpha summary",
+                key_themes=["Theme A"],
+                strategic_insights=["Insight A"],
+                technical_details=["Detail A"],
+                actionable_items=["Action A"],
+                notable_quotes=["Quote A"],
+                relevance_scores={"cto_leadership": 0.9},
+                agent_framework="claude",
+                model_used="claude-haiku-4-5",
+                token_usage=1000,
+                processing_time_seconds=2.0,
+            ),
+            Summary(
+                content_id=sortable_contents[1].id,
+                executive_summary="Beta summary",
+                key_themes=["Theme B"],
+                strategic_insights=["Insight B"],
+                technical_details=["Detail B"],
+                actionable_items=["Action B"],
+                notable_quotes=["Quote B"],
+                relevance_scores={"cto_leadership": 0.8},
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+                token_usage=2000,
+                processing_time_seconds=3.0,
+            ),
+        ]
+        for summary in summaries:
+            db_session.add(summary)
+        db_session.commit()
+        for summary in summaries:
+            db_session.refresh(summary)
+        return summaries
+
+    @pytest.fixture
+    def sortable_contents(self, db_session) -> list[Content]:
+        """Create contents for summary sorting tests."""
+        contents = [
+            Content(
+                source_type=ContentSource.GMAIL,
+                source_id="summary-sort-001",
+                title="Alpha for Summary",
+                publication="Alpha Pub",
+                markdown_content="# Alpha",
+                content_hash="hash-s-alpha",
+                status=ContentStatus.COMPLETED,
+                ingested_at=datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC),
+            ),
+            Content(
+                source_type=ContentSource.RSS,
+                source_id="summary-sort-002",
+                title="Beta for Summary",
+                publication="Beta Pub",
+                markdown_content="# Beta",
+                content_hash="hash-s-beta",
+                status=ContentStatus.COMPLETED,
+                ingested_at=datetime(2025, 1, 14, 12, 0, 0, tzinfo=UTC),
+            ),
+        ]
+        for content in contents:
+            db_session.add(content)
+        db_session.commit()
+        for content in contents:
+            db_session.refresh(content)
+        return contents
+
+    def test_sort_by_model_used_ascending(self, client, sortable_summaries):
+        """Test sorting summaries by model_used in ascending order."""
+        response = client.get("/api/v1/summaries?sort_by=model_used&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        models = [item["model_used"] for item in data["items"]]
+        # haiku comes before sonnet alphabetically
+        assert models == ["claude-haiku-4-5", "claude-sonnet-4-5"]
+
+    def test_sort_by_model_used_descending(self, client, sortable_summaries):
+        """Test sorting summaries by model_used in descending order."""
+        response = client.get("/api/v1/summaries?sort_by=model_used&sort_order=desc")
+
+        assert response.status_code == 200
+        data = response.json()
+        models = [item["model_used"] for item in data["items"]]
+        assert models == ["claude-sonnet-4-5", "claude-haiku-4-5"]
+
+    def test_sort_by_created_at_ascending(self, client, sortable_summaries):
+        """Test sorting summaries by created_at in ascending order."""
+        response = client.get("/api/v1/summaries?sort_by=created_at&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should be sorted by creation time
+        assert len(data["items"]) == 2
+
+    def test_invalid_sort_by_falls_back_to_default(self, client, sortable_summaries):
+        """Test that invalid sort_by field falls back to default."""
+        response = client.get("/api/v1/summaries?sort_by=invalid_field")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 2
+
+
+# ==============================================================================
+# Digest Sorting Tests
+# ==============================================================================
+
+
+class TestDigestSorting:
+    """Tests for GET /api/v1/digests/ sorting functionality."""
+
+    @pytest.fixture
+    def sortable_digests(self, db_session) -> list[Digest]:
+        """Create digests with different values for sorting tests."""
+        digests = [
+            Digest(
+                digest_type=DigestType.DAILY,
+                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Alpha Digest",
+                executive_overview="Alpha overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=3,
+                status=DigestStatus.APPROVED,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+            Digest(
+                digest_type=DigestType.WEEKLY,
+                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Beta Digest",
+                executive_overview="Beta overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=10,
+                status=DigestStatus.PENDING_REVIEW,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+        for digest in digests:
+            db_session.add(digest)
+        db_session.commit()
+        for digest in digests:
+            db_session.refresh(digest)
+        return digests
+
+    def test_sort_by_digest_type_ascending(self, client, sortable_digests):
+        """Test sorting digests by digest_type in ascending order."""
+        response = client.get("/api/v1/digests/?sort_by=digest_type&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        types = [item["digest_type"] for item in data]
+        # daily comes before weekly alphabetically
+        assert types == ["daily", "weekly"]
+
+    def test_sort_by_digest_type_descending(self, client, sortable_digests):
+        """Test sorting digests by digest_type in descending order."""
+        response = client.get("/api/v1/digests/?sort_by=digest_type&sort_order=desc")
+
+        assert response.status_code == 200
+        data = response.json()
+        types = [item["digest_type"] for item in data]
+        assert types == ["weekly", "daily"]
+
+    def test_sort_by_status(self, client, sortable_digests):
+        """Test sorting digests by status.
+
+        Note: PostgreSQL sorts enums by ordinal position, not alphabetically.
+        DigestStatus ordinals: PENDING_REVIEW=4, APPROVED=5
+        """
+        response = client.get("/api/v1/digests/?sort_by=status&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        statuses = [item["status"] for item in data]
+        # Sorted by enum ordinal: PENDING_REVIEW (4) before APPROVED (5)
+        assert statuses == ["PENDING_REVIEW", "APPROVED"]
+
+    def test_sort_by_period_start(self, client, sortable_digests):
+        """Test sorting digests by period_start."""
+        response = client.get("/api/v1/digests/?sort_by=period_start&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Weekly (Jan 8) comes before Daily (Jan 15)
+        titles = [item["title"] for item in data]
+        assert titles == ["Beta Digest", "Alpha Digest"]
+
+    def test_invalid_sort_by_falls_back_to_default(self, client, sortable_digests):
+        """Test that invalid sort_by field falls back to default."""
+        response = client.get("/api/v1/digests/?sort_by=invalid_field")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+
+# ==============================================================================
+# Script Sorting Tests
+# ==============================================================================
+
+
+class TestScriptSorting:
+    """Tests for GET /api/v1/scripts/ sorting functionality."""
+
+    @pytest.fixture
+    def sortable_scripts(self, db_session, sortable_digests) -> list[PodcastScriptRecord]:
+        """Create scripts with different values for sorting tests."""
+        scripts = [
+            PodcastScriptRecord(
+                digest_id=sortable_digests[0].id,
+                title="Alpha Script",
+                length="standard",
+                word_count=1000,
+                estimated_duration_seconds=400,
+                status=PodcastStatus.SCRIPT_PENDING_REVIEW.value,
+                script_json={"title": "Alpha", "sections": []},
+                model_used="claude-sonnet-4-5",
+            ),
+            PodcastScriptRecord(
+                digest_id=sortable_digests[1].id,
+                title="Beta Script",
+                length="extended",
+                word_count=2000,
+                estimated_duration_seconds=800,
+                status=PodcastStatus.SCRIPT_APPROVED.value,
+                script_json={"title": "Beta", "sections": []},
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+        for script in scripts:
+            db_session.add(script)
+        db_session.commit()
+        for script in scripts:
+            db_session.refresh(script)
+        return scripts
+
+    @pytest.fixture
+    def sortable_digests(self, db_session) -> list[Digest]:
+        """Create digests for script sorting tests."""
+        digests = [
+            Digest(
+                digest_type=DigestType.DAILY,
+                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest for Script 1",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=3,
+                status=DigestStatus.APPROVED,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+            Digest(
+                digest_type=DigestType.WEEKLY,
+                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest for Script 2",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=10,
+                status=DigestStatus.APPROVED,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+        for digest in digests:
+            db_session.add(digest)
+        db_session.commit()
+        for digest in digests:
+            db_session.refresh(digest)
+        return digests
+
+    def test_sort_by_status_ascending(self, client, sortable_scripts):
+        """Test sorting scripts by status in ascending order."""
+        response = client.get("/api/v1/scripts/?sort_by=status&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        statuses = [item["status"] for item in data]
+        # script_approved comes before script_pending_review alphabetically
+        assert statuses == ["script_approved", "script_pending_review"]
+
+    def test_sort_by_status_descending(self, client, sortable_scripts):
+        """Test sorting scripts by status in descending order."""
+        response = client.get("/api/v1/scripts/?sort_by=status&sort_order=desc")
+
+        assert response.status_code == 200
+        data = response.json()
+        statuses = [item["status"] for item in data]
+        assert statuses == ["script_pending_review", "script_approved"]
+
+    def test_sort_by_digest_id(self, client, sortable_scripts):
+        """Test sorting scripts by digest_id."""
+        response = client.get("/api/v1/scripts/?sort_by=digest_id&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Scripts should be sorted by their digest_id
+        assert len(data) == 2
+
+    def test_invalid_sort_by_falls_back_to_default(self, client, sortable_scripts):
+        """Test that invalid sort_by field falls back to default."""
+        response = client.get("/api/v1/scripts/?sort_by=invalid_field")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+
+# ==============================================================================
+# Podcast Sorting Tests
+# ==============================================================================
+
+
+class TestPodcastSorting:
+    """Tests for GET /api/v1/podcasts/ sorting functionality."""
+
+    @pytest.fixture
+    def sortable_podcasts(self, db_session, sortable_scripts) -> list[Podcast]:
+        """Create podcasts with different values for sorting tests."""
+        # First approve the scripts
+        for script in sortable_scripts:
+            script.status = PodcastStatus.SCRIPT_APPROVED.value
+            script.approved_at = datetime.now(UTC)
+        db_session.commit()
+
+        podcasts = [
+            Podcast(
+                script_id=sortable_scripts[0].id,
+                audio_format="mp3",
+                voice_provider="openai_tts",
+                alex_voice="alex",
+                sam_voice="sam",
+                status="completed",
+                duration_seconds=400,
+                file_size_bytes=500000,
+                audio_url="/tmp/podcast1.mp3",  # noqa: S108
+            ),
+            Podcast(
+                script_id=sortable_scripts[1].id,
+                audio_format="mp3",
+                voice_provider="elevenlabs",
+                alex_voice="alex",
+                sam_voice="sam",
+                status="completed",
+                duration_seconds=800,
+                file_size_bytes=1000000,
+                audio_url="/tmp/podcast2.mp3",  # noqa: S108
+            ),
+        ]
+        for podcast in podcasts:
+            db_session.add(podcast)
+        db_session.commit()
+        for podcast in podcasts:
+            db_session.refresh(podcast)
+        return podcasts
+
+    @pytest.fixture
+    def sortable_scripts(self, db_session) -> list[PodcastScriptRecord]:
+        """Create scripts for podcast sorting tests."""
+        # First create digests
+        digests = [
+            Digest(
+                digest_type=DigestType.DAILY,
+                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest 1",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=3,
+                status=DigestStatus.APPROVED,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+            Digest(
+                digest_type=DigestType.WEEKLY,
+                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest 2",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=10,
+                status=DigestStatus.APPROVED,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+        for digest in digests:
+            db_session.add(digest)
+        db_session.commit()
+
+        scripts = [
+            PodcastScriptRecord(
+                digest_id=digests[0].id,
+                title="Script 1",
+                length="standard",
+                word_count=1000,
+                estimated_duration_seconds=400,
+                status=PodcastStatus.SCRIPT_APPROVED.value,
+                script_json={"title": "Script 1", "sections": []},
+                model_used="claude-sonnet-4-5",
+            ),
+            PodcastScriptRecord(
+                digest_id=digests[1].id,
+                title="Script 2",
+                length="extended",
+                word_count=2000,
+                estimated_duration_seconds=800,
+                status=PodcastStatus.SCRIPT_APPROVED.value,
+                script_json={"title": "Script 2", "sections": []},
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+        for script in scripts:
+            db_session.add(script)
+        db_session.commit()
+        for script in scripts:
+            db_session.refresh(script)
+        return scripts
+
+    def test_sort_by_duration_ascending(self, client, sortable_podcasts):
+        """Test sorting podcasts by duration_seconds in ascending order."""
+        response = client.get("/api/v1/podcasts/?sort_by=duration_seconds&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        durations = [item["duration_seconds"] for item in data]
+        assert durations == [400, 800]
+
+    def test_sort_by_duration_descending(self, client, sortable_podcasts):
+        """Test sorting podcasts by duration_seconds in descending order."""
+        response = client.get("/api/v1/podcasts/?sort_by=duration_seconds&sort_order=desc")
+
+        assert response.status_code == 200
+        data = response.json()
+        durations = [item["duration_seconds"] for item in data]
+        assert durations == [800, 400]
+
+    def test_sort_by_file_size_ascending(self, client, sortable_podcasts):
+        """Test sorting podcasts by file_size_bytes in ascending order."""
+        response = client.get("/api/v1/podcasts/?sort_by=file_size_bytes&sort_order=asc")
+
+        assert response.status_code == 200
+        data = response.json()
+        sizes = [item["file_size_bytes"] for item in data]
+        assert sizes == [500000, 1000000]
+
+    def test_sort_by_file_size_descending(self, client, sortable_podcasts):
+        """Test sorting podcasts by file_size_bytes in descending order."""
+        response = client.get("/api/v1/podcasts/?sort_by=file_size_bytes&sort_order=desc")
+
+        assert response.status_code == 200
+        data = response.json()
+        sizes = [item["file_size_bytes"] for item in data]
+        assert sizes == [1000000, 500000]
+
+    def test_invalid_sort_by_falls_back_to_default(self, client, sortable_podcasts):
+        """Test that invalid sort_by field falls back to default."""
+        response = client.get("/api/v1/podcasts/?sort_by=invalid_field")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
