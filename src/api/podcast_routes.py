@@ -29,6 +29,16 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/podcasts", tags=["podcasts"])
 
+# Allowed sort fields for podcast listing
+PODCAST_SORT_FIELDS = {
+    "id",
+    "script_id",
+    "status",
+    "duration_seconds",
+    "file_size_bytes",
+    "created_at",
+}
+
 
 # --- Request/Response Models ---
 
@@ -187,6 +197,8 @@ async def list_podcasts(
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(50, le=100, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[PodcastListItem]:
     """List podcasts with optional filtering."""
     with get_db() as db:
@@ -197,7 +209,17 @@ async def list_podcasts(
         if status:
             query = query.filter(Podcast.status == status)
 
-        results = query.order_by(Podcast.created_at.desc()).offset(offset).limit(limit).all()
+        # Apply dynamic sorting
+        if sort_by not in PODCAST_SORT_FIELDS:
+            sort_by = "created_at"
+
+        sort_column = getattr(Podcast, sort_by, Podcast.created_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        results = query.offset(offset).limit(limit).all()
 
         return [
             PodcastListItem(
@@ -390,7 +412,15 @@ async def generate_audio(
 
 @router.get("/{podcast_id}/audio")
 async def stream_audio(podcast_id: int):
-    """Stream or download podcast audio file."""
+    """Stream or download podcast audio file.
+
+    Serves audio from the configured storage provider (local, S3, or Supabase).
+    For cloud storage with signed URL support, redirects to the signed URL.
+    """
+    from fastapi.responses import RedirectResponse, StreamingResponse
+
+    from src.services.file_storage import get_storage
+
     with get_db() as db:
         podcast = db.query(Podcast).filter(Podcast.id == podcast_id).first()
 
@@ -403,11 +433,37 @@ async def stream_audio(podcast_id: int):
                 detail=f"Audio not ready. Status: {podcast.status}",
             )
 
-        if not podcast.audio_url or not os.path.exists(podcast.audio_url):
+        if not podcast.audio_url:
             raise HTTPException(status_code=404, detail="Audio file not found")
 
-        return FileResponse(
-            podcast.audio_url,
-            media_type="audio/mpeg",
-            filename=f"podcast_{podcast_id}.mp3",
-        )
+        audio_path = podcast.audio_url
+
+    # Get storage provider for podcasts bucket
+    storage = get_storage(bucket="podcasts")
+
+    # Check if file exists
+    if not await storage.exists(audio_path):
+        # Try legacy local path for backward compatibility
+        if os.path.exists(audio_path):
+            return FileResponse(
+                audio_path,
+                media_type="audio/mpeg",
+                filename=f"podcast_{podcast_id}.mp3",
+            )
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    # For cloud providers with signed URL support, redirect to signed URL
+    if hasattr(storage, "get_signed_url") and storage.provider_name in ("s3", "supabase"):
+        signed_url = await storage.get_signed_url(audio_path, expires_in=3600)
+        return RedirectResponse(url=signed_url, status_code=302)
+
+    # For local storage, stream the file
+    audio_data = await storage.get(audio_path)
+    return StreamingResponse(
+        iter([audio_data]),
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f'attachment; filename="podcast_{podcast_id}.mp3"',
+            "Content-Length": str(len(audio_data)),
+        },
+    )

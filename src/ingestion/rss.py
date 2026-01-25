@@ -1,8 +1,7 @@
 """Generic RSS feed ingestion.
 
-Provides both legacy Newsletter ingestion and new Content model ingestion.
-The Content-based ingestion (RSSContentIngestionService) is the preferred
-approach for new code as part of the unified content model refactor.
+Provides Content model ingestion for RSS feeds using the unified content model.
+Creates Content records with markdown as the primary format.
 """
 
 import hashlib
@@ -13,11 +12,11 @@ import feedparser
 import httpx
 
 from src.config import settings
-from src.ingestion.gmail import ContentData, html_to_markdown
+from src.ingestion.gmail import ContentData
 from src.models.content import Content, ContentSource, ContentStatus
-from src.models.newsletter import Newsletter, NewsletterData, NewsletterSource, ProcessingStatus
+from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
-from src.utils.content_hash import generate_content_hash, generate_markdown_hash
+from src.utils.content_hash import generate_markdown_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
 
@@ -42,107 +41,6 @@ class RSSClient:
         """Close HTTP client."""
         self.client.close()
         logger.info("RSS client closed")
-
-    def fetch_feed(
-        self,
-        feed_url: str,
-        max_entries: int = 10,
-        after_date: datetime | None = None,
-    ) -> list[NewsletterData]:
-        """
-        Fetch newsletters from a single RSS feed.
-
-        Args:
-            feed_url: RSS feed URL
-            max_entries: Maximum number of entries to fetch
-            after_date: Only fetch entries published after this date
-
-        Returns:
-            List of NewsletterData objects
-        """
-        logger.info(f"Fetching RSS feed: {feed_url}")
-
-        try:
-            # Fetch feed with timeout
-            response = self.client.get(feed_url)
-            response.raise_for_status()
-
-            # Parse RSS feed
-            feed = feedparser.parse(response.content)
-
-            if feed.bozo:
-                logger.warning(
-                    f"Feed parsing error for {feed_url}: {feed.get('bozo_exception', 'Unknown error')}"
-                )
-
-            # Extract publication name from feed metadata
-            publication_name = self._extract_publication_name(feed, feed_url)
-            logger.info(f"Found publication: {publication_name}")
-
-            # Process entries
-            newsletters = []
-            for entry in feed.entries[:max_entries]:
-                # Check date filter
-                if after_date:
-                    entry_date = self._parse_entry_date(entry)
-                    if entry_date and entry_date < after_date:
-                        logger.debug(f"Skipping old entry: {entry.get('title', 'Unknown')}")
-                        continue
-
-                # Convert entry to NewsletterData
-                try:
-                    newsletter = self._parse_entry(entry, publication_name, feed_url)
-                    newsletters.append(newsletter)
-                    logger.debug(f"Parsed entry: {newsletter.title}")
-                except Exception as e:
-                    logger.error(
-                        f"Error parsing entry '{entry.get('title', 'Unknown')}': {e}",
-                        exc_info=True,
-                    )
-                    continue
-
-            logger.info(f"Fetched {len(newsletters)} newsletters from {feed_url}")
-            return newsletters
-
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching feed {feed_url}: {e}", exc_info=True)
-            return []
-        except Exception as e:
-            logger.error(f"Unexpected error fetching feed {feed_url}: {e}", exc_info=True)
-            return []
-
-    def fetch_multiple_feeds(
-        self,
-        feed_urls: list[str],
-        max_entries_per_feed: int = 10,
-        after_date: datetime | None = None,
-    ) -> list[NewsletterData]:
-        """
-        Fetch newsletters from multiple RSS feeds.
-
-        Args:
-            feed_urls: List of RSS feed URLs
-            max_entries_per_feed: Maximum entries to fetch per feed
-            after_date: Only fetch entries published after this date
-
-        Returns:
-            Combined list of NewsletterData objects from all feeds
-        """
-        logger.info(f"Fetching {len(feed_urls)} RSS feeds")
-
-        all_newsletters = []
-        for feed_url in feed_urls:
-            newsletters = self.fetch_feed(
-                feed_url=feed_url,
-                max_entries=max_entries_per_feed,
-                after_date=after_date,
-            )
-            all_newsletters.extend(newsletters)
-
-        logger.info(
-            f"Fetched total of {len(all_newsletters)} newsletters from {len(feed_urls)} feeds"
-        )
-        return all_newsletters
 
     def fetch_content(
         self,
@@ -254,6 +152,10 @@ class RSSClient:
         """
         Parse a feed entry into a ContentData object.
 
+        Uses two-tier extraction:
+        1. Primary: Fetch full article from URL using Trafilatura
+        2. Fallback: Use feed content if URL extraction fails
+
         Args:
             entry: Feed entry
             publication_name: Name of the publication
@@ -270,18 +172,40 @@ class RSSClient:
         # Parse publication date
         published_date = self._parse_entry_date(entry) or datetime.now()
 
-        # Extract content (HTML)
+        # Extract feed content as fallback
         raw_html = self._extract_entry_content(entry)
 
-        # Convert HTML to markdown
+        # Two-tier extraction: try URL first, fall back to feed content
         markdown_content = ""
-        if raw_html:
-            markdown_content = html_to_markdown(raw_html)
-        if not markdown_content:
-            # Fallback: use plain text
-            markdown_content = html_to_text(raw_html) if raw_html else ""
+        parser_used = "trafilatura"
+        extraction_method = "url"
 
-        # Extract links from HTML
+        # Primary: Try URL-based extraction for full article content
+        if link and link != feed_url:
+            try:
+                url_markdown = convert_html_to_markdown(url=link)
+                if url_markdown and len(url_markdown) >= 200:
+                    markdown_content = url_markdown
+                    logger.debug(f"URL extraction successful for {link}: {len(url_markdown)} chars")
+                else:
+                    logger.debug(
+                        f"URL extraction returned insufficient content for {link}, "
+                        f"falling back to feed content"
+                    )
+            except Exception as e:
+                logger.debug(f"URL extraction failed for {link}: {e}, falling back to feed content")
+
+        # Fallback: Use feed content if URL extraction didn't work
+        if not markdown_content and raw_html:
+            markdown_content = convert_html_to_markdown(html=raw_html)
+            extraction_method = "feed"
+            if not markdown_content:
+                # Last resort: plain text
+                markdown_content = html_to_text(raw_html)
+                parser_used = "text_fallback"
+                extraction_method = "text"
+
+        # Extract links from HTML (feed content for consistency)
         links = extract_links(raw_html) if raw_html else []
 
         # Generate unique source_id from link or content hash
@@ -303,10 +227,11 @@ class RSSClient:
             metadata_json={
                 "feed_url": feed_url,
                 "entry_id": entry.get("id"),
+                "extraction_method": extraction_method,
             },
             raw_content=raw_html,
             raw_format="html" if raw_html else "text",
-            parser_used="markitdown",
+            parser_used=parser_used,
             content_hash=content_hash,
         )
 
@@ -367,57 +292,6 @@ class RSSClient:
         # Fallback to current time
         logger.warning(f"Could not parse date for entry: {entry.get('title', 'Unknown')}")
         return None
-
-    def _parse_entry(
-        self,
-        entry: feedparser.FeedParserDict,
-        publication_name: str,
-        feed_url: str,
-    ) -> NewsletterData:
-        """
-        Parse a feed entry into a NewsletterData object.
-
-        Args:
-            entry: Feed entry
-            publication_name: Name of the publication
-            feed_url: Feed URL
-
-        Returns:
-            NewsletterData object
-        """
-        # Extract basic metadata
-        title = entry.get("title", "Untitled")
-        link = entry.get("link", feed_url)
-        author = entry.get("author", publication_name)
-
-        # Parse publication date
-        published_date = self._parse_entry_date(entry) or datetime.now()
-
-        # Extract content
-        raw_html = self._extract_entry_content(entry)
-        raw_text = html_to_text(raw_html) if raw_html else ""
-        links = extract_links(raw_html) if raw_html else []
-
-        # Generate unique source_id from link or content hash
-        source_id = self._generate_source_id(entry)
-
-        # Generate content hash for deduplication
-        content_hash = generate_content_hash(raw_text) if raw_text else None
-
-        return NewsletterData(
-            source=NewsletterSource.RSS,
-            source_id=source_id,
-            title=title,
-            sender=author,
-            publication=publication_name,
-            published_date=published_date,
-            url=link,
-            raw_html=raw_html,
-            raw_text=raw_text,
-            extracted_links=links,
-            content_hash=content_hash,
-            status=ProcessingStatus.PENDING,
-        )
 
     def _extract_entry_content(self, entry: feedparser.FeedParserDict) -> str:
         """
@@ -490,164 +364,6 @@ class RSSClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
-
-
-class RSSIngestionService:
-    """Service for ingesting newsletters from RSS feeds."""
-
-    def __init__(self) -> None:
-        """Initialize RSS ingestion service."""
-        self.client = RSSClient()
-
-    def ingest_newsletters(
-        self,
-        feed_urls: list[str] | None = None,
-        max_entries_per_feed: int = 10,
-        after_date: datetime | None = None,
-        force_reprocess: bool = False,
-    ) -> int:
-        """
-        Ingest newsletters from RSS feeds and store in database.
-
-        Args:
-            feed_urls: List of RSS feed URLs (defaults to config)
-            max_entries_per_feed: Maximum entries per feed
-            after_date: Only fetch after this date
-            force_reprocess: If True, reprocess existing newsletters (updates data and resets status)
-
-        Returns:
-            Number of newsletters ingested
-        """
-
-        logger.info("Starting RSS newsletter ingestion...")
-
-        # Get feed URLs from config if not provided
-        if feed_urls is None:
-            feed_urls = settings.get_rss_feed_urls()
-
-        if not feed_urls:
-            logger.warning(
-                "No RSS feed URLs configured. Please set RSS_FEEDS or create rss_feeds.txt"
-            )
-            return 0
-
-        logger.info(f"Fetching from {len(feed_urls)} RSS feeds")
-
-        # Fetch newsletters from all feeds
-        newsletters = self.client.fetch_multiple_feeds(
-            feed_urls=feed_urls,
-            max_entries_per_feed=max_entries_per_feed,
-            after_date=after_date,
-        )
-
-        if not newsletters:
-            logger.info("No newsletters found")
-            return 0
-
-        # Store in database
-        count = 0
-        with get_db() as db:
-            for newsletter_data in newsletters:
-                try:
-                    # Check if already exists by source_id (exact match)
-                    existing = (
-                        db.query(Newsletter)
-                        .filter(Newsletter.source_id == newsletter_data.source_id)
-                        .first()
-                    )
-
-                    # If not found by source_id, check by content_hash (cross-source duplicate)
-                    content_duplicate = None
-                    if not existing and newsletter_data.content_hash:
-                        content_duplicate = (
-                            db.query(Newsletter)
-                            .filter(Newsletter.content_hash == newsletter_data.content_hash)
-                            .first()
-                        )
-
-                    if existing:
-                        if force_reprocess:
-                            # Update existing newsletter and reset status for reprocessing
-                            existing.title = newsletter_data.title
-                            existing.sender = newsletter_data.sender
-                            existing.publication = newsletter_data.publication
-                            existing.published_date = newsletter_data.published_date
-                            existing.url = newsletter_data.url
-                            existing.raw_html = newsletter_data.raw_html
-                            existing.raw_text = newsletter_data.raw_text
-                            existing.extracted_links = newsletter_data.extracted_links
-                            existing.content_hash = newsletter_data.content_hash
-                            existing.status = ProcessingStatus.PENDING
-                            existing.error_message = None
-                            count += 1
-                            logger.info(f"Updated for reprocessing: {newsletter_data.title}")
-                            continue
-                        else:
-                            logger.debug(
-                                f"Newsletter already exists (use --force to reprocess): {newsletter_data.source_id}"
-                            )
-                            continue
-
-                    elif content_duplicate:
-                        # Found duplicate by content hash from different source
-                        logger.info(
-                            f"Content duplicate detected: '{newsletter_data.title}' "
-                            f"matches existing newsletter ID {content_duplicate.id} "
-                            f"(source: {content_duplicate.source.value})"
-                        )
-
-                        # Create newsletter but link to canonical version
-                        newsletter = Newsletter(
-                            source=newsletter_data.source,
-                            source_id=newsletter_data.source_id,
-                            title=newsletter_data.title,
-                            sender=newsletter_data.sender,
-                            publication=newsletter_data.publication,
-                            published_date=newsletter_data.published_date,
-                            url=newsletter_data.url,
-                            raw_html=newsletter_data.raw_html,
-                            raw_text=newsletter_data.raw_text,
-                            extracted_links=newsletter_data.extracted_links,
-                            content_hash=newsletter_data.content_hash,
-                            canonical_newsletter_id=content_duplicate.id,  # Link to canonical
-                            status=ProcessingStatus.COMPLETED,  # Mark as completed (duplicate)
-                        )
-                        db.add(newsletter)
-                        count += 1
-                        logger.info(f"Linked duplicate to canonical ID {content_duplicate.id}")
-                        continue
-
-                    # Create new newsletter
-                    newsletter = Newsletter(
-                        source=newsletter_data.source,
-                        source_id=newsletter_data.source_id,
-                        title=newsletter_data.title,
-                        sender=newsletter_data.sender,
-                        publication=newsletter_data.publication,
-                        published_date=newsletter_data.published_date,
-                        url=newsletter_data.url,
-                        raw_html=newsletter_data.raw_html,
-                        raw_text=newsletter_data.raw_text,
-                        extracted_links=newsletter_data.extracted_links,
-                        content_hash=newsletter_data.content_hash,
-                        status=newsletter_data.status,
-                    )
-
-                    db.add(newsletter)
-                    count += 1
-                    logger.info(f"Ingested: {newsletter_data.title}")
-
-                except Exception as e:
-                    logger.error(f"Error storing newsletter: {e}")
-                    db.rollback()
-                    continue
-
-        logger.info(f"Successfully ingested {count} newsletters")
-        return count
-
-    def close(self) -> None:
-        """Close RSS client."""
-        self.client.close()
 
 
 class RSSContentIngestionService:

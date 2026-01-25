@@ -81,11 +81,11 @@ src/
     openai/         # OpenAI SDK agents
     google/         # Google ADK agents
     microsoft/      # MS Agent Framework agents
-  ingestion/        # Newsletter fetching
+  ingestion/        # Content fetching
     gmail.py        # Gmail API integration
     substack.py     # RSS feed parser
   models/           # Data models (Pydantic + SQLAlchemy)
-    newsletter.py   # Newsletter model
+    content.py      # Content model
     summary.py      # Summary model
     digest.py       # Digest model
     revision.py     # Revision context models

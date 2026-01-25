@@ -1,8 +1,7 @@
 """Gmail newsletter ingestion.
 
-Provides both legacy Newsletter ingestion and new Content model ingestion.
-The Content-based ingestion (GmailContentIngestionService) is the preferred
-approach for new code as part of the unified content model refactor.
+Provides Content model ingestion for Gmail newsletters using the unified
+content model. Creates Content records with markdown as the primary format.
 """
 
 import base64
@@ -21,9 +20,8 @@ from pydantic import BaseModel
 
 from src.config import settings
 from src.models.content import Content, ContentSource, ContentStatus
-from src.models.newsletter import Newsletter, NewsletterData, NewsletterSource, ProcessingStatus
 from src.storage.database import get_db
-from src.utils.content_hash import generate_content_hash, generate_markdown_hash
+from src.utils.content_hash import generate_markdown_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
 
@@ -60,7 +58,11 @@ class ContentData(BaseModel):
 
 
 def html_to_markdown(html: str) -> str:
-    """Convert HTML to markdown using MarkItDown parser.
+    """Convert HTML to markdown using Trafilatura-based converter.
+
+    Uses a two-tier extraction approach:
+    - Primary: Trafilatura for fast, high-quality extraction (~50ms)
+    - Fallback: MarkItDown if Trafilatura is unavailable
 
     Args:
         html: HTML content to convert
@@ -71,6 +73,37 @@ def html_to_markdown(html: str) -> str:
     if not html:
         return ""
 
+    try:
+        from src.parsers.html_markdown import convert_html_to_markdown
+
+        result = convert_html_to_markdown(html=html)
+        if result:
+            return result
+
+        # If converter returned empty, fall back to text
+        logger.debug("HTML-to-markdown converter returned empty, using text fallback")
+        return html_to_text(html)
+
+    except ImportError:
+        # Trafilatura not installed, use legacy MarkItDown approach
+        logger.debug("Trafilatura not available, using MarkItDown fallback")
+        return _html_to_markdown_markitdown(html)
+    except Exception as e:
+        logger.warning(f"HTML-to-markdown conversion failed, falling back to text: {e}")
+        return html_to_text(html)
+
+
+def _html_to_markdown_markitdown(html: str) -> str:
+    """Legacy MarkItDown-based HTML to markdown conversion.
+
+    Used as fallback when Trafilatura is not available.
+
+    Args:
+        html: HTML content to convert
+
+    Returns:
+        Markdown representation of the HTML
+    """
     try:
         from src.parsers.markitdown_parser import MarkItDownParser
 
@@ -98,7 +131,6 @@ def html_to_markdown(html: str) -> str:
 
     except Exception as e:
         logger.warning(f"MarkItDown conversion failed, falling back to text: {e}")
-        # Fallback to plain text if markdown conversion fails
         return html_to_text(html)
 
 
@@ -141,131 +173,6 @@ class GmailClient:
 
         self.service = build("gmail", "v1", credentials=creds)
         logger.info("Gmail API client initialized")
-
-    def fetch_newsletters(
-        self,
-        query: str = "label:newsletters-ai",
-        max_results: int = 10,
-        after_date: datetime | None = None,
-    ) -> list[NewsletterData]:
-        """
-        Fetch newsletters from Gmail.
-
-        Args:
-            query: Gmail search query (default: emails with 'newsletters' label)
-            max_results: Maximum number of emails to fetch
-            after_date: Only fetch emails after this date
-
-        Returns:
-            List of NewsletterData objects
-        """
-        try:
-            # Build query with date filter if provided
-            full_query = query
-            if after_date:
-                date_str = after_date.strftime("%Y/%m/%d")
-                full_query = f"{query} after:{date_str}"
-
-            logger.info(f"Fetching newsletters with query: {full_query}")
-
-            # List messages
-            results = (
-                self.service.users()
-                .messages()
-                .list(userId="me", q=full_query, maxResults=max_results)
-                .execute()
-            )
-
-            messages = results.get("messages", [])
-            logger.info(f"Found {len(messages)} messages")
-
-            if not messages:
-                return []
-
-            # Fetch and parse each message
-            newsletters = []
-            for msg in messages:
-                try:
-                    newsletter_data = self._fetch_and_parse_message(msg["id"])
-                    if newsletter_data:
-                        newsletters.append(newsletter_data)
-                except Exception as e:
-                    logger.error(f"Error parsing message {msg['id']}: {e}")
-                    continue
-
-            logger.info(f"Successfully parsed {len(newsletters)} newsletters")
-            return newsletters
-
-        except HttpError as error:
-            logger.error(f"Gmail API error: {error}")
-            raise
-
-    def _fetch_and_parse_message(self, message_id: str) -> NewsletterData | None:
-        """
-        Fetch and parse a single Gmail message.
-
-        Args:
-            message_id: Gmail message ID
-
-        Returns:
-            NewsletterData object or None if parsing fails
-        """
-        try:
-            # Get full message
-            message = (
-                self.service.users()
-                .messages()
-                .get(userId="me", id=message_id, format="full")
-                .execute()
-            )
-
-            # Extract headers
-            headers = {h["name"]: h["value"] for h in message["payload"]["headers"]}
-
-            # Extract key metadata
-            subject = headers.get("Subject", "No Subject")
-            sender = headers.get("From", "Unknown")
-            date_str = headers.get("Date", "")
-            message_id_header = headers.get("Message-ID", message_id)
-
-            # Parse date
-            published_date = self._parse_date(date_str)
-
-            # Extract sender name and email
-            sender_email = sender
-            publication = self._extract_publication_name(sender)
-
-            # Extract body (HTML and text)
-            html_body, text_body = self._extract_body(message["payload"])
-
-            # Extract links from HTML
-            links = extract_links(html_body) if html_body else []
-
-            # Generate content hash for deduplication
-            content_hash = generate_content_hash(text_body) if text_body else None
-
-            # Create newsletter data
-            newsletter_data = NewsletterData(
-                source=NewsletterSource.GMAIL,
-                source_id=message_id_header,
-                title=subject,
-                sender=sender_email,
-                publication=publication,
-                published_date=published_date,
-                url=None,  # Gmail messages don't have a direct URL
-                raw_html=html_body,
-                raw_text=text_body,
-                extracted_links=links,
-                content_hash=content_hash,
-                status=ProcessingStatus.PENDING,
-            )
-
-            logger.debug(f"Parsed newsletter: {subject} from {publication}")
-            return newsletter_data
-
-        except Exception as e:
-            logger.error(f"Error fetching message {message_id}: {e}")
-            return None
 
     def _extract_body(self, payload: dict[str, Any]) -> tuple[str | None, str | None]:
         """
@@ -451,12 +358,32 @@ class GmailClient:
             html_body, text_body = self._extract_body(message["payload"])
 
             # Convert HTML to markdown (primary content format)
+            # Track which parser was used for metadata
             markdown_content = ""
+            parser_used = "trafilatura"
+
             if html_body:
-                markdown_content = html_to_markdown(html_body)
+                try:
+                    from src.parsers.html_markdown import convert_html_to_markdown
+
+                    markdown_content = convert_html_to_markdown(html=html_body)
+                    if markdown_content:
+                        logger.debug(
+                            f"Trafilatura extraction successful for {subject}: "
+                            f"{len(markdown_content)} chars"
+                        )
+                    else:
+                        # Trafilatura returned empty, fall back to text
+                        markdown_content = html_to_text(html_body)
+                        parser_used = "text_fallback"
+                except ImportError:
+                    # Trafilatura not installed, use legacy MarkItDown
+                    markdown_content = html_to_markdown(html_body)
+                    parser_used = "markitdown"
             elif text_body:
                 # If no HTML, use plain text as markdown
                 markdown_content = text_body
+                parser_used = "plaintext"
 
             if not markdown_content:
                 logger.warning(f"No content found for message {message_id}")
@@ -486,7 +413,7 @@ class GmailClient:
                 },
                 raw_content=html_body,  # Preserve original HTML
                 raw_format="html" if html_body else "text",
-                parser_used="markitdown",
+                parser_used=parser_used,
                 content_hash=content_hash,
             )
 
@@ -496,158 +423,6 @@ class GmailClient:
         except Exception as e:
             logger.error(f"Error fetching message {message_id}: {e}")
             return None
-
-
-class GmailIngestionService:
-    """Service for ingesting newsletters from Gmail."""
-
-    def __init__(self) -> None:
-        """Initialize Gmail ingestion service."""
-        self.client = GmailClient()
-
-    def ingest_newsletters(
-        self,
-        query: str = "label:newsletters-ai",
-        max_results: int = 10,
-        after_date: datetime | None = None,
-        force_reprocess: bool = False,
-    ) -> int:
-        """
-        Ingest newsletters from Gmail and store in database.
-
-        Args:
-            query: Gmail search query
-            max_results: Maximum number to fetch
-            after_date: Only fetch after this date
-            force_reprocess: If True, reprocess existing newsletters (updates data and resets status)
-
-        Returns:
-            Number of newsletters ingested
-        """
-        logger.info("Starting Gmail newsletter ingestion...")
-
-        # Fetch newsletters
-        newsletters = self.client.fetch_newsletters(
-            query=query, max_results=max_results, after_date=after_date
-        )
-
-        if not newsletters:
-            logger.info("No newsletters found")
-            return 0
-
-        # Store in database
-        count = 0
-        with get_db() as db:
-            # --- Bulk query optimization ---
-            source_ids = [n.source_id for n in newsletters if n.source_id]
-            content_hashes = [n.content_hash for n in newsletters if n.content_hash]
-
-            # Bulk fetch existing newsletters by source_id
-            existing_by_source_id = {
-                n.source_id: n
-                for n in db.query(Newsletter).filter(Newsletter.source_id.in_(source_ids)).all()
-            }
-
-            # Bulk fetch existing newsletters by content_hash (for those not found by source_id)
-            existing_by_content_hash = {
-                n.content_hash: n
-                for n in db.query(Newsletter)
-                .filter(Newsletter.content_hash.in_(content_hashes))
-                .all()
-            }
-            # --- End of optimization ---
-
-            for newsletter_data in newsletters:
-                try:
-                    # Check if already exists by source_id (exact match)
-                    existing = existing_by_source_id.get(newsletter_data.source_id)
-
-                    # If not found by source_id, check by content_hash (cross-source duplicate)
-                    content_duplicate = None
-                    if not existing and newsletter_data.content_hash:
-                        content_duplicate = existing_by_content_hash.get(
-                            newsletter_data.content_hash
-                        )
-
-                    if existing:
-                        if force_reprocess:
-                            # Update existing newsletter and reset status for reprocessing
-                            existing.title = newsletter_data.title
-                            existing.sender = newsletter_data.sender
-                            existing.publication = newsletter_data.publication
-                            existing.published_date = newsletter_data.published_date
-                            existing.url = newsletter_data.url
-                            existing.raw_html = newsletter_data.raw_html
-                            existing.raw_text = newsletter_data.raw_text
-                            existing.extracted_links = newsletter_data.extracted_links
-                            existing.content_hash = newsletter_data.content_hash
-                            existing.status = ProcessingStatus.PENDING
-                            existing.error_message = None
-                            count += 1
-                            logger.info(f"Updated for reprocessing: {newsletter_data.title}")
-                            continue
-                        else:
-                            logger.debug(
-                                f"Newsletter already exists (use --force to reprocess): {newsletter_data.source_id}"
-                            )
-                            continue
-
-                    elif content_duplicate:
-                        # Found duplicate by content hash from different source
-                        logger.info(
-                            f"Content duplicate detected: '{newsletter_data.title}' "
-                            f"matches existing newsletter ID {content_duplicate.id} "
-                            f"(source: {content_duplicate.source.value})"
-                        )
-
-                        # Create newsletter but link to canonical version
-                        newsletter = Newsletter(
-                            source=newsletter_data.source,
-                            source_id=newsletter_data.source_id,
-                            title=newsletter_data.title,
-                            sender=newsletter_data.sender,
-                            publication=newsletter_data.publication,
-                            published_date=newsletter_data.published_date,
-                            url=newsletter_data.url,
-                            raw_html=newsletter_data.raw_html,
-                            raw_text=newsletter_data.raw_text,
-                            extracted_links=newsletter_data.extracted_links,
-                            content_hash=newsletter_data.content_hash,
-                            canonical_newsletter_id=content_duplicate.id,  # Link to canonical
-                            status=ProcessingStatus.COMPLETED,  # Mark as completed (duplicate)
-                        )
-                        db.add(newsletter)
-                        count += 1
-                        logger.info(f"Linked duplicate to canonical ID {content_duplicate.id}")
-                        continue
-
-                    # Create new newsletter
-                    newsletter = Newsletter(
-                        source=newsletter_data.source,
-                        source_id=newsletter_data.source_id,
-                        title=newsletter_data.title,
-                        sender=newsletter_data.sender,
-                        publication=newsletter_data.publication,
-                        published_date=newsletter_data.published_date,
-                        url=newsletter_data.url,
-                        raw_html=newsletter_data.raw_html,
-                        raw_text=newsletter_data.raw_text,
-                        extracted_links=newsletter_data.extracted_links,
-                        content_hash=newsletter_data.content_hash,
-                        status=newsletter_data.status,
-                    )
-
-                    db.add(newsletter)
-                    count += 1
-                    logger.info(f"Ingested: {newsletter_data.title}")
-
-                except Exception as e:
-                    logger.error(f"Error storing newsletter: {e}")
-                    db.rollback()
-                    continue
-
-        logger.info(f"Successfully ingested {count} newsletters")
-        return count
 
 
 class GmailContentIngestionService:
@@ -727,9 +502,7 @@ class GmailContentIngestionService:
                     # If not found by source_id, check by content_hash (cross-source duplicate)
                     content_duplicate = None
                     if not existing and content_data.content_hash:
-                        content_duplicate = existing_by_content_hash.get(
-                            content_data.content_hash
-                        )
+                        content_duplicate = existing_by_content_hash.get(content_data.content_hash)
 
                     if existing:
                         if force_reprocess:

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 
 class PromptOverride(Base):

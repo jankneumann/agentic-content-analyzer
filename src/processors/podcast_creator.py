@@ -7,17 +7,16 @@ Orchestrates the complete podcast creation workflow:
 This separation enables human review before expensive TTS synthesis.
 """
 
+import tempfile
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 
 from src.config import settings
 from src.config.models import ModelConfig
 from src.delivery.audio_generator import (
     PodcastAudioGenerator,
-)
-from src.delivery.audio_generator_v2 import (
-    get_output_path,  # Shared utility function
 )
 from src.models.podcast import (
     Podcast,
@@ -29,6 +28,7 @@ from src.models.podcast import (
     VoiceProvider,
 )
 from src.processors.podcast_script_generator import PodcastScriptGenerator
+from src.services.file_storage import get_storage
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -119,13 +119,14 @@ class PodcastCreator:
                 script_record.estimated_duration_seconds = script.estimated_duration_seconds
                 script_record.status = PodcastStatus.SCRIPT_PENDING_REVIEW
 
-                # Store newsletter IDs available (for reference)
-                # These are the newsletters in the digest period
+                # Store content IDs available (for reference)
+                # These are the content items in the digest period
                 script_record.newsletter_ids_available = [
                     s.get("id") for s in script.sources_summary
                 ]
-                # Store which ones were actually fetched via tool
-                script_record.newsletter_ids_fetched = metadata.newsletter_ids_fetched
+                # Store which ones were actually fetched via get_content tool
+                # Note: DB column still named newsletter_ids_fetched for backwards compat
+                script_record.newsletter_ids_fetched = metadata.content_ids_fetched
                 script_record.web_search_queries = metadata.web_searches
                 script_record.tool_call_count = metadata.tool_call_count
 
@@ -255,28 +256,45 @@ class PodcastCreator:
                 )
                 logger.info("Using V1 audio generator (pydub-based, deprecated)")
 
-            # Get output path
-            output_path = get_output_path(podcast_id)
+            # Generate audio to a temporary file first
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
+                tmp_path = Path(tmp_file.name)
 
-            # Generate audio
+            # Generate audio to temp file
             audio_meta = await self.audio_generator.generate_audio(
                 script,
-                output_path,
+                tmp_path,
                 progress_callback=progress_callback,
             )
+
+            # Upload to storage provider
+            storage = get_storage(bucket="podcasts")
+            filename = f"podcast_{podcast_id}.mp3"
+
+            # Read audio data from temp file (using Path.read_bytes for simplicity)
+            audio_data = tmp_path.read_bytes()
+
+            storage_path = await storage.save(
+                data=audio_data,
+                filename=filename,
+                content_type="audio/mpeg",
+            )
+
+            # Clean up temp file
+            tmp_path.unlink(missing_ok=True)
 
             generation_time = time.time() - start_time
 
             # Update podcast record
             with get_db() as db:
                 podcast = db.query(Podcast).filter(Podcast.id == podcast_id).first()
-                podcast.audio_url = str(output_path)
+                podcast.audio_url = storage_path  # Store the storage path, not local path
                 podcast.audio_format = audio_meta.format
                 podcast.duration_seconds = audio_meta.duration_seconds
                 podcast.file_size_bytes = audio_meta.file_size_bytes
                 podcast.voice_config = self.audio_generator.get_voice_config()
                 podcast.status = "completed"
-                podcast.completed_at = datetime.utcnow()
+                podcast.completed_at = datetime.now(UTC)
 
                 # Update script status
                 script_record = (
@@ -292,7 +310,8 @@ class PodcastCreator:
             logger.info(
                 f"Podcast {podcast_id} generated successfully in {generation_time:.1f}s. "
                 f"Duration: {audio_meta.duration_seconds}s, "
-                f"Size: {audio_meta.file_size_bytes / 1024:.1f} KB"
+                f"Size: {audio_meta.file_size_bytes / 1024:.1f} KB, "
+                f"Storage: {storage_path}"
             )
 
             return podcast

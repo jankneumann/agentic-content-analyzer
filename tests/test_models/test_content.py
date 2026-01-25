@@ -5,6 +5,7 @@ Tests cover:
 - ContentStatus enum values and behavior
 - Content SQLAlchemy model creation and relationships
 - Pydantic schemas for API operations
+- Content → Summary and Content → Image relationships
 """
 
 from datetime import UTC, datetime
@@ -21,6 +22,8 @@ from src.models.content import (
     ContentStatus,
     ContentUpdate,
 )
+from src.models.image import Image
+from src.models.summary import Summary
 
 
 class TestContentSourceEnum:
@@ -447,3 +450,71 @@ class TestContentListResponseSchema:
         assert response.has_next is False
         assert response.has_prev is True
         assert response.page == 10
+
+
+class TestContentRelationships:
+    """Tests for Content model relationships."""
+
+    def test_content_has_summaries_relationship(self):
+        """Test Content model has summaries relationship attribute."""
+        # Verify the relationship is defined on the Content class
+        assert hasattr(Content, "summaries")
+
+        # Create a content instance and verify it has an empty list
+        content = Content(
+            source_type=ContentSource.GMAIL,
+            source_id="relationship-test",
+            title="Test Content",
+            markdown_content="# Test",
+            content_hash="hash123",
+        )
+        # In-memory object won't have relationship loaded, but attribute should exist
+
+    def test_content_has_images_relationship(self):
+        """Test Content model has images relationship attribute."""
+        # Verify the relationship is defined on the Content class
+        assert hasattr(Content, "images")
+
+    def test_summary_has_content_relationship(self):
+        """Test Summary model has content relationship attribute."""
+        assert hasattr(Summary, "content")
+
+    def test_image_has_source_content_relationship(self):
+        """Test Image model has source_content relationship attribute."""
+        assert hasattr(Image, "source_content")
+
+    def test_content_summaries_back_populates(self):
+        """Test Content.summaries and Summary.content are linked."""
+        # Create content
+        content = Content(
+            source_type=ContentSource.GMAIL,
+            source_id="backpopulate-test",
+            title="Test Content",
+            markdown_content="# Test",
+            content_hash="hash456",
+        )
+        content.id = 1  # Simulate database assignment
+
+        # Create summary linked to content
+        summary = Summary(
+            content_id=1,
+            executive_summary="Test summary",
+            key_themes=["test"],
+            strategic_insights=["insight"],
+            technical_details=["detail"],
+            actionable_items=["action"],
+            notable_quotes=["quote"],
+            relevance_scores={"cto_leadership": 0.8},
+            agent_framework="claude",
+            model_used="claude-sonnet-4-5",
+        )
+
+        # Verify relationship attribute names match back_populates
+        # This confirms the relationship configuration is correct
+        # (actual ORM linking requires a database session)
+        assert Summary.content.property.back_populates == "summaries"
+
+    def test_content_images_back_populates(self):
+        """Test Content.images and Image.source_content are linked."""
+        # Verify relationship configuration
+        assert Image.source_content.property.back_populates == "images"

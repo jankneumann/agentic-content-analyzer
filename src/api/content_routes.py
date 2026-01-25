@@ -15,12 +15,11 @@ from sqlalchemy import func
 from src.models.content import (
     Content,
     ContentCreate,
-    ContentListItem as BaseContentListItem,
-    ContentResponse as BaseContentResponse,
+    ContentListItem,
+    ContentResponse,
     ContentSource,
     ContentStatus,
 )
-from src.models.newsletter import Newsletter
 from src.services.content_service import ContentService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -29,18 +28,12 @@ logger = get_logger(__name__)
 
 
 # ============================================================================
-# Extended Response Models (with legacy newsletter ID)
+# Response Models
 # ============================================================================
 
 
-class ContentListItem(BaseContentListItem):
-    """Extended content list item with legacy newsletter ID for navigation."""
-
-    legacy_newsletter_id: int | None = None
-
-
 class ContentListResponse(BaseModel):
-    """Paginated content list response with extended items."""
+    """Paginated content list response."""
 
     items: list[ContentListItem]
     total: int
@@ -50,11 +43,16 @@ class ContentListResponse(BaseModel):
     has_prev: bool = Field(default=False)
 
 
-class ContentResponse(BaseContentResponse):
-    """Extended content response with legacy newsletter ID."""
-
-    legacy_newsletter_id: int | None = None
-
+# Allowed fields for sorting content list
+CONTENT_SORT_FIELDS = {
+    "id",
+    "title",
+    "source_type",
+    "publication",
+    "status",
+    "published_date",
+    "ingested_at",
+}
 
 router = APIRouter(prefix="/api/v1/contents", tags=["contents"])
 
@@ -127,6 +125,8 @@ class ContentStats(BaseModel):
     pending_count: int
     completed_count: int
     failed_count: int
+    # Count of content items that don't have summaries yet
+    needs_summarization_count: int = 0
 
 
 class IngestRequest(BaseModel):
@@ -220,28 +220,6 @@ async def _run_content_ingestion(
         logger.error(f"Content ingestion failed: {e}")
         _ingestion_tasks[task_id]["status"] = "error"
         _ingestion_tasks[task_id]["message"] = str(e)
-
-
-def _get_legacy_newsletter_ids(db, source_ids: list[str]) -> dict[str, int]:
-    """Look up newsletter IDs by source_id for linking to summaries.
-
-    Args:
-        db: Database session
-        source_ids: List of source IDs to look up
-
-    Returns:
-        Dict mapping source_id -> newsletter_id
-    """
-    if not source_ids:
-        return {}
-
-    newsletters = (
-        db.query(Newsletter.source_id, Newsletter.id)
-        .filter(Newsletter.source_id.in_(source_ids))
-        .all()
-    )
-
-    return {n.source_id: n.id for n in newsletters}
 
 
 class DuplicateInfo(BaseModel):
@@ -354,12 +332,14 @@ async def list_contents(
     search: str | None = Query(None, description="Search in title"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    sort_by: str = Query("ingested_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> ContentListResponse:
     """
     List contents with optional filters.
 
     Supports filtering by source type, status, publication, date range, and search.
-    Results are paginated and sorted by ingested date (newest first).
+    Results are paginated and sorted by the specified field (default: ingested_at desc).
     """
     with get_db() as db:
         query = db.query(Content)
@@ -384,12 +364,19 @@ async def list_contents(
         # Calculate offset from page
         offset = (page - 1) * page_size
 
-        # Apply pagination and ordering
-        contents = query.order_by(Content.ingested_at.desc()).offset(offset).limit(page_size).all()
+        # Validate sort_by field
+        if sort_by not in CONTENT_SORT_FIELDS:
+            sort_by = "ingested_at"
 
-        # Look up legacy newsletter IDs for navigation to summaries
-        source_ids = [c.source_id for c in contents]
-        newsletter_id_map = _get_legacy_newsletter_ids(db, source_ids)
+        # Get sort column dynamically
+        sort_column = getattr(Content, sort_by, Content.ingested_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        # Apply pagination
+        contents = query.offset(offset).limit(page_size).all()
 
         # Convert to response models
         items = [
@@ -401,7 +388,6 @@ async def list_contents(
                 published_date=c.published_date,
                 status=c.status,
                 ingested_at=c.ingested_at,
-                legacy_newsletter_id=newsletter_id_map.get(c.source_id),
             )
             for c in contents
         ]
@@ -419,6 +405,8 @@ async def list_contents(
 @router.get("/stats", response_model=ContentStats)
 async def get_content_stats() -> ContentStats:
     """Get content statistics."""
+    from src.models.summary import Summary
+
     with get_db() as db:
         total = db.query(Content).count()
 
@@ -436,6 +424,15 @@ async def get_content_stats() -> ContentStats:
         )
         by_source = {source.value: count for source, count in source_counts}
 
+        # Count content items that don't have summaries yet
+        # This is content with no matching Summary.content_id
+        content_with_summaries = (
+            db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).subquery()
+        )
+        needs_summarization_count = (
+            db.query(Content).filter(~Content.id.in_(content_with_summaries)).count()
+        )
+
         return ContentStats(
             total=total,
             by_status=by_status,
@@ -443,6 +440,7 @@ async def get_content_stats() -> ContentStats:
             pending_count=by_status.get(ContentStatus.PENDING.value, 0),
             completed_count=by_status.get(ContentStatus.COMPLETED.value, 0),
             failed_count=by_status.get(ContentStatus.FAILED.value, 0),
+            needs_summarization_count=needs_summarization_count,
         )
 
 
@@ -459,12 +457,6 @@ async def get_content(content_id: int) -> ContentResponse:
 
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
-
-        # Look up legacy newsletter ID for navigation to summary
-        legacy_newsletter_id = None
-        if content.source_id:
-            newsletter_id_map = _get_legacy_newsletter_ids(db, [content.source_id])
-            legacy_newsletter_id = newsletter_id_map.get(content.source_id)
 
         return ContentResponse(
             id=content.id,
@@ -487,7 +479,6 @@ async def get_content(content_id: int) -> ContentResponse:
             ingested_at=content.ingested_at,
             parsed_at=content.parsed_at,
             processed_at=content.processed_at,
-            legacy_newsletter_id=legacy_newsletter_id,
         )
 
 
@@ -648,3 +639,222 @@ async def merge_duplicate(content_id: int, duplicate_id: int) -> ContentResponse
             parsed_at=duplicate.parsed_at,
             processed_at=duplicate.processed_at,
         )
+
+
+# ============================================================================
+# Content Summarization Endpoints
+# ============================================================================
+
+
+class SummarizeContentRequest(BaseModel):
+    """Request to trigger content summarization."""
+
+    content_ids: list[int] = Field(
+        default_factory=list,
+        description="Specific content IDs to summarize (empty = all pending/parsed)",
+    )
+    force: bool = Field(
+        default=False,
+        description="Force re-summarization even if summary exists",
+    )
+    retry_failed: bool = Field(
+        default=False,
+        description="Include failed content items (reset to PARSED and retry)",
+    )
+
+
+class SummarizeContentResponse(BaseModel):
+    """Response from content summarization trigger."""
+
+    task_id: str
+    message: str
+    queued_count: int
+    content_ids: list[int]
+
+
+# In-memory task storage for summarization
+_summarization_tasks: dict[str, dict] = {}
+
+
+@router.post("/summarize", response_model=SummarizeContentResponse)
+async def trigger_content_summarization(
+    request: SummarizeContentRequest,
+    background_tasks: BackgroundTasks,
+) -> SummarizeContentResponse:
+    """
+    Trigger summarization for content records.
+
+    If content_ids is empty, summarizes all pending/parsed content.
+    Use the /summarize/status/{task_id} endpoint to get real-time progress via SSE.
+    """
+    import uuid
+
+    from src.models.summary import Summary
+
+    task_id = str(uuid.uuid4())
+
+    # Get content to process
+    with get_db() as db:
+        # Get all content IDs that already have summaries
+        existing_summary_ids = {
+            s.content_id
+            for s in db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).all()
+        }
+
+        if request.content_ids:
+            # Filter specific content IDs
+            query = db.query(Content).filter(Content.id.in_(request.content_ids))
+            if not request.force:
+                # Exclude content that already has summaries or is completed
+                query = query.filter(
+                    Content.status != ContentStatus.COMPLETED,
+                    ~Content.id.in_(existing_summary_ids) if existing_summary_ids else True,
+                )
+            contents = query.all()
+        else:
+            # Determine which statuses to include
+            statuses_to_include = [ContentStatus.PENDING, ContentStatus.PARSED]
+            if request.retry_failed:
+                statuses_to_include.append(ContentStatus.FAILED)
+
+            # Get content in eligible statuses that doesn't have a summary
+            query = db.query(Content).filter(Content.status.in_(statuses_to_include))
+            if existing_summary_ids:
+                query = query.filter(~Content.id.in_(existing_summary_ids))
+            contents = query.all()
+
+            # Reset failed content to PARSED so it can be retried
+            if request.retry_failed:
+                for content in contents:
+                    if content.status == ContentStatus.FAILED:
+                        content.status = ContentStatus.PARSED
+                        content.error_message = None
+                db.commit()
+
+        content_ids = [c.id for c in contents]
+
+    if not content_ids:
+        return SummarizeContentResponse(
+            task_id=task_id,
+            message="No content to summarize",
+            queued_count=0,
+            content_ids=[],
+        )
+
+    # Initialize task state
+    _summarization_tasks[task_id] = {
+        "status": "queued",
+        "progress": 0,
+        "total": len(content_ids),
+        "processed": 0,
+        "completed": 0,
+        "failed": 0,
+        "current_content_id": None,
+        "message": "Summarization queued",
+        "started_at": datetime.utcnow().isoformat(),
+    }
+
+    # Start background summarization
+    background_tasks.add_task(
+        _run_content_summarization,
+        task_id,
+        content_ids,
+        request.force,
+    )
+
+    return SummarizeContentResponse(
+        task_id=task_id,
+        message="Content summarization started",
+        queued_count=len(content_ids),
+        content_ids=content_ids,
+    )
+
+
+async def _run_content_summarization(
+    task_id: str,
+    content_ids: list[int],
+    force: bool,
+) -> None:
+    """Background content summarization task."""
+    try:
+        from src.processors.summarizer import NewsletterSummarizer
+
+        _summarization_tasks[task_id]["status"] = "processing"
+        _summarization_tasks[task_id]["message"] = "Starting content summarization"
+
+        summarizer = NewsletterSummarizer()
+        total = len(content_ids)
+
+        for i, content_id in enumerate(content_ids):
+            _summarization_tasks[task_id]["current_content_id"] = content_id
+            _summarization_tasks[task_id]["message"] = f"Summarizing content {content_id}"
+
+            try:
+                success = await asyncio.to_thread(
+                    summarizer.summarize_content,
+                    content_id,
+                )
+
+                if success:
+                    _summarization_tasks[task_id]["completed"] += 1
+                else:
+                    _summarization_tasks[task_id]["failed"] += 1
+
+            except Exception as e:
+                logger.error(f"Error summarizing content {content_id}: {e}")
+                _summarization_tasks[task_id]["failed"] += 1
+                _summarization_tasks[task_id]["message"] = f"Error: {e!s}"
+
+            _summarization_tasks[task_id]["processed"] = i + 1
+            _summarization_tasks[task_id]["progress"] = int((i + 1) / total * 100)
+
+        completed = _summarization_tasks[task_id]["completed"]
+        failed = _summarization_tasks[task_id]["failed"]
+
+        _summarization_tasks[task_id]["status"] = "completed"
+        _summarization_tasks[task_id]["progress"] = 100
+        _summarization_tasks[task_id]["message"] = (
+            f"Completed: {completed} summaries created, {failed} failed"
+        )
+        _summarization_tasks[task_id]["current_content_id"] = None
+
+    except Exception as e:
+        logger.error(f"Content summarization task failed: {e}")
+        _summarization_tasks[task_id]["status"] = "error"
+        _summarization_tasks[task_id]["message"] = str(e)
+
+
+@router.get("/summarize/status/{task_id}")
+async def get_content_summarization_status(task_id: str) -> StreamingResponse:
+    """
+    Get content summarization task status via Server-Sent Events.
+
+    Stream real-time progress updates for the summarization task.
+    """
+    if task_id not in _summarization_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    async def event_generator():
+        import json
+
+        while True:
+            if task_id not in _summarization_tasks:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
+                break
+
+            task = _summarization_tasks[task_id]
+            yield f"data: {json.dumps(task)}\n\n"
+
+            if task["status"] in ("completed", "error"):
+                break
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
