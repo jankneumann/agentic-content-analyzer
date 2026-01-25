@@ -12,3 +12,8 @@
 **Vulnerability:** `YouTubeParser` relied on a weak length check (`len != 11`) for video IDs, while `KeyframeExtractor` used a robust regex check. This inconsistency allowed potentially malicious strings (e.g., shell injection payloads of length 11) to bypass validation in the parser, although downstream libraries likely mitigated the impact.
 **Learning:** Security validation logic should be centralized and consistent across the application. When multiple components handle the same type of input (e.g., YouTube Video IDs), they should use a shared validation function.
 **Prevention:** Refactor duplicated validation logic into shared utility functions (like `validate_video_id_format`) and ensure all consumers use them.
+
+## 2025-05-24 - [Path Traversal in LocalFileStorage]
+**Vulnerability:** `LocalFileStorage._resolve_path` in `src/services/file_storage.py` allowed directory traversal (e.g., `../`) because it concatenated user input with the base path without verifying the resolved location.
+**Learning:** `pathlib.Path` joining operations do not automatically sanitize or sandbox paths. Explicit validation is necessary when handling file system paths derived from user input.
+**Prevention:** Use `path.resolve().is_relative_to(base_path.resolve())` to enforce that file operations are confined within the intended directory.

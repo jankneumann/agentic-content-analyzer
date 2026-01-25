@@ -138,6 +138,16 @@ class TestLocalFileStorage:
         """Test provider_name returns 'local'."""
         assert storage.provider_name == "local"
 
+    @pytest.mark.asyncio
+    async def test_path_traversal_prevention(self, storage):
+        """Test that path traversal attempts raise ValueError."""
+        # Attempt to access parent directory
+        with pytest.raises(ValueError, match="Path traversal detected"):
+            await storage.get("images/../secret.txt")
+
+        with pytest.raises(ValueError, match="Path traversal detected"):
+            await storage.exists("images/../secret.txt")
+
 
 class TestComputeFileHash:
     """Tests for compute_file_hash utility."""

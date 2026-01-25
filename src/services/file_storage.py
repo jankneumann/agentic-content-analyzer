@@ -229,7 +229,15 @@ class LocalFileStorage(FileStorageProvider):
         elif path.startswith("images/"):
             # Backward compatibility for old image paths
             path = path[7:]  # Remove 'images/'
-        return self.base_path / path
+
+        # Resolve path to handle '..'
+        full_path = (self.base_path / path).resolve()
+
+        # Check for path traversal
+        if not full_path.is_relative_to(self.base_path.resolve()):
+            raise ValueError(f"Invalid path: Path traversal detected: {path}")
+
+        return full_path
 
     async def get(self, path: str) -> bytes:
         """Retrieve file from local filesystem."""
