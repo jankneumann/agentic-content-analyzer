@@ -3,7 +3,7 @@
 Migrate existing Summary records to populate markdown_content and theme_tags.
 
 This script:
-1. Reads existing NewsletterSummary records
+1. Reads existing Summary records
 2. Generates markdown_content from JSON fields using generate_summary_markdown()
 3. Extracts theme_tags from the summary data
 4. Updates the records with the new fields
@@ -29,7 +29,7 @@ import argparse
 import sys
 from typing import TypedDict
 
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 from src.utils.summary_markdown import (
@@ -58,7 +58,7 @@ logger = get_logger(__name__)
 
 
 def migrate_summary(
-    summary: NewsletterSummary,
+    summary: Summary,
     dry_run: bool = False,
     force: bool = False,
 ) -> bool:
@@ -66,7 +66,7 @@ def migrate_summary(
     Migrate a single Summary record to add markdown_content and theme_tags.
 
     Args:
-        summary: NewsletterSummary record to migrate
+        summary: Summary record to migrate
         dry_run: If True, don't update the record
         force: If True, overwrite existing markdown_content
 
@@ -146,16 +146,15 @@ def run_migration(
 
     with get_db() as db:
         # Get summaries to migrate
-        query = db.query(NewsletterSummary)
+        query = db.query(Summary)
 
         if summary_ids:
-            query = query.filter(NewsletterSummary.id.in_(summary_ids))
+            query = query.filter(Summary.id.in_(summary_ids))
 
         # If not forcing, only get records without markdown_content
         if not force:
             query = query.filter(
-                (NewsletterSummary.markdown_content.is_(None))
-                | (NewsletterSummary.markdown_content == "")
+                (Summary.markdown_content.is_(None)) | (Summary.markdown_content == "")
             )
 
         summaries = query.all()
@@ -213,13 +212,13 @@ def rollback_migration(summary_ids: list[int] | None = None) -> SummaryRollbackS
     logger.info("Starting rollback")
 
     with get_db() as db:
-        query = db.query(NewsletterSummary)
+        query = db.query(Summary)
 
         if summary_ids:
-            query = query.filter(NewsletterSummary.id.in_(summary_ids))
+            query = query.filter(Summary.id.in_(summary_ids))
         else:
             # Only rollback records that have markdown_content
-            query = query.filter(NewsletterSummary.markdown_content.isnot(None))
+            query = query.filter(Summary.markdown_content.isnot(None))
 
         summaries = query.all()
 

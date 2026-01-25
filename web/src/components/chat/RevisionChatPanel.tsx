@@ -164,7 +164,7 @@ export function RevisionChatPanel({
   const placeholder = React.useMemo(() => {
     switch (artifactType) {
       case "summary":
-        return "Ask about the newsletter or summary..."
+        return "Ask about the content or summary..."
       case "digest":
         return "Ask about the digest or source summaries..."
       case "script":

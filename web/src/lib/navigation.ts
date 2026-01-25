@@ -17,6 +17,7 @@ import {
   FileText,
   Mic,
   Radio,
+  Headphones,
   LayoutDashboard,
   Settings,
   CheckSquare,
@@ -72,9 +73,6 @@ export const navigation: NavGroup[] = [
   {
     title: "Pipeline",
     items: [
-      // NOTE: Newsletters removed from nav - deprecated in favor of Contents
-      // Route still accessible at /newsletters with deprecation banner
-      // See: openspec/changes/deprecate-newsletter-model/
       {
         title: "Content",
         href: "/contents",
@@ -110,6 +108,12 @@ export const navigation: NavGroup[] = [
         href: "/podcasts",
         icon: Radio,
         description: "Generated audio podcasts",
+      },
+      {
+        title: "Audio Digests",
+        href: "/audio-digests",
+        icon: Headphones,
+        description: "Single-voice TTS audio from digests",
       },
     ],
   },

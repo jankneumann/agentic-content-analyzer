@@ -1,27 +1,24 @@
 """Summary data models."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 
-class NewsletterSummary(Base):
-    """Newsletter summary database model.
+class Summary(Base):
+    """Content summary database model.
 
-    Supports both legacy Newsletter FK and new Content FK for gradual migration.
-    New summaries should use content_id; newsletter_id is deprecated.
+    Summaries are linked to Content records via content_id.
     """
 
-    __tablename__ = "newsletter_summaries"
+    __tablename__ = "summaries"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    # Legacy FK - deprecated, nullable for content-only summaries
-    newsletter_id = Column(Integer, ForeignKey("newsletters.id"), nullable=True, index=True)
-    # New unified model FK - preferred for all new summaries
+    # Content FK - links summary to source content
     content_id = Column(
         Integer, ForeignKey("contents.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -48,20 +45,22 @@ class NewsletterSummary(Base):
     agent_framework = Column(String(100), nullable=False)  # claude, openai, google, microsoft
     model_used = Column(String(100), nullable=False)  # General model ID (e.g., "claude-sonnet-4-5")
     model_version = Column(String(20), nullable=True)  # Version (e.g., "20250929")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
     token_usage = Column(Integer, nullable=True)
     processing_time_seconds = Column(Float, nullable=True)
 
     # Relationships
-    newsletter = relationship("Newsletter", backref="summary")
-    content = relationship("Content", backref="summary")
+    content = relationship("Content", back_populates="summaries")
+
+
+# Backwards compatibility alias (deprecated)
+NewsletterSummary = Summary
 
 
 class SummaryData(BaseModel):
     """Pydantic model for summary data transfer."""
 
-    newsletter_id: int | None = None  # Legacy: FK to newsletters table (deprecated)
-    content_id: int | None = None  # New: FK to contents table (preferred)
+    content_id: int | None = None  # FK to contents table
     executive_summary: str
     key_themes: list[str] = Field(default_factory=list)
     strategic_insights: list[str] = Field(default_factory=list)

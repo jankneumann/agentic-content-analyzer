@@ -12,7 +12,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config import settings
-from src.models.newsletter import Base
+from src.models.base import Base
 from src.storage.providers import get_provider
 from src.utils.logging import get_logger
 
@@ -35,7 +35,7 @@ def _get_provider() -> "DatabaseProvider":
     global _provider
     if _provider is None:
         _provider = get_provider(
-            database_url=settings.database_url,
+            database_url=settings.get_effective_database_url(),
             provider_override=settings.database_provider,
             supabase_project_ref=settings.supabase_project_ref,
             supabase_db_password=settings.supabase_db_password,

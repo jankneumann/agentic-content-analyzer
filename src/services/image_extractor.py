@@ -21,7 +21,7 @@ import httpx
 
 from src.config import settings
 from src.models.image import ImageCreate, ImageSource
-from src.services.image_storage import ImageStorageProvider, get_image_storage
+from src.services.file_storage import FileStorageProvider, get_image_storage
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -75,7 +75,7 @@ class ImageExtractor:
 
     def __init__(
         self,
-        storage: ImageStorageProvider | None = None,
+        storage: FileStorageProvider | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         """

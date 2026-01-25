@@ -138,7 +138,7 @@ Duplicate detection checks both `source_id` (exact match) and `content_hash` (cr
 
 ### Summarization Pipeline
 
-The `NewsletterSummarizer` (`src/processors/summarizer.py`) processes markdown through LLM agents:
+The `ContentSummarizer` (`src/processors/summarizer.py`) processes markdown through LLM agents:
 
 ```
 Content.markdown_content
@@ -149,7 +149,7 @@ Structured JSON extraction
     ↓
 generate_summary_markdown()
     ↓
-NewsletterSummary.markdown_content
+Summary.markdown_content
 ```
 
 **Summary Generation** (`src/utils/summary_markdown.py`):
@@ -173,7 +173,7 @@ def generate_summary_markdown(summary_data: dict) -> str:
 The `DigestCreator` (`src/processors/digest_creator.py`) aggregates summaries into multi-audience digests:
 
 ```
-Multiple NewsletterSummary records
+Multiple Summary records
     ↓
 Theme aggregation + Historical context
     ↓
@@ -306,7 +306,7 @@ interface Content {
 │                                                                     │
 │  Summarizer:                                                        │
 │  Content.markdown_content → LLM → generate_summary_markdown()       │
-│                                   → NewsletterSummary               │
+│                                   → Summary                         │
 │                                                                     │
 │  Theme Analyzer:                                                    │
 │  extract_theme_tags() + extract_relevance_scores()                  │
@@ -347,7 +347,7 @@ interface Content {
 ### Ingestion Layer
 | File | Purpose |
 |------|---------|
-| `src/ingestion/gmail.py` | Gmail newsletter ingestion |
+| `src/ingestion/gmail.py` | Gmail content ingestion |
 | `src/ingestion/rss.py` | RSS feed ingestion |
 | `src/ingestion/youtube.py` | YouTube playlist ingestion |
 | `src/ingestion/files.py` | File upload ingestion |

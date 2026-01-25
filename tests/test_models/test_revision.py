@@ -1,13 +1,14 @@
 """Tests for revision context and result models."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
 from src.models.content import Content, ContentSource
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 
 
 @pytest.fixture
@@ -80,7 +81,7 @@ def sample_summaries(sample_contents):
     """Create sample content summaries for testing."""
     summaries = []
     for content in sample_contents:
-        summary = NewsletterSummary(
+        summary = Summary(
             content_id=content.id,
             executive_summary=f"Summary for {content.title}",
             key_themes=["Theme 1", "Theme 2"],
@@ -97,6 +98,37 @@ def sample_summaries(sample_contents):
         summary.content = content
         summaries.append(summary)
     return summaries
+
+
+@pytest.fixture
+def sample_theme_analysis_dict() -> dict[str, Any]:
+    """Create a sample theme analysis as a dictionary."""
+    return {
+        "themes": [
+            {
+                "name": "Generative AI",
+                "description": "Advances in generative models",
+                "trend": "growing",
+                "relevance_score": 0.9,
+                "key_points": ["New models released", "Better efficiency"],
+                "continuity_text": "Continuing the trend from last week"
+            },
+            {
+                "name": "Cloud Security",
+                "description": "Security in cloud infrastructure",
+                "trend": "stable",
+                "relevance_score": 0.7,
+                "key_points": ["Zero trust adoption"],
+                "historical_context": {
+                    "evolution_summary": "Security remains a top priority"
+                }
+            }
+        ],
+        "cross_theme_insights": [
+            "AI is impacting security practices",
+            "Cloud costs are driving efficiency"
+        ]
+    }
 
 
 class TestRevisionContext:
@@ -168,6 +200,37 @@ class TestRevisionContext:
         assert "DigestType.DAILY" in formatted or "daily" in formatted.lower()
         assert "2025-01-15" in formatted
         assert "**Newsletter Count**: 5" in formatted
+
+    def test_theme_analysis_formatting(self, sample_digest, sample_summaries, sample_theme_analysis_dict):
+        """Test formatting of theme analysis data."""
+        context = RevisionContext(
+            digest=sample_digest,
+            summaries=sample_summaries,
+            theme_analysis=sample_theme_analysis_dict
+        )
+
+        formatted = context.to_llm_context()
+
+        # Check theme analysis section
+        assert "## CROSS-NEWSLETTER THEMES" in formatted
+        assert "Analysis of 2 themes across newsletters" in formatted
+
+        # Check specific themes
+        assert "Generative AI [GROWING]" in formatted
+        assert "Advances in generative models" in formatted
+        assert "New models released" in formatted
+        assert "Better efficiency" in formatted
+        assert "Continuing the trend from last week" in formatted
+
+        assert "Cloud Security [STABLE]" in formatted
+        assert "Security in cloud infrastructure" in formatted
+        assert "Zero trust adoption" in formatted
+        assert "Security remains a top priority" in formatted
+
+        # Check cross-theme insights
+        assert "Cross-Theme Insights" in formatted
+        assert "AI is impacting security practices" in formatted
+        assert "Cloud costs are driving efficiency" in formatted
 
 
 class TestRevisionResult:

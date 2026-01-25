@@ -83,6 +83,148 @@ pytest tests/test_config/
 # Should see: "29 passed"
 ```
 
+## Local Supabase Development
+
+For full Supabase dev/prod parity without cloud dependencies, you can run Supabase locally. This provides:
+
+- **Offline development**: No internet connection required
+- **Dev/prod parity**: Same APIs as production Supabase
+- **CI/CD testing**: Run integration tests against real Supabase APIs
+- **Cost savings**: No cloud usage during development
+
+### Quick Start
+
+```bash
+# Start local Supabase services
+docker compose --profile supabase up -d
+
+# Configure environment for local Supabase
+export SUPABASE_LOCAL=true
+export DATABASE_PROVIDER=supabase
+
+# Run your application
+python -m src.main
+```
+
+### Using Supabase CLI (Recommended)
+
+The Supabase CLI provides the most complete local development experience:
+
+```bash
+# Install Supabase CLI (macOS)
+brew install supabase/tap/supabase
+
+# Initialize Supabase in your project (one-time)
+supabase init
+
+# Start local Supabase
+supabase start
+
+# Get local credentials
+supabase status
+```
+
+**Local Service Ports** (Supabase CLI defaults):
+| Service | Port | Description |
+|---------|------|-------------|
+| API Gateway | 54321 | Main Supabase API endpoint |
+| PostgreSQL | 54322 | Database (direct connection) |
+| Studio | 54323 | Admin UI |
+| Inbucket | 54324 | Email testing |
+
+### Docker Compose (Alternative)
+
+For simpler setups without the CLI:
+
+```bash
+# Start local Supabase via Docker Compose
+docker compose --profile supabase up -d
+
+# Verify services are running
+docker ps | grep supabase
+```
+
+### Environment Configuration
+
+```bash
+# .env for local Supabase development
+SUPABASE_LOCAL=true                  # Enable local mode
+DATABASE_PROVIDER=supabase           # Use Supabase as database provider
+IMAGE_STORAGE_PROVIDER=supabase      # Use Supabase Storage (optional)
+
+# These are auto-configured when SUPABASE_LOCAL=true:
+# SUPABASE_URL=http://127.0.0.1:54321
+# DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+# SUPABASE_ANON_KEY=<local dev key>
+# SUPABASE_SERVICE_ROLE_KEY=<local dev key>
+```
+
+### Schema Synchronization
+
+Use the Supabase CLI to sync schema between local and cloud:
+
+```bash
+# Generate migration from local changes
+supabase db diff -f my_migration
+
+# Push local schema to cloud
+supabase db push
+
+# Pull cloud schema to local
+supabase db pull
+
+# Link to cloud project (one-time)
+supabase link --project-ref your-project-ref
+```
+
+### Switching Between Local and Cloud
+
+```bash
+# Local development
+export SUPABASE_LOCAL=true
+supabase start
+python -m src.main
+
+# Cloud deployment
+export SUPABASE_LOCAL=false
+export SUPABASE_PROJECT_REF=your-project-ref
+export SUPABASE_DB_PASSWORD=your-password
+python -m src.main
+```
+
+### Local Supabase Requirements
+
+- Docker Desktop or Docker Engine
+- ~2GB RAM for full stack
+- Supabase CLI (optional but recommended)
+- Ports 54321-54324 available
+
+### Troubleshooting Local Supabase
+
+**Port already in use**:
+```bash
+# Check what's using the port
+lsof -i :54322
+
+# Stop existing containers
+docker compose --profile supabase down
+```
+
+**Services not starting**:
+```bash
+# Check container logs
+docker compose --profile supabase logs supabase-db
+docker compose --profile supabase logs supabase-storage
+```
+
+**Storage not working**:
+```bash
+# Ensure bucket exists (create via API or Studio)
+# Local Supabase Storage uses the service role key for auth
+```
+
+---
+
 ## Supabase Cloud Database (Bring Your Own)
 
 The newsletter aggregator supports **Supabase** as a cloud PostgreSQL option. This follows the "bring your own backend" pattern - each user connects their own Supabase instance and owns all their data.
@@ -206,6 +348,228 @@ alembic upgrade head  # Uses pooler automatically
 # Reduce pool_size in code or use transaction pooling mode
 ```
 
+### Supabase Test Architecture
+
+The Supabase provider has integration tests that verify real cloud connections:
+
+| Test File | Type | Tests | Requires Credentials |
+|-----------|------|-------|---------------------|
+| `tests/test_storage/test_providers.py` | Unit (local) | 44 | No |
+| `tests/integration/test_supabase_provider.py` | Integration (real API) | 17 | Yes |
+
+**Integration tests** verify:
+- **Connection**: Pooled and direct connections, SSL enforcement
+- **Health checks**: Provider health check passes
+- **Pooling**: Sequential, concurrent, and pool exhaustion recovery
+- **Transaction isolation**: Uncommitted data visibility
+- **DDL operations**: CREATE/DROP TABLE for migrations
+- **Configuration**: URLs, engine options, provider identification
+
+```bash
+# Run unit tests only (no credentials needed)
+pytest tests/test_storage/test_providers.py -v
+
+# Run integration tests (requires Supabase credentials in .env)
+pytest tests/integration/test_supabase_provider.py -v
+```
+
+**Auto-skip behavior**: Tests are automatically skipped if `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD` are not configured, allowing the full test suite to run without Supabase access.
+
+---
+
+## Neon Serverless PostgreSQL (Bring Your Own)
+
+The newsletter aggregator supports **Neon** as a serverless PostgreSQL option. Neon's architecture is particularly well-suited for AI coding agent workflows, offering instant copy-on-write database branching.
+
+### Why Neon?
+
+- **Instant branching**: Create isolated database copies in milliseconds (any size)
+- **Agent-native testing**: Each agent session can use ephemeral branches with real data
+- **Scale-to-zero**: Compute automatically suspends when idle, reducing costs
+- **Time-travel**: Restore database state to any point within retention window
+- **Free tier**: 100 CU-hours/month with 500MB storage
+
+### Setup Guide
+
+#### 1. Create Neon Project
+
+1. Go to [console.neon.tech](https://console.neon.tech) and sign up
+2. Create a new project (note your **project ID**)
+3. Database is ready immediately (no provisioning wait)
+
+#### 2. Get Connection String
+
+1. Go to **Dashboard > Connection Details**
+2. Copy the connection string (pooled recommended for applications)
+
+**Connection string formats**:
+- **Pooled** (recommended): `postgresql://user:pass@ep-cool-name-123456-pooler.region.aws.neon.tech/dbname`
+- **Direct**: `postgresql://user:pass@ep-cool-name-123456.region.aws.neon.tech/dbname`
+
+#### 3. Configure Environment
+
+**Option A: Connection string only (Simple)**
+
+```bash
+# .env - For basic usage
+DATABASE_URL=postgresql://user:pass@ep-cool-name-123456-pooler.us-east-2.aws.neon.tech/dbname?sslmode=require
+```
+
+**Option B: With branch management (For agent workflows)**
+
+```bash
+# .env - For programmatic branch management
+DATABASE_URL=postgresql://user:pass@ep-cool-name-123456-pooler.us-east-2.aws.neon.tech/dbname?sslmode=require
+NEON_API_KEY=neon_api_key_...           # From Account Settings > API Keys
+NEON_PROJECT_ID=proud-paper-123456      # From Project Settings
+NEON_DEFAULT_BRANCH=main                # Default parent for new branches
+NEON_DIRECT_URL=...                     # Direct URL for migrations (optional)
+```
+
+#### 4. Run Migrations
+
+```bash
+# Using pooled connection (works for most migrations)
+alembic upgrade head
+
+# If you need direct connection (for complex DDL)
+NEON_DIRECT_URL=postgresql://user:pass@ep-cool-name-123456.us-east-2.aws.neon.tech/dbname alembic upgrade head
+```
+
+#### 5. Verify Connection
+
+```bash
+python -c "from src.storage.database import health_check, get_provider_name; print(f'Provider: {get_provider_name()}'); print(f'Health: {health_check()}')"
+
+# Expected output:
+# Provider: neon
+# Health: True
+```
+
+### Branching for Agent Workflows
+
+Neon's killer feature is instant database branching. Each branch is a copy-on-write clone that shares storage with the parent.
+
+#### Create Feature Branch (CLI)
+
+```bash
+# Create branch for feature development
+neonctl branches create --name claude/feature-xyz --project-id $NEON_PROJECT_ID
+
+# Get connection string for branch
+DATABASE_URL=$(neonctl connection-string claude/feature-xyz --project-id $NEON_PROJECT_ID)
+
+# Work with isolated database...
+
+# Delete when done
+neonctl branches delete claude/feature-xyz --project-id $NEON_PROJECT_ID
+```
+
+#### Programmatic Branch Management (Python)
+
+```python
+from src.storage.providers.neon_branch import NeonBranchManager
+
+manager = NeonBranchManager()
+
+# Create ephemeral branch for testing
+async with manager.branch_context("test/my-feature") as conn_str:
+    # conn_str is the connection string for the new branch
+    # Run tests against isolated database
+    pass  # Branch auto-deleted when context exits
+```
+
+#### Test Fixtures
+
+```python
+import pytest
+from tests.integration.fixtures.neon import neon_test_branch
+
+@pytest.mark.asyncio
+async def test_with_isolated_database(neon_test_branch):
+    """Test runs against ephemeral Neon branch."""
+    # neon_test_branch is the connection string
+    # Branch is created before test, deleted after
+```
+
+#### Test Architecture
+
+The Neon provider has two test suites with different purposes:
+
+| Test File | Type | Speed | Requires Credentials |
+|-----------|------|-------|---------------------|
+| `tests/test_storage/test_neon_branch.py` | Unit (mocked) | ~1 second | No |
+| `tests/integration/test_neon_integration.py` | Integration (real API) | ~30-60 seconds | Yes |
+
+**Unit tests** use `httpx.MockTransport` to simulate API responses:
+- Test edge cases (rate limiting, error handling, retries)
+- Work offline without Neon credentials
+- Run as part of standard `pytest` suite
+
+**Integration tests** create real ephemeral branches:
+- Verify actual Neon API behavior
+- Test SSL/connection handling with real database
+- Auto-skip when `NEON_API_KEY`/`NEON_PROJECT_ID` not set
+
+```bash
+# Run unit tests only (no credentials needed)
+pytest tests/test_storage/test_neon_branch.py -v
+
+# Run integration tests (requires Neon credentials in .env)
+pytest tests/integration/test_neon_integration.py -v
+```
+
+### Branch Naming Conventions
+
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `claude/` | Claude Code agent sessions | `claude/feature-auth` |
+| `test/` | Automated test isolation | `test/abc123` |
+| `preview/` | PR preview environments | `preview/pr-42` |
+
+### Pooled vs Direct Connections
+
+| Connection Type | Use Case | URL Pattern |
+|-----------------|----------|-------------|
+| **Pooled** (default) | Application queries | `...-pooler.region.aws.neon.tech` |
+| **Direct** | Migrations, DDL operations | `...region.aws.neon.tech` (no `-pooler`) |
+
+The provider automatically handles pooled connections. Use `NEON_DIRECT_URL` for migrations if needed.
+
+### Neon Free Tier Limits
+
+| Resource | Limit |
+|----------|-------|
+| Compute | 100 CU-hours/month |
+| Storage | 500MB |
+| Branches | 10 |
+| Projects | 1 |
+
+Branches share storage with parent, so they don't consume additional storage unless you write new data.
+
+### Troubleshooting Neon
+
+**Connection timeout**:
+```bash
+# Neon computes scale to zero after 5 minutes of inactivity
+# First connection may take 2-5 seconds to "wake up"
+# Increase connection timeout if needed
+```
+
+**Branch limit reached**:
+```bash
+# Free tier: 10 branches max
+# Delete unused branches:
+neonctl branches list --project-id $NEON_PROJECT_ID
+neonctl branches delete <branch-name> --project-id $NEON_PROJECT_ID
+```
+
+**SSL required error**:
+```bash
+# Ensure ?sslmode=require in connection string
+# Neon requires SSL for all connections
+```
+
 ---
 
 ## Cloud Production (When Ready)
@@ -244,8 +608,9 @@ alembic upgrade head  # Uses pooler automatically
 ### Required Variables
 
 ```bash
-# Databases
-DATABASE_URL=postgresql://localhost/newsletters
+# Databases - DATABASE_URL is the primary connection URL
+# Provider-specific URLs (LOCAL_DATABASE_URL, NEON_DATABASE_URL) override DATABASE_URL when set
+DATABASE_URL=postgresql://localhost/newsletters  # Default connection URL
 REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
 NEO4J_USER=neo4j
@@ -264,16 +629,108 @@ ENVIRONMENT=development  # or production
 
 ```bash
 # Supabase Cloud Database (alternative to local PostgreSQL)
+DATABASE_PROVIDER=supabase               # Required: explicit provider selection
 SUPABASE_PROJECT_REF=your-project-ref    # Project reference ID
 SUPABASE_DB_PASSWORD=your-db-password    # Database password
 SUPABASE_REGION=us-east-1                # AWS region (default: us-east-1)
 SUPABASE_POOLER_MODE=transaction         # Connection pooling mode (default: transaction)
 SUPABASE_AZ=1                            # AWS availability zone from connection string (default: 0)
 SUPABASE_DIRECT_URL=...                  # Direct connection for migrations (optional)
-DATABASE_PROVIDER=supabase               # Explicit provider override (optional, auto-detected)
 ```
 
 See [Supabase Cloud Database](#supabase-cloud-database-bring-your-own) for setup instructions.
+
+### Neon Variables (Optional Cloud Database)
+
+```bash
+# Neon Serverless PostgreSQL (alternative to local or Supabase)
+DATABASE_PROVIDER=neon                   # Required: explicit provider selection
+DATABASE_URL=postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/dbname
+# Or use explicit override:
+# NEON_DATABASE_URL=postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/dbname
+NEON_API_KEY=neon_api_key_...            # API key for branch management (optional)
+NEON_PROJECT_ID=proud-paper-123456       # Project ID for branch management (optional)
+NEON_DEFAULT_BRANCH=main                 # Default parent branch (default: main)
+NEON_REGION=us-east-2                    # Region (auto-detected from URL)
+NEON_DIRECT_URL=...                      # Direct connection for migrations (optional)
+```
+
+See [Neon Serverless PostgreSQL](#neon-serverless-postgresql-bring-your-own) for setup instructions.
+
+### File Storage Variables (Optional)
+
+The newsletter aggregator supports unified file storage for images, podcasts, and audio digests. Three storage providers are supported with multiple bucket support:
+
+**Buckets**:
+- `images` - Newsletter images, YouTube keyframes (default path: `data/images`)
+- `podcasts` - Generated podcast audio files (default path: `data/podcasts`)
+- `audio-digests` - Audio versions of digests (default path: `data/audio-digests`)
+
+```bash
+# Unified Storage Provider: "local" (default), "s3", or "supabase"
+STORAGE_PROVIDER=local
+
+# Per-bucket provider overrides (JSON format, optional)
+# Example: Store podcasts on S3 while keeping images local
+STORAGE_BUCKET_PROVIDERS='{"podcasts": "s3"}'
+
+# Local Storage (default - good for development)
+# Default paths are data/{bucket} for each bucket
+
+# S3 Storage (for AWS S3 or S3-compatible services like MinIO)
+STORAGE_PROVIDER=s3
+IMAGE_STORAGE_BUCKET=newsletter-images   # S3 bucket name for images
+AWS_REGION=us-east-1                     # AWS region (default: us-east-1)
+AWS_ACCESS_KEY_ID=...                    # Optional - uses boto3 defaults if not set
+AWS_SECRET_ACCESS_KEY=...                # Optional - uses boto3 defaults if not set
+S3_ENDPOINT_URL=...                      # Optional - for S3-compatible services (MinIO, etc.)
+
+# Supabase Storage (uses Supabase's S3-compatible object storage)
+STORAGE_PROVIDER=supabase
+SUPABASE_STORAGE_BUCKET=images           # Supabase bucket name (default: images)
+SUPABASE_ACCESS_KEY_ID=xxx               # S3 access key ID (from Supabase Dashboard)
+SUPABASE_SECRET_ACCESS_KEY=xxx           # S3 secret access key (from Supabase Dashboard)
+SUPABASE_STORAGE_PUBLIC=false            # Whether bucket is public (default: false)
+# Note: Also requires SUPABASE_PROJECT_REF and SUPABASE_REGION from database config
+
+# Legacy image storage config (still works for backward compatibility)
+IMAGE_STORAGE_PROVIDER=local
+IMAGE_STORAGE_PATH=data/images           # Local directory for images (default: data/images)
+
+# Common Settings
+IMAGE_MAX_SIZE_MB=10                     # Maximum image file size (default: 10MB)
+ENABLE_IMAGE_EXTRACTION=true             # Enable extraction from HTML/PDF (default: true)
+ENABLE_YOUTUBE_KEYFRAMES=false           # Enable YouTube keyframe extraction (default: false)
+```
+
+#### File Serving API
+
+Files are served via a unified endpoint with range request support for audio streaming:
+
+```
+GET /api/v1/files/{bucket}/{path}
+```
+
+- **bucket**: One of `images`, `podcasts`, or `audio-digests`
+- **path**: File path within the bucket (e.g., `2025/01/24/filename.mp3`)
+
+Features:
+- Content-Type detection via file extension
+- Range request support for audio/video seeking
+- Signed URL redirect for cloud storage (S3, Supabase)
+- Cache headers for performance
+
+#### Supabase Storage Setup
+
+1. In Supabase Dashboard, go to **Storage** > **New bucket**
+2. Create a bucket named `images` (or your preferred name)
+3. Set bucket privacy (public for direct URLs, private for authenticated access)
+4. Go to **Project Settings > API > S3 Access Keys**
+5. Generate S3 access keys and add to your `.env`:
+   - `SUPABASE_ACCESS_KEY_ID`
+   - `SUPABASE_SECRET_ACCESS_KEY`
+
+> **Note**: S3 access keys provide full storage access. Keep them secure and never expose them to clients.
 
 ### Optional Variables
 

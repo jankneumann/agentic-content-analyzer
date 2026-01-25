@@ -244,3 +244,6 @@ web/.vite/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# bv (beads viewer) local config and caches
+.bv/

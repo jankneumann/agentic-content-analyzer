@@ -16,15 +16,15 @@ import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { ReviewPaneHeader } from "./ReviewLayout"
-import type { NewsletterSummary } from "@/types"
+import type { Summary } from "@/types"
 
 interface SummaryPreviewProps {
   /** Preview content (may be partial during streaming) */
-  preview: Partial<NewsletterSummary> | null
+  preview: Partial<Summary> | null
   /** Whether content is still streaming */
   isStreaming?: boolean
   /** Original summary for comparison (for future diff highlighting) */
-  originalSummary?: NewsletterSummary
+  originalSummary?: Summary
   className?: string
 }
 

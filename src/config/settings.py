@@ -1,15 +1,29 @@
 """Application configuration management."""
 
+import logging
+import warnings
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
 
+logger = logging.getLogger(__name__)
+
 # Type alias for database provider
-DatabaseProviderType = Literal["local", "supabase"]
+DatabaseProviderType = Literal["local", "supabase", "neon"]
 PoolerModeType = Literal["transaction", "session"]
+
+# Audio digest voice presets (maps friendly names to provider-specific voice IDs)
+AUDIO_DIGEST_VOICE_PRESETS: dict[str, dict[str, str]] = {
+    "professional": {"openai": "onyx", "elevenlabs": "nPczCjzI2devNBz1zQrb"},
+    "warm": {"openai": "nova", "elevenlabs": "XrExE9yKIg1WjnnlVkGX"},
+    "energetic": {"openai": "shimmer", "elevenlabs": "SAz9YHcvj6GT2YYXdXww"},
+    "calm": {"openai": "alloy", "elevenlabs": "CwhRBWXzGAHq8TQ4Fs17"},
+}
 
 
 class Settings(BaseSettings):
@@ -26,15 +40,18 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Database
+    # DATABASE_URL is the primary connection URL (backward compatible)
+    # Provider-specific URLs (LOCAL_DATABASE_URL, NEON_DATABASE_URL) take precedence when set
     database_url: str = (
         "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
     )
+    local_database_url: str | None = None  # Override for local provider
+    neon_database_url: str | None = None  # Override for neon provider
     redis_url: str = "redis://localhost:6379/0"
 
     # Database Provider Configuration
-    database_provider: DatabaseProviderType | None = (
-        None  # Explicit override (auto-detects if None)
-    )
+    # Explicit provider selection - no auto-detection magic
+    database_provider: DatabaseProviderType = "local"
 
     # Supabase Cloud Database Configuration
     supabase_project_ref: str | None = None  # Supabase project reference ID
@@ -46,16 +63,52 @@ class Settings(BaseSettings):
         "0"  # AWS availability zone (0, 1, etc.) - check your Supabase connection string
     )
 
+    # Local Supabase Development Configuration
+    supabase_local: bool = False  # Enable local Supabase development mode
+    # When True, auto-configures:
+    #   - supabase_url -> http://127.0.0.1:54321
+    #   - supabase_db_url -> postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    #   - supabase_anon_key / supabase_service_role_key -> local dev keys (from supabase status)
+    supabase_url: str | None = None  # Supabase API URL (auto-configured for local)
+    supabase_anon_key: str | None = None  # Supabase anon key (for local dev)
+
+    # Default local Supabase keys (from supabase init - these are public test keys)
+    # These are the default JWT tokens used by local Supabase for development
+    _local_supabase_anon_key: str = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9."
+        "CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
+    )
+    _local_supabase_service_role_key: str = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0."
+        "EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU"
+    )
+
+    # Neon Serverless PostgreSQL Configuration
+    neon_api_key: str | None = None  # API key for branch management
+    neon_project_id: str | None = None  # Project ID for branch management
+    neon_default_branch: str = "main"  # Default parent branch for new branches
+    neon_region: str | None = None  # Region (auto-detected from URL if not set)
+    neon_direct_url: str | None = None  # Direct URL for migrations (bypasses pooler)
+
     # Neo4j / Graphiti
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "newsletter_password"
     semaphore_limit: int = 1  # Graphiti concurrency limit for LLM API calls
 
+    # Test Database Configuration (for integration tests)
+    test_database_url: str | None = None
+    test_neo4j_uri: str | None = None
+    test_neo4j_user: str | None = None
+    test_neo4j_password: str | None = None
+
     # Agent Framework API Keys
     anthropic_api_key: str
     openai_api_key: str | None = None
     google_api_key: str | None = None
+    tavily_api_key: str | None = None
 
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
@@ -93,12 +146,44 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 50  # Maximum file upload size
 
     # Image Storage Configuration
-    image_storage_provider: str = "local"  # "local" or "s3"
+    image_storage_provider: str = "local"  # "local", "s3", or "supabase"
     image_storage_path: str = "data/images"  # Local storage directory
-    image_storage_bucket: str = "newsletter-images"  # S3 bucket name
+    image_storage_bucket: str = "newsletter-images"  # S3/Supabase bucket name
     image_max_size_mb: int = 10  # Maximum image file size
     enable_image_extraction: bool = True  # Enable extraction from HTML/PDF
     enable_youtube_keyframes: bool = False  # Enable YouTube keyframe extraction
+
+    # S3 Storage Configuration (for image_storage_provider="s3")
+    s3_endpoint_url: str | None = None  # Custom endpoint for S3-compatible services
+    aws_region: str = "us-east-1"  # AWS region for S3
+    aws_access_key_id: str | None = None  # AWS access key (uses boto3 defaults if not set)
+    aws_secret_access_key: str | None = None  # AWS secret key (uses boto3 defaults if not set)
+
+    # Supabase Storage Configuration (for image_storage_provider="supabase")
+    # Requires supabase_project_ref from database config
+    supabase_storage_bucket: str = "images"  # Supabase storage bucket name
+    supabase_service_role_key: str | None = None  # Service role key (legacy, use access keys)
+    supabase_access_key_id: str | None = None  # Supabase S3 access key ID
+    supabase_secret_access_key: str | None = None  # Supabase S3 secret access key
+    supabase_storage_public: bool = False  # Whether bucket is public (affects URL generation)
+    # Note: supabase_local is defined in Local Supabase Development Configuration section above
+
+    # Unified File Storage Configuration (supports multiple buckets)
+    # Default provider for all buckets (can be overridden per-bucket)
+    storage_provider: str = "local"  # "local", "s3", or "supabase"
+
+    # Per-bucket provider overrides (JSON dict in env: STORAGE_BUCKET_PROVIDERS='{"podcasts": "s3"}')
+    # If not specified, uses storage_provider (or image_storage_provider for backward compat)
+    storage_bucket_providers: dict[str, str] | None = None
+
+    # Local storage paths per bucket (defaults to data/{bucket})
+    storage_local_paths: dict[str, str] | None = None
+
+    # S3 bucket names per logical bucket (defaults to image_storage_bucket)
+    storage_s3_buckets: dict[str, str] | None = None
+
+    # Supabase bucket names per logical bucket (defaults to supabase_storage_bucket)
+    storage_supabase_buckets: dict[str, str] | None = None
 
     # Email Delivery
     sendgrid_api_key: str | None = None
@@ -125,6 +210,12 @@ class Settings(BaseSettings):
     podcast_words_per_minute: int = 150  # Average speaking rate
     podcast_storage_path: str = "data/podcasts"  # Local storage path
 
+    # Audio Digest Configuration
+    audio_digest_provider: str = "openai"  # TTS provider for digests
+    audio_digest_default_voice: str = "nova"  # Default voice for narration
+    audio_digest_speed: float = 1.0  # Playback speed (0.5 - 2.0)
+    audio_digest_max_duration_minutes: int = 30  # Max digest length to convert
+
     # TTS Provider API Keys
     elevenlabs_api_key: str | None = None
 
@@ -135,6 +226,113 @@ class Settings(BaseSettings):
     elevenlabs_voice_alex_female: str = ""
     elevenlabs_voice_sam_male: str = ""
     elevenlabs_voice_sam_female: str = ""
+
+    @model_validator(mode="after")
+    def configure_local_supabase(self) -> "Settings":
+        """Auto-configure settings when local Supabase mode is enabled.
+
+        When SUPABASE_LOCAL=true, automatically sets:
+        - supabase_url -> http://127.0.0.1:54321
+        - database_url -> postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        - supabase_anon_key / supabase_service_role_key -> local dev keys
+
+        Also warns if mixing local flag with cloud URLs.
+        """
+        if not self.supabase_local:
+            return self
+
+        # Auto-configure local Supabase endpoints
+        if self.supabase_url is None:
+            object.__setattr__(self, "supabase_url", "http://127.0.0.1:54321")
+
+        # Auto-configure local database URL if provider is supabase
+        if self.database_provider == "supabase":
+            local_db_url = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+            object.__setattr__(self, "database_url", local_db_url)
+            # Set a placeholder project ref for local (validation requires it)
+            if not self.supabase_project_ref:
+                object.__setattr__(self, "supabase_project_ref", "local")
+            # Set a placeholder password for local
+            if not self.supabase_db_password:
+                object.__setattr__(self, "supabase_db_password", "postgres")
+
+        # Auto-configure local Supabase keys
+        if self.supabase_anon_key is None:
+            object.__setattr__(self, "supabase_anon_key", self._local_supabase_anon_key)
+        if self.supabase_service_role_key is None:
+            object.__setattr__(
+                self, "supabase_service_role_key", self._local_supabase_service_role_key
+            )
+
+        # Warn if mixing local flag with cloud URLs
+        if self.supabase_url and "supabase.co" in self.supabase_url:
+            logger.warning(
+                "SUPABASE_LOCAL=true but SUPABASE_URL contains 'supabase.co'. "
+                "This may indicate mixing local and cloud configuration."
+            )
+        if self.database_url and "supabase.com" in self.database_url:
+            logger.warning(
+                "SUPABASE_LOCAL=true but DATABASE_URL contains 'supabase.com'. "
+                "This may indicate mixing local and cloud configuration."
+            )
+
+        logger.info(
+            f"Local Supabase mode enabled. API: {self.supabase_url}, "
+            f"DB: postgresql://postgres:***@127.0.0.1:54322/postgres"
+        )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_database_provider_config(self) -> "Settings":
+        """Validate database provider configuration at startup.
+
+        Ensures the configured provider has the required URL configured.
+        Provider-specific URLs (NEON_DATABASE_URL, LOCAL_DATABASE_URL) take precedence
+        over the generic DATABASE_URL when set.
+
+        Raises:
+            ValueError: If provider configuration is invalid
+        """
+        match self.database_provider:
+            case "neon":
+                # Check neon_database_url first, then database_url
+                effective_url = self.neon_database_url or self.database_url
+                if ".neon.tech" not in effective_url:
+                    raise ValueError(
+                        f"DATABASE_PROVIDER=neon requires a Neon URL containing .neon.tech. "
+                        f"Set NEON_DATABASE_URL or DATABASE_URL appropriately. "
+                        f"Got: {self._mask_url(effective_url)}"
+                    )
+            case "supabase":
+                # Skip validation for local Supabase (project_ref is auto-set to "local")
+                if not self.supabase_local and not self.supabase_project_ref:
+                    raise ValueError(
+                        "DATABASE_PROVIDER=supabase requires SUPABASE_PROJECT_REF to be set "
+                        "(or set SUPABASE_LOCAL=true for local development)."
+                    )
+            case "local":
+                # Local provider uses local_database_url or database_url
+                pass
+        return self
+
+    def _mask_url(self, url: str) -> str:
+        """Mask password in database URL for safe logging/errors.
+
+        Args:
+            url: Database URL potentially containing password
+
+        Returns:
+            URL with password replaced by ***
+        """
+        try:
+            parsed = urlparse(url)
+            if parsed.password:
+                masked = url.replace(f":{parsed.password}@", ":***@")
+                return masked
+        except Exception:
+            pass
+        return url
 
     @property
     def is_development(self) -> bool:
@@ -147,41 +345,66 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     @property
-    def detected_database_provider(self) -> DatabaseProviderType:
-        """Detect which database provider to use.
+    def is_local_supabase(self) -> bool:
+        """Check if using local Supabase development mode."""
+        return self.supabase_local
 
-        Detection order:
-        1. Explicit database_provider setting (if set)
-        2. SUPABASE_PROJECT_REF env var present -> Supabase
-        3. DATABASE_URL contains ".supabase." -> Supabase
-        4. Default -> Local PostgreSQL
+    def get_supabase_storage_endpoint(self) -> str:
+        """Get the Supabase Storage S3 endpoint URL.
+
+        Returns:
+            Local endpoint for local mode, cloud endpoint otherwise.
         """
-        # 1. Explicit override takes precedence
-        if self.database_provider:
-            return self.database_provider
-
-        # 2. Supabase project reference indicates Supabase provider
+        if self.supabase_local:
+            return "http://127.0.0.1:54321/storage/v1/s3"
         if self.supabase_project_ref:
-            return "supabase"
+            return f"https://{self.supabase_project_ref}.supabase.co/storage/v1/s3"
+        raise ValueError("Supabase project reference is required for storage.")
 
-        # 3. URL contains Supabase domain
-        if ".supabase." in self.database_url:
-            return "supabase"
+    @property
+    def detected_database_provider(self) -> DatabaseProviderType:
+        """Return the configured database provider.
 
-        # 4. Default to local PostgreSQL
-        return "local"
+        .. deprecated::
+            Use `settings.database_provider` directly instead.
+            This property will be removed in a future version.
+
+        Returns:
+            The configured database provider ("local", "supabase", or "neon")
+        """
+        warnings.warn(
+            "detected_database_provider is deprecated. " "Use settings.database_provider directly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.database_provider
 
     def get_effective_database_url(self) -> str:
         """Get the effective database URL based on provider configuration.
 
-        For Supabase with component-based config, constructs the pooler URL.
-        Otherwise returns the configured DATABASE_URL.
+        Provider-specific URLs take precedence over database_url when set:
+        - Local: LOCAL_DATABASE_URL > DATABASE_URL
+        - Supabase: Constructs pooler URL from components, or uses DATABASE_URL
+        - Neon: NEON_DATABASE_URL > DATABASE_URL
 
         Returns:
             The database connection URL to use
         """
+        match self.database_provider:
+            case "supabase":
+                return self._get_supabase_pooler_url()
+            case "neon":
+                return self.neon_database_url or self.database_url
+            case _:  # "local" or any other value
+                return self.local_database_url or self.database_url
+
+    def _get_supabase_pooler_url(self) -> str:
+        """Construct Supabase pooler URL from components."""
+        # Local Supabase uses direct connection (no pooler)
+        if self.supabase_local:
+            return "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
         if self.supabase_project_ref and self.supabase_db_password:
-            # Construct Supabase pooler URL from components
             port = 6543 if self.supabase_pooler_mode == "transaction" else 5432
             return (
                 f"postgresql://postgres.{self.supabase_project_ref}:"
@@ -194,25 +417,54 @@ class Settings(BaseSettings):
     def get_migration_database_url(self) -> str:
         """Get the database URL for Alembic migrations.
 
-        For Supabase, returns the direct connection URL (bypasses pooler)
-        since DDL operations require direct connections.
+        Returns the direct (non-pooled) connection URL for the configured provider.
+        DDL operations require direct connections, not pooled ones.
 
         Returns:
             Database URL suitable for migrations
         """
-        # Use explicit direct URL if provided
+        match self.database_provider:
+            case "supabase":
+                return self._get_supabase_direct_url()
+            case "neon":
+                return self._get_neon_direct_url()
+            case _:  # "local" or any other value
+                return self.local_database_url or self.database_url
+
+    def _get_supabase_direct_url(self) -> str:
+        """Get Supabase direct URL for migrations (bypasses pooler)."""
+        # Local Supabase uses direct connection
+        if self.supabase_local:
+            return "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
+        # Explicit direct URL takes precedence
         if self.supabase_direct_url:
             return self.supabase_direct_url
 
-        # For Supabase with component config, construct direct URL
+        # Construct from components
         if self.supabase_project_ref and self.supabase_db_password:
             return (
                 f"postgresql://postgres:{self.supabase_db_password}@"
                 f"db.{self.supabase_project_ref}.supabase.co:5432/postgres"
             )
 
-        # For local or URL-based config, use the standard URL
+        # Fall back to database_url
         return self.database_url
+
+    def _get_neon_direct_url(self) -> str:
+        """Get Neon direct URL for migrations (bypasses pooler)."""
+        # Explicit direct URL takes precedence
+        if self.neon_direct_url:
+            return self.neon_direct_url
+
+        neon_url = self.neon_database_url or self.database_url
+
+        # Convert pooled URL to direct by removing -pooler suffix
+        if "-pooler." in neon_url:
+            return neon_url.replace("-pooler.", ".")
+
+        # URL is already direct
+        return neon_url
 
     def get_youtube_api_key(self) -> str | None:
         """
@@ -347,11 +599,32 @@ class Settings(BaseSettings):
 
         return config
 
+    def get_audio_digest_voice_id(self, preset: str | None = None) -> str:
+        """Get the voice ID for audio digest generation.
+
+        Args:
+            preset: Optional preset name (professional, warm, energetic, calm)
+                    Falls back to audio_digest_default_voice if not preset or unknown.
+
+        Returns:
+            Provider-specific voice ID
+        """
+        if preset and preset in AUDIO_DIGEST_VOICE_PRESETS:
+            provider_voices = AUDIO_DIGEST_VOICE_PRESETS[preset]
+            if self.audio_digest_provider in provider_voices:
+                return provider_voices[self.audio_digest_provider]
+        return self.audio_digest_default_voice
+
 
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
-    return Settings()
+    s = Settings()
+    # Log provider configuration at startup
+    logger.info(
+        f"Database provider: {s.database_provider} | " f"URL: {s._mask_url(s.database_url)}"
+    )
+    return s
 
 
 # Global settings instance

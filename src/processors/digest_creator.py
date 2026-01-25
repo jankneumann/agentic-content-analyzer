@@ -1,4 +1,4 @@
-"""Digest generator for creating multi-audience newsletter digests."""
+"""Digest generator for creating multi-audience content digests."""
 
 import json
 import time
@@ -17,7 +17,7 @@ from src.models.digest import (
     DigestStatus,
     DigestType,
 )
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisRequest, ThemeData
 from src.processors.theme_analyzer import ThemeAnalyzer
 from src.storage.database import get_db
@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 
 class DigestCreator:
     """
-    Creates structured digests from newsletter themes.
+    Creates structured digests from content themes.
 
     Supports daily and weekly digests with multi-audience formatting.
     """
@@ -106,11 +106,11 @@ class DigestCreator:
         )
 
         if theme_result.newsletter_count == 0:
-            logger.warning("No newsletters found in period")
+            logger.warning("No content found in period")
             return self._create_empty_digest(request)
 
         logger.info(
-            f"Analyzed {theme_result.newsletter_count} newsletters, "
+            f"Analyzed {theme_result.newsletter_count} content items, "
             f"found {theme_result.total_themes} themes"
         )
 
@@ -124,9 +124,7 @@ class DigestCreator:
 
         with get_db() as db:
             summaries = (
-                db.query(NewsletterSummary)
-                .filter(NewsletterSummary.content_id.in_(content_ids))
-                .all()
+                db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
                 if content_ids
                 else []
             )
@@ -256,26 +254,22 @@ class DigestCreator:
         try:
             content_ids = [c["id"] for c in contents]
             with get_db() as db:
-                summaries = (
-                    db.query(NewsletterSummary)
-                    .filter(NewsletterSummary.content_id.in_(content_ids))
-                    .all()
-                )
+                summaries = db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
             logger.debug(f"Loaded {len(summaries)} summaries for token estimation")
         except Exception as e:
             logger.warning(f"Failed to load summaries for token estimation: {e}")
             summaries = []
 
         # Estimate tokens for all content (including summaries)
-        # Note: TokenCounter.estimate_newsletter_batch_tokens works with content dicts too
-        estimated_tokens = counter.estimate_newsletter_batch_tokens(
-            newsletters=contents,  # Works with content dicts
+        estimated_tokens = counter.estimate_content_batch_tokens(
+            contents=contents,
             themes=themes,
             summaries=summaries,
         )
 
-        # Add content_budget key for clearer naming
-        budget["content_budget"] = budget.get("newsletter_budget", budget.get("total", 0))
+        # Use content_budget from token counter
+        if "content_budget" not in budget:
+            budget["content_budget"] = budget.get("total", 0)
         needs_hierarchy = estimated_tokens > budget["content_budget"]
 
         logger.info(
@@ -387,7 +381,7 @@ class DigestCreator:
         contents: list[dict],
         themes: list[ThemeData],
         batches: list[list[dict]],
-        summaries: list[NewsletterSummary],
+        summaries: list[Summary],
     ) -> DigestData:
         """
         Create hierarchical digest from content batches.
@@ -677,7 +671,7 @@ class DigestCreator:
         for i, sub in enumerate(sub_digests, 1):
             sub_digest_summaries.append(
                 f"""
-## Sub-Digest {i} ({sub.newsletter_count} newsletters)
+## Sub-Digest {i} ({sub.newsletter_count} content items)
 
 **Executive Overview:**
 {sub.executive_overview}
@@ -705,7 +699,7 @@ class DigestCreator:
 Synthesize these sub-digests into a single comprehensive digest that:
 - De-duplicates similar insights across sub-digests
 - Re-prioritizes insights based on full dataset
-- Creates coherent narrative spanning all newsletters
+- Creates coherent narrative spanning all content items
 - Preserves source citations from all sub-digests
 - Limits to {request.max_strategic_insights} strategic insights, {request.max_technical_developments} technical developments, {request.max_emerging_trends} emerging trends
 
@@ -774,7 +768,7 @@ Output only the JSON object, no additional text.
         request: DigestRequest,
         themes: list[ThemeData],
         contents: list[dict],
-        summaries: list[NewsletterSummary],
+        summaries: list[Summary],
     ) -> dict:
         """Generate digest content using LLM."""
         logger.info("Generating digest content with LLM...")
@@ -923,9 +917,7 @@ Output only the JSON object, no additional text.
 
         return "\n\n".join(context_parts)
 
-    def _build_contents_context(
-        self, contents: list[dict], summaries: list[NewsletterSummary]
-    ) -> str:
+    def _build_contents_context(self, contents: list[dict], summaries: list[Summary]) -> str:
         """Build context string from content summaries."""
         # Create lookup dict for quick access by content_id
         summaries_by_id = {s.content_id: s for s in summaries if s.content_id}
@@ -1085,15 +1077,15 @@ Provide a JSON response with:
 # Guidelines
 
 - **Source Citations**: Use database ID references [18], [23], etc. throughout all content
-  - IDs are the actual newsletter database IDs shown in brackets above (e.g., [18] = newsletter ID 18)
-  - Add citations to summaries and detail points showing which newsletters support each claim
+  - IDs are the actual content database IDs shown in brackets above (e.g., [18] = content ID 18)
+  - Add citations to summaries and detail points showing which content items support each claim
   - Use multiple citations [18][23] when a point draws from multiple sources
   - These IDs enable cross-digest traceability and interactive revision tool use
   - This provides transparency and traceability for all insights
 
-- **Relevant Links**: When newsletters include research papers, documentation, or other resources:
+- **Relevant Links**: When content items include research papers, documentation, or other resources:
   - Include the actual URL in your detail points where relevant (e.g., "See research paper: https://arxiv.org/...")
-  - Reference the link title and source newsletter ID for context
+  - Reference the link title and source content ID for context
   - Make it easy for readers to access the original sources directly
   - Example: "BGE-M3 embeddings paper (https://arxiv.org/abs/2402.03216) from [42] demonstrates 15% improvement"
 

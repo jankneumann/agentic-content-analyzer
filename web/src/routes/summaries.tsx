@@ -50,6 +50,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -117,6 +118,15 @@ function SummariesPage() {
       ...prev,
       model_used: value === "all" ? undefined : value,
       offset: 0,
+    }))
+  }
+
+  const handleSort = (column: string, order: "asc" | "desc" | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+      offset: 0, // Reset to first page when sort changes
     }))
   }
 
@@ -340,11 +350,38 @@ function SummariesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Content</TableHead>
+                  <SortableTableHead
+                    column="title"
+                    label="Content"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                  />
                   <TableHead className="w-[200px]">Key Themes</TableHead>
-                  <TableHead className="w-[120px]">Model</TableHead>
-                  <TableHead className="w-[100px]">Time</TableHead>
-                  <TableHead className="w-[130px]">Created</TableHead>
+                  <SortableTableHead
+                    column="model_used"
+                    label="Model"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[120px]"
+                  />
+                  <SortableTableHead
+                    column="processing_time_seconds"
+                    label="Time"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
+                  <SortableTableHead
+                    column="created_at"
+                    label="Created"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[130px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>

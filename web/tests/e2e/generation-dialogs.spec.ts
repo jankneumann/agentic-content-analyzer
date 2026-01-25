@@ -138,9 +138,9 @@ test.describe("Podcast Audio Generation Dialog", () => {
   })
 })
 
-test.describe("Ingest Newsletters Dialog", () => {
+test.describe("Ingest Contents Dialog", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/newsletters")
+    await page.goto("/contents")
   })
 
   test("opens ingest dialog", async ({ page }) => {

@@ -15,12 +15,11 @@ from sqlalchemy import func
 from src.models.content import (
     Content,
     ContentCreate,
-    ContentListItem as BaseContentListItem,
-    ContentResponse as BaseContentResponse,
+    ContentListItem,
+    ContentResponse,
     ContentSource,
     ContentStatus,
 )
-from src.models.newsletter import Newsletter
 from src.services.content_service import ContentService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -29,18 +28,12 @@ logger = get_logger(__name__)
 
 
 # ============================================================================
-# Extended Response Models (with legacy newsletter ID)
+# Response Models
 # ============================================================================
 
 
-class ContentListItem(BaseContentListItem):
-    """Extended content list item with legacy newsletter ID for navigation."""
-
-    legacy_newsletter_id: int | None = None
-
-
 class ContentListResponse(BaseModel):
-    """Paginated content list response with extended items."""
+    """Paginated content list response."""
 
     items: list[ContentListItem]
     total: int
@@ -50,11 +43,16 @@ class ContentListResponse(BaseModel):
     has_prev: bool = Field(default=False)
 
 
-class ContentResponse(BaseContentResponse):
-    """Extended content response with legacy newsletter ID."""
-
-    legacy_newsletter_id: int | None = None
-
+# Allowed fields for sorting content list
+CONTENT_SORT_FIELDS = {
+    "id",
+    "title",
+    "source_type",
+    "publication",
+    "status",
+    "published_date",
+    "ingested_at",
+}
 
 router = APIRouter(prefix="/api/v1/contents", tags=["contents"])
 
@@ -224,28 +222,6 @@ async def _run_content_ingestion(
         _ingestion_tasks[task_id]["message"] = str(e)
 
 
-def _get_legacy_newsletter_ids(db, source_ids: list[str]) -> dict[str, int]:
-    """Look up newsletter IDs by source_id for linking to summaries.
-
-    Args:
-        db: Database session
-        source_ids: List of source IDs to look up
-
-    Returns:
-        Dict mapping source_id -> newsletter_id
-    """
-    if not source_ids:
-        return {}
-
-    newsletters = (
-        db.query(Newsletter.source_id, Newsletter.id)
-        .filter(Newsletter.source_id.in_(source_ids))
-        .all()
-    )
-
-    return {n.source_id: n.id for n in newsletters}
-
-
 class DuplicateInfo(BaseModel):
     """Information about duplicate content."""
 
@@ -356,12 +332,14 @@ async def list_contents(
     search: str | None = Query(None, description="Search in title"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    sort_by: str = Query("ingested_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> ContentListResponse:
     """
     List contents with optional filters.
 
     Supports filtering by source type, status, publication, date range, and search.
-    Results are paginated and sorted by ingested date (newest first).
+    Results are paginated and sorted by the specified field (default: ingested_at desc).
     """
     with get_db() as db:
         query = db.query(Content)
@@ -386,12 +364,19 @@ async def list_contents(
         # Calculate offset from page
         offset = (page - 1) * page_size
 
-        # Apply pagination and ordering
-        contents = query.order_by(Content.ingested_at.desc()).offset(offset).limit(page_size).all()
+        # Validate sort_by field
+        if sort_by not in CONTENT_SORT_FIELDS:
+            sort_by = "ingested_at"
 
-        # Look up legacy newsletter IDs for navigation to summaries
-        source_ids = [c.source_id for c in contents]
-        newsletter_id_map = _get_legacy_newsletter_ids(db, source_ids)
+        # Get sort column dynamically
+        sort_column = getattr(Content, sort_by, Content.ingested_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        # Apply pagination
+        contents = query.offset(offset).limit(page_size).all()
 
         # Convert to response models
         items = [
@@ -403,7 +388,6 @@ async def list_contents(
                 published_date=c.published_date,
                 status=c.status,
                 ingested_at=c.ingested_at,
-                legacy_newsletter_id=newsletter_id_map.get(c.source_id),
             )
             for c in contents
         ]
@@ -421,7 +405,7 @@ async def list_contents(
 @router.get("/stats", response_model=ContentStats)
 async def get_content_stats() -> ContentStats:
     """Get content statistics."""
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
     with get_db() as db:
         total = db.query(Content).count()
@@ -441,11 +425,9 @@ async def get_content_stats() -> ContentStats:
         by_source = {source.value: count for source, count in source_counts}
 
         # Count content items that don't have summaries yet
-        # This is content with no matching NewsletterSummary.content_id
+        # This is content with no matching Summary.content_id
         content_with_summaries = (
-            db.query(NewsletterSummary.content_id)
-            .filter(NewsletterSummary.content_id.isnot(None))
-            .subquery()
+            db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).subquery()
         )
         needs_summarization_count = (
             db.query(Content).filter(~Content.id.in_(content_with_summaries)).count()
@@ -476,12 +458,6 @@ async def get_content(content_id: int) -> ContentResponse:
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        # Look up legacy newsletter ID for navigation to summary
-        legacy_newsletter_id = None
-        if content.source_id:
-            newsletter_id_map = _get_legacy_newsletter_ids(db, [content.source_id])
-            legacy_newsletter_id = newsletter_id_map.get(content.source_id)
-
         return ContentResponse(
             id=content.id,
             source_type=content.source_type,
@@ -503,7 +479,6 @@ async def get_content(content_id: int) -> ContentResponse:
             ingested_at=content.ingested_at,
             parsed_at=content.parsed_at,
             processed_at=content.processed_at,
-            legacy_newsletter_id=legacy_newsletter_id,
         )
 
 
@@ -714,7 +689,7 @@ async def trigger_content_summarization(
     """
     import uuid
 
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
     task_id = str(uuid.uuid4())
 
@@ -723,9 +698,7 @@ async def trigger_content_summarization(
         # Get all content IDs that already have summaries
         existing_summary_ids = {
             s.content_id
-            for s in db.query(NewsletterSummary.content_id)
-            .filter(NewsletterSummary.content_id.isnot(None))
-            .all()
+            for s in db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).all()
         }
 
         if request.content_ids:

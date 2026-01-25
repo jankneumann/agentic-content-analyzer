@@ -57,9 +57,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -206,6 +206,15 @@ function ContentsPage() {
       ...prev,
       source_type: value === "all" ? undefined : (value as ContentSource),
       page: 1,
+    }))
+  }
+
+  const handleSort = (column: string, order: "asc" | "desc" | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+      page: 1, // Reset to first page when sort changes
     }))
   }
 
@@ -445,11 +454,45 @@ function ContentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead className="w-[120px]">Source</TableHead>
-                  <TableHead className="w-[150px]">Publication</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[150px]">Published</TableHead>
+                  <SortableTableHead
+                    column="title"
+                    label="Title"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                  />
+                  <SortableTableHead
+                    column="source_type"
+                    label="Source"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[120px]"
+                  />
+                  <SortableTableHead
+                    column="publication"
+                    label="Publication"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
+                  <SortableTableHead
+                    column="status"
+                    label="Status"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[120px]"
+                  />
+                  <SortableTableHead
+                    column="published_date"
+                    label="Published"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>

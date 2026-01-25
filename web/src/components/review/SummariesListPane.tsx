@@ -62,7 +62,7 @@ export function SummariesListPane({ summaries, isLoading = false, className }: S
     >
       <ReviewPaneHeader
         title="Source Summaries"
-        subtitle={`${summaries.length} newsletters`}
+        subtitle={`${summaries.length} content items`}
       />
 
       <ScrollArea className="flex-1">

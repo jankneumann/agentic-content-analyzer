@@ -30,12 +30,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, relationship
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 if TYPE_CHECKING:
     from src.models.content import Content
     from src.models.digest import Digest
-    from src.models.summary import NewsletterSummary
+    from src.models.summary import Summary
 
 
 class ImageSource(str, Enum):
@@ -88,7 +88,7 @@ class Image(Base):  # type: ignore[valid-type, misc]
     )
     source_summary_id = Column(
         Integer,
-        ForeignKey("newsletter_summaries.id", ondelete="CASCADE"),
+        ForeignKey("summaries.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -103,7 +103,8 @@ class Image(Base):  # type: ignore[valid-type, misc]
     source_url = Column(String(2000), nullable=True)  # Original image URL if extracted
 
     # YouTube-specific metadata (for keyframes)
-    video_id = Column(String(20), nullable=True, index=True)  # YouTube video ID
+    # Note: index defined in __table_args__ as ix_images_video_id
+    video_id = Column(String(20), nullable=True)  # YouTube video ID
     timestamp_seconds = Column(Float, nullable=True)  # Timestamp in video
     deep_link_url = Column(String(500), nullable=True)  # youtu.be/xxx?t=123
 
@@ -129,7 +130,8 @@ class Image(Base):  # type: ignore[valid-type, misc]
     generation_params = Column(JSON, nullable=True)
 
     # Perceptual hash for deduplication
-    phash = Column(String(64), nullable=True, index=True)
+    # Note: index defined in __table_args__ as ix_images_phash
+    phash = Column(String(64), nullable=True)
 
     # Timestamp
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -138,10 +140,10 @@ class Image(Base):  # type: ignore[valid-type, misc]
     source_content: Mapped["Content | None"] = relationship(
         "Content",
         foreign_keys=[source_content_id],
-        backref="images",
+        back_populates="images",
     )
-    source_summary: Mapped["NewsletterSummary | None"] = relationship(
-        "NewsletterSummary",
+    source_summary: Mapped["Summary | None"] = relationship(
+        "Summary",
         foreign_keys=[source_summary_id],
         backref="images",
     )

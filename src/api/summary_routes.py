@@ -14,11 +14,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 
 from src.models.content import Content, ContentStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.storage.database import get_db
 from src.utils.summary_markdown import parse_markdown_summary
 
 router = APIRouter(prefix="/api/v1/summaries", tags=["summaries"])
+
+# Allowed fields for sorting
+SUMMARY_SORT_FIELDS = {"id", "content_id", "model_used", "created_at"}
 
 
 # ============================================================================
@@ -150,6 +153,8 @@ async def list_summaries(
     model_used: str | None = Query(None, description="Filter by model"),
     start_date: datetime | None = Query(None, description="Filter after this date"),
     end_date: datetime | None = Query(None, description="Filter before this date"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> PaginatedSummaryResponse:
@@ -160,27 +165,33 @@ async def list_summaries(
     """
     with get_db() as db:
         # Join with Content to get title/publication
-        query = db.query(NewsletterSummary).join(
-            Content, NewsletterSummary.content_id == Content.id
-        )
+        query = db.query(Summary).join(Content, Summary.content_id == Content.id)
 
         # Apply filters
         if content_id:
-            query = query.filter(NewsletterSummary.content_id == content_id)
+            query = query.filter(Summary.content_id == content_id)
         if model_used:
-            query = query.filter(NewsletterSummary.model_used == model_used)
+            query = query.filter(Summary.model_used == model_used)
         if start_date:
-            query = query.filter(NewsletterSummary.created_at >= start_date)
+            query = query.filter(Summary.created_at >= start_date)
         if end_date:
-            query = query.filter(NewsletterSummary.created_at <= end_date)
+            query = query.filter(Summary.created_at <= end_date)
 
         # Get total count
         total = query.count()
 
-        # Apply pagination and ordering
-        summaries = (
-            query.order_by(NewsletterSummary.created_at.desc()).offset(offset).limit(limit).all()
-        )
+        # Validate and apply dynamic sorting
+        if sort_by not in SUMMARY_SORT_FIELDS:
+            sort_by = "created_at"
+
+        sort_column = getattr(Summary, sort_by, Summary.created_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        # Apply pagination
+        summaries = query.offset(offset).limit(limit).all()
 
         # Convert to response models
         items = []
@@ -215,32 +226,30 @@ async def get_summary_stats() -> SummaryStats:
     """Get summary statistics (only content-linked summaries)."""
     with get_db() as db:
         # Only count summaries linked to content (exclude legacy newsletter-only)
-        base_query = db.query(NewsletterSummary).filter(NewsletterSummary.content_id.isnot(None))
+        base_query = db.query(Summary).filter(Summary.content_id.isnot(None))
 
         total = base_query.count()
 
         # Count by model (only content-linked)
         model_counts = (
-            db.query(NewsletterSummary.model_used, func.count(NewsletterSummary.id))
-            .filter(NewsletterSummary.content_id.isnot(None))
-            .group_by(NewsletterSummary.model_used)
+            db.query(Summary.model_used, func.count(Summary.id))
+            .filter(Summary.content_id.isnot(None))
+            .group_by(Summary.model_used)
             .all()
         )
         by_model = {model: count for model, count in model_counts}
 
         # Average processing time (only content-linked)
         avg_time_result = (
-            db.query(func.avg(NewsletterSummary.processing_time_seconds))
-            .filter(NewsletterSummary.content_id.isnot(None))
+            db.query(func.avg(Summary.processing_time_seconds))
+            .filter(Summary.content_id.isnot(None))
             .scalar()
         )
         avg_processing_time = float(avg_time_result) if avg_time_result else 0.0
 
         # Average token usage (only content-linked)
         avg_tokens_result = (
-            db.query(func.avg(NewsletterSummary.token_usage))
-            .filter(NewsletterSummary.content_id.isnot(None))
-            .scalar()
+            db.query(func.avg(Summary.token_usage)).filter(Summary.content_id.isnot(None)).scalar()
         )
         avg_token_usage = float(avg_tokens_result) if avg_tokens_result else 0.0
 
@@ -262,9 +271,7 @@ async def get_summary_by_content(
 ) -> SummaryDetail:
     """Get summary for a specific content."""
     with get_db() as db:
-        summary = (
-            db.query(NewsletterSummary).filter(NewsletterSummary.content_id == content_id).first()
-        )
+        summary = db.query(Summary).filter(Summary.content_id == content_id).first()
 
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found for this content")
@@ -282,7 +289,7 @@ async def get_summary(
 ) -> SummaryDetail:
     """Get a single summary by ID."""
     with get_db() as db:
-        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
+        summary = db.query(Summary).filter(Summary.id == summary_id).first()
 
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
@@ -307,17 +314,17 @@ async def get_summary_navigation(
     """
     with get_db() as db:
         # Build base query with Content join
-        query = db.query(NewsletterSummary).join(Content)
+        query = db.query(Summary).join(Content)
 
         if model_used:
-            query = query.filter(NewsletterSummary.model_used == model_used)
+            query = query.filter(Summary.model_used == model_used)
         if start_date:
-            query = query.filter(NewsletterSummary.created_at >= start_date)
+            query = query.filter(Summary.created_at >= start_date)
         if end_date:
-            query = query.filter(NewsletterSummary.created_at <= end_date)
+            query = query.filter(Summary.created_at <= end_date)
 
         # Determine sort column and order
-        sort_column = getattr(NewsletterSummary, sort_by, NewsletterSummary.created_at)
+        sort_column = getattr(Summary, sort_by, Summary.created_at)
         if sort_order.lower() == "asc":
             ordered_query = query.order_by(sort_column.asc())
         else:
@@ -361,7 +368,7 @@ async def get_summary_navigation(
 async def delete_summary(summary_id: int):
     """Delete a summary and reset content status."""
     with get_db() as db:
-        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
+        summary = db.query(Summary).filter(Summary.id == summary_id).first()
 
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
@@ -388,7 +395,7 @@ async def regenerate_summary(summary_id: int):
     Use /api/v1/contents/summarize to trigger the actual summarization.
     """
     with get_db() as db:
-        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
+        summary = db.query(Summary).filter(Summary.id == summary_id).first()
 
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
@@ -426,7 +433,7 @@ async def regenerate_with_feedback(
     import json
 
     with get_db() as db:
-        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
+        summary = db.query(Summary).filter(Summary.id == summary_id).first()
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
 
@@ -513,7 +520,7 @@ async def commit_preview(
     )
 
     with get_db() as db:
-        summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == summary_id).first()
+        summary = db.query(Summary).filter(Summary.id == summary_id).first()
         if not summary:
             raise HTTPException(status_code=404, detail="Summary not found")
 
@@ -549,10 +556,10 @@ async def commit_preview(
 
 
 def _summary_to_detail(
-    summary: NewsletterSummary,
+    summary: Summary,
     include_parsed_sections: bool = False,
 ) -> SummaryDetail:
-    """Convert NewsletterSummary ORM object to SummaryDetail response."""
+    """Convert Summary ORM object to SummaryDetail response."""
     relevance = summary.relevance_scores or {}
 
     # Parse sections from markdown if requested and markdown exists

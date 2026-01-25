@@ -22,7 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 # --- Enums ---
 
@@ -143,6 +143,9 @@ class PodcastRequest(BaseModel):
     custom_focus_topics: list[str] = Field(
         default_factory=list, description="Optional topics to emphasize"
     )
+    custom_instructions: str | None = Field(
+        None, description="Optional instructions for script generation (e.g. from chat)"
+    )
 
 
 class ScriptRevisionRequest(BaseModel):
@@ -252,7 +255,7 @@ class PodcastScriptRecord(Base):
     error_message = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     approved_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -291,7 +294,7 @@ class Podcast(Base):
     error_message = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships

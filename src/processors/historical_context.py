@@ -90,7 +90,7 @@ class HistoricalContextAnalyzer:
             evolutions = await asyncio.gather(*tasks)
 
             enriched_themes = []
-            for theme, evolution in zip(themes, evolutions):
+            for theme, evolution in zip(themes, evolutions, strict=False):
                 # Generate continuity text
                 continuity = self._generate_continuity_text(
                     theme_name=theme.name,
@@ -197,7 +197,7 @@ class HistoricalContextAnalyzer:
         historical_mentions = []
 
         for mention in mentions:
-            # Get newsletter details
+            # Get content details
             timestamp = mention.get("timestamp", datetime.now())
 
             # Extract context snippet (first 200 chars of content)
@@ -239,7 +239,7 @@ class HistoricalContextAnalyzer:
         timeline_context = self._build_timeline_context(timeline)
 
         # Build prompt
-        prompt = f"""Analyze how the theme "{theme_name}" has evolved based on historical newsletter mentions.
+        prompt = f"""Analyze how the theme "{theme_name}" has evolved based on historical content mentions.
 
 # Historical Timeline
 

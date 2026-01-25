@@ -23,10 +23,21 @@ Before making significant changes, review the relevant documentation:
 
 | Document | Purpose |
 |----------|---------|
-| [CLAUDE.md](CLAUDE.md) | Primary agent instructions and codebase guidance |
+| [CLAUDE.md](CLAUDE.md) | Primary agent instructions, quick reference, gotchas |
+| [Setup Guide](docs/SETUP.md) | Environment setup, database/storage providers, configuration |
 | [Architecture](docs/ARCHITECTURE.md) | System design, tech stack, data flows |
+| [Development Guide](docs/DEVELOPMENT.md) | Commands, patterns, testing best practices |
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow from ingestion to rendering |
-| [Development Guide](docs/DEVELOPMENT.md) | Commands, patterns, best practices |
+| [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns, design decisions |
+
+### Quick Reference by Task
+
+| Task | Start Here |
+|------|-----------|
+| Database/storage setup | [CLAUDE.md#database-providers](CLAUDE.md#database-providers), [CLAUDE.md#image-storage-providers](CLAUDE.md#image-storage-providers) |
+| Adding new features | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
+| Writing tests | [docs/DEVELOPMENT.md#testing](docs/DEVELOPMENT.md#testing) |
+| Debugging issues | [CLAUDE.md#critical-gotchas](CLAUDE.md#critical-gotchas) |
 
 ## Landing the Plane (Session Completion)
 
@@ -54,3 +65,66 @@ Before making significant changes, review the relevant documentation:
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 Use 'bd' for task tracking
+
+<!-- bv-agent-instructions-v1 -->
+
+---
+
+## Beads Workflow Integration
+
+This project uses [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) for issue tracking. Issues are stored in `.beads/` and tracked in git.
+
+### Essential Commands
+
+```bash
+# View issues (launches TUI - avoid in automated sessions)
+bv
+
+# CLI commands for agents (use these instead)
+bd ready              # Show issues ready to work (no blockers)
+bd list --status=open # All open issues
+bd show <id>          # Full issue details with dependencies
+bd create --title="..." --type=task --priority=2
+bd update <id> --status=in_progress
+bd close <id> --reason="Completed"
+bd close <id1> <id2>  # Close multiple issues at once
+bd sync               # Commit and push changes
+```
+
+### Workflow Pattern
+
+1. **Start**: Run `bd ready` to find actionable work
+2. **Claim**: Use `bd update <id> --status=in_progress`
+3. **Work**: Implement the task
+4. **Complete**: Use `bd close <id>`
+5. **Sync**: Always run `bd sync` at session end
+
+### Key Concepts
+
+- **Dependencies**: Issues can block other issues. `bd ready` shows only unblocked work.
+- **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers, not words)
+- **Types**: task, bug, feature, epic, question, docs
+- **Blocking**: `bd dep add <issue> <depends-on>` to add dependencies
+
+### Session Protocol
+
+**Before ending any session, run this checklist:**
+
+```bash
+git status              # Check what changed
+git add <files>         # Stage code changes
+bd sync                 # Commit beads changes
+git commit -m "..."     # Commit code
+bd sync                 # Commit any new beads changes
+git push                # Push to remote
+```
+
+### Best Practices
+
+- Check `bd ready` at session start to find available work
+- Update status as you work (in_progress → closed)
+- Create new issues with `bd create` when you discover tasks
+- Use descriptive titles and set appropriate priority/type
+- Always `bd sync` before ending session
+
+<!-- end-bv-agent-instructions -->

@@ -31,7 +31,7 @@ from src.models.podcast import (
     PodcastScript,
     PodcastSection,
 )
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.services.llm_router import ToolDefinition
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -347,11 +347,7 @@ class PodcastScriptGenerator:
             # Load summaries (these ARE included - they're already condensed)
             content_ids = [c.id for c in contents]
             summaries = (
-                (
-                    db.query(NewsletterSummary)
-                    .filter(NewsletterSummary.content_id.in_(content_ids))
-                    .all()
-                )
+                (db.query(Summary).filter(Summary.content_id.in_(content_ids)).all())
                 if content_ids
                 else []
             )
@@ -380,6 +376,7 @@ class PodcastScriptGenerator:
             "summaries": summaries,
             "length": request.length,
             "custom_focus_topics": request.custom_focus_topics,
+            "custom_instructions": request.custom_instructions,
         }
 
     async def _generate_script_with_tools(
@@ -826,8 +823,7 @@ Source: {content.source_type.value if content.source_type else 'unknown'}
     async def _handle_web_search(self, query: str) -> str:
         """Tool handler: Perform web search.
 
-        Note: This is a stub implementation. In production, integrate with
-        a web search service (Tavily, Brave Search, SerpAPI, etc.)
+        Uses Tavily for web search.
 
         Args:
             query: Search query
@@ -835,23 +831,15 @@ Source: {content.source_type.value if content.source_type else 'unknown'}
         Returns:
             Search results or placeholder
         """
+        from src.services.tavily_service import get_tavily_service
+
         logger.debug(f"Web search requested for query: {query}")
         self.web_search_queries.append(query)
 
-        # TODO: Integrate with actual web search service
-        # For now, return a placeholder that indicates the feature is pending
-        return f"""
-Web search for: "{query}"
+        tavily = get_tavily_service()
+        results = tavily.search(query)
 
-Note: Web search integration is pending implementation.
-The search service will provide:
-- Top 3 recent articles matching the query
-- Title, snippet, and URL for each result
-- Publication date for recency context
-
-For now, please rely on the newsletter content available through
-the get_newsletter_content tool.
-"""
+        return tavily.format_results(results)
 
     def _build_user_prompt(
         self,
@@ -887,6 +875,11 @@ the get_newsletter_content tool.
                 f"\n## Custom Focus Topics\nPlease emphasize these topics: {topics}\n"
             )
 
+        # Format custom instructions if any
+        instructions_text = ""
+        if context.get("custom_instructions"):
+            instructions_text = f"\n## Custom Instructions\n{context['custom_instructions']}\n"
+
         word_target = WORD_COUNT_TARGETS[length]
 
         return f"""
@@ -916,6 +909,7 @@ You can use the `get_content` tool to retrieve full text for any of these:
 ## Content Summaries
 {summaries_text}
 {focus_topics_text}
+{instructions_text}
 ## Instructions
 {length_prompt}
 
@@ -987,7 +981,7 @@ when you need more detail for compelling quotes or to verify/enrich specific poi
         """Format content summaries for the prompt.
 
         Args:
-            summaries: List of NewsletterSummary objects
+            summaries: List of Summary objects
 
         Returns:
             Formatted string

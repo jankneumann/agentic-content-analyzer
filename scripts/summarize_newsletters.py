@@ -1,14 +1,29 @@
-"""CLI script to summarize newsletters."""
+"""CLI script to summarize newsletters.
+
+.. deprecated::
+    This script uses the legacy Newsletter model and is no longer functional.
+    Use `python -m src.processors.summarizer` for Content-based summarization.
+"""
+# mypy: disable-error-code="no-untyped-def,attr-defined"
 
 import argparse
+import warnings
 from datetime import datetime
 
 from src.models.newsletter import Newsletter, ProcessingStatus
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.summarizer import NewsletterSummarizer
 from src.storage.database import get_db
 from src.utils.logging import get_logger, setup_logging
 from src.utils.summary_formatter import SummaryFormatter
+
+# Emit deprecation warning
+warnings.warn(
+    "summarize_newsletters.py is deprecated and no longer functional. "
+    "Use 'python -m src.processors.summarizer' for Content-based summarization.",
+    DeprecationWarning,
+    stacklevel=1,
+)
 
 # Setup logging
 setup_logging()
@@ -34,21 +49,27 @@ def list_pending_newsletters(after_date=None, before_date=None):
         print(f"\n{'='*120}")
         print(f"PENDING NEWSLETTERS ({len(newsletters)} total)")
         print(f"{'='*120}")
-        print(f"{'ID':<6} | {'Title':<50} | {'Publication':<25} | {'Published Date':<12} | {'Status'}")
+        print(
+            f"{'ID':<6} | {'Title':<50} | {'Publication':<25} | {'Published Date':<12} | {'Status'}"
+        )
         print(f"{'-'*120}")
 
         for n in newsletters:
-            title = (n.title[:47] + '...') if len(n.title) > 50 else n.title
-            pub = (n.publication[:22] + '...') if n.publication and len(n.publication) > 25 else (n.publication or 'N/A')
-            date_str = n.published_date.strftime('%Y-%m-%d')
+            title = (n.title[:47] + "...") if len(n.title) > 50 else n.title
+            pub = (
+                (n.publication[:22] + "...")
+                if n.publication and len(n.publication) > 25
+                else (n.publication or "N/A")
+            )
+            date_str = n.published_date.strftime("%Y-%m-%d")
             print(f"{n.id:<6} | {title:<50} | {pub:<25} | {date_str:<12} | {n.status.value}")
 
 
 def list_summaries(newsletter_id=None, after_date=None, before_date=None, format_type="text"):
     """List existing newsletter summaries with optional filtering."""
     with get_db() as db:
-        query = db.query(NewsletterSummary, Newsletter).join(
-            Newsletter, NewsletterSummary.newsletter_id == Newsletter.id
+        query = db.query(Summary, Newsletter).join(
+            Newsletter, Summary.newsletter_id == Newsletter.id
         )
 
         if newsletter_id:
@@ -67,17 +88,25 @@ def list_summaries(newsletter_id=None, after_date=None, before_date=None, format
         print(f"\n{'='*140}")
         print(f"NEWSLETTER SUMMARIES ({len(results)} total)")
         print(f"{'='*140}")
-        print(f"{'ID':<6} | {'Title':<40} | {'Publication':<20} | {'Published':<12} | {'Key Themes'}")
+        print(
+            f"{'ID':<6} | {'Title':<40} | {'Publication':<20} | {'Published':<12} | {'Key Themes'}"
+        )
         print(f"{'-'*140}")
 
         for summary, newsletter in results:
-            title = (newsletter.title[:37] + '...') if len(newsletter.title) > 40 else newsletter.title
-            pub = (newsletter.publication[:17] + '...') if newsletter.publication and len(newsletter.publication) > 20 else (newsletter.publication or 'N/A')
-            date_str = newsletter.published_date.strftime('%Y-%m-%d')
-            themes = ', '.join(summary.key_themes[:3])  # Show first 3 themes
+            title = (
+                (newsletter.title[:37] + "...") if len(newsletter.title) > 40 else newsletter.title
+            )
+            pub = (
+                (newsletter.publication[:17] + "...")
+                if newsletter.publication and len(newsletter.publication) > 20
+                else (newsletter.publication or "N/A")
+            )
+            date_str = newsletter.published_date.strftime("%Y-%m-%d")
+            themes = ", ".join(summary.key_themes[:3])  # Show first 3 themes
             if len(summary.key_themes) > 3:
-                themes += '...'
-            themes = (themes[:45] + '...') if len(themes) > 48 else themes
+                themes += "..."
+            themes = (themes[:45] + "...") if len(themes) > 48 else themes
             print(f"{newsletter.id:<6} | {title:<40} | {pub:<20} | {date_str:<12} | {themes}")
 
         # If showing a specific summary, display formatted output
