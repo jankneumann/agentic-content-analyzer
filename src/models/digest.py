@@ -72,7 +72,7 @@ class Digest(Base):
         default=DigestStatus.PENDING,
         index=True,
     )
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime, nullable=True)
     delivered_at = Column(DateTime, nullable=True)
 
