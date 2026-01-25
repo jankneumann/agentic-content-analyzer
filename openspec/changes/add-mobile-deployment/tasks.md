@@ -1,6 +1,6 @@
 # Implementation Tasks
 
-> **Status**: 55/59 tasks complete. Remaining: pg_cron setup (requires Neon Scale plan for pg_cron extension).
+> **Status**: 59/59 tasks complete. All implementation complete with Supabase pg_cron.
 
 ## 1. DatabaseProvider Queue Abstraction
 
@@ -79,17 +79,18 @@
 - [x] 10.3 Add indexes for job status and entrypoint
 - [x] 10.4 Test migration on local PostgreSQL
 - [x] 10.5 Test migration on Neon
+- [x] 10.6 Test migration on Supabase
 
 ## 11. pg_cron Scheduled Jobs
 
-> **Note**: pg_cron requires Neon Scale plan. Current plan doesn't have permissions to create the extension.
-> Alternative: Use Railway cron jobs or external scheduler until plan upgrade.
+> **Implementation**: Using Supabase pg_cron (included on all plans).
+> Neon requires Scale plan for pg_cron.
 
-- [ ] 11.1 Enable pg_cron extension on Neon (`CREATE EXTENSION IF NOT EXISTS pg_cron`)
+- [x] 11.1 Enable pg_cron extension on Supabase (`CREATE EXTENSION IF NOT EXISTS pg_cron`)
 - [x] 11.2 Create `pgqueuer_enqueue` helper function (in migration)
-- [ ] 11.3 Schedule daily newsletter scan job (6 AM UTC)
+- [x] 11.3 Schedule daily newsletter scan job (6 AM UTC)
 - [x] 11.4 Document scheduled job management (docs/PG_CRON_SETUP.md)
-- [ ] 11.5 Add job monitoring/logging
+- [x] 11.5 Add job monitoring/logging (via cron.job_run_details)
 
 ## 12. Testing
 
@@ -98,4 +99,4 @@
 - [x] 12.3 Test content extraction with various URLs
 - [x] 12.4 Add unit tests for url_extractor.py
 - [x] 12.5 Add integration tests for save_routes.py
-- [ ] 12.6 Test pg_cron job execution
+- [x] 12.6 Test pg_cron job execution on Supabase
