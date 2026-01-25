@@ -8,6 +8,7 @@
  * - Metadata (model, tokens, etc.)
  */
 
+import { memo } from "react"
 import { User, Bot, Clock, Zap, Globe } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ChatMessage as ChatMessageType } from "@/types"
@@ -42,7 +43,13 @@ function formatTimestamp(timestamp: string): string {
   })
 }
 
-export function ChatMessage({ message, isStreaming, className }: ChatMessageProps) {
+/**
+ * Individual chat message component.
+ *
+ * Memoized to prevent unnecessary re-renders of history messages
+ * when parent renders (e.g., during streaming of new messages).
+ */
+export const ChatMessage = memo(function ChatMessage({ message, isStreaming, className }: ChatMessageProps) {
   const isUser = message.role === "user"
   const isAssistant = message.role === "assistant"
 
@@ -126,7 +133,7 @@ export function ChatMessage({ message, isStreaming, className }: ChatMessageProp
       </div>
     </div>
   )
-}
+})
 
 /**
  * Streaming message placeholder
