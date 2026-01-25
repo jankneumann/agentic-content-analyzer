@@ -13,6 +13,20 @@ class VideoReference(NamedTuple):
     timestamp: float | None
 
 
+def validate_video_id_format(video_id: str) -> bool:
+    """Validate that a string looks like a valid YouTube video ID.
+
+    Checks against standard format: 11 characters, alphanumeric + underscores/hyphens.
+
+    Args:
+        video_id: The string to check
+
+    Returns:
+        True if the format is valid
+    """
+    return bool(re.match(r"^[a-zA-Z0-9_-]{11}$", video_id))
+
+
 def extract_video_id(url: str) -> str | None:
     """Extract video ID from various YouTube URL formats.
 
