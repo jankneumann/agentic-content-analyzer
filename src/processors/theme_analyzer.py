@@ -6,9 +6,9 @@ from datetime import datetime
 
 import google.generativeai as genai
 from anthropic import Anthropic
+from openai import OpenAI
 
-from src.config import settings
-from src.config.models import ModelConfig, ModelStep, Provider
+from src.config.models import ModelConfig, ModelStep, Provider, get_model_config
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
 from src.models.theme import (
@@ -30,7 +30,7 @@ class ThemeAnalyzer:
     """
     Analyzes themes across multiple content items using knowledge graph and LLM.
 
-    Supports Claude (primary) and optionally Gemini Flash for large context.
+    Supports multiple providers (Claude, OpenAI) and optionally Gemini Flash for large context.
     """
 
     def __init__(
@@ -51,7 +51,7 @@ class ThemeAnalyzer:
 
         # Get model config from settings if not provided
         if model_config is None:
-            model_config = settings.get_model_config()
+            model_config = get_model_config()
 
         self.model_config = model_config
 
@@ -292,8 +292,11 @@ class ThemeAnalyzer:
             return []
 
         # Filter supported providers
+        # TODO: Add support for AWS Bedrock, Vertex AI (when dependencies are available)
         supported_providers = [
-            p for p in providers if p.provider in [Provider.ANTHROPIC, Provider.GOOGLE_AI]
+            p
+            for p in providers
+            if p.provider in [Provider.ANTHROPIC, Provider.OPENAI, Provider.GOOGLE_AI]
         ]
 
         if not supported_providers:
@@ -338,6 +341,35 @@ class ThemeAnalyzer:
                     )
 
                     response_text = response.content[0].text
+
+                elif provider_config.provider == Provider.OPENAI:
+                    client = OpenAI(api_key=provider_config.api_key)
+
+                    response = client.chat.completions.create(
+                        model=provider_model_id,
+                        temperature=0.3,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": prompt,
+                            }
+                        ],
+                        max_tokens=4000,
+                    )
+
+                    # Track provider and token usage
+                    self.provider_used = provider_config.provider
+                    if hasattr(response.usage, "prompt_tokens"):
+                        self.input_tokens = response.usage.prompt_tokens
+                        self.output_tokens = response.usage.completion_tokens
+                    else:
+                        self.input_tokens = 0
+                        self.output_tokens = 0
+                    self.model_version = self.model_config.get_model_version(
+                        self.model, self.provider_used
+                    )
+
+                    response_text = response.choices[0].message.content
 
                 elif provider_config.provider == Provider.GOOGLE_AI:
                     # Configure Gemini
