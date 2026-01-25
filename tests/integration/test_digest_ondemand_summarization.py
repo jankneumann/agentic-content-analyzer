@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.models.digest import DigestRequest, DigestType
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.digest_creator import DigestCreator
 
 # Configure logging for test visibility
@@ -28,11 +28,11 @@ async def test_digest_creates_missing_summaries(
 
     # Remove existing summaries (if any)
     logger.info("Removing existing summaries...")
-    db_session.query(NewsletterSummary).delete()
+    db_session.query(Summary).delete()
     db_session.commit()
 
     # Verify no summaries exist
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Summary count after deletion: {summary_count}")
     assert summary_count == 0
 
@@ -108,18 +108,14 @@ async def test_digest_creates_missing_summaries(
 
     logger.info("Verifying summaries were created...")
     # Verify summaries were created
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Final summary count: {summary_count}")
     assert summary_count == 3, f"Expected 3 summaries, found {summary_count}"
 
     logger.info("Verifying each newsletter has a summary...")
     # Verify each newsletter has a summary
     for newsletter in sample_newsletters:
-        summary = (
-            db_session.query(NewsletterSummary)
-            .filter(NewsletterSummary.newsletter_id == newsletter.id)
-            .first()
-        )
+        summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
     logger.info("All newsletters have summaries ✓")
 
@@ -139,13 +135,11 @@ async def test_digest_with_some_existing_summaries(
 
     logger.info(f"Removing summary for 3rd newsletter (ID: {sample_newsletters[2].id})...")
     # Remove summary for 3rd newsletter only
-    db_session.query(NewsletterSummary).filter(
-        NewsletterSummary.newsletter_id == sample_newsletters[2].id
-    ).delete()
+    db_session.query(Summary).filter(Summary.newsletter_id == sample_newsletters[2].id).delete()
     db_session.commit()
 
     # Verify 2 summaries exist
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Summary count after deletion: {summary_count}")
     assert summary_count == 2
 
@@ -212,7 +206,7 @@ async def test_digest_with_some_existing_summaries(
 
     logger.info("Verifying all 3 summaries now exist...")
     # Verify all 3 summaries now exist
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Final summary count: {summary_count}")
     assert summary_count == 3
 
@@ -232,7 +226,7 @@ async def test_digest_continues_with_partial_summary_failures(
 
     logger.info("Removing all summaries...")
     # Remove all summaries
-    db_session.query(NewsletterSummary).delete()
+    db_session.query(Summary).delete()
     db_session.commit()
     logger.info("All summaries removed")
 
@@ -318,7 +312,7 @@ async def test_digest_continues_with_partial_summary_failures(
 
     logger.info("Verifying only 2 summaries were created (1 failed)...")
     # Verify only 2 summaries were created (1 failed)
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Final summary count: {summary_count}")
     assert summary_count == 2
 
@@ -338,7 +332,7 @@ async def test_digest_with_all_summaries_existing(
     logger.info("=== Starting test_digest_with_all_summaries_existing ===")
 
     # Verify all summaries exist
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Initial summary count: {summary_count}")
     assert summary_count == 3
 
@@ -412,7 +406,7 @@ async def test_digest_with_all_summaries_existing(
 
     logger.info("Verifying no additional summaries were created...")
     # Verify no additional summaries were created
-    summary_count_after = db_session.query(NewsletterSummary).count()
+    summary_count_after = db_session.query(Summary).count()
     logger.info(f"Final summary count: {summary_count_after}")
     assert summary_count_after == 3
 

@@ -73,7 +73,7 @@ class TestTokenCounter:
         # Claude Sonnet 4.5 has 200K context window
         assert budget["total_context"] == 200000
         assert budget["available_for_input"] == 100000  # 50%
-        assert budget["newsletter_budget"] == 60000  # 60% of input
+        assert budget["content_budget"] == 60000  # 60% of input
         assert budget["theme_budget"] == 30000  # 30% of input
         assert budget["prompt_overhead"] == 10000  # 10% of input
         assert budget["max_output_tokens"] == 64000  # Updated to match model_registry.yaml
@@ -91,7 +91,7 @@ class TestTokenCounter:
 
         assert budget["total_context"] == 200000
         assert budget["available_for_input"] == 140000  # 70%
-        assert budget["newsletter_budget"] == 84000  # 60% of 140000
+        assert budget["content_budget"] == 84000  # 60% of 140000
         assert budget["theme_budget"] == 42000  # 30% of 140000
         assert budget["prompt_overhead"] == 14000  # 10% of 140000
 

@@ -19,11 +19,11 @@
  * @example
  * // With title and actions
  * <PageContainer
- *   title="Newsletters"
- *   description="Manage ingested newsletters"
+ *   title="Contents"
+ *   description="Manage ingested content"
  *   actions={<Button>Ingest New</Button>}
  * >
- *   <NewsletterList />
+ *   <ContentList />
  * </PageContainer>
  */
 

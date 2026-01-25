@@ -114,10 +114,6 @@ export interface Content {
   /** When processing completed */
   processed_at: string | null
 
-  /** Legacy newsletter ID for navigating to summary review.
-   * During migration, content is linked to newsletters via source_id.
-   * This field provides direct access to the newsletter_id for summary lookups. */
-  legacy_newsletter_id: number | null
 }
 
 /**
@@ -134,8 +130,6 @@ export interface ContentListItem {
   published_date: string | null
   status: ContentStatus
   ingested_at: string
-  /** Legacy newsletter ID for navigating to summary review */
-  legacy_newsletter_id: number | null
 }
 
 /**
@@ -149,6 +143,11 @@ export interface ContentListResponse {
   has_next: boolean
   has_prev: boolean
 }
+
+/**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
 
 /**
  * Filters for content list queries
@@ -170,6 +169,10 @@ export interface ContentFilters {
   page?: number
   /** Items per page */
   page_size?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**
@@ -182,6 +185,8 @@ export interface ContentStats {
   pending_count: number
   completed_count: number
   failed_count: number
+  /** Count of content items that don't have summaries yet */
+  needs_summarization_count: number
 }
 
 /**

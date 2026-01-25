@@ -2,10 +2,12 @@
 
 Batches consecutive same-speaker turns together to minimize the number
 of TTS API requests while maintaining natural pacing and dialogue flow.
+Integrates with TextChunker to handle long batches that exceed TTS limits.
 """
 
 from dataclasses import dataclass
 
+from src.delivery.text_chunker import PROVIDER_CHAR_LIMITS, TextChunker
 from src.models.podcast import DialogueTurn, PodcastSection
 from src.utils.logging import get_logger
 
@@ -34,6 +36,18 @@ class DialogueBatch:
 
     total_pause_after: float
     """Final pause duration after this batch (seconds)"""
+
+    def exceeds_limit(self, provider: str = "openai") -> bool:
+        """Check if this batch exceeds the TTS provider's character limit.
+
+        Args:
+            provider: TTS provider name (openai, elevenlabs, etc.)
+
+        Returns:
+            True if the combined text exceeds the provider's limit.
+        """
+        max_chars = PROVIDER_CHAR_LIMITS.get(provider.lower(), 3800)
+        return len(self.combined_text) > max_chars
 
 
 class DialogueBatcher:
@@ -158,3 +172,69 @@ class DialogueBatcher:
         )
 
         return batch
+
+    def chunk_long_batches(
+        self,
+        batches: list[DialogueBatch],
+        provider: str = "openai",
+    ) -> list[DialogueBatch]:
+        """Split batches that exceed TTS provider limits using TextChunker.
+
+        For each batch that exceeds the provider's character limit, splits it
+        into multiple smaller batches while preserving speaker and pause info.
+
+        Args:
+            batches: List of DialogueBatch objects to process.
+            provider: TTS provider name (determines character limit).
+
+        Returns:
+            New list of batches with long ones split into smaller chunks.
+
+        Example:
+            Original batch (5000 chars for OpenAI with 3800 limit):
+                Alex: "Very long combined text..."
+
+            After chunking (2 batches):
+                Alex: "First part of text..." (pause 0s)
+                Alex: "Second part of text..." (original pause)
+        """
+        chunker = TextChunker(provider=provider)
+        result: list[DialogueBatch] = []
+
+        for batch in batches:
+            if not batch.exceeds_limit(provider):
+                result.append(batch)
+                continue
+
+            # Use TextChunker to split the combined text
+            chunks = chunker.chunk(batch.combined_text)
+
+            if len(chunks) <= 1:
+                # Couldn't split further, keep original
+                result.append(batch)
+                continue
+
+            logger.debug(
+                f"Splitting {batch.speaker} batch ({len(batch.combined_text)} chars) "
+                f"into {len(chunks)} chunks"
+            )
+
+            # Create new batches from chunks
+            for i, chunk in enumerate(chunks):
+                is_last = i == len(chunks) - 1
+                new_batch = DialogueBatch(
+                    speaker=batch.speaker,
+                    turns=batch.turns if is_last else [],  # Only last chunk gets original turns
+                    combined_text=chunk.text,
+                    combined_text_ssml=chunk.text,  # No SSML for chunked text
+                    total_pause_after=batch.total_pause_after if is_last else 0.0,
+                )
+                result.append(new_batch)
+
+        if len(result) != len(batches):
+            logger.info(
+                f"Chunked {len(batches)} batches into {len(result)} batches "
+                f"for provider '{provider}'"
+            )
+
+        return result

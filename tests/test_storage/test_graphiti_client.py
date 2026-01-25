@@ -15,12 +15,12 @@ sys.modules["graphiti_core.nodes"] = MagicMock()
 mock_database = MagicMock()
 sys.modules["src.storage.database"] = mock_database
 
-from datetime import datetime
-import pytest
+from datetime import datetime  # noqa: E402
 
-from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
-from src.models.summary import NewsletterSummary
-from src.storage.graphiti_client import GraphitiClient
+import pytest  # noqa: E402
+
+from src.models.summary import Summary  # noqa: E402
+from src.storage.graphiti_client import GraphitiClient  # noqa: E402
 
 
 @pytest.fixture
@@ -43,29 +43,10 @@ def mock_graphiti():
 
 
 @pytest.fixture
-def sample_newsletter() -> Newsletter:
-    """Create sample newsletter for testing."""
-    newsletter = Newsletter(
-        source=NewsletterSource.GMAIL,
-        source_id="msg-123",
-        sender="test@example.com",
-        publication="Tech Weekly",
-        title="AI Advances in 2025",
-        raw_html="<html>Newsletter content about AI...</html>",
-        raw_text="Newsletter content about AI...",
-        published_date=datetime(2025, 1, 15, 10, 0, 0),
-        url="https://example.com/newsletter",
-        status=ProcessingStatus.PENDING,
-    )
-    newsletter.id = 1  # Set ID manually after creation
-    return newsletter
-
-
-@pytest.fixture
-def sample_summary() -> NewsletterSummary:
-    """Create sample newsletter summary for testing."""
-    return NewsletterSummary(
-        newsletter_id=1,
+def sample_summary() -> Summary:
+    """Create sample summary for testing."""
+    return Summary(
+        content_id=1,
         executive_summary="Major AI breakthroughs announced this week.",
         key_themes=["Large Language Models", "AI Agents", "RAG"],
         strategic_insights=[
@@ -127,41 +108,6 @@ def test_close_connection(mock_neo4j_driver, mock_graphiti):
 
             # Verify driver close was called
             mock_neo4j_driver.close.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_add_newsletter_summary(
-    mock_neo4j_driver, mock_graphiti, sample_newsletter, sample_summary
-):
-    """Test adding newsletter summary to knowledge graph."""
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
-
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
-
-            client = GraphitiClient()
-            episode_id = await client.add_newsletter_summary(sample_newsletter, sample_summary)
-
-            # Verify episode was added to Graphiti
-            mock_graphiti.add_episode.assert_called_once()
-            call_args = mock_graphiti.add_episode.call_args
-
-            # Check episode name
-            assert "Tech Weekly: AI Advances in 2025" in call_args.kwargs["name"]
-
-            # Check episode content includes summary sections
-            episode_body = call_args.kwargs["episode_body"]
-            assert "[EXECUTIVE_SUMMARY]" in episode_body
-            assert "Major AI breakthroughs" in episode_body
-            assert "[KEY_THEMES]" in episode_body
-            assert "Large Language Models" in episode_body
-
-            # Check reference time
-            assert call_args.kwargs["reference_time"] == sample_newsletter.published_date
-
-            # Verify return value
-            assert episode_id == "episode-123"
 
 
 @pytest.mark.asyncio
@@ -491,61 +437,6 @@ def test_get_previous_analyses(mock_neo4j_driver, mock_graphiti):
             assert len(analyses) == 1
             assert analyses[0]["id"] == 1
             assert analyses[0]["total_themes"] == 1
-
-
-def test_create_episode_content(sample_newsletter, sample_summary):
-    """Test episode content creation."""
-    with patch("src.storage.graphiti_client.GraphDatabase"):
-        with patch("src.storage.graphiti_client.Graphiti"):
-            client = GraphitiClient()
-            content = client._create_episode_content(sample_newsletter, sample_summary)
-
-            # Verify all sections are included
-            assert "[EXECUTIVE_SUMMARY]" in content
-            assert "Major AI breakthroughs" in content
-
-            assert "[KEY_THEMES]" in content
-            assert "Large Language Models" in content
-
-            assert "[STRATEGIC_INSIGHTS]" in content
-            assert "LLMs becoming more cost-effective" in content
-
-            assert "[TECHNICAL_DETAILS]" in content
-            assert "New context window techniques" in content
-
-            assert "[ACTIONABLE_ITEMS]" in content
-            assert "Evaluate LLM providers" in content
-
-            assert "[NOTABLE_DATA]" in content
-            assert "Context is king in 2025" in content
-
-
-def test_create_episode_content_minimal(sample_newsletter):
-    """Test episode content creation with minimal summary."""
-    minimal_summary = NewsletterSummary(
-        newsletter_id=1,
-        executive_summary="Brief summary.",
-        key_themes=[],  # Empty
-        strategic_insights=[],
-        technical_details=[],
-        actionable_items=[],
-        notable_quotes=[],
-        model_used="claude-sonnet-4-20250514",
-        processing_time_seconds=1.0,
-    )
-
-    with patch("src.storage.graphiti_client.GraphDatabase"):
-        with patch("src.storage.graphiti_client.Graphiti"):
-            client = GraphitiClient()
-            content = client._create_episode_content(sample_newsletter, minimal_summary)
-
-            # Should only have executive summary
-            assert "[EXECUTIVE_SUMMARY]" in content
-            assert "Brief summary." in content
-
-            # Empty sections should not appear
-            assert "[KEY_THEMES]" not in content
-            assert "[STRATEGIC_INSIGHTS]" not in content
 
 
 @pytest.mark.asyncio

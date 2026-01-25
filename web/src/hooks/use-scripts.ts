@@ -28,6 +28,7 @@ import {
   rejectScript,
   submitScriptReview,
   reviseScriptSection,
+  regenerateScript,
   type ScriptFilters,
 } from "@/lib/api/scripts"
 import type { GenerateScriptRequest } from "@/types"
@@ -88,11 +89,12 @@ export function useScriptStats() {
  * @param options - Query options
  * @returns Query result with script data
  */
-export function useScript(scriptId: number, options?: { enabled?: boolean }) {
+export function useScript(scriptId: number, options?: { enabled?: boolean; refetchInterval?: number | false }) {
   return useQuery({
     queryKey: queryKeys.scripts.detail(String(scriptId)),
     queryFn: () => fetchScript(scriptId),
     enabled: options?.enabled ?? !!scriptId,
+    refetchInterval: options?.refetchInterval,
   })
 }
 
@@ -122,6 +124,29 @@ export function useGenerateScript() {
     mutationFn: (request: GenerateScriptRequest) => generateScript(request),
     onSuccess: () => {
       // Invalidate scripts list
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.scripts.lists(),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.scripts.statistics(),
+      })
+    },
+  })
+}
+
+/**
+ * Hook to regenerate a script from conversation
+ *
+ * @returns Mutation for script regeneration
+ */
+export function useRegenerateScript() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ scriptId, conversationId }: { scriptId: number, conversationId: string }) =>
+      regenerateScript(scriptId, conversationId),
+    onSuccess: () => {
+      // Invalidate scripts list so the new script appears
       queryClient.invalidateQueries({
         queryKey: queryKeys.scripts.lists(),
       })

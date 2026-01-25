@@ -27,6 +27,8 @@ import {
   Eye,
   ExternalLink,
   Plus,
+  Code,
+  BookOpen,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"
@@ -55,9 +57,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -68,6 +70,7 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Toggle } from "@/components/ui/toggle"
 import { useContents, useContent, useContentStats, useIngestContents } from "@/hooks/use-contents"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
 import {
@@ -172,6 +175,7 @@ function ContentsPage() {
   const [searchValue, setSearchValue] = useState("")
   const [selectedContentId, setSelectedContentId] = useState<number | null>(null)
   const [ingestDialogOpen, setIngestDialogOpen] = useState(false)
+  const [showRawMarkdown, setShowRawMarkdown] = useState(false)
 
   const { data, isLoading, isError, error, refetch } = useContents(filters)
   const { data: stats } = useContentStats()
@@ -202,6 +206,15 @@ function ContentsPage() {
       ...prev,
       source_type: value === "all" ? undefined : (value as ContentSource),
       page: 1,
+    }))
+  }
+
+  const handleSort = (column: string, order: "asc" | "desc" | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+      page: 1, // Reset to first page when sort changes
     }))
   }
 
@@ -441,12 +454,45 @@ function ContentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[80px]">Actions</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead className="w-[120px]">Source</TableHead>
-                  <TableHead className="w-[150px]">Publication</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[150px]">Published</TableHead>
+                  <SortableTableHead
+                    column="title"
+                    label="Title"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                  />
+                  <SortableTableHead
+                    column="source_type"
+                    label="Source"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[120px]"
+                  />
+                  <SortableTableHead
+                    column="publication"
+                    label="Publication"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
+                  <SortableTableHead
+                    column="status"
+                    label="Status"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[120px]"
+                  />
+                  <SortableTableHead
+                    column="published_date"
+                    label="Published"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -454,42 +500,50 @@ function ContentsPage() {
                   const status = statusConfig[content.status]
                   const source = sourceConfig[content.source_type]
                   return (
-                    <TableRow key={content.id}>
+                    <TableRow key={content.id} className="hover:bg-muted/50">
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setSelectedContentId(content.id)}
-                            title="View content"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {content.status === "completed" && (
+                        <div className="flex items-start gap-2">
+                          {/* Action buttons on the left */}
+                          <div className="flex items-center gap-1 shrink-0 pt-0.5">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
-                              asChild
+                              className="h-7 w-7"
+                              onClick={() => setSelectedContentId(content.id)}
+                              title="View content"
                             >
-                              <Link
-                                to="/review/summary/$id"
-                                params={{ id: String(content.id) }}
-                                search={{ source: "content" }}
-                                title="Review summary"
-                              >
-                                <FileSearch className="h-4 w-4" />
-                              </Link>
+                              <Eye className="h-4 w-4" />
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium line-clamp-1">
-                            <span className="text-muted-foreground font-normal">[{content.id}]</span>{" "}
-                            {content.title}
+                            {content.status === "completed" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                asChild
+                              >
+                                <Link
+                                  to="/review/summary/$id"
+                                  params={{ id: String(content.id) }}
+                                  search={{ source: "content" }}
+                                  title="Review summary"
+                                >
+                                  <FileSearch className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
+                          {/* Title - clickable to view content */}
+                          <div
+                            className="flex-1 cursor-pointer"
+                            onClick={() => setSelectedContentId(content.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => e.key === "Enter" && setSelectedContentId(content.id)}
+                          >
+                            <div className="font-medium line-clamp-1">
+                              <span className="text-muted-foreground font-normal">[{content.id}]</span>{" "}
+                              {content.title}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -569,10 +623,15 @@ function ContentsPage() {
       {/* Content detail dialog */}
       <Dialog
         open={!!selectedContentId}
-        onOpenChange={(open) => !open && setSelectedContentId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedContentId(null)
+            setShowRawMarkdown(false) // Reset to rendered view when closing
+          }
+        }}
       >
-        <DialogContent className="max-w-4xl max-h-[85vh]">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
               Content Details
@@ -583,13 +642,13 @@ function ContentsPage() {
           </DialogHeader>
 
           {isLoadingContent ? (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center py-8 flex-1">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : selectedContent ? (
-            <div className="space-y-4">
+            <div className="flex flex-col flex-1 min-h-0 space-y-4">
               {/* Metadata */}
-              <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex flex-wrap gap-4 text-sm shrink-0">
                 {selectedContent.author && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">Author:</span>
@@ -630,16 +689,50 @@ function ContentsPage() {
                 )}
               </div>
 
-              {/* Content - Markdown rendering */}
-              <div className="border rounded-lg">
-                <ScrollArea className="h-[400px]">
+              {/* Content - Markdown rendering with toggle */}
+              <div className="border rounded-lg flex-1 min-h-0 overflow-hidden flex flex-col">
+                {/* View mode toggle header */}
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30 shrink-0">
+                  <span className="text-sm text-muted-foreground">
+                    {showRawMarkdown ? "Raw Markdown" : "Rendered View"}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Toggle
+                      size="sm"
+                      pressed={!showRawMarkdown}
+                      onPressedChange={() => setShowRawMarkdown(false)}
+                      aria-label="Rendered view"
+                      title="Rendered view"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </Toggle>
+                    <Toggle
+                      size="sm"
+                      pressed={showRawMarkdown}
+                      onPressedChange={() => setShowRawMarkdown(true)}
+                      aria-label="Raw markdown"
+                      title="Raw markdown"
+                    >
+                      <Code className="h-4 w-4" />
+                    </Toggle>
+                  </div>
+                </div>
+
+                {/* Content area */}
+                <ScrollArea className="flex-1">
                   <div className="p-4">
                     {selectedContent.markdown_content ? (
-                      <div className="prose prose-sm max-w-none dark:prose-invert">
-                        <ReactMarkdown>
+                      showRawMarkdown ? (
+                        <pre className="text-sm font-mono whitespace-pre-wrap break-words text-muted-foreground bg-muted/50 p-4 rounded-md overflow-x-auto">
                           {selectedContent.markdown_content}
-                        </ReactMarkdown>
-                      </div>
+                        </pre>
+                      ) : (
+                        <div className="prose prose-sm max-w-none dark:prose-invert">
+                          <ReactMarkdown>
+                            {selectedContent.markdown_content}
+                          </ReactMarkdown>
+                        </div>
+                      )
                     ) : (
                       <p className="text-muted-foreground italic">No content available</p>
                     )}
@@ -648,7 +741,7 @@ function ContentsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 shrink-0">
                 {selectedContent.source_url && (
                   <Button variant="outline" asChild>
                     <a
@@ -676,7 +769,7 @@ function ContentsPage() {
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center py-8 flex-1">
               <p className="text-muted-foreground">Content not found</p>
             </div>
           )}

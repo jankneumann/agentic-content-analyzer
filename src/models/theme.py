@@ -6,7 +6,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 
 class ThemeCategory(str, Enum):
@@ -68,8 +68,8 @@ class HistoricalMention(BaseModel):
     """Historical mention of a theme."""
 
     date: datetime = Field(..., description="Date of mention")
-    newsletter_id: int = Field(..., description="Newsletter ID")
-    newsletter_title: str = Field(..., description="Newsletter title")
+    newsletter_id: int = Field(..., description="Content ID (legacy field name)")
+    newsletter_title: str = Field(..., description="Content title (legacy field name)")
     publication: str = Field(..., description="Publication name")
     context: str = Field(..., description="Context snippet about the theme")
     sentiment: str | None = Field(
@@ -112,9 +112,10 @@ class ThemeData(BaseModel):
     category: ThemeCategory = Field(..., description="Theme category")
 
     # Frequency and recency
-    mention_count: int = Field(..., description="Number of newsletters mentioning this theme")
+    mention_count: int = Field(..., description="Number of content items mentioning this theme")
     newsletter_ids: list[int] = Field(
-        default_factory=list, description="IDs of newsletters mentioning theme"
+        default_factory=list,
+        description="IDs of content items mentioning theme (legacy field name)",
     )
     first_seen: datetime = Field(..., description="First mention date")
     last_seen: datetime = Field(..., description="Most recent mention date")
@@ -134,7 +135,7 @@ class ThemeData(BaseModel):
 
     # Key insights
     key_points: list[str] = Field(
-        default_factory=list, description="Key points about this theme from newsletters"
+        default_factory=list, description="Key points about this theme from content items"
     )
 
     # Historical context (NEW)
@@ -153,7 +154,7 @@ class ThemeAnalysisRequest(BaseModel):
 
     start_date: datetime
     end_date: datetime
-    min_newsletters: int = Field(default=1, description="Minimum newsletters to analyze")
+    min_newsletters: int = Field(default=1, description="Minimum content items to analyze")
     max_themes: int = Field(default=20, description="Maximum themes to return")
     relevance_threshold: float = Field(default=0.3, description="Minimum relevance score (0-1)")
     use_large_context_model: bool = Field(
@@ -168,8 +169,8 @@ class ThemeAnalysisResult(BaseModel):
     start_date: datetime
     end_date: datetime
 
-    # Newsletters analyzed
-    newsletter_count: int
+    # Content items analyzed
+    newsletter_count: int  # Legacy field name, represents content count
     newsletter_ids: list[int] = Field(default_factory=list)
 
     # Themes

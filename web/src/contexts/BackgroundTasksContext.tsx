@@ -13,7 +13,7 @@ import * as React from "react"
 /**
  * Task types for background operations
  */
-export type TaskType = "digest" | "script" | "summary" | "audio" | "ingest" | "themes"
+export type TaskType = "digest" | "script" | "summary" | "audio" | "audio-digest" | "ingest" | "themes"
 
 /**
  * Task status
@@ -78,6 +78,7 @@ export const taskTypeLabels: Record<TaskType, string> = {
   script: "Script",
   summary: "Summary",
   audio: "Audio",
+  "audio-digest": "Audio Digest",
   ingest: "Ingest",
   themes: "Themes",
 }

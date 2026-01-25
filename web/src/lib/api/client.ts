@@ -10,11 +10,11 @@
  *
  * @example
  * // GET request
- * const newsletters = await apiClient.get<Newsletter[]>('/newsletters')
+ * const contents = await apiClient.get<Content[]>('/contents')
  *
  * @example
  * // POST request with body
- * const result = await apiClient.post<IngestResponse>('/newsletters/ingest', {
+ * const result = await apiClient.post<IngestResponse>('/contents/ingest', {
  *   source: 'gmail',
  *   maxItems: 10
  * })

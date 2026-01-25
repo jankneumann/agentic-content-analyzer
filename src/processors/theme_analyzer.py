@@ -1,4 +1,4 @@
-"""Theme analysis processor for multi-newsletter analysis."""
+"""Theme analysis processor for multi-content analysis."""
 
 import json
 import time
@@ -10,8 +10,7 @@ from anthropic import Anthropic
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.content import Content, ContentStatus
-from src.models.newsletter import Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import (
     ThemeAnalysisRequest,
     ThemeAnalysisResult,
@@ -29,7 +28,7 @@ logger = get_logger(__name__)
 
 class ThemeAnalyzer:
     """
-    Analyzes themes across multiple newsletters using knowledge graph and LLM.
+    Analyzes themes across multiple content items using knowledge graph and LLM.
 
     Supports Claude (primary) and optionally Gemini Flash for large context.
     """
@@ -87,7 +86,7 @@ class ThemeAnalyzer:
         include_historical_context: bool = True,
     ) -> ThemeAnalysisResult:
         """
-        Analyze themes across newsletters in a date range.
+        Analyze themes across content items in a date range.
 
         Args:
             request: Theme analysis request parameters
@@ -103,12 +102,12 @@ class ThemeAnalyzer:
         self.graphiti_client = GraphitiClient()
 
         try:
-            # 1. Fetch newsletters from database for the date range
-            newsletters = await self._fetch_newsletters(request.start_date, request.end_date)
+            # 1. Fetch content from database for the date range (unified Content model)
+            contents = await self._fetch_contents(request.start_date, request.end_date)
 
-            if len(newsletters) < request.min_newsletters:
+            if len(contents) < request.min_newsletters:
                 logger.warning(
-                    f"Only found {len(newsletters)} newsletters, "
+                    f"Only found {len(contents)} content items, "
                     f"minimum required: {request.min_newsletters}"
                 )
                 return ThemeAnalysisResult(
@@ -119,10 +118,11 @@ class ThemeAnalyzer:
                     agent_framework=self.framework,
                 )
 
-            logger.info(f"Analyzing {len(newsletters)} newsletters")
+            logger.info(f"Analyzing {len(contents)} content items")
 
-            # 2. Get summaries for these newsletters
-            summaries = await self._fetch_summaries([n["id"] for n in newsletters])
+            # 2. Get summaries for content items
+            content_ids = [c["id"] for c in contents]
+            summaries = await self._fetch_summaries(content_ids)
 
             # 3. Query Graphiti for themes and entities
             graphiti_themes = await self.graphiti_client.extract_themes_from_range(
@@ -132,7 +132,7 @@ class ThemeAnalyzer:
 
             # 4. Use LLM to analyze and extract structured themes
             themes = await self._extract_themes_with_llm(
-                newsletters=newsletters,
+                contents=contents,
                 summaries=summaries,
                 graphiti_themes=graphiti_themes,
                 max_themes=request.max_themes,
@@ -158,8 +158,8 @@ class ThemeAnalyzer:
             result = ThemeAnalysisResult(
                 start_date=request.start_date,
                 end_date=request.end_date,
-                newsletter_count=len(newsletters),
-                newsletter_ids=[n["id"] for n in newsletters],
+                newsletter_count=len(contents),
+                newsletter_ids=[c["id"] for c in contents],  # Now content IDs
                 themes=themes,
                 total_themes=len(themes),
                 emerging_themes_count=len([t for t in themes if t.trend == ThemeTrend.EMERGING]),
@@ -179,33 +179,6 @@ class ThemeAnalyzer:
         finally:
             if self.graphiti_client:
                 self.graphiti_client.close()
-
-    async def _fetch_newsletters(
-        self,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> list[dict]:
-        """Fetch newsletters from database for date range."""
-        with get_db() as db:
-            newsletters = (
-                db.query(Newsletter)
-                .filter(
-                    Newsletter.published_date >= start_date,
-                    Newsletter.published_date <= end_date,
-                )
-                .order_by(Newsletter.published_date.desc())
-                .all()
-            )
-
-            return [
-                {
-                    "id": n.id,
-                    "title": n.title,
-                    "publication": n.publication,
-                    "published_date": n.published_date,
-                }
-                for n in newsletters
-            ]
 
     async def _fetch_contents(
         self,
@@ -249,44 +222,45 @@ class ThemeAnalyzer:
                     "publication": c.publication,
                     "published_date": c.published_date,
                     "source_type": c.source_type.value,
-                    "is_content": True,  # Flag to distinguish from newsletter
                 }
                 for c in contents
             ]
 
     async def _fetch_summaries(
         self,
-        newsletter_ids: list[int],
+        content_ids: list[int],
     ) -> list[dict]:
-        """Fetch summaries for newsletters."""
+        """Fetch summaries for content items by content_id."""
+        if not content_ids:
+            return []
+
         with get_db() as db:
-            summaries = (
-                db.query(NewsletterSummary)
-                .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
-                .all()
-            )
+            summaries = db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
+
+            logger.info(f"Found {len(summaries)} summaries for {len(content_ids)} content items")
 
             return [
                 {
-                    "newsletter_id": s.newsletter_id,
+                    "content_id": s.content_id,
                     "executive_summary": s.executive_summary,
-                    "key_themes": s.key_themes,
-                    "strategic_insights": s.strategic_insights,
-                    "technical_details": s.technical_details,
+                    "key_themes": s.key_themes or [],
+                    "theme_tags": s.theme_tags or [],
+                    "strategic_insights": s.strategic_insights or [],
+                    "technical_details": s.technical_details or [],
                 }
                 for s in summaries
             ]
 
     async def _extract_themes_with_llm(
         self,
-        newsletters: list[dict],
+        contents: list[dict],
         summaries: list[dict],
         graphiti_themes: list[dict],
         max_themes: int,
         relevance_threshold: float,
     ) -> list[ThemeData]:
         """
-        Use LLM to extract and analyze themes from newsletter data.
+        Use LLM to extract and analyze themes from content data.
 
         This is the core intelligence - analyzes summaries and Graphiti data
         to identify common themes, trends, and insights.
@@ -294,7 +268,7 @@ class ThemeAnalyzer:
         logger.info("Analyzing themes with LLM...")
 
         # Build context from summaries
-        summary_context = self._build_summary_context(newsletters, summaries)
+        summary_context = self._build_summary_context(contents, summaries)
 
         # Build context from Graphiti
         graphiti_context = self._build_graphiti_context(graphiti_themes)
@@ -319,9 +293,7 @@ class ThemeAnalyzer:
 
         # Filter supported providers
         supported_providers = [
-            p
-            for p in providers
-            if p.provider in [Provider.ANTHROPIC, Provider.GOOGLE_AI]
+            p for p in providers if p.provider in [Provider.ANTHROPIC, Provider.GOOGLE_AI]
         ]
 
         if not supported_providers:
@@ -377,8 +349,7 @@ class ThemeAnalyzer:
                     }
 
                     model = genai.GenerativeModel(
-                        model_name=provider_model_id,
-                        generation_config=generation_config
+                        model_name=provider_model_id, generation_config=generation_config
                     )
 
                     response = model.generate_content(prompt)
@@ -435,7 +406,7 @@ class ThemeAnalyzer:
         # Parse response
         themes = self._parse_theme_response(
             response_text,
-            newsletters,
+            contents,
         )
 
         # Filter by relevance threshold
@@ -453,27 +424,41 @@ class ThemeAnalyzer:
 
     def _build_summary_context(
         self,
-        newsletters: list[dict],
+        contents: list[dict],
         summaries: list[dict],
     ) -> str:
-        """Build context string from newsletter summaries."""
-        summary_map = {s["newsletter_id"]: s for s in summaries}
+        """Build context string from content summaries."""
+        # Build lookup map by content_id
+        summary_by_id = {s["content_id"]: s for s in summaries if s.get("content_id")}
 
         context_parts = []
-        for newsletter in newsletters:
-            nid = newsletter["id"]
-            summary = summary_map.get(nid)
+        matched_count = 0
+
+        for content in contents:
+            content_id = content["id"]
+            summary = summary_by_id.get(content_id)
 
             if summary:
+                matched_count += 1
+                # Combine key_themes and theme_tags for comprehensive coverage
+                themes = summary.get("key_themes", []) or []
+                theme_tags = summary.get("theme_tags", []) or []
+                all_themes = list(set(themes + theme_tags))
+
                 context_parts.append(
-                    f"## {newsletter['publication']} - {newsletter['title']}\n"
-                    f"Date: {newsletter['published_date'].strftime('%Y-%m-%d')}\n\n"
+                    f"## {content.get('publication', 'Unknown')} - {content['title']}\n"
+                    f"Date: {content['published_date'].strftime('%Y-%m-%d')}\n"
+                    f"Source: {content.get('source_type', 'unknown')}\n\n"
                     f"Summary: {summary['executive_summary']}\n\n"
-                    f"Key Themes: {', '.join(summary['key_themes'])}\n\n"
+                    f"Key Themes: {', '.join(all_themes) if all_themes else 'None'}\n\n"
                     f"Strategic Insights:\n"
-                    + "\n".join(f"- {i}" for i in summary["strategic_insights"])
+                    + "\n".join(f"- {i}" for i in (summary.get("strategic_insights") or []))
                     + "\n"
                 )
+
+        logger.info(
+            f"Built context from {matched_count}/{len(contents)} content items with summaries"
+        )
 
         return "\n\n".join(context_parts)
 
@@ -507,9 +492,9 @@ class ThemeAnalyzer:
         """Build prompt for LLM theme extraction."""
         return f"""You are an AI analyst specializing in technology trends for enterprise technical leaders at Comcast.
 
-Analyze the following newsletter summaries and knowledge graph insights to identify the most important themes, trends, and topics.
+Analyze the following content summaries and knowledge graph insights to identify the most important themes, trends, and topics.
 
-# Newsletter Summaries
+# Content Summaries
 
 {summary_context}
 
@@ -517,7 +502,7 @@ Analyze the following newsletter summaries and knowledge graph insights to ident
 
 # Your Task
 
-Extract up to {max_themes} distinct themes from these newsletters. For each theme:
+Extract up to {max_themes} distinct themes from this content. For each theme:
 
 1. **Identify the theme** - What is the core topic or trend?
 2. **Categorize it** - Choose from: ml_ai, devops_infra, data_engineering, business_strategy, tools_products, research_academia, security, other
@@ -529,7 +514,7 @@ Extract up to {max_themes} distinct themes from these newsletters. For each them
    - Novelty (how new vs. established)
    - Cross-functional impact (affects multiple teams)
 5. **Find related themes** - What other themes connect to this one?
-6. **Extract key points** - 2-4 bullet points about what newsletters say about this theme
+6. **Extract key points** - 2-4 bullet points about what the content says about this theme
 
 # Output Format
 
@@ -562,7 +547,7 @@ Respond with a JSON array of themes. Each theme should have this structure:
 
 - Focus on themes relevant to enterprise AI/data/engineering teams
 - Prioritize strategic significance over tactical details
-- Look for cross-cutting themes that appear in multiple newsletters
+- Look for cross-cutting themes that appear in multiple content items
 - Identify emerging trends that leaders should know about
 - Only include themes with relevance_score >= {relevance_threshold}
 - Be specific - "RAG Architecture Evolution" not just "AI"
@@ -573,7 +558,7 @@ Provide ONLY the JSON array, no other text."""
     def _parse_theme_response(
         self,
         response_text: str,
-        newsletters: list[dict],
+        contents: list[dict],
     ) -> list[ThemeData]:
         """Parse LLM response into ThemeData objects."""
         try:
@@ -590,20 +575,20 @@ Provide ONLY the JSON array, no other text."""
 
             themes = []
             for theme_dict in themes_json:
-                # Map newsletter mentions (simplified - using mention_count)
+                # Map content mentions (simplified - using mention_count)
                 mention_count = theme_dict.get("mention_count", 1)
-                newsletter_ids = [n["id"] for n in newsletters[:mention_count]]
+                content_ids = [c["id"] for c in contents[:mention_count]]
 
                 # Estimate dates
-                first_date = newsletters[-1]["published_date"] if newsletters else datetime.now()
-                last_date = newsletters[0]["published_date"] if newsletters else datetime.now()
+                first_date = contents[-1]["published_date"] if contents else datetime.now()
+                last_date = contents[0]["published_date"] if contents else datetime.now()
 
                 theme = ThemeData(
                     name=theme_dict["name"],
                     description=theme_dict["description"],
                     category=ThemeCategory(theme_dict["category"]),
                     mention_count=mention_count,
-                    newsletter_ids=newsletter_ids,
+                    newsletter_ids=content_ids,  # TODO: Rename field to content_ids in ThemeData
                     first_seen=first_date,
                     last_seen=last_date,
                     trend=ThemeTrend(theme_dict["trend"]),
