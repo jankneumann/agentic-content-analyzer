@@ -89,7 +89,16 @@ export function useScriptStats() {
  * @param options - Query options
  * @returns Query result with script data
  */
-export function useScript(scriptId: number, options?: { enabled?: boolean; refetchInterval?: number | false }) {
+export function useScript(
+  scriptId: number,
+  options?: {
+    enabled?: boolean
+    refetchInterval?:
+      | number
+      | false
+      | ((query: { state: { data: unknown } }) => number | false | undefined)
+  }
+) {
   return useQuery({
     queryKey: queryKeys.scripts.detail(String(scriptId)),
     queryFn: () => fetchScript(scriptId),

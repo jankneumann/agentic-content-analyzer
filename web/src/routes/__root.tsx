@@ -14,6 +14,7 @@ import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { AppShell, BackgroundTasksIndicator } from "@/components/layout"
+import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { Toaster } from "@/components/ui/sonner"
 import { BackgroundTasksProvider } from "@/contexts/BackgroundTasksContext"
 
@@ -52,6 +53,7 @@ function RootComponent() {
           <Outlet />
         </AppShell>
         <BackgroundTasksIndicator />
+        <PWAUpdatePrompt />
         <Toaster />
       </BackgroundTasksProvider>
     </QueryClientProvider>

@@ -193,27 +193,25 @@ function ScriptReviewContent({
   // Preview state
   const [previewScriptId, setPreviewScriptId] = React.useState<number | null>(null)
 
-  // Determine if we should poll for preview updates
-  // We poll if we have a preview ID and it's in a generating/pending state
-  // We can't know the state before fetching, but if we just requested it, it's likely generating.
-  // So we default to polling if previewScriptId is set, until we get a completed status.
-  const shouldPollPreview = !!previewScriptId
-
   // Fetch preview script if available
+  // We poll if we have a preview ID and it's in a generating/pending state
   const { data: previewScript } = useScript(previewScriptId ?? 0, {
     enabled: !!previewScriptId,
-    refetchInterval: (query) => {
-        const data = query.state.data as ScriptDetail | undefined
-        // Poll every 2s if generating or pending
-        if (data && (data.status === 'script_generating' || data.status === 'pending')) {
-            return 2000
-        }
-        // Also poll if we have an ID but no data yet (initial load of preview)
-        if (!data && previewScriptId) {
-            return 1000
-        }
-        return false
-    }
+    refetchInterval: (query: { state: { data: unknown } }) => {
+      const data = query.state.data as ScriptDetail | undefined
+      // Poll every 2s if generating or pending
+      if (
+        data &&
+        (data.status === "script_generating" || data.status === "pending")
+      ) {
+        return 2000
+      }
+      // Also poll if we have an ID but no data yet (initial load of preview)
+      if (!data && previewScriptId) {
+        return 1000
+      }
+      return false
+    },
   })
 
   // Determine active script (preview or initial)

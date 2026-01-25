@@ -27,11 +27,19 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
-  /* Configure projects for major browsers */
+  /* Configure projects for major browsers and mobile devices */
   projects: [
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "Mobile Chrome",
+      use: { ...devices["Pixel 7"] },
+    },
+    {
+      name: "Mobile Safari",
+      use: { ...devices["iPhone 14"] },
     },
   ],
 

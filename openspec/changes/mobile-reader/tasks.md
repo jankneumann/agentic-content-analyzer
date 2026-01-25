@@ -2,54 +2,54 @@
 
 ## 1. PWA Plugin Setup
 
-- [ ] 1.1 Install vite-plugin-pwa: `pnpm add -D vite-plugin-pwa`
-- [ ] 1.2 Configure VitePWA in vite.config.ts with manifest options
-- [ ] 1.3 Add workbox configuration for offline support
-- [ ] 1.4 Configure registerType: 'autoUpdate' for automatic updates
-- [ ] 1.5 Add navigateFallback for offline HTML page
+- [x] 1.1 Install vite-plugin-pwa: `pnpm add -D vite-plugin-pwa`
+- [x] 1.2 Configure VitePWA in vite.config.ts with manifest options
+- [x] 1.3 Add workbox configuration for offline support
+- [x] 1.4 Configure registerType: 'autoUpdate' for automatic updates
+- [x] 1.5 Add navigateFallback for offline HTML page
 
 ## 2. App Icons
 
-- [ ] 2.1 Create `web/public/icons/` directory
-- [ ] 2.2 Generate icon-192.png (standard)
-- [ ] 2.3 Generate icon-512.png (standard)
-- [ ] 2.4 Generate icon-192-maskable.png (Android adaptive)
-- [ ] 2.5 Generate icon-512-maskable.png (Android adaptive)
-- [ ] 2.6 Generate apple-touch-icon.png (180x180)
+- [x] 2.1 Create `web/public/icons/` directory
+- [x] 2.2 Generate icon-192.png (standard)
+- [x] 2.3 Generate icon-512.png (standard)
+- [x] 2.4 Generate icon-192-maskable.png (Android adaptive)
+- [x] 2.5 Generate icon-512-maskable.png (Android adaptive)
+- [x] 2.6 Generate apple-touch-icon.png (180x180)
 
 ## 3. iOS Support
 
-- [ ] 3.1 Create iOS splash screen images for common device sizes
-- [ ] 3.2 Add apple-touch-startup-image links to index.html
-- [ ] 3.3 Add safe area CSS using env(safe-area-inset-*)
+- [x] 3.1 Create iOS splash screen images for common device sizes
+- [x] 3.2 Add apple-touch-startup-image links to index.html
+- [x] 3.3 Add safe area CSS using env(safe-area-inset-*)
 - [ ] 3.4 Test standalone detection with navigator.standalone
-- [ ] 3.5 Add apple-mobile-web-app-capable meta tag
+- [x] 3.5 Add apple-mobile-web-app-capable meta tag
 
 ## 4. Offline Experience
 
-- [ ] 4.1 Create `web/public/offline.html` with branded fallback
-- [ ] 4.2 Configure navigateFallback in workbox options
-- [ ] 4.3 Add navigateFallbackDenylist for /api/ routes
-- [ ] 4.4 Style offline page with dark mode matching app theme
+- [x] 4.1 Create `web/public/offline.html` with branded fallback
+- [x] 4.2 Configure navigateFallback in workbox options
+- [x] 4.3 Add navigateFallbackDenylist for /api/ routes
+- [x] 4.4 Style offline page with dark mode matching app theme
 
 ## 5. Update Notification Component
 
-- [ ] 5.1 Create `web/src/components/PWAUpdatePrompt.tsx`
-- [ ] 5.2 Use useRegisterSW hook from virtual:pwa-register/react
-- [ ] 5.3 Add toast notification UI for new version available
-- [ ] 5.4 Implement "Refresh" action to apply update
-- [ ] 5.5 Add PWAUpdatePrompt to App.tsx
+- [x] 5.1 Create `web/src/components/PWAUpdatePrompt.tsx`
+- [x] 5.2 Use useRegisterSW hook from virtual:pwa-register/react
+- [x] 5.3 Add toast notification UI for new version available
+- [x] 5.4 Implement "Refresh" action to apply update
+- [x] 5.5 Add PWAUpdatePrompt to App.tsx (added to __root.tsx)
 
 ## 6. Playwright E2E Tests
 
-- [ ] 6.1 Create `web/tests/e2e/pwa.spec.ts` test file
-- [ ] 6.2 Add Mobile Chrome (Pixel 7) project to playwright.config.ts
-- [ ] 6.3 Add Mobile Safari (iPhone 14) project to playwright.config.ts
-- [ ] 6.4 Test service worker registration on page load
-- [ ] 6.5 Test manifest is valid and linked correctly
-- [ ] 6.6 Test offline mode using context.setOffline(true)
-- [ ] 6.7 Test offline fallback page displays when network unavailable
-- [ ] 6.8 Test mobile menu visibility on mobile viewport
+- [x] 6.1 Create `web/tests/e2e/pwa.spec.ts` test file
+- [x] 6.2 Add Mobile Chrome (Pixel 7) project to playwright.config.ts
+- [x] 6.3 Add Mobile Safari (iPhone 14) project to playwright.config.ts
+- [x] 6.4 Test service worker registration on page load
+- [x] 6.5 Test manifest is valid and linked correctly
+- [x] 6.6 Test offline mode using context.setOffline(true)
+- [x] 6.7 Test offline fallback page displays when network unavailable
+- [x] 6.8 Test mobile menu visibility on mobile viewport
 - [ ] 6.9 Test app works after service worker update
 
 ## 7. Manual Device Testing
