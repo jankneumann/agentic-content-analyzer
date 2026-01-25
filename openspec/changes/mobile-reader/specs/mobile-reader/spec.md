@@ -2,54 +2,90 @@
 
 ## ADDED Requirements
 
-### Requirement: Mobile-Responsive Layout
-
-The system SHALL provide mobile-optimized layouts.
-
-#### Scenario: Readable text on mobile
-- **GIVEN** content is viewed on a mobile device
-- **WHEN** the page loads
-- **THEN** text SHALL be readable without zooming
-- **AND** font size SHALL be at least 16px
-
-#### Scenario: Touch-friendly controls
-- **WHEN** interactive elements are rendered
-- **THEN** tap targets SHALL be at least 44x44 pixels
-
-### Requirement: Audio Player
-
-The system SHALL provide an audio player for podcast content.
-
-#### Scenario: Play audio
-- **GIVEN** digest has associated audio
-- **WHEN** digest page is viewed
-- **THEN** audio player SHALL be displayed
-- **AND** user SHALL be able to play/pause
-
-#### Scenario: Playback controls
-- **GIVEN** audio is playing
-- **WHEN** user interacts with player
-- **THEN** seek, speed control (1x, 1.5x, 2x) SHALL be available
-
-### Requirement: PWA Support
+### Requirement: PWA Installation
 
 The system SHALL support Progressive Web App installation.
 
 #### Scenario: Add to home screen
-- **GIVEN** user accesses the app in a browser
-- **WHEN** PWA criteria are met
-- **THEN** "Add to Home Screen" prompt SHALL be available
+- **GIVEN** user accesses the app in a mobile browser
+- **WHEN** PWA installability criteria are met
+- **THEN** "Add to Home Screen" (iOS) or "Install App" (Android) SHALL be available
 
 #### Scenario: Standalone mode
 - **GIVEN** app is installed as PWA
 - **WHEN** launched from home screen
 - **THEN** app SHALL run in standalone mode without browser UI
 
-### Requirement: Dark Mode
+#### Scenario: App icons
+- **GIVEN** app is installed on device
+- **WHEN** displayed on home screen
+- **THEN** app icon SHALL be visible and properly sized
+- **AND** maskable icon SHALL display correctly on Android
 
-The system SHALL support dark mode.
+### Requirement: Offline Fallback
 
-#### Scenario: System preference
-- **GIVEN** user's system is set to dark mode
-- **WHEN** app is loaded
-- **THEN** dark color scheme SHALL be applied
+The system SHALL provide graceful offline behavior.
+
+#### Scenario: Network unavailable
+- **GIVEN** user has previously visited the app
+- **WHEN** network connection is unavailable
+- **AND** user navigates to an uncached page
+- **THEN** offline fallback page SHALL be displayed
+- **AND** retry button SHALL be available
+
+#### Scenario: Cached content
+- **GIVEN** user has previously visited a page
+- **WHEN** network connection is unavailable
+- **THEN** cached static assets (JS, CSS, images) SHALL be served
+
+### Requirement: Service Worker Updates
+
+The system SHALL handle service worker updates gracefully.
+
+#### Scenario: New version available
+- **GIVEN** a new version of the app is deployed
+- **WHEN** user visits the app
+- **THEN** update notification SHALL be displayed
+- **AND** user SHALL be able to refresh to apply update
+
+### Requirement: iOS-Specific Support
+
+The system SHALL support iOS-specific PWA features.
+
+#### Scenario: iOS splash screen
+- **GIVEN** app is installed on iOS device
+- **WHEN** launched from home screen
+- **THEN** splash screen SHALL be displayed during load
+
+#### Scenario: Safe areas
+- **GIVEN** app is running on a device with notch or Dynamic Island
+- **WHEN** content is displayed
+- **THEN** content SHALL NOT be obscured by device cutouts
+- **AND** safe area padding SHALL be applied
+
+### Requirement: E2E Test Coverage
+
+The system SHALL have E2E tests for PWA features.
+
+#### Scenario: Service worker test
+- **GIVEN** E2E test suite is run
+- **WHEN** service worker registration is tested
+- **THEN** test SHALL verify service worker is registered
+
+#### Scenario: Offline test
+- **GIVEN** E2E test suite is run
+- **WHEN** offline behavior is tested
+- **THEN** test SHALL verify offline fallback page displays
+
+#### Scenario: Mobile viewport test
+- **GIVEN** E2E test suite is run with mobile device projects
+- **WHEN** app is tested on mobile viewport
+- **THEN** mobile-specific UI elements SHALL be visible
+
+## REMOVED Requirements
+
+The following requirements have been moved to other specs:
+
+- **Audio Player**: Moved to `audio-digest` spec (already implemented)
+- **Dark Mode**: Already implemented in existing codebase (`Header.tsx`)
+- **Mobile-Responsive Layout**: Already implemented with Tailwind CSS
