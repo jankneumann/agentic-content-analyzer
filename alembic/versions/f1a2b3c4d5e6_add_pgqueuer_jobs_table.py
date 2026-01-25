@@ -13,6 +13,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -29,7 +30,10 @@ def upgrade() -> None:
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column("entrypoint", sa.Text(), nullable=False),
         sa.Column(
-            "payload", sa.JSON(), server_default=sa.text("'{}'::jsonb"), nullable=True
+            "payload",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'{}'::jsonb"),
+            nullable=True,
         ),
         sa.Column("priority", sa.Integer(), server_default="0", nullable=False),
         sa.Column(
