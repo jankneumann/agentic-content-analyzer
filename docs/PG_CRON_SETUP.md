@@ -12,22 +12,20 @@ This separation means scheduled jobs fire even if the worker is temporarily unav
 
 ## Prerequisites
 
-- Neon PostgreSQL database with pg_cron extension enabled
+- PostgreSQL database with pg_cron extension (Supabase recommended, or Neon Scale plan)
 - PGQueuer tables created via Alembic migration
 - Worker process running to consume jobs
 
-## Neon pg_cron Setup
+## Supabase pg_cron Setup (Recommended)
+
+Supabase includes pg_cron on all plans, making it the simplest option.
 
 ### 1. Enable the Extension
 
-pg_cron is available on Neon but must be enabled:
-
 ```sql
--- Run this in the Neon SQL Editor or via psql
+-- Run this in the Supabase SQL Editor or via psql
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 ```
-
-> **Note**: pg_cron is only available on Neon's Scale plan and above. Check your plan if the extension fails to create.
 
 ### 2. Verify the Helper Function
 
@@ -74,10 +72,21 @@ SELECT cron.schedule(
 
 ```sql
 -- List all scheduled jobs
-SELECT * FROM cron.job;
+SELECT jobid, jobname, schedule, command FROM cron.job;
 
 -- Check job execution history
 SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
+```
+
+## Neon pg_cron Setup (Alternative)
+
+> **Note**: pg_cron is only available on Neon's Scale plan and above.
+
+```sql
+-- Enable pg_cron (requires Scale plan)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Then follow the same steps as Supabase above
 ```
 
 ## Common Cron Expressions
@@ -178,9 +187,13 @@ LIMIT 20;
 
 ### pg_cron Extension Not Found
 
-If `CREATE EXTENSION pg_cron` fails:
-1. Verify you're on a Neon plan that supports pg_cron (Scale or above)
-2. Contact Neon support to enable the extension for your project
+**On Supabase:**
+1. pg_cron should be available on all plans
+2. Try enabling via Supabase Dashboard: Database > Extensions > pg_cron
+
+**On Neon:**
+1. Verify you're on the Scale plan or above
+2. Contact Neon support to enable the extension
 
 ### Scheduled Job Not Running
 
@@ -221,6 +234,7 @@ SELECT cron.schedule(
 
 ## References
 
+- [Supabase Cron Documentation](https://supabase.com/docs/guides/cron)
 - [Neon pg_cron Documentation](https://neon.tech/docs/extensions/pg_cron)
 - [PGQueuer Documentation](https://pgqueuer.readthedocs.io/)
 - [Cron Expression Generator](https://crontab.guru/)
