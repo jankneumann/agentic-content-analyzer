@@ -39,6 +39,21 @@ class Settings(BaseSettings):
     environment: Literal["development", "production"] = "development"
     log_level: str = "INFO"
 
+    # CORS Configuration
+    # Comma-separated list of allowed origins, or "*" for all origins
+    # Examples: "http://localhost:5173,http://localhost:3000" or "*"
+    allowed_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    def get_allowed_origins_list(self) -> list[str]:
+        """Parse allowed_origins string into a list.
+
+        Returns:
+            List of allowed origin URLs, or ["*"] for all origins
+        """
+        if self.allowed_origins == "*":
+            return ["*"]
+        return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
     # Database
     # DATABASE_URL is the primary connection URL (backward compatible)
     # Provider-specific URLs (LOCAL_DATABASE_URL, NEON_DATABASE_URL) take precedence when set

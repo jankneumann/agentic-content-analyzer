@@ -6,11 +6,11 @@ Includes SSE streaming for real-time message responses.
 """
 
 import json
-import uuid
 import re
+import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, Literal, List, Dict, Union
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -543,49 +543,48 @@ DIGEST_SECTION_MAPPING = {
 
 # Define list fields for type checking when value is None
 SUMMARY_LIST_FIELDS = {
-    "key_themes", "strategic_insights", "technical_details",
-    "actionable_items", "notable_quotes"
+    "key_themes",
+    "strategic_insights",
+    "technical_details",
+    "actionable_items",
+    "notable_quotes",
 }
 
-DIGEST_LIST_FIELDS = {
-    "strategic_insights", "technical_developments", "emerging_trends"
-}
+DIGEST_LIST_FIELDS = {"strategic_insights", "technical_developments", "emerging_trends"}
 
 
-def parse_bullet_list(text: str) -> List[str]:
+def parse_bullet_list(text: str) -> list[str]:
     """Parse a bulleted list text into a list of strings."""
-    lines = text.split('\n')
+    lines = text.split("\n")
     items = []
     for line in lines:
         line = line.strip()
         if not line:
             continue
         # Remove common bullet markers
-        if line.startswith('- ') or line.startswith('* '):
+        if line.startswith("- ") or line.startswith("* ") or line.startswith("• "):
             items.append(line[2:].strip())
-        elif line.startswith('• '):
-            items.append(line[2:].strip())
-        elif re.match(r'^\d+\.\s', line):
+        elif re.match(r"^\d+\.\s", line):
             # Remove numbered list markers like "1. "
-            items.append(re.sub(r'^\d+\.\s', '', line).strip())
+            items.append(re.sub(r"^\d+\.\s", "", line).strip())
         else:
             items.append(line)
     return items
 
 
 def apply_action_to_summary(db: Session, artifact_id: int, action: SuggestedAction):
-    """Apply action to a NewsletterSummary."""
-    summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == artifact_id).first()
+    """Apply action to a Summary."""
+    summary = db.query(Summary).filter(Summary.id == artifact_id).first()
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
 
     field_name = SUMMARY_SECTION_MAPPING.get(action.section)
     if not field_name:
-         # Attempt case-insensitive match
-         for k, v in SUMMARY_SECTION_MAPPING.items():
-             if k.lower() == (action.section or "").lower():
-                 field_name = v
-                 break
+        # Attempt case-insensitive match
+        for k, v in SUMMARY_SECTION_MAPPING.items():
+            if k.lower() == (action.section or "").lower():
+                field_name = v
+                break
 
     if not field_name:
         raise HTTPException(status_code=400, detail=f"Unknown section: {action.section}")
@@ -660,10 +659,10 @@ def apply_action_to_digest(db: Session, artifact_id: int, action: SuggestedActio
 
     field_name = DIGEST_SECTION_MAPPING.get(action.section)
     if not field_name:
-         for k, v in DIGEST_SECTION_MAPPING.items():
-             if k.lower() == (action.section or "").lower():
-                 field_name = v
-                 break
+        for k, v in DIGEST_SECTION_MAPPING.items():
+            if k.lower() == (action.section or "").lower():
+                field_name = v
+                break
 
     if not field_name:
         raise HTTPException(status_code=400, detail=f"Unknown section: {action.section}")
@@ -673,12 +672,12 @@ def apply_action_to_digest(db: Session, artifact_id: int, action: SuggestedActio
     # Digest fields like strategic_insights are List[Dict | str] or just Text (executive_overview)
 
     if field_name == "executive_overview":
-         # Text field
+        # Text field
         if action.type == "replace_section" or action.type == "rewrite":
             setattr(digest, field_name, action.suggested_content)
         elif action.type == "add_content":
-             new_text = (current_value or "") + "\\n\\n" + action.suggested_content
-             setattr(digest, field_name, new_text)
+            new_text = (current_value or "") + "\\n\\n" + action.suggested_content
+            setattr(digest, field_name, new_text)
     else:
         # List fields (strategic_insights, etc.)
         # Check if it should be a list based on our mapping/knowledge
@@ -735,7 +734,7 @@ def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedActio
     if not script.script_json:
         raise HTTPException(status_code=400, detail="Script has no JSON content")
 
-    script_data = dict(script.script_json) # Copy
+    script_data = dict(script.script_json)  # Copy
     sections = script_data.get("sections", [])
 
     target_section = None
@@ -751,9 +750,11 @@ def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedActio
             # Check for "TYPE: TITLE" format matching
             full_header = f"{stype}: {title}"
 
-            if (normalized_target in title or
-                normalized_target in stype or
-                normalized_target in full_header):
+            if (
+                normalized_target in title
+                or normalized_target in stype
+                or normalized_target in full_header
+            ):
                 target_section = sec
                 target_section_index = i
                 break
@@ -767,13 +768,13 @@ def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedActio
         # We found the section.
         # Now, what does the action apply to?
         # If type is replace_section, we probably replace the dialogue of this section.
-        def parse_dialogue(text: str) -> List[Dict[str, str]]:
+        def parse_dialogue(text: str) -> list[dict[str, str]]:
             """Helper to parse dialogue text into list of turns."""
             parsed = []
             # Regex to find **SPEAKER:** Text
-            pattern = re.compile(r'\*\*(.*?):\*\*\s*(.*)')
+            pattern = re.compile(r"\*\*(.*?):\*\*\s*(.*)")
 
-            lines = text.split('\n')
+            lines = text.split("\n")
             current_speaker = None
             current_text = []
 
@@ -785,10 +786,9 @@ def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedActio
                 if match:
                     # New turn
                     if current_speaker:
-                         parsed.append({
-                             "speaker": current_speaker.lower(),
-                             "text": " ".join(current_text)
-                         })
+                        parsed.append(
+                            {"speaker": current_speaker.lower(), "text": " ".join(current_text)}
+                        )
                     current_speaker = match.group(1).strip()
                     current_text = [match.group(2).strip()]
                 else:
@@ -798,10 +798,7 @@ def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedActio
 
             # Flush last
             if current_speaker:
-                 parsed.append({
-                     "speaker": current_speaker.lower(),
-                     "text": " ".join(current_text)
-                 })
+                parsed.append({"speaker": current_speaker.lower(), "text": " ".join(current_text)})
             return parsed
 
         if action.type == "replace_section" or action.type == "rewrite":
@@ -813,8 +810,12 @@ def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedActio
                 script.script_json = script_data
                 flag_modified(script, "script_json")
             else:
-                 logger.warning(f"Failed to parse dialogue from suggested content for script {artifact_id}")
-                 raise HTTPException(status_code=400, detail="Failed to parse dialogue format from suggested content")
+                logger.warning(
+                    f"Failed to parse dialogue from suggested content for script {artifact_id}"
+                )
+                raise HTTPException(
+                    status_code=400, detail="Failed to parse dialogue format from suggested content"
+                )
 
         elif action.type == "add_content":
             # Add dialogue to the end of the section
@@ -843,7 +844,9 @@ def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedActio
 
     else:
         # Section not found
-        raise HTTPException(status_code=400, detail=f"Could not find section matching: {action.section}")
+        raise HTTPException(
+            status_code=400, detail=f"Could not find section matching: {action.section}"
+        )
 
     db.add(script)
 
@@ -1225,7 +1228,10 @@ async def apply_action(conversation_id: str, request: ApplyActionRequest) -> dic
             elif conversation.artifact_type == "script":
                 apply_action_to_script(db, int(conversation.artifact_id), action)
             else:
-                raise HTTPException(status_code=400, detail=f"Unsupported artifact type: {conversation.artifact_type}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported artifact type: {conversation.artifact_type}",
+                )
 
             db.commit()
 

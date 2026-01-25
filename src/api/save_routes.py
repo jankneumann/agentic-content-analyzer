@@ -1,0 +1,201 @@
+"""Save URL API endpoints for mobile content capture.
+
+These endpoints allow saving URLs for background content extraction,
+supporting iOS Shortcuts, bookmarklets, and web forms.
+"""
+
+from datetime import UTC, datetime
+from typing import Annotated
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field, HttpUrl
+
+from src.models.content import Content, ContentSource, ContentStatus
+from src.storage.database import get_db
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/api/v1/content", tags=["save"])
+
+# Templates for the web save page
+templates = Jinja2Templates(directory="src/templates")
+
+
+# Request/Response Models
+class SaveURLRequest(BaseModel):
+    """Request body for saving a URL."""
+
+    url: HttpUrl = Field(..., description="URL to save and extract content from")
+    title: str | None = Field(None, max_length=1000, description="Optional title")
+    excerpt: str | None = Field(None, max_length=5000, description="Optional excerpt/selection")
+    tags: list[str] | None = Field(default=None, max_length=20, description="Optional tags")
+    notes: str | None = Field(None, max_length=10000, description="Optional user notes")
+    source: str | None = Field(None, max_length=50, description="Capture source identifier")
+
+
+class SaveURLResponse(BaseModel):
+    """Response for save URL operation."""
+
+    content_id: int = Field(..., description="ID of the created/existing content")
+    status: str = Field(..., description="Status: 'queued' or 'exists'")
+    message: str = Field(..., description="Human-readable message")
+    duplicate: bool = Field(False, description="Whether URL was already saved")
+
+
+class ContentStatusResponse(BaseModel):
+    """Response for content status query."""
+
+    content_id: int
+    status: str
+    title: str | None = None
+    word_count: int | None = None
+    error: str | None = None
+
+
+# Helper to enqueue extraction task
+async def _enqueue_extraction(content_id: int) -> None:
+    """Enqueue URL extraction task.
+
+    Uses PGQueuer if available, otherwise uses FastAPI BackgroundTasks.
+    """
+    try:
+        from src.queue.setup import get_queue_queries
+
+        queries = await get_queue_queries()
+        await queries.enqueue("extract_url_content", {"content_id": content_id})
+        logger.info(f"Enqueued extraction task for content_id={content_id}")
+    except ImportError:
+        logger.warning("PGQueuer not available, using sync extraction")
+        # Fallback: run extraction synchronously (not recommended for production)
+        from src.services.url_extractor import URLExtractor
+        from src.storage.database import get_db
+
+        with get_db() as db:
+            extractor = URLExtractor(db)
+            import asyncio
+
+            # Store task reference to prevent garbage collection
+            _bg_task = asyncio.create_task(extractor.extract_content(content_id))
+            _bg_task.add_done_callback(lambda t: None)  # Prevent unhandled exception warning
+
+
+@router.post("/save-url", response_model=SaveURLResponse, status_code=201)
+async def save_url(
+    request: SaveURLRequest,
+    background_tasks: BackgroundTasks,
+) -> SaveURLResponse:
+    """Save a URL for content extraction.
+
+    Creates a Content record and queues background extraction.
+    Returns immediately with the content ID for status polling.
+
+    If the URL already exists, returns the existing content ID
+    with status "exists".
+    """
+    url_str = str(request.url)
+
+    with get_db() as db:
+        # Check for duplicate
+        existing = db.query(Content).filter(Content.source_url == url_str).first()
+        if existing:
+            return SaveURLResponse(
+                content_id=existing.id,
+                status="exists",
+                message="URL already saved.",
+                duplicate=True,
+            )
+
+        # Build metadata
+        metadata: dict = {}
+        if request.excerpt:
+            metadata["excerpt"] = request.excerpt
+        if request.tags:
+            metadata["tags"] = request.tags
+        if request.notes:
+            metadata["notes"] = request.notes
+        if request.source:
+            metadata["capture_source"] = request.source
+
+        # Create content record
+        content = Content(
+            source_type=ContentSource.WEBPAGE,
+            source_url=url_str,
+            title=request.title or url_str,  # Use URL as title until extracted
+            status=ContentStatus.PENDING,
+            metadata_json=metadata if metadata else None,
+            ingested_at=datetime.now(UTC),
+        )
+
+        db.add(content)
+        db.commit()
+        db.refresh(content)
+
+        content_id = content.id
+        logger.info(f"Created content record: id={content_id}, url={url_str}")
+
+    # Enqueue extraction task in background
+    background_tasks.add_task(_enqueue_extraction, content_id)
+
+    return SaveURLResponse(
+        content_id=content_id,
+        status="queued",
+        message="URL saved. Content extraction in progress.",
+        duplicate=False,
+    )
+
+
+@router.get("/{content_id}/status", response_model=ContentStatusResponse)
+async def get_content_status(content_id: int) -> ContentStatusResponse:
+    """Get the extraction status of a content record.
+
+    Use this to poll for extraction completion after saving a URL.
+    """
+    with get_db() as db:
+        content = db.query(Content).filter(Content.id == content_id).first()
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not found")
+
+        word_count = None
+        if content.markdown_content:
+            word_count = len(content.markdown_content.split())
+
+        return ContentStatusResponse(
+            content_id=content.id,
+            status=content.status.value
+            if hasattr(content.status, "value")
+            else str(content.status),
+            title=content.title,
+            word_count=word_count,
+            error=content.error_message,
+        )
+
+
+# Web Save Page (for bookmarklet and mobile fallback)
+@router.get("/save", response_class=HTMLResponse, include_in_schema=False)
+async def save_page(
+    request: Request,
+    url: Annotated[str | None, Query(description="URL to save")] = None,
+    title: Annotated[str | None, Query(description="Page title")] = None,
+    excerpt: Annotated[str | None, Query(description="Selected text")] = None,
+) -> HTMLResponse:
+    """Render the web save page.
+
+    This page is used by:
+    - Bookmarklets that redirect here with URL params
+    - Mobile browsers as a fallback when shortcuts don't work
+    - Direct access for manual URL entry
+
+    Query params are pre-filled into the form.
+    """
+    return templates.TemplateResponse(
+        "save.html",
+        {
+            "request": request,
+            "url": url or "",
+            "title": title or "",
+            "excerpt": excerpt or "",
+        },
+    )

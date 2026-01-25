@@ -196,3 +196,53 @@ class NeonProvider:
             return True
         except Exception:
             return False
+
+    def get_queue_url(self) -> str:
+        """Return connection URL for queue workers.
+
+        Queue workers need direct connections (not pooled) because:
+        - Long-lived processes exhaust PgBouncer pooler limits
+        - LISTEN/NOTIFY requires direct connections (PgBouncer doesn't support it)
+        - Workers should not compete with web request pool
+
+        Returns:
+            Direct connection URL (without -pooler suffix)
+
+        Raises:
+            ValueError: If no database URL was provided
+        """
+        return self.get_direct_url()
+
+    def get_queue_options(self) -> dict[str, Any]:
+        """Return engine options optimized for queue workers.
+
+        Queue workers processing background jobs benefit from:
+        - Larger pool for concurrent job processing
+        - Longer timeouts for long-running jobs and Neon cold starts
+        - SSL required for Neon connections
+
+        Returns:
+            Engine configuration for queue workers
+        """
+        return {
+            "pool_pre_ping": True,
+            "pool_size": 10,  # Larger pool for workers
+            "max_overflow": 5,
+            "pool_recycle": 600,  # 10 min recycle for cloud
+            "pool_timeout": 60,  # Longer timeout for serverless cold starts
+            "echo": False,
+            "connect_args": {
+                "sslmode": "require",
+            },
+        }
+
+    def supports_pg_cron(self) -> bool:
+        """Check if pg_cron extension is available.
+
+        Neon provides pg_cron as a built-in extension that can be
+        enabled via SQL: CREATE EXTENSION pg_cron;
+
+        Returns:
+            True (pg_cron is available on Neon)
+        """
+        return True

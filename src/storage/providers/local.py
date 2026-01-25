@@ -58,3 +58,44 @@ class LocalPostgresProvider:
             return True
         except Exception:
             return False
+
+    def get_queue_url(self) -> str:
+        """Return connection URL for queue workers.
+
+        For local PostgreSQL, the queue URL is the same as the engine URL
+        since there's no external connection pooler involved.
+
+        Returns:
+            Database connection URL
+        """
+        return self._database_url
+
+    def get_queue_options(self) -> dict[str, Any]:
+        """Return engine options optimized for queue workers.
+
+        Queue workers processing background jobs may benefit from:
+        - Larger pool for concurrent job processing
+        - Longer timeouts for long-running jobs
+
+        Returns:
+            Engine configuration for queue workers
+        """
+        return {
+            "pool_pre_ping": True,
+            "pool_size": 20,  # Larger pool for workers
+            "max_overflow": 10,
+            "pool_recycle": 1800,  # 30 min recycle for persistent workers
+            "pool_timeout": 60,  # Longer timeout for job processing
+            "echo": False,
+        }
+
+    def supports_pg_cron(self) -> bool:
+        """Check if pg_cron extension is available.
+
+        Local PostgreSQL may have pg_cron installed manually, but it's
+        not guaranteed. Return False as the default assumption.
+
+        Returns:
+            False (pg_cron requires manual installation on local PostgreSQL)
+        """
+        return False

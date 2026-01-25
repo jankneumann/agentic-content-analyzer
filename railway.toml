@@ -1,0 +1,21 @@
+# Railway deployment configuration
+# https://docs.railway.app/reference/config-as-code
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Health check configuration
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+
+# Restart policy
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Number of instances (can be scaled)
+numReplicas = 1
+
+# Note: Railway automatically sets PORT environment variable
+# The Dockerfile uses port 8000, Railway proxies to it

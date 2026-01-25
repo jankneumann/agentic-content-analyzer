@@ -175,3 +175,69 @@ class SupabaseProvider:
             f"postgresql://postgres:{self._db_password}@"
             f"db.{self._project_ref}.supabase.co:5432/postgres"
         )
+
+    def get_queue_url(self) -> str:
+        """Return connection URL for queue workers.
+
+        Queue workers need direct connections (not pooled) because:
+        - Long-lived processes exhaust Supavisor pooler limits
+        - LISTEN/NOTIFY requires direct connections
+        - Workers should not compete with web request pool
+
+        Returns:
+            Direct connection URL (bypasses Supavisor)
+
+        Raises:
+            ValueError: If direct URL cannot be constructed
+        """
+        direct_url = self.get_direct_url()
+        if direct_url is None:
+            raise ValueError(
+                "Supabase queue URL requires either local=True or "
+                "both project_ref and db_password"
+            )
+        return direct_url
+
+    def get_queue_options(self) -> dict[str, Any]:
+        """Return engine options optimized for queue workers.
+
+        Queue workers processing background jobs benefit from:
+        - Larger pool for concurrent job processing
+        - Longer timeouts for long-running jobs
+        - SSL required for cloud connections
+
+        Returns:
+            Engine configuration for queue workers
+        """
+        if self._local:
+            return {
+                "pool_pre_ping": True,
+                "pool_size": 10,  # Larger pool for workers
+                "max_overflow": 5,
+                "pool_recycle": 1800,  # 30 min recycle
+                "pool_timeout": 60,  # Longer timeout for job processing
+                "echo": False,
+            }
+
+        return {
+            "pool_pre_ping": True,
+            "pool_size": 10,  # Larger pool for workers
+            "max_overflow": 5,
+            "pool_recycle": 600,  # 10 min recycle for cloud
+            "pool_timeout": 60,  # Longer timeout for job processing
+            "echo": False,
+            "connect_args": {
+                "sslmode": "require",
+            },
+        }
+
+    def supports_pg_cron(self) -> bool:
+        """Check if pg_cron extension is available.
+
+        Supabase provides pg_cron as a built-in extension that can be
+        enabled in the dashboard or via SQL: CREATE EXTENSION pg_cron;
+
+        Returns:
+            True (pg_cron is available on Supabase)
+        """
+        return True
