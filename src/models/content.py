@@ -88,7 +88,6 @@ class Content(Base):  # type: ignore[valid-type, misc]
     source_type = Column(
         SQLEnum(ContentSource, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
-        index=True,
     )
     source_id = Column(String(500), nullable=False)  # Unique ID from source
     source_url = Column(String(2000), nullable=True)  # Original URL if available
@@ -96,7 +95,7 @@ class Content(Base):  # type: ignore[valid-type, misc]
     # Identity / Metadata
     title = Column(String(1000), nullable=False)
     author = Column(String(500), nullable=True)  # Sender for email, channel for YouTube
-    publication = Column(String(500), nullable=True, index=True)  # Newsletter/channel name
+    publication = Column(String(500), nullable=True)  # Newsletter/channel name
     published_date = Column(DateTime, nullable=True, index=True)
 
     # Canonical content - MARKDOWN FIRST
