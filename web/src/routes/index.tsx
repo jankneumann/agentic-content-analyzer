@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useNewsletterStats, useSummaryStats, useScriptStats, useDigestStats } from "@/hooks"
+import { useContentStats, useSummaryStats, useScriptStats, useDigestStats } from "@/hooks"
 
 /**
  * Route definition for the index page
@@ -111,16 +111,16 @@ function PipelineCard({
  * Dashboard page component
  */
 function DashboardPage() {
-  const { data: newsletterStats, isLoading: isLoadingNewsletters } = useNewsletterStats()
+  const { data: contentStats, isLoading: isLoadingContent } = useContentStats()
   const { data: summaryStats, isLoading: isLoadingSummaries } = useSummaryStats()
   const { data: scriptStats, isLoading: isLoadingScripts } = useScriptStats()
   const { data: digestStats, isLoading: isLoadingDigests } = useDigestStats()
 
-  const isLoading = isLoadingNewsletters || isLoadingSummaries || isLoadingScripts || isLoadingDigests
+  const isLoading = isLoadingContent || isLoadingSummaries || isLoadingScripts || isLoadingDigests
 
-  // Calculate pending counts
-  const pendingNewsletters = newsletterStats?.by_status?.pending ?? 0
-  const processingNewsletters = newsletterStats?.by_status?.processing ?? 0
+  // Calculate pending counts from content stats
+  const pendingContent = contentStats?.needs_summarization_count ?? 0
+  const processingContent = contentStats?.by_status?.processing ?? 0
 
   return (
     <PageContainer
@@ -129,7 +129,7 @@ function DashboardPage() {
       actions={
         <div className="flex gap-2">
           <Button variant="outline" asChild>
-            <Link to="/newsletters">
+            <Link to="/contents">
               <Newspaper className="mr-2 h-4 w-4" />
               Ingest
             </Link>
@@ -150,13 +150,13 @@ function DashboardPage() {
       >
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <PipelineCard
-            name="Newsletters"
-            description="Ingested from Gmail and RSS"
+            name="Content"
+            description="Ingested from Gmail, RSS, and YouTube"
             icon={Newspaper}
-            count={newsletterStats?.total ?? 0}
-            status={processingNewsletters > 0 ? "processing" : "idle"}
-            href="/newsletters"
-            isLoading={isLoadingNewsletters}
+            count={contentStats?.total ?? 0}
+            status={processingContent > 0 ? "processing" : "idle"}
+            href="/contents"
+            isLoading={isLoadingContent}
           />
           <PipelineCard
             name="Summaries"
@@ -206,7 +206,7 @@ function DashboardPage() {
       </PageSection>
 
       {/* Summary Stats */}
-      {!isLoading && (newsletterStats || summaryStats || scriptStats || digestStats) && (
+      {!isLoading && (contentStats || summaryStats || scriptStats || digestStats) && (
         <PageSection
           title="Pipeline Summary"
           description="Key metrics across your pipeline"
@@ -215,7 +215,7 @@ function DashboardPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Pending Summarization</CardDescription>
-                <CardTitle className="text-2xl">{pendingNewsletters}</CardTitle>
+                <CardTitle className="text-2xl">{pendingContent}</CardTitle>
               </CardHeader>
             </Card>
             <Card>
@@ -253,21 +253,21 @@ function DashboardPage() {
       >
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Button variant="outline" className="h-auto flex-col gap-2 p-4" asChild>
-            <Link to="/newsletters">
+            <Link to="/contents">
               <Newspaper className="h-6 w-6" />
-              <span>Ingest Gmail</span>
-            </Link>
-          </Button>
-          <Button variant="outline" className="h-auto flex-col gap-2 p-4" asChild>
-            <Link to="/newsletters">
-              <Newspaper className="h-6 w-6" />
-              <span>Ingest RSS</span>
+              <span>Ingest Content</span>
             </Link>
           </Button>
           <Button variant="outline" className="h-auto flex-col gap-2 p-4" asChild>
             <Link to="/summaries">
               <Sparkles className="h-6 w-6" />
               <span>Generate Summaries</span>
+            </Link>
+          </Button>
+          <Button variant="outline" className="h-auto flex-col gap-2 p-4" asChild>
+            <Link to="/digests">
+              <FileText className="h-6 w-6" />
+              <span>Create Digest</span>
             </Link>
           </Button>
           <Button variant="outline" className="h-auto flex-col gap-2 p-4" asChild>
@@ -291,22 +291,22 @@ function DashboardPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Loading activity...</span>
               </div>
-            ) : (newsletterStats?.total ?? 0) > 0 ? (
+            ) : (contentStats?.total ?? 0) > 0 ? (
               <>
                 <p>
-                  {newsletterStats?.total} newsletters ingested, {summaryStats?.total ?? 0} summaries generated.
+                  {contentStats?.total} content items ingested, {summaryStats?.total ?? 0} summaries generated.
                 </p>
                 <p className="mt-1 text-sm">
-                  {pendingNewsletters > 0
-                    ? `${pendingNewsletters} newsletters pending summarization.`
-                    : "All newsletters have been processed."}
+                  {pendingContent > 0
+                    ? `${pendingContent} items pending summarization.`
+                    : "All content has been processed."}
                 </p>
               </>
             ) : (
               <>
                 <p>No recent activity to display.</p>
                 <p className="mt-1 text-sm">
-                  Start by ingesting newsletters from Gmail or RSS feeds.
+                  Start by ingesting content from Gmail, RSS, or YouTube.
                 </p>
               </>
             )}

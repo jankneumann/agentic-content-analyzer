@@ -29,6 +29,8 @@ from src.models.settings import PromptOverride
 class PromptService:
     """Load prompts from config with database overrides."""
 
+    _CACHED_DEFAULTS: dict[str, Any] | None = None
+
     def __init__(self, db: Session | None = None):
         """Initialize the prompt service.
 
@@ -40,6 +42,9 @@ class PromptService:
 
     def _load_defaults(self) -> dict[str, Any]:
         """Load default prompts from YAML configuration."""
+        if PromptService._CACHED_DEFAULTS is not None:
+            return PromptService._CACHED_DEFAULTS
+
         config_path = Path(__file__).parent.parent / "config" / "prompts.yaml"
 
         if not config_path.exists():
@@ -49,7 +54,8 @@ class PromptService:
             )
 
         with open(config_path) as f:
-            return yaml.safe_load(f) or {}
+            PromptService._CACHED_DEFAULTS = yaml.safe_load(f) or {}
+            return PromptService._CACHED_DEFAULTS
 
     def get_chat_prompt(self, artifact_type: str) -> str:
         """Get chat system prompt with DB override.

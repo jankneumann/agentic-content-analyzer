@@ -5,13 +5,13 @@ These should be added to a separate integration test suite.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
 from src.agents.claude.summarizer import ClaudeAgent
 from src.config.models import MODEL_REGISTRY, ModelConfig, ModelStep, Provider, ProviderConfig
-from src.models.newsletter import Newsletter, NewsletterSource, ProcessingStatus
+from src.models.content import Content, ContentSource, ContentStatus
 from src.models.summary import SummaryData
 
 
@@ -29,22 +29,25 @@ def test_model_config() -> ModelConfig:
 
 
 @pytest.fixture
-def sample_newsletter() -> Newsletter:
-    """Create sample newsletter for testing."""
-    newsletter = Newsletter(
-        source=NewsletterSource.GMAIL,
+def sample_content() -> Content:
+    """Create sample content for testing."""
+    content = Content(
+        source_type=ContentSource.GMAIL,
         source_id="test-123",
-        sender="test@example.com",
-        publication="Tech Weekly",
+        source_url="https://example.com/content",
         title="AI Advances in 2025",
-        raw_html="<html><body>Newsletter about AI advances</body></html>",
-        raw_text="Newsletter content about AI advances and new LLM developments.",
-        published_date=datetime(2025, 1, 15, 10, 0, 0),
-        url="https://example.com/newsletter",
-        status=ProcessingStatus.PENDING,
+        author="test@example.com",
+        publication="Tech Weekly",
+        published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
+        markdown_content="# AI Advances\n\nContent about AI advances and new LLM developments.",
+        raw_content="<html><body>Newsletter about AI advances</body></html>",
+        raw_format="html",
+        content_hash="testhash123",
+        status=ContentStatus.PARSED,
+        ingested_at=datetime.now(UTC),
     )
-    newsletter.id = 1
-    return newsletter
+    content.id = 1
+    return content
 
 
 @pytest.fixture
@@ -109,79 +112,89 @@ def test_claude_agent_initialization_backward_compatibility_api_key():
     assert agent.framework_name == "claude"
 
 
-def test_create_summary_prompt_with_text(sample_newsletter, test_model_config):
-    """Test prompt creation with text content."""
+def test_create_content_prompt(sample_content, test_model_config):
+    """Test prompt creation with content."""
     agent = ClaudeAgent(model_config=test_model_config)
-    prompt = agent._create_summary_prompt(sample_newsletter)
+    prompt = agent._create_content_prompt(sample_content)
 
     # Verify key components
     assert "AI Advances in 2025" in prompt
     assert "Tech Weekly" in prompt
     assert "2025-01-15" in prompt
-    assert "Newsletter content about AI advances" in prompt
+    assert "Content about AI advances" in prompt
     assert "JSON format" in prompt
     assert "executive_summary" in prompt
     assert "key_themes" in prompt
     assert "strategic_insights" in prompt
 
 
-def test_create_summary_prompt_html_fallback(test_model_config):
-    """Test prompt falls back to HTML when no text content."""
-    newsletter = Newsletter(
-        source=NewsletterSource.GMAIL,
+def test_create_content_prompt_raw_fallback(test_model_config):
+    """Test prompt falls back to raw content when no markdown."""
+    content = Content(
+        source_type=ContentSource.GMAIL,
         source_id="test-123",
-        sender="test@example.com",
+        source_url="https://example.com/content",
+        title="Test Content",
+        author="test@example.com",
         publication="Tech Weekly",
-        title="Test Newsletter",
-        raw_html="<html><body>HTML content only</body></html>",
-        raw_text=None,  # No text content
-        published_date=datetime(2025, 1, 15),
-        status=ProcessingStatus.PENDING,
+        published_date=datetime(2025, 1, 15, tzinfo=UTC),
+        markdown_content="",  # Empty markdown
+        raw_content="<html><body>HTML content only</body></html>",
+        raw_format="html",
+        content_hash="testhash",
+        status=ContentStatus.PARSED,
+        ingested_at=datetime.now(UTC),
     )
-    newsletter.id = 1
+    content.id = 1
 
     agent = ClaudeAgent(model_config=test_model_config)
-    prompt = agent._create_summary_prompt(newsletter)
+    prompt = agent._create_content_prompt(content)
 
-    assert "<html><body>HTML content only</body></html>" in prompt
+    # Should include raw content when markdown is empty
+    assert "Test Content" in prompt
 
 
-def test_create_summary_prompt_truncates_long_content(test_model_config):
+def test_create_content_prompt_truncates_long_content(test_model_config):
     """Test prompt truncates very long content."""
-    long_text = "A" * 20000  # 20K characters
+    long_text = "A" * 25000  # 25K characters (above 20K limit)
 
-    newsletter = Newsletter(
-        source=NewsletterSource.GMAIL,
+    content = Content(
+        source_type=ContentSource.GMAIL,
         source_id="test-123",
-        sender="test@example.com",
+        source_url="https://example.com/content",
+        title="Long Content",
+        author="test@example.com",
         publication="Tech Weekly",
-        title="Long Newsletter",
-        raw_text=long_text,
-        published_date=datetime(2025, 1, 15),
-        status=ProcessingStatus.PENDING,
+        published_date=datetime(2025, 1, 15, tzinfo=UTC),
+        markdown_content=long_text,
+        content_hash="testhash",
+        status=ContentStatus.PARSED,
+        ingested_at=datetime.now(UTC),
     )
-    newsletter.id = 1
+    content.id = 1
 
     agent = ClaudeAgent(model_config=test_model_config)
-    prompt = agent._create_summary_prompt(newsletter)
+    prompt = agent._create_content_prompt(content)
 
-    # Should truncate to ~15K characters (allow small margin for whitespace)
-    # The content section should not significantly exceed 15K
+    # Should truncate to ~20K characters (max_chars = 20000 in base.py)
+    # Plus truncation message "[Content truncated...]"
     content_start = prompt.find("**Content:**") + len("**Content:**")
     content_end = prompt.find("**Required Output")
     content_section = prompt[content_start:content_end].strip()
 
-    # Allow 100 char margin for whitespace/newlines
-    assert len(content_section) <= 15100
+    # Allow 200 char margin for whitespace/newlines and truncation message
+    assert len(content_section) <= 20200
+    # Verify truncation indicator is present
+    assert "[Content truncated...]" in content_section
 
 
 def test_validate_summary_data_complete(sample_summary_dict, test_model_config):
     """Test validation of complete summary data."""
     agent = ClaudeAgent(model_config=test_model_config)
-    summary_data = agent._validate_summary_data(sample_summary_dict, newsletter_id=1)
+    summary_data = agent._validate_summary_data(sample_summary_dict, content_id=1)
 
     assert isinstance(summary_data, SummaryData)
-    assert summary_data.newsletter_id == 1
+    assert summary_data.content_id == 1
     assert (
         summary_data.executive_summary
         == "Major AI advancements this week including new LLM releases."
@@ -204,9 +217,9 @@ def test_validate_summary_data_minimal(test_model_config):
     }
 
     agent = ClaudeAgent(model_config=test_model_config)
-    summary_data = agent._validate_summary_data(minimal_data, newsletter_id=2)
+    summary_data = agent._validate_summary_data(minimal_data, content_id=2)
 
-    assert summary_data.newsletter_id == 2
+    assert summary_data.content_id == 2
     assert summary_data.executive_summary == "Short summary"
     assert summary_data.key_themes == []
     assert summary_data.strategic_insights == []
@@ -223,7 +236,7 @@ def test_validate_summary_data_custom_model(test_model_config):
     test_model = claude_models[0]
 
     agent = ClaudeAgent(model_config=test_model_config, model=test_model)
-    summary_data = agent._validate_summary_data({"executive_summary": "Test"}, newsletter_id=1)
+    summary_data = agent._validate_summary_data({"executive_summary": "Test"}, content_id=1)
 
     assert summary_data.model_used == test_model
     assert summary_data.model_used in MODEL_REGISTRY

@@ -132,15 +132,31 @@ async def upload_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
 
-    # Check file size
-    contents = await file.read()
-    size_mb = len(contents) / (1024 * 1024)
+    # Check file size incrementally to prevent memory exhaustion
+    # 1MB chunks
+    CHUNK_SIZE = 1024 * 1024
+    MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
 
-    if size_mb > settings.max_upload_size_mb:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File size ({size_mb:.1f}MB) exceeds limit ({settings.max_upload_size_mb}MB)",
-        )
+    content_chunks = []
+    total_bytes = 0
+
+    while True:
+        chunk = await file.read(CHUNK_SIZE)
+        if not chunk:
+            break
+
+        total_bytes += len(chunk)
+        if total_bytes > MAX_BYTES:
+            size_mb = total_bytes / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File size ({size_mb:.1f}MB) exceeds limit ({settings.max_upload_size_mb}MB)",
+            )
+
+        content_chunks.append(chunk)
+
+    contents = b"".join(content_chunks)
+    size_mb = total_bytes / (1024 * 1024)
 
     # Get format from filename
     filename = file.filename
@@ -201,8 +217,8 @@ async def upload_document(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Document upload failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
+        logger.error(f"Document upload failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Processing failed due to an internal error")
 
 
 @router.get("/formats", response_model=SupportedFormatsResponse)

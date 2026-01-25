@@ -1,5 +1,6 @@
 """Historical context analyzer for theme evolution and continuity."""
 
+import asyncio
 import json
 from datetime import datetime, timedelta
 
@@ -73,17 +74,23 @@ class HistoricalContextAnalyzer:
         self.graphiti_client = GraphitiClient()
 
         try:
-            enriched_themes = []
+            # Prepare tasks for concurrent execution
+            tasks = []
             for theme in themes:
-                logger.debug(f"Analyzing history for: {theme.name}")
-
-                # Get historical context
-                evolution = await self._analyze_theme_evolution(
-                    theme_name=theme.name,
-                    current_date=current_date,
-                    lookback_days=lookback_days,
+                logger.debug(f"Queueing history analysis for: {theme.name}")
+                tasks.append(
+                    self._analyze_theme_evolution(
+                        theme_name=theme.name,
+                        current_date=current_date,
+                        lookback_days=lookback_days,
+                    )
                 )
 
+            # Execute tasks concurrently
+            evolutions = await asyncio.gather(*tasks)
+
+            enriched_themes = []
+            for theme, evolution in zip(themes, evolutions, strict=False):
                 # Generate continuity text
                 continuity = self._generate_continuity_text(
                     theme_name=theme.name,
@@ -190,7 +197,7 @@ class HistoricalContextAnalyzer:
         historical_mentions = []
 
         for mention in mentions:
-            # Get newsletter details
+            # Get content details
             timestamp = mention.get("timestamp", datetime.now())
 
             # Extract context snippet (first 200 chars of content)
@@ -232,7 +239,7 @@ class HistoricalContextAnalyzer:
         timeline_context = self._build_timeline_context(timeline)
 
         # Build prompt
-        prompt = f"""Analyze how the theme "{theme_name}" has evolved based on historical newsletter mentions.
+        prompt = f"""Analyze how the theme "{theme_name}" has evolved based on historical content mentions.
 
 # Historical Timeline
 

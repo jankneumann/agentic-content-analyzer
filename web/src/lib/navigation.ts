@@ -11,13 +11,13 @@
  */
 
 import {
-  Newspaper,
   Library,
   Sparkles,
   BarChart3,
   FileText,
   Mic,
   Radio,
+  Headphones,
   LayoutDashboard,
   Settings,
   CheckSquare,
@@ -74,13 +74,7 @@ export const navigation: NavGroup[] = [
     title: "Pipeline",
     items: [
       {
-        title: "Newsletters",
-        href: "/newsletters",
-        icon: Newspaper,
-        description: "Ingested newsletters from Gmail and RSS",
-      },
-      {
-        title: "Contents",
+        title: "Content",
         href: "/contents",
         icon: Library,
         description: "Unified content from all sources",
@@ -114,6 +108,12 @@ export const navigation: NavGroup[] = [
         href: "/podcasts",
         icon: Radio,
         description: "Generated audio podcasts",
+      },
+      {
+        title: "Audio Digests",
+        href: "/audio-digests",
+        icon: Headphones,
+        description: "Single-voice TTS audio from digests",
       },
     ],
   },

@@ -56,6 +56,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -81,7 +82,7 @@ import {
   GenerateDigestDialog,
   type DigestGenerationParams,
 } from "@/components/generation"
-import type { DigestListItem, DigestStatus, DigestSection } from "@/types"
+import type { DigestListItem, DigestStatus, DigestSection, DigestFilters } from "@/types"
 
 export const DigestsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -139,18 +140,20 @@ const statusConfig: Record<
 }
 
 function DigestsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [typeFilter, setTypeFilter] = useState<string>("all")
+  const [filters, setFilters] = useState<DigestFilters>({})
   const [searchValue, setSearchValue] = useState("")
   const [selectedDigestId, setSelectedDigestId] = useState<number | null>(null)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
-  const { data: digests, isLoading, isError, error, refetch } = useDigests(
-    {
-      status: statusFilter === "all" ? undefined : (statusFilter as DigestStatus),
-      digest_type: typeFilter === "all" ? undefined : (typeFilter as "daily" | "weekly"),
-    }
-  )
+  const handleSort = (column: string, order: "asc" | "desc" | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+    }))
+  }
+
+  const { data: digests, isLoading, isError, error, refetch } = useDigests(filters)
   const { data: stats } = useDigestStats()
   const { data: selectedDigest, isLoading: isLoadingDigest } = useDigest(
     selectedDigestId ?? 0,
@@ -324,13 +327,22 @@ function DigestsPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search digests..."
+                aria-label="Search digests"
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 className="pl-9"
               />
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[140px]">
+            <Select
+              value={filters.digest_type ?? "all"}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  digest_type: value === "all" ? undefined : (value as "daily" | "weekly"),
+                }))
+              }
+            >
+              <SelectTrigger className="w-[140px]" aria-label="Filter by type">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -339,8 +351,16 @@ function DigestsPage() {
                 <SelectItem value="weekly">Weekly</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
+            <Select
+              value={filters.status ?? "all"}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status: value === "all" ? undefined : (value as DigestStatus),
+                }))
+              }
+            >
+              <SelectTrigger className="w-[180px]" aria-label="Filter by status">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -391,12 +411,39 @@ function DigestsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead className="w-[100px]">Type</TableHead>
-                  <TableHead className="w-[200px]">Period</TableHead>
+                  <SortableTableHead
+                    column="digest_type"
+                    label="Type"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
+                  <SortableTableHead
+                    column="period_start"
+                    label="Period"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[200px]"
+                  />
                   <TableHead className="w-[80px]">Sources</TableHead>
-                  <TableHead className="w-[150px]">Status</TableHead>
-                  <TableHead className="w-[130px]">Created</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
+                  <SortableTableHead
+                    column="status"
+                    label="Status"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
+                  <SortableTableHead
+                    column="created_at"
+                    label="Created"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[130px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -418,8 +465,8 @@ function DigestsPage() {
         open={!!selectedDigestId}
         onOpenChange={(open) => !open && setSelectedDigestId(null)}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{selectedDigest?.title ?? "Digest Details"}</DialogTitle>
             <DialogDescription>
               {selectedDigest?.digest_type === "daily" ? "Daily" : "Weekly"} digest
@@ -429,19 +476,19 @@ function DigestsPage() {
             </DialogDescription>
           </DialogHeader>
           {isLoadingDigest ? (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 flex-1">
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
           ) : selectedDigest ? (
-            <ScrollArea className="max-h-[60vh] pr-4">
+            <ScrollArea className="flex-1 min-h-0 pr-4">
               <div className="space-y-6 py-4">
                 {/* Metadata row */}
                 <div className="grid grid-cols-4 gap-4 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Newsletters:</span>{" "}
-                    <span className="font-medium">{selectedDigest.newsletter_count}</span>
+                    <span className="text-muted-foreground">Content Items:</span>{" "}
+                    <span className="font-medium">{selectedDigest.content_count}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Model:</span>{" "}
@@ -553,7 +600,7 @@ function DigestsPage() {
               </div>
             </ScrollArea>
           ) : null}
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="shrink-0 flex gap-2">
             <Button variant="outline" onClick={() => setSelectedDigestId(null)}>
               Close
             </Button>
@@ -651,14 +698,53 @@ function DigestRow({
   }
 
   return (
-    <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onView}>
+    <TableRow className="hover:bg-muted/50">
       <TableCell>
-        <div>
-          <div className="font-medium line-clamp-1">
-            {digest.title ?? `Digest #${digest.id}`}
+        <div className="flex items-start gap-2">
+          {/* Action buttons on the left */}
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onView}
+              title="View digest"
+              aria-label="View digest"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            {(digest.status === "PENDING_REVIEW" || digest.status === "COMPLETED" || digest.status === "APPROVED") && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                asChild
+              >
+                <Link
+                  to="/review/digest/$id"
+                  params={{ id: String(digest.id) }}
+                  title="Review digest"
+                  aria-label="Review digest"
+                >
+                  <FileSearch className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
           </div>
-          <div className="text-sm text-muted-foreground">
-            {digest.model_used}
+          {/* Title - clickable to view */}
+          <div
+            className="flex-1 cursor-pointer"
+            onClick={onView}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && onView()}
+          >
+            <div className="font-medium line-clamp-1">
+              {digest.title ?? `Digest #${digest.id}`}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {digest.model_used}
+            </div>
           </div>
         </div>
       </TableCell>
@@ -676,7 +762,7 @@ function DigestRow({
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground">
-          {digest.newsletter_count}
+          {digest.content_count}
         </span>
       </TableCell>
       <TableCell>
@@ -691,30 +777,6 @@ function DigestRow({
             ? formatDistanceToNow(new Date(digest.created_at), { addSuffix: true })
             : "Unknown"}
         </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <Eye className="h-4 w-4" />
-          </Button>
-          {(digest.status === "PENDING_REVIEW" || digest.status === "COMPLETED" || digest.status === "APPROVED") && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              asChild
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Link
-                to="/review/digest/$id"
-                params={{ id: String(digest.id) }}
-                title="Review digest"
-              >
-                <FileSearch className="h-4 w-4" />
-              </Link>
-            </Button>
-          )}
-        </div>
       </TableCell>
     </TableRow>
   )

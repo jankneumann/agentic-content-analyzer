@@ -4,23 +4,12 @@
  * Central export point for all custom hooks.
  */
 
-// Newsletter hooks
-export {
-  useNewsletters,
-  useNewsletter,
-  useNewsletterWithSummary,
-  useNewsletterStats,
-  useIngestNewsletters,
-  useDeleteNewsletter,
-  usePrefetchNewsletters,
-  usePrefetchNewsletter,
-} from "./use-newsletters"
-
 // Summary hooks
 export {
   useSummaries,
   useSummary,
-  useSummaryByNewsletter,
+  useSummaryByContent,
+  useSummaryByNewsletter, // deprecated, use useSummaryByContent
   useSummaryStats,
   useTriggerSummarization,
   useRegenerateSummary,
@@ -62,6 +51,17 @@ export {
   useGenerateAudio,
 } from "./use-podcasts"
 
+// Audio Digest hooks
+export {
+  useAudioDigests,
+  useAudioDigestStats,
+  useAudioDigest,
+  useAudioDigestsForDigest,
+  useAvailableDigests,
+  useCreateAudioDigest,
+  useDeleteAudioDigest,
+} from "./use-audio-digests"
+
 // Theme hooks
 export {
   useAnalyzeThemes,
@@ -83,3 +83,19 @@ export {
   useApplySuggestedAction,
   useChatSession,
 } from "./use-chat"
+
+// Content hooks (unified content model)
+export {
+  useContents,
+  useContent,
+  useContentWithSummary,
+  useContentStats,
+  useContentDuplicates,
+  useCreateContent,
+  useIngestContents,
+  useDeleteContent,
+  useMergeContentDuplicate,
+  usePrefetchContents,
+  usePrefetchContent,
+  useSummarizeContents,
+} from "./use-contents"

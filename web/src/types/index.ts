@@ -5,20 +5,8 @@
  * Import types from here for cleaner imports:
  *
  * @example
- * import { Newsletter, Digest, PodcastScript } from '@/types'
+ * import { Content, Digest, PodcastScript } from '@/types'
  */
-
-// Newsletter types (legacy - use Content types for new code)
-export type {
-  NewsletterSource,
-  NewsletterStatus,
-  ExtractedLink,
-  Newsletter,
-  NewsletterListItem,
-  NewsletterFilters,
-  IngestRequest,
-  IngestResponse,
-} from "./newsletter"
 
 // Content types (unified content model)
 export type {
@@ -35,7 +23,7 @@ export type {
 
 // Summary types
 export type {
-  NewsletterSummary,
+  Summary,
   SummaryListItem,
   SummarizeRequest,
   SummarizeResponse,
@@ -126,6 +114,22 @@ export type {
   ChatConfig,
 } from "./chat"
 
+// Audio Digest types
+export type {
+  AudioDigestStatus,
+  AudioDigestProvider,
+  AudioDigestVoice,
+  AudioDigestListItem,
+  AudioDigestDetail,
+  AudioDigestStatistics,
+  CreateAudioDigestRequest,
+  CreateAudioDigestResponse,
+  AudioDigestFilters,
+  AvailableDigest,
+  VoiceOption,
+  ProviderOption,
+} from "./audio-digest"
+
 /**
  * Common API response wrapper
  *
@@ -168,3 +172,8 @@ export interface TaskResponse {
   /** Status message */
   message: string
 }
+
+/**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
