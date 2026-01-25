@@ -4,7 +4,7 @@
  * TypeScript interfaces for theme analysis entities.
  * These types mirror the backend Python models in src/models/theme.py
  *
- * Theme analysis identifies patterns and topics across multiple newsletters,
+ * Theme analysis identifies patterns and topics across multiple content items,
  * tracking how themes evolve over time using the knowledge graph.
  *
  * @see Backend model: src/models/theme.py
@@ -96,11 +96,11 @@ export interface Theme {
   /** Confidence score (0-1) of theme identification */
   confidence: number
 
-  /** Number of mentions across analyzed newsletters */
+  /** Number of mentions across analyzed content items */
   mentions: number
 
-  /** IDs of newsletters that mention this theme */
-  sourceNewsletterIds: string[]
+  /** IDs of content items that mention this theme */
+  sourceContentIds: string[]
 
   /** Brief summary of the theme */
   summary: string
@@ -128,7 +128,7 @@ export interface Theme {
 /**
  * Theme Analysis entity
  *
- * Results of analyzing themes across a set of newsletters
+ * Results of analyzing themes across a set of content items
  * for a specific time period.
  */
 export interface ThemeAnalysis {
@@ -144,11 +144,11 @@ export interface ThemeAnalysis {
   /** End of the analyzed period */
   endDate: string // ISO 8601
 
-  /** Number of newsletters analyzed */
-  newsletterCount: number
+  /** Number of content items analyzed */
+  contentCount: number
 
-  /** IDs of analyzed newsletters */
-  newsletterIds: string[]
+  /** IDs of analyzed content items */
+  contentIds: string[]
 
   /** Identified themes */
   themes: Theme[]
@@ -199,7 +199,7 @@ export interface GraphNode {
   /** Display label */
   label: string
   /** Node type for coloring/grouping */
-  type: "theme" | "entity" | "newsletter"
+  type: "theme" | "entity" | "content"
   /** Optional size weight */
   weight?: number
   /** Category for themes */
@@ -232,8 +232,8 @@ export interface AnalyzeThemesRequest {
   startDate: string
   /** End date for analysis period */
   endDate: string
-  /** Specific newsletter IDs (if empty, uses date range) */
-  newsletterIds?: string[]
+  /** Specific content IDs (if empty, uses date range) */
+  contentIds?: string[]
   /** Include historical context from knowledge graph */
   includeHistoricalContext?: boolean
 }
@@ -262,7 +262,7 @@ export interface ThemeData {
   description: string
   category: ThemeCategory
   mention_count: number
-  newsletter_ids: number[]
+  content_ids: number[]
   first_seen: string
   last_seen: string
   trend: ThemeTrend
@@ -283,8 +283,8 @@ export interface ThemeData {
     stance_change?: string
     recent_mentions: Array<{
       date: string
-      newsletter_id: number
-      newsletter_title: string
+      content_id: number
+      content_title: string
       publication: string
       context: string
       sentiment?: string
@@ -300,8 +300,8 @@ export interface ThemeAnalysisResult {
   analysis_date: string
   start_date: string
   end_date: string
-  newsletter_count: number
-  newsletter_ids: number[]
+  content_count: number
+  content_ids: number[]
   themes: ThemeData[]
   total_themes: number
   emerging_themes_count: number

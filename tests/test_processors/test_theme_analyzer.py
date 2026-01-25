@@ -15,28 +15,38 @@ from src.processors.theme_analyzer import ThemeAnalyzer
 
 
 @pytest.fixture
-def sample_newsletters() -> list[dict]:
-    """Create sample newsletters for testing."""
+def sample_contents() -> list[dict]:
+    """Create sample content items for testing."""
     return [
         {
             "id": 1,
             "title": "AI Advances",
             "publication": "Tech Weekly",
             "published_date": datetime(2025, 1, 15),
+            "source_type": "rss",
         },
         {
             "id": 2,
             "title": "Vector Databases",
             "publication": "Data News",
             "published_date": datetime(2025, 1, 10),
+            "source_type": "gmail",
         },
         {
             "id": 3,
             "title": "LLM Updates",
             "publication": "AI Digest",
             "published_date": datetime(2025, 1, 5),
+            "source_type": "rss",
         },
     ]
+
+
+# Legacy alias for backwards compatibility in tests
+@pytest.fixture
+def sample_newsletters(sample_contents) -> list[dict]:
+    """Alias for sample_contents (legacy tests)."""
+    return sample_contents
 
 
 @pytest.fixture
@@ -44,23 +54,26 @@ def sample_summaries() -> list[dict]:
     """Create sample summaries for testing."""
     return [
         {
-            "newsletter_id": 1,
+            "content_id": 1,
             "executive_summary": "Major AI breakthroughs this week.",
             "key_themes": ["LLMs", "AI Agents"],
+            "theme_tags": [],
             "strategic_insights": ["Cost reduction in LLMs", "Agent adoption growing"],
             "technical_details": ["New context windows", "Better embeddings"],
         },
         {
-            "newsletter_id": 2,
+            "content_id": 2,
             "executive_summary": "Vector database performance improvements.",
             "key_themes": ["Vector Search", "Embeddings"],
+            "theme_tags": [],
             "strategic_insights": ["Database selection critical"],
             "technical_details": ["Hybrid search techniques"],
         },
         {
-            "newsletter_id": 3,
+            "content_id": 3,
             "executive_summary": "Latest LLM releases.",
             "key_themes": ["GPT", "Claude"],
+            "theme_tags": [],
             "strategic_insights": ["Model selection matters"],
             "technical_details": ["API updates", "Pricing changes"],
         },
@@ -157,15 +170,6 @@ def test_theme_analyzer_large_context_warning():
             assert "not yet implemented" in mock_logger.warning.call_args[0][0]
 
 
-# TODO: Integration test - requires database setup
-# This test should be moved to integration tests as it requires real database access
-# The core logic is covered by unit tests above
-# @pytest.mark.asyncio
-# async def test_analyze_themes_success_integration():
-#     """Test successful theme analysis (INTEGRATION TEST - requires database)."""
-#     pass
-
-
 @pytest.mark.asyncio
 async def test_analyze_themes_insufficient_newsletters():
     """Test analysis with insufficient newsletters."""
@@ -179,7 +183,7 @@ async def test_analyze_themes_insufficient_newsletters():
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti:
             mock_graphiti.return_value.close = MagicMock()
 
-            with patch("src.storage.database.get_db") as mock_get_db:
+            with patch("src.processors.theme_analyzer.get_db") as mock_get_db:
                 mock_db = MagicMock()
                 # Return only 2 newsletters (less than min_newsletters=5)
                 mock_query = MagicMock()
@@ -230,7 +234,7 @@ async def test_analyze_themes_without_historical_context(
                 mock_historical = AsyncMock()
                 mock_historical_class.return_value = mock_historical
 
-                with patch("src.storage.database.get_db") as mock_get_db:
+                with patch("src.processors.theme_analyzer.get_db") as mock_get_db:
                     mock_db = MagicMock()
                     mock_get_db.return_value.__enter__.return_value = mock_db
 
@@ -267,7 +271,7 @@ async def test_analyze_themes_without_historical_context(
                     def query_side_effect(model):
                         if model.__name__ == "Newsletter":
                             return newsletter_query
-                        elif model.__name__ == "NewsletterSummary":
+                        elif model.__name__ == "Summary":
                             return summary_query
                         return MagicMock()
 
@@ -408,24 +412,9 @@ def test_parse_theme_response_invalid_json(sample_newsletters):
         assert len(themes) == 0
 
 
-# TODO: Integration tests - require database setup
-# These tests should be moved to integration tests as they require real database access
-# The core logic is covered by unit tests above
-#
-# @pytest.mark.asyncio
-# async def test_fetch_newsletters_integration():
-#     """Test fetching newsletters from database (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.asyncio
-# async def test_fetch_summaries_integration():
-#     """Test fetching summaries from database (INTEGRATION TEST)."""
-#     pass
-
-
 @pytest.mark.asyncio
 async def test_extract_themes_with_relevance_filtering(
-    sample_newsletters, sample_summaries, sample_graphiti_themes
+    sample_contents, sample_summaries, sample_graphiti_themes
 ):
     """Test that themes below relevance threshold are filtered out."""
     # Response with one theme above and one below threshold
@@ -475,7 +464,7 @@ async def test_extract_themes_with_relevance_filtering(
         analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
 
         themes = await analyzer._extract_themes_with_llm(
-            newsletters=sample_newsletters,
+            contents=sample_contents,
             summaries=sample_summaries,
             graphiti_themes=sample_graphiti_themes,
             max_themes=10,

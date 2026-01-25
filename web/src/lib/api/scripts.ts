@@ -21,6 +21,7 @@ import type {
   GenerateScriptResponse,
 } from "@/types"
 import type { ScriptDetail } from "@/types/review"
+import type { SortOrder } from "@/types"
 
 /**
  * Script filters for list queries
@@ -32,6 +33,10 @@ export interface ScriptFilters {
   digest_id?: number
   /** Maximum results */
   limit?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**
@@ -138,6 +143,28 @@ export async function generateScript(
   request: GenerateScriptRequest
 ): Promise<GenerateScriptResponse> {
   return apiClient.post<GenerateScriptResponse>("/scripts/generate", request)
+}
+
+/**
+ * Regenerate a podcast script based on chat conversation
+ *
+ * @param scriptId - Original script ID
+ * @param conversationId - Conversation ID containing instructions
+ * @returns Response with new script ID
+ */
+export async function regenerateScript(
+  scriptId: number,
+  conversationId: string
+): Promise<{
+  status: string
+  script_id: number
+  message: string
+}> {
+  return apiClient.post<{
+    status: string
+    script_id: number
+    message: string
+  }>(`/scripts/${scriptId}/regenerate`, { conversation_id: conversationId })
 }
 
 /**

@@ -4,27 +4,12 @@
  * Central export point for all custom hooks.
  */
 
-/**
- * Newsletter hooks
- * @deprecated Use Content hooks from './use-contents' instead.
- * These hooks will be removed in Phase 4 of Newsletter deprecation.
- */
-export {
-  useNewsletters,
-  useNewsletter,
-  useNewsletterWithSummary,
-  useNewsletterStats,
-  useIngestNewsletters,
-  useDeleteNewsletter,
-  usePrefetchNewsletters,
-  usePrefetchNewsletter,
-} from "./use-newsletters"
-
 // Summary hooks
 export {
   useSummaries,
   useSummary,
-  useSummaryByNewsletter,
+  useSummaryByContent,
+  useSummaryByNewsletter, // deprecated, use useSummaryByContent
   useSummaryStats,
   useTriggerSummarization,
   useRegenerateSummary,
@@ -65,6 +50,17 @@ export {
   useApprovedScripts,
   useGenerateAudio,
 } from "./use-podcasts"
+
+// Audio Digest hooks
+export {
+  useAudioDigests,
+  useAudioDigestStats,
+  useAudioDigest,
+  useAudioDigestsForDigest,
+  useAvailableDigests,
+  useCreateAudioDigest,
+  useDeleteAudioDigest,
+} from "./use-audio-digests"
 
 // Theme hooks
 export {

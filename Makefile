@@ -126,8 +126,9 @@ pipeline-yesterday:  ## Process yesterday's newsletters
 	python -m scripts.run_pipeline --date $$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d yesterday +%Y-%m-%d)
 
 # Development servers
+# Note: WATCHFILES_FORCE_POLLING=true works around Python 3.14 multiprocessing spawn issue
 api:  ## Start the backend API server (uvicorn with hot reload)
-	uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
+	WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
 
 web:  ## Start the frontend dev server (Vite)
 	cd web && npm run dev
@@ -145,12 +146,12 @@ dev:  ## Start both frontend and backend for development (requires tmux or run i
 	@echo "Starting API server in foreground (Ctrl+C to stop)..."
 	@echo "Run 'make web' in another terminal for frontend"
 	@echo ""
-	uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
+	WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
 
 dev-bg:  ## Start frontend and backend in background (logs to .dev-logs/)
 	@mkdir -p .dev-logs
 	@echo "Starting backend API on http://localhost:8000..."
-	@nohup bash -c 'source .venv/bin/activate && uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000' > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
+	@nohup bash -c 'source .venv/bin/activate && WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000' > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
 	@echo "Starting frontend on http://localhost:5173..."
 	@nohup sh -c 'cd web && npm run dev' > .dev-logs/web.log 2>&1 & echo $$! > .dev-logs/web.pid
 	@sleep 2

@@ -9,8 +9,11 @@ Provides a unified interface for multiple TTS providers:
 Each provider requires specific API keys and configuration.
 """
 
+import tempfile
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from pathlib import Path
+from typing import Any
 
 from src.config import settings
 from src.models.podcast import VoicePersona, VoiceProvider
@@ -63,7 +66,7 @@ class TTSProvider(ABC):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text to audio bytes.
 
@@ -78,11 +81,11 @@ class TTSProvider(ABC):
         pass
 
     @abstractmethod
-    async def synthesize_stream(
+    def synthesize_stream(
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis for long content.
 
@@ -94,7 +97,7 @@ class TTSProvider(ABC):
         Yields:
             Audio data chunks as bytes
         """
-        pass
+        ...
 
     @abstractmethod
     def get_voice_id(self, persona: VoicePersona) -> str:
@@ -141,7 +144,7 @@ class OpenAITTSProvider(TTSProvider):
         model: str = "tts-1",
         speed: float = 1.0,
         response_format: str = "mp3",
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using OpenAI TTS.
 
@@ -163,19 +166,19 @@ class OpenAITTSProvider(TTSProvider):
 
         response = await client.audio.speech.create(
             model=model,
-            voice=voice_id,
+            voice=voice_id,  # type: ignore[arg-type]
             input=text,
             speed=speed,
-            response_format=response_format,
+            response_format=response_format,  # type: ignore[arg-type]
         )
 
-        return response.content
+        return bytes(response.content)
 
     async def synthesize_stream(
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis.
 
@@ -218,7 +221,7 @@ class ElevenLabsTTSProvider(TTSProvider):
         similarity_boost: float = 0.75,
         style: float = 0.0,
         use_speaker_boost: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using ElevenLabs.
 
@@ -235,6 +238,9 @@ class ElevenLabsTTSProvider(TTSProvider):
             Audio data as bytes (MP3)
         """
         import aiohttp
+
+        if not self.api_key:
+            raise RuntimeError("ElevenLabs API key not configured")
 
         logger.debug(f"ElevenLabs TTS: synthesizing {len(text)} chars with voice {voice_id}")
 
@@ -261,19 +267,22 @@ class ElevenLabsTTSProvider(TTSProvider):
             if response.status != 200:
                 error_text = await response.text()
                 raise RuntimeError(f"ElevenLabs TTS failed ({response.status}): {error_text}")
-            return await response.read()
+            return bytes(await response.read())
 
     async def synthesize_stream(
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis from ElevenLabs.
 
         ElevenLabs supports true streaming for lower latency.
         """
         import aiohttp
+
+        if not self.api_key:
+            raise RuntimeError("ElevenLabs API key not configured")
 
         model_id = kwargs.get("model_id", "eleven_turbo_v2_5")
 
@@ -331,7 +340,7 @@ class GoogleTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using Google Cloud TTS.
 
@@ -346,10 +355,11 @@ class GoogleTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis from Google Cloud TTS."""
         raise NotImplementedError("Google Cloud TTS streaming not implemented")
+        yield b""  # Make it a generator for type checking
 
     def get_voice_id(self, persona: VoicePersona) -> str:
         """Get Google Cloud voice ID for a persona."""
@@ -374,7 +384,7 @@ class AWSPollyTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize text using AWS Polly.
 
@@ -388,10 +398,11 @@ class AWSPollyTTSProvider(TTSProvider):
         self,
         text: str,
         voice_id: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream audio synthesis from AWS Polly."""
         raise NotImplementedError("AWS Polly streaming not implemented")
+        yield b""  # Make it a generator for type checking
 
     def get_voice_id(self, persona: VoicePersona) -> str:
         """Get AWS Polly voice ID for a persona."""
@@ -466,7 +477,7 @@ class TTSService:
         self,
         text: str,
         speaker: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         """Synthesize speech for a speaker.
 
@@ -485,7 +496,7 @@ class TTSService:
         self,
         text: str,
         speaker: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> AsyncIterator[bytes]:
         """Stream speech synthesis for a speaker.
 
@@ -501,7 +512,7 @@ class TTSService:
         async for chunk in self._provider.synthesize_stream(text, voice_id, **kwargs):
             yield chunk
 
-    def get_voice_config(self) -> dict:
+    def get_voice_config(self) -> dict[str, str]:
         """Get current voice configuration.
 
         Returns:
@@ -514,3 +525,171 @@ class TTSService:
             "alex_voice_id": self.get_voice_id_for_speaker("alex"),
             "sam_voice_id": self.get_voice_id_for_speaker("sam"),
         }
+
+    def _get_provider_name(self) -> str:
+        """Get provider name for TextChunker.
+
+        Returns:
+            Provider name string compatible with TextChunker.
+        """
+        # Map VoiceProvider values to TextChunker provider names
+        provider_map = {
+            "openai_tts": "openai",
+            "openai-tts": "openai",
+            "elevenlabs": "elevenlabs",
+            "google_tts": "google",
+            "google-tts": "google",
+            "aws_polly": "aws_polly",
+            "aws-polly": "aws_polly",
+        }
+        provider_value = self.provider_type.value.lower()
+        return provider_map.get(provider_value, "openai")
+
+    async def synthesize_long(
+        self,
+        text: str,
+        speaker: str,
+        progress_callback: Callable[[int, int, str], None] | None = None,
+        **kwargs: Any,
+    ) -> bytes:
+        """Synthesize long-form text, automatically handling chunking.
+
+        For text that exceeds provider character limits, this method
+        automatically chunks the text, synthesizes each chunk, and
+        concatenates the resulting audio into a single output.
+
+        Args:
+            text: Text of any length to synthesize.
+            speaker: Speaker name ("alex" or "sam").
+            progress_callback: Optional callback(current, total, message)
+                called after each chunk is synthesized.
+            **kwargs: Provider-specific options (speed, model, etc.)
+
+        Returns:
+            Combined audio data as bytes (MP3 format).
+
+        Example:
+            >>> service = TTSService(provider=VoiceProvider.OPENAI_TTS)
+            >>> def on_progress(current, total, msg):
+            ...     print(f"{current}/{total}: {msg}")
+            >>> audio = await service.synthesize_long(
+            ...     long_text,
+            ...     speaker="alex",
+            ...     progress_callback=on_progress,
+            ... )
+        """
+        from src.delivery.audio_utils import concatenate_mp3_files
+        from src.delivery.text_chunker import TextChunker
+
+        # Get provider name for chunk limits
+        provider_name = self._get_provider_name()
+        chunker = TextChunker(provider=provider_name)
+
+        chunks = chunker.chunk(text)
+        if not chunks:
+            logger.debug("Empty text provided to synthesize_long, returning empty bytes")
+            return b""
+
+        logger.info(
+            f"Synthesizing long text: {len(text)} chars, {len(chunks)} chunks, "
+            f"provider={provider_name}, speaker={speaker}"
+        )
+
+        # Single chunk - no concatenation needed
+        if len(chunks) == 1:
+            if progress_callback:
+                progress_callback(1, 1, "Synthesizing single chunk")
+            return await self.synthesize(chunks[0].text, speaker, **kwargs)
+
+        # Multiple chunks - synthesize and concatenate
+        audio_segments: list[bytes] = []
+        for i, chunk in enumerate(chunks):
+            chunk_num = i + 1
+            if progress_callback:
+                progress_callback(
+                    chunk_num,
+                    len(chunks),
+                    f"Synthesizing chunk {chunk_num}/{len(chunks)}",
+                )
+
+            logger.debug(
+                f"Synthesizing chunk {chunk_num}/{len(chunks)}: "
+                f"{len(chunk.text)} chars, est. {chunk.estimated_duration:.1f}s"
+            )
+
+            audio_bytes = await self.synthesize(chunk.text, speaker, **kwargs)
+            audio_segments.append(audio_bytes)
+
+        # Concatenate using ffmpeg via audio_utils
+        logger.debug(f"Concatenating {len(audio_segments)} audio segments")
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
+            tmp_path = Path(tmp_file.name)
+        try:
+            concatenate_mp3_files(audio_segments, tmp_path)
+            result = tmp_path.read_bytes()
+            logger.info(
+                f"Long-form synthesis complete: {len(chunks)} chunks, "
+                f"{len(result) / 1024:.1f} KB output"
+            )
+            return result
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    async def synthesize_long_stream(
+        self,
+        text: str,
+        speaker: str,
+        **kwargs: Any,
+    ) -> AsyncIterator[bytes]:
+        """Stream long-form text synthesis chunk by chunk.
+
+        For progressive output, this method yields audio bytes as each
+        chunk is synthesized. Useful for streaming responses where you
+        want to start playback before the entire text is processed.
+
+        Note: Each yielded chunk is a complete MP3 segment. The caller
+        is responsible for concatenation if a single file is needed.
+
+        Args:
+            text: Text of any length to synthesize.
+            speaker: Speaker name ("alex" or "sam").
+            **kwargs: Provider-specific options (speed, model, etc.)
+
+        Yields:
+            Audio data bytes for each chunk (MP3 format).
+
+        Example:
+            >>> service = TTSService(provider=VoiceProvider.OPENAI_TTS)
+            >>> async for chunk_audio in service.synthesize_long_stream(
+            ...     long_text,
+            ...     speaker="sam",
+            ... ):
+            ...     # Process or send each chunk immediately
+            ...     await send_audio_chunk(chunk_audio)
+        """
+        from src.delivery.text_chunker import TextChunker
+
+        # Get provider name for chunk limits
+        provider_name = self._get_provider_name()
+        chunker = TextChunker(provider=provider_name)
+
+        chunks = chunker.chunk(text)
+        if not chunks:
+            logger.debug("Empty text provided to synthesize_long_stream")
+            return
+
+        logger.info(
+            f"Streaming long text synthesis: {len(text)} chars, "
+            f"{len(chunks)} chunks, provider={provider_name}, speaker={speaker}"
+        )
+
+        for i, chunk in enumerate(chunks):
+            logger.debug(
+                f"Streaming chunk {i + 1}/{len(chunks)}: "
+                f"{len(chunk.text)} chars, est. {chunk.estimated_duration:.1f}s"
+            )
+            audio_bytes = await self.synthesize(chunk.text, speaker, **kwargs)
+            yield audio_bytes
+
+        logger.debug(f"Stream synthesis complete: {len(chunks)} chunks")

@@ -218,7 +218,7 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Document upload failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An internal error occurred during processing.")
+        raise HTTPException(status_code=500, detail="Processing failed due to an internal error")
 
 
 @router.get("/formats", response_model=SupportedFormatsResponse)

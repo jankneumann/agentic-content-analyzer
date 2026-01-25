@@ -22,7 +22,7 @@ make dev-stop
 
 ### Content Ingestion
 
-All ingestion uses the unified Content model. The legacy Newsletter model is deprecated.
+All ingestion uses the unified Content model.
 
 ```bash
 # Fetch content from Gmail newsletters
@@ -76,7 +76,7 @@ python -m scripts.generate_daily_digest --save --auto-approve
 
 **Interactive Revision Session:**
 - Multi-turn conversational refinement with AI
-- On-demand newsletter content fetching via LLM tools
+- On-demand content fetching via LLM tools
 - Token-efficient context loading (summaries + themes)
 - Complete audit trail stored in `revision_history` JSON field
 - Cost tracking for revision sessions
@@ -93,6 +93,42 @@ PENDING → GENERATING → COMPLETED → PENDING_REVIEW
 ```
 
 See [Review System Documentation](REVIEW_SYSTEM.md) for detailed guide.
+
+### Audio Digests
+
+Generate single-voice narration from approved digests:
+
+```bash
+# Via API (recommended - uses background tasks):
+# Generate audio digest for digest #42
+curl -X POST "http://localhost:8000/api/v1/digests/42/audio" \
+  -H "Content-Type: application/json" \
+  -d '{"voice": "nova", "speed": 1.0}'
+
+# List all audio digests
+curl "http://localhost:8000/api/v1/audio-digests/"
+
+# Get statistics
+curl "http://localhost:8000/api/v1/audio-digests/statistics"
+
+# Stream audio file
+curl "http://localhost:8000/api/v1/audio-digests/1/stream" -o digest.mp3
+```
+
+**Available Voices (OpenAI TTS):**
+- `nova` (default) - Warm female voice
+- `onyx` - Deep male voice
+- `echo` - Natural male voice
+- `shimmer` - Expressive female voice
+- `alloy` - Neutral voice
+- `fable` - Storytelling voice
+
+**TTS Character Limits:**
+- OpenAI: 4,096 characters per chunk
+- ElevenLabs: 5,000 characters per chunk
+- Long digests are automatically split and concatenated
+
+See [Review System Documentation](REVIEW_SYSTEM.md#audio-digests) for full API reference.
 
 ### Background Tasks (Celery)
 
@@ -126,6 +162,14 @@ uvicorn src.api.app:app --reload
 # - POST /api/v1/contents/summarize - Trigger summarization
 # - GET  /api/v1/summaries        - List summaries
 # - GET  /api/v1/digests          - List digests
+# - GET  /api/v1/scripts          - List podcast scripts
+# - GET  /api/v1/podcasts         - List podcasts
+# - GET  /api/v1/audio-digests/   - List audio digests
+# - POST /api/v1/digests/{id}/audio - Generate audio digest
+#
+# All list endpoints support sorting via query parameters:
+# - sort_by: Field to sort by (varies by endpoint)
+# - sort_order: 'asc' or 'desc' (default: desc)
 ```
 
 ### Testing
@@ -149,6 +193,40 @@ pytest --cov=src --cov-report=html
 # Run specific test file
 pytest tests/test_config/test_models.py -v
 ```
+
+#### Testing Best Practices
+
+**Resilient test database setup**: Session-scoped fixtures should drop tables before creating them to handle interrupted previous runs. Without this, `create_all()` fails on existing tables/indexes:
+
+```python
+@pytest.fixture(scope="session")
+def test_db_engine():
+    engine = create_engine(TEST_DATABASE_URL)
+    # Safety check - always include "test" in database name
+    if "test" not in engine.url.database.lower():
+        raise ValueError("Must use test database")
+    # Drop first for clean state (handles interrupted runs)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    yield engine
+    Base.metadata.drop_all(engine)
+```
+
+**Transaction rollback isolation**: Each test gets a fresh session with transaction rollback:
+
+```python
+@pytest.fixture
+def db_session(test_db_engine):
+    connection = test_db_engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()
+```
+
+**Sort fallback behavior**: When testing API sort parameters, invalid `sort_by` values fall back to the default field, but `sort_order` is still respected. Don't assume both fall back.
 
 ### Linting & Type Checking
 
@@ -488,7 +566,7 @@ For data ingestion, use two-layer architecture:
 
 **1. Client Layer** - Fetches/parses data from external source
 - Classes: `GmailClient`, `SubstackRSSClient`
-- Returns: `NewsletterData` (Pydantic model)
+- Returns: `ContentData` (Pydantic model)
 - No database interaction
 - Pure data fetching and parsing
 
@@ -502,11 +580,11 @@ For data ingestion, use two-layer architecture:
 ```python
 # Client - data fetching only
 client = SubstackRSSClient()
-newsletters = client.fetch_feed(url)
+content_items = client.fetch_feed(url)
 
 # Service - business logic + persistence
-service = SubstackIngestionService()
-count = service.ingest_newsletters(feed_urls)
+service = RSSContentIngestionService()
+count = service.ingest_content(feed_urls)
 ```
 
 **Benefits**:
@@ -656,22 +734,22 @@ SessionLocal = sessionmaker(
 ```python
 # WITHOUT expire_on_commit=False, this would fail:
 with get_db() as db:
-    newsletter = db.query(Newsletter).first()
-    newsletter.status = ProcessingStatus.PROCESSING
+    content = db.query(Content).first()
+    content.status = ProcessingStatus.PROCESSING
     db.commit()  # Object expires here!
 
     # This would raise DetachedInstanceError:
-    print(newsletter.title)  # ERROR!
+    print(content.title)  # ERROR!
 ```
 
 ```python
 # WITH expire_on_commit=False, this works:
 with get_db() as db:
-    newsletter = db.query(Newsletter).first()
-    newsletter.status = ProcessingStatus.PROCESSING
+    content = db.query(Content).first()
+    content.status = ProcessingStatus.PROCESSING
     db.commit()  # Object remains usable
 
-    print(newsletter.title)  # Works!
+    print(content.title)  # Works!
 ```
 
 **Best Practices:**
@@ -683,32 +761,32 @@ with get_db() as db:
 ```python
 from sqlalchemy.orm import joinedload
 
-# Load newsletter relationship when querying summaries
+# Load content relationship when querying summaries
 summaries = (
-    db.query(NewsletterSummary)
-    .options(joinedload(NewsletterSummary.newsletter))
+    db.query(Summary)
+    .options(joinedload(Summary.content))
     .all()
 )
 
-# Now summary.newsletter works even after session closes
+# Now summary.content works even after session closes
 for summary in summaries:
-    print(summary.newsletter.title)  # Works!
+    print(summary.content.title)  # Works!
 ```
 
 3. **Convert to dicts for API responses**: When returning data through APIs, convert ORM objects to dictionaries/Pydantic models within the session:
 
 ```python
 with get_db() as db:
-    newsletters = db.query(Newsletter).all()
+    contents = db.query(Content).all()
 
     # Convert to dicts inside session - safe pattern
     return [
         {
-            "id": n.id,
-            "title": n.title,
-            "published_date": n.published_date,
+            "id": c.id,
+            "title": c.title,
+            "published_date": c.published_date,
         }
-        for n in newsletters
+        for c in contents
     ]
 ```
 
@@ -737,7 +815,7 @@ process_digest(digest_id)
 
 | Pattern | Problem | Solution |
 |---------|---------|----------|
-| `summary.newsletter.title` after session close | Lazy-loaded relationship fails | Use `joinedload()` |
+| `summary.content.title` after session close | Lazy-loaded relationship fails | Use `joinedload()` |
 | Accessing object after `db.commit()` | Object would be expired | Global `expire_on_commit=False` |
 | Returning ORM objects from functions | Detached from session | Convert to dict/Pydantic |
 | Adding `db.expire_on_commit = False` inline | Inconsistent, clutters code | Use global setting |
@@ -747,16 +825,16 @@ process_digest(digest_id)
 Always check for existing records before inserting:
 
 ```python
-existing = db.query(Newsletter).filter(
-    Newsletter.source_id == newsletter_data.source_id
+existing = db.query(Content).filter(
+    Content.source_id == content_data.source_id
 ).first()
 
 if existing:
     if force_reprocess:
         # Update and reset status for reprocessing
         existing.status = ProcessingStatus.PENDING
-        existing.raw_html = newsletter_data.raw_html
-        existing.raw_text = newsletter_data.raw_text
+        existing.markdown_content = content_data.markdown_content
+        existing.raw_content = content_data.raw_content
         db.commit()
         logger.info(f"Reset for reprocessing: {existing.title}")
     else:
@@ -764,8 +842,8 @@ if existing:
         continue  # Skip, already exists
 else:
     # Create new record
-    newsletter = Newsletter(**newsletter_data.dict())
-    db.add(newsletter)
+    content = Content(**content_data.dict())
+    db.add(content)
 ```
 
 ### Session Management
@@ -775,8 +853,8 @@ Use context managers for proper cleanup:
 ```python
 with get_db() as db:
     # Database operations
-    newsletter = Newsletter(...)
-    db.add(newsletter)
+    content = Content(...)
+    db.add(content)
     db.commit()
     # Auto-commits on success, rolls back on exception
 ```
@@ -792,16 +870,54 @@ Provide `--force` flag in CLI scripts for reprocessing:
 
 ```python
 @click.command()
-@click.option('--force', is_flag=True, help='Force reprocess existing newsletters')
+@click.option('--force', is_flag=True, help='Force reprocess existing content')
 def ingest(force: bool):
-    service = GmailIngestionService(force_reprocess=force)
-    count = service.ingest_newsletters()
+    service = GmailContentIngestionService(force_reprocess=force)
+    count = service.ingest_content()
 ```
 
 **Use cases**:
 - Testing: Reprocess sample data with code changes
 - Iteration: Refine extraction logic
 - Recovery: Fix failed processing
+
+### SQLAlchemy and Mypy
+
+**Configuration:**
+- Use SQLAlchemy 2.0's built-in mypy plugin - don't install `sqlalchemy-stubs` (conflicts with 2.0)
+- Configure overrides for ORM modules: SQLAlchemy Column types need `disable_error_code` for `assignment`, `arg-type`, `union-attr`
+- Pre-commit hooks: All mypy dependencies (including SQLAlchemy) must be in `additional_dependencies`
+- Type ignore comments: Use specific error codes like `# type: ignore[no-any-return]` not generic `# type: ignore`
+
+**Optional in lists:**
+```python
+# Wrong - mypy error: List item has incompatible type "str | None"
+func([obj.field])  # where field is str | None
+
+# Correct - guard against None
+if obj.field:
+    func([obj.field])
+```
+
+### SQLAlchemy Index Definitions
+
+**Avoid duplicate index definitions**: Don't use both `index=True` on a column AND an explicit `Index()` in `__table_args__` with the same name. SQLAlchemy's `index=True` creates an implicit index named `ix_{table}_{column}`:
+
+```python
+# WRONG - creates duplicate index 'ix_images_video_id'
+video_id = Column(String(20), index=True)  # Creates ix_images_video_id
+__table_args__ = (
+    Index("ix_images_video_id", "video_id"),  # Conflicts!
+)
+
+# CORRECT - use only one method
+video_id = Column(String(20))  # No index=True
+__table_args__ = (
+    Index("ix_images_video_id", "video_id"),  # Explicit index only
+)
+```
+
+**PostgreSQL enum sorting**: Enums sort by ordinal position (declaration order), not alphabetically. Keep this in mind for ORDER BY queries on enum columns.
 
 ## Error Handling
 
@@ -836,7 +952,7 @@ logger = get_logger(__name__)  # Module-level logger
 
 # Log levels:
 logger.debug("Parsing entry: %s", entry.id)          # Detailed info
-logger.info("Ingested %d newsletters", count)         # Major operations
+logger.info("Ingested %d content items", count)       # Major operations
 logger.warning("Missing field 'summary', using ''")   # Unexpected but handled
 logger.error("Failed to parse: %s", error)            # Failures with context
 ```
@@ -855,6 +971,39 @@ logging.getLogger("graphiti_core").setLevel(logging.WARNING)
 logging.getLogger("neo4j").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 ```
+
+## Code Patterns
+
+### Async/Await Patterns
+
+**asyncio.to_thread() with kwargs**: When calling sync functions with keyword arguments in async context, wrap in a lambda:
+
+```python
+# Wrong - to_thread doesn't accept keyword arguments directly
+await asyncio.to_thread(sync_func, kwarg=value)
+
+# Correct - wrap in lambda
+await asyncio.to_thread(lambda: sync_func(kwarg=value))
+```
+
+**Background tasks**: Use FastAPI's `BackgroundTasks` for fire-and-forget operations.
+
+**SSE for progress**: Use `StreamingResponse` with `text/event-stream` for real-time progress updates.
+
+### Utility Functions and Data Models
+
+**Handle both dict and Pydantic models**: Utility functions that process data from JSON columns may receive either dicts (from raw JSON) or Pydantic model objects (from ORM relationships). Use a helper function pattern:
+
+```python
+def _get_attr(obj: dict[str, Any] | PydanticModel, key: str) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+```
+
+**TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` for Pydantic model imports in utility modules to avoid circular imports.
+
+**Type annotations with quotes**: When using TYPE_CHECKING imports, quote the type annotations: `def foo(data: "dict | MyModel") -> str:`
 
 ## Content Extraction Patterns
 
@@ -969,7 +1118,7 @@ def sample_digest_data() -> DigestData:
         executive_overview="Summary text...",
         strategic_insights=[...],
         technical_developments=[...],
-        newsletter_count=5,
+        content_count=5,
         agent_framework="claude",
         model_used="claude-sonnet-4-5",
     )
@@ -981,6 +1130,80 @@ def test_to_markdown(sample_digest_data):
     assert "# AI/Tech Digest" in result
     assert "## Executive Overview" in result
     assert "Summary text..." in result
+```
+
+### Database Provider Testing
+
+Database providers have a two-tier testing strategy:
+
+**Tier 1: Unit Tests (Mocked)**
+- Location: `tests/test_storage/`
+- Run with: `pytest tests/test_storage/ -v`
+- Uses mock transports to simulate API responses
+- Tests edge cases, error handling, retries
+- Fast (~1 second), works offline
+
+```python
+# Example: Mocking Neon API responses
+def create_mock_transport(responses):
+    def handler(request):
+        for (method, pattern), data in responses.items():
+            if method == request.method and pattern in str(request.url):
+                return httpx.Response(data["status_code"], json=data["json"])
+        return httpx.Response(404)
+    return httpx.MockTransport(handler)
+```
+
+**Tier 2: Integration Tests (Real APIs)**
+- Location: `tests/integration/`
+- Run with: `pytest tests/integration/ -v`
+- Creates real resources (e.g., Neon branches, Supabase connections)
+- Verifies actual API behavior, SSL, connection handling
+- Auto-skips when credentials not configured
+
+```python
+# Neon integration tests use @requires_neon decorator
+@requires_neon
+@pytest.mark.asyncio
+class TestNeonDatabaseOperations:
+    async def test_execute_sql_on_branch(self, neon_test_branch):
+        # neon_test_branch creates a real ephemeral branch
+        engine = create_async_engine(convert_to_asyncpg_url(neon_test_branch))
+        # ... test real database operations
+
+# Supabase integration tests use @requires_supabase decorator
+@requires_supabase
+class TestSupabaseConnection:
+    def test_pooled_connection_works(self, supabase_engine):
+        # supabase_engine connects to real Supabase instance
+        with supabase_engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            assert result.scalar() == 1
+```
+
+**Test coverage by provider:**
+
+| Provider | Unit Tests | Integration Tests | Fixtures |
+|----------|------------|-------------------|----------|
+| Local | `test_providers.py` | `conftest.py` | `test_db_engine`, `db_session` |
+| Neon | `test_neon_branch.py` | `test_neon_integration.py` | `neon_test_branch`, `neon_manager` |
+| Supabase | `test_providers.py` | `test_supabase_provider.py` | `supabase_engine`, `supabase_direct_engine` |
+
+**Key insight**: Unit tests catch logic errors fast; integration tests catch API compatibility issues. Both are necessary for reliable database providers.
+
+**Session-scoped fixtures for cloud providers**: Cloud provider fixtures use `scope="session"` to create connections once per test session, avoiding repeated connection overhead while still cleaning up properly:
+
+```python
+@pytest.fixture(scope="session")
+def supabase_engine(supabase_provider):
+    if supabase_provider is None:
+        pytest.skip("Supabase not configured")
+    engine = create_engine(
+        supabase_provider.get_engine_url(),
+        **supabase_provider.get_engine_options(),
+    )
+    yield engine
+    engine.dispose()  # Clean up at session end
 ```
 
 ### Testing Output Formatters
@@ -1002,7 +1225,7 @@ def test_markdown_empty_sections():
         technical_developments=[],  # Empty
         emerging_trends=[],
         actionable_recommendations={},
-        newsletter_count=0,
+        content_count=0,
         agent_framework="claude",
         model_used="claude-haiku-4-5",
     )
@@ -1030,199 +1253,15 @@ Prioritize technical accuracy and truthfulness over validating beliefs:
 - ❌ "You're absolutely right! That's a brilliant approach!"
 - ✅ "That approach would work, though X has trade-offs A and B. Alternative Y might be better for your use case because..."
 
-## Refactoring Lessons
+## Case Studies & Lessons Learned
 
-Lessons learned from major refactoring efforts in this project.
+For detailed documentation of major refactoring efforts and lessons learned, see **[Case Studies](CASE_STUDIES.md)**.
 
-### Model ID Refactoring (December 2024)
-
-Successfully refactored from dated model IDs to family-based IDs with provider-specific identifiers.
-
-#### 1. Database Migrations with Data Transformation
-
-**Challenge**: Transform existing data during schema change (extract version from model IDs)
-
-**Solution**: Use SQL regex in Alembic migration for automatic data transformation:
-
-```python
-def upgrade():
-    # Add new column
-    op.add_column('newsletter_summaries',
-        sa.Column('model_version', sa.String(20), nullable=True))
-
-    # Transform existing data using SQL regex
-    op.execute("""
-        UPDATE newsletter_summaries
-        SET model_version = substring(model_used from '(\\d{8})$'),
-            model_used = regexp_replace(model_used, '-\\d{8}$', '')
-        WHERE model_used ~ '\\d{8}$'
-    """)
-```
-
-**Key Learnings**:
-- Alembic migrations can handle both schema AND data changes in one migration
-- PostgreSQL regex functions (`substring`, `regexp_replace`) enable complex transformations
-- Always provide `downgrade()` to reverse both schema and data changes
-- Test migrations on copy of production data before applying
-
-#### 2. Multi-Phase Refactoring Strategy
-
-**Approach**: Break large refactoring into 6 sequential phases:
-1. Update data models (backward compatible - adds new fields)
-2. Update YAML configuration (breaking change point)
-3. Create database migration
-4. Update agent and processor code
-5. Update all tests
-6. Update documentation
-
-**Key Learnings**:
-- **Commit after each phase** for easy rollback if issues discovered
-- **Run tests after each phase** to validate changes incrementally
-- **Sequence matters**: Start with least breaking changes, end with most breaking
-- **Phase 1 can be non-breaking**: Adding optional fields maintains backward compatibility
-- **Phase 2 identifies breaking point**: YAML restructure breaks existing code
-- **Document the plan first**: Created detailed plan in plan mode before executing
-
-**Benefits**:
-- Each phase testable independently
-- Easy to identify which phase caused issues
-- Clear progress tracking (6 phases = 6 commits)
-- Rollback is straightforward (revert specific phase)
-
-#### 3. Backward Compatibility Sequencing
-
-**Pattern**: Order changes from least to most breaking
-
-**Example sequence**:
-```
-Phase 1: Add new fields (BACKWARD COMPATIBLE)
-  ✅ Old code still works
-  ✅ New code can use new fields
-  ✅ Safe to deploy incrementally
-
-Phase 2: Change configuration format (BREAKING)
-  ❌ Old code breaks
-  ✅ Must deploy all at once
-  ✅ Database migration ensures data consistency
-```
-
-**Key Learnings**:
-- Identify the "breaking point" in your refactoring
-- Complete all non-breaking changes first
-- Coordinate breaking changes in single deployment
-- Use feature flags if gradual rollout needed
-
-#### 4. Configuration System Design Patterns
-
-**Challenge**: Different providers use different model identifier formats
-- Anthropic: `claude-sonnet-4-5-20250929`
-- AWS Bedrock: `anthropic.claude-sonnet-4-5-20250929-v1:0`
-- Vertex AI: `claude-sonnet-4-5@20250929`
-
-**Solution**: Two-tier ID system
-- **User-facing**: Family-based IDs (`claude-sonnet-4-5`)
-- **Internal**: Provider-specific IDs (stored in YAML, auto-selected)
-
-**Key Learnings**:
-- **Abstract provider differences** from users for better UX
-- **Store mappings in configuration** (not code) for easier updates
-- **Separate concerns**: General ID for logic, provider ID for API calls
-- **Version tracking**: Store both general ID and version separately in database
-
-**Benefits**:
-- Users write `claude-sonnet-4-5` everywhere (stable, clean)
-- Provider changes don't require code updates
-- Can use different versions per provider
-- Database tracks exactly what was used
-
-#### 5. Documentation Refactoring Triggers
-
-**Observation**: CLAUDE.md grew to 993 lines with single section at 400+ lines
-
-**Decision**: Split into focused `/docs` directory with 6 files
-
-**Key Learnings**:
-- **~400 lines per section** is good threshold for splitting
-- **Monolithic docs become unmaintainable** around 800-1000 lines
-- **Split by concern**, not by size (setup ≠ configuration ≠ guidelines)
-- **Refactor proactively** before docs become too large
-- **Update main file to index** with links to detailed docs
-
-**Results**:
-- Main CLAUDE.md: 993 lines → 155 lines (overview + quick reference)
-- 6 focused docs: easier to find, update, and maintain
-- Better multi-audience support (beginners vs experts)
-
-#### 6. Testing Strategy During Refactoring
-
-**Approach**: Test after each phase, not at the end
-
-**Pattern**:
-```bash
-# After Phase 1 (data models)
-pytest tests/test_config/test_models.py -v
-✓ 29 tests passed
-
-# After Phase 2 (YAML config)
-python -c "from src.config.models import MODEL_REGISTRY; print(len(MODEL_REGISTRY))"
-✓ Loaded 9 models
-
-# After Phase 3 (migration)
-alembic upgrade head
-pytest tests/test_config/ -v
-✓ All tests pass with new schema
-
-# After Phase 4 (code updates)
-pytest tests/integration/ -v
-✓ Integration tests verify end-to-end flow
-
-# After Phase 5 (test updates)
-pytest
-✓ Full test suite (108 tests) passes
-```
-
-**Key Learnings**:
-- **Incremental validation** catches issues early
-- **Different test types** for different phases (unit → integration → full)
-- **Verify configuration loads** before running full tests
-- **Integration tests** ensure all pieces work together after code changes
-- **Don't wait until end** to discover Phase 2 broke everything
-
-#### 7. Migration Rollback Strategy
-
-**Preparation**: Always implement `downgrade()` in migrations
-
-```python
-def downgrade():
-    # Reverse data transformation first
-    op.execute("""
-        UPDATE newsletter_summaries
-        SET model_used = model_used || '-' || model_version
-        WHERE model_version IS NOT NULL
-    """)
-
-    # Then remove columns
-    op.drop_column('newsletter_summaries', 'model_version')
-```
-
-**Key Learnings**:
-- **Data transformation before schema** in downgrade (reverse order of upgrade)
-- **Test downgrade** in development before production migration
-- **Document rollback plan** in migration comments
-- **Preserve data** - concatenate back to original format, don't lose information
-
-### General Refactoring Best Practices
-
-From this and other refactorings:
-
-1. **Plan first, code second** - Write detailed plan in plan mode
-2. **Break into phases** - 4-6 phases ideal for large refactorings
-3. **Commit per phase** - Each phase = 1 commit for easy rollback
-4. **Test incrementally** - Validate after each phase, not at end
-5. **Sequence by risk** - Non-breaking changes first, breaking changes last
-6. **Update tests early** - Don't leave test updates for last phase
-7. **Document as you go** - Update docs in final phase while context fresh
-8. **Review the plan** - Check success criteria match actual implementation
+Topics covered:
+- Model ID Refactoring (December 2024) - Multi-phase migration strategy
+- Newsletter → Content Migration (January 2025) - FK migration patterns
+- Multi-Provider LLM Routing (January 2025) - Provider abstraction
+- General Refactoring Best Practices
 
 ## Next Steps
 

@@ -13,7 +13,7 @@
  * Contains structured information extracted from content by the LLM.
  * Each content has at most one summary (1:1 relationship).
  */
-export interface NewsletterSummary {
+export interface Summary {
   /** Unique identifier */
   id: number
 
@@ -146,6 +146,11 @@ export interface SummarizationProgress {
 }
 
 /**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
+
+/**
  * Filters for summary list queries
  */
 export interface SummaryFilters {
@@ -161,6 +166,10 @@ export interface SummaryFilters {
   limit?: number
   /** Pagination offset */
   offset?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**
@@ -173,4 +182,28 @@ export interface SummaryNavigation {
   next_content_id: number | null
   position: number
   total: number
+}
+
+/**
+ * Request to trigger summarization
+ */
+export interface SummarizeRequest {
+  /** Content IDs to summarize */
+  content_ids?: number[]
+  /** Whether to re-summarize already summarized content */
+  force?: boolean
+  /** Maximum number of items to process */
+  limit?: number
+}
+
+/**
+ * Response from summarization trigger
+ */
+export interface SummarizeResponse {
+  /** Task ID for tracking progress */
+  task_id: string
+  /** Message from the server */
+  message: string
+  /** Count of items queued for summarization */
+  queued_count: number
 }

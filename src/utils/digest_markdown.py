@@ -218,7 +218,7 @@ def extract_digest_theme_tags(digest_data: dict[str, Any]) -> list[str]:
 def extract_source_content_ids(digest_data: dict[str, Any]) -> list[int]:
     """Extract source content IDs from digest data.
 
-    Looks for content_id in sources list or newsletter_ids.
+    Looks for content_id in sources list or legacy newsletter_id.
 
     Args:
         digest_data: Dictionary containing digest fields

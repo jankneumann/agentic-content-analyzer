@@ -173,24 +173,23 @@ class TestDocumentContent:
         assert links == []
 
 
-class TestNewsletterSourceEnum:
-    """Tests for NewsletterSource enum changes."""
+class TestContentSourceEnum:
+    """Tests for ContentSource enum."""
 
-    def test_new_source_types(self):
-        """Test new FILE_UPLOAD and YOUTUBE source types."""
-        from src.models.newsletter import NewsletterSource
+    def test_source_types(self):
+        """Test FILE_UPLOAD and YOUTUBE source types."""
+        from src.models.content import ContentSource
 
-        assert NewsletterSource.FILE_UPLOAD.value == "file_upload"
-        assert NewsletterSource.YOUTUBE.value == "youtube"
+        assert ContentSource.FILE_UPLOAD.value == "file_upload"
+        assert ContentSource.YOUTUBE.value == "youtube"
 
     def test_all_source_types(self):
         """Test all source types are present."""
-        from src.models.newsletter import NewsletterSource
+        from src.models.content import ContentSource
 
-        sources = [s.value for s in NewsletterSource]
+        sources = [s.value for s in ContentSource]
 
         assert "gmail" in sources
         assert "rss" in sources
         assert "file_upload" in sources
         assert "youtube" in sources
-        assert "other" in sources

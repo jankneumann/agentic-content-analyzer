@@ -24,10 +24,10 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { ReviewPaneHeader } from "./ReviewLayout"
-import type { NewsletterSummary } from "@/types"
+import type { Summary } from "@/types"
 
 interface SummaryPaneProps {
-  summary: NewsletterSummary | null | undefined
+  summary: Summary | null | undefined
   isPreview?: boolean
   className?: string
 }
