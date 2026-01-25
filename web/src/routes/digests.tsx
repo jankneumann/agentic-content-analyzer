@@ -327,6 +327,7 @@ function DigestsPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search digests..."
+                aria-label="Search digests"
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 className="pl-9"
@@ -341,7 +342,7 @@ function DigestsPage() {
                 }))
               }
             >
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[140px]" aria-label="Filter by type">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -359,7 +360,7 @@ function DigestsPage() {
                 }))
               }
             >
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-[180px]" aria-label="Filter by status">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -708,6 +709,7 @@ function DigestRow({
               className="h-7 w-7"
               onClick={onView}
               title="View digest"
+              aria-label="View digest"
             >
               <Eye className="h-4 w-4" />
             </Button>
@@ -722,6 +724,7 @@ function DigestRow({
                   to="/review/digest/$id"
                   params={{ id: String(digest.id) }}
                   title="Review digest"
+                  aria-label="Review digest"
                 >
                   <FileSearch className="h-4 w-4" />
                 </Link>
