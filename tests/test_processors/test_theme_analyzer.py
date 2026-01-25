@@ -183,6 +183,7 @@ async def test_analyze_themes_insufficient_newsletters():
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti:
             mock_graphiti.return_value.close = MagicMock()
 
+            # Note: mocking src.processors.theme_analyzer.get_db because that is where it is imported
             with patch("src.processors.theme_analyzer.get_db") as mock_get_db:
                 mock_db = MagicMock()
                 # Return only 2 newsletters (less than min_newsletters=5)
