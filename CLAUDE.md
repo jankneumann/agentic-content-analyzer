@@ -30,7 +30,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Development](docs/DEVELOPMENT.md) | Commands, patterns, database, testing |
 | [Model Config](docs/MODEL_CONFIGURATION.md) | LLM selection, providers, costs |
 | [Content Guidelines](docs/CONTENT_GUIDELINES.md) | Digest quality standards |
-| [Review System](docs/REVIEW_SYSTEM.md) | Digest/script review workflow |
+| [Review System](docs/REVIEW_SYSTEM.md) | Digest/script review workflow, audio digests |
 | [UX Design](docs/UX_DESIGN.md) | Frontend patterns |
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
 | [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
@@ -208,6 +208,7 @@ See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage
 ### Review & Delivery
 - Digest review workflow: [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md)
 - Podcast generation: [docs/REVIEW_SYSTEM.md#podcast-scripts](docs/REVIEW_SYSTEM.md#podcast-scripts)
+- Audio digests (single-voice TTS): [docs/REVIEW_SYSTEM.md#audio-digests](docs/REVIEW_SYSTEM.md#audio-digests)
 
 ## Environment Configuration
 

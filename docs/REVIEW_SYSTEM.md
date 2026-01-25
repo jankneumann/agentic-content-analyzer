@@ -872,6 +872,254 @@ psql -d newsletters -c "SELECT unnest(enum_range(NULL::digeststatus));"
 
 **Compliance**: Full audit trail for regulatory requirements
 
+---
+
+## Audio Digests
+
+Audio Digests provide single-voice narration of digest content, bypassing the full podcast workflow. This is ideal for users who want to listen to digest content without the conversational format of podcasts.
+
+### Overview
+
+Unlike the podcast workflow (which generates a scripted dialogue between two hosts), Audio Digests:
+- Use a single narration voice
+- Convert directly from digest markdown to speech
+- Skip the script generation and review stages
+- Support multiple voices and playback speeds
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    API Endpoints                         │
+│              (src/api/audio_digest_routes.py)            │
+│  - POST /digests/{id}/audio (generate)                   │
+│  - GET /audio-digests/ (list all)                        │
+│  - GET /audio-digests/statistics                         │
+│  - GET /audio-digests/{id}/stream (play audio)           │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│            AudioDigestGenerator                          │
+│      (src/processors/audio_digest_generator.py)          │
+│  - Loads digest markdown content                         │
+│  - Uses DigestTextPreparer for text processing           │
+│  - Uses TTSService for synthesis                         │
+│  - Handles chunking for long content                     │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+┌───────────────────┐ ┌───────────────────┐
+│  DigestTextPreparer │ │   TextChunker     │
+│  - Strip code blocks │ │  - Split at sentence │
+│  - Add SSML pauses  │ │  - Respect provider  │
+│  - Format headings  │ │    character limits  │
+└───────────────────┘ └───────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│               TTS Service                                │
+│          (src/delivery/tts_service.py)                   │
+│  - OpenAI TTS (default)                                  │
+│  - ElevenLabs (optional)                                 │
+│  - Synthesize chunks and concatenate                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+### TTS Character Limits & Chunking
+
+TTS providers have character limits per API call. The `TextChunker` class automatically handles this:
+
+| Provider | Character Limit | Notes |
+|----------|-----------------|-------|
+| OpenAI TTS | 4,096 characters | ~3 minutes of audio per chunk |
+| ElevenLabs | 5,000 characters | SSML support available |
+
+**Chunking Behavior:**
+1. Content under the limit → Single API call
+2. Content over the limit → Split at sentence/paragraph boundaries
+3. Multiple chunks → Synthesized separately, then concatenated via ffmpeg
+
+**Example:** A 10,000-character digest with OpenAI:
+- Split into 3 chunks (~3,300 chars each)
+- Each chunk synthesized separately
+- Final MP3 concatenated from all chunks
+
+### API Reference
+
+#### Create Audio Digest
+
+```http
+POST /api/v1/digests/{digest_id}/audio
+Content-Type: application/json
+
+{
+  "voice": "nova",
+  "speed": 1.0,
+  "provider": "openai"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 42,
+  "digest_id": 123,
+  "voice": "nova",
+  "speed": 1.0,
+  "provider": "openai",
+  "status": "pending",
+  "created_at": "2025-01-15T10:00:00Z"
+}
+```
+
+Generation happens in a background task. Poll the status or check the Audio Digests list.
+
+#### List All Audio Digests
+
+```http
+GET /api/v1/audio-digests/?status=completed&voice=nova&limit=50
+```
+
+**Query Parameters:**
+- `status`: Filter by status (pending, processing, completed, failed)
+- `voice`: Filter by voice preset
+- `provider`: Filter by TTS provider
+- `limit`, `offset`: Pagination
+- `sort_by`, `sort_order`: Sorting
+
+#### Get Statistics
+
+```http
+GET /api/v1/audio-digests/statistics
+```
+
+**Response:**
+```json
+{
+  "total": 25,
+  "generating": 2,
+  "completed": 20,
+  "failed": 3,
+  "total_duration_seconds": 3600.5,
+  "by_voice": {"nova": 15, "onyx": 10},
+  "by_provider": {"openai": 25}
+}
+```
+
+#### Stream Audio
+
+```http
+GET /api/v1/audio-digests/{id}/stream
+```
+
+Returns the MP3 file with `Content-Type: audio/mpeg`.
+
+#### Delete Audio Digest
+
+```http
+DELETE /api/v1/audio-digests/{id}
+```
+
+### Voice Presets
+
+Available voices for OpenAI TTS:
+
+| Voice | Description | Best For |
+|-------|-------------|----------|
+| `nova` (default) | Warm female | General narration |
+| `onyx` | Deep male | Professional content |
+| `echo` | Natural male | Conversational tone |
+| `shimmer` | Expressive female | Engaging content |
+| `alloy` | Neutral | Technical content |
+| `fable` | Storytelling | Narrative content |
+
+### Usage Examples
+
+**Python (direct):**
+```python
+from src.processors.audio_digest_generator import AudioDigestGenerator
+
+generator = AudioDigestGenerator(
+    provider="openai",
+    voice="nova",
+    speed=1.0,
+)
+
+audio_digest = await generator.generate(
+    digest_id=123,
+    progress_callback=lambda cur, total, msg: print(f"{cur}% - {msg}")
+)
+print(f"Audio URL: {audio_digest.audio_url}")
+```
+
+**API (via frontend or curl):**
+```bash
+# Generate audio digest
+curl -X POST "http://localhost:8000/api/v1/digests/123/audio" \
+  -H "Content-Type: application/json" \
+  -d '{"voice": "nova", "speed": 1.25}'
+
+# Check status
+curl "http://localhost:8000/api/v1/audio-digests/42"
+
+# Stream audio
+curl "http://localhost:8000/api/v1/audio-digests/42/stream" -o digest.mp3
+```
+
+### Configuration
+
+Settings in `.env`:
+
+```bash
+# Default voice for audio digests
+AUDIO_DIGEST_DEFAULT_VOICE=nova
+
+# Default speed (0.25 to 4.0)
+AUDIO_DIGEST_SPEED=1.0
+
+# Default provider (openai or elevenlabs)
+AUDIO_DIGEST_PROVIDER=openai
+
+# For ElevenLabs (optional)
+ELEVENLABS_API_KEY=your-api-key
+```
+
+### Database Schema
+
+The `audio_digests` table stores generation metadata:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | Integer | Primary key |
+| `digest_id` | Integer | FK to digests table |
+| `voice` | String | Voice preset used |
+| `speed` | Float | Playback speed |
+| `provider` | String | TTS provider |
+| `status` | Enum | pending, processing, completed, failed |
+| `audio_url` | String | Storage path to MP3 file |
+| `duration_seconds` | Float | Estimated duration |
+| `file_size_bytes` | Integer | File size |
+| `text_char_count` | Integer | Input text length |
+| `chunk_count` | Integer | Number of TTS chunks |
+| `error_message` | Text | Error details if failed |
+| `created_at` | DateTime | Generation start time |
+| `completed_at` | DateTime | Generation completion time |
+
+### Comparison: Audio Digests vs. Podcasts
+
+| Aspect | Audio Digest | Podcast |
+|--------|--------------|---------|
+| **Input** | Digest markdown | Approved podcast script |
+| **Voices** | Single voice | Two voices (Alex & Sam) |
+| **Workflow** | Direct generation | Script → Review → Audio |
+| **Duration** | ~5-10 minutes | ~15-30 minutes |
+| **Use Case** | Quick listen | In-depth discussion |
+| **Review Required** | No | Yes (script review) |
+
+---
+
 ## Conclusion
 
 The review system provides flexible, AI-powered quality control for digest content. Key benefits:

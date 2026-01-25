@@ -106,9 +106,14 @@
 
 ## Phase 10: Documentation
 
-- [ ] 10.1 Add audio digest section to API docs
-- [ ] 10.2 Update CLAUDE.md with audio digest guidance
-- [ ] 10.3 Document TTS character limits and chunking behavior
+- [x] 10.1 Add audio digest section to API docs
+  - Added comprehensive Audio Digests section to REVIEW_SYSTEM.md
+  - Includes architecture diagram, API reference, TTS limits
+- [x] 10.2 Update CLAUDE.md with audio digest guidance
+  - Added to Documentation Index and Quick Links by Task
+- [x] 10.3 Document TTS character limits and chunking behavior
+  - Documented in REVIEW_SYSTEM.md#audio-digests
+  - OpenAI: 4,096 chars, ElevenLabs: 5,000 chars
 
 ---
 
@@ -116,13 +121,13 @@
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 1. Text Chunking | 90% | DialogueBatcher integration pending |
-| 2. TTSService | 90% | Streaming output pending |
+| 1. Text Chunking | ✅ | DialogueBatcher.chunk_long_batches() added |
+| 2. TTSService | ✅ | synthesize_long() and synthesize_long_stream() complete |
 | 3. Data Model | ✅ | Complete |
 | 4. Text Preparation | ✅ | Complete |
-| 5. Audio Generation | 90% | Progress callback pending |
+| 5. Audio Generation | ✅ | Progress callback already implemented |
 | 6. API Endpoints | ✅ | Complete |
 | 7. Configuration | ✅ | Complete |
-| 8. Testing | 90% | Integration test pending |
+| 8. Testing | ✅ | Integration test added |
 | 9. Frontend | ✅ | Complete |
-| 10. Documentation | 0% | Not started |
+| 10. Documentation | ✅ | Complete |

@@ -94,6 +94,42 @@ PENDING → GENERATING → COMPLETED → PENDING_REVIEW
 
 See [Review System Documentation](REVIEW_SYSTEM.md) for detailed guide.
 
+### Audio Digests
+
+Generate single-voice narration from approved digests:
+
+```bash
+# Via API (recommended - uses background tasks):
+# Generate audio digest for digest #42
+curl -X POST "http://localhost:8000/api/v1/digests/42/audio" \
+  -H "Content-Type: application/json" \
+  -d '{"voice": "nova", "speed": 1.0}'
+
+# List all audio digests
+curl "http://localhost:8000/api/v1/audio-digests/"
+
+# Get statistics
+curl "http://localhost:8000/api/v1/audio-digests/statistics"
+
+# Stream audio file
+curl "http://localhost:8000/api/v1/audio-digests/1/stream" -o digest.mp3
+```
+
+**Available Voices (OpenAI TTS):**
+- `nova` (default) - Warm female voice
+- `onyx` - Deep male voice
+- `echo` - Natural male voice
+- `shimmer` - Expressive female voice
+- `alloy` - Neutral voice
+- `fable` - Storytelling voice
+
+**TTS Character Limits:**
+- OpenAI: 4,096 characters per chunk
+- ElevenLabs: 5,000 characters per chunk
+- Long digests are automatically split and concatenated
+
+See [Review System Documentation](REVIEW_SYSTEM.md#audio-digests) for full API reference.
+
 ### Background Tasks (Celery)
 
 ```bash
@@ -128,6 +164,8 @@ uvicorn src.api.app:app --reload
 # - GET  /api/v1/digests          - List digests
 # - GET  /api/v1/scripts          - List podcast scripts
 # - GET  /api/v1/podcasts         - List podcasts
+# - GET  /api/v1/audio-digests/   - List audio digests
+# - POST /api/v1/digests/{id}/audio - Generate audio digest
 #
 # All list endpoints support sorting via query parameters:
 # - sort_by: Field to sort by (varies by endpoint)
