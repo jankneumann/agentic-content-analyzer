@@ -7,15 +7,17 @@ Includes SSE streaming for real-time message responses.
 
 import json
 import uuid
+import re
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, List, Dict, Union
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
@@ -520,6 +522,333 @@ async def generate_ai_response(
 
 
 # ============================================================================
+# Artifact Update Helpers
+# ============================================================================
+
+SUMMARY_SECTION_MAPPING = {
+    "Executive Summary": "executive_summary",
+    "Key Themes": "key_themes",
+    "Strategic Insights": "strategic_insights",
+    "Technical Details": "technical_details",
+    "Actionable Items": "actionable_items",
+    "Notable Quotes": "notable_quotes",
+}
+
+DIGEST_SECTION_MAPPING = {
+    "Executive Overview": "executive_overview",
+    "Strategic Insights": "strategic_insights",
+    "Technical Developments": "technical_developments",
+    "Emerging Trends": "emerging_trends",
+}
+
+# Define list fields for type checking when value is None
+SUMMARY_LIST_FIELDS = {
+    "key_themes", "strategic_insights", "technical_details",
+    "actionable_items", "notable_quotes"
+}
+
+DIGEST_LIST_FIELDS = {
+    "strategic_insights", "technical_developments", "emerging_trends"
+}
+
+
+def parse_bullet_list(text: str) -> List[str]:
+    """Parse a bulleted list text into a list of strings."""
+    lines = text.split('\n')
+    items = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Remove common bullet markers
+        if line.startswith('- ') or line.startswith('* '):
+            items.append(line[2:].strip())
+        elif line.startswith('• '):
+            items.append(line[2:].strip())
+        elif re.match(r'^\d+\.\s', line):
+            # Remove numbered list markers like "1. "
+            items.append(re.sub(r'^\d+\.\s', '', line).strip())
+        else:
+            items.append(line)
+    return items
+
+
+def apply_action_to_summary(db: Session, artifact_id: int, action: SuggestedAction):
+    """Apply action to a NewsletterSummary."""
+    summary = db.query(NewsletterSummary).filter(NewsletterSummary.id == artifact_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="Summary not found")
+
+    field_name = SUMMARY_SECTION_MAPPING.get(action.section)
+    if not field_name:
+         # Attempt case-insensitive match
+         for k, v in SUMMARY_SECTION_MAPPING.items():
+             if k.lower() == (action.section or "").lower():
+                 field_name = v
+                 break
+
+    if not field_name:
+        raise HTTPException(status_code=400, detail=f"Unknown section: {action.section}")
+
+    current_value = getattr(summary, field_name)
+
+    # Check if field is a list field (either by value or by definition)
+    is_list_field = isinstance(current_value, list) or field_name in SUMMARY_LIST_FIELDS
+
+    # Handle list fields
+    if is_list_field:
+        current_list = current_value or []
+
+        if action.type == "replace_section" or action.type == "rewrite":
+            if action.section_index is not None:
+                # Replace specific item
+                if 0 <= action.section_index < len(current_list):
+                    # We assume suggested_content is the new item text
+                    new_list = list(current_list)
+                    new_list[action.section_index] = action.suggested_content
+                    setattr(summary, field_name, new_list)
+                    flag_modified(summary, field_name)
+                else:
+                    raise HTTPException(status_code=400, detail="Section index out of bounds")
+            else:
+                # Replace entire list
+                new_list = parse_bullet_list(action.suggested_content)
+                setattr(summary, field_name, new_list)
+                flag_modified(summary, field_name)
+
+        elif action.type == "add_content":
+            # Add to list
+            new_items = parse_bullet_list(action.suggested_content)
+            new_list = list(current_list) + new_items
+            setattr(summary, field_name, new_list)
+            flag_modified(summary, field_name)
+
+        elif action.type == "remove_content":
+            if action.section_index is not None:
+                if 0 <= action.section_index < len(current_list):
+                    new_list = list(current_list)
+                    new_list.pop(action.section_index)
+                    setattr(summary, field_name, new_list)
+                    flag_modified(summary, field_name)
+                else:
+                    raise HTTPException(status_code=400, detail="Section index out of bounds")
+            else:
+                # If no index, maybe clear the list? Or remove matching content?
+                # For safety, require index for removal or clear if explicitly requested?
+                # Let's assume removing content without index means clearing or removing matching text.
+                # But matching text is hard. We will skip if no index for now.
+                pass
+
+    # Handle text fields (Executive Summary)
+    else:
+        # Assuming text field
+        if action.type == "replace_section" or action.type == "rewrite":
+            setattr(summary, field_name, action.suggested_content)
+        elif action.type == "add_content":
+            new_text = (current_value or "") + "\\n\\n" + action.suggested_content
+            setattr(summary, field_name, new_text)
+        # remove_content on text block is ambiguous without range, ignoring unless implemented differently
+
+    db.add(summary)
+
+
+def apply_action_to_digest(db: Session, artifact_id: int, action: SuggestedAction):
+    """Apply action to a Digest."""
+    digest = db.query(Digest).filter(Digest.id == artifact_id).first()
+    if not digest:
+        raise HTTPException(status_code=404, detail="Digest not found")
+
+    field_name = DIGEST_SECTION_MAPPING.get(action.section)
+    if not field_name:
+         for k, v in DIGEST_SECTION_MAPPING.items():
+             if k.lower() == (action.section or "").lower():
+                 field_name = v
+                 break
+
+    if not field_name:
+        raise HTTPException(status_code=400, detail=f"Unknown section: {action.section}")
+
+    current_value = getattr(digest, field_name)
+
+    # Digest fields like strategic_insights are List[Dict | str] or just Text (executive_overview)
+
+    if field_name == "executive_overview":
+         # Text field
+        if action.type == "replace_section" or action.type == "rewrite":
+            setattr(digest, field_name, action.suggested_content)
+        elif action.type == "add_content":
+             new_text = (current_value or "") + "\\n\\n" + action.suggested_content
+             setattr(digest, field_name, new_text)
+    else:
+        # List fields (strategic_insights, etc.)
+        # Check if it should be a list based on our mapping/knowledge
+        is_list_field = isinstance(current_value, list) or field_name in DIGEST_LIST_FIELDS
+
+        if is_list_field:
+            current_list = current_value or []
+
+            if action.type == "replace_section" or action.type == "rewrite":
+                if action.section_index is not None:
+                    if 0 <= action.section_index < len(current_list):
+                        new_list = list(current_list)
+                        # If the original was a dict, we might want to keep it a dict if we can parse the input?
+                        # But input is string. We'll replace with string or dict if we can infer structure.
+                        # For simplicity, if we receive string and it looks like **Title**\\nBody, we can try to parse.
+                        # But for now, just replacing with the string content is supported by the model (List[Dict | str]).
+                        new_list[action.section_index] = action.suggested_content
+                        setattr(digest, field_name, new_list)
+                        flag_modified(digest, field_name)
+                    else:
+                        raise HTTPException(status_code=400, detail="Section index out of bounds")
+                else:
+                    # Replace entire list
+                    # Use parse_bullet_list to get items.
+                    new_list = parse_bullet_list(action.suggested_content)
+                    setattr(digest, field_name, new_list)
+                    flag_modified(digest, field_name)
+
+            elif action.type == "add_content":
+                new_items = parse_bullet_list(action.suggested_content)
+                new_list = list(current_list) + new_items
+                setattr(digest, field_name, new_list)
+                flag_modified(digest, field_name)
+
+            elif action.type == "remove_content":
+                if action.section_index is not None:
+                    if 0 <= action.section_index < len(current_list):
+                        new_list = list(current_list)
+                        new_list.pop(action.section_index)
+                        setattr(digest, field_name, new_list)
+                        flag_modified(digest, field_name)
+                    else:
+                        raise HTTPException(status_code=400, detail="Section index out of bounds")
+
+    db.add(digest)
+
+
+def apply_action_to_script(db: Session, artifact_id: int, action: SuggestedAction):
+    """Apply action to a PodcastScriptRecord."""
+    script = db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == artifact_id).first()
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+
+    if not script.script_json:
+        raise HTTPException(status_code=400, detail="Script has no JSON content")
+
+    script_data = dict(script.script_json) # Copy
+    sections = script_data.get("sections", [])
+
+    target_section = None
+    target_section_index = -1
+
+    # Find section
+    # If section string provided, try to match title or type
+    if action.section:
+        normalized_target = action.section.lower()
+        for i, sec in enumerate(sections):
+            title = sec.get("title", "").lower()
+            stype = sec.get("section_type", "").lower()
+            # Check for "TYPE: TITLE" format matching
+            full_header = f"{stype}: {title}"
+
+            if (normalized_target in title or
+                normalized_target in stype or
+                normalized_target in full_header):
+                target_section = sec
+                target_section_index = i
+                break
+
+    # If not found by name, check if action.section_index refers to SECTION index?
+    # The SuggestedAction definition says section_index.
+    # If section is NOT provided, maybe section_index is the section index.
+    # But usually section name is provided.
+
+    if target_section:
+        # We found the section.
+        # Now, what does the action apply to?
+        # If type is replace_section, we probably replace the dialogue of this section.
+        def parse_dialogue(text: str) -> List[Dict[str, str]]:
+            """Helper to parse dialogue text into list of turns."""
+            parsed = []
+            # Regex to find **SPEAKER:** Text
+            pattern = re.compile(r'\*\*(.*?):\*\*\s*(.*)')
+
+            lines = text.split('\n')
+            current_speaker = None
+            current_text = []
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                match = pattern.match(line)
+                if match:
+                    # New turn
+                    if current_speaker:
+                         parsed.append({
+                             "speaker": current_speaker.lower(),
+                             "text": " ".join(current_text)
+                         })
+                    current_speaker = match.group(1).strip()
+                    current_text = [match.group(2).strip()]
+                else:
+                    # Continuation of text
+                    if current_speaker:
+                        current_text.append(line)
+
+            # Flush last
+            if current_speaker:
+                 parsed.append({
+                     "speaker": current_speaker.lower(),
+                     "text": " ".join(current_text)
+                 })
+            return parsed
+
+        if action.type == "replace_section" or action.type == "rewrite":
+            new_dialogue = parse_dialogue(action.suggested_content)
+
+            if new_dialogue:
+                sections[target_section_index]["dialogue"] = new_dialogue
+                script_data["sections"] = sections
+                script.script_json = script_data
+                flag_modified(script, "script_json")
+            else:
+                 logger.warning(f"Failed to parse dialogue from suggested content for script {artifact_id}")
+                 raise HTTPException(status_code=400, detail="Failed to parse dialogue format from suggested content")
+
+        elif action.type == "add_content":
+            # Add dialogue to the end of the section
+            new_turns = parse_dialogue(action.suggested_content)
+            if new_turns:
+                current_dialogue = sections[target_section_index].get("dialogue", [])
+                sections[target_section_index]["dialogue"] = current_dialogue + new_turns
+                script_data["sections"] = sections
+                script.script_json = script_data
+                flag_modified(script, "script_json")
+            else:
+                raise HTTPException(status_code=400, detail="Failed to parse dialogue to add")
+
+        elif action.type == "remove_content":
+            # Remove dialogue turn by index
+            if action.section_index is not None:
+                current_dialogue = sections[target_section_index].get("dialogue", [])
+                if 0 <= action.section_index < len(current_dialogue):
+                    current_dialogue.pop(action.section_index)
+                    sections[target_section_index]["dialogue"] = current_dialogue
+                    script_data["sections"] = sections
+                    script.script_json = script_data
+                    flag_modified(script, "script_json")
+                else:
+                    raise HTTPException(status_code=400, detail="Dialogue index out of bounds")
+
+    else:
+        # Section not found
+        raise HTTPException(status_code=400, detail=f"Could not find section matching: {action.section}")
+
+    db.add(script)
+
+
+# ============================================================================
 # Routes
 # ============================================================================
 
@@ -880,14 +1209,36 @@ async def apply_action(conversation_id: str, request: ApplyActionRequest) -> dic
         if request.action_index >= len(message.suggested_actions):
             raise HTTPException(status_code=400, detail="Action index out of range")
 
-        action = message.suggested_actions[request.action_index]
+        # Get action dict and convert to model for easier handling
+        action_data = message.suggested_actions[request.action_index]
+        if isinstance(action_data, dict):
+            action = SuggestedAction(**action_data)
+        else:
+            # Should be dict if from JSON, but safety check
+            action = action_data
 
-        # TODO: Apply the action to the actual artifact (summary/digest/script)
-        # This would involve updating the artifact based on action type
+        try:
+            if conversation.artifact_type == "summary":
+                apply_action_to_summary(db, int(conversation.artifact_id), action)
+            elif conversation.artifact_type == "digest":
+                apply_action_to_digest(db, int(conversation.artifact_id), action)
+            elif conversation.artifact_type == "script":
+                apply_action_to_script(db, int(conversation.artifact_id), action)
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported artifact type: {conversation.artifact_type}")
+
+            db.commit()
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error applying action: {e}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
 
         return {
             "status": "applied",
-            "action": action,
+            "action": action_data,
             "artifact_type": conversation.artifact_type,
             "artifact_id": conversation.artifact_id,
         }
