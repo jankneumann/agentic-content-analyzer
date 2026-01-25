@@ -9,14 +9,16 @@ Provides REST endpoints for:
 
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from sqlalchemy import func
 
 from src.models.audio_digest import (
     AudioDigest,
     AudioDigestCreate,
     AudioDigestListItem,
     AudioDigestResponse,
+    AudioDigestStatistics,
     AudioDigestStatus,
 )
 from src.models.digest import Digest
@@ -211,6 +213,126 @@ async def list_digest_audio(digest_id: int) -> list[AudioDigestListItem]:
             .all()
         )
         return [AudioDigestListItem.model_validate(ad) for ad in audio_digests]
+
+
+@router.get("/audio-digests/", response_model=list[AudioDigestListItem])
+async def list_audio_digests(
+    status: AudioDigestStatus | None = Query(None, description="Filter by status"),
+    voice: str | None = Query(None, description="Filter by voice"),
+    provider: str | None = Query(None, description="Filter by provider"),
+    limit: int = Query(50, ge=1, le=200, description="Maximum results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    sort_by: str | None = Query(None, description="Sort field"),
+    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
+) -> list[AudioDigestListItem]:
+    """List all audio digests with optional filtering.
+
+    Args:
+        status: Filter by generation status
+        voice: Filter by voice name
+        provider: Filter by TTS provider
+        limit: Maximum number of results
+        offset: Offset for pagination
+        sort_by: Field to sort by
+        sort_order: Sort direction (asc or desc)
+
+    Returns:
+        List of AudioDigestListItem
+    """
+    with get_db() as db:
+        query = db.query(AudioDigest)
+
+        # Apply filters
+        if status:
+            query = query.filter(AudioDigest.status == status)
+        if voice:
+            query = query.filter(AudioDigest.voice == voice)
+        if provider:
+            query = query.filter(AudioDigest.provider == provider)
+
+        # Apply sorting
+        if sort_by:
+            sort_column = getattr(AudioDigest, sort_by, AudioDigest.created_at)
+            if sort_order.lower() == "asc":
+                query = query.order_by(sort_column.asc())
+            else:
+                query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(AudioDigest.created_at.desc())
+
+        # Apply pagination
+        query = query.offset(offset).limit(limit)
+
+        audio_digests = query.all()
+        return [AudioDigestListItem.model_validate(ad) for ad in audio_digests]
+
+
+@router.get("/audio-digests/statistics", response_model=AudioDigestStatistics)
+async def get_audio_digest_statistics() -> AudioDigestStatistics:
+    """Get statistics for audio digests.
+
+    Returns:
+        AudioDigestStatistics with counts and aggregations
+    """
+    with get_db() as db:
+        # Total count
+        total = db.query(func.count(AudioDigest.id)).scalar() or 0
+
+        # Count by status
+        generating = (
+            db.query(func.count(AudioDigest.id))
+            .filter(
+                AudioDigest.status.in_([AudioDigestStatus.PENDING, AudioDigestStatus.PROCESSING])
+            )
+            .scalar()
+            or 0
+        )
+        completed = (
+            db.query(func.count(AudioDigest.id))
+            .filter(AudioDigest.status == AudioDigestStatus.COMPLETED)
+            .scalar()
+            or 0
+        )
+        failed = (
+            db.query(func.count(AudioDigest.id))
+            .filter(AudioDigest.status == AudioDigestStatus.FAILED)
+            .scalar()
+            or 0
+        )
+
+        # Total duration
+        total_duration = (
+            db.query(func.sum(AudioDigest.duration_seconds))
+            .filter(AudioDigest.status == AudioDigestStatus.COMPLETED)
+            .scalar()
+            or 0.0
+        )
+
+        # Count by voice
+        voice_counts = (
+            db.query(AudioDigest.voice, func.count(AudioDigest.id))
+            .group_by(AudioDigest.voice)
+            .all()
+        )
+        by_voice = {voice: count for voice, count in voice_counts}
+
+        # Count by provider
+        provider_counts = (
+            db.query(AudioDigest.provider, func.count(AudioDigest.id))
+            .group_by(AudioDigest.provider)
+            .all()
+        )
+        by_provider = {provider: count for provider, count in provider_counts}
+
+        return AudioDigestStatistics(
+            total=total,
+            generating=generating,
+            completed=completed,
+            failed=failed,
+            total_duration_seconds=total_duration,
+            by_voice=by_voice,
+            by_provider=by_provider,
+        )
 
 
 @router.get("/audio-digests/{audio_digest_id}", response_model=AudioDigestResponse)

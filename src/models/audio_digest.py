@@ -115,9 +115,25 @@ class AudioDigestListItem(BaseModel):
     id: int
     digest_id: int
     voice: str
+    speed: float
     provider: str
     status: AudioDigestStatus
     duration_seconds: float | None = None
+    file_size_bytes: int | None = None
+    error_message: str | None = None
     created_at: datetime
+    completed_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AudioDigestStatistics(BaseModel):
+    """Statistics for audio digests."""
+
+    total: int = Field(description="Total number of audio digests")
+    generating: int = Field(description="Currently generating (pending + processing)")
+    completed: int = Field(description="Successfully completed")
+    failed: int = Field(description="Failed generation")
+    total_duration_seconds: float = Field(description="Total audio duration in seconds")
+    by_voice: dict[str, int] = Field(description="Count by voice")
+    by_provider: dict[str, int] = Field(description="Count by provider")

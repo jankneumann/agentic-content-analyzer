@@ -189,16 +189,111 @@ class TestListDigestAudio:
         data = response.json()
         assert len(data) == 1
         item = data[0]
+        # Core fields
         assert "id" in item
         assert "digest_id" in item
         assert "voice" in item
+        assert "speed" in item
         assert "provider" in item
         assert "status" in item
         assert "duration_seconds" in item
+        assert "file_size_bytes" in item
+        assert "error_message" in item
         assert "created_at" in item
-        # List items don't include full details
-        assert "error_message" not in item
+        assert "completed_at" in item
+        # List items don't include generation details
         assert "audio_url" not in item
+        assert "text_char_count" not in item
+        assert "chunk_count" not in item
+
+
+class TestListAllAudioDigests:
+    """Tests for GET /api/v1/audio-digests/ endpoint."""
+
+    def test_list_all_audio_digests_empty(self, client):
+        """Test listing all audio digests when none exist."""
+        response = client.get("/api/v1/audio-digests/")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data == []
+
+    def test_list_all_audio_digests_returns_all(self, client, sample_audio_digests):
+        """Test listing all audio digests returns items."""
+        response = client.get("/api/v1/audio-digests/")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 3
+
+    def test_list_all_audio_digests_filter_by_status(self, client, sample_audio_digests):
+        """Test filtering audio digests by status."""
+        response = client.get("/api/v1/audio-digests/", params={"status": "completed"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["status"] == "completed"
+
+    def test_list_all_audio_digests_filter_by_voice(self, client, sample_audio_digests):
+        """Test filtering audio digests by voice."""
+        response = client.get("/api/v1/audio-digests/", params={"voice": "alloy"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["voice"] == "alloy"
+
+    def test_list_all_audio_digests_pagination(self, client, sample_audio_digests):
+        """Test pagination of audio digests list."""
+        response = client.get("/api/v1/audio-digests/", params={"limit": 2, "offset": 0})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+    def test_list_all_audio_digests_sort_order(self, client, sample_audio_digests):
+        """Test sorting audio digests."""
+        response = client.get(
+            "/api/v1/audio-digests/",
+            params={"sort_by": "created_at", "sort_order": "asc"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 3
+
+
+class TestAudioDigestStatistics:
+    """Tests for GET /api/v1/audio-digests/statistics endpoint."""
+
+    def test_get_statistics_empty(self, client):
+        """Test getting statistics when no audio digests exist."""
+        response = client.get("/api/v1/audio-digests/statistics")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["generating"] == 0
+        assert data["completed"] == 0
+        assert data["failed"] == 0
+        assert data["total_duration_seconds"] == 0.0
+        assert data["by_voice"] == {}
+        assert data["by_provider"] == {}
+
+    def test_get_statistics_with_data(self, client, sample_audio_digests):
+        """Test getting statistics with existing audio digests."""
+        response = client.get("/api/v1/audio-digests/statistics")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3
+        assert data["generating"] == 1  # processing
+        assert data["completed"] == 1
+        assert data["failed"] == 1
+        assert data["total_duration_seconds"] == 120.5  # from completed one
+        assert "nova" in data["by_voice"]
+        assert "openai" in data["by_provider"]
 
 
 class TestGetAudioDigest:
