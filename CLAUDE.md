@@ -19,254 +19,213 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Quick reference for Claude Code. Detailed docs in `/docs` directory.
 
-## Documentation
+## Documentation Index
 
-Comprehensive documentation is available in the `/docs` directory:
+| Doc | Purpose |
+|-----|---------|
+| [Setup](docs/SETUP.md) | Environment setup, configuration |
+| [Architecture](docs/ARCHITECTURE.md) | System design, ingestion, parsers, data models |
+| [Development](docs/DEVELOPMENT.md) | Commands, patterns, database, testing |
+| [Model Config](docs/MODEL_CONFIGURATION.md) | LLM selection, providers, costs |
+| [Content Guidelines](docs/CONTENT_GUIDELINES.md) | Digest quality standards |
+| [Review System](docs/REVIEW_SYSTEM.md) | Digest/script review workflow, audio digests |
+| [UX Design](docs/UX_DESIGN.md) | Frontend patterns |
+| [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
+| [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
 
-- **[Overview & Quick Start](docs/README.md)** - Project introduction and getting started
-- **[Setup Guide](docs/SETUP.md)** - Development environment setup and configuration
-- **[Architecture](docs/ARCHITECTURE.md)** - System design, tech stack, and workflows
-- **[Model Configuration](docs/MODEL_CONFIGURATION.md)** - LLM selection, providers, and cost optimization
-- **[Content Guidelines](docs/CONTENT_GUIDELINES.md)** - Digest quality standards and formatting
-- **[Development Guide](docs/DEVELOPMENT.md)** - Commands, patterns, and best practices
+**Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
 
-- Always use Context7 MCP when you need library/API documentation, code generation, setup or configuration steps for external libraries without me having to explicitly ask.
-
-
-## Quick Reference
-
-### Project Overview
+## Project Overview
 
 An agentic AI solution for aggregating and summarizing AI newsletters into daily and weekly digests.
 
-- **Purpose**: Help technical leaders and developers at Comcast stay informed on AI/Data trends
-- **Voice**: Strategic leadership spanning CTO-level strategy to individual practitioner best practices
-- **Sources**: Gmail and Substack RSS feeds
+- **Purpose**: Help technical leaders and developers stay informed on AI/Data trends
+- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, file uploads
 - **Output**: Structured digests with knowledge graph-powered historical context
 
-### Key Commands
+## Key Commands
 
 ```bash
 # Setup
-source .venv/bin/activate
-docker compose up -d
-alembic upgrade head
+source .venv/bin/activate && docker compose up -d && alembic upgrade head
 
-# Ingestion
-python -m src.ingestion.gmail
-python -m src.ingestion.substack
+# Development servers
+make dev-bg        # Start frontend + backend in background
+make dev-logs      # View logs
+make dev-stop      # Stop servers
+
+# Content Ingestion
+python -m src.ingestion.gmail          # Gmail newsletters
+python -m src.ingestion.substack       # RSS feeds
+python -m src.ingestion.youtube        # YouTube playlists
 
 # Processing
-python -m src.processors.summarizer --newsletter-id <id>
+python -m src.processors.summarizer    # Summarize pending content
 python -m src.processors.digest_creator --type daily
 
 # Testing
-pytest
-pytest tests/test_config/test_models.py -v
-
-# API
-uvicorn src.api.app:app --reload
+pytest                                  # All tests
+pytest tests/api/ -v                   # API tests only
 ```
 
-See [Development Guide](docs/DEVELOPMENT.md#development-commands) for complete command reference.
-
-### Model Configuration
-
-Configure models per pipeline step using **family-based IDs**:
+## Model Configuration
 
 ```bash
-# Environment variables (.env)
+# .env - Configure per pipeline step
 MODEL_SUMMARIZATION=claude-haiku-4-5       # Fast, cost-effective
 MODEL_THEME_ANALYSIS=claude-sonnet-4-5     # Quality reasoning
 MODEL_DIGEST_CREATION=claude-sonnet-4-5    # Customer-facing
-MODEL_HISTORICAL_CONTEXT=claude-haiku-4-5  # Simple queries
 ```
 
-See [Model Configuration](docs/MODEL_CONFIGURATION.md) for detailed options, cost optimization, and provider setup.
+## Database Providers
 
-### Pipeline Steps
+Three PostgreSQL providers are supported. **Set `DATABASE_PROVIDER` explicitly** in your `.env`:
 
-| Step | Purpose | Default Model |
-|------|---------|---------------|
-| **SUMMARIZATION** | Extract key points from newsletters | Claude Haiku |
-| **THEME_ANALYSIS** | Identify patterns across summaries | Claude Sonnet |
-| **DIGEST_CREATION** | Generate multi-audience output | Claude Sonnet |
-| **HISTORICAL_CONTEXT** | Query knowledge graph | Claude Haiku |
+| Provider | `DATABASE_PROVIDER` | Use Case |
+|----------|---------------------|----------|
+| Local | `local` (default) | Development, Docker |
+| Supabase | `supabase` | Cloud hosting, local dev with `SUPABASE_LOCAL=true` |
+| Neon | `neon` | Agent workflows, branching |
 
-### Architecture Overview
+```bash
+# .env - explicit provider selection (required for cloud)
+DATABASE_PROVIDER=neon  # or "supabase" or "local"
+DATABASE_URL=postgresql://...
 
+# Optional: Provider-specific URL overrides (take precedence over DATABASE_URL)
+# LOCAL_DATABASE_URL=postgresql://...   # Override for local
+# NEON_DATABASE_URL=postgresql://...    # Override for neon
+
+# Local Supabase development (auto-configures URLs and keys)
+SUPABASE_LOCAL=true
+DATABASE_PROVIDER=supabase
 ```
-src/
-  agents/           # Multi-framework agents (Claude, OpenAI, Google, Microsoft)
-  ingestion/        # Newsletter fetching (Gmail, RSS)
-  processors/       # Core processing (summarize, analyze, create digests)
-  storage/          # PostgreSQL + Graphiti/Neo4j
-  config/           # Model registry and configuration
-  delivery/         # Email and web output
+
+**Neon Branching for Agents**: Create isolated database branches for feature work or testing:
+```bash
+# Create ephemeral branch
+neonctl branches create --name claude/feature-xyz --project-id $NEON_PROJECT_ID
+
+# Get connection string and work with isolated database
+DATABASE_URL=$(neonctl connection-string claude/feature-xyz)
+
+# Delete when done
+neonctl branches delete claude/feature-xyz
 ```
 
-See [Architecture](docs/ARCHITECTURE.md) for complete system design.
+See [docs/SETUP.md#neon-serverless-postgresql](docs/SETUP.md#neon-serverless-postgresql-bring-your-own) for full setup.
 
-## Development Guidelines
+## File Storage Providers
 
-### Git Workflow
-- **Commit frequently**: After each major feature/task
-- **Descriptive messages**: Explain the "why", not just "what"
-- **Test before commit**: Run relevant tests
+Unified file storage supporting multiple buckets (images, podcasts, audio-digests):
 
-### Feature Planning
-- **Use plan mode**: For significant features, create implementation plans before coding
-- **Archive plans**: Move completed plans from `.claude/plans/` to `docs/plans/` after PR merge
-- **Reference in PRs**: Link to the archived plan in PR descriptions
+| Provider | `STORAGE_PROVIDER` | Use Case |
+|----------|-------------------|----------|
+| Local | `local` (default) | Development, local storage |
+| S3 | `s3` | AWS S3 or S3-compatible (MinIO) |
+| Supabase | `supabase` | Supabase Storage (S3-compatible) |
 
-### Code Quality
-- **Run tests**: `pytest` before committing
-- **Type checking**: `mypy src/`
-- **Linting**: `ruff check src/`
-- **Prefer Edit tool over sed**: Safer, more precise
+```bash
+# .env - Local storage (default)
+STORAGE_PROVIDER=local
+# Default paths: data/images, data/podcasts, data/audio-digests
 
-### SQLAlchemy and Mypy
-- **Use SQLAlchemy 2.0's built-in mypy plugin**: Don't install `sqlalchemy-stubs` - it conflicts with SQLAlchemy 2.0
-- **Configure overrides for ORM modules**: SQLAlchemy Column types need `disable_error_code` for `assignment`, `arg-type`, `union-attr` etc.
-- **Pre-commit hooks**: All mypy dependencies (including SQLAlchemy) must be in `additional_dependencies`
-- **Type ignore comments**: Use specific error codes like `# type: ignore[no-any-return]` not generic `# type: ignore`
-- **Optional in lists**: When passing `str | None` to functions expecting `list[str]`, guard against None:
-  ```python
-  # Wrong - mypy error: List item has incompatible type "str | None"
-  func([obj.field])  # where field is str | None
+# .env - S3 storage
+STORAGE_PROVIDER=s3
+IMAGE_STORAGE_BUCKET=newsletter-images
+AWS_REGION=us-east-1
 
-  # Correct - guard against None
-  if obj.field:
-      func([obj.field])
-  ```
+# .env - Supabase storage (uses S3-compatible API)
+STORAGE_PROVIDER=supabase
+SUPABASE_STORAGE_BUCKET=images
+SUPABASE_ACCESS_KEY_ID=your-access-key      # From Dashboard > Settings > API > S3 Access Keys
+SUPABASE_SECRET_ACCESS_KEY=your-secret-key  # From Dashboard > Settings > API > S3 Access Keys
+SUPABASE_STORAGE_PUBLIC=false               # true for public URLs
 
-### Document Parsing
-- **Parser abstraction**: Use `DocumentParser` interface in `src/parsers/base.py` for all document parsing
-- **Markdown-centric**: All parsers output markdown via `DocumentContent` model - optimized for LLM consumption
-- **ClassVar for class attributes**: Mutable class attributes (like `supported_formats`) must use `ClassVar[set[str]]` to satisfy ruff RUF012
-- **Union syntax in isinstance**: Use `isinstance(x, bytes | BinaryIO)` not `isinstance(x, (bytes, BinaryIO))` for Python 3.10+ (UP038)
-- **MarkItDown for lightweight parsing**: Office docs, HTML, audio
-- **DoclingParser for advanced PDFs**: Complex layouts, table extraction, OCR support via `docling>=2.60.0`
-- **YouTubeParser for transcripts**: Direct youtube-transcript-api usage for timestamp preservation and deep-linking
-- **ParserRouter**: Routes documents to appropriate parser based on format detection with fallback support
-- **Lazy converter loading**: DoclingParser uses lazy `converter` property to defer heavy import until first use
-- **Type ignore for untyped libraries**: Use `# type: ignore[attr-defined]` for libraries without type stubs (e.g., youtube-transcript-api)
-- **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` block for Docling types to avoid import errors when docling not installed
+# .env - Per-bucket provider overrides (optional)
+STORAGE_BUCKET_PROVIDERS='{"podcasts": "s3"}'  # Use S3 for podcasts only
 
-### Unified Content Model
-- **Prefer Content model**: Use `*ContentIngestionService` classes (e.g., `GmailContentIngestionService`, `RSSContentIngestionService`, `YouTubeContentIngestionService`, `FileContentIngestionService`) over legacy `*IngestionService` classes
-- **Content-based lookups**: Use `/summaries/by-content/{content_id}` endpoint for content-to-summary navigation
-- **Source types**: `ContentSource` enum defines: `GMAIL`, `RSS`, `YOUTUBE`, `FILE_UPLOAD`
-- **Frontend ingestion**: Content page has Ingest button with dialog for Gmail/RSS/YouTube sources
+# Legacy image storage config (still works for backward compatibility)
+IMAGE_STORAGE_PROVIDER=local
+IMAGE_STORAGE_PATH=data/images
+```
 
-### File Upload Ingestion
-- **FileContentIngestionService**: Processes file uploads via `ParserRouter`, stores as Content records
-- **Deduplication**: SHA-256 file hash for duplicate detection, links duplicates to canonical record
-- **API endpoint**: `POST /api/v1/documents/upload` accepts multipart form data
-- **Size limits**: Configure via `MAX_UPLOAD_SIZE_MB` and `DOCLING_MAX_FILE_SIZE_MB` settings
-- **Format validation**: Router provides `get_supported_formats()` to check available formats
+**API Endpoints**:
+- `GET /api/v1/files/{bucket}/{path}` - Retrieve files with range request support
+- Buckets: `images`, `podcasts`, `audio-digests`
 
-### YouTube Ingestion
-- **YouTubeClient**: Handles YouTube Data API authentication (OAuth for private, API key for public playlists)
-- **YouTubeIngestionService**: Processes playlists and stores transcripts as Newsletter entries
-- **CLI entry point**: `python -m src.ingestion.youtube` with `--playlist-id`, `--public-only`, `--after-date` options
-- **Playlist config file**: `youtube_playlists.txt` with `PLAYLIST_ID | description` format
-- **API key fallback**: `settings.get_youtube_api_key()` returns YOUTUBE_API_KEY or falls back to GOOGLE_API_KEY
-- **datetime.UTC**: Use `datetime.UTC` instead of `timezone.utc` for Python 3.11+ (ruff UP017)
-- **Mypy overrides**: Add modules to `[[tool.mypy.overrides]]` in pyproject.toml for dynamic attribute patterns
+**Important**: Supabase Storage uses S3-compatible credentials (not the service role key). Get these from **Supabase Dashboard > Project Settings > API > S3 Access Keys**.
 
-### YouTube Keyframe Extraction (Optional)
-- **KeyframeExtractor**: Uses ffmpeg scene detection to extract slide frames from videos
-- **Perceptual hashing**: imagehash library for deduplicating similar slides
-- **Opt-in feature**: Enable via `YOUTUBE_KEYFRAME_EXTRACTION=true`
-- **Dependencies**: ffmpeg (system), yt-dlp, imagehash, Pillow (Python)
-- **noqa comments for security**: Use `# noqa: S108` for temp paths, `# noqa: S607` for subprocess with partial paths
+See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional) for full setup.
 
-### RSS Ingestion
-- **RSSContentIngestionService**: Preferred service for RSS feed ingestion using unified Content model
-- **Timezone-aware datetimes**: feedparser's `published_parsed` returns UTC time but as naive struct_time - always add `tzinfo=UTC` when converting:
-  ```python
-  datetime(*entry.published_parsed[:6], tzinfo=UTC)  # Correct
-  datetime(*entry.published_parsed[:6])  # Wrong - causes comparison errors
-  ```
-- **Date comparison errors**: `TypeError: can't compare offset-naive and offset-aware datetimes` means one datetime has timezone info and the other doesn't - make both UTC-aware
-- **Feed URL maintenance**: Check `substack_feeds.txt` periodically - feeds may become unavailable (404) or move (301)
+## Critical Gotchas
 
-### Async/Await Patterns
-- **asyncio.to_thread() with kwargs**: When calling sync functions with keyword arguments in async context, wrap in a lambda:
-  ```python
-  # Wrong - to_thread doesn't accept keyword arguments directly
-  await asyncio.to_thread(sync_func, kwarg=value)
+⚠️ **These will bite you if ignored:**
 
-  # Correct - wrap in lambda
-  await asyncio.to_thread(lambda: sync_func(kwarg=value))
-  ```
-- **Background tasks**: Use FastAPI's `BackgroundTasks` for fire-and-forget operations
-- **SSE for progress**: Use `StreamingResponse` with `text/event-stream` for real-time progress updates
+| Issue | Solution |
+|-------|----------|
+| SQLAlchemy duplicate indexes | Don't use `index=True` AND explicit `Index()` with same name |
+| Test DB fails on second run | Fixtures must drop tables before creating (handles interrupted runs) |
+| feedparser dates are naive | Always add `tzinfo=UTC` when converting `published_parsed` |
+| mypy + SQLAlchemy stubs | Don't install `sqlalchemy-stubs` - conflicts with 2.0 |
+| Neon first connection slow | Scale-to-zero may take 2-5s to wake up; increase timeout |
+| Supabase free tier IPv6 only | Direct connections use IPv6; use pooler if on IPv4-only network |
+| DATABASE_PROVIDER required for cloud | Must explicitly set `DATABASE_PROVIDER=supabase` or `neon` |
+| Local Supabase needs SUPABASE_LOCAL | Set `SUPABASE_LOCAL=true` for auto-configured local endpoints |
+| Supabase Storage uses S3 API | Use `SUPABASE_ACCESS_KEY_ID`/`SUPABASE_SECRET_ACCESS_KEY`, NOT service role key |
+| datetime.utcnow() is deprecated | Use `datetime.now(UTC)` instead (Python 3.12+) |
+| Settings tests pick up .env | Pass `_env_file=None` to `Settings()` to isolate tests |
+| Pydantic property vs field conflict | Don't make a property with same name as a field in Pydantic models |
+| Alembic migrations not idempotent | Use `IF EXISTS` for drops; check `information_schema` before FK operations |
+| Model-schema drift breaks migrations | Don't assume columns exist in DB; check before creating FK constraints |
 
-### Tool Usage Best Practices
-- **Always activate venv**: `source .venv/bin/activate` before running scripts
-- **Use fixtures**: Reusable test data with pytest fixtures
-- **Error handling**: Don't crash entire batch if one item fails
+## Quick Links by Task
 
-### Utility Functions and Data Models
-- **Handle both dict and Pydantic models**: Utility functions that process data from JSON columns may receive either dicts (from raw JSON) or Pydantic model objects (from ORM relationships). Use a helper function pattern:
-  ```python
-  def _get_attr(obj: dict[str, Any] | PydanticModel, key: str) -> Any:
-      if isinstance(obj, dict):
-          return obj.get(key)
-      return getattr(obj, key, None)
-  ```
-- **TYPE_CHECKING imports**: Use `if TYPE_CHECKING:` for Pydantic model imports in utility modules to avoid circular imports
-- **Type annotations with quotes**: When using TYPE_CHECKING imports, quote the type annotations: `def foo(data: "dict | MyModel") -> str:`
-- **Test migrations on production copy**: Always run `--dry-run` first to catch type mismatches before actual migration
+### Writing Code
+- Database patterns: [docs/DEVELOPMENT.md#database-patterns](docs/DEVELOPMENT.md#database-patterns)
+- Frontend patterns: [docs/DEVELOPMENT.md#reactfrontend-patterns](docs/DEVELOPMENT.md#reactfrontend-patterns)
+- Error handling: [docs/DEVELOPMENT.md#error-handling](docs/DEVELOPMENT.md#error-handling)
 
-See [Development Guide](docs/DEVELOPMENT.md#development-guidelines) for detailed best practices.
+### Working with Content
+- Ingestion services: [docs/ARCHITECTURE.md#ingestion-services](docs/ARCHITECTURE.md#ingestion-services)
+- Parser ecosystem: [docs/ARCHITECTURE.md#parser-ecosystem](docs/ARCHITECTURE.md#parser-ecosystem)
+- Data models: [docs/ARCHITECTURE.md#data-models](docs/ARCHITECTURE.md#data-models)
 
-## Learning Goals
+### Testing
+- Test commands: [docs/DEVELOPMENT.md#testing](docs/DEVELOPMENT.md#testing)
+- Testing best practices: [docs/DEVELOPMENT.md#testing-best-practices](docs/DEVELOPMENT.md#testing-best-practices)
+- Database provider tests: [docs/DEVELOPMENT.md#database-provider-testing](docs/DEVELOPMENT.md#database-provider-testing)
+- Neon integration tests: [docs/SETUP.md#test-architecture](docs/SETUP.md#test-architecture)
+- Supabase integration tests: [docs/SETUP.md#supabase-test-architecture](docs/SETUP.md#supabase-test-architecture)
 
-This project serves as a **comparison framework for agent development kits**:
-- Document developer experience for each framework
-- Compare API design, tool use, orchestration patterns
-- Benchmark performance (speed, quality, token usage)
-- Analyze cost implications
-- Identify strengths/weaknesses for different use cases
+### Storage & Infrastructure
+- Image storage configuration: [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional)
+- Database providers: [docs/SETUP.md#environment-configuration](docs/SETUP.md#environment-configuration)
+- Supabase storage setup: [docs/SETUP.md#supabase-storage-setup](docs/SETUP.md#supabase-storage-setup)
+
+### Review & Delivery
+- Digest review workflow: [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md)
+- Podcast generation: [docs/REVIEW_SYSTEM.md#podcast-scripts](docs/REVIEW_SYSTEM.md#podcast-scripts)
+- Audio digests (single-voice TTS): [docs/REVIEW_SYSTEM.md#audio-digests](docs/REVIEW_SYSTEM.md#audio-digests)
 
 ## Environment Configuration
 
 Minimum required in `.env`:
 
 ```bash
-# Databases
 DATABASE_URL=postgresql://localhost/newsletters
 REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
-
-# LLM API (minimum: Anthropic for Claude SDK)
 ANTHROPIC_API_KEY=sk-ant-...
-
-# Environment
 ENVIRONMENT=development
 ```
 
-See [Setup Guide](docs/SETUP.md#environment-configuration) for complete configuration options.
-
-## Content Standards
-
-Digests follow multi-audience formatting:
-- **Executive Summary**: 2-3 sentences for leadership
-- **Strategic Insights**: CTO-level implications
-- **Technical Deep-Dives**: Developer-focused details
-- **Emerging Trends**: New topics with historical context
-- **Actionable Recommendations**: Role-specific actions
-
-See [Content Guidelines](docs/CONTENT_GUIDELINES.md) for detailed standards.
+See [Setup Guide](docs/SETUP.md#environment-configuration) for complete options.
 
 ## Getting Help
 
-- **Setup issues**: See [Setup Guide](docs/SETUP.md#troubleshooting)
-- **Model configuration**: See [Model Configuration](docs/MODEL_CONFIGURATION.md#troubleshooting)
-- **Development patterns**: See [Development Guide](docs/DEVELOPMENT.md)
-- **Content questions**: See [Content Guidelines](docs/CONTENT_GUIDELINES.md)
+- **Setup issues**: [docs/SETUP.md#troubleshooting](docs/SETUP.md#troubleshooting)
+- **Model configuration**: [docs/MODEL_CONFIGURATION.md#troubleshooting](docs/MODEL_CONFIGURATION.md#troubleshooting)
+- **Development patterns**: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)

@@ -3,6 +3,8 @@
 ## Why
 
 The current test setup has gaps:
+- **Critical**: Duplicate index definitions in Image model cause `DuplicateTable` errors
+- **Critical**: Test database setup doesn't handle leftover data from interrupted runs
 - No standardized fixtures for database models
 - Factory patterns not established
 - Integration tests rely on ad-hoc mocks
@@ -35,6 +37,33 @@ The `add-hoverfly-api-simulation` proposal focuses on **HTTP-level simulation** 
 ```
 
 ## What Changes
+
+### Bug Fix: Duplicate Index Definitions (Critical)
+
+The `Image` model has both `index=True` on columns AND explicit `Index()` in `__table_args__`:
+
+```python
+# Line 106 - creates implicit index named 'ix_images_video_id'
+video_id = Column(String(20), nullable=True, index=True)
+# Line 132 - creates implicit index named 'ix_images_phash'
+phash = Column(String(64), nullable=True, index=True)
+
+# Lines 157-158 - explicit indexes with SAME names
+__table_args__ = (
+    Index("ix_images_phash", "phash"),      # CONFLICT
+    Index("ix_images_video_id", "video_id"), # CONFLICT
+)
+```
+
+**Fix**: Remove `index=True` from column definitions where explicit indexes exist.
+
+### Bug Fix: Resilient Test Database Setup (Critical)
+
+Current `test_db_engine` fixture fails if previous run was interrupted:
+- `Base.metadata.create_all()` errors on existing indexes
+- No recovery mechanism for stale state
+
+**Fix**: Drop tables before creating them in the session-scoped fixture.
 
 ### Model Factories
 - **NEW**: `tests/factories/` with factory_boy factories

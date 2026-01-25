@@ -7,7 +7,6 @@
 export { ReviewLayout, ReviewPaneHeader } from "./ReviewLayout"
 export { ReviewHeader } from "./ReviewHeader"
 export { ContentPane } from "./ContentPane"
-export { NewsletterPane } from "./NewsletterPane"
 export { SummaryPane } from "./SummaryPane"
 export { SummaryPreview } from "./SummaryPreview"
 export { SelectionPopover } from "./SelectionPopover"

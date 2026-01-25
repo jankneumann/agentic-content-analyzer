@@ -50,6 +50,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -65,8 +66,8 @@ import {
   useSummaries,
   useSummary,
   useSummaryStats,
-  useTriggerSummarization,
-  useNewsletterStats,
+  useContentStats,
+  useSummarizeContents,
 } from "@/hooks"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
 import {
@@ -92,12 +93,14 @@ function SummariesPage() {
 
   const { data, isLoading, isError, error, refetch } = useSummaries(filters)
   const { data: stats } = useSummaryStats()
-  const { data: newsletterStats } = useNewsletterStats()
-  const summarizeMutation = useTriggerSummarization()
+  const { data: contentStats } = useContentStats()
+  const summarizeMutation = useSummarizeContents()
   const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
 
-  // Pending newsletters are those without summaries
-  const pendingCount = newsletterStats?.by_status?.pending ?? 0
+  // Content items that need summarization (don't have summaries yet)
+  const pendingCount = contentStats?.needs_summarization_count ?? 0
+  // Failed content items that could be retried
+  const failedCount = contentStats?.failed_count ?? 0
 
   // Fetch selected summary details
   const { data: selectedSummary, isLoading: isLoadingSummary } = useSummary(
@@ -118,16 +121,29 @@ function SummariesPage() {
     }))
   }
 
+  const handleSort = (column: string, order: "asc" | "desc" | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+      offset: 0, // Reset to first page when sort changes
+    }))
+  }
+
   const handleGenerateSummaries = (params: SummaryGenerationParams) => {
     // Close dialog immediately - task runs in background
     setShowGenerateDialog(false)
 
-    const count = params.newsletter_ids.length || pendingCount
+    // Convert newsletter_ids to content_ids for the new API
+    // The dialog still uses newsletter_ids for now, but we pass empty array
+    // to summarize all pending content
+    const contentIds = params.newsletter_ids.length > 0 ? params.newsletter_ids : []
+    const count = contentIds.length || (pendingCount + (params.retry_failed ? failedCount : 0))
 
     // Add background task
     const taskId = addTask({
       type: "summary",
-      title: `Summarize ${count} newsletter${count !== 1 ? "s" : ""}`,
+      title: `Summarize ${count} content item${count !== 1 ? "s" : ""}`,
       message: "Starting summarization...",
     })
 
@@ -148,14 +164,16 @@ function SummariesPage() {
 
     summarizeMutation.mutate(
       {
-        newsletter_ids: params.newsletter_ids,
+        content_ids: contentIds,
         force: params.force,
+        retry_failed: params.retry_failed,
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           clearInterval(progressInterval)
-          completeTask(taskId, "Summarization complete")
-          toast.success(`Summarized ${count} newsletters`)
+          const completed = result?.completed ?? count
+          completeTask(taskId, `Summarization complete: ${completed} summaries created`)
+          toast.success(`Summarized ${completed} content items`)
           refetch()
         },
         onError: (err) => {
@@ -196,7 +214,7 @@ function SummariesPage() {
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               <div className="flex-1">
                 <p className="text-sm font-medium">
-                  Summarizing newsletters... ({summarizeMutation.progress.progress}%)
+                  Summarizing content... ({summarizeMutation.progress.progress}%)
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {summarizeMutation.progress.message}
@@ -316,7 +334,7 @@ function SummariesPage() {
                   No summaries generated yet
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Ingest newsletters first, then generate summaries
+                  Ingest content first, then generate summaries
                 </p>
                 <Button
                   className="mt-4"
@@ -332,12 +350,38 @@ function SummariesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Newsletter</TableHead>
+                  <SortableTableHead
+                    column="title"
+                    label="Content"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                  />
                   <TableHead className="w-[200px]">Key Themes</TableHead>
-                  <TableHead className="w-[120px]">Model</TableHead>
-                  <TableHead className="w-[100px]">Time</TableHead>
-                  <TableHead className="w-[130px]">Created</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <SortableTableHead
+                    column="model_used"
+                    label="Model"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[120px]"
+                  />
+                  <SortableTableHead
+                    column="processing_time_seconds"
+                    label="Time"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
+                  <SortableTableHead
+                    column="created_at"
+                    label="Created"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[130px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -392,26 +436,26 @@ function SummariesPage() {
         </CardContent>
       </Card>
 
-      {/* Summary detail dialog */}
+      {/* Summary detail dialog - wider and resizable */}
       <Dialog
         open={!!selectedSummaryId}
         onOpenChange={(open) => !open && setSelectedSummaryId(null)}
       >
-        <DialogContent className="max-w-3xl max-h-[80vh]">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Summary Details</DialogTitle>
             <DialogDescription>
               AI-generated summary with key insights and themes
             </DialogDescription>
           </DialogHeader>
           {isLoadingSummary ? (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 flex-1">
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
           ) : selectedSummary ? (
-            <ScrollArea className="max-h-[60vh] pr-4">
+            <ScrollArea className="flex-1 min-h-0 pr-4">
               <div className="space-y-6 py-4">
                 {/* Executive Summary */}
                 <div>
@@ -509,7 +553,7 @@ function SummariesPage() {
               </div>
             </ScrollArea>
           ) : null}
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setSelectedSummaryId(null)}>
               Close
             </Button>
@@ -524,6 +568,7 @@ function SummariesPage() {
         onGenerate={handleGenerateSummaries}
         isGenerating={summarizeMutation.isPending || summarizeMutation.isProcessing}
         pendingCount={pendingCount}
+        failedCount={failedCount}
       />
     </PageContainer>
   )
@@ -540,15 +585,51 @@ function SummaryRow({
   onView: () => void
 }) {
   return (
-    <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onView}>
+    <TableRow className="hover:bg-muted/50">
       <TableCell>
-        <div>
-          <div className="font-medium line-clamp-1">
-            <span className="text-muted-foreground font-normal">[{summary.id}]</span>{" "}
-            {summary.newsletter_title ?? `Newsletter #${summary.newsletter_id ?? "?"}`}
+        <div className="flex items-start gap-2">
+          {/* Action buttons on the left */}
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onView}
+              title="View summary details"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              asChild
+            >
+              <Link
+                to="/review/summary/$id"
+                params={{ id: String(summary.content_id) }}
+                search={{ source: "content" }}
+                title="Review summary side-by-side"
+              >
+                <FileSearch className="h-4 w-4" />
+              </Link>
+            </Button>
           </div>
-          <div className="text-sm text-muted-foreground line-clamp-1">
-            Newsletter [{summary.newsletter_id}] • {summary.executive_summary_preview}
+          {/* Title and description - clickable to view content */}
+          <div
+            className="flex-1 cursor-pointer"
+            onClick={onView}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && onView()}
+          >
+            <div className="font-medium line-clamp-1">
+              <span className="text-muted-foreground font-normal">[{summary.content_id}]</span>{" "}
+              {summary.title}
+            </div>
+            <div className="text-sm text-muted-foreground line-clamp-1">
+              {summary.publication ?? "Unknown"} • {summary.executive_summary_preview}
+            </div>
           </div>
         </div>
       </TableCell>
@@ -584,37 +665,6 @@ function SummaryRow({
             ? formatDistanceToNow(new Date(summary.created_at), { addSuffix: true })
             : "Unknown"}
         </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={(e) => {
-              e.stopPropagation()
-              onView()
-            }}
-            title="View details"
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            asChild
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Link
-              to="/review/summary/$id"
-              params={{ id: String(summary.newsletter_id) }}
-              title="Review summary"
-            >
-              <FileSearch className="h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
       </TableCell>
     </TableRow>
   )

@@ -1,4 +1,4 @@
-"""Digest generator for creating multi-audience newsletter digests."""
+"""Digest generator for creating multi-audience content digests."""
 
 import json
 import time
@@ -17,10 +17,8 @@ from src.models.digest import (
     DigestStatus,
     DigestType,
 )
-from src.models.newsletter import Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisRequest, ThemeData
-from src.processors.summarizer import NewsletterSummarizer
 from src.processors.theme_analyzer import ThemeAnalyzer
 from src.storage.database import get_db
 from src.utils.digest_markdown import (
@@ -36,7 +34,7 @@ logger = get_logger(__name__)
 
 class DigestCreator:
     """
-    Creates structured digests from newsletter themes.
+    Creates structured digests from content themes.
 
     Supports daily and weekly digests with multi-audience formatting.
     """
@@ -108,103 +106,78 @@ class DigestCreator:
         )
 
         if theme_result.newsletter_count == 0:
-            logger.warning("No newsletters found in period")
+            logger.warning("No content found in period")
             return self._create_empty_digest(request)
 
         logger.info(
-            f"Analyzed {theme_result.newsletter_count} newsletters, "
+            f"Analyzed {theme_result.newsletter_count} content items, "
             f"found {theme_result.total_themes} themes"
         )
 
-        # 2. Get newsletters for source references
-        newsletters = await self._fetch_newsletters(request.period_start, request.period_end)
+        # 2. Get content items for source references
+        contents = await self._fetch_contents(request.period_start, request.period_end)
 
-        # 2b. Fetch summaries for all newsletters
-        newsletter_ids = [nl["id"] for nl in newsletters]
+        logger.info(f"Found {len(contents)} content items")
+
+        # 2b. Fetch summaries for content items
+        content_ids = [c["id"] for c in contents]
+
         with get_db() as db:
             summaries = (
-                db.query(NewsletterSummary)
-                .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
-                .all()
+                db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
+                if content_ids
+                else []
             )
 
-        logger.info(f"Fetched {len(summaries)} summaries for {len(newsletters)} newsletters")
+        logger.info(f"Fetched {len(summaries)} summaries for {len(contents)} content items")
 
         # Check for missing summaries
-        missing_ids = [
-            nl["id"] for nl in newsletters if nl["id"] not in {s.newsletter_id for s in summaries}
-        ]
+        summary_content_ids = {s.content_id for s in summaries if s.content_id}
+        missing_content_ids = [c["id"] for c in contents if c["id"] not in summary_content_ids]
 
-        if missing_ids:
+        if missing_content_ids:
             logger.warning(
-                f"{len(missing_ids)} newsletters do not have summaries yet. "
-                f"Creating summaries on-demand..."
-            )
-
-            # Create summarizer instance (uses same model config as digest creator)
-            summarizer = NewsletterSummarizer(model_config=self.model_config)
-
-            # Create summaries using batch method
-            result = summarizer.summarize_newsletters(missing_ids)
-
-            # Log results
-            if result["failed_ids"]:
-                logger.warning(
-                    f"Continuing with digest creation. "
-                    f"Newsletters {result['failed_ids']} will be skipped due to "
-                    f"summarization failures."
-                )
-
-            # Re-fetch summaries to include newly created ones
-            with get_db() as db:
-                summaries = (
-                    db.query(NewsletterSummary)
-                    .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
-                    .all()
-                )
-
-            logger.info(
-                f"After on-demand creation: {len(summaries)} summaries available "
-                f"for {len(newsletters)} newsletters"
+                f"{len(missing_content_ids)} content items do not have summaries yet. "
+                f"They will be skipped. Run content summarization first."
             )
 
         # 3. Check token budget and determine if hierarchical digest is needed
         needs_hierarchy, budget_info = await self._check_token_budget(
-            newsletters=newsletters,
+            contents=contents,
             themes=theme_result.themes,
         )
 
         # 4. Create digest (hierarchical or single, based on token budget)
         if needs_hierarchy:
             logger.info(
-                f"Newsletters exceed token budget ({len(newsletters)} newsletters, "
-                f"{budget_info['newsletter_budget']} token budget). "
+                f"Sources exceed token budget ({len(contents)} items, "
+                f"{budget_info['content_budget']} token budget). "
                 f"Creating hierarchical digest..."
             )
 
-            # Batch newsletters by token budget
-            batches = self._batch_newsletters_by_tokens(
-                newsletters=newsletters,
-                token_budget=budget_info["newsletter_budget"],
+            # Batch content by token budget
+            batches = self._batch_contents_by_tokens(
+                contents=contents,
+                token_budget=budget_info["content_budget"],
             )
 
             # Create hierarchical digest (sub-digests + combination)
             digest = await self._create_hierarchical_digest(
                 request=request,
-                newsletters=newsletters,
+                contents=contents,
                 themes=theme_result.themes,
                 batches=batches,
                 summaries=summaries,
             )
 
         else:
-            # Single digest - existing flow (newsletters fit in budget)
-            logger.info(f"Creating single digest ({len(newsletters)} newsletters fit in budget)")
+            # Single digest - existing flow (sources fit in budget)
+            logger.info(f"Creating single digest ({len(contents)} items fit in budget)")
 
             digest_content = await self._generate_digest_content(
                 request=request,
                 themes=theme_result.themes,
-                newsletters=newsletters,
+                contents=contents,
                 summaries=summaries,
             )
 
@@ -218,8 +191,8 @@ class DigestCreator:
                 technical_developments=digest_content["technical_developments"],
                 emerging_trends=digest_content["emerging_trends"],
                 actionable_recommendations=digest_content["actionable_recommendations"],
-                sources=self._build_sources(newsletters),
-                newsletter_count=theme_result.newsletter_count,
+                sources=self._build_sources(contents),
+                newsletter_count=len(contents),  # Content count
                 agent_framework=self.framework,
                 model_used=self.model,
                 model_version=self.model_version,
@@ -234,31 +207,29 @@ class DigestCreator:
 
         logger.info(
             f"Digest created successfully in {processing_time:.2f}s "
-            f"({theme_result.newsletter_count} newsletters)"
+            f"({theme_result.newsletter_count} content items)"
         )
 
         return digest
 
     async def _check_token_budget(
         self,
-        newsletters: list[dict],
+        contents: list[dict],
         themes: list[ThemeData],
     ) -> tuple[bool, dict]:
         """
-        Check if newsletters fit in token budget.
+        Check if contents fit in token budget.
 
         Args:
-            newsletters: List of newsletter dicts
+            contents: List of content dicts
             themes: List of theme data
 
         Returns:
             Tuple of (needs_hierarchy, budget_info)
-            - needs_hierarchy: True if newsletters exceed budget
+            - needs_hierarchy: True if contents exceed budget
             - budget_info: Dict with token budget breakdown
         """
-        from src.models.summary import NewsletterSummary
-
-        logger.debug("Checking token budget for newsletters and themes")
+        logger.debug("Checking token budget for contents and themes")
 
         # Get first provider for this model
         try:
@@ -281,30 +252,29 @@ class DigestCreator:
         # Fetch summaries for more accurate token estimation
         summaries = []
         try:
-            newsletter_ids = [nl["id"] for nl in newsletters]
+            content_ids = [c["id"] for c in contents]
             with get_db() as db:
-                summaries = (
-                    db.query(NewsletterSummary)
-                    .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
-                    .all()
-                )
+                summaries = db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
             logger.debug(f"Loaded {len(summaries)} summaries for token estimation")
         except Exception as e:
             logger.warning(f"Failed to load summaries for token estimation: {e}")
             summaries = []
 
         # Estimate tokens for all content (including summaries)
-        estimated_tokens = counter.estimate_newsletter_batch_tokens(
-            newsletters=newsletters,
+        estimated_tokens = counter.estimate_content_batch_tokens(
+            contents=contents,
             themes=themes,
             summaries=summaries,
         )
 
-        needs_hierarchy = estimated_tokens > budget["newsletter_budget"]
+        # Use content_budget from token counter
+        if "content_budget" not in budget:
+            budget["content_budget"] = budget.get("total", 0)
+        needs_hierarchy = estimated_tokens > budget["content_budget"]
 
         logger.info(
             f"Token budget check: {estimated_tokens} tokens estimated, "
-            f"{budget['newsletter_budget']} budget available. "
+            f"{budget['content_budget']} budget available. "
             f"Needs hierarchy: {needs_hierarchy}"
         )
 
@@ -338,69 +308,69 @@ class DigestCreator:
         # Create new DigestData with enriched fields
         return DigestData(**digest_dict)
 
-    def _batch_newsletters_by_tokens(
+    def _batch_contents_by_tokens(
         self,
-        newsletters: list[dict],
+        contents: list[dict],
         token_budget: int,
     ) -> list[list[dict]]:
         """
-        Batch newsletters to fit token budget.
+        Batch contents to fit token budget.
 
-        Uses greedy algorithm: add newsletters to batch until budget exceeded,
+        Uses greedy algorithm: add content items to batch until budget exceeded,
         then start new batch.
 
         Args:
-            newsletters: List of newsletter dicts (ordered chronologically)
+            contents: List of content dicts (ordered chronologically)
             token_budget: Maximum tokens allowed per batch
 
         Returns:
-            List of newsletter batches (each batch is a list of newsletters)
+            List of content batches (each batch is a list of content dicts)
         """
 
-        logger.info(f"Batching {len(newsletters)} newsletters with {token_budget} token budget")
+        logger.info(f"Batching {len(contents)} content items with {token_budget} token budget")
 
         counter = TokenCounter(self.model_config, self.model)
         batches: list[list[dict]] = []
         current_batch: list[dict] = []
         current_tokens = 0
 
-        for newsletter in newsletters:
-            # Estimate tokens for this newsletter
-            nl_text = f"{newsletter.get('publication', '')} - {newsletter.get('title', '')}"
-            nl_tokens = counter.estimate_text_tokens(nl_text)
+        for content in contents:
+            # Estimate tokens for this content item
+            c_text = f"{content.get('publication', '')} - {content.get('title', '')}"
+            c_tokens = counter.estimate_text_tokens(c_text)
 
-            # Check if adding this newsletter would exceed budget
-            if current_batch and current_tokens + nl_tokens > token_budget:
+            # Check if adding this content item would exceed budget
+            if current_batch and current_tokens + c_tokens > token_budget:
                 # Save current batch and start new one
                 batches.append(current_batch)
                 logger.debug(
-                    f"Batch {len(batches)} complete: {len(current_batch)} newsletters, "
+                    f"Batch {len(batches)} complete: {len(current_batch)} content items, "
                     f"{current_tokens} tokens"
                 )
-                current_batch = [newsletter]
-                current_tokens = nl_tokens
+                current_batch = [content]
+                current_tokens = c_tokens
             else:
                 # Add to current batch
-                current_batch.append(newsletter)
-                current_tokens += nl_tokens
+                current_batch.append(content)
+                current_tokens += c_tokens
 
         # Add final batch if not empty
         if current_batch:
             batches.append(current_batch)
             logger.debug(
-                f"Batch {len(batches)} complete: {len(current_batch)} newsletters, "
+                f"Batch {len(batches)} complete: {len(current_batch)} content items, "
                 f"{current_tokens} tokens"
             )
 
-        logger.info(f"Created {len(batches)} batches from {len(newsletters)} newsletters")
+        logger.info(f"Created {len(batches)} batches from {len(contents)} content items")
 
-        # Log warning if single newsletter exceeds budget
+        # Log warning if single content item exceeds budget
         for i, batch in enumerate(batches):
             if len(batch) == 1:
-                nl = batch[0]
+                c = batch[0]
                 logger.warning(
-                    f"Batch {i + 1} contains single newsletter that may exceed budget: "
-                    f"{nl.get('publication')} - {nl.get('title')}"
+                    f"Batch {i + 1} contains single content item that may exceed budget: "
+                    f"{c.get('publication')} - {c.get('title')}"
                 )
 
         return batches
@@ -408,13 +378,13 @@ class DigestCreator:
     async def _create_hierarchical_digest(
         self,
         request: DigestRequest,
-        newsletters: list[dict],
+        contents: list[dict],
         themes: list[ThemeData],
         batches: list[list[dict]],
-        summaries: list[NewsletterSummary],
+        summaries: list[Summary],
     ) -> DigestData:
         """
-        Create hierarchical digest from newsletter batches.
+        Create hierarchical digest from content batches.
 
         Flow:
         1. For each batch, create sub-digest and save to DB
@@ -423,9 +393,9 @@ class DigestCreator:
 
         Args:
             request: Digest generation request
-            newsletters: Full list of all newsletters
+            contents: Full list of all content items
             themes: Theme analysis results
-            batches: List of newsletter batches (from _batch_newsletters_by_tokens)
+            batches: List of content batches (from _batch_contents_by_tokens)
 
         Returns:
             Combined parent digest with hierarchical metadata
@@ -435,24 +405,24 @@ class DigestCreator:
         """
         logger.info(
             f"Creating hierarchical digest with {len(batches)} sub-digests "
-            f"from {len(newsletters)} newsletters"
+            f"from {len(contents)} content items"
         )
         sub_digest_ids = []
 
         # Create sub-digests for each batch
         for i, batch in enumerate(batches, 1):
-            logger.info(f"Creating sub-digest {i}/{len(batches)} with {len(batch)} newsletters")
+            logger.info(f"Creating sub-digest {i}/{len(batches)} with {len(batch)} content items")
 
             try:
                 # Get summaries for this batch
-                batch_ids = [nl["id"] for nl in batch]
-                batch_summaries = [s for s in summaries if s.newsletter_id in batch_ids]
+                batch_ids = {c["id"] for c in batch}
+                batch_summaries = [s for s in summaries if s.content_id in batch_ids]
 
                 # Generate digest content for this batch
                 digest_content = await self._generate_digest_content(
                     request=request,
                     themes=themes,
-                    newsletters=batch,
+                    contents=batch,
                     summaries=batch_summaries,
                 )
 
@@ -511,7 +481,7 @@ class DigestCreator:
         combined_digest = await self._combine_sub_digests(
             request=request,
             sub_digest_ids=sub_digest_ids,
-            newsletters=newsletters,
+            contents=contents,
         )
 
         # Set hierarchy metadata
@@ -530,7 +500,7 @@ class DigestCreator:
         self,
         request: DigestRequest,
         sub_digest_ids: list[int],
-        newsletters: list[dict],
+        contents: list[dict],
     ) -> DigestData:
         """
         Combine multiple sub-digests into single digest via LLM synthesis.
@@ -538,13 +508,13 @@ class DigestCreator:
         Uses LLM to:
         - De-duplicate similar insights across sub-digests
         - Re-prioritize based on full dataset
-        - Create coherent narrative spanning all newsletters
+        - Create coherent narrative spanning all content items
         - Preserve source citations from all sub-digests
 
         Args:
             request: Original digest request
             sub_digest_ids: List of sub-digest database IDs
-            newsletters: Full list of all newsletters (for sources)
+            contents: Full list of all content items (for sources)
 
         Returns:
             Combined digest data
@@ -635,8 +605,8 @@ class DigestCreator:
                     technical_developments=technical_developments,
                     emerging_trends=emerging_trends,
                     actionable_recommendations=digest_json["actionable_recommendations"],
-                    sources=self._build_sources(newsletters),
-                    newsletter_count=len(newsletters),
+                    sources=self._build_sources(contents),
+                    newsletter_count=len(contents),
                     agent_framework=self.framework,
                     model_used=self.model,
                     model_version=self.model_version,
@@ -672,8 +642,8 @@ class DigestCreator:
             technical_developments=[DigestSection(**s) for s in first_sub.technical_developments],
             emerging_trends=[DigestSection(**s) for s in first_sub.emerging_trends],
             actionable_recommendations=first_sub.actionable_recommendations,
-            sources=self._build_sources(newsletters),
-            newsletter_count=len(newsletters),
+            sources=self._build_sources(contents),
+            newsletter_count=len(contents),
             agent_framework=self.framework,
             model_used=self.model,
             model_version=self.model_version,
@@ -701,7 +671,7 @@ class DigestCreator:
         for i, sub in enumerate(sub_digests, 1):
             sub_digest_summaries.append(
                 f"""
-## Sub-Digest {i} ({sub.newsletter_count} newsletters)
+## Sub-Digest {i} ({sub.newsletter_count} content items)
 
 **Executive Overview:**
 {sub.executive_overview}
@@ -729,7 +699,7 @@ class DigestCreator:
 Synthesize these sub-digests into a single comprehensive digest that:
 - De-duplicates similar insights across sub-digests
 - Re-prioritizes insights based on full dataset
-- Creates coherent narrative spanning all newsletters
+- Creates coherent narrative spanning all content items
 - Preserves source citations from all sub-digests
 - Limits to {request.max_strategic_insights} strategic insights, {request.max_technical_developments} technical developments, {request.max_emerging_trends} emerging trends
 
@@ -797,8 +767,8 @@ Output only the JSON object, no additional text.
         self,
         request: DigestRequest,
         themes: list[ThemeData],
-        newsletters: list[dict],
-        summaries: list[NewsletterSummary],
+        contents: list[dict],
+        summaries: list[Summary],
     ) -> dict:
         """Generate digest content using LLM."""
         logger.info("Generating digest content with LLM...")
@@ -806,14 +776,14 @@ Output only the JSON object, no additional text.
         # Build context from themes
         themes_context = self._build_themes_context(themes)
 
-        # Build newsletter list for reference (using summaries)
-        newsletters_context = self._build_newsletters_context(newsletters, summaries)
+        # Build content list for reference (using summaries)
+        contents_context = self._build_contents_context(contents, summaries)
 
         # Construct prompt
         prompt = self._build_digest_prompt(
             request=request,
             themes_context=themes_context,
-            newsletters_context=newsletters_context,
+            contents_context=contents_context,
             theme_count=len(themes),
         )
 
@@ -947,38 +917,36 @@ Output only the JSON object, no additional text.
 
         return "\n\n".join(context_parts)
 
-    def _build_newsletters_context(
-        self, newsletters: list[dict], summaries: list[NewsletterSummary]
-    ) -> str:
-        """Build context string from newsletter summaries."""
-        # Create lookup dict for quick access
-        summaries_by_id = {s.newsletter_id: s for s in summaries}
+    def _build_contents_context(self, contents: list[dict], summaries: list[Summary]) -> str:
+        """Build context string from content summaries."""
+        # Create lookup dict for quick access by content_id
+        summaries_by_id = {s.content_id: s for s in summaries if s.content_id}
 
         context_parts = []
 
-        for newsletter in newsletters:
-            newsletter_id = newsletter["id"]
-            summary = summaries_by_id.get(newsletter_id)
+        for content in contents:
+            content_id = content["id"]
+            summary = summaries_by_id.get(content_id)
 
             if not summary:
-                logger.warning(f"No summary found for newsletter {newsletter_id}, skipping")
+                logger.warning(f"No summary found for content {content_id}, skipping")
                 continue
 
-            date = newsletter["published_date"].strftime("%Y-%m-%d")
+            date = content["published_date"].strftime("%Y-%m-%d")
 
             # Build rich context from summary
-            context = f"""[{newsletter_id}] {newsletter["publication"]} - {newsletter["title"]} ({date})
+            context = f"""[{content_id}] {content["publication"]} - {content["title"]} ({date})
 
 **Executive Summary:**
 {summary.executive_summary}
 
-**Key Themes:** {", ".join(summary.key_themes)}
+**Key Themes:** {", ".join(summary.key_themes or [])}
 
 **Strategic Insights:**
-{chr(10).join(f"- {insight}" for insight in summary.strategic_insights)}
+{chr(10).join(f"- {insight}" for insight in (summary.strategic_insights or []))}
 
 **Technical Details:**
-{chr(10).join(f"- {detail}" for detail in summary.technical_details)}"""
+{chr(10).join(f"- {detail}" for detail in (summary.technical_details or []))}"""
 
             # Add relevant links if available
             if summary.relevant_links:
@@ -996,7 +964,7 @@ Output only the JSON object, no additional text.
         self,
         request: DigestRequest,
         themes_context: str,
-        newsletters_context: str,
+        contents_context: str,
         theme_count: int,
     ) -> str:
         """Build prompt for digest generation."""
@@ -1016,7 +984,7 @@ Output only the JSON object, no additional text.
             ),
         }
 
-        return f"""You are creating an AI/technology newsletter digest for technical leaders at Comcast.
+        return f"""You are creating an AI/technology content digest for technical leaders at Comcast.
 
 # Time Period
 {request.digest_type.value.title()} digest covering: {period_desc}
@@ -1025,9 +993,9 @@ Output only the JSON object, no additional text.
 
 {themes_context}
 
-# Newsletters Analyzed
+# Content Analyzed
 
-{newsletters_context}
+{contents_context}
 
 # Your Task
 
@@ -1109,15 +1077,15 @@ Provide a JSON response with:
 # Guidelines
 
 - **Source Citations**: Use database ID references [18], [23], etc. throughout all content
-  - IDs are the actual newsletter database IDs shown in brackets above (e.g., [18] = newsletter ID 18)
-  - Add citations to summaries and detail points showing which newsletters support each claim
+  - IDs are the actual content database IDs shown in brackets above (e.g., [18] = content ID 18)
+  - Add citations to summaries and detail points showing which content items support each claim
   - Use multiple citations [18][23] when a point draws from multiple sources
   - These IDs enable cross-digest traceability and interactive revision tool use
   - This provides transparency and traceability for all insights
 
-- **Relevant Links**: When newsletters include research papers, documentation, or other resources:
+- **Relevant Links**: When content items include research papers, documentation, or other resources:
   - Include the actual URL in your detail points where relevant (e.g., "See research paper: https://arxiv.org/...")
-  - Reference the link title and source newsletter ID for context
+  - Reference the link title and source content ID for context
   - Make it easy for readers to access the original sources directly
   - Example: "BGE-M3 embeddings paper (https://arxiv.org/abs/2402.03216) from [42] demonstrates 15% improvement"
 
@@ -1149,34 +1117,6 @@ Provide a JSON response with:
 - Focus on what's actionable and decision-worthy
 
 Provide ONLY the JSON, no other text."""
-
-    async def _fetch_newsletters(
-        self,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> list[dict]:
-        """Fetch newsletters for the time period."""
-        with get_db() as db:
-            newsletters = (
-                db.query(Newsletter)
-                .filter(
-                    Newsletter.published_date >= start_date,
-                    Newsletter.published_date <= end_date,
-                )
-                .order_by(Newsletter.published_date.desc())
-                .all()
-            )
-
-            return [
-                {
-                    "id": n.id,
-                    "title": n.title,
-                    "publication": n.publication,
-                    "published_date": n.published_date,
-                    "url": n.url,
-                }
-                for n in newsletters
-            ]
 
     async def _fetch_contents(
         self,
@@ -1221,46 +1161,41 @@ Provide ONLY the JSON, no other text."""
                     "published_date": c.published_date,
                     "url": c.source_url,
                     "source_type": c.source_type.value,
-                    "is_content": True,  # Flag to distinguish from newsletter
                 }
                 for c in contents
             ]
 
-    def _build_sources(self, newsletters: list[dict]) -> list[dict]:
+    def _build_sources(self, contents: list[dict]) -> list[dict]:
         """
         Build sources list for digest.
 
-        Works with both Newsletter and Content data structures.
-
         Args:
-            newsletters: List of newsletter or content dicts
+            contents: List of content dicts
 
         Returns:
-            List of source dicts with title, publication, date, url, and optional source_type
+            List of source dicts with title, publication, date, url, source_type, and content_id
         """
         sources = []
-        for n in newsletters:
+        for c in contents:
             source = {
-                "title": n["title"],
-                "publication": n["publication"],
-                "date": n["published_date"].strftime("%Y-%m-%d"),
-                "url": n.get("url"),
+                "title": c["title"],
+                "publication": c["publication"],
+                "date": c["published_date"].strftime("%Y-%m-%d"),
+                "url": c.get("url"),
+                "source_type": c.get("source_type"),
+                "content_id": c.get("id"),
             }
-            # Add source_type for Content-based sources
-            if n.get("is_content"):
-                source["source_type"] = n.get("source_type")
-                source["content_id"] = n.get("id")
             sources.append(source)
         return sources
 
     def _create_empty_digest(self, request: DigestRequest) -> DigestData:
-        """Create an empty digest when no newsletters found."""
+        """Create an empty digest when no content found."""
         return DigestData(
             digest_type=request.digest_type,
             period_start=request.period_start,
             period_end=request.period_end,
             title=f"{request.digest_type.value.title()} Digest - No Content",
-            executive_overview="No newsletters were published during this period.",
+            executive_overview="No content was published during this period.",
             newsletter_count=0,
             agent_framework=self.framework,
             model_used=self.model,

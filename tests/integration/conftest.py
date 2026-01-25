@@ -12,6 +12,15 @@ Test Database Isolation:
   - Automatic cleanup (DETACH DELETE all nodes) after each test
   - Safety check: prevents connecting to port 7687
   - Completely separate Docker container with own data volume
+- Neon: Creates ephemeral database branches for testing
+  - Environment variables: NEON_API_KEY, NEON_PROJECT_ID
+  - Automatic branch cleanup after tests
+  - Uses copy-on-write branching for fast, isolated test environments
+  - See tests/integration/fixtures/neon.py for fixtures
+- Supabase: Tests cloud database connection and pooling
+  - Environment variables: SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD
+  - Tests skipped if credentials not configured
+  - See tests/integration/fixtures/supabase.py for fixtures
 
 Setup:
 1. Create PostgreSQL test database: createdb newsletters_test
@@ -34,21 +43,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config.models import MODEL_REGISTRY
-from src.models.digest import Digest  # noqa: F401 - registers with Base.metadata
 
 # Import Base and all models that use it to ensure they're registered with metadata
-# All models share the same Base from newsletter.py
-from src.models.newsletter import (
-    Base,
-    Newsletter,
-    NewsletterSource,
-    ProcessingStatus,
-)
+# All models share the same Base from base.py
+from src.models.base import Base
+from src.models.content import Content, ContentSource, ContentStatus
+from src.models.digest import Digest  # noqa: F401 - registers with Base.metadata
 from src.models.podcast import (  # noqa: F401 - registers with Base.metadata
     Podcast,
     PodcastScriptRecord,
 )
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 
 # Test database configuration
@@ -68,11 +73,12 @@ def test_db_engine():
     """Create test database engine.
 
     Uses newsletters_test database (separate from development).
-    Creates all tables at session start, drops them at session end.
+    Drops and recreates all tables at session start for clean state.
+    This handles interrupted previous runs that left stale data.
     """
     engine = create_engine(TEST_DATABASE_URL, echo=False)
 
-    # Verify we're using test database
+    # Verify we're using test database (safety check)
     db_name = engine.url.database
     if not db_name or "test" not in db_name.lower():
         raise ValueError(
@@ -80,13 +86,16 @@ def test_db_engine():
             f"Set TEST_DATABASE_URL to a test database to proceed."
         )
 
-    # Create all tables (all models share the same Base.metadata)
+    # Drop all tables first for clean state (handles interrupted previous runs)
+    # All models share the same Base.metadata
+    Base.metadata.drop_all(engine)
+
+    # Create all tables fresh
     Base.metadata.create_all(engine)
 
     yield engine
 
     # Cleanup: Drop all tables after all tests complete
-    # All models use the same Base, so one drop_all handles everything
     Base.metadata.drop_all(engine)
     engine.dispose()
 
@@ -187,68 +196,68 @@ def clean_neo4j(neo4j_driver):
 
 
 @pytest.fixture
-def sample_newsletters(db_session) -> list[Newsletter]:
-    """Create sample newsletters in the test database."""
-    newsletters = [
-        Newsletter(
-            source=NewsletterSource.GMAIL,
+def sample_contents(db_session) -> list[Content]:
+    """Create sample contents in the test database."""
+    contents = [
+        Content(
+            source_type=ContentSource.GMAIL,
             source_id="msg-001",
-            sender="ai-weekly@example.com",
-            publication="AI Weekly",
+            source_url="https://example.com/newsletter1",
             title="Latest LLM Advances",
-            raw_html="<html><body>Newsletter about LLM advances...</body></html>",
-            raw_text="Newsletter content about LLM advances and new models. Context windows are expanding to 1M tokens. Costs are decreasing by 40%. Multimodal capabilities are becoming standard.",
+            author="ai-weekly@example.com",
+            publication="AI Weekly",
             published_date=datetime(2025, 1, 15, 10, 0, 0),
-            url="https://example.com/newsletter1",
-            status=ProcessingStatus.PENDING,
+            markdown_content="Newsletter content about LLM advances and new models. Context windows are expanding to 1M tokens. Costs are decreasing by 40%. Multimodal capabilities are becoming standard.",
+            content_hash="hash001",
+            status=ContentStatus.PARSED,
         ),
-        Newsletter(
-            source=NewsletterSource.GMAIL,
+        Content(
+            source_type=ContentSource.GMAIL,
             source_id="msg-002",
-            sender="data-eng@example.com",
-            publication="Data Engineering Weekly",
+            source_url="https://example.com/newsletter2",
             title="Vector Database Performance",
-            raw_html="<html><body>Newsletter about vector databases...</body></html>",
-            raw_text="Newsletter about vector database optimizations and benchmarks. Hybrid search combining vector and keyword search is critical. Performance matters at scale.",
+            author="data-eng@example.com",
+            publication="Data Engineering Weekly",
             published_date=datetime(2025, 1, 14, 10, 0, 0),
-            url="https://example.com/newsletter2",
-            status=ProcessingStatus.PENDING,
+            markdown_content="Newsletter about vector database optimizations and benchmarks. Hybrid search combining vector and keyword search is critical. Performance matters at scale.",
+            content_hash="hash002",
+            status=ContentStatus.PARSED,
         ),
-        Newsletter(
-            source=NewsletterSource.RSS,
+        Content(
+            source_type=ContentSource.RSS,
             source_id="rss-003",
-            sender="tech-trends@substack.com",
-            publication="Tech Trends",
+            source_url="https://example.com/newsletter3",
             title="AI Agent Frameworks",
-            raw_html="<html><body>Newsletter about AI agent frameworks...</body></html>",
-            raw_text="Comparison of AI agent frameworks including Claude SDK and OpenAI. Framework choice impacts development velocity. Tool use patterns vary significantly.",
+            author="tech-trends@substack.com",
+            publication="Tech Trends",
             published_date=datetime(2025, 1, 13, 10, 0, 0),
-            url="https://example.com/newsletter3",
-            status=ProcessingStatus.PENDING,
+            markdown_content="Comparison of AI agent frameworks including Claude SDK and OpenAI. Framework choice impacts development velocity. Tool use patterns vary significantly.",
+            content_hash="hash003",
+            status=ContentStatus.PARSED,
         ),
     ]
 
-    for newsletter in newsletters:
-        db_session.add(newsletter)
+    for content in contents:
+        db_session.add(content)
 
     db_session.commit()
 
     # Refresh to get IDs
-    for newsletter in newsletters:
-        db_session.refresh(newsletter)
+    for content in contents:
+        db_session.refresh(content)
 
-    return newsletters
+    return contents
 
 
 @pytest.fixture
-def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
-    """Create sample summaries for the newsletters."""
+def sample_summaries(db_session, sample_contents) -> list[Summary]:
+    """Create sample summaries for the contents."""
     # Use any valid model from the registry for test data
     test_model = list(MODEL_REGISTRY.keys())[0]
 
     summaries = [
-        NewsletterSummary(
-            newsletter_id=sample_newsletters[0].id,
+        Summary(
+            content_id=sample_contents[0].id,
             executive_summary="Major LLM advances including cost reduction and performance improvements.",
             key_themes=["LLM Performance", "Cost Optimization", "Multimodal AI"],
             strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -266,8 +275,8 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
-        NewsletterSummary(
-            newsletter_id=sample_newsletters[1].id,
+        Summary(
+            content_id=sample_contents[1].id,
             executive_summary="Vector database performance benchmarks and optimization techniques.",
             key_themes=["Vector Search", "Performance", "Hybrid Search"],
             strategic_insights=["Database selection critical for production"],
@@ -285,8 +294,8 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             token_usage=2200,
             processing_time_seconds=3.2,
         ),
-        NewsletterSummary(
-            newsletter_id=sample_newsletters[2].id,
+        Summary(
+            content_id=sample_contents[2].id,
             executive_summary="Comparison of major AI agent frameworks and their capabilities.",
             key_themes=["AI Agents", "Framework Comparison", "Tool Use"],
             strategic_insights=["Framework choice impacts development velocity"],
@@ -372,7 +381,7 @@ def mock_graphiti_client():
     mock_client = MagicMock()
 
     # Mock async methods using AsyncMock
-    mock_client.add_newsletter_summary = AsyncMock(return_value=None)
+    mock_client.add_content_summary = AsyncMock(return_value=None)
     mock_client.search_related_concepts = AsyncMock(
         return_value=[
             {"name": "LLM", "relevance": 0.9},
@@ -390,3 +399,26 @@ def mock_graphiti_client():
     mock_client.close = AsyncMock(return_value=None)
 
     return mock_client
+
+
+# Import Neon fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/neon.py
+from tests.integration.fixtures.neon import (  # noqa: E402, F401
+    _detect_default_branch,
+    neon_available,
+    neon_default_branch,
+    neon_isolated_branch,
+    neon_manager,
+    neon_test_branch,
+    requires_neon,
+)
+
+# Import Supabase fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/supabase.py
+from tests.integration.fixtures.supabase import (  # noqa: E402, F401
+    requires_supabase,
+    supabase_available,
+    supabase_direct_engine,
+    supabase_engine,
+    supabase_provider,
+)

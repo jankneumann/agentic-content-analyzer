@@ -19,6 +19,7 @@ import type {
   PodcastDetail,
   PodcastStatistics,
   ApprovedScript,
+  SortOrder,
 } from "@/types"
 
 /**
@@ -31,6 +32,10 @@ export interface PodcastFilters {
   limit?: number
   /** Pagination offset */
   offset?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**

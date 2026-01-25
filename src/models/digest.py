@@ -2,11 +2,16 @@
 
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text
+from sqlalchemy.orm import Mapped, relationship
 
-from src.models.newsletter import Base
+from src.models.base import Base
+
+if TYPE_CHECKING:
+    from src.models.audio_digest import AudioDigest
 
 
 class DigestType(str, Enum):
@@ -49,7 +54,7 @@ class Digest(Base):
     technical_developments = Column(JSON, nullable=False)  # List[Dict]
     emerging_trends = Column(JSON, nullable=False)  # List[Dict]
     actionable_recommendations = Column(JSON, nullable=False)  # Dict[str, List[str]]
-    sources = Column(JSON, nullable=False)  # List[Dict] with newsletter references
+    sources = Column(JSON, nullable=False)  # List[Dict] with content references
 
     # Historical context
     historical_context = Column(JSON, nullable=True)  # List[Dict] from Graphiti
@@ -60,14 +65,14 @@ class Digest(Base):
     source_content_ids = Column(JSON, nullable=True)  # List[int] - Content IDs used in digest
 
     # Metadata
-    newsletter_count = Column(Integer, nullable=False)
+    newsletter_count = Column(Integer, nullable=False)  # Legacy name, now represents content count
     status = Column(
         SQLEnum(DigestStatus),
         nullable=False,
         default=DigestStatus.PENDING,
         index=True,
     )
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime, nullable=True)
     delivered_at = Column(DateTime, nullable=True)
 
@@ -90,6 +95,13 @@ class Digest(Base):
     child_digest_ids = Column(JSON, nullable=True)  # List[int] of child digest IDs
     is_combined = Column(Boolean, default=False, nullable=False)
     source_digest_count = Column(Integer, nullable=True)  # Number of sub-digests combined
+
+    # Relationships
+    audio_digests: Mapped[list["AudioDigest"]] = relationship(
+        "AudioDigest",
+        back_populates="digest",
+        foreign_keys="AudioDigest.digest_id",
+    )
 
 
 class DigestSection(BaseModel):

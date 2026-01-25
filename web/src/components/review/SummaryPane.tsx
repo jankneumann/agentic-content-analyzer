@@ -24,10 +24,10 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { ReviewPaneHeader } from "./ReviewLayout"
-import type { NewsletterSummary } from "@/types"
+import type { Summary } from "@/types"
 
 interface SummaryPaneProps {
-  summary: NewsletterSummary | null | undefined
+  summary: Summary | null | undefined
   isPreview?: boolean
   className?: string
 }
@@ -52,7 +52,7 @@ export function SummaryPane({ summary, isPreview = false, className }: SummaryPa
     >
       <ReviewPaneHeader
         title={isPreview ? "Preview" : `Summary [${summary.id}]`}
-        subtitle={`Newsletter [${summary.newsletter_id}] • Model: ${summary.model_used}`}
+        subtitle={`Content [${summary.content_id}] • Model: ${summary.model_used}`}
         actions={
           isPreview ? (
             <Badge variant="secondary" className="text-xs">

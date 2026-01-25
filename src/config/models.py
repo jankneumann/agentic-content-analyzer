@@ -73,8 +73,8 @@ class ModelFamily(str, Enum):
 class ModelStep(str, Enum):
     """Pipeline steps that use LLMs."""
 
-    SUMMARIZATION = "summarization"  # Individual newsletter summarization
-    THEME_ANALYSIS = "theme_analysis"  # Cross-newsletter theme extraction
+    SUMMARIZATION = "summarization"  # Individual content summarization
+    THEME_ANALYSIS = "theme_analysis"  # Cross-content theme extraction
     DIGEST_CREATION = "digest_creation"  # Digest generation
     DIGEST_REVISION = "digest_revision"  # Interactive digest revision
     HISTORICAL_CONTEXT = "historical_context"  # Historical context analysis
@@ -149,9 +149,9 @@ class ProviderModelConfig:
         return match.group(1) if match else "unknown"
 
 
-def load_model_registry() -> tuple[
-    dict[str, ModelInfo], dict[tuple[str, Provider], ProviderModelConfig], dict[str, str]
-]:
+def load_model_registry() -> (
+    tuple[dict[str, ModelInfo], dict[tuple[str, Provider], ProviderModelConfig], dict[str, str]]
+):
     """Load model registry from YAML configuration file.
 
     Returns:
@@ -231,7 +231,7 @@ class ModelConfig:
         """Initialize model configuration.
 
         Args:
-            summarization: Model for newsletter summarization (default from YAML)
+            summarization: Model for content summarization (default from YAML)
             theme_analysis: Model for theme analysis (default from YAML)
             digest_creation: Model for digest generation (default from YAML)
             digest_revision: Model for interactive digest revision (default from YAML)
@@ -489,7 +489,7 @@ class ModelConfig:
 
     def get_cost_estimate(
         self,
-        newsletters_per_day: int = 10,
+        content_items_per_day: int = 10,
         digests_per_week: int = 2,
         youtube_videos_per_week: int = 5,
         provider: Provider | None = None,
@@ -497,7 +497,7 @@ class ModelConfig:
         """Estimate monthly costs based on usage patterns.
 
         Args:
-            newsletters_per_day: Newsletters processed daily
+            content_items_per_day: Content items processed daily
             digests_per_week: Digests generated per week
             youtube_videos_per_week: YouTube videos per week
             provider: Provider for cost calculation. If None, uses first available.
@@ -508,7 +508,7 @@ class ModelConfig:
         Example:
             >>> config = get_model_config()
             >>> estimate = config.get_cost_estimate(
-            ...     newsletters_per_day=10,
+            ...     content_items_per_day=10,
             ...     digests_per_week=2
             ... )
             >>> print(f"Monthly cost: ${estimate['total']:.2f}")
@@ -523,7 +523,7 @@ class ModelConfig:
         }
 
         # Monthly operations
-        monthly_newsletters = newsletters_per_day * 30
+        monthly_content_items = content_items_per_day * 30
         monthly_digests = digests_per_week * 4
         monthly_youtube = youtube_videos_per_week * 4
 
@@ -533,8 +533,8 @@ class ModelConfig:
         model = self.get_model_for_step(ModelStep.SUMMARIZATION)
         costs["summarization"] = self.calculate_cost(
             model,
-            monthly_newsletters * TOKEN_ESTIMATES["summarization"]["input"],
-            monthly_newsletters * TOKEN_ESTIMATES["summarization"]["output"],
+            monthly_content_items * TOKEN_ESTIMATES["summarization"]["input"],
+            monthly_content_items * TOKEN_ESTIMATES["summarization"]["output"],
             provider,
         )
 

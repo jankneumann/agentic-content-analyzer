@@ -8,6 +8,7 @@ Key improvements over V1:
 - Uses pre-generated silent MP3 templates for efficiency
 """
 
+import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -91,11 +92,11 @@ class PodcastAudioGeneratorV2:
             f"SSML support: {self.use_ssml}, format={output_format}"
         )
 
-    def _load_silence_templates(self):
+    def _load_silence_templates(self) -> None:
         """Load pre-generated silent MP3 files for pauses."""
         assets_dir = Path(__file__).parent / "assets"
 
-        self.silence_cache = {}
+        self.silence_cache: dict[float, bytes] = {}
         silence_files = {
             0.1: "silence_0_1s.mp3",
             0.5: "silence_0_5s.mp3",
@@ -131,7 +132,7 @@ class PodcastAudioGeneratorV2:
 
         # Find closest duration
         closest = min(self.silence_cache.keys(), key=lambda x: abs(x - duration))
-        return self.silence_cache[closest]
+        return bytes(self.silence_cache[closest])
 
     async def generate_audio(
         self,
@@ -158,73 +159,82 @@ class PodcastAudioGeneratorV2:
             f"using {self.provider.value}"
         )
 
-        # Calculate total batches for progress tracking
-        total_batches = sum(
-            len(self.batcher.batch_section(s, self.use_ssml)) for s in script.sections
-        )
+        # Collect all batches first
+        all_batches = []
+        for section in script.sections:
+            batches = self.batcher.batch_section(section, self.use_ssml)
+            for batch in batches:
+                all_batches.append((section, batch))
+
+        total_batches = len(all_batches)
 
         logger.info(
             f"Processing {len(script.sections)} sections with {total_batches} batched TTS calls "
             f"(SSML: {self.use_ssml})"
         )
 
-        current_batch = 0
-        audio_segments = []
-        api_call_count = 0
+        # Concurrency limit
+        sem = asyncio.Semaphore(5)
+        completed_batches = 0
 
-        try:
-            # Process each section
-            for section_idx, section in enumerate(script.sections):
-                logger.info(
-                    f"Processing section {section_idx + 1}/{len(script.sections)}: {section.title}"
+        async def process_batch(index, section, batch):
+            nonlocal completed_batches
+            async with sem:
+                # Synthesize
+                # Use SSML text if supported, otherwise plain text
+                text = batch.combined_text_ssml if self.use_ssml else batch.combined_text
+
+                logger.debug(
+                    f"TTS call for {batch.speaker}, "
+                    f"{len(text)} chars, {len(batch.turns)} turns"
                 )
 
-                # Batch the dialogue turns
-                batches = self.batcher.batch_section(section, self.use_ssml)
+                try:
+                    audio_bytes = await self.tts.synthesize(
+                        text=text,
+                        speaker=batch.speaker,
+                        speed=self.speed,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to synthesize batch in section '{section.title}': {e}")
+                    raise
 
-                # Generate audio for each batch
-                for batch in batches:
-                    current_batch += 1
-                    api_call_count += 1
+                completed_batches += 1
 
-                    if progress_callback:
-                        progress_callback(
-                            current_batch,
-                            total_batches,
-                            f"Synthesizing: {batch.speaker.upper()} "
-                            f"({len(batch.turns)} turns) in {section.section_type}",
-                        )
+                if progress_callback:
+                    progress_callback(
+                        completed_batches,
+                        total_batches,
+                        f"Synthesizing: {batch.speaker.upper()} "
+                        f"({len(batch.turns)} turns) in {section.section_type}",
+                    )
 
-                    # Synthesize batch
-                    try:
-                        # Use SSML text if supported, otherwise plain text
-                        text = batch.combined_text_ssml if self.use_ssml else batch.combined_text
+                logger.debug(f"Generated {len(audio_bytes) / 1024:.1f} KB for batch")
 
-                        logger.debug(
-                            f"TTS call {api_call_count}: {batch.speaker}, "
-                            f"{len(text)} chars, {len(batch.turns)} turns"
-                        )
+                result_segments = [audio_bytes]
 
-                        audio_bytes = await self.tts.synthesize(
-                            text=text,
-                            speaker=batch.speaker,
-                            speed=self.speed,
-                        )
+                # Add pause after batch (if not using SSML)
+                if not self.use_ssml and batch.total_pause_after > 0:
+                    silence = self._get_silence(batch.total_pause_after)
+                    if silence:
+                        result_segments.append(silence)
+                        logger.debug(f"Added {batch.total_pause_after}s silence")
 
-                        audio_segments.append(audio_bytes)
-                        logger.debug(f"Generated {len(audio_bytes) / 1024:.1f} KB for batch")
+                return result_segments
 
-                        # Add pause after batch (if not using SSML)
-                        if not self.use_ssml and batch.total_pause_after > 0:
-                            silence = self._get_silence(batch.total_pause_after)
-                            if silence:
-                                audio_segments.append(silence)
-                                logger.debug(f"Added {batch.total_pause_after}s silence")
+        try:
+            # Create tasks
+            tasks = [
+                process_batch(i, section, batch)
+                for i, (section, batch) in enumerate(all_batches)
+            ]
 
-                    except Exception as e:
-                        logger.error(f"Failed to synthesize batch {current_batch}: {e}")
-                        # Re-raise to fail fast rather than produce broken audio
-                        raise
+            # Execute
+            results = await asyncio.gather(*tasks)
+
+            # Flatten results
+            audio_segments = [seg for sublist in results for seg in sublist]
+            api_call_count = len(results)
 
             if progress_callback:
                 progress_callback(total_batches, total_batches, "Combining audio segments...")
@@ -284,6 +294,11 @@ class PodcastAudioGeneratorV2:
 def get_output_path(podcast_id: int, base_dir: Path | None = None) -> Path:
     """Get output path for a podcast audio file.
 
+    .. deprecated::
+        This function is deprecated. Podcast audio is now stored via the
+        unified file storage system. Use `get_storage(bucket="podcasts")`
+        instead for cloud-compatible storage.
+
     Args:
         podcast_id: ID of the podcast
         base_dir: Base directory for podcast storage (defaults to settings)
@@ -291,6 +306,14 @@ def get_output_path(podcast_id: int, base_dir: Path | None = None) -> Path:
     Returns:
         Path to the output MP3 file
     """
+    import warnings
+
+    warnings.warn(
+        "get_output_path is deprecated. Use get_storage(bucket='podcasts') instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     if base_dir is None:
         base_dir = Path(settings.podcast_storage_path)
 
