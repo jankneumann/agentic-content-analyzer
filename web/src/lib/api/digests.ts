@@ -99,6 +99,22 @@ export async function generateDigest(
 }
 
 /**
+ * Regenerate an existing digest
+ *
+ * @param digestId - Digest ID to regenerate
+ * @returns Status response
+ */
+export async function regenerateDigest(
+  digestId: number
+): Promise<{
+  status: string
+  message: string
+  digest_id: number
+}> {
+  return apiClient.post(`/digests/${digestId}/regenerate`)
+}
+
+/**
  * Submit a review for a digest
  *
  * @param digestId - Digest ID
@@ -186,13 +202,13 @@ export async function reviseDigestSection(
 
 /**
  * Full summary data from digest sources endpoint
- * Includes newsletter metadata for display in review UI
+ * Includes content metadata for display in review UI
  */
 export interface DigestSourceSummary {
   id: number
-  newsletter_id: number
-  newsletter_title: string
-  newsletter_publication: string | null
+  content_id: number
+  title: string
+  publication: string | null
   executive_summary: string
   key_themes: string[]
   strategic_insights: string[]

@@ -1,7 +1,7 @@
 """
 Theme Analysis API Routes
 
-Endpoints for analyzing themes across newsletters.
+Endpoints for analyzing themes across content items.
 """
 
 from datetime import datetime, timedelta
@@ -39,7 +39,7 @@ class AnalyzeThemesRequest(BaseModel):
     min_newsletters: int = Field(
         default=2,
         ge=1,
-        description="Minimum newsletters required for analysis",
+        description="Minimum content items required for analysis",
     )
     relevance_threshold: float = Field(
         default=0.3,
@@ -103,7 +103,7 @@ async def analyze_themes(
     background_tasks: BackgroundTasks,
 ) -> AnalyzeThemesResponse:
     """
-    Trigger theme analysis across newsletters in a date range.
+    Trigger theme analysis across content items in a date range.
 
     Analysis runs in the background. Use GET /themes/analysis/{id} to check status
     and retrieve results.

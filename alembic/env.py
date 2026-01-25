@@ -2,13 +2,11 @@
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from src.config import settings
-from src.models.digest import Digest
-from src.models.newsletter import Base, Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.base import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -24,7 +22,19 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Set sqlalchemy.url from settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Use get_effective_database_url() which handles local, Supabase, and Neon configs
+# Note: For cloud providers (Supabase, Neon), migrations need direct (non-pooled) connections.
+# - Supabase: Use SUPABASE_DIRECT_URL
+# - Neon: Use NEON_DIRECT_URL (removes -pooler from hostname)
+if settings.neon_direct_url:
+    # Neon direct URL for migrations (bypasses connection pooler)
+    config.set_main_option("sqlalchemy.url", settings.neon_direct_url)
+elif settings.supabase_direct_url:
+    # Supabase direct URL for migrations
+    config.set_main_option("sqlalchemy.url", settings.supabase_direct_url)
+else:
+    # Use the effective database URL (pooler for cloud, direct for local)
+    config.set_main_option("sqlalchemy.url", settings.get_effective_database_url())
 
 
 def run_migrations_offline() -> None:

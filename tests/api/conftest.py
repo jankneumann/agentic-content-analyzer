@@ -21,21 +21,17 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.api.app import app
 from src.config.models import MODEL_REGISTRY
-from src.models.content import Content, ContentSource, ContentStatus  # Unified Content model
+from src.models.audio_digest import AudioDigest  # noqa: F401 - registers with Base.metadata
+from src.models.base import Base
+from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
-from src.models.newsletter import (
-    Base,
-    Newsletter,
-    NewsletterSource,
-    ProcessingStatus,
-)
 from src.models.podcast import (
     Podcast,
     PodcastScriptRecord,
     PodcastStatus,
 )
 from src.models.settings import PromptOverride  # noqa: F401 - registers with Base.metadata
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 
 # Test database configuration
@@ -50,11 +46,12 @@ def test_db_engine():
     """Create test database engine.
 
     Uses newsletters_test database (separate from development).
-    Creates all tables at session start, drops them at session end.
+    Drops and recreates all tables at session start for clean state.
+    This handles interrupted previous runs that left stale data.
     """
     engine = create_engine(TEST_DATABASE_URL, echo=False)
 
-    # Verify we're using test database
+    # Verify we're using test database (safety check)
     db_name = engine.url.database
     if not db_name or "test" not in db_name.lower():
         raise ValueError(
@@ -62,7 +59,10 @@ def test_db_engine():
             f"Set TEST_DATABASE_URL to a test database to proceed."
         )
 
-    # Create all tables
+    # Drop all tables first for clean state (handles interrupted previous runs)
+    Base.metadata.drop_all(engine)
+
+    # Create all tables fresh
     Base.metadata.create_all(engine)
 
     yield engine
@@ -108,7 +108,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
 
     # Patch get_db in all route modules and services that use it directly
     with (
-        patch("src.api.newsletter_routes.get_db", mock_get_db),
+        patch("src.api.audio_digest_routes.get_db", mock_get_db),
         patch("src.api.summary_routes.get_db", mock_get_db),
         patch("src.api.digest_routes.get_db", mock_get_db),
         patch("src.api.podcast_routes.get_db", mock_get_db),
@@ -130,86 +130,12 @@ def client(db_session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture
-def sample_newsletter(db_session) -> Newsletter:
-    """Create a single sample newsletter in the test database."""
-    newsletter = Newsletter(
-        source=NewsletterSource.GMAIL,
-        source_id="test-msg-001",
-        sender="ai-weekly@example.com",
-        publication="AI Weekly",
-        title="Latest LLM Advances",
-        raw_html="<html><body>Newsletter about LLM advances...</body></html>",
-        raw_text="Newsletter content about LLM advances and new models.",
-        published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
-        url="https://example.com/newsletter1",
-        status=ProcessingStatus.PENDING,
-    )
-    db_session.add(newsletter)
-    db_session.commit()
-    db_session.refresh(newsletter)
-    return newsletter
-
-
-@pytest.fixture
-def sample_newsletters(db_session) -> list[Newsletter]:
-    """Create multiple sample newsletters in the test database."""
-    newsletters = [
-        Newsletter(
-            source=NewsletterSource.GMAIL,
-            source_id="test-msg-001",
-            sender="ai-weekly@example.com",
-            publication="AI Weekly",
-            title="Latest LLM Advances",
-            raw_html="<html><body>Newsletter about LLM advances...</body></html>",
-            raw_text="Newsletter content about LLM advances.",
-            published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
-            url="https://example.com/newsletter1",
-            status=ProcessingStatus.PENDING,
-        ),
-        Newsletter(
-            source=NewsletterSource.GMAIL,
-            source_id="test-msg-002",
-            sender="data-eng@example.com",
-            publication="Data Engineering Weekly",
-            title="Vector Database Performance",
-            raw_html="<html><body>Newsletter about vector databases...</body></html>",
-            raw_text="Newsletter about vector database optimizations.",
-            published_date=datetime(2025, 1, 14, 10, 0, 0, tzinfo=UTC),
-            url="https://example.com/newsletter2",
-            status=ProcessingStatus.COMPLETED,
-        ),
-        Newsletter(
-            source=NewsletterSource.RSS,
-            source_id="test-rss-003",
-            sender="tech-trends@substack.com",
-            publication="Tech Trends",
-            title="AI Agent Frameworks",
-            raw_html="<html><body>Newsletter about AI agent frameworks...</body></html>",
-            raw_text="Comparison of AI agent frameworks.",
-            published_date=datetime(2025, 1, 13, 10, 0, 0, tzinfo=UTC),
-            url="https://example.com/newsletter3",
-            status=ProcessingStatus.PENDING,
-        ),
-    ]
-
-    for newsletter in newsletters:
-        db_session.add(newsletter)
-
-    db_session.commit()
-
-    for newsletter in newsletters:
-        db_session.refresh(newsletter)
-
-    return newsletters
-
-
-@pytest.fixture
-def sample_summary(db_session, sample_newsletter) -> NewsletterSummary:
-    """Create a single sample summary linked to a newsletter."""
+def sample_summary(db_session, sample_content) -> Summary:
+    """Create a single sample summary linked to content."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
-    summary = NewsletterSummary(
-        newsletter_id=sample_newsletter.id,
+    summary = Summary(
+        content_id=sample_content.id,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
         strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -228,8 +154,8 @@ def sample_summary(db_session, sample_newsletter) -> NewsletterSummary:
         processing_time_seconds=3.5,
     )
 
-    # Update newsletter status to reflect it has been summarized
-    sample_newsletter.status = ProcessingStatus.COMPLETED
+    # Update content status to reflect it has been summarized
+    sample_content.status = ContentStatus.COMPLETED
     db_session.add(summary)
     db_session.commit()
     db_session.refresh(summary)
@@ -237,13 +163,13 @@ def sample_summary(db_session, sample_newsletter) -> NewsletterSummary:
 
 
 @pytest.fixture
-def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
-    """Create multiple sample summaries linked to newsletters."""
+def sample_summaries(db_session, sample_contents) -> list[Summary]:
+    """Create multiple sample summaries linked to contents."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
     summaries = [
-        NewsletterSummary(
-            newsletter_id=sample_newsletters[0].id,
+        Summary(
+            content_id=sample_contents[0].id,
             executive_summary="Major LLM advances summary.",
             key_themes=["LLM Performance", "Cost Optimization"],
             strategic_insights=["LLM costs decreasing"],
@@ -256,8 +182,8 @@ def sample_summaries(db_session, sample_newsletters) -> list[NewsletterSummary]:
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
-        NewsletterSummary(
-            newsletter_id=sample_newsletters[1].id,
+        Summary(
+            content_id=sample_contents[1].id,
             executive_summary="Vector database performance summary.",
             key_themes=["Vector Search", "Performance"],
             strategic_insights=["Database selection critical"],
@@ -320,7 +246,7 @@ def sample_digest(db_session) -> Digest:
             "leadership": ["Review AI strategy"],
             "technical": ["Evaluate new tools"],
         },
-        sources=[{"newsletter_id": 1, "title": "AI Weekly"}],
+        sources=[{"content_id": 1, "title": "AI Weekly"}],
         newsletter_count=3,
         status=DigestStatus.PENDING_REVIEW,
         agent_framework="claude",
@@ -508,7 +434,7 @@ def sample_contents(db_session) -> list[Content]:
             published_date=datetime(2025, 1, 14, 10, 0, 0, tzinfo=UTC),
             markdown_content="# Vector Databases\n\nGuide to vector databases.",
             content_hash="hash002",
-            status=ContentStatus.PROCESSED,
+            status=ContentStatus.COMPLETED,
             ingested_at=datetime.now(UTC),
             processed_at=datetime.now(UTC),
         ),
@@ -540,11 +466,11 @@ def sample_contents(db_session) -> list[Content]:
 
 
 @pytest.fixture
-def sample_content_with_summary(db_session, sample_content) -> tuple[Content, NewsletterSummary]:
+def sample_content_with_summary(db_session, sample_content) -> tuple[Content, Summary]:
     """Create a content with an associated summary."""
     test_model = list(MODEL_REGISTRY.keys())[0]
 
-    summary = NewsletterSummary(
+    summary = Summary(
         content_id=sample_content.id,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
@@ -566,7 +492,7 @@ def sample_content_with_summary(db_session, sample_content) -> tuple[Content, Ne
         processing_time_seconds=3.5,
     )
 
-    sample_content.status = ContentStatus.PROCESSED
+    sample_content.status = ContentStatus.COMPLETED
     sample_content.processed_at = datetime.now(UTC)
 
     db_session.add(summary)

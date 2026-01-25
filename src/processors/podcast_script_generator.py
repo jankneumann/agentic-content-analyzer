@@ -4,20 +4,25 @@ This module generates conversational podcast scripts from digest content using
 an agentic approach with tool-based content retrieval. The model can fetch
 full newsletter content on-demand and perform web searches as needed.
 
+Supports multiple LLM providers via LLMRouter:
+- Anthropic (Claude)
+- Google (Gemini)
+- OpenAI (GPT)
+
 Two personas drive the conversation:
 - Alex Chen: VP of Engineering (strategic perspective)
 - Dr. Sam Rodriguez: Distinguished Engineer (technical deep-dives)
 """
 
 import json
+import os
 import time
-
-from anthropic import Anthropic
+from typing import Any
 
 from src.config import settings
-from src.config.models import ModelConfig, ModelStep, Provider
+from src.config.models import ModelConfig, ModelFamily, ModelStep, Provider
+from src.models.content import Content, ContentStatus
 from src.models.digest import Digest
-from src.models.newsletter import Newsletter
 from src.models.podcast import (
     DialogueTurn,
     PodcastGenerationMetadata,
@@ -26,7 +31,8 @@ from src.models.podcast import (
     PodcastScript,
     PodcastSection,
 )
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
+from src.services.llm_router import ToolDefinition
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -87,8 +93,8 @@ CONTENT REQUIREMENTS:
 AVAILABLE TOOLS:
 You have access to the following tools to enrich your script:
 
-1. **get_newsletter_content(newsletter_id: int) -> str**
-   Retrieves the full original text of a newsletter by ID.
+1. **get_content(content_id: int) -> str**
+   Retrieves the full original text of a content item by ID.
    Use this when you want to:
    - Quote directly from a source for impact
    - Get more context on a specific story
@@ -158,34 +164,34 @@ Include:
 }
 
 
-# Tool definitions for Claude
+# Tool definitions (provider-agnostic)
 PODCAST_TOOLS = [
-    {
-        "name": "get_newsletter_content",
-        "description": (
-            "Retrieve the full original text of a newsletter by ID. "
+    ToolDefinition(
+        name="get_content",
+        description=(
+            "Retrieve the full original text of a content item by ID. "
             "Use when you need direct quotes, more context, or specific details "
-            "from a particular newsletter source."
+            "from a particular source."
         ),
-        "input_schema": {
+        parameters={
             "type": "object",
             "properties": {
-                "newsletter_id": {
+                "content_id": {
                     "type": "integer",
-                    "description": "The database ID of the newsletter to retrieve",
+                    "description": "The database ID of the content item to retrieve",
                 }
             },
-            "required": ["newsletter_id"],
+            "required": ["content_id"],
         },
-    },
-    {
-        "name": "web_search",
-        "description": (
+    ),
+    ToolDefinition(
+        name="web_search",
+        description=(
             "Search the web for recent information about a topic. "
             "Use for latest updates, competitor info, or external context. "
             "Returns top 3 search results with titles, snippets, and URLs."
         ),
-        "input_schema": {
+        parameters={
             "type": "object",
             "properties": {
                 "query": {
@@ -195,7 +201,7 @@ PODCAST_TOOLS = [
             },
             "required": ["query"],
         },
-    },
+    ),
 ]
 
 
@@ -234,7 +240,7 @@ class PodcastScriptGenerator:
         self.model_version: str | None = None
 
         # Track tool usage
-        self.newsletter_ids_fetched: list[int] = []
+        self.content_ids_fetched: list[int] = []
         self.web_search_queries: list[str] = []
         self.tool_call_count: int = 0
 
@@ -262,11 +268,11 @@ class PodcastScriptGenerator:
         )
 
         # Reset tracking
-        self.newsletter_ids_fetched = []
+        self.content_ids_fetched = []
         self.web_search_queries = []
         self.tool_call_count = 0
 
-        # 1. Load digest and lightweight context (NO full newsletter text)
+        # 1. Load digest and lightweight context (NO full content text)
         context = await self._assemble_lightweight_context(request)
 
         if context["digest"] is None:
@@ -278,7 +284,7 @@ class PodcastScriptGenerator:
         # 3. Build metadata
         processing_time = int(time.time() - start_time)
         metadata = PodcastGenerationMetadata(
-            newsletter_ids_fetched=self.newsletter_ids_fetched,
+            content_ids_fetched=self.content_ids_fetched,
             web_searches=self.web_search_queries,
             tool_call_count=self.tool_call_count,
             total_tokens_used=self.input_tokens + self.output_tokens,
@@ -296,13 +302,13 @@ class PodcastScriptGenerator:
         self,
         request: PodcastRequest,
     ) -> dict:
-        """Assemble lightweight context - metadata only, no full newsletter text.
+        """Assemble lightweight context - metadata only, no full content text.
 
         Args:
             request: Podcast generation request
 
         Returns:
-            Context dictionary with digest, newsletter metadata, and summaries
+            Context dictionary with digest, content metadata, and summaries
         """
         logger.debug(f"Assembling lightweight context for digest {request.digest_id}")
 
@@ -313,38 +319,36 @@ class PodcastScriptGenerator:
             if not digest:
                 return {"digest": None}
 
-            # Load newsletter METADATA only (not full text)
-            newsletters = (
-                db.query(Newsletter)
+            # Load content METADATA only (not full text)
+            contents = (
+                db.query(Content)
                 .filter(
-                    Newsletter.published_date >= digest.period_start,
-                    Newsletter.published_date <= digest.period_end,
+                    Content.published_date >= digest.period_start,
+                    Content.published_date <= digest.period_end,
+                    Content.status == ContentStatus.COMPLETED,
                 )
-                .order_by(Newsletter.published_date.desc())
+                .order_by(Content.published_date.desc())
                 .all()
             )
 
-            # Create lightweight newsletter list for the prompt
-            newsletter_metadata = [
+            # Create lightweight content list for the prompt
+            content_metadata = [
                 {
-                    "id": n.id,
-                    "title": n.title,
-                    "publication": n.publication,
-                    "date": n.published_date.isoformat() if n.published_date else None,
-                    "url": n.url,
+                    "id": c.id,
+                    "title": c.title,
+                    "publication": c.publication,
+                    "date": c.published_date.isoformat() if c.published_date else None,
+                    "url": c.source_url,
+                    "source_type": c.source_type.value if c.source_type else None,
                 }
-                for n in newsletters
+                for c in contents
             ]
 
             # Load summaries (these ARE included - they're already condensed)
-            newsletter_ids = [n.id for n in newsletters]
+            content_ids = [c.id for c in contents]
             summaries = (
-                (
-                    db.query(NewsletterSummary)
-                    .filter(NewsletterSummary.newsletter_id.in_(newsletter_ids))
-                    .all()
-                )
-                if newsletter_ids
+                (db.query(Summary).filter(Summary.content_id.in_(content_ids)).all())
+                if content_ids
                 else []
             )
 
@@ -363,15 +367,16 @@ class PodcastScriptGenerator:
             }
 
         logger.info(
-            f"Assembled context: {len(newsletter_metadata)} newsletters, {len(summaries)} summaries"
+            f"Assembled context: {len(content_metadata)} content items, {len(summaries)} summaries"
         )
 
         return {
             "digest": digest_data,
-            "newsletter_metadata": newsletter_metadata,
+            "content_metadata": content_metadata,
             "summaries": summaries,
             "length": request.length,
             "custom_focus_topics": request.custom_focus_topics,
+            "custom_instructions": request.custom_instructions,
         }
 
     async def _generate_script_with_tools(
@@ -381,6 +386,8 @@ class PodcastScriptGenerator:
     ) -> PodcastScript:
         """Run agentic loop with tool use to generate script.
 
+        Routes to the appropriate provider-specific implementation based on model family.
+
         Args:
             context: Lightweight context dictionary
             request: Podcast generation request
@@ -388,6 +395,34 @@ class PodcastScriptGenerator:
         Returns:
             Generated PodcastScript
         """
+        # Determine model family for routing
+        model_info = self.model_config.get_model_info(self.model)
+
+        if model_info.family == ModelFamily.GEMINI:
+            return await self._generate_script_with_gemini(context, request)
+        elif model_info.family == ModelFamily.CLAUDE:
+            return await self._generate_script_with_anthropic(context, request)
+        else:
+            raise RuntimeError(
+                f"Unsupported model family for podcast generation: {model_info.family}"
+            )
+
+    async def _generate_script_with_anthropic(
+        self,
+        context: dict,
+        request: PodcastRequest,
+    ) -> PodcastScript:
+        """Run agentic loop with Anthropic/Claude.
+
+        Args:
+            context: Lightweight context dictionary
+            request: Podcast generation request
+
+        Returns:
+            Generated PodcastScript
+        """
+        from anthropic import Anthropic
+
         # Build initial prompt with lightweight context
         user_prompt = self._build_user_prompt(context, request.length)
 
@@ -406,12 +441,22 @@ class PodcastScriptGenerator:
         )
 
         # Prepare tools (conditionally include web_search)
-        tools = PODCAST_TOOLS.copy()
+        tool_defs = PODCAST_TOOLS.copy()
         if not request.enable_web_search:
-            tools = [t for t in tools if t["name"] != "web_search"]
+            tool_defs = [t for t in tool_defs if t.name != "web_search"]
+
+        # Convert to Anthropic tool format
+        tools = [
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.parameters,
+            }
+            for t in tool_defs
+        ]
 
         # Agentic loop - model can call tools as needed
-        messages = [{"role": "user", "content": user_prompt}]
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
         max_iterations = 20  # Safety limit
 
         for iteration in range(max_iterations):
@@ -464,6 +509,258 @@ class PodcastScriptGenerator:
         logger.warning(f"Hit max iterations ({max_iterations}), parsing current response")
         return self._parse_script_response(response, request.length)
 
+    async def _generate_script_with_gemini(
+        self,
+        context: dict,
+        request: PodcastRequest,
+    ) -> PodcastScript:
+        """Run agentic loop with Google Gemini.
+
+        Uses the google-genai SDK for function calling support.
+
+        Args:
+            context: Lightweight context dictionary
+            request: Podcast generation request
+
+        Returns:
+            Generated PodcastScript
+        """
+        from google import genai
+        from google.genai import types
+
+        # Build initial prompt with lightweight context
+        user_prompt = self._build_user_prompt(context, request.length)
+
+        # Get API key
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+
+        client = genai.Client(api_key=api_key)
+
+        # Get provider-specific model ID
+        provider_model_id = self.model_config.get_provider_model_id(self.model, Provider.GOOGLE_AI)
+        self.provider_used = Provider.GOOGLE_AI
+        self.model_version = self.model_config.get_model_version(self.model, Provider.GOOGLE_AI)
+
+        # Build Gemini tool declarations
+        tool_declarations = [
+            types.FunctionDeclaration(
+                name="get_content",
+                description=(
+                    "Retrieve the full original text of a content item by ID. "
+                    "Use when you need direct quotes, more context, or specific details "
+                    "from a particular source."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "content_id": {
+                            "type": "integer",
+                            "description": "The database ID of the content item to retrieve",
+                        }
+                    },
+                    "required": ["content_id"],
+                },
+            ),
+        ]
+
+        # Conditionally add web_search tool
+        if request.enable_web_search:
+            tool_declarations.append(
+                types.FunctionDeclaration(
+                    name="web_search",
+                    description=(
+                        "Search the web for recent information about a topic. "
+                        "Use for latest updates, competitor info, or external context. "
+                        "Returns top 3 search results with titles, snippets, and URLs."
+                    ),
+                    parameters_json_schema={
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The search query to find relevant information",
+                            }
+                        },
+                        "required": ["query"],
+                    },
+                )
+            )
+
+        gemini_tools = types.Tool(function_declarations=tool_declarations)
+
+        # Build initial contents
+        contents = [types.Content(role="user", parts=[types.Part.from_text(user_prompt)])]
+
+        # Configure generation
+        config = types.GenerateContentConfig(
+            system_instruction=PODCAST_SCRIPT_SYSTEM_PROMPT,
+            tools=[gemini_tools],
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            max_output_tokens=12000,
+            temperature=0.7,
+        )
+
+        # Agentic loop
+        max_iterations = 20
+
+        for iteration in range(max_iterations):
+            logger.debug(f"Gemini agentic loop iteration {iteration + 1}")
+
+            response = client.models.generate_content(
+                model=provider_model_id,
+                contents=contents,
+                config=config,
+            )
+
+            # Track token usage
+            if response.usage_metadata:
+                self.input_tokens += response.usage_metadata.prompt_token_count or 0
+                self.output_tokens += response.usage_metadata.candidates_token_count or 0
+
+            # Check for function calls
+            if response.function_calls:
+                # Process function calls
+                function_response_parts = []
+
+                for fc in response.function_calls:
+                    self.tool_call_count += 1
+                    logger.debug(f"Gemini function call: {fc.name}({fc.args})")
+
+                    # Execute the function
+                    result = await self._execute_gemini_tool(fc.name, fc.args or {})
+
+                    function_response_parts.append(
+                        types.Part.from_function_response(
+                            name=fc.name,
+                            response={"result": result},
+                        )
+                    )
+
+                # Add model's function call to contents
+                contents.append(response.candidates[0].content)
+
+                # Add tool responses
+                contents.append(types.Content(role="tool", parts=function_response_parts))
+
+            else:
+                # Model finished - extract script from response
+                logger.info(
+                    f"Gemini script generation completed after {iteration + 1} iterations, "
+                    f"{self.tool_call_count} tool calls"
+                )
+                return self._parse_gemini_response(response, request.length)
+
+        # Safety: if we hit max iterations, parse whatever we have
+        logger.warning(f"Hit max iterations ({max_iterations}), parsing current response")
+        return self._parse_gemini_response(response, request.length)
+
+    async def _execute_gemini_tool(self, name: str, args: dict) -> str:
+        """Execute a tool call from Gemini.
+
+        Args:
+            name: Tool name
+            args: Tool arguments
+
+        Returns:
+            Tool result string
+        """
+        if name == "get_content":
+            content_id = args.get("content_id")
+            return await self._handle_get_content(content_id)
+        elif name == "web_search":
+            query = args.get("query")
+            return await self._handle_web_search(query)
+        else:
+            return f"Unknown tool: {name}"
+
+    def _parse_gemini_response(self, response, length: PodcastLength) -> PodcastScript:
+        """Parse Gemini response into a PodcastScript.
+
+        Args:
+            response: Gemini API response
+            length: Target podcast length
+
+        Returns:
+            Parsed PodcastScript
+        """
+        # Extract text content
+        raw_content = ""
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text") and part.text:
+                    raw_content = part.text.strip()
+                    break
+
+        if not raw_content:
+            logger.error("No text content in Gemini response")
+            return self._create_fallback_script(length)
+
+        # Try to extract JSON from markdown code blocks if present
+        if "```json" in raw_content:
+            start = raw_content.find("```json") + 7
+            end = raw_content.find("```", start)
+            raw_content = raw_content[start:end].strip()
+        elif "```" in raw_content:
+            start = raw_content.find("```") + 3
+            end = raw_content.find("```", start)
+            raw_content = raw_content[start:end].strip()
+
+        try:
+            script_json = json.loads(raw_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Gemini script JSON: {e}")
+            logger.debug(f"Raw content: {raw_content[:500]}")
+            return self._create_fallback_script(length)
+
+        # Parse sections (reuse existing logic)
+        sections = []
+        intro_section = None
+        outro_section = None
+        total_words = 0
+
+        for section_data in script_json.get("sections", []):
+            dialogue = [
+                DialogueTurn(
+                    speaker=turn.get("speaker", "alex"),
+                    text=turn.get("text", ""),
+                    emphasis=turn.get("emphasis"),
+                    pause_after=turn.get("pause_after", 0.0),
+                )
+                for turn in section_data.get("dialogue", [])
+            ]
+
+            section_words = sum(len(turn.text.split()) for turn in dialogue)
+            total_words += section_words
+
+            section = PodcastSection(
+                section_type=section_data.get("section_type", "content"),
+                title=section_data.get("title", "Untitled Section"),
+                dialogue=dialogue,
+                sources_cited=section_data.get("sources_cited", []),
+            )
+            sections.append(section)
+
+            if section.section_type == "intro":
+                intro_section = section
+            elif section.section_type == "outro":
+                outro_section = section
+
+        estimated_duration = int((total_words / settings.podcast_words_per_minute) * 60)
+        sources_summary = script_json.get("sources_summary", [])
+
+        return PodcastScript(
+            title=script_json.get("title", f"{length.value.title()} Podcast"),
+            length=length,
+            estimated_duration_seconds=estimated_duration,
+            word_count=total_words,
+            sections=sections,
+            intro=intro_section,
+            outro=outro_section,
+            sources_summary=sources_summary,
+        )
+
     async def _execute_tool(self, tool_block) -> str:
         """Execute a tool call and return the result.
 
@@ -478,9 +775,9 @@ class PodcastScriptGenerator:
 
         logger.debug(f"Executing tool: {tool_name} with input: {tool_input}")
 
-        if tool_name == "get_newsletter_content":
-            newsletter_id = tool_input.get("newsletter_id")
-            return await self._handle_get_newsletter_content(newsletter_id)
+        if tool_name == "get_content":
+            content_id = tool_input.get("content_id")
+            return await self._handle_get_content(content_id)
 
         elif tool_name == "web_search":
             query = tool_input.get("query")
@@ -489,45 +786,44 @@ class PodcastScriptGenerator:
         else:
             return f"Unknown tool: {tool_name}"
 
-    async def _handle_get_newsletter_content(self, newsletter_id: int) -> str:
-        """Tool handler: Fetch full newsletter content from database.
+    async def _handle_get_content(self, content_id: int) -> str:
+        """Tool handler: Fetch full content from database.
 
         Args:
-            newsletter_id: Newsletter ID to fetch
+            content_id: Content ID to fetch
 
         Returns:
-            Newsletter content or error message
+            Content text or error message
         """
-        logger.debug(f"Fetching newsletter content for ID: {newsletter_id}")
-        self.newsletter_ids_fetched.append(newsletter_id)
+        logger.debug(f"Fetching content for ID: {content_id}")
+        self.content_ids_fetched.append(content_id)
 
         with get_db() as db:
-            newsletter = db.query(Newsletter).filter(Newsletter.id == newsletter_id).first()
+            content = db.query(Content).filter(Content.id == content_id).first()
 
-            if not newsletter:
-                return f"Newsletter with ID {newsletter_id} not found."
+            if not content:
+                return f"Content with ID {content_id} not found."
 
-            # Get the raw text content
-            raw_text = newsletter.raw_text or ""
+            # Get the markdown content (preferred) or raw text
+            text = content.markdown_content or content.raw_text or ""
 
             # Limit to avoid context overflow (roughly 15k chars ~ 4k tokens)
-            if len(raw_text) > 15000:
-                raw_text = raw_text[:15000] + "\n\n[Content truncated...]"
+            if len(text) > 15000:
+                text = text[:15000] + "\n\n[Content truncated...]"
 
             return f"""
-Newsletter: {newsletter.title}
-Publication: {newsletter.publication}
-Date: {newsletter.published_date}
+Content: {content.title}
+Publication: {content.publication}
+Date: {content.published_date}
+Source: {content.source_type.value if content.source_type else 'unknown'}
 
-Content:
-{raw_text}
+{text}
 """
 
     async def _handle_web_search(self, query: str) -> str:
         """Tool handler: Perform web search.
 
-        Note: This is a stub implementation. In production, integrate with
-        a web search service (Tavily, Brave Search, SerpAPI, etc.)
+        Uses Tavily for web search.
 
         Args:
             query: Search query
@@ -535,23 +831,15 @@ Content:
         Returns:
             Search results or placeholder
         """
+        from src.services.tavily_service import get_tavily_service
+
         logger.debug(f"Web search requested for query: {query}")
         self.web_search_queries.append(query)
 
-        # TODO: Integrate with actual web search service
-        # For now, return a placeholder that indicates the feature is pending
-        return f"""
-Web search for: "{query}"
+        tavily = get_tavily_service()
+        results = tavily.search(query)
 
-Note: Web search integration is pending implementation.
-The search service will provide:
-- Top 3 recent articles matching the query
-- Title, snippet, and URL for each result
-- Publication date for recency context
-
-For now, please rely on the newsletter content available through
-the get_newsletter_content tool.
-"""
+        return tavily.format_results(results)
 
     def _build_user_prompt(
         self,
@@ -570,8 +858,8 @@ the get_newsletter_content tool.
         digest = context["digest"]
         period = f"{digest['period_start']} to {digest['period_end']}"
 
-        # Format newsletter list
-        newsletter_list = self._format_newsletter_list(context["newsletter_metadata"])
+        # Format content list
+        content_list = self._format_content_list(context["content_metadata"])
 
         # Format summaries
         summaries_text = self._format_summaries(context["summaries"])
@@ -586,6 +874,11 @@ the get_newsletter_content tool.
             focus_topics_text = (
                 f"\n## Custom Focus Topics\nPlease emphasize these topics: {topics}\n"
             )
+
+        # Format custom instructions if any
+        instructions_text = ""
+        if context.get("custom_instructions"):
+            instructions_text = f"\n## Custom Instructions\n{context['custom_instructions']}\n"
 
         word_target = WORD_COUNT_TARGETS[length]
 
@@ -608,14 +901,15 @@ Create a {length.value} podcast script for the {digest["digest_type"]} digest.
 **Emerging Trends:**
 {json.dumps(digest["emerging_trends"], indent=2)}
 
-## Available Newsletters
-You can use the `get_newsletter_content` tool to retrieve full text for any of these:
+## Available Content
+You can use the `get_content` tool to retrieve full text for any of these:
 
-{newsletter_list}
+{content_list}
 
-## Newsletter Summaries
+## Content Summaries
 {summaries_text}
 {focus_topics_text}
+{instructions_text}
 ## Instructions
 {length_prompt}
 
@@ -651,41 +945,43 @@ Return a JSON object with this structure:
     }}
   ],
   "sources_summary": [
-    {{"id": 1, "title": "Newsletter Title", "publication": "Publication Name"}}
+    {{"id": 1, "title": "Content Title", "publication": "Publication Name"}}
   ]
 }}
 ```
 
 Section types should include: intro, strategic, technical, trend, outro
 
-Generate the podcast script now. Use the tools to fetch newsletter content or web search
+Generate the podcast script now. Use the tools to fetch content or web search
 when you need more detail for compelling quotes or to verify/enrich specific points.
 """
 
-    def _format_newsletter_list(self, newsletter_metadata: list[dict]) -> str:
-        """Format newsletter metadata as a numbered list.
+    def _format_content_list(self, content_metadata: list[dict]) -> str:
+        """Format content metadata as a numbered list.
 
         Args:
-            newsletter_metadata: List of newsletter metadata dicts
+            content_metadata: List of content metadata dicts
 
         Returns:
             Formatted string
         """
-        if not newsletter_metadata:
-            return "(No newsletters available)"
+        if not content_metadata:
+            return "(No content available)"
 
         lines = []
-        for nl in newsletter_metadata:
-            date = nl.get("date", "")[:10] if nl.get("date") else "Unknown"
-            lines.append(f"- [{nl['id']}] {nl['publication']} - {nl['title']} ({date})")
+        for c in content_metadata:
+            date = c.get("date", "")[:10] if c.get("date") else "Unknown"
+            source = c.get("source_type", "")
+            source_suffix = f" [{source}]" if source else ""
+            lines.append(f"- [{c['id']}] {c['publication']} - {c['title']} ({date}){source_suffix}")
 
         return "\n".join(lines)
 
     def _format_summaries(self, summaries: list) -> str:
-        """Format newsletter summaries for the prompt.
+        """Format content summaries for the prompt.
 
         Args:
-            summaries: List of NewsletterSummary objects
+            summaries: List of Summary objects
 
         Returns:
             Formatted string
@@ -700,7 +996,7 @@ when you need more detail for compelling quotes or to verify/enrich specific poi
             technical = "\n".join(f"  - {d}" for d in (s.technical_details or [])[:3])
 
             parts.append(f"""
-**[{s.newsletter_id}] Summary**
+**[{s.content_id}] Summary**
 Executive: {s.executive_summary}
 Themes: {themes}
 Strategic Insights:

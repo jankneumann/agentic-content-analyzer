@@ -68,7 +68,7 @@ export function DigestPane({ digest, isPreview = false, isLoading = false, class
     >
       <ReviewPaneHeader
         title={isPreview ? "Preview" : "Digest"}
-        subtitle={`${digest.digest_type} | ${digest.newsletter_count} newsletters`}
+        subtitle={`${digest.digest_type} | ${digest.content_count} content items`}
         actions={
           isPreview ? (
             <Badge variant="secondary" className="text-xs">

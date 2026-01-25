@@ -22,7 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 # --- Enums ---
 
@@ -143,6 +143,9 @@ class PodcastRequest(BaseModel):
     custom_focus_topics: list[str] = Field(
         default_factory=list, description="Optional topics to emphasize"
     )
+    custom_instructions: str | None = Field(
+        None, description="Optional instructions for script generation (e.g. from chat)"
+    )
 
 
 class ScriptRevisionRequest(BaseModel):
@@ -172,8 +175,8 @@ class ScriptReviewRequest(BaseModel):
 class PodcastGenerationMetadata(BaseModel):
     """Metadata about podcast script generation for tracking and debugging."""
 
-    newsletter_ids_fetched: list[int] = Field(
-        default_factory=list, description="Newsletter IDs fetched via tool"
+    content_ids_fetched: list[int] = Field(
+        default_factory=list, description="Content IDs fetched via get_content tool"
     )
     web_searches: list[str] = Field(default_factory=list, description="Web search queries executed")
     tool_call_count: int = Field(default=0, description="Total tool invocations")
@@ -252,7 +255,7 @@ class PodcastScriptRecord(Base):
     error_message = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     approved_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -291,7 +294,7 @@ class Podcast(Base):
     error_message = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships

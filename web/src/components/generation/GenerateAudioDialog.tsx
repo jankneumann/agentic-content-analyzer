@@ -121,18 +121,24 @@ export function GenerateAudioDialog({
               value={scriptId ? String(scriptId) : ""}
               onValueChange={(v) => setScriptId(Number(v))}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select an approved script..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-w-[calc(500px-3rem)]">
                 {approvedScripts.length === 0 ? (
                   <SelectItem value="" disabled>
                     No approved scripts available
                   </SelectItem>
                 ) : (
                   approvedScripts.map((script) => (
-                    <SelectItem key={script.id} value={String(script.id)}>
-                      [{script.id}] {script.title ?? `Script #${script.id}`}
+                    <SelectItem
+                      key={script.id}
+                      value={String(script.id)}
+                      className="max-w-full"
+                    >
+                      <span className="truncate">
+                        [{script.id}] {script.title ?? `Script #${script.id}`}
+                      </span>
                     </SelectItem>
                   ))
                 )}

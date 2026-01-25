@@ -140,9 +140,9 @@ class DigestFormatter:
         if digest.sources:
             md_parts.append("## Sources\n")
             for source in digest.sources:
-                # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
-                newsletter_id = source.get("id") or source.get("newsletter_id", "")
-                id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
+                # Get content ID (try both 'id' and legacy 'newsletter_id' keys)
+                content_id = source.get("id") or source.get("newsletter_id", "")
+                id_prefix = f"[{content_id}] " if content_id else ""
 
                 if source.get("url"):
                     md_parts.append(
@@ -268,9 +268,9 @@ class DigestFormatter:
             lines.append("\nSOURCES")
             lines.append("-" * 80)
             for source in digest.sources:
-                # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
-                newsletter_id = source.get("id") or source.get("newsletter_id", "")
-                id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
+                # Get content ID (try both 'id' and legacy 'newsletter_id' keys)
+                content_id = source.get("id") or source.get("newsletter_id", "")
+                id_prefix = f"[{content_id}] " if content_id else ""
                 lines.append(
                     f"• {id_prefix}{source['publication']}: {source['title']} ({source['date']})"
                 )
@@ -600,9 +600,9 @@ class DigestFormatter:
             <ul>
 """)
             for source in digest.sources:
-                # Get newsletter ID (try both 'id' and 'newsletter_id' keys)
-                newsletter_id = source.get("id") or source.get("newsletter_id", "")
-                id_prefix = f"[{newsletter_id}] " if newsletter_id else ""
+                # Get content ID (try both 'id' and legacy 'newsletter_id' keys)
+                content_id = source.get("id") or source.get("newsletter_id", "")
+                id_prefix = f"[{content_id}] " if content_id else ""
 
                 if source.get("url"):
                     html_parts.append(

@@ -53,6 +53,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table"
 import {
   Dialog,
@@ -70,7 +71,8 @@ import {
   GenerateScriptDialog,
   type ScriptGenerationParams,
 } from "@/components/generation"
-import type { ScriptListItem, DigestListItem } from "@/types"
+import type { ScriptListItem, DigestListItem, SortOrder } from "@/types"
+import type { ScriptFilters } from "@/lib/api/scripts"
 
 /**
  * Script detail type for display
@@ -160,13 +162,24 @@ const statusConfig: Record<
 }
 
 function ScriptsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [filters, setFilters] = useState<ScriptFilters>({})
   const [searchValue, setSearchValue] = useState("")
   const [selectedScriptId, setSelectedScriptId] = useState<number | null>(null)
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
 
+  const handleSort = (column: string, order: SortOrder | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      sort_by: order ? column : undefined,
+      sort_order: order,
+    }))
+  }
+
   const { data: scripts, isLoading, isError, error, refetch } = useScripts(
-    statusFilter === "all" ? undefined : { status: statusFilter }
+    Object.keys(filters).length === 0 ||
+    (filters.status === undefined && filters.sort_by === undefined)
+      ? undefined
+      : filters
   )
   const { data: stats } = useScriptStats()
   const { data: selectedScript, isLoading: isLoadingScript } = useScript(
@@ -366,8 +379,13 @@ function ScriptsPage() {
               />
             </div>
             <Select
-              value={statusFilter}
-              onValueChange={setStatusFilter}
+              value={filters.status ?? "all"}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status: value === "all" ? undefined : value,
+                }))
+              }
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Status" />
@@ -420,12 +438,33 @@ function ScriptsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
+                  <SortableTableHead
+                    column="digest_id"
+                    label="Digest ID"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[100px]"
+                  />
                   <TableHead className="w-[100px]">Length</TableHead>
                   <TableHead className="w-[100px]">Duration</TableHead>
-                  <TableHead className="w-[150px]">Status</TableHead>
+                  <SortableTableHead
+                    column="status"
+                    label="Status"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[150px]"
+                  />
                   <TableHead className="w-[100px]">Revisions</TableHead>
-                  <TableHead className="w-[130px]">Created</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
+                  <SortableTableHead
+                    column="created_at"
+                    label="Created Date"
+                    currentSort={filters.sort_by}
+                    currentOrder={filters.sort_order}
+                    onSort={handleSort}
+                    className="w-[130px]"
+                  />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -447,15 +486,15 @@ function ScriptsPage() {
         open={!!selectedScriptId}
         onOpenChange={(open) => !open && setSelectedScriptId(null)}
       >
-        <DialogContent className="max-w-3xl max-h-[80vh]">
-          <DialogHeader>
+        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Script Details</DialogTitle>
             <DialogDescription>
               Review script content and approve or request revisions
             </DialogDescription>
           </DialogHeader>
           {isLoadingScript ? (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 flex-1">
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
@@ -464,7 +503,7 @@ function ScriptsPage() {
             (() => {
               const script = scriptDetail
               return (
-                <ScrollArea className="max-h-[60vh] pr-4">
+                <ScrollArea className="flex-1 min-h-0 pr-4">
                   <div className="space-y-6 py-4">
                     {/* Script metadata */}
                     <div className="grid grid-cols-3 gap-4">
@@ -540,7 +579,7 @@ function ScriptsPage() {
               )
             })()
           ) : null}
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="shrink-0 flex gap-2">
             <Button
               variant="outline"
               onClick={() => setSelectedScriptId(null)}
@@ -612,22 +651,55 @@ function ScriptRow({
     "completed",
   ].includes(script.status)
 
-  const handleReviewClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleReviewClick = () => {
     navigate({ to: "/review/script/$id", params: { id: script.id.toString() } })
   }
 
   return (
-    <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onView}>
+    <TableRow className="hover:bg-muted/50">
       <TableCell>
-        <div>
-          <div className="font-medium line-clamp-1">
-            {script.title ?? `Script #${script.id}`}
+        <div className="flex items-start gap-2">
+          {/* Action buttons on the left */}
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onView}
+              title="View script"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            {canReview && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={handleReviewClick}
+                title="Review script"
+              >
+                <FileSearch className="h-4 w-4" />
+              </Button>
+            )}
           </div>
-          <div className="text-sm text-muted-foreground">
-            Digest #{script.digest_id}
+          {/* Title - clickable to view */}
+          <div
+            className="flex-1 cursor-pointer"
+            onClick={onView}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && onView()}
+          >
+            <div className="font-medium line-clamp-1">
+              {script.title ?? `Script #${script.id}`}
+            </div>
           </div>
         </div>
+      </TableCell>
+      <TableCell>
+        <span className="text-sm text-muted-foreground">
+          #{script.digest_id}
+        </span>
       </TableCell>
       <TableCell>
         <Badge variant="outline" className="capitalize">
@@ -656,24 +728,6 @@ function ScriptRow({
             ? formatDistanceToNow(new Date(script.created_at), { addSuffix: true })
             : "Unknown"}
         </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <Eye className="h-4 w-4" />
-          </Button>
-          {canReview && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleReviewClick}
-              title="Review script"
-            >
-              <FileSearch className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
       </TableCell>
     </TableRow>
   )

@@ -21,11 +21,12 @@ import {
   SelectionPopover,
 } from "@/components/review"
 import { RevisionChatPanel } from "@/components/chat"
-import type { DigestSourceSummary } from "@/lib/api/digests"
+import { type DigestSourceSummary, regenerateDigest } from "@/lib/api/digests"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useDigest, useDigestSources, useDigestNavigation } from "@/hooks/use-digests"
 import { useChatConfig, useChatSession } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
+import { useQueryClient } from "@tanstack/react-query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -251,20 +252,30 @@ function DigestReviewContent({
     }
   }, [chat, selectedModel])
 
+  // React Query client for invalidation
+  const queryClient = useQueryClient()
+
   // Handle generating a preview (explicit button click)
   const handleGeneratePreview = React.useCallback(async () => {
-    setIsGenerating(true)
+    try {
+      setIsGenerating(true)
 
-    // TODO: Implement actual digest regeneration
-    // For now, show placeholder response
-    setTimeout(() => {
-      setIsGenerating(false)
+      await regenerateDigest(digest.id)
 
-      toast.info("Digest regeneration coming soon", {
-        description: "This feature is under development.",
+      toast.success("Regeneration started", {
+        description: "The digest is being regenerated in the background.",
       })
-    }, 1000)
-  }, [])
+
+      // Invalidate digest query to trigger re-fetch/polling
+      await queryClient.invalidateQueries({ queryKey: ["digest", digest.id] })
+
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error("Failed to regenerate digest")
+      toast.error("Regeneration failed", { description: error.message })
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [digest.id, queryClient])
 
   return (
     <div ref={containerRef} className="flex h-full flex-col">

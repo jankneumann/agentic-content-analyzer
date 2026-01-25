@@ -1,5 +1,7 @@
 """Graphiti knowledge graph client for entity extraction and temporal tracking."""
+# mypy: disable-error-code="no-any-return,no-untyped-def"
 
+import asyncio
 import os
 from datetime import datetime, timedelta
 from typing import Any
@@ -12,15 +14,15 @@ from graphiti_core.nodes import EpisodeType
 from neo4j import GraphDatabase
 
 from src.config import settings
-from src.models.newsletter import Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.content import Content
+from src.models.summary import Summary
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class GraphitiClient:
-    """Client for managing newsletter knowledge graph with Graphiti."""
+    """Client for managing content knowledge graph with Graphiti."""
 
     def __init__(
         self,
@@ -92,46 +94,81 @@ class GraphitiClient:
             self.driver.close()
             logger.info("Closed Graphiti client connection")
 
-    async def add_newsletter_summary(
+    async def add_content_summary(
         self,
-        newsletter: Newsletter,
-        summary: NewsletterSummary,
+        content: Content,
+        summary: Summary,
     ) -> str:
         """
-        Add a newsletter summary to the knowledge graph.
+        Add a content summary to the knowledge graph.
 
         Extracts entities, relationships, and concepts from the summary
         and stores them as a timestamped episode in Graphiti.
 
         Args:
-            newsletter: Newsletter object
-            summary: Newsletter summary object
+            content: Content object
+            summary: Summary object
 
         Returns:
             Episode ID in Graphiti
         """
-        logger.info(f"Adding newsletter to knowledge graph: {newsletter.title}")
+        logger.info(f"Adding content to knowledge graph: {content.title}")
 
         # Create structured episode content with section headers
-        episode_content = self._create_episode_content(newsletter, summary)
+        episode_content = self._create_content_episode(content, summary)
 
-        # Use newsletter published date as episode timestamp
-        reference_time = newsletter.published_date or datetime.now()
+        # Use content published date as episode timestamp
+        reference_time = content.published_date or datetime.now()
 
         # Add episode to Graphiti
+        source_type = content.source_type.value if content.source_type else "unknown"
         episode_id = await self.graphiti.add_episode(
-            name=f"{newsletter.publication or newsletter.sender}: {newsletter.title}",
+            name=f"{content.publication or content.author}: {content.title}",
             episode_body=episode_content,
-            source_description=f"Newsletter from {newsletter.sender}",
+            source_description=f"Content from {source_type}",
             reference_time=reference_time,
             source=EpisodeType.text,
         )
 
-        logger.info(
-            f"Added episode {episode_id} for newsletter {newsletter.id} ({newsletter.title})"
-        )
+        logger.info(f"Added episode {episode_id} for content {content.id} ({content.title})")
 
-        return episode_id
+        return str(episode_id)
+
+    def _create_content_episode(self, content: Content, summary: Summary) -> str:
+        """Create structured episode content from Content and Summary."""
+        source_type = content.source_type.value if content.source_type else "unknown"
+        sections: list[str] = [
+            f"# {content.title}",
+            "",
+            f"**Source:** {source_type}",
+            f"**Publication:** {content.publication or 'Unknown'}",
+            f"**Author:** {content.author or 'Unknown'}",
+            f"**Date:** {content.published_date.isoformat() if content.published_date else 'Unknown'}",
+            "",
+            "## Executive Summary",
+            summary.executive_summary or "",
+            "",
+        ]
+
+        if summary.key_themes:
+            sections.extend(["## Key Themes", ""])
+            for theme in summary.key_themes:
+                sections.append(f"- {theme}")
+            sections.append("")
+
+        if summary.strategic_insights:
+            sections.extend(["## Strategic Insights", ""])
+            for insight in summary.strategic_insights:
+                sections.append(f"- {insight}")
+            sections.append("")
+
+        if summary.technical_details:
+            sections.extend(["## Technical Details", ""])
+            for detail in summary.technical_details:
+                sections.append(f"- {detail}")
+            sections.append("")
+
+        return "\n".join(sections)
 
     async def search_related_concepts(
         self,
@@ -168,7 +205,7 @@ class GraphitiClient:
         Get temporal context for concepts within a date range.
 
         Useful for analyzing how concepts evolved over time across
-        multiple newsletters.
+        multiple content items.
 
         Args:
             concepts: List of concepts to track
@@ -184,12 +221,15 @@ class GraphitiClient:
 
         # Search for each concept and filter by time
         all_results = []
-        for concept in concepts:
-            results = await self.graphiti.search(
-                query=concept,
-                num_results=50,  # Get more to filter by time
-            )
 
+        # Create tasks for all search queries
+        search_tasks = [self.graphiti.search(query=concept, num_results=50) for concept in concepts]
+
+        # Execute all searches concurrently
+        search_results_list = await asyncio.gather(*search_tasks)
+
+        # Process results
+        for results in search_results_list:
             # Filter by time range
             filtered = [
                 r
@@ -202,22 +242,22 @@ class GraphitiClient:
         logger.info(f"Found {len(all_results)} temporal entities")
         return all_results
 
-    async def get_newsletters_in_range(
+    async def get_contents_in_range(
         self,
         start_date: datetime,
         end_date: datetime,
     ) -> list[dict[str, Any]]:
         """
-        Get all newsletter episodes within a date range from Graphiti.
+        Get all content episodes within a date range from Graphiti.
 
         Args:
             start_date: Start of date range
             end_date: End of date range
 
         Returns:
-            List of newsletter episodes with their content
+            List of content episodes with their content
         """
-        logger.info(f"Fetching newsletters from {start_date} to {end_date}")
+        logger.info(f"Fetching content from {start_date} to {end_date}")
 
         # Use Neo4j directly to query episodes in time range
         with self.driver.session() as session:
@@ -244,8 +284,17 @@ class GraphitiClient:
                 for record in result
             ]
 
-        logger.info(f"Found {len(episodes)} newsletter episodes")
+        logger.info(f"Found {len(episodes)} content episodes")
         return episodes
+
+    # Backwards compatibility alias
+    async def get_newsletters_in_range(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[dict[str, Any]]:
+        """Backwards compatibility alias for get_contents_in_range."""
+        return await self.get_contents_in_range(start_date, end_date)
 
     async def extract_themes_from_range(
         self,
@@ -254,10 +303,10 @@ class GraphitiClient:
         query: str = "AI and technology themes, trends, and topics",
     ) -> list[dict[str, Any]]:
         """
-        Extract common themes from newsletters in a date range.
+        Extract common themes from content items in a date range.
 
         Uses Graphiti's semantic search to find related concepts and entities
-        across multiple newsletter episodes.
+        across multiple content episodes.
 
         Args:
             start_date: Start of date range
@@ -267,7 +316,7 @@ class GraphitiClient:
         Returns:
             List of related entities, facts, and themes
         """
-        logger.info(f"Extracting themes from newsletters between {start_date} and {end_date}")
+        logger.info(f"Extracting themes from content between {start_date} and {end_date}")
 
         # Search for broad AI/tech themes
         results = await self.graphiti.search(
@@ -286,7 +335,7 @@ class GraphitiClient:
         """
         Get facts about specific entities from the knowledge graph.
 
-        Useful for understanding what the newsletters say about specific
+        Useful for understanding what the content says about specific
         topics, companies, or concepts.
 
         Args:
@@ -471,57 +520,6 @@ class GraphitiClient:
                 }
                 for a in analyses
             ]
-
-    def _create_episode_content(
-        self,
-        newsletter: Newsletter,
-        summary: NewsletterSummary,
-    ) -> str:
-        """
-        Create structured episode content from newsletter summary.
-
-        Uses clear section headers so the LLM understands context during
-        entity extraction. Sections are marked with [SECTION_TYPE] headers.
-
-        Args:
-            newsletter: Newsletter object
-            summary: Summary object
-
-        Returns:
-            Formatted episode content with section markers
-        """
-        sections = []
-
-        # Executive summary
-        if summary.executive_summary:
-            sections.append(f"[EXECUTIVE_SUMMARY]\n{summary.executive_summary}")
-
-        # Key themes
-        if summary.key_themes:
-            themes_text = "; ".join(summary.key_themes)
-            sections.append(f"[KEY_THEMES]\n{themes_text}")
-
-        # Strategic insights (for CTO/leadership)
-        if summary.strategic_insights:
-            insights_text = " ".join(summary.strategic_insights)
-            sections.append(f"[STRATEGIC_INSIGHTS]\n{insights_text}")
-
-        # Technical details (for developers)
-        if summary.technical_details:
-            details_text = " ".join(summary.technical_details)
-            sections.append(f"[TECHNICAL_DETAILS]\n{details_text}")
-
-        # Actionable items
-        if summary.actionable_items:
-            actions_text = " ".join(summary.actionable_items)
-            sections.append(f"[ACTIONABLE_ITEMS]\n{actions_text}")
-
-        # Notable quotes and data points
-        if summary.notable_quotes:
-            quotes_text = " ".join(summary.notable_quotes)
-            sections.append(f"[NOTABLE_DATA]\n{quotes_text}")
-
-        return "\n\n".join(sections)
 
     async def __aenter__(self):
         """Async context manager entry."""

@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -124,3 +124,57 @@ pipeline-auto-approve:  ## Run pipeline and auto-approve digest
 
 pipeline-yesterday:  ## Process yesterday's newsletters
 	python -m scripts.run_pipeline --date $$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d yesterday +%Y-%m-%d)
+
+# Development servers
+# Note: WATCHFILES_FORCE_POLLING=true works around Python 3.14 multiprocessing spawn issue
+api:  ## Start the backend API server (uvicorn with hot reload)
+	WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
+
+web:  ## Start the frontend dev server (Vite)
+	cd web && npm run dev
+
+dev:  ## Start both frontend and backend for development (requires tmux or run in separate terminals)
+	@echo "Starting development servers..."
+	@echo ""
+	@echo "Option 1: Run in separate terminals"
+	@echo "  Terminal 1: make api"
+	@echo "  Terminal 2: make web"
+	@echo ""
+	@echo "Option 2: Background mode (logs in .dev-logs/)"
+	@echo "  make dev-bg"
+	@echo ""
+	@echo "Starting API server in foreground (Ctrl+C to stop)..."
+	@echo "Run 'make web' in another terminal for frontend"
+	@echo ""
+	WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
+
+dev-bg:  ## Start frontend and backend in background (logs to .dev-logs/)
+	@mkdir -p .dev-logs
+	@echo "Starting backend API on http://localhost:8000..."
+	@nohup bash -c 'source .venv/bin/activate && WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000' > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
+	@echo "Starting frontend on http://localhost:5173..."
+	@nohup sh -c 'cd web && npm run dev' > .dev-logs/web.log 2>&1 & echo $$! > .dev-logs/web.pid
+	@sleep 2
+	@echo ""
+	@echo "✓ Development servers started!"
+	@echo "  Backend API:  http://localhost:8000"
+	@echo "  Frontend:     http://localhost:5173"
+	@echo "  API Docs:     http://localhost:8000/docs"
+	@echo ""
+	@echo "View logs:"
+	@echo "  make dev-logs"
+	@echo ""
+	@echo "Stop servers:"
+	@echo "  make dev-stop"
+
+dev-logs:  ## Tail logs from background dev servers
+	@echo "=== API logs (Ctrl+C to exit) ==="
+	@tail -f .dev-logs/api.log .dev-logs/web.log 2>/dev/null || echo "No logs found. Start servers with 'make dev-bg'"
+
+dev-stop:  ## Stop background dev servers
+	@echo "Stopping development servers..."
+	@if [ -f .dev-logs/api.pid ]; then kill $$(cat .dev-logs/api.pid) 2>/dev/null || true; rm .dev-logs/api.pid; fi
+	@if [ -f .dev-logs/web.pid ]; then kill $$(cat .dev-logs/web.pid) 2>/dev/null || true; rm .dev-logs/web.pid; fi
+	@pkill -f "uvicorn src.api.app:app" 2>/dev/null || true
+	@pkill -f "vite" 2>/dev/null || true
+	@echo "✓ Development servers stopped"
