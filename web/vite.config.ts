@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 /**
@@ -9,6 +10,7 @@ import path from 'path'
  * This configuration sets up:
  * - React with Fast Refresh for hot module replacement
  * - Tailwind CSS v4 via the official Vite plugin
+ * - PWA support via vite-plugin-pwa with offline fallback
  * - Path aliases (@/) for cleaner imports
  * - API proxy to FastAPI backend during development
  *
@@ -20,6 +22,71 @@ export default defineConfig({
     react(),
     // Tailwind CSS v4 Vite plugin for CSS processing
     tailwindcss(),
+    // PWA plugin for offline support and installability
+    VitePWA({
+      // Auto-update service worker when new version available
+      registerType: 'autoUpdate',
+      // Include these assets in the precache
+      includeAssets: ['favicon.ico', 'icons/*.png', 'icons/*.svg'],
+      // Web app manifest configuration
+      manifest: {
+        name: 'Newsletter Aggregator',
+        short_name: 'Newsletters',
+        description: 'AI-powered newsletter aggregation and digests',
+        theme_color: '#1a1a1a',
+        background_color: '#1a1a1a',
+        display: 'standalone',
+        start_url: '/',
+        icons: [
+          {
+            src: '/icons/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: '/icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+          {
+            src: '/icons/icon-192-maskable.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: '/icons/icon-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+      // Workbox configuration for service worker behavior
+      workbox: {
+        // Cache these file types
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Show offline page when navigating to uncached routes
+        navigateFallback: '/offline.html',
+        // Don't use fallback for API routes
+        navigateFallbackDenylist: [/^\/api\//],
+        // Runtime caching strategies
+        runtimeCaching: [
+          {
+            // Cache images with CacheFirst strategy
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'image-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 86400, // 24 hours
+              },
+            },
+          },
+        ],
+      },
+    }),
   ],
 
   resolve: {
