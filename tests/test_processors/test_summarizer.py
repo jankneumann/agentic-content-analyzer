@@ -86,48 +86,7 @@ def test_summarizer_initialization_custom_agent():
     assert summarizer.agent.model == "mock-model"
 
 
-# TODO: Integration tests - require database setup
-# These tests should be moved to integration tests as they require real database access
-# The core logic is covered by unit tests above
-#
-# @pytest.mark.integration
-# def test_summarize_content_success():
-#     """Test successful content summarization (INTEGRATION TEST)."""
-#     # Requires:
-#     # - Database with Content record
-#     # - Mock or real LLM agent
-#     # - Verify database updates (status, summary storage)
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_content_not_found():
-#     """Test handling of non-existent content (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_content_already_summarized():
-#     """Test handling of already summarized content (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_content_agent_failure():
-#     """Test handling of agent failure (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_content_database_error():
-#     """Test handling of database errors with rollback (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_pending_contents():
-#     """Test batch processing of pending contents (INTEGRATION TEST)."""
-#     pass
-#
-# @pytest.mark.integration
-# def test_summarize_pending_contents_with_limit():
-#     """Test batch processing with limit (INTEGRATION TEST)."""
-#     pass
+# Integration tests are implemented in tests/integration/test_summarization_workflow.py
 
 
 # ============================================================================
