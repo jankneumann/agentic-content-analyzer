@@ -614,6 +614,7 @@ function AudioPlayer({
   const [currentTime, setCurrentTime] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1.0)
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -666,7 +667,26 @@ function AudioPlayer({
     }
   }
 
+  const handlePlaybackRateChange = (rate: string) => {
+    const newRate = parseFloat(rate)
+    setPlaybackRate(newRate)
+    if (audioRef.current) {
+      audioRef.current.playbackRate = newRate
+    }
+  }
+
   const totalDuration = duration ?? 0
+
+  // Common playback speeds
+  const playbackSpeeds = [
+    { value: "0.5", label: "0.5x" },
+    { value: "0.75", label: "0.75x" },
+    { value: "1", label: "1x" },
+    { value: "1.25", label: "1.25x" },
+    { value: "1.5", label: "1.5x" },
+    { value: "1.75", label: "1.75x" },
+    { value: "2", label: "2x" },
+  ]
 
   return (
     <div className="space-y-4 p-4 rounded-lg border bg-muted/30">
@@ -712,22 +732,39 @@ function AudioPlayer({
           </Button>
         </div>
 
-        {/* Volume */}
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={toggleMute}>
-            {isMuted ? (
-              <VolumeX className="h-4 w-4" />
-            ) : (
-              <Volume2 className="h-4 w-4" />
-            )}
-          </Button>
-          <Slider
-            value={[isMuted ? 0 : volume]}
-            max={1}
-            step={0.1}
-            onValueChange={handleVolumeChange}
-            className="w-24"
-          />
+        {/* Speed & Volume */}
+        <div className="flex items-center gap-4">
+          {/* Playback Speed */}
+          <Select value={String(playbackRate)} onValueChange={handlePlaybackRateChange}>
+            <SelectTrigger className="w-20 h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {playbackSpeeds.map((speed) => (
+                <SelectItem key={speed.value} value={speed.value}>
+                  {speed.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Volume */}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={toggleMute}>
+              {isMuted ? (
+                <VolumeX className="h-4 w-4" />
+              ) : (
+                <Volume2 className="h-4 w-4" />
+              )}
+            </Button>
+            <Slider
+              value={[isMuted ? 0 : volume]}
+              max={1}
+              step={0.1}
+              onValueChange={handleVolumeChange}
+              className="w-24"
+            />
+          </div>
         </div>
       </div>
     </div>
