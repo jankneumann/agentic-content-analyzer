@@ -185,4 +185,5 @@ python_functions = "test_*"
 addopts = "-v --cov=src --cov-report=term-missing -m 'not integration'"
 markers = [
     "integration: marks tests as integration tests (require API credentials and network)",
+    "live_api: marks tests that call real external APIs (OpenAI, ElevenLabs) - costs money",
 ]

@@ -534,3 +534,206 @@ class TestTextPreparationQuality:
 
         # Should contain SSML break tags
         assert "<break" in prepared
+
+
+# =============================================================================
+# Live API Tests (require OPENAI_API_KEY, cost money, run with: pytest -m live_api)
+# =============================================================================
+
+
+@pytest.mark.live_api
+@pytest.mark.integration
+class TestLiveOpenAITTS:
+    """Live integration tests that call the real OpenAI TTS API.
+
+    These tests:
+    - Require OPENAI_API_KEY environment variable
+    - Cost approximately $0.001-$0.005 per run
+    - Verify actual API integration works
+    - Test real audio file generation and concatenation
+
+    Run with: pytest -m live_api tests/integration/test_audio_digest_flow.py -v
+    """
+
+    @pytest.fixture
+    def openai_api_key(self):
+        """Get OpenAI API key or skip test."""
+        import os
+
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            pytest.skip("OPENAI_API_KEY not set - skipping live API test")
+        return api_key
+
+    @pytest.fixture
+    def minimal_digest(self, db_session) -> Digest:
+        """Create a minimal digest with very short content for cheap TTS testing."""
+        digest = Digest(
+            digest_type=DigestType.DAILY,
+            period_start=datetime(2025, 1, 15, tzinfo=UTC),
+            period_end=datetime(2025, 1, 15, tzinfo=UTC),
+            title="Test Digest",
+            executive_overview="AI advances continue.",
+            strategic_insights=[],
+            technical_developments=[],
+            emerging_trends=[],
+            actionable_recommendations={},
+            sources=[],
+            newsletter_count=1,
+            markdown_content="# AI Update\n\nToday we cover recent advances in AI technology.",
+            status=DigestStatus.APPROVED,
+            agent_framework="claude",
+            model_used="claude-sonnet-4-5",
+        )
+        db_session.add(digest)
+        db_session.commit()
+        db_session.refresh(digest)
+        return digest
+
+    @pytest.mark.asyncio
+    async def test_live_tts_synthesis_short_text(self, openai_api_key):
+        """Test real OpenAI TTS synthesis with a single short sentence.
+
+        This is the minimal live test - synthesizes ~15 words.
+        Cost: ~$0.0003 (OpenAI TTS is $15/1M chars, this is ~100 chars)
+        """
+        from src.delivery.tts_service import TTSService
+        from src.models.podcast import VoiceProvider
+
+        tts = TTSService(provider=VoiceProvider.OPENAI_TTS)
+
+        # Very short test text (~100 characters, ~15 words)
+        test_text = (
+            "Welcome to this test audio digest. This verifies the TTS integration works correctly."
+        )
+
+        audio_bytes = await tts.synthesize(
+            text=test_text,
+            speaker="host",  # Uses default voice mapping
+        )
+
+        # Verify we got actual audio data
+        assert audio_bytes is not None
+        assert len(audio_bytes) > 1000  # MP3 should be at least 1KB
+        # Check MP3 magic bytes (ID3 tag or MPEG frame sync)
+        assert audio_bytes[:3] == b"ID3" or audio_bytes[:2] == b"\xff\xfb"
+
+    @pytest.mark.asyncio
+    async def test_live_tts_synthesis_with_chunking(self, openai_api_key):
+        """Test real OpenAI TTS synthesis with text that requires chunking.
+
+        This tests the TextChunker and audio concatenation with real API calls.
+        Cost: ~$0.001 (tests with ~500 characters split into 2 chunks)
+        """
+        from src.delivery.tts_service import TTSService
+        from src.models.podcast import VoiceProvider
+
+        tts = TTSService(provider=VoiceProvider.OPENAI_TTS)
+
+        # Text long enough to potentially require chunking verification
+        # but short enough to keep costs minimal
+        test_text = """
+        Welcome to the AI Weekly Digest. This week saw significant developments
+        in large language model technology. Context windows expanded dramatically.
+        API costs continued their downward trend. New multimodal capabilities emerged.
+        Strategic implications for enterprise adoption are substantial.
+        Technical teams should evaluate updated benchmarks. Individual developers
+        can now access more powerful tools at lower costs. The future of AI
+        continues to evolve rapidly with these impressive advancements.
+        """
+
+        audio_bytes = await tts.synthesize_long(
+            text=test_text,
+            speaker="host",
+        )
+
+        # Verify we got actual audio data
+        assert audio_bytes is not None
+        assert len(audio_bytes) > 5000  # Should be several KB for this length
+        # Check MP3 magic bytes
+        assert audio_bytes[:3] == b"ID3" or audio_bytes[:2] == b"\xff\xfb"
+
+    @pytest.mark.asyncio
+    async def test_live_full_digest_to_audio_flow(
+        self,
+        openai_api_key,
+        db_session,
+        minimal_digest,
+        mock_get_db,
+    ):
+        """Test the complete digest → audio flow with real OpenAI TTS.
+
+        This is the full end-to-end test with real API calls.
+        Cost: ~$0.002-$0.005 depending on digest content length
+        """
+        import tempfile
+        from unittest.mock import MagicMock, patch
+
+        from src.processors.audio_digest_generator import AudioDigestGenerator
+
+        # Use real TTS but mock storage (we don't want to upload to real storage)
+        mock_storage = MagicMock()
+        saved_audio = {}
+
+        async def capture_save(data, filename, content_type):
+            saved_audio["data"] = data
+            saved_audio["filename"] = filename
+            return f"test-storage/{filename}"
+
+        mock_storage.save = capture_save
+
+        with (
+            patch(
+                "src.processors.audio_digest_generator.get_db",
+                mock_get_db,
+            ),
+            patch(
+                "src.processors.audio_digest_generator.get_storage",
+                return_value=mock_storage,
+            ),
+        ):
+            generator = AudioDigestGenerator(
+                provider="openai",
+                voice="nova",
+                speed=1.0,
+            )
+
+            # Track progress
+            progress_updates = []
+
+            def progress_callback(current, total, message):
+                progress_updates.append((current, total, message))
+                print(f"  Progress: {current}% - {message}")
+
+            result = await generator.generate(
+                digest_id=minimal_digest.id,
+                progress_callback=progress_callback,
+            )
+
+            # Verify result
+            assert result is not None
+            assert result.status.value == "completed"
+            assert result.audio_url is not None
+            assert result.file_size_bytes > 0
+            assert result.duration_seconds > 0
+
+            # Verify we captured real audio
+            assert "data" in saved_audio
+            audio_data = saved_audio["data"]
+            assert len(audio_data) > 5000  # Real audio should be several KB
+
+            # Verify it's valid MP3
+            assert audio_data[:3] == b"ID3" or audio_data[:2] == b"\xff\xfb"
+
+            # Verify progress was tracked
+            assert len(progress_updates) >= 4
+            assert progress_updates[-1][2] == "Complete!"
+
+            # Optionally save to temp file for manual verification
+            with tempfile.NamedTemporaryFile(
+                suffix=".mp3", delete=False, prefix="test_audio_digest_"
+            ) as f:
+                f.write(audio_data)
+                print(f"\n  Audio saved to: {f.name}")
+                print(f"  File size: {len(audio_data):,} bytes")
+                print(f"  Duration estimate: {result.duration_seconds:.1f}s")
