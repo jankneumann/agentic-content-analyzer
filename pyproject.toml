@@ -20,6 +20,8 @@ dependencies = [
     # Task Queue
     "celery>=5.3.0",
     "redis>=5.0.0",
+    "pgqueuer>=0.25.0",   # PostgreSQL-native task queue (for mobile capture)
+    "asyncpg>=0.30.0",    # Async PostgreSQL driver (for PGQueuer)
 
     # Web Framework
     "fastapi>=0.109.0",
@@ -69,6 +71,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
+    "factory-boy>=3.3.0",
+    "pytest-factoryboy>=2.7.0",
     "ruff>=0.1.0",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
@@ -183,8 +187,15 @@ disable_error_code = ["assignment", "arg-type", "misc", "attr-defined", "union-a
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
-addopts = "-v --cov=src --cov-report=term-missing -m 'not integration'"
+addopts = "-v --cov=src --cov-report=term-missing -m 'not integration and not live_api'"
+filterwarnings = [
+    "ignore::DeprecationWarning:factory.*:",
+]
 markers = [
+    "unit: Pure unit tests with no external dependencies",
     "integration: marks tests as integration tests (require API credentials and network)",
+    "e2e: End-to-end API tests",
+    "slow: Tests that take >1s to complete",
     "live_api: marks tests that call real external APIs (OpenAI, ElevenLabs) - costs money",
+    "crawl4ai: Tests requiring Crawl4AI browser setup",
 ]

@@ -16,11 +16,13 @@ from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
 from src.api.files_routes import router as files_router
 from src.api.podcast_routes import router as podcast_router
+from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
 from src.api.settings_routes import router as settings_router
 from src.api.summary_routes import router as summary_router
 from src.api.theme_routes import router as theme_router
 from src.api.upload_routes import router as upload_router
+from src.config import settings
 
 
 @asynccontextmanager
@@ -29,6 +31,13 @@ async def lifespan(app: FastAPI):
     # Startup
     yield
     # Shutdown
+    # Close queue connection if it was opened
+    try:
+        from src.queue.setup import close_queue
+
+        await close_queue()
+    except ImportError:
+        pass  # Queue module not available
 
 
 app = FastAPI(
@@ -38,13 +47,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS configuration for frontend
+# CORS configuration - configurable via ALLOWED_ORIGINS env var
+# Use "*" for iOS Shortcuts and other mobile clients
+allowed_origins = settings.get_allowed_origins_list()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Production frontend
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,6 +70,7 @@ app.include_router(chat_router)
 app.include_router(settings_router)
 app.include_router(upload_router)
 app.include_router(files_router)
+app.include_router(save_router)  # Mobile content capture
 
 
 @app.get("/health", tags=["system"])

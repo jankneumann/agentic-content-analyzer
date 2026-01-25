@@ -174,13 +174,72 @@ def reset_connection() -> None:
     Useful for testing or when connection parameters change.
     Disposes the existing engine and clears cached instances.
     """
-    global _provider, _engine, _session_factory
+    global _provider, _engine, _session_factory, _queue_engine
 
     if _engine is not None:
         _engine.dispose()
         logger.info("Database engine disposed")
 
+    if _queue_engine is not None:
+        _queue_engine.dispose()
+        logger.info("Queue engine disposed")
+
     _provider = None
     _engine = None
     _session_factory = None
+    _queue_engine = None
     logger.info("Database connection reset")
+
+
+# Queue-specific connection management
+_queue_engine: Engine | None = None
+
+
+def get_queue_connection_string() -> str:
+    """Get the connection URL for queue workers.
+
+    Queue workers need direct connections (not pooled) because:
+    - Long-lived processes exhaust pooler limits
+    - LISTEN/NOTIFY requires direct connections
+    - Workers should not compete with web request pool
+
+    Returns:
+        Direct connection URL suitable for queue workers
+    """
+    provider = _get_provider()
+    return provider.get_queue_url()
+
+
+def get_queue_engine() -> Engine:
+    """Get or create the SQLAlchemy engine for queue workers.
+
+    Creates an engine with configuration optimized for background
+    job processing - larger pools, longer timeouts, etc.
+
+    Returns:
+        SQLAlchemy Engine instance for queue workers
+    """
+    global _queue_engine
+    if _queue_engine is None:
+        provider = _get_provider()
+        queue_url = provider.get_queue_url()
+        queue_options = provider.get_queue_options()
+
+        logger.info(f"Creating queue engine for provider: {provider.name}")
+        logger.debug(f"Queue engine options: {list(queue_options.keys())}")
+
+        _queue_engine = create_engine(queue_url, **queue_options)
+    return _queue_engine
+
+
+def supports_pg_cron() -> bool:
+    """Check if the current provider supports pg_cron extension.
+
+    pg_cron enables scheduled jobs to run directly in the database,
+    independent of application worker uptime.
+
+    Returns:
+        True if pg_cron is available, False otherwise
+    """
+    provider = _get_provider()
+    return provider.supports_pg_cron()

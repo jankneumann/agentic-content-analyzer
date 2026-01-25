@@ -245,5 +245,8 @@ web/.vite/
 # Claude Code local settings
 .claude/settings.local.json
 
+# Gemini AI local settings
+.gemini/
+
 # bv (beads viewer) local config and caches
 .bv/

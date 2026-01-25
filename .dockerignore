@@ -1,0 +1,66 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov/
+tests/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.env
+.env.*
+!.env.example
+*.log
+
+# Data directories
+data/
+*.db
+*.sqlite
+
+# Credentials (never include!)
+credentials.json
+token.json
+*.pem
+*.key
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OpenSpec (development specs)
+openspec/
+
+# Shortcuts source files (for development only)
+shortcuts/
