@@ -1,7 +1,7 @@
 """add_pgqueuer_jobs_table
 
 Revision ID: f1a2b3c4d5e6
-Revises: e1f2a3b4c5d6
+Revises: c1d2e3f4g5h6
 Create Date: 2026-01-25 10:00:00.000000
 
 This migration creates the pgqueuer_jobs table for the PGQueuer
@@ -18,7 +18,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "f1a2b3c4d5e6"
-down_revision: Union[str, None] = "e1f2a3b4c5d6"
+down_revision: Union[str, None] = "c1d2e3f4g5h6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
