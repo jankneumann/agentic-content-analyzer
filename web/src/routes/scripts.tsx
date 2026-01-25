@@ -667,6 +667,7 @@ function ScriptRow({
               className="h-7 w-7"
               onClick={onView}
               title="View script"
+              aria-label="View script"
             >
               <Eye className="h-4 w-4" />
             </Button>
@@ -677,6 +678,7 @@ function ScriptRow({
                 className="h-7 w-7"
                 onClick={handleReviewClick}
                 title="Review script"
+                aria-label="Review script"
               >
                 <FileSearch className="h-4 w-4" />
               </Button>

@@ -717,17 +717,31 @@ function AudioPlayer({
       {/* Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => skip(-10)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => skip(-10)}
+            aria-label="Rewind 10 seconds"
+          >
             <SkipBack className="h-4 w-4" />
           </Button>
-          <Button size="icon" onClick={togglePlay}>
+          <Button
+            size="icon"
+            onClick={togglePlay}
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
             {isPlaying ? (
               <Pause className="h-5 w-5" />
             ) : (
               <Play className="h-5 w-5" />
             )}
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => skip(10)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => skip(10)}
+            aria-label="Forward 10 seconds"
+          >
             <SkipForward className="h-4 w-4" />
           </Button>
         </div>
@@ -750,7 +764,12 @@ function AudioPlayer({
 
           {/* Volume */}
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={toggleMute}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleMute}
+              aria-label={isMuted ? "Unmute" : "Mute"}
+            >
               {isMuted ? (
                 <VolumeX className="h-4 w-4" />
               ) : (
@@ -838,8 +857,18 @@ function AudioDigestRow({
       <TableCell>
         <div className="flex items-center gap-1">
           {audioDigest.status === "completed" && (
-            <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-              <a href={getAudioDigestUrl(audioDigest.id)} download onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              asChild
+              aria-label="Download audio"
+            >
+              <a
+                href={getAudioDigestUrl(audioDigest.id)}
+                download
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Download className="h-4 w-4" />
               </a>
             </Button>
@@ -852,6 +881,7 @@ function AudioDigestRow({
               e.stopPropagation()
               onDelete()
             }}
+            aria-label="Delete audio digest"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
