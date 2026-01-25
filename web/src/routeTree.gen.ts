@@ -13,6 +13,7 @@ import { ThemesRoute } from "./routes/themes"
 import { DigestsRoute } from "./routes/digests"
 import { ScriptsRoute } from "./routes/scripts"
 import { PodcastsRoute } from "./routes/podcasts"
+import { AudioDigestsRoute } from "./routes/audio-digests"
 import { ReviewRoute } from "./routes/review"
 import { SummaryReviewRoute } from "./routes/review/summary.$id"
 import { DigestReviewRoute } from "./routes/review/digest.$id"
@@ -42,6 +43,7 @@ export const routeTree = rootRoute.addChildren([
   DigestsRoute,
   ScriptsRoute,
   PodcastsRoute,
+  AudioDigestsRoute,
   ReviewRouteWithChildren,
   SettingsRoute,
 ])

@@ -26,6 +26,7 @@ import type {
   ContentFilters,
   SummaryFilters,
   DigestFilters,
+  AudioDigestFilters,
 } from "@/types"
 
 /**
@@ -211,6 +212,33 @@ export const chatKeys = {
 }
 
 /**
+ * Query keys for audio digests
+ */
+export const audioDigestKeys = {
+  /** Base key for all audio digest queries */
+  all: ["audio-digests"] as const,
+
+  /** Key for audio digest lists */
+  lists: () => [...audioDigestKeys.all, "list"] as const,
+  list: (filters?: AudioDigestFilters) =>
+    [...audioDigestKeys.lists(), filters] as const,
+
+  /** Key for single audio digest details */
+  details: () => [...audioDigestKeys.all, "detail"] as const,
+  detail: (id: string) => [...audioDigestKeys.details(), id] as const,
+
+  /** Key for audio digests by digest ID */
+  byDigest: (digestId: string) =>
+    [...audioDigestKeys.all, "by-digest", digestId] as const,
+
+  /** Key for audio digest statistics */
+  statistics: () => [...audioDigestKeys.all, "statistics"] as const,
+
+  /** Key for available digests (for generation) */
+  availableDigests: () => [...audioDigestKeys.all, "available-digests"] as const,
+}
+
+/**
  * Query keys for system/config
  */
 export const systemKeys = {
@@ -239,6 +267,7 @@ export const queryKeys = {
   digests: digestKeys,
   scripts: scriptKeys,
   podcasts: podcastKeys,
+  audioDigests: audioDigestKeys,
   chat: chatKeys,
   system: systemKeys,
 }

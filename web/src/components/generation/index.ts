@@ -24,5 +24,8 @@ export type { IngestContentParams } from "./IngestContentsDialog"
 export { GenerateAudioDialog } from "./GenerateAudioDialog"
 export type { AudioGenerationParams } from "./GenerateAudioDialog"
 
+export { GenerateAudioDigestDialog } from "./GenerateAudioDigestDialog"
+export type { AudioDigestGenerationParams } from "./GenerateAudioDigestDialog"
+
 export { AnalyzeThemesDialog } from "./AnalyzeThemesDialog"
 export type { ThemeAnalysisParams } from "./AnalyzeThemesDialog"

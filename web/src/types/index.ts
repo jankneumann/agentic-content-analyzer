@@ -114,6 +114,22 @@ export type {
   ChatConfig,
 } from "./chat"
 
+// Audio Digest types
+export type {
+  AudioDigestStatus,
+  AudioDigestProvider,
+  AudioDigestVoice,
+  AudioDigestListItem,
+  AudioDigestDetail,
+  AudioDigestStatistics,
+  CreateAudioDigestRequest,
+  CreateAudioDigestResponse,
+  AudioDigestFilters,
+  AvailableDigest,
+  VoiceOption,
+  ProviderOption,
+} from "./audio-digest"
+
 /**
  * Common API response wrapper
  *

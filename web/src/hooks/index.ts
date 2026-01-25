@@ -51,6 +51,17 @@ export {
   useGenerateAudio,
 } from "./use-podcasts"
 
+// Audio Digest hooks
+export {
+  useAudioDigests,
+  useAudioDigestStats,
+  useAudioDigest,
+  useAudioDigestsForDigest,
+  useAvailableDigests,
+  useCreateAudioDigest,
+  useDeleteAudioDigest,
+} from "./use-audio-digests"
+
 // Theme hooks
 export {
   useAnalyzeThemes,

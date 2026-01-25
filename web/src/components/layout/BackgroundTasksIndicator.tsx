@@ -16,6 +16,7 @@ import {
   FileText,
   Mic,
   Volume2,
+  Headphones,
   Download,
   Sparkles,
   BarChart3,
@@ -45,6 +46,7 @@ const taskTypeIcons: Record<TaskType, React.ReactNode> = {
   script: <Mic className="h-4 w-4" />,
   summary: <Sparkles className="h-4 w-4" />,
   audio: <Volume2 className="h-4 w-4" />,
+  "audio-digest": <Headphones className="h-4 w-4" />,
   ingest: <Download className="h-4 w-4" />,
   themes: <BarChart3 className="h-4 w-4" />,
 }
