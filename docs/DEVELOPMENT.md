@@ -455,6 +455,78 @@ git commit -m "Add integration tests for theme analysis workflow
 - Blank line, then detailed explanation if needed
 - Reference issues: "Fixes #123" or "Relates to #456"
 
+### Branch Management
+
+**One Branch = One Purpose**:
+- Each branch should focus on a single feature, fix, or proposal
+- Branch names should match the work being done (e.g., `openspec/add-mobile-capture`)
+- If scope creeps, consider splitting into separate PRs
+
+**What happens when branches drift**:
+```
+❌ Bad: Branch "add-test-infrastructure" contains:
+   - Test infrastructure commits (correct)
+   - Mobile capture commits (wrong branch!)
+   - Random cleanup commits
+
+✅ Good: Each branch has focused commits:
+   - openspec/add-test-infrastructure → only test setup
+   - openspec/mobile-cloud-deployment → only mobile capture
+```
+
+**Recovery options when scope creeps**:
+1. **Squash merge and start fresh** (recommended for mixed branches)
+   ```bash
+   # Merge current work with squash
+   gh pr merge --squash --delete-branch
+
+   # Create new focused branch
+   git checkout main && git pull
+   git checkout -b openspec/new-focused-feature
+   ```
+
+2. **Cherry-pick specific commits** (for salvaging good commits)
+   ```bash
+   git checkout -b new-branch main
+   git cherry-pick <commit-hash>
+   ```
+
+3. **Interactive rebase** (for reordering/splitting commits)
+   ```bash
+   git rebase -i main  # Careful: rewrites history
+   ```
+
+### Pre-Commit Hooks and Staging
+
+**Critical**: Pre-commit hooks modify the **working directory**, not staged files.
+
+```bash
+# This workflow can fail silently:
+git add .
+git commit -m "..."   # Hook runs, modifies files
+                      # Commit uses STALE staged versions!
+
+# Correct workflow after hook modifications:
+git add .
+git commit -m "..."   # Hook modifies files
+# If hook fails with "files were modified":
+git add .             # Re-stage the auto-fixed files
+git commit -m "..."   # Now commit includes hook fixes
+```
+
+**Common hook scenarios**:
+
+| Hook | What it does | Action needed |
+|------|--------------|---------------|
+| `ruff` | Auto-fixes linting issues | Re-stage modified files |
+| `ruff-format` | Reformats code | Re-stage modified files |
+| `trailing-whitespace` | Removes trailing spaces | Re-stage modified files |
+| `mypy` | Type checking (no modifications) | Fix errors manually |
+
+**Pro tip**: If pre-commit keeps failing on the same file, check if:
+1. The file is even supposed to be in this commit
+2. The hook is modifying a file you didn't change (exclude it from staging)
+
 ### Feature Planning & Plan Archival
 
 For significant features, use Claude Code's plan mode to create implementation plans before coding. These plans serve as valuable documentation for future reference.

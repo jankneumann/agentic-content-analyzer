@@ -11,6 +11,7 @@ Historical documentation of major refactoring efforts and lessons learned. This 
 - [Multi-Provider LLM Routing (January 2025)](#multi-provider-llm-routing-january-2025)
 - [Frontend-Backend API Field Mismatch Debugging (January 2025)](#frontend-backend-api-field-mismatch-debugging-january-2025)
 - [Legacy Model Cleanup & Idempotent Migrations (January 2026)](#legacy-model-cleanup--idempotent-migrations-january-2026)
+- [Git Branch Hygiene & Pre-Commit Hooks (January 2025)](#git-branch-hygiene--pre-commit-hooks-january-2025)
 - [General Refactoring Best Practices](#general-refactoring-best-practices)
 
 ---
@@ -947,6 +948,137 @@ Use this checklist for table rename/cleanup migrations:
 - [ ] Run migration twice (idempotency test)
 - [ ] Verify all tests pass
 - [ ] Verify API responses use correct field names
+```
+
+---
+
+## Git Branch Hygiene & Pre-Commit Hooks (January 2025)
+
+A case study in branch management and pre-commit hook workflows when using AI assistants for development.
+
+### 1. The Problem: Mixed-Purpose Branches
+
+**Scenario**: Started implementing test infrastructure on branch `openspec/add-test-infrastructure`. During the session, context was compacted and work continued with mobile content capture—on the same branch.
+
+**Result**:
+```
+openspec/add-test-infrastructure branch contained:
+├── feat(testing): Add test infrastructure with Factory Boy  ← Correct
+├── chore: Add .gemini/ to .gitignore                        ← Minor, okay
+└── feat(mobile): Add iOS content capture with PGQueuer      ← Wrong branch!
+```
+
+**Why this happened**:
+- Long development sessions with context compaction
+- AI assistant continued on the same branch after compaction
+- No explicit "create new branch" instruction when switching focus
+- Branch name became misleading
+
+### 2. Pre-Commit Hook Staging Gotcha
+
+**Scenario**: Commit kept failing even after running `git add .` because pre-commit hooks modified files.
+
+**The trap**:
+```bash
+git add .                    # Stage files
+git commit -m "..."          # Pre-commit runs
+                             # → ruff fixes linting issues
+                             # → ruff-format reformats code
+                             # Commit FAILS with "files were modified"
+                             # But the STAGED versions are now stale!
+
+git commit -m "..."          # Try again
+                             # Same result - still using stale staged files
+```
+
+**Root cause**: Pre-commit hooks modify the **working directory**, not the **staging area**. After hooks run:
+- Working directory: has auto-fixed code
+- Staging area: still has pre-fix code
+- Commit would use the staging area (stale)
+
+**Solution**:
+```bash
+git add .                    # Stage files
+git commit -m "..."          # Pre-commit runs, modifies files
+# If "files were modified by this hook":
+git add .                    # RE-STAGE the modified files
+git commit -m "..."          # Now works!
+```
+
+### 3. External Files in Staging
+
+**Scenario**: Pre-commit's `trailing-whitespace` hook modified `mobile-deployment-proposal.md`—a user input file that shouldn't be in the commit.
+
+**Problem**:
+```bash
+git add -A                   # Stages EVERYTHING including user docs
+git commit -m "..."          # Hook fixes trailing whitespace in user file
+                             # Now user file is modified and staged
+```
+
+**Solution**: Be explicit about what you stage:
+```bash
+# Instead of:
+git add -A                   # Dangerous - stages everything
+
+# Use explicit staging:
+git add src/ tests/ docs/    # Only directories you're working on
+
+# Or exclude specific files:
+git reset HEAD mobile-deployment-proposal.md
+```
+
+### 4. Recovery: The Squash-and-Fresh-Branch Pattern
+
+**When branches have mixed concerns**, the cleanest recovery is:
+
+```bash
+# 1. Update PR to acknowledge mixed content
+gh pr edit 68 --title "feat: Add test infrastructure AND mobile capture"
+
+# 2. Squash merge to main (creates single clean commit)
+gh pr merge 68 --squash --delete-branch
+
+# 3. Start fresh with focused branch
+git checkout main && git pull
+git checkout -b openspec/mobile-cloud-deployment
+
+# 4. Continue remaining work on focused branch
+```
+
+**Why squash merge works well here**:
+- Collapses mixed commits into one "checkpoint"
+- Branch deletion prevents future confusion
+- Main branch stays clean
+- New branch starts from known-good state
+
+### Key Learnings
+
+| Lesson | Practice |
+|--------|----------|
+| **One branch = one purpose** | Create new branch when switching focus |
+| **Branch names are contracts** | Name should match the work being done |
+| **Pre-commit modifies working dir** | Always re-stage after hook modifications |
+| **Explicit staging over `git add -A`** | Stage specific directories/files |
+| **Squash merge for mixed branches** | Clean recovery when scope creeps |
+| **Check branch after context switch** | AI sessions may continue on wrong branch |
+
+### Checklist: Starting New Work
+
+```markdown
+- [ ] Am I on the right branch for this work?
+- [ ] Does the branch name match what I'm implementing?
+- [ ] If switching focus, should I create a new branch?
+- [ ] Are there unstaged changes from a previous task?
+```
+
+### Checklist: Before Committing
+
+```markdown
+- [ ] `git status` - review what's staged
+- [ ] Are all staged files related to this commit?
+- [ ] If pre-commit modified files, did I re-stage them?
+- [ ] Does commit message match the branch purpose?
 ```
 
 ---
