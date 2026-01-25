@@ -104,6 +104,7 @@ export function ChatInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
+            aria-label="Chat message"
             disabled={disabled || isLoading}
             className={cn(
               "min-h-[48px] max-h-[200px] resize-none pr-12",
@@ -126,6 +127,7 @@ export function ChatInput({
                 size="icon"
                 onClick={handleSubmit}
                 disabled={!canSubmit}
+                aria-label="Send message"
                 className="h-10 w-10 shrink-0"
               >
                 {isLoading ? (
