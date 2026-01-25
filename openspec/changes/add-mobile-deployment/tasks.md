@@ -1,6 +1,6 @@
 # Implementation Tasks
 
-> **Status**: 54/59 tasks complete. Remaining: Neon migration test and pg_cron runtime setup (requires Neon database access).
+> **Status**: 55/59 tasks complete. Remaining: pg_cron setup (requires Neon Scale plan for pg_cron extension).
 
 ## 1. DatabaseProvider Queue Abstraction
 
@@ -78,9 +78,12 @@
 - [x] 10.2 Add `pgqueuer_jobs` table schema
 - [x] 10.3 Add indexes for job status and entrypoint
 - [x] 10.4 Test migration on local PostgreSQL
-- [ ] 10.5 Test migration on Neon
+- [x] 10.5 Test migration on Neon
 
 ## 11. pg_cron Scheduled Jobs
+
+> **Note**: pg_cron requires Neon Scale plan. Current plan doesn't have permissions to create the extension.
+> Alternative: Use Railway cron jobs or external scheduler until plan upgrade.
 
 - [ ] 11.1 Enable pg_cron extension on Neon (`CREATE EXTENSION IF NOT EXISTS pg_cron`)
 - [x] 11.2 Create `pgqueuer_enqueue` helper function (in migration)
