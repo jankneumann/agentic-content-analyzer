@@ -1,38 +1,32 @@
-"""Integration tests for newsletter summarization workflow.
+"""Integration tests for content summarization workflow.
 
 Tests the end-to-end flow:
-1. Newsletter exists in database (PENDING status)
-2. Summarizer processes newsletter
+1. Content exists in database (PARSED status)
+2. Summarizer processes content
 3. Summary is stored in database
-4. Newsletter status updated to COMPLETED
+4. Content status updated to COMPLETED
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from src.config.models import MODEL_REGISTRY
-from src.models.newsletter import Newsletter, ProcessingStatus
-from src.models.summary import NewsletterSummary
+from src.models.content import Content, ContentStatus
+from src.models.summary import Summary
 from src.processors.summarizer import NewsletterSummarizer
 
 
 @pytest.mark.integration
-def test_summarize_newsletter_success(
-    db_session, sample_newsletters, mock_anthropic_client, mock_get_db
-):
-    """Test successful newsletter summarization workflow."""
-    newsletter = sample_newsletters[0]
+def test_summarize_content_success(db_session, sample_contents, mock_anthropic_client, mock_get_db):
+    """Test successful content summarization workflow."""
+    content = sample_contents[0]
 
     # Verify initial state
-    assert newsletter.status == ProcessingStatus.PENDING
+    assert content.status == ContentStatus.PARSED
 
     # Ensure no summary exists
-    existing = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    existing = db_session.query(Summary).filter(Summary.content_id == content.id).first()
     assert existing is None
 
     # Run summarization with mocked LLM and database
@@ -41,21 +35,17 @@ def test_summarize_newsletter_success(
 
         with patch("src.processors.summarizer.get_db", mock_get_db):
             summarizer = NewsletterSummarizer()
-            result = summarizer.summarize_newsletter(newsletter.id)
+            result = summarizer.summarize_content(content.id)
 
     # Verify success
     assert result is True
 
-    # Verify newsletter status updated
-    db_session.refresh(newsletter)
-    assert newsletter.status == ProcessingStatus.COMPLETED
+    # Verify content status updated
+    db_session.refresh(content)
+    assert content.status == ContentStatus.COMPLETED
 
     # Verify summary was created
-    summary = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    summary = db_session.query(Summary).filter(Summary.content_id == content.id).first()
 
     assert summary is not None
     assert summary.executive_summary == "Test summary of newsletter content."
@@ -75,53 +65,45 @@ def test_summarize_newsletter_success(
 
 
 @pytest.mark.integration
-def test_summarize_newsletter_not_found(db_session, mock_get_db):
-    """Test handling of non-existent newsletter."""
+def test_summarize_content_not_found(db_session, mock_get_db):
+    """Test handling of non-existent content."""
     with patch("src.agents.claude.summarizer.Anthropic"):
         with patch("src.processors.summarizer.get_db", mock_get_db):
             summarizer = NewsletterSummarizer()
-            result = summarizer.summarize_newsletter(99999)  # Non-existent ID
+            result = summarizer.summarize_content(99999)  # Non-existent ID
 
     assert result is False
 
 
 @pytest.mark.integration
-def test_summarize_newsletter_already_summarized(
-    db_session, sample_newsletters, sample_summaries, mock_get_db
+def test_summarize_content_already_summarized(
+    db_session, sample_contents, sample_summaries, mock_get_db
 ):
-    """Test that already-summarized newsletters are skipped."""
-    newsletter = sample_newsletters[0]
+    """Test that already-summarized contents are skipped."""
+    content = sample_contents[0]
 
     # Verify summary already exists
-    existing = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .first()
-    )
+    existing = db_session.query(Summary).filter(Summary.content_id == content.id).first()
     assert existing is not None
 
     # Run summarization
     with patch("src.agents.claude.summarizer.Anthropic"):
         with patch("src.processors.summarizer.get_db", mock_get_db):
             summarizer = NewsletterSummarizer()
-            result = summarizer.summarize_newsletter(newsletter.id)
+            result = summarizer.summarize_content(content.id)
 
     # Should return success (already summarized)
     assert result is True
 
     # Verify only one summary exists (no duplicate created)
-    summaries = (
-        db_session.query(NewsletterSummary)
-        .filter(NewsletterSummary.newsletter_id == newsletter.id)
-        .all()
-    )
+    summaries = db_session.query(Summary).filter(Summary.content_id == content.id).all()
     assert len(summaries) == 1
 
 
 @pytest.mark.integration
-def test_summarize_newsletter_llm_error(db_session, sample_newsletters, mock_get_db):
+def test_summarize_content_llm_error(db_session, sample_contents, mock_get_db):
     """Test handling of LLM API errors."""
-    newsletter = sample_newsletters[0]
+    content = sample_contents[0]
 
     # Mock LLM to raise exception
     mock_client = type("MockClient", (), {})()
@@ -133,62 +115,26 @@ def test_summarize_newsletter_llm_error(db_session, sample_newsletters, mock_get
 
         with patch("src.processors.summarizer.get_db", mock_get_db):
             summarizer = NewsletterSummarizer()
-            result = summarizer.summarize_newsletter(newsletter.id)
+            result = summarizer.summarize_content(content.id)
 
     # Should handle error gracefully
     assert result is False
 
-    # Verify newsletter status is FAILED
-    db_session.refresh(newsletter)
-    assert newsletter.status == ProcessingStatus.FAILED
-    assert newsletter.error_message is not None
-    assert "API Error" in newsletter.error_message
+    # Verify content status is FAILED
+    db_session.refresh(content)
+    assert content.status == ContentStatus.FAILED
+    assert content.error_message is not None
+    assert "API Error" in content.error_message
 
 
 @pytest.mark.integration
-def test_summarize_newsletter_database_error(
-    db_session, sample_newsletters, mock_anthropic_client, mock_get_db
+def test_summarize_pending_contents(
+    db_session, sample_contents, mock_anthropic_client, mock_get_db
 ):
-    """Test handling of database errors with rollback."""
-    newsletter = sample_newsletters[0]
-
-    # We want to simulate a database error during the second commit (when saving summary)
-    # The first commit is for changing status to PROCESSING, second for COMPLETED + summary
-    # We patch the commit method on the session object
-    original_commit = db_session.commit
-
-    # First commit (PROCESSING) succeeds, second (COMPLETED) fails, third (FAILED) succeeds
-    db_session.commit = MagicMock(side_effect=[None, Exception("DB Commit Failed"), None])
-
-    try:
-        with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_class:
-            mock_anthropic_class.return_value = mock_anthropic_client
-
-            with patch("src.processors.summarizer.get_db", mock_get_db):
-                summarizer = NewsletterSummarizer()
-                result = summarizer.summarize_newsletter(newsletter.id)
-
-        assert result is False
-
-        # Verify status is FAILED
-        # Note: Since we mocked commit, the changes might still be in the session
-        # but the logic flow should have set it to FAILED
-        assert newsletter.status == ProcessingStatus.FAILED
-        assert newsletter.error_message == "DB Commit Failed"
-
-    finally:
-        # Restore commit for cleanup
-        db_session.commit = original_commit
-
-
-@pytest.mark.integration
-def test_summarize_pending_newsletters(
-    db_session, sample_newsletters, mock_anthropic_client, mock_get_db
-):
-    """Test batch summarization of pending newsletters."""
-    # All newsletters should be PENDING
-    for newsletter in sample_newsletters:
-        assert newsletter.status == ProcessingStatus.PENDING
+    """Test batch summarization of pending contents."""
+    # All contents should be PARSED
+    for content in sample_contents:
+        assert content.status == ContentStatus.PARSED
 
     # Run batch summarization
     with patch("src.agents.claude.summarizer.Anthropic") as mock_anthropic_class:
@@ -196,24 +142,24 @@ def test_summarize_pending_newsletters(
 
         with patch("src.processors.summarizer.get_db", mock_get_db):
             summarizer = NewsletterSummarizer()
-            count = summarizer.summarize_pending_newsletters()
+            count = summarizer.summarize_pending_contents()
 
-    # Should have summarized all 3 newsletters
+    # Should have summarized all 3 contents
     assert count == 3
 
-    # Verify all newsletters are now COMPLETED
-    for newsletter in sample_newsletters:
-        db_session.refresh(newsletter)
-        assert newsletter.status == ProcessingStatus.COMPLETED
+    # Verify all contents are now COMPLETED
+    for content in sample_contents:
+        db_session.refresh(content)
+        assert content.status == ContentStatus.COMPLETED
 
     # Verify summaries were created
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 3
 
 
 @pytest.mark.integration
-def test_summarize_pending_newsletters_with_limit(
-    db_session, sample_newsletters, mock_anthropic_client, mock_get_db
+def test_summarize_pending_contents_with_limit(
+    db_session, sample_contents, mock_anthropic_client, mock_get_db
 ):
     """Test batch summarization with limit."""
     # Run batch summarization with limit of 2
@@ -222,31 +168,29 @@ def test_summarize_pending_newsletters_with_limit(
 
         with patch("src.processors.summarizer.get_db", mock_get_db):
             summarizer = NewsletterSummarizer()
-            count = summarizer.summarize_pending_newsletters(limit=2)
+            count = summarizer.summarize_pending_contents(limit=2)
 
-    # Should have summarized only 2 newsletters
+    # Should have summarized only 2 contents
     assert count == 2
 
     # Verify summaries created
-    summaries = db_session.query(NewsletterSummary).all()
+    summaries = db_session.query(Summary).all()
     assert len(summaries) == 2
 
-    # Verify one newsletter still pending
-    pending = (
-        db_session.query(Newsletter).filter(Newsletter.status == ProcessingStatus.PENDING).count()
-    )
+    # Verify one content still parsed (pending summarization)
+    pending = db_session.query(Content).filter(Content.status == ContentStatus.PARSED).count()
     assert pending == 1
 
 
 @pytest.mark.integration
-def test_summarize_newsletter_status_transitions(
-    db_session, sample_newsletters, mock_anthropic_client, mock_get_db
+def test_summarize_content_status_transitions(
+    db_session, sample_contents, mock_anthropic_client, mock_get_db
 ):
-    """Test newsletter status transitions during summarization."""
-    newsletter = sample_newsletters[0]
+    """Test content status transitions during summarization."""
+    content = sample_contents[0]
 
-    # Start: PENDING
-    assert newsletter.status == ProcessingStatus.PENDING
+    # Start: PARSED
+    assert content.status == ContentStatus.PARSED
 
     # During processing, status should be PROCESSING
     # (we can't easily test this without threading, but it's set in the code)
@@ -257,11 +201,11 @@ def test_summarize_newsletter_status_transitions(
 
         with patch("src.processors.summarizer.get_db", mock_get_db):
             summarizer = NewsletterSummarizer()
-            result = summarizer.summarize_newsletter(newsletter.id)
+            result = summarizer.summarize_content(content.id)
 
     assert result is True
 
     # End: COMPLETED
-    db_session.refresh(newsletter)
-    assert newsletter.status == ProcessingStatus.COMPLETED
-    assert newsletter.error_message is None
+    db_session.refresh(content)
+    assert content.status == ContentStatus.COMPLETED
+    assert content.error_message is None

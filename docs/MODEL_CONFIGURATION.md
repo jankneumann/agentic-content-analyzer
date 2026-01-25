@@ -12,11 +12,11 @@ The model configuration system consists of three layers:
 
 ## Pipeline Steps
 
-The newsletter processing pipeline has four distinct LLM steps, each configurable independently:
+The content processing pipeline has four distinct LLM steps, each configurable independently:
 
 | Step | Purpose | Default Model | Optimization Strategy |
 |------|---------|---------------|----------------------|
-| **SUMMARIZATION** | Extract key points from individual newsletters | Claude Haiku | Fast, cost-effective for straightforward extraction |
+| **SUMMARIZATION** | Extract key points from individual content items | Claude Haiku | Fast, cost-effective for straightforward extraction |
 | **THEME_ANALYSIS** | Identify patterns across multiple summaries | Claude Sonnet | Quality-critical; benefits from stronger reasoning |
 | **DIGEST_CREATION** | Generate multi-audience formatted output | Claude Sonnet | Quality-critical; customer-facing content |
 | **HISTORICAL_CONTEXT** | Query knowledge graph for related themes | Claude Haiku | Simple queries; speed matters |
@@ -101,8 +101,8 @@ config = ModelConfig(
 )
 
 # Use in processors
-from src.processors.summarizer import NewsletterSummarizer
-summarizer = NewsletterSummarizer(model_config=config)
+from src.processors.summarizer import ContentSummarizer
+summarizer = ContentSummarizer(model_config=config)
 ```
 
 ### 3. Model Override at Runtime
@@ -193,8 +193,8 @@ config = ModelConfig(
     historical_context="claude-haiku-4-5", # $0.80/MTok input, $4/MTok output
 )
 
-# Cost savings example (processing 100 newsletters):
-# - Summarization: 100 newsletters × ~2K tokens = ~$0.80 (Haiku) vs ~$3.00 (Sonnet)
+# Cost savings example (processing 100 content items):
+# - Summarization: 100 content items x ~2K tokens = ~$0.80 (Haiku) vs ~$3.00 (Sonnet)
 # - Theme analysis: 5 analyses × ~5K tokens = ~$0.38 (Sonnet)
 # - Digest creation: 7 digests × ~8K tokens = ~$1.20 (Sonnet)
 # Total: ~$2.38 vs ~$4.58 (all Sonnet) = 48% cost reduction

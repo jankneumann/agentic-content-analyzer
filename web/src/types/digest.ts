@@ -4,7 +4,7 @@
  * TypeScript interfaces for digest entities.
  * These types mirror the backend Python models in src/models/digest.py
  *
- * Digests are the aggregated output combining multiple newsletter summaries
+ * Digests are the aggregated output combining multiple content summaries
  * into a cohesive document with multi-audience formatting.
  *
  * Field names use snake_case to match the Python backend.
@@ -14,8 +14,8 @@
 
 /**
  * Type of digest
- * - daily: Aggregation of a single day's newsletters
- * - weekly: Aggregation of a week's newsletters
+ * - daily: Aggregation of a single day's content
+ * - weekly: Aggregation of a week's content
  * - sub_digest: Intermediate digest for hierarchical combination
  */
 export type DigestType = "daily" | "weekly" | "sub_digest"
@@ -38,7 +38,7 @@ export type DigestStatus =
 /**
  * Source reference in a digest
  *
- * Links digest content back to original newsletters.
+ * Links digest content back to original content items.
  */
 export interface DigestSource {
   /** Newsletter title */
@@ -115,7 +115,7 @@ export interface DigestListItem {
   title: string
   period_start: string
   period_end: string
-  newsletter_count: number
+  content_count: number
   status: DigestStatus
   created_at: string
   model_used: string
@@ -140,7 +140,7 @@ export interface DigestDetail {
   emerging_trends: DigestSection[]
   actionable_recommendations: ActionableRecommendations
   sources: DigestSource[]
-  newsletter_count: number
+  content_count: number
   status: DigestStatus
   created_at: string
   completed_at: string | null
@@ -252,6 +252,11 @@ export interface ReviseDigestSectionRequest {
 }
 
 /**
+ * Sort order for table sorting
+ */
+export type SortOrder = "asc" | "desc"
+
+/**
  * Filters for digest list queries
  */
 export interface DigestFilters {
@@ -263,6 +268,10 @@ export interface DigestFilters {
   limit?: number
   /** Pagination offset */
   offset?: number
+  /** Field to sort by */
+  sort_by?: string
+  /** Sort direction */
+  sort_order?: SortOrder
 }
 
 /**

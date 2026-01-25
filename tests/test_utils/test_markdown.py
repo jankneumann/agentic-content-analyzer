@@ -1,7 +1,5 @@
 """Tests for markdown parsing and extraction utilities."""
 
-import pytest
-
 from src.utils.markdown import (
     MarkdownSection,
     extract_embedded_refs,

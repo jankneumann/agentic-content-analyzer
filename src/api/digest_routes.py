@@ -28,6 +28,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/digests", tags=["digests"])
 
+# Allowed fields for sorting digests
+DIGEST_SORT_FIELDS = {"id", "digest_type", "status", "created_at", "period_start", "period_end"}
+
 
 # --- Request/Response Models ---
 
@@ -139,6 +142,84 @@ class SectionRevisionRequest(BaseModel):
 
 
 # --- Background Tasks ---
+
+
+async def regenerate_digest_task(digest_id: int) -> None:
+    """Background task for digest regeneration."""
+    logger.info(f"Starting background digest regeneration for ID: {digest_id}")
+
+    # Fetch existing digest
+    with get_db() as db:
+        digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
+        if not digest_record:
+            logger.error(f"Digest {digest_id} not found for regeneration")
+            return
+
+        # Update status
+        digest_record.status = DigestStatus.GENERATING
+        digest_record.title = f"Regenerating {digest_record.digest_type.value} digest..."
+        db.commit()
+
+        # Create request from existing digest data
+        request = DigestRequest(
+            digest_type=digest_record.digest_type,
+            period_start=digest_record.period_start,
+            period_end=digest_record.period_end,
+            include_historical_context=True,  # Default to True for now
+        )
+
+    try:
+        # Generate digest
+        creator = DigestCreator()
+        digest_data = await creator.create_digest(request)
+
+        # Update record with generated content
+        with get_db() as db:
+            digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
+
+            # Convert DigestSection objects to dicts
+            digest_record.title = digest_data.title
+            digest_record.executive_overview = digest_data.executive_overview
+            digest_record.strategic_insights = [
+                s.model_dump() for s in digest_data.strategic_insights
+            ]
+            digest_record.technical_developments = [
+                s.model_dump() for s in digest_data.technical_developments
+            ]
+            digest_record.emerging_trends = [s.model_dump() for s in digest_data.emerging_trends]
+            digest_record.actionable_recommendations = digest_data.actionable_recommendations
+            digest_record.sources = digest_data.sources
+            digest_record.newsletter_count = digest_data.newsletter_count
+            digest_record.status = DigestStatus.PENDING_REVIEW
+            digest_record.completed_at = datetime.utcnow()
+            digest_record.agent_framework = digest_data.agent_framework
+            digest_record.model_used = digest_data.model_used
+            digest_record.model_version = digest_data.model_version
+            digest_record.processing_time_seconds = (
+                int(digest_data.processing_time_seconds)
+                if digest_data.processing_time_seconds
+                else None
+            )
+            digest_record.is_combined = 1 if digest_data.is_combined else 0
+            digest_record.child_digest_ids = digest_data.child_digest_ids
+            # New markdown-first fields (Phase 5)
+            digest_record.markdown_content = digest_data.markdown_content
+            digest_record.theme_tags = digest_data.theme_tags
+            digest_record.source_content_ids = digest_data.source_content_ids
+            digest_record.revision_count = (digest_record.revision_count or 0) + 1
+
+            db.commit()
+
+        logger.info(f"Digest {digest_id} regenerated successfully")
+
+    except Exception as e:
+        logger.error(f"Digest regeneration failed: {e}")
+        with get_db() as db:
+            digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
+            if digest_record:
+                digest_record.status = DigestStatus.FAILED
+                digest_record.review_notes = str(e)
+                db.commit()
 
 
 async def generate_digest_task(request: DigestRequest) -> None:
@@ -284,12 +365,52 @@ async def generate_digest(
     }
 
 
+@router.post("/{digest_id}/regenerate", response_model=dict)
+async def regenerate_digest(
+    digest_id: int,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Regenerate an existing digest.
+
+    Starts digest regeneration in background and returns immediately.
+    This re-runs the full generation process for the existing digest ID.
+    Poll GET /digests/{digest_id} for status.
+    """
+    logger.info(f"Received digest regeneration request for ID: {digest_id}")
+
+    with get_db() as db:
+        digest = db.query(Digest).filter(Digest.id == digest_id).first()
+        if not digest:
+            raise HTTPException(status_code=404, detail="Digest not found")
+
+        if digest.status == DigestStatus.GENERATING:
+            raise HTTPException(
+                status_code=400,
+                detail="Digest is already generating",
+            )
+
+        # Set status to generating immediately
+        digest.status = DigestStatus.GENERATING
+        db.commit()
+
+    # Queue background task
+    background_tasks.add_task(regenerate_digest_task, digest_id)
+
+    return {
+        "status": "queued",
+        "message": "Digest regeneration started",
+        "digest_id": digest_id,
+    }
+
+
 @router.get("/", response_model=list[DigestSummary])
 async def list_digests(
     status: str | None = Query(None, description="Filter by status"),
     digest_type: str | None = Query(None, description="Filter by type"),
     limit: int = Query(50, le=100, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[DigestSummary]:
     """List digests with optional filtering."""
     with get_db() as db:
@@ -312,7 +433,17 @@ async def list_digests(
             except ValueError:
                 pass  # Invalid type, ignore filter
 
-        digests = query.order_by(Digest.created_at.desc()).offset(offset).limit(limit).all()
+        # Apply dynamic sorting
+        if sort_by not in DIGEST_SORT_FIELDS:
+            sort_by = "created_at"
+
+        sort_column = getattr(Digest, sort_by, Digest.created_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        digests = query.offset(offset).limit(limit).all()
 
         return [
             DigestSummary(
@@ -439,9 +570,10 @@ async def get_digest_sources(
 ) -> list[dict]:
     """Get all source summaries used to create a digest.
 
-    Returns full summaries from newsletters within the digest's period.
+    Returns full summaries from content within the digest's period.
     """
-    from src.models.summary import NewsletterSummary
+    from src.models.content import Content
+    from src.models.summary import Summary
 
     with get_db() as db:
         digest = db.query(Digest).filter(Digest.id == digest_id).first()
@@ -449,37 +581,68 @@ async def get_digest_sources(
         if not digest:
             raise HTTPException(status_code=404, detail="Digest not found")
 
-        # Get summaries within the digest period
-        from src.models.newsletter import Newsletter
+        results = []
 
-        summaries = (
-            db.query(NewsletterSummary)
-            .join(Newsletter)
-            .filter(Newsletter.published_date >= digest.period_start)
-            .filter(Newsletter.published_date <= digest.period_end)
-            .order_by(Newsletter.published_date.desc())
-            .limit(limit)
-            .all()
-        )
+        # Strategy 1: Use source_content_ids if available (new flow)
+        if digest.source_content_ids:
+            content_summaries = (
+                db.query(Summary)
+                .join(Content, Summary.content_id == Content.id)
+                .filter(Summary.content_id.in_(digest.source_content_ids))
+                .order_by(Content.published_date.desc())
+                .limit(limit)
+                .all()
+            )
+            for s in content_summaries:
+                results.append(
+                    {
+                        "id": s.id,
+                        "content_id": s.content_id,
+                        "newsletter_title": s.content.title if s.content else "Unknown",
+                        "newsletter_publication": s.content.publication if s.content else None,
+                        "executive_summary": s.executive_summary,
+                        "key_themes": s.key_themes or [],
+                        "strategic_insights": s.strategic_insights or [],
+                        "technical_details": s.technical_details or [],
+                        "actionable_items": s.actionable_items or [],
+                        "notable_quotes": s.notable_quotes or [],
+                        "model_used": s.model_used,
+                        "created_at": s.created_at.isoformat() if s.created_at else None,
+                        "processing_time_seconds": s.processing_time_seconds,
+                    }
+                )
 
-        return [
-            {
-                "id": s.id,
-                "newsletter_id": s.newsletter_id,
-                "newsletter_title": s.newsletter.title if s.newsletter else "Unknown",
-                "newsletter_publication": s.newsletter.publication if s.newsletter else None,
-                "executive_summary": s.executive_summary,
-                "key_themes": s.key_themes or [],
-                "strategic_insights": s.strategic_insights or [],
-                "technical_details": s.technical_details or [],
-                "actionable_items": s.actionable_items or [],
-                "notable_quotes": s.notable_quotes or [],
-                "model_used": s.model_used,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-                "processing_time_seconds": s.processing_time_seconds,
-            }
-            for s in summaries
-        ]
+        # Strategy 2: Query Content by period (if no explicit source_content_ids)
+        if not results and digest.period_start and digest.period_end:
+            content_summaries = (
+                db.query(Summary)
+                .join(Content, Summary.content_id == Content.id)
+                .filter(Content.published_date >= digest.period_start)
+                .filter(Content.published_date <= digest.period_end)
+                .order_by(Content.published_date.desc())
+                .limit(limit)
+                .all()
+            )
+            for s in content_summaries:
+                results.append(
+                    {
+                        "id": s.id,
+                        "content_id": s.content_id,
+                        "newsletter_title": s.content.title if s.content else "Unknown",
+                        "newsletter_publication": s.content.publication if s.content else None,
+                        "executive_summary": s.executive_summary,
+                        "key_themes": s.key_themes or [],
+                        "strategic_insights": s.strategic_insights or [],
+                        "technical_details": s.technical_details or [],
+                        "actionable_items": s.actionable_items or [],
+                        "notable_quotes": s.notable_quotes or [],
+                        "model_used": s.model_used,
+                        "created_at": s.created_at.isoformat() if s.created_at else None,
+                        "processing_time_seconds": s.processing_time_seconds,
+                    }
+                )
+
+        return results
 
 
 @router.get("/{digest_id}/navigation")

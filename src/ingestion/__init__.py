@@ -1,11 +1,30 @@
-"""Newsletter ingestion modules."""
+"""Content ingestion modules.
 
-from src.ingestion.gmail import GmailClient, GmailIngestionService
-from src.ingestion.rss import RSSClient, RSSIngestionService
+This module provides ingestion services for various content sources
+using the unified Content model.
+"""
+
+from src.ingestion.gmail import (
+    GmailClient,
+    GmailContentIngestionService,
+)
+from src.ingestion.rss import (
+    RSSClient,
+    RSSContentIngestionService,
+)
+from src.ingestion.youtube import (
+    YouTubeClient,
+    YouTubeContentIngestionService,
+)
 
 __all__ = [
+    # Gmail
     "GmailClient",
-    "GmailIngestionService",
+    "GmailContentIngestionService",
+    # RSS
     "RSSClient",
-    "RSSIngestionService",
+    "RSSContentIngestionService",
+    # YouTube
+    "YouTubeClient",
+    "YouTubeContentIngestionService",
 ]

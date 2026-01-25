@@ -184,11 +184,11 @@ export interface PodcastScriptRecord {
   /** Revision history entries */
   revisionHistory: ScriptRevisionEntry[]
 
-  /** Available newsletter IDs when generated */
-  newsletterIdsAvailable: string[]
+  /** Available content IDs when generated */
+  contentIdsAvailable: string[]
 
-  /** Newsletter IDs actually used */
-  newsletterIdsFetched: string[]
+  /** Content IDs actually used */
+  contentIdsFetched: string[]
 
   /** Theme IDs referenced */
   themeIds: string[]

@@ -42,7 +42,7 @@ export interface RegenerateWithFeedbackRequest {
   /** Selected text snippets for additional context */
   contextSelections?: Array<{
     text: string
-    source: "newsletter" | "summary"
+    source: "content" | "summary"
   }>
   /** If true, returns preview without saving */
   previewOnly?: boolean
@@ -186,7 +186,7 @@ export interface ScriptDetail {
     sections_revised: number[]
     feedback: string
   }>
-  newsletter_ids_fetched: string[]
+  content_ids_fetched: string[]
   web_search_queries: string[]
   tool_call_count: number
 }

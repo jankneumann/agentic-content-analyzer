@@ -165,8 +165,8 @@ function ThemesPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Newsletters Analyzed</CardDescription>
-              <CardTitle className="text-2xl">{latestAnalysis.newsletter_count}</CardTitle>
+              <CardDescription>Content Items Analyzed</CardDescription>
+              <CardTitle className="text-2xl">{latestAnalysis.content_count}</CardTitle>
             </CardHeader>
           </Card>
           <Card>

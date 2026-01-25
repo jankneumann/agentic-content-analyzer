@@ -1,13 +1,27 @@
-"""CLI script to extract entities from newsletter summaries into Graphiti."""
+"""CLI script to extract entities from content summaries into Graphiti.
+
+.. deprecated::
+    This script uses the legacy Newsletter model. Consider using Content-based
+    workflows for new entity extraction.
+"""
 
 import argparse
 import asyncio
+import warnings
 
-from src.models.newsletter import Newsletter
-from src.models.summary import NewsletterSummary
+from src.models.content import Content
+from src.models.summary import Summary
 from src.storage.database import get_db
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger, setup_logging
+
+# Emit deprecation warning
+warnings.warn(
+    "extract_entities.py uses legacy Newsletter patterns. "
+    "Consider migrating to Content-based workflows.",
+    DeprecationWarning,
+    stacklevel=1,
+)
 
 # Setup logging
 setup_logging()
@@ -16,7 +30,7 @@ logger = get_logger(__name__)
 
 async def extract_all_summaries(limit: int | None = None) -> int:
     """
-    Extract entities from all newsletter summaries.
+    Extract entities from all content summaries.
 
     Args:
         limit: Maximum number to process (None = all)
@@ -24,59 +38,53 @@ async def extract_all_summaries(limit: int | None = None) -> int:
     Returns:
         Number of summaries processed
     """
-    # Query for summary IDs
+    # Query for summaries with content
     with get_db() as db:
         query = (
-            db.query(NewsletterSummary.newsletter_id, Newsletter.id)
-            .join(Newsletter, NewsletterSummary.newsletter_id == Newsletter.id)
-            .order_by(Newsletter.published_date)
+            db.query(Summary.content_id, Content.id)
+            .join(Content, Summary.content_id == Content.id)
+            .order_by(Content.published_date)
         )
 
         if limit:
             query = query.limit(limit)
 
-        summary_ids = [row[0] for row in query.all()]
-        logger.info(f"Found {len(summary_ids)} summaries to process")
+        content_ids = [row[0] for row in query.all()]
+        logger.info(f"Found {len(content_ids)} summaries to process")
 
     # Process each summary
     count = 0
     async with GraphitiClient() as graphiti:
-        for newsletter_id in summary_ids:
+        for content_id in content_ids:
             try:
                 with get_db() as db:
-                    newsletter = db.query(Newsletter).filter(
-                        Newsletter.id == newsletter_id
-                    ).first()
-                    summary = db.query(NewsletterSummary).filter(
-                        NewsletterSummary.newsletter_id == newsletter_id
-                    ).first()
+                    content = db.query(Content).filter(Content.id == content_id).first()
+                    summary = db.query(Summary).filter(Summary.content_id == content_id).first()
 
-                    if not newsletter or not summary:
-                        logger.warning(f"Skipping newsletter {newsletter_id}: missing data")
+                    if not content or not summary:
+                        logger.warning(f"Skipping content {content_id}: missing data")
                         continue
 
-                    logger.info(f"Extracting entities from: {newsletter.title}")
+                    logger.info(f"Extracting entities from: {content.title}")
                     # Call graphiti while session is still active
-                    episode_id = await graphiti.add_newsletter_summary(newsletter, summary)
+                    episode_id = await graphiti.add_content_summary(content, summary)
 
-                logger.info(
-                    f"Created episode {episode_id} for newsletter {newsletter_id}"
-                )
+                logger.info(f"Created episode {episode_id} for content {content_id}")
                 count += 1
 
             except Exception as e:
-                logger.error(f"Error processing newsletter {newsletter_id}: {e}")
+                logger.error(f"Error processing content {content_id}: {e}")
                 continue
 
     return count
 
 
-async def extract_single_summary(newsletter_id: int) -> bool:
+async def extract_single_summary(content_id: int) -> bool:
     """
-    Extract entities from a single newsletter summary.
+    Extract entities from a single content summary.
 
     Args:
-        newsletter_id: Newsletter ID to process
+        content_id: Content ID to process
 
     Returns:
         True if successful, False otherwise
@@ -84,93 +92,63 @@ async def extract_single_summary(newsletter_id: int) -> bool:
     async with GraphitiClient() as graphiti:
         try:
             with get_db() as db:
-                newsletter = db.query(Newsletter).filter(
-                    Newsletter.id == newsletter_id
-                ).first()
-                summary = db.query(NewsletterSummary).filter(
-                    NewsletterSummary.newsletter_id == newsletter_id
-                ).first()
+                content = db.query(Content).filter(Content.id == content_id).first()
+                summary = db.query(Summary).filter(Summary.content_id == content_id).first()
 
-                if not newsletter:
-                    logger.error(f"Newsletter {newsletter_id} not found")
+                if not content:
+                    logger.error(f"Content {content_id} not found")
                     return False
 
                 if not summary:
-                    logger.error(f"Summary for newsletter {newsletter_id} not found")
+                    logger.error(f"Summary for content {content_id} not found")
                     return False
 
-                logger.info(f"Extracting entities from: {newsletter.title}")
-                # Call graphiti while session is still active
-                episode_id = await graphiti.add_newsletter_summary(newsletter, summary)
+                logger.info(f"Extracting entities from: {content.title}")
+                episode_id = await graphiti.add_content_summary(content, summary)
 
-            logger.info(
-                f"Created episode {episode_id} for newsletter {newsletter_id}"
-            )
+            logger.info(f"Created episode {episode_id} for content {content_id}")
             return True
 
         except Exception as e:
-            logger.error(f"Error extracting entities: {e}")
+            logger.error(f"Error processing content {content_id}: {e}")
             return False
 
 
-async def main() -> None:
-    """Run entity extraction."""
+def main() -> None:
+    """Main entry point for CLI."""
     parser = argparse.ArgumentParser(
-        description="Extract entities from newsletter summaries into Graphiti knowledge graph"
-    )
-    parser.add_argument(
-        "--id",
-        type=int,
-        help="Extract entities from a specific newsletter by ID",
+        description="Extract entities from content summaries into Graphiti"
     )
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Extract entities from all newsletters with summaries",
+        help="Process all summaries",
+    )
+    parser.add_argument(
+        "--id",
+        type=int,
+        help="Process specific content ID",
     )
     parser.add_argument(
         "--limit",
         type=int,
-        help="Maximum number of newsletters to process (with --all)",
+        help="Maximum number to process",
     )
 
     args = parser.parse_args()
 
-    try:
-        if args.id:
-            # Extract from specific newsletter
-            logger.info(f"Extracting entities from newsletter ID: {args.id}")
-            success = await extract_single_summary(args.id)
-
-            if success:
-                print(f"\n✓ Successfully extracted entities from newsletter {args.id}")
-                print("\nYou can now query the knowledge graph using:")
-                print("  python scripts/query_knowledge_graph.py --query 'AI trends'")
-            else:
-                print(f"\n❌ Failed to extract entities from newsletter {args.id}")
-                return
-
-        elif args.all:
-            # Extract from all summaries
-            logger.info("Extracting entities from all newsletter summaries")
-            count = await extract_all_summaries(limit=args.limit)
-
-            print(f"\n✓ Successfully processed {count} newsletters")
-            if count > 0:
-                print("\nEntities extracted and stored in Neo4j knowledge graph")
-                print("\nQuery the graph:")
-                print("  python scripts/query_knowledge_graph.py --query 'AI trends'")
-
+    if args.id:
+        success = asyncio.run(extract_single_summary(args.id))
+        if success:
+            print(f"✓ Successfully extracted entities for content {args.id}")
         else:
-            print("Error: Must specify either --id or --all")
-            parser.print_help()
-            return
-
-    except Exception as e:
-        logger.error(f"Entity extraction failed: {e}")
-        print(f"\n❌ Error: {e}")
-        return
+            print(f"✗ Failed to extract entities for content {args.id}")
+    elif args.all:
+        count = asyncio.run(extract_all_summaries(args.limit))
+        print(f"✓ Successfully extracted entities for {count} summaries")
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

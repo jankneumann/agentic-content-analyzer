@@ -6,7 +6,7 @@ from enum import Enum
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
-from src.models.newsletter import Base
+from src.models.base import Base
 
 
 class ArtifactType(str, Enum):

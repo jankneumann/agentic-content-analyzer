@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.models.digest import DigestRequest, DigestType
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
 from src.processors.digest_creator import DigestCreator
 from tests.helpers.api_mocks import create_anthropic_summarization_responses
 from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
@@ -45,7 +45,7 @@ async def test_digest_creates_missing_summaries_refactored(db_session, mock_get_
     logger.info(f"Loaded {len(newsletters)} newsletters: {[nl.id for nl in newsletters]}")
 
     # Verify no summaries exist yet
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Initial summary count: {summary_count}")
     assert summary_count == 0
 
@@ -90,7 +90,7 @@ async def test_digest_creates_missing_summaries_refactored(db_session, mock_get_
 
                         request = DigestRequest(
                             digest_type=DigestType.DAILY,
-                            period_start=datetime(2025, 1, 13, 0, 0, 0, tzinfo=UTC),
+                            period_start=datetime(2025, 1, 12, 0, 0, 0, tzinfo=UTC),
                             period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
                             max_strategic_insights=5,
                             max_technical_developments=5,
@@ -130,17 +130,13 @@ async def test_digest_creates_missing_summaries_refactored(db_session, mock_get_
     logger.info("Verifying summaries were created in database...")
 
     # Verify summaries were created in REAL database
-    summary_count = db_session.query(NewsletterSummary).count()
+    summary_count = db_session.query(Summary).count()
     logger.info(f"Final summary count: {summary_count}")
     assert summary_count == 3, f"Expected 3 summaries, found {summary_count}"
 
     # Verify each newsletter has a summary with REAL data
     for newsletter in newsletters:
-        summary = (
-            db_session.query(NewsletterSummary)
-            .filter(NewsletterSummary.newsletter_id == newsletter.id)
-            .first()
-        )
+        summary = db_session.query(Summary).filter(Summary.newsletter_id == newsletter.id).first()
         assert summary is not None, f"Newsletter {newsletter.id} missing summary"
         assert summary.executive_summary is not None
         assert len(summary.key_themes) > 0

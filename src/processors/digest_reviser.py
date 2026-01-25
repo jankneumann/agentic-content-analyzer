@@ -7,10 +7,11 @@ from anthropic import Anthropic
 from sqlalchemy.orm import joinedload
 
 from src.config.models import ModelConfig, ModelStep, Provider
+from src.models.content import Content
 from src.models.digest import Digest
-from src.models.newsletter import Newsletter
 from src.models.revision import RevisionContext, RevisionResult
-from src.models.summary import NewsletterSummary
+from src.models.summary import Summary
+from src.models.theme import ThemeAnalysis
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -59,9 +60,9 @@ class DigestReviser:
 
         Loads:
         - Digest from database (full content)
-        - Newsletter summaries (condensed, already summarized)
+        - Content summaries (condensed, already summarized)
         - Theme analysis (if available)
-        - Newsletter IDs for on-demand fetching via tools
+        - Content IDs for on-demand fetching via tools
 
         Args:
             digest_id: Digest ID to load
@@ -81,36 +82,50 @@ class DigestReviser:
             if not digest:
                 raise ValueError(f"Digest {digest_id} not found")
 
-            # Load summaries for the period with eager loading of newsletter relationship
-            # to prevent DetachedInstanceError when accessing summary.newsletter
+            # Load summaries for the period with eager loading of content relationship
+            # to prevent DetachedInstanceError when accessing summary.content
             summaries = (
-                db.query(NewsletterSummary)
-                .options(joinedload(NewsletterSummary.newsletter))
-                .join(Newsletter, NewsletterSummary.newsletter_id == Newsletter.id)
+                db.query(Summary)
+                .options(joinedload(Summary.content))
+                .join(Content, Summary.content_id == Content.id)
                 .filter(
-                    Newsletter.published_date >= digest.period_start,
-                    Newsletter.published_date <= digest.period_end,
+                    Content.published_date >= digest.period_start,
+                    Content.published_date <= digest.period_end,
                 )
-                .order_by(Newsletter.published_date.desc())
+                .order_by(Content.published_date.desc())
                 .all()
             )
 
-            # Extract newsletter IDs for on-demand fetching
-            newsletter_ids = [summary.newsletter_id for summary in summaries]
+            # Extract content IDs for on-demand fetching
+            content_ids = [summary.content_id for summary in summaries if summary.content_id]
 
             logger.info(
                 f"Loaded digest {digest_id} with {len(summaries)} summaries, "
-                f"{len(newsletter_ids)} newsletters available for on-demand fetching"
+                f"{len(content_ids)} content items available for on-demand fetching"
             )
 
-            # TODO: Load theme analysis when available
-            theme_analysis = None
+            # Load theme analysis for the period
+            # We look for an analysis that covers the exact same period
+            theme_analysis = (
+                db.query(ThemeAnalysis)
+                .filter(
+                    ThemeAnalysis.start_date == digest.period_start,
+                    ThemeAnalysis.end_date == digest.period_end,
+                )
+                .order_by(ThemeAnalysis.analysis_date.desc())
+                .first()
+            )
+
+            if theme_analysis:
+                logger.info(f"Loaded theme analysis from {theme_analysis.analysis_date}")
+            else:
+                logger.info("No matching theme analysis found")
 
             return RevisionContext(
                 digest=digest,
                 summaries=summaries,
                 theme_analysis=theme_analysis,
-                newsletter_ids=newsletter_ids,
+                content_ids=content_ids,
             )
 
     async def revise_section(
@@ -257,43 +272,44 @@ class DigestReviser:
         Args:
             tool_name: Name of the tool being called
             tool_input: Tool input parameters
-            context: Revision context with newsletter IDs
+            context: Revision context with content IDs
 
         Returns:
             Tool result as string
         """
-        if tool_name == "fetch_newsletter_content":
-            newsletter_id = tool_input.get("newsletter_id")
+        if tool_name == "fetch_content":
+            content_id = tool_input.get("content_id")
 
-            if not newsletter_id:
-                return "Error: newsletter_id is required"
+            if not content_id:
+                return "Error: content_id is required"
 
-            if context.newsletter_ids is None or newsletter_id not in context.newsletter_ids:
-                return f"Error: Newsletter {newsletter_id} not in current digest period"
+            if context.content_ids is None or content_id not in context.content_ids:
+                return f"Error: Content {content_id} not in current digest period"
 
             # Fetch from database
             with get_db() as db:
-                newsletter = db.query(Newsletter).filter_by(id=newsletter_id).first()
+                content = db.query(Content).filter_by(id=content_id).first()
 
-                if not newsletter:
-                    return f"Error: Newsletter {newsletter_id} not found"
+                if not content:
+                    return f"Error: Content {content_id} not found"
 
                 # Return condensed version (limit to 5K chars to avoid token overflow)
+                text = content.markdown_content or content.raw_content or ""
                 content_parts = [
-                    f"Newsletter: {newsletter.title}",
-                    f"Publication: {newsletter.publication or 'Unknown'}",
-                    f"Date: {newsletter.published_date.strftime('%Y-%m-%d')}",
+                    f"Title: {content.title}",
+                    f"Publication: {content.publication or 'Unknown'}",
+                    f"Date: {content.published_date.strftime('%Y-%m-%d') if content.published_date else 'Unknown'}",
                     "",
                     "Content:",
-                    (newsletter.raw_text or newsletter.raw_html or "")[:5000],
+                    text[:5000],
                 ]
 
-                if len(newsletter.raw_text or newsletter.raw_html or "") > 5000:
+                if len(text) > 5000:
                     content_parts.append("\n[Content truncated to 5000 characters]")
 
                 return "\n".join(content_parts)
 
-        elif tool_name == "search_newsletters":
+        elif tool_name == "search_content":
             query = tool_input.get("query", "").lower()
 
             if not query:
@@ -302,30 +318,33 @@ class DigestReviser:
             # Search across summaries in context
             results = []
             for summary in context.summaries:
+                # Get content for this summary
+                content = summary.content
+                if not content:
+                    continue
+
                 # Check executive summary
                 if query in summary.executive_summary.lower():
-                    results.append(
-                        f"- {summary.newsletter.title}: {summary.executive_summary[:200]}..."
-                    )
+                    results.append(f"- {content.title}: {summary.executive_summary[:200]}...")
                     continue
 
                 # Check key themes
                 if any(query in theme.lower() for theme in summary.key_themes):
                     results.append(
-                        f"- {summary.newsletter.title} (Theme: {', '.join(summary.key_themes[:3])})"
+                        f"- {content.title} (Theme: {', '.join(summary.key_themes[:3])})"
                     )
                     continue
 
                 # Check strategic insights
                 for insight in summary.strategic_insights:
                     if query in str(insight).lower():
-                        results.append(f"- {summary.newsletter.title}: {str(insight)[:150]}...")
+                        results.append(f"- {content.title}: {str(insight)[:150]}...")
                         break
 
             if not results:
-                return f"No newsletters found matching '{query}'"
+                return f"No content found matching '{query}'"
 
-            return f"Found {len(results)} newsletters matching '{query}':\n\n" + "\n".join(
+            return f"Found {len(results)} content items matching '{query}':\n\n" + "\n".join(
                 results[:5]  # Top 5 results
             )
 
@@ -340,28 +359,28 @@ class DigestReviser:
         """
         return [
             {
-                "name": "fetch_newsletter_content",
+                "name": "fetch_content",
                 "description": (
-                    "Retrieve full content of a specific newsletter when you need "
+                    "Retrieve full content of a specific item when you need "
                     "detailed information beyond the summary. Use when the user asks "
                     "for specific details, quotes, or technical information."
                 ),
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "newsletter_id": {
+                        "content_id": {
                             "type": "integer",
-                            "description": "ID of the newsletter to fetch",
+                            "description": "ID of the content item to fetch",
                         }
                     },
-                    "required": ["newsletter_id"],
+                    "required": ["content_id"],
                 },
             },
             {
-                "name": "search_newsletters",
+                "name": "search_content",
                 "description": (
-                    "Search across all newsletters for specific topics or keywords. "
-                    "Use when you need to find which newsletters discuss a particular "
+                    "Search across all content for specific topics or keywords. "
+                    "Use when you need to find which content items discuss a particular "
                     "topic or concept."
                 ),
                 "input_schema": {

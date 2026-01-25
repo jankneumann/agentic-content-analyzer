@@ -13,7 +13,9 @@ export type { ScriptGenerationParams } from "./GenerateScriptDialog"
 export { GenerateSummaryDialog } from "./GenerateSummaryDialog"
 export type { SummaryGenerationParams } from "./GenerateSummaryDialog"
 
+/** @deprecated Use IngestContentsDialog instead */
 export { IngestNewslettersDialog } from "./IngestNewslettersDialog"
+/** @deprecated Use IngestContentParams instead */
 export type { IngestParams } from "./IngestNewslettersDialog"
 
 export { IngestContentsDialog } from "./IngestContentsDialog"
@@ -21,6 +23,9 @@ export type { IngestContentParams } from "./IngestContentsDialog"
 
 export { GenerateAudioDialog } from "./GenerateAudioDialog"
 export type { AudioGenerationParams } from "./GenerateAudioDialog"
+
+export { GenerateAudioDigestDialog } from "./GenerateAudioDigestDialog"
+export type { AudioDigestGenerationParams } from "./GenerateAudioDigestDialog"
 
 export { AnalyzeThemesDialog } from "./AnalyzeThemesDialog"
 export type { ThemeAnalysisParams } from "./AnalyzeThemesDialog"
