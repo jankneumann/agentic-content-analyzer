@@ -19,6 +19,7 @@ import pytest
 from src.models.image import ImageSource
 from src.services.file_storage import (
     LocalFileStorage,
+    RailwayFileStorage,
     # Backward-compatible aliases
     S3FileStorage,
     S3ImageStorage,
@@ -625,6 +626,149 @@ class TestSupabaseFileStorage:
             assert storage.provider_name == "supabase"
             assert storage._is_local is True
             assert storage.endpoint_url == "http://127.0.0.1:54321/storage/v1/s3"
+
+
+class TestRailwayFileStorage:
+    """Tests for RailwayFileStorage provider."""
+
+    def test_initialization_with_explicit_config(self):
+        """Test initialization with explicit configuration."""
+        from src.services.file_storage import RailwayFileStorage
+
+        storage = RailwayFileStorage(
+            bucket="test-bucket",
+            storage_bucket="images",
+            endpoint_url="http://minio.railway.internal:9000",
+            access_key_id="minioadmin",
+            secret_access_key="miniosecret",
+        )
+
+        assert storage.bucket == "images"  # Logical bucket
+        assert storage.s3_bucket == "test-bucket"  # Actual MinIO bucket
+        assert storage.endpoint_url == "http://minio.railway.internal:9000"
+        assert storage.provider_name == "railway"
+
+    def test_initialization_requires_endpoint(self):
+        """Test that initialization fails without endpoint configuration."""
+        from src.services.file_storage import RailwayFileStorage
+
+        with patch("src.services.file_storage.settings") as mock_settings:
+            mock_settings.railway_minio_endpoint = None
+            with patch.dict("os.environ", {}, clear=True):
+                with pytest.raises(ValueError, match="endpoint not configured"):
+                    RailwayFileStorage(
+                        access_key_id="minioadmin",
+                        secret_access_key="miniosecret",
+                    )
+
+    def test_initialization_requires_credentials(self):
+        """Test that initialization fails without credentials."""
+        from src.services.file_storage import RailwayFileStorage
+
+        with patch("src.services.file_storage.settings") as mock_settings:
+            mock_settings.railway_minio_endpoint = "http://minio:9000"
+            mock_settings.minio_root_user = None
+            mock_settings.minio_root_password = None
+            mock_settings.railway_minio_bucket = "images"
+            with patch.dict("os.environ", {}, clear=True):
+                with pytest.raises(ValueError, match="credentials not configured"):
+                    RailwayFileStorage(
+                        endpoint_url="http://minio:9000",
+                    )
+
+    def test_client_uses_path_style_addressing(self):
+        """Test that boto3 client is configured for path-style addressing.
+
+        Railway public domains don't support wildcard certs for bucket subdomains,
+        so path-style addressing (https://endpoint/bucket/key) must be used instead
+        of virtual-hosted style (https://bucket.endpoint/key).
+        """
+        from src.services.file_storage import RailwayFileStorage
+
+        storage = RailwayFileStorage(
+            bucket="test-bucket",
+            storage_bucket="images",
+            endpoint_url="http://minio.railway.internal:9000",
+            access_key_id="minioadmin",
+            secret_access_key="miniosecret",
+        )
+
+        # Access the client to trigger lazy initialization
+        client = storage.client
+
+        # Verify the client is configured with path-style addressing
+        # The addressing_style is stored in the client's config
+        assert client._client_config.s3 is not None
+        assert client._client_config.s3.get("addressing_style") == "path"
+
+    def test_get_url_uses_path_style(self):
+        """Test URL generation uses path-style format."""
+        from src.services.file_storage import RailwayFileStorage
+
+        storage = RailwayFileStorage(
+            bucket="my-bucket",
+            storage_bucket="images",
+            endpoint_url="https://minio.railway.app",
+            access_key_id="minioadmin",
+            secret_access_key="miniosecret",
+        )
+
+        url = storage.get_url("images/2025/01/15/test.jpg")
+
+        # Should use path-style: https://endpoint/bucket/key
+        assert url == "https://minio.railway.app/my-bucket/images/2025/01/15/test.jpg"
+        # Should NOT be virtual-hosted style: https://bucket.endpoint/key
+        assert "my-bucket.minio" not in url
+
+    def test_provider_name(self):
+        """Test provider_name returns 'railway'."""
+        from src.services.file_storage import RailwayFileStorage
+
+        storage = RailwayFileStorage(
+            bucket="test-bucket",
+            storage_bucket="images",
+            endpoint_url="http://minio:9000",
+            access_key_id="minioadmin",
+            secret_access_key="miniosecret",
+        )
+
+        assert storage.provider_name == "railway"
+
+    def test_inherits_s3_operations(self):
+        """Test that Railway storage inherits S3 operations."""
+        from src.services.file_storage import RailwayFileStorage
+
+        storage = RailwayFileStorage(
+            bucket="test-bucket",
+            storage_bucket="images",
+            endpoint_url="http://minio:9000",
+            access_key_id="minioadmin",
+            secret_access_key="miniosecret",
+        )
+
+        # Should have S3 parent methods
+        assert hasattr(storage, "save")
+        assert hasattr(storage, "get")
+        assert hasattr(storage, "delete")
+        assert hasattr(storage, "exists")
+        assert hasattr(storage, "_generate_key")
+
+    def test_auto_discovery_from_railway_public_domain(self):
+        """Test endpoint auto-discovery from RAILWAY_PUBLIC_DOMAIN env var."""
+        from src.services.file_storage import RailwayFileStorage
+
+        with patch("src.services.file_storage.settings") as mock_settings:
+            mock_settings.railway_minio_endpoint = None
+            mock_settings.minio_root_user = "admin"
+            mock_settings.minio_root_password = "secret"
+            mock_settings.railway_minio_bucket = "images"
+            with patch.dict("os.environ", {"RAILWAY_PUBLIC_DOMAIN": "minio-prod.railway.app"}):
+                storage = RailwayFileStorage(
+                    access_key_id="admin",
+                    secret_access_key="secret",
+                )
+
+                assert storage.endpoint_url == "https://minio-prod.railway.app"
 
 
 class TestGetImageStorageFactory:

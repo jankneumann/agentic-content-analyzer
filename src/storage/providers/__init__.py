@@ -5,6 +5,7 @@ from src.storage.providers.factory import get_provider
 from src.storage.providers.local import LocalPostgresProvider
 from src.storage.providers.neon import NeonProvider
 from src.storage.providers.neon_branch import NeonBranch, NeonBranchManager
+from src.storage.providers.railway import RailwayProvider
 from src.storage.providers.supabase import SupabaseProvider
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "NeonBranch",
     "NeonBranchManager",
     "NeonProvider",
+    "RailwayProvider",
     "SupabaseProvider",
     "get_provider",
 ]

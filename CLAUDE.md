@@ -81,17 +81,18 @@ MODEL_DIGEST_CREATION=claude-sonnet-4-5    # Customer-facing
 
 ## Database Providers
 
-Three PostgreSQL providers are supported. **Set `DATABASE_PROVIDER` explicitly** in your `.env`:
+Four PostgreSQL providers are supported. **Set `DATABASE_PROVIDER` explicitly** in your `.env`:
 
 | Provider | `DATABASE_PROVIDER` | Use Case |
 |----------|---------------------|----------|
 | Local | `local` (default) | Development, Docker |
 | Supabase | `supabase` | Cloud hosting, local dev with `SUPABASE_LOCAL=true` |
 | Neon | `neon` | Agent workflows, branching |
+| Railway | `railway` | Single-platform deployment with extensions |
 
 ```bash
 # .env - explicit provider selection (required for cloud)
-DATABASE_PROVIDER=neon  # or "supabase" or "local"
+DATABASE_PROVIDER=railway  # or "supabase", "neon", or "local"
 DATABASE_URL=postgresql://...
 
 # Optional: Provider-specific URL overrides (take precedence over DATABASE_URL)
@@ -126,6 +127,7 @@ Unified file storage supporting multiple buckets (images, podcasts, audio-digest
 | Local | `local` (default) | Development, local storage |
 | S3 | `s3` | AWS S3 or S3-compatible (MinIO) |
 | Supabase | `supabase` | Supabase Storage (S3-compatible) |
+| Railway | `railway` | Railway MinIO (single-platform deployment) |
 
 ```bash
 # .env - Local storage (default)
@@ -180,6 +182,8 @@ See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage
 | Pydantic property vs field conflict | Don't make a property with same name as a field in Pydantic models |
 | Alembic migrations not idempotent | Use `IF EXISTS` for drops; check `information_schema` before FK operations |
 | Model-schema drift breaks migrations | Don't assume columns exist in DB; check before creating FK constraints |
+| Railway custom image build slow | Use GHCR pre-built image; Rust extensions take ~20 min to compile |
+| Railway MinIO auto-discovery | Set `RAILWAY_PUBLIC_DOMAIN` or explicit `RAILWAY_MINIO_ENDPOINT` |
 
 ## Quick Links by Task
 

@@ -14,7 +14,7 @@ from src.config.models import ModelConfig, Provider, ProviderConfig
 logger = logging.getLogger(__name__)
 
 # Type alias for database provider
-DatabaseProviderType = Literal["local", "supabase", "neon"]
+DatabaseProviderType = Literal["local", "supabase", "neon", "railway"]
 PoolerModeType = Literal["transaction", "session"]
 
 # Audio digest voice presets (maps friendly names to provider-specific voice IDs)
@@ -106,6 +106,29 @@ class Settings(BaseSettings):
     neon_default_branch: str = "main"  # Default parent branch for new branches
     neon_region: str | None = None  # Region (auto-detected from URL if not set)
     neon_direct_url: str | None = None  # Direct URL for migrations (bypasses pooler)
+
+    # Railway PostgreSQL Configuration
+    # Railway provides PostgreSQL with automatic provisioning and SSL
+    # When using custom image, extensions are available: pgvector, pg_search, pgmq, pg_cron
+    railway_database_url: str | None = None  # Override for Railway provider
+
+    # Railway extension support flags (enabled when using custom PostgreSQL image)
+    railway_pg_cron_enabled: bool = True  # pg_cron for job scheduling
+    railway_pgvector_enabled: bool = True  # pgvector for vector similarity
+    railway_pg_search_enabled: bool = True  # pg_search (ParadeDB) for full-text search
+    railway_pgmq_enabled: bool = True  # pgmq for message queue
+
+    # Railway connection pool settings (defaults for Hobby plan: 512 MB RAM)
+    railway_pool_size: int = 3  # Connections in pool (Hobby: 3, Pro: 10)
+    railway_max_overflow: int = 2  # Additional connections (Hobby: 2, Pro: 10)
+    railway_pool_recycle: int = 300  # Connection recycle interval (seconds)
+    railway_pool_timeout: int = 30  # Connection timeout (seconds)
+
+    # Railway MinIO Storage Configuration
+    railway_minio_endpoint: str | None = None  # MinIO endpoint URL
+    railway_minio_bucket: str | None = None  # MinIO bucket name
+    minio_root_user: str | None = None  # MinIO root user (auto-injected by Railway)
+    minio_root_password: str | None = None  # MinIO root password (auto-injected)
 
     # Neo4j / Graphiti
     neo4j_uri: str = "bolt://localhost:7687"
@@ -326,6 +349,14 @@ class Settings(BaseSettings):
                         "DATABASE_PROVIDER=supabase requires SUPABASE_PROJECT_REF to be set "
                         "(or set SUPABASE_LOCAL=true for local development)."
                     )
+            case "railway":
+                # Railway uses railway_database_url or database_url
+                effective_url = self.railway_database_url or self.database_url
+                if not effective_url:
+                    raise ValueError(
+                        "DATABASE_PROVIDER=railway requires DATABASE_URL or RAILWAY_DATABASE_URL "
+                        "to be set."
+                    )
             case "local":
                 # Local provider uses local_database_url or database_url
                 pass
@@ -401,6 +432,7 @@ class Settings(BaseSettings):
         - Local: LOCAL_DATABASE_URL > DATABASE_URL
         - Supabase: Constructs pooler URL from components, or uses DATABASE_URL
         - Neon: NEON_DATABASE_URL > DATABASE_URL
+        - Railway: RAILWAY_DATABASE_URL > DATABASE_URL
 
         Returns:
             The database connection URL to use
@@ -410,6 +442,8 @@ class Settings(BaseSettings):
                 return self._get_supabase_pooler_url()
             case "neon":
                 return self.neon_database_url or self.database_url
+            case "railway":
+                return self.railway_database_url or self.database_url
             case _:  # "local" or any other value
                 return self.local_database_url or self.database_url
 
