@@ -8,6 +8,7 @@ Railway is a cloud platform that provides managed infrastructure services includ
 - Environment variables are auto-injected for service connections
 - SSL certificates are auto-generated and enforced
 - PostgreSQL uses standard port 5432 internally
+- Supports custom Docker images for enhanced PostgreSQL with extensions
 
 ## Goals / Non-Goals
 
@@ -16,6 +17,7 @@ Railway is a cloud platform that provides managed infrastructure services includ
 - Support Railway MinIO as a storage provider
 - Maintain consistency with existing provider patterns
 - Enable zero-config deployment when running on Railway
+- Provide feature parity with other providers via PostgreSQL extensions (pgvector, pg_search, pgmq, pg_cron)
 
 **Non-Goals:**
 - Railway-specific migration tooling (use standard Alembic)
@@ -64,14 +66,114 @@ class RailwayProvider:
         }
 
     def supports_pg_cron(self) -> bool:
-        return False  # Not available on Railway PostgreSQL
+        return self._pg_cron_enabled  # True when using custom image with pg_cron
 ```
 
 **Alternatives considered:**
 - Reuse LocalPostgresProvider: Rejected because Railway has different SSL and pool requirements
 - Reuse NeonProvider: Rejected because Railway doesn't need pooler URL conversion
 
-### Decision 2: Railway Storage Provider Implementation
+### Decision 2: Custom PostgreSQL Image with Extensions
+
+**What**: Provide a custom PostgreSQL Docker image with pgvector, pg_search, pgmq, and pg_cron extensions pre-installed for Railway deployment.
+
+**Why**: Railway's default PostgreSQL image lacks these extensions. To achieve feature parity with Supabase/Neon (which include pgvector and pg_cron), we need a custom image. Additionally, pg_search (full-text search) and pgmq (message queue) provide valuable capabilities for the newsletter aggregator.
+
+**Extensions included:**
+
+| Extension | Version | Purpose |
+|-----------|---------|---------|
+| pgvector | 0.7.x | Vector similarity search for embeddings |
+| pg_search (ParadeDB) | 0.13.x | Full-text search with BM25 ranking |
+| pgmq | 1.4.x | Lightweight message queue in PostgreSQL |
+| pg_cron | 1.6.x | Job scheduling within PostgreSQL |
+
+**Custom Dockerfile (`railway/postgres/Dockerfile`):**
+```dockerfile
+FROM postgres:16-bookworm
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    curl \
+    postgresql-server-dev-16 \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust (required for pg_search and pgmq)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install pgrx (PostgreSQL extension framework)
+RUN cargo install --locked cargo-pgrx@0.12.6 \
+    && cargo pgrx init --pg16 $(which pg_config)
+
+# Install pgvector
+RUN cd /tmp \
+    && git clone --branch v0.7.4 https://github.com/pgvector/pgvector.git \
+    && cd pgvector \
+    && make && make install \
+    && rm -rf /tmp/pgvector
+
+# Install pg_cron
+RUN cd /tmp \
+    && git clone --branch v1.6.4 https://github.com/citusdata/pg_cron.git \
+    && cd pg_cron \
+    && make && make install \
+    && rm -rf /tmp/pg_cron
+
+# Install pgmq
+RUN cd /tmp \
+    && git clone --branch v1.4.4 https://github.com/tembo-io/pgmq.git \
+    && cd pgmq/pgmq-extension \
+    && cargo pgrx install --release \
+    && rm -rf /tmp/pgmq
+
+# Install pg_search (ParadeDB)
+RUN cd /tmp \
+    && git clone --branch v0.13.0 https://github.com/paradedb/paradedb.git \
+    && cd paradedb/pg_search \
+    && cargo pgrx install --release \
+    && rm -rf /tmp/paradedb
+
+# Configure PostgreSQL to load extensions
+RUN echo "shared_preload_libraries = 'pg_cron,pgmq,pg_search'" >> /usr/share/postgresql/postgresql.conf.sample
+
+# Initialization script to create extensions
+COPY init-extensions.sql /docker-entrypoint-initdb.d/
+
+# Clean up build dependencies (optional, reduces image size)
+RUN apt-get purge -y build-essential git postgresql-server-dev-16 \
+    && apt-get autoremove -y \
+    && rm -rf /root/.cargo /root/.rustup
+```
+
+**Extension initialization (`railway/postgres/init-extensions.sql`):**
+```sql
+-- Enable extensions in the default database
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_search;
+CREATE EXTENSION IF NOT EXISTS pgmq;
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Grant pg_cron permissions to the database user
+GRANT USAGE ON SCHEMA cron TO postgres;
+```
+
+**Railway deployment options:**
+
+1. **GitHub-linked deployment**: Point Railway to a repo with the Dockerfile
+2. **Pre-built image**: Push to Docker Hub/GHCR and reference in Railway
+3. **Railway template**: Create a reusable template for the community
+
+**Alternatives considered:**
+- **Use ParadeDB image directly**: Has pgvector and pg_search but lacks pgmq and pg_cron
+- **Use Tembo cloud**: Great extensions but adds another service dependency
+- **Install extensions at runtime**: Rejected; requires superuser and build tools in production
+
+### Decision 3: Railway Storage Provider Implementation
 
 **What**: Create `RailwayFileStorage` extending `S3FileStorage` with Railway MinIO defaults.
 
@@ -140,6 +242,12 @@ railway_minio_endpoint: str | None = None
 railway_minio_bucket: str | None = None
 minio_root_user: str | None = None
 minio_root_password: str | None = None
+
+# Extension support flags (enabled when using custom PostgreSQL image)
+railway_pg_cron_enabled: bool = True   # Default True assuming custom image
+railway_pgvector_enabled: bool = True
+railway_pg_search_enabled: bool = True
+railway_pgmq_enabled: bool = True
 ```
 
 ### Decision 4: Provider Detection Pattern
@@ -164,7 +272,9 @@ case "railway":
 |------|------------|
 | Railway service endpoints may change | Use environment variables, not hardcoded URLs |
 | MinIO on Railway has single-volume limitation | Document limitation; use external S3 for large storage needs |
-| pg_cron not available on Railway | Return `supports_pg_cron() = False`; use external scheduler |
+| Custom PostgreSQL image requires maintenance | Pin extension versions; document upgrade process |
+| Custom image build time (~10-15 min) | Pre-build and push to registry; Railway caches layers |
+| Extension compatibility with PostgreSQL upgrades | Test extensions with new PG versions before upgrading base image |
 | Railway cold starts affect connection | Use `pool_pre_ping=True` and appropriate timeouts |
 
 ## Migration Plan

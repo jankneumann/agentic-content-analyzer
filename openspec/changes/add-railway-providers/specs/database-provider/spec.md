@@ -31,9 +31,54 @@ The system SHALL support Railway PostgreSQL as a cloud-hosted database provider.
 - **AND** no external proxy overhead SHALL occur
 
 #### Scenario: Railway pg_cron support
+- **GIVEN** the custom PostgreSQL image with pg_cron is deployed
+- **AND** `RAILWAY_PG_CRON_ENABLED=true` (default)
+- **WHEN** `supports_pg_cron()` is called on the Railway provider
+- **THEN** it SHALL return `True`
+- **AND** pg_cron jobs MAY be scheduled within PostgreSQL
+
+#### Scenario: Railway pg_cron disabled
+- **GIVEN** `RAILWAY_PG_CRON_ENABLED=false`
 - **WHEN** `supports_pg_cron()` is called on the Railway provider
 - **THEN** it SHALL return `False`
-- **AND** scheduled jobs MUST use external schedulers (e.g., Railway cron jobs)
+- **AND** scheduled jobs MUST use external schedulers
+
+### Requirement: Railway PostgreSQL Extensions
+
+The Railway PostgreSQL custom image SHALL include extensions for feature parity with other cloud providers.
+
+#### Scenario: pgvector extension availability
+- **GIVEN** the custom PostgreSQL image is deployed on Railway
+- **WHEN** the database is initialized
+- **THEN** the `vector` extension SHALL be available
+- **AND** vector similarity search operations SHALL work correctly
+
+#### Scenario: pg_search extension availability
+- **GIVEN** the custom PostgreSQL image is deployed on Railway
+- **WHEN** the database is initialized
+- **THEN** the `pg_search` extension (ParadeDB) SHALL be available
+- **AND** BM25 full-text search operations SHALL work correctly
+
+#### Scenario: pgmq extension availability
+- **GIVEN** the custom PostgreSQL image is deployed on Railway
+- **WHEN** the database is initialized
+- **THEN** the `pgmq` extension SHALL be available
+- **AND** message queue operations SHALL work correctly
+
+#### Scenario: pg_cron extension availability
+- **GIVEN** the custom PostgreSQL image is deployed on Railway
+- **WHEN** the database is initialized
+- **THEN** the `pg_cron` extension SHALL be available
+- **AND** scheduled job operations SHALL work correctly
+
+#### Scenario: Extension initialization on database creation
+- **GIVEN** the custom PostgreSQL container starts
+- **WHEN** the database is created for the first time
+- **THEN** all extensions SHALL be enabled via init script:
+  - `CREATE EXTENSION IF NOT EXISTS vector;`
+  - `CREATE EXTENSION IF NOT EXISTS pg_search;`
+  - `CREATE EXTENSION IF NOT EXISTS pgmq;`
+  - `CREATE EXTENSION IF NOT EXISTS pg_cron;`
 
 ## MODIFIED Requirements
 
