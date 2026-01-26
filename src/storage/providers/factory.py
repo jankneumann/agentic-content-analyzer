@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 
 from src.storage.providers.local import LocalPostgresProvider
 from src.storage.providers.neon import NeonProvider
+from src.storage.providers.railway import RailwayProvider
 from src.storage.providers.supabase import SupabaseProvider
 
 if TYPE_CHECKING:
@@ -17,10 +18,10 @@ if TYPE_CHECKING:
 
 def detect_provider(
     database_url: str,
-    provider_override: Literal["local", "supabase", "neon"] | None = None,
+    provider_override: Literal["local", "supabase", "neon", "railway"] | None = None,
     supabase_project_ref: str | None = None,
     neon_project_id: str | None = None,
-) -> Literal["local", "supabase", "neon"]:
+) -> Literal["local", "supabase", "neon", "railway"]:
     """Return the database provider type.
 
     .. deprecated::
@@ -52,7 +53,7 @@ def detect_provider(
 def get_provider(
     database_url: str,
     *,
-    provider_override: Literal["local", "supabase", "neon"] | None = None,
+    provider_override: Literal["local", "supabase", "neon", "railway"] | None = None,
     supabase_project_ref: str | None = None,
     supabase_db_password: str | None = None,
     supabase_region: str = "us-east-1",
@@ -86,7 +87,7 @@ def get_provider(
         neon_region: Neon region (auto-detected from URL if not set)
 
     Returns:
-        DatabaseProvider implementation (LocalPostgresProvider, SupabaseProvider, or NeonProvider)
+        DatabaseProvider implementation (Local, Supabase, Neon, or Railway)
 
     Raises:
         ValueError: If Supabase is selected but required config is missing
@@ -122,6 +123,10 @@ def get_provider(
             project_id=neon_project_id,
             region=neon_region,
         )
+
+    if provider_type == "railway":
+        # Railway uses the database URL directly
+        return RailwayProvider(database_url=database_url)
 
     # Default: local PostgreSQL
     return LocalPostgresProvider(database_url=database_url)

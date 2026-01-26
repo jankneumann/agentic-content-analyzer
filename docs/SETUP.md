@@ -572,6 +572,189 @@ neonctl branches delete <branch-name> --project-id $NEON_PROJECT_ID
 
 ---
 
+## Railway Deployment (Single-Platform)
+
+Railway provides a unified platform for deploying your entire stack - application, PostgreSQL, and MinIO storage - with simple configuration. This is ideal for teams wanting a single-platform deployment without managing multiple cloud services.
+
+### Why Railway?
+
+- **Single platform**: App, database, and storage in one place
+- **Simple pricing**: Usage-based, starting at $5/month (Hobby)
+- **Custom images**: Deploy custom PostgreSQL with extensions via GHCR
+- **Private networking**: Services communicate over internal network
+- **Automatic SSL**: Built-in SSL for all connections
+
+### Custom PostgreSQL Image
+
+Railway's default PostgreSQL doesn't include extensions like pgvector. We provide a custom image with all required extensions:
+
+**Included Extensions**:
+- `pgvector` - Vector similarity search
+- `pg_search` - Full-text search (ParadeDB BM25)
+- `pgmq` - Lightweight message queue
+- `pg_cron` - Job scheduling
+
+#### Using Pre-built Image (Recommended)
+
+```bash
+# Pull from GitHub Container Registry
+docker pull ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
+
+# In Railway Dashboard:
+# 1. Create new service > Docker Image
+# 2. Enter: ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
+# 3. Set environment variables (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB)
+```
+
+#### Building the Image
+
+```bash
+# Build locally
+cd railway/postgres
+docker build -t newsletter-postgres:16-railway .
+
+# Push to your registry
+docker tag newsletter-postgres:16-railway ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
+docker push ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
+```
+
+### Setup Guide
+
+#### 1. Create Railway Project
+
+1. Go to [railway.app](https://railway.app) and sign up
+2. Create a new project
+3. Note your project URL format: `your-app.railway.app`
+
+#### 2. Deploy Custom PostgreSQL
+
+1. Click **New Service > Docker Image**
+2. Enter your GHCR image: `ghcr.io/YOUR_ORG/newsletter-postgres:16-railway`
+3. Add environment variables:
+   ```
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=your-secure-password
+   POSTGRES_DB=newsletters
+   ```
+4. Deploy and wait for service to be ready
+
+#### 3. Deploy MinIO for Storage
+
+1. Click **New Service > Docker Image**
+2. Enter: `minio/minio`
+3. Add startup command: `server /data --console-address ":9001"`
+4. Add environment variables:
+   ```
+   MINIO_ROOT_USER=minioadmin
+   MINIO_ROOT_PASSWORD=your-secure-password
+   ```
+5. Expose ports 9000 (API) and 9001 (console)
+6. Create bucket via MinIO console after deployment
+
+#### 4. Configure Environment
+
+```bash
+# .env for Railway deployment
+DATABASE_PROVIDER=railway
+DATABASE_URL=postgresql://postgres:password@postgres.railway.internal:5432/newsletters
+STORAGE_PROVIDER=railway
+RAILWAY_MINIO_ENDPOINT=http://minio.railway.internal:9000
+RAILWAY_MINIO_BUCKET=newsletter-files
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=your-secure-password
+
+# Railway extension configuration (all enabled by default)
+RAILWAY_PG_CRON_ENABLED=true
+RAILWAY_PGVECTOR_ENABLED=true
+RAILWAY_PG_SEARCH_ENABLED=true
+RAILWAY_PGMQ_ENABLED=true
+
+# Connection pooling (tuned for Hobby plan by default)
+RAILWAY_POOL_SIZE=3        # Increase for Pro/Enterprise
+RAILWAY_MAX_OVERFLOW=2     # Increase for Pro/Enterprise
+```
+
+#### 5. Run Migrations
+
+```bash
+# From your deployment service or locally with DATABASE_URL set
+alembic upgrade head
+```
+
+#### 6. Verify Connection
+
+```bash
+python -c "from src.storage.database import health_check, get_provider_name; print(f'Provider: {get_provider_name()}'); print(f'Health: {health_check()}')"
+
+# Expected output:
+# Provider: railway
+# Health: True
+```
+
+### Connection Pooling by Plan
+
+Railway plan determines optimal pool settings:
+
+| Plan | RAM | `RAILWAY_POOL_SIZE` | `RAILWAY_MAX_OVERFLOW` |
+|------|-----|---------------------|------------------------|
+| Hobby | 512MB | 3 (default) | 2 (default) |
+| Pro | 8GB | 10 | 5 |
+| Enterprise | 32GB+ | 20 | 10 |
+
+### Internal vs External Connections
+
+| Connection Type | URL Pattern | Use Case |
+|-----------------|-------------|----------|
+| **Internal** | `service.railway.internal:5432` | Services within Railway project |
+| **External** | `proxy.railway.app:PORT` | Local development, CI/CD |
+
+Railway automatically provides `DATABASE_URL` with internal connection for deployed services.
+
+### GHCR Setup for Private Images
+
+If your repository is private, configure GHCR access:
+
+1. Create GitHub Personal Access Token (PAT) with `read:packages` scope
+2. In Railway service settings, add Docker credentials:
+   ```
+   Registry: ghcr.io
+   Username: YOUR_GITHUB_USERNAME
+   Password: YOUR_PAT
+   ```
+
+For public repositories, no authentication is needed.
+
+### Troubleshooting Railway
+
+**Extension not found**:
+```bash
+# Verify you're using the custom image, not Railway's default postgres
+# Check with: SELECT * FROM pg_extension;
+```
+
+**Connection refused (internal)**:
+```bash
+# Services must be in the same Railway project for internal networking
+# Use the external URL for cross-project or local connections
+```
+
+**MinIO not accessible**:
+```bash
+# Ensure RAILWAY_PUBLIC_DOMAIN is set or use explicit RAILWAY_MINIO_ENDPOINT
+# Internal: minio.railway.internal:9000
+# External: Check Railway service's public domain
+```
+
+**Pool exhaustion on Hobby plan**:
+```bash
+# Reduce pool size or upgrade plan
+# Hobby plan has limited connections
+RAILWAY_POOL_SIZE=2
+RAILWAY_MAX_OVERFLOW=1
+```
+
+---
+
 ## Cloud Production (When Ready)
 
 ### Deployment Platforms
@@ -656,6 +839,38 @@ NEON_DIRECT_URL=...                      # Direct connection for migrations (opt
 ```
 
 See [Neon Serverless PostgreSQL](#neon-serverless-postgresql-bring-your-own) for setup instructions.
+
+### Railway Variables (Optional Single-Platform Deployment)
+
+```bash
+# Railway PostgreSQL (custom image with extensions)
+DATABASE_PROVIDER=railway                   # Required: explicit provider selection
+DATABASE_URL=postgresql://user:pass@postgres.railway.internal:5432/newsletters
+
+# Or use explicit override:
+# RAILWAY_DATABASE_URL=postgresql://user:pass@postgres.railway.internal:5432/newsletters
+
+# Extension configuration (all true by default when using custom image)
+RAILWAY_PG_CRON_ENABLED=true                # pg_cron job scheduling
+RAILWAY_PGVECTOR_ENABLED=true               # pgvector similarity search
+RAILWAY_PG_SEARCH_ENABLED=true              # pg_search (ParadeDB) full-text search
+RAILWAY_PGMQ_ENABLED=true                   # pgmq message queue
+
+# Connection pooling (tuned for Railway Hobby plan by default)
+RAILWAY_POOL_SIZE=3                         # Connections in pool (Hobby: 3, Pro: 10)
+RAILWAY_MAX_OVERFLOW=2                      # Extra connections beyond pool (Hobby: 2, Pro: 5)
+RAILWAY_POOL_RECYCLE=300                    # Connection recycle time in seconds
+RAILWAY_POOL_TIMEOUT=30                     # Connection timeout in seconds
+
+# Railway MinIO Storage
+STORAGE_PROVIDER=railway                    # Use Railway MinIO
+RAILWAY_MINIO_ENDPOINT=http://minio.railway.internal:9000  # Internal endpoint
+RAILWAY_MINIO_BUCKET=newsletter-files       # MinIO bucket name
+MINIO_ROOT_USER=minioadmin                  # MinIO access key
+MINIO_ROOT_PASSWORD=your-secure-password    # MinIO secret key
+```
+
+See [Railway Deployment](#railway-deployment-single-platform) for setup instructions.
 
 ### File Storage Variables (Optional)
 

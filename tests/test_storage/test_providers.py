@@ -8,6 +8,7 @@ import pytest
 from src.storage.providers import (
     LocalPostgresProvider,
     NeonProvider,
+    RailwayProvider,
     SupabaseProvider,
     get_provider,
 )
@@ -349,6 +350,112 @@ class TestNeonProvider:
         assert result is False
 
 
+class TestRailwayProvider:
+    """Tests for Railway PostgreSQL provider."""
+
+    def test_name_is_railway(self):
+        """Provider name should be 'railway'."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        assert provider.name == "railway"
+
+    def test_get_engine_url_returns_configured_url(self):
+        """Should return the configured database URL."""
+        url = "postgresql://user:pass@postgres.railway.internal:5432/railway"
+        provider = RailwayProvider(database_url=url)
+        assert provider.get_engine_url() == url
+
+    def test_get_engine_url_missing_url_raises_error(self):
+        """Should raise ValueError when no URL is provided."""
+        provider = RailwayProvider()
+        with pytest.raises(ValueError, match="Railway provider requires database_url"):
+            provider.get_engine_url()
+
+    def test_get_engine_options_has_railway_settings(self):
+        """Should include Railway-specific pool and SSL settings."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        options = provider.get_engine_options()
+
+        assert options["pool_pre_ping"] is True
+        assert options["pool_size"] == 3  # Hobby plan default
+        assert options["max_overflow"] == 2  # Hobby plan default
+        assert options["pool_recycle"] == 300  # 5 min recycle
+        assert options["connect_args"]["sslmode"] == "require"
+
+    def test_health_check_success(self):
+        """Health check returns True on success."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        mock_engine = MagicMock()
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_connection)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = provider.health_check(mock_engine)
+        assert result is True
+
+    def test_health_check_failure(self):
+        """Health check returns False on failure."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        mock_engine = MagicMock()
+        mock_engine.connect.side_effect = Exception("Connection refused")
+
+        result = provider.health_check(mock_engine)
+        assert result is False
+
+    def test_get_queue_url_returns_same_url(self):
+        """Queue URL should be same as engine URL for Railway."""
+        url = "postgresql://user:pass@postgres.railway.internal:5432/railway"
+        provider = RailwayProvider(database_url=url)
+        assert provider.get_queue_url() == url
+
+    def test_get_queue_options_has_larger_pool(self):
+        """Queue options should have larger pool for workers."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        options = provider.get_queue_options()
+
+        # Worker pool should be larger than app pool
+        assert options["pool_size"] > 3
+        assert options["pool_timeout"] == 60  # Longer timeout for workers
+        assert options["pool_recycle"] == 600  # 10 min recycle for workers
+
+    def test_supports_pg_cron_default_true(self):
+        """pg_cron should be supported by default (custom image)."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        assert provider.supports_pg_cron() is True
+
+    def test_supports_pgvector_default_true(self):
+        """pgvector should be supported by default (custom image)."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        assert provider.supports_pgvector() is True
+
+    def test_supports_pg_search_default_true(self):
+        """pg_search should be supported by default (custom image)."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        assert provider.supports_pg_search() is True
+
+    def test_supports_pgmq_default_true(self):
+        """pgmq should be supported by default (custom image)."""
+        provider = RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        assert provider.supports_pgmq() is True
+
+
 class TestGetProvider:
     """Tests for provider factory function.
 
@@ -437,6 +544,23 @@ class TestGetProvider:
         assert isinstance(provider, NeonProvider)
         assert provider._project_id == "my-neon-project"
 
+    def test_returns_railway_provider_with_explicit_override(self):
+        """Should return RailwayProvider with explicit override."""
+        provider = get_provider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway",
+            provider_override="railway",
+        )
+        assert isinstance(provider, RailwayProvider)
+        assert provider.name == "railway"
+
+    def test_railway_works_with_any_url(self):
+        """Should return RailwayProvider with any URL when explicitly overridden."""
+        provider = get_provider(
+            database_url="postgresql://user:pass@localhost:5432/db",
+            provider_override="railway",
+        )
+        assert isinstance(provider, RailwayProvider)
+
 
 class TestProviderProtocol:
     """Tests to verify providers conform to DatabaseProvider protocol."""
@@ -456,6 +580,12 @@ class TestProviderProtocol:
     def neon_provider(self):
         return NeonProvider(
             database_url="postgresql://user:pass@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname"
+        )
+
+    @pytest.fixture
+    def railway_provider(self):
+        return RailwayProvider(
+            database_url="postgresql://user:pass@postgres.railway.internal:5432/railway"
         )
 
     def test_local_implements_protocol(self, local_provider):
@@ -478,3 +608,13 @@ class TestProviderProtocol:
         assert hasattr(neon_provider, "get_engine_url")
         assert hasattr(neon_provider, "get_engine_options")
         assert hasattr(neon_provider, "health_check")
+
+    def test_railway_implements_protocol(self, railway_provider):
+        """RailwayProvider should implement DatabaseProvider protocol."""
+        assert hasattr(railway_provider, "name")
+        assert hasattr(railway_provider, "get_engine_url")
+        assert hasattr(railway_provider, "get_engine_options")
+        assert hasattr(railway_provider, "health_check")
+        assert hasattr(railway_provider, "get_queue_url")
+        assert hasattr(railway_provider, "get_queue_options")
+        assert hasattr(railway_provider, "supports_pg_cron")

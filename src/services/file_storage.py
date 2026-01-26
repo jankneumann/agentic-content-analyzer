@@ -644,6 +644,115 @@ class SupabaseFileStorage(S3FileStorage):
         return "supabase"
 
 
+class RailwayFileStorage(S3FileStorage):
+    """Railway MinIO storage provider.
+
+    Railway provides MinIO as an S3-compatible storage service.
+    This provider configures the S3 client with Railway-specific settings.
+
+    Environment variables (auto-injected by Railway):
+    - MINIO_ROOT_USER: MinIO access key
+    - MINIO_ROOT_PASSWORD: MinIO secret key
+    - RAILWAY_PUBLIC_DOMAIN: Public endpoint for the MinIO service
+
+    Configuration:
+    - RAILWAY_MINIO_ENDPOINT: Override endpoint URL
+    - RAILWAY_MINIO_BUCKET: Override bucket name
+    """
+
+    def __init__(
+        self,
+        bucket: str | None = None,
+        storage_bucket: str = "images",
+        endpoint_url: str | None = None,
+        access_key_id: str | None = None,
+        secret_access_key: str | None = None,
+    ) -> None:
+        """
+        Initialize Railway MinIO storage provider.
+
+        Args:
+            bucket: MinIO bucket name. Defaults to settings or MINIO_BUCKET env var
+            storage_bucket: Logical bucket name (e.g., 'images', 'podcasts')
+            endpoint_url: MinIO endpoint URL. Auto-discovered from RAILWAY_PUBLIC_DOMAIN
+            access_key_id: MinIO access key. Defaults to MINIO_ROOT_USER
+            secret_access_key: MinIO secret key. Defaults to MINIO_ROOT_PASSWORD
+        """
+        import os
+
+        # Get endpoint URL (priority: explicit > settings > Railway env var)
+        if endpoint_url:
+            self._endpoint = endpoint_url
+        elif getattr(settings, "railway_minio_endpoint", None):
+            self._endpoint = settings.railway_minio_endpoint
+        else:
+            # Auto-discover from Railway's public domain
+            railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+            if railway_domain:
+                self._endpoint = f"https://{railway_domain}"
+            else:
+                raise ValueError(
+                    "Railway MinIO endpoint not configured. Set RAILWAY_MINIO_ENDPOINT "
+                    "or ensure RAILWAY_PUBLIC_DOMAIN is available."
+                )
+
+        # Get credentials (priority: explicit > settings > Railway env var)
+        self._access_key = (
+            access_key_id
+            or getattr(settings, "minio_root_user", None)
+            or os.environ.get("MINIO_ROOT_USER")
+        )
+        self._secret_key = (
+            secret_access_key
+            or getattr(settings, "minio_root_password", None)
+            or os.environ.get("MINIO_ROOT_PASSWORD")
+        )
+
+        if not self._access_key or not self._secret_key:
+            raise ValueError(
+                "Railway MinIO credentials not configured. Set MINIO_ROOT_USER and "
+                "MINIO_ROOT_PASSWORD in your environment."
+            )
+
+        # Get bucket name (priority: explicit > settings > env var)
+        if bucket:
+            bucket_name = bucket
+        elif getattr(settings, "railway_minio_bucket", None):
+            bucket_name = settings.railway_minio_bucket
+        else:
+            bucket_name = os.environ.get("MINIO_BUCKET", "images")
+
+        # Initialize parent S3 client with Railway MinIO configuration
+        super().__init__(
+            bucket=bucket_name,
+            storage_bucket=storage_bucket,
+            endpoint_url=self._endpoint,
+            region="us-east-1",  # MinIO doesn't require a real region
+            access_key_id=self._access_key,
+            secret_access_key=self._secret_key,
+        )
+
+        logger.debug(
+            f"RailwayFileStorage initialized for bucket '{storage_bucket}' "
+            f"(MinIO bucket: {bucket_name}, endpoint: {self._endpoint})"
+        )
+
+    def get_url(self, path: str) -> str:
+        """Get URL for Railway MinIO file.
+
+        Args:
+            path: Storage path (key) of the file
+
+        Returns:
+            URL string for accessing the file
+        """
+        return f"{self._endpoint}/{self._bucket}/{path}"
+
+    @property
+    def provider_name(self) -> str:
+        return "railway"
+
+
 def get_storage(
     bucket: str = "images",
     provider: str | None = None,
@@ -660,6 +769,7 @@ def get_storage(
     - "local" (default): LocalFileStorage
     - "s3": S3FileStorage
     - "supabase": SupabaseFileStorage
+    - "railway": RailwayFileStorage (MinIO)
 
     Args:
         bucket: Logical bucket name (e.g., 'images', 'podcasts', 'audio-digests')
@@ -689,6 +799,8 @@ def get_storage(
             return S3FileStorage(storage_bucket=bucket)
         case "supabase":
             return SupabaseFileStorage(storage_bucket=bucket)
+        case "railway":
+            return RailwayFileStorage(storage_bucket=bucket)
         case _:  # "local" or any other value
             return LocalFileStorage(bucket=bucket)
 
@@ -734,3 +846,4 @@ ImageStorageProvider = FileStorageProvider
 LocalImageStorage = LocalFileStorage
 S3ImageStorage = S3FileStorage
 SupabaseImageStorage = SupabaseFileStorage
+RailwayImageStorage = RailwayFileStorage
