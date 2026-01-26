@@ -210,24 +210,33 @@ export function Sidebar({
 
       {/* Collapse Toggle Button */}
       <div className="border-t p-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onToggleCollapse}
-          className={cn(
-            "w-full justify-center",
-            !isCollapsed && "justify-start"
-          )}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <>
-              <ChevronLeft className="mr-2 h-4 w-4" />
-              <span>Collapse</span>
-            </>
-          )}
-        </Button>
+        {isCollapsed ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onToggleCollapse}
+                className="w-full justify-center"
+                aria-label="Expand sidebar"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Expand sidebar</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleCollapse}
+            className="w-full justify-start"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            <span>Collapse</span>
+          </Button>
+        )}
       </div>
     </aside>
   )
