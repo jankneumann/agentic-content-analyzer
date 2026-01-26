@@ -737,6 +737,37 @@ class RailwayFileStorage(S3FileStorage):
             f"(MinIO bucket: {bucket_name}, endpoint: {self._endpoint})"
         )
 
+    @property
+    def client(self):  # type: ignore[no-untyped-def]
+        """Lazy-load boto3 client with path-style addressing for Railway MinIO.
+
+        Railway public domains don't support wildcard certs or DNS for bucket
+        subdomains, so we must use path-style addressing (https://endpoint/bucket/key)
+        instead of virtual-hosted style (https://bucket.endpoint/key).
+        """
+        if self._client is None:
+            try:
+                import boto3
+                from botocore.config import Config
+            except ImportError:
+                raise ImportError(
+                    "boto3 is required for Railway storage. Install with: pip install boto3"
+                )
+
+            # Force path-style addressing for MinIO compatibility
+            # This avoids TLS/DNS errors with Railway public domains
+            s3_config = Config(s3={"addressing_style": "path"})
+
+            self._client = boto3.client(
+                "s3",
+                region_name=self.region,
+                endpoint_url=self.endpoint_url,
+                aws_access_key_id=self.access_key_id,
+                aws_secret_access_key=self.secret_access_key,
+                config=s3_config,
+            )
+        return self._client
+
     def get_url(self, path: str) -> str:
         """Get URL for Railway MinIO file.
 
