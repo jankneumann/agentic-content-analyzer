@@ -258,6 +258,40 @@ dockerfilePath = "Dockerfile.railway-postgres"
 # Image: ghcr.io/jankneumann/newsletter-postgres:16-railway
 ```
 
+**GHCR Setup Instructions:**
+
+1. **No additional setup required for public repos** - The `GITHUB_TOKEN` automatically has `packages:write` permission when specified in the workflow.
+
+2. **Make the package public** (recommended for Railway access):
+   - Go to GitHub → Your Profile → Packages
+   - Find `newsletter-postgres` package
+   - Settings → Change visibility → Public
+   - This allows Railway to pull without authentication
+
+3. **For private packages** (if keeping repo private):
+   - Create a Personal Access Token (PAT) with `read:packages` scope
+   - In Railway dashboard, add the token as a secret
+   - Configure Railway to use authenticated pulls:
+     ```
+     # Railway Variables
+     GITHUB_TOKEN=ghp_xxxxxxxxxxxxx
+     ```
+
+4. **First-time workflow run**:
+   - The workflow creates the package automatically on first push
+   - Initial build takes ~15 minutes (Rust compilation)
+   - Subsequent builds use GitHub Actions cache (~5 minutes)
+
+5. **Verify package is accessible**:
+   ```bash
+   # Public package - no auth needed
+   docker pull ghcr.io/jankneumann/newsletter-postgres:16-railway
+
+   # Private package - requires auth
+   echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+   docker pull ghcr.io/jankneumann/newsletter-postgres:16-railway
+   ```
+
 ### Decision 4: Backup Strategy
 
 **What**: Document backup approaches for Railway PostgreSQL since custom images don't get Railway's managed backups.
@@ -346,14 +380,14 @@ class RailwayProvider:
 **Settings:**
 ```python
 # settings.py
-railway_pool_size: int = 5        # Default for Hobby/small Pro
-railway_max_overflow: int = 5
+railway_pool_size: int = 3        # Default for Hobby plan
+railway_max_overflow: int = 2
 railway_pool_recycle: int = 300   # 5 minutes
 railway_pool_timeout: int = 30    # 30 seconds
 ```
 
 **Documentation guidance:**
-- Hobby plan: Use defaults (pool_size=5)
+- Hobby plan: Use defaults (pool_size=3)
 - Pro plan: Increase to pool_size=10 for high-traffic apps
 - Monitor with `pg_stat_activity` to tune
 
@@ -438,8 +472,8 @@ railway_pg_search_enabled: bool = True
 railway_pgmq_enabled: bool = True
 
 # Connection pool settings (adjust based on Railway plan)
-railway_pool_size: int = 5        # Default for Hobby/small Pro
-railway_max_overflow: int = 5
+railway_pool_size: int = 3        # Default for Hobby plan (512 MB RAM)
+railway_max_overflow: int = 2
 railway_pool_recycle: int = 300   # 5 minutes
 railway_pool_timeout: int = 30    # 30 seconds
 

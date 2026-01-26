@@ -39,10 +39,14 @@
   - Push to `ghcr.io/{owner}/newsletter-postgres:16-railway`
   - Tag with commit SHA for traceability
 - [ ] 2.2 Test workflow in a feature branch
-- [ ] 2.3 Document GHCR image usage in `railway/README.md`:
+- [ ] 2.3 After first successful build, make GHCR package public:
+  - GitHub → Profile → Packages → newsletter-postgres → Settings
+  - Change visibility to Public (allows Railway to pull without auth)
+- [ ] 2.4 Document GHCR image usage in `railway/README.md`:
   - How to pull the pre-built image
   - How to reference in Railway dashboard
   - Version pinning recommendations
+  - Private package authentication (if needed)
 
 ## 3. Database Provider Implementation
 
@@ -53,8 +57,8 @@
   - `railway_pgvector_enabled: bool = True`
   - `railway_pg_search_enabled: bool = True`
   - `railway_pgmq_enabled: bool = True`
-  - `railway_pool_size: int = 5`
-  - `railway_max_overflow: int = 5`
+  - `railway_pool_size: int = 3`  (Hobby plan default)
+  - `railway_max_overflow: int = 2`
   - `railway_pool_recycle: int = 300`
   - `railway_pool_timeout: int = 30`
 - [ ] 3.3 Add Railway validation in `validate_database_provider_config()` model validator
