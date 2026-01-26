@@ -88,9 +88,12 @@ class RailwayProvider:
 | pgmq | 1.4.x | Lightweight message queue in PostgreSQL |
 | pg_cron | 1.6.x | Job scheduling within PostgreSQL |
 
-**Custom Dockerfile (`railway/postgres/Dockerfile`):**
+**Custom Dockerfile (`railway/postgres/Dockerfile`) - Multi-stage build:**
 ```dockerfile
-FROM postgres:16-bookworm
+#############################################
+# Stage 1: Builder - compile all extensions
+#############################################
+FROM postgres:16-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -138,17 +141,29 @@ RUN cd /tmp \
     && cargo pgrx install --release \
     && rm -rf /tmp/paradedb
 
-# Configure PostgreSQL to load extensions
+#############################################
+# Stage 2: Runtime - minimal production image
+#############################################
+FROM postgres:16-bookworm
+
+# Copy compiled extensions from builder
+COPY --from=builder /usr/share/postgresql/16/extension/ /usr/share/postgresql/16/extension/
+COPY --from=builder /usr/lib/postgresql/16/lib/ /usr/lib/postgresql/16/lib/
+
+# Configure PostgreSQL to load extensions requiring shared_preload_libraries
 RUN echo "shared_preload_libraries = 'pg_cron,pgmq,pg_search'" >> /usr/share/postgresql/postgresql.conf.sample
 
 # Initialization script to create extensions
 COPY init-extensions.sql /docker-entrypoint-initdb.d/
 
-# Clean up build dependencies (optional, reduces image size)
-RUN apt-get purge -y build-essential git postgresql-server-dev-16 \
-    && apt-get autoremove -y \
-    && rm -rf /root/.cargo /root/.rustup
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD pg_isready -U postgres || exit 1
 ```
+
+**Image size comparison:**
+- Single-stage build: ~2.1 GB (includes Rust toolchain, build tools)
+- Multi-stage build: ~450 MB (runtime only)
 
 **Extension initialization (`railway/postgres/init-extensions.sql`):**
 ```sql
@@ -173,7 +188,176 @@ GRANT USAGE ON SCHEMA cron TO postgres;
 - **Use Tembo cloud**: Great extensions but adds another service dependency
 - **Install extensions at runtime**: Rejected; requires superuser and build tools in production
 
-### Decision 3: Railway Storage Provider Implementation
+### Decision 3: Pre-built Image Registry (GHCR)
+
+**What**: Publish pre-built PostgreSQL images to GitHub Container Registry (GHCR) via CI workflow.
+
+**Why**: Building the custom image takes 10-15 minutes due to Rust compilation. Pre-built images enable instant Railway deployments and ensure reproducible builds.
+
+**Image naming:**
+```
+ghcr.io/jankneumann/newsletter-postgres:16-railway
+ghcr.io/jankneumann/newsletter-postgres:16-railway-v1.0.0  # Tagged releases
+```
+
+**CI workflow (`.github/workflows/build-railway-postgres.yml`):**
+```yaml
+name: Build Railway PostgreSQL Image
+
+on:
+  push:
+    paths:
+      - 'railway/postgres/**'
+    branches: [main]
+  workflow_dispatch:  # Manual trigger
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/newsletter-postgres
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./railway/postgres
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:16-railway
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:16-railway-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+```
+
+**Railway deployment with pre-built image:**
+```toml
+# railway.toml
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.railway-postgres"
+
+# Or reference GHCR directly in Railway dashboard
+# Image: ghcr.io/jankneumann/newsletter-postgres:16-railway
+```
+
+### Decision 4: Backup Strategy
+
+**What**: Document backup approaches for Railway PostgreSQL since custom images don't get Railway's managed backups.
+
+**Why**: Railway's default PostgreSQL includes automatic backups, but custom Docker images require manual backup configuration. Data loss prevention is critical for production deployments.
+
+**Backup options:**
+
+1. **pg_cron + pg_dump to MinIO** (recommended for Railway-only deployments):
+```sql
+-- Schedule daily backup at 3 AM UTC
+SELECT cron.schedule('daily-backup', '0 3 * * *', $$
+    COPY (SELECT 1) TO PROGRAM 'pg_dump -Fc newsletters |
+        aws s3 cp - s3://backups/newsletters-$(date +%Y%m%d).dump
+        --endpoint-url $MINIO_ENDPOINT'
+$$);
+```
+
+2. **External backup service** (for critical production):
+   - Use Railway's `DATABASE_PUBLIC_URL` with external backup tools
+   - Services: pgBackRest, Barman, or managed backup services
+
+3. **Railway volume snapshots**:
+   - Railway volumes support snapshots via dashboard
+   - Manual process, suitable for pre-migration backups
+
+**Backup settings:**
+```python
+# settings.py
+railway_backup_enabled: bool = True
+railway_backup_schedule: str = "0 3 * * *"  # Cron expression
+railway_backup_retention_days: int = 7
+railway_backup_bucket: str = "backups"
+```
+
+**Recovery procedure:**
+```bash
+# Download backup from MinIO
+aws s3 cp s3://backups/newsletters-20240115.dump ./backup.dump \
+    --endpoint-url $MINIO_ENDPOINT
+
+# Restore to PostgreSQL
+pg_restore -d newsletters ./backup.dump
+```
+
+### Decision 5: Connection Pool Sizing by Railway Plan
+
+**What**: Configure connection pool sizes based on Railway plan resource limits.
+
+**Why**: Railway plans have different resource allocations. Over-provisioning connections wastes memory; under-provisioning causes connection errors.
+
+**Railway plan limits:**
+
+| Plan | RAM | vCPU | Recommended pool_size | max_overflow |
+|------|-----|------|----------------------|--------------|
+| Hobby | 512 MB | 0.5 | 3 | 2 |
+| Pro | 8 GB | 2 | 10 | 10 |
+| Enterprise | 32 GB+ | 8+ | 20 | 20 |
+
+**PostgreSQL connection formula:**
+- Each connection uses ~5-10 MB RAM
+- Reserve 50% RAM for PostgreSQL operations
+- `max_connections = (available_ram_mb * 0.5) / 10`
+
+**Dynamic pool configuration:**
+```python
+class RailwayProvider:
+    def get_engine_options(self) -> dict[str, Any]:
+        # Allow override via environment
+        pool_size = int(os.environ.get("RAILWAY_POOL_SIZE", "5"))
+        max_overflow = int(os.environ.get("RAILWAY_MAX_OVERFLOW", "5"))
+
+        return {
+            "pool_pre_ping": True,
+            "pool_size": pool_size,
+            "max_overflow": max_overflow,
+            "pool_recycle": 300,
+            "pool_timeout": 30,
+            "echo": False,
+            "connect_args": {
+                "sslmode": "require",
+            },
+        }
+```
+
+**Settings:**
+```python
+# settings.py
+railway_pool_size: int = 5        # Default for Hobby/small Pro
+railway_max_overflow: int = 5
+railway_pool_recycle: int = 300   # 5 minutes
+railway_pool_timeout: int = 30    # 30 seconds
+```
+
+**Documentation guidance:**
+- Hobby plan: Use defaults (pool_size=5)
+- Pro plan: Increase to pool_size=10 for high-traffic apps
+- Monitor with `pg_stat_activity` to tune
+
+### Decision 6: Railway Storage Provider Implementation
 
 **What**: Create `RailwayFileStorage` extending `S3FileStorage` with Railway MinIO defaults.
 
@@ -221,7 +405,7 @@ class RailwayFileStorage(S3FileStorage):
 - Use S3FileStorage directly: Possible but requires manual endpoint configuration
 - Create separate MinIO provider: Rejected to avoid duplication; Railway provider handles Railway-specific discovery
 
-### Decision 3: Environment Variable Strategy
+### Decision 7: Environment Variable Strategy
 
 **What**: Use Railway's auto-injected variables with explicit overrides.
 
@@ -237,7 +421,11 @@ class RailwayFileStorage(S3FileStorage):
 **Settings additions:**
 ```python
 # settings.py
+
+# Database connection
 railway_database_url: str | None = None
+
+# Storage connection
 railway_minio_endpoint: str | None = None
 railway_minio_bucket: str | None = None
 minio_root_user: str | None = None
@@ -248,9 +436,21 @@ railway_pg_cron_enabled: bool = True   # Default True assuming custom image
 railway_pgvector_enabled: bool = True
 railway_pg_search_enabled: bool = True
 railway_pgmq_enabled: bool = True
+
+# Connection pool settings (adjust based on Railway plan)
+railway_pool_size: int = 5        # Default for Hobby/small Pro
+railway_max_overflow: int = 5
+railway_pool_recycle: int = 300   # 5 minutes
+railway_pool_timeout: int = 30    # 30 seconds
+
+# Backup settings
+railway_backup_enabled: bool = True
+railway_backup_schedule: str = "0 3 * * *"  # Daily at 3 AM UTC
+railway_backup_retention_days: int = 7
+railway_backup_bucket: str = "backups"
 ```
 
-### Decision 4: Provider Detection Pattern
+### Decision 8: Provider Detection Pattern
 
 **What**: Maintain explicit `DATABASE_PROVIDER=railway` requirement (no auto-detection from URL).
 
@@ -273,9 +473,12 @@ case "railway":
 | Railway service endpoints may change | Use environment variables, not hardcoded URLs |
 | MinIO on Railway has single-volume limitation | Document limitation; use external S3 for large storage needs |
 | Custom PostgreSQL image requires maintenance | Pin extension versions; document upgrade process |
-| Custom image build time (~10-15 min) | Pre-build and push to registry; Railway caches layers |
+| Custom image build time (~10-15 min) | Pre-build and push to GHCR; Railway caches layers |
 | Extension compatibility with PostgreSQL upgrades | Test extensions with new PG versions before upgrading base image |
 | Railway cold starts affect connection | Use `pool_pre_ping=True` and appropriate timeouts |
+| No managed backups for custom images | Implement pg_cron backup jobs to MinIO; document recovery |
+| Connection exhaustion on small plans | Configure pool sizes per Railway plan; document limits |
+| GHCR rate limits | Use GitHub Actions cache; Railway caches pulled images |
 
 ## Migration Plan
 
