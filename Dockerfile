@@ -43,13 +43,14 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app"
 ENV PYTHONUNBUFFERED=1
 
-# Default port
+# Default port (Railway sets PORT env var dynamically)
+ENV PORT=8000
 EXPOSE 8000
 
-# Health check
+# Health check - uses PORT env var for flexibility
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"
+    CMD python -c "import os; import httpx; httpx.get(f'http://localhost:{os.environ.get(\"PORT\", 8000)}/health').raise_for_status()"
 
 # Default command (web API)
-# Override with --worker for background job processing
-CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Uses shell form to expand $PORT environment variable (Railway sets this dynamically)
+CMD uvicorn src.api.app:app --host 0.0.0.0 --port ${PORT:-8000}
