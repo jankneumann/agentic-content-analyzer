@@ -3,7 +3,17 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
@@ -53,6 +63,11 @@ class Conversation(Base):
         cascade="all, delete-orphan",
     )
 
+    __table_args__ = (
+        Index("ix_conversations_artifact", "artifact_type", "artifact_id"),
+        Index("ix_conversations_updated_at", "updated_at"),
+    )
+
 
 class ChatMessage(Base):
     """Chat message database model.
@@ -82,3 +97,11 @@ class ChatMessage(Base):
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
+
+    __table_args__ = (
+        Index(
+            "ix_chat_messages_conversation_id_created_at",
+            "conversation_id",
+            "created_at",
+        ),
+    )
