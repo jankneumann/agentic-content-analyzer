@@ -162,6 +162,40 @@ IMAGE_STORAGE_PATH=data/images
 
 See [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional) for full setup.
 
+## Neo4j Providers
+
+Two Neo4j providers are supported for the knowledge graph. **Set `NEO4J_PROVIDER` explicitly** in your `.env`:
+
+| Provider | `NEO4J_PROVIDER` | Use Case |
+|----------|------------------|----------|
+| Local | `local` (default) | Development, Docker |
+| AuraDB | `auradb` | Production cloud (free tier available) |
+
+```bash
+# .env - Local Neo4j (Docker or local installation)
+NEO4J_PROVIDER=local
+NEO4J_LOCAL_URI=bolt://localhost:7687
+NEO4J_LOCAL_USER=neo4j
+NEO4J_LOCAL_PASSWORD=your-local-password
+
+# .env - Neo4j AuraDB (cloud)
+NEO4J_PROVIDER=auradb
+NEO4J_AURADB_URI=neo4j+s://xxxxxxxx.databases.neo4j.io
+NEO4J_AURADB_USER=neo4j
+NEO4J_AURADB_PASSWORD=your-auradb-password
+
+# Legacy settings (still work as fallbacks for local provider)
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=newsletter_password
+```
+
+**Setting up Neo4j AuraDB (Free Tier)**:
+1. Go to [console.neo4j.io](https://console.neo4j.io/)
+2. Create a free AuraDB instance
+3. Save the connection URI and generated password
+4. Set `NEO4J_PROVIDER=auradb` with the credentials above
+
 ## Critical Gotchas
 
 ⚠️ **These will bite you if ignored:**

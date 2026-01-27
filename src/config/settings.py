@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 DatabaseProviderType = Literal["local", "supabase", "neon", "railway"]
 PoolerModeType = Literal["transaction", "session"]
 
+# Type alias for Neo4j provider
+Neo4jProviderType = Literal["local", "auradb"]
+
 # Audio digest voice presets (maps friendly names to provider-specific voice IDs)
 AUDIO_DIGEST_VOICE_PRESETS: dict[str, dict[str, str]] = {
     "professional": {"openai": "onyx", "elevenlabs": "nPczCjzI2devNBz1zQrb"},
@@ -33,6 +36,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignore unknown env vars (common in shared .env files)
     )
 
     # Environment
@@ -130,11 +134,28 @@ class Settings(BaseSettings):
     minio_root_user: str | None = None  # MinIO root user (auto-injected by Railway)
     minio_root_password: str | None = None  # MinIO root password (auto-injected)
 
-    # Neo4j / Graphiti
+    # Neo4j / Graphiti Provider Configuration
+    # Explicit provider selection - matches database provider pattern
+    neo4j_provider: Neo4jProviderType = "local"
+
+    # Legacy settings (for backward compatibility - used as fallbacks)
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "newsletter_password"
-    semaphore_limit: int = 1  # Graphiti concurrency limit for LLM API calls
+
+    # Local Neo4j Configuration (Docker or local installation)
+    neo4j_local_uri: str | None = None  # Override: bolt://localhost:7687
+    neo4j_local_user: str | None = None  # Override: neo4j
+    neo4j_local_password: str | None = None  # Override for local password
+
+    # Neo4j AuraDB Configuration (cloud hosted)
+    # Connection string format: neo4j+s://xxxxxxxx.databases.neo4j.io
+    neo4j_auradb_uri: str | None = None  # Required for auradb provider
+    neo4j_auradb_user: str = "neo4j"  # Usually "neo4j" for AuraDB
+    neo4j_auradb_password: str | None = None  # Required for auradb provider
+
+    # Graphiti concurrency limit for LLM API calls
+    semaphore_limit: int = 1
 
     # Test Database Configuration (for integration tests)
     test_database_url: str | None = None
@@ -362,6 +383,33 @@ class Settings(BaseSettings):
                 pass
         return self
 
+    @model_validator(mode="after")
+    def validate_neo4j_provider_config(self) -> "Settings":
+        """Validate Neo4j provider configuration at startup.
+
+        Ensures the configured provider has the required credentials configured.
+        Provider-specific settings take precedence over legacy settings.
+
+        Raises:
+            ValueError: If provider configuration is invalid
+        """
+        match self.neo4j_provider:
+            case "auradb":
+                if not self.neo4j_auradb_uri:
+                    raise ValueError(
+                        "NEO4J_PROVIDER=auradb requires NEO4J_AURADB_URI to be set. "
+                        "Get this from your AuraDB console: neo4j+s://xxxxxxxx.databases.neo4j.io"
+                    )
+                if not self.neo4j_auradb_password:
+                    raise ValueError(
+                        "NEO4J_PROVIDER=auradb requires NEO4J_AURADB_PASSWORD to be set. "
+                        "Get this from your AuraDB console when creating the instance."
+                    )
+            case "local":
+                # Local provider uses local settings or legacy fallbacks
+                pass
+        return self
+
     def _mask_url(self, url: str) -> str:
         """Mask password in database URL for safe logging/errors.
 
@@ -514,6 +562,48 @@ class Settings(BaseSettings):
 
         # URL is already direct
         return neon_url
+
+    def get_effective_neo4j_uri(self) -> str:
+        """Get the effective Neo4j URI based on provider configuration.
+
+        Provider-specific URIs take precedence over legacy settings:
+        - Local: NEO4J_LOCAL_URI > NEO4J_URI > default
+        - AuraDB: NEO4J_AURADB_URI (required)
+
+        Returns:
+            The Neo4j connection URI to use
+        """
+        match self.neo4j_provider:
+            case "auradb":
+                # AuraDB URI is required (validated in model_validator)
+                return self.neo4j_auradb_uri or ""
+            case _:  # "local"
+                return self.neo4j_local_uri or self.neo4j_uri
+
+    def get_effective_neo4j_user(self) -> str:
+        """Get the effective Neo4j username based on provider configuration.
+
+        Returns:
+            The Neo4j username to use
+        """
+        match self.neo4j_provider:
+            case "auradb":
+                return self.neo4j_auradb_user
+            case _:  # "local"
+                return self.neo4j_local_user or self.neo4j_user
+
+    def get_effective_neo4j_password(self) -> str:
+        """Get the effective Neo4j password based on provider configuration.
+
+        Returns:
+            The Neo4j password to use
+        """
+        match self.neo4j_provider:
+            case "auradb":
+                # AuraDB password is required (validated in model_validator)
+                return self.neo4j_auradb_password or ""
+            case _:  # "local"
+                return self.neo4j_local_password or self.neo4j_password
 
     def get_youtube_api_key(self) -> str | None:
         """
@@ -671,8 +761,10 @@ def get_settings() -> Settings:
     s = Settings()
     # Log provider configuration at startup
     logger.info(
-        f"Database provider: {s.database_provider} | " f"URL: {s._mask_url(s.database_url)}"
+        f"Database provider: {s.database_provider} | "
+        f"URL: {s._mask_url(s.get_effective_database_url())}"
     )
+    logger.info(f"Neo4j provider: {s.neo4j_provider} | " f"URI: {s.get_effective_neo4j_uri()}")
     return s
 
 

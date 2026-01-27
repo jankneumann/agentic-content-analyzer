@@ -27,8 +27,8 @@ class GraphitiClient:
     def __init__(
         self,
         neo4j_uri: str = "",
-        neo4j_user: str = "neo4j",
-        neo4j_password: str = "newsletter_password",
+        neo4j_user: str = "",
+        neo4j_password: str = "",
         anthropic_api_key: str = "",
         openai_api_key: str = "",
     ) -> None:
@@ -38,18 +38,23 @@ class GraphitiClient:
         Uses Claude (Anthropic) for entity extraction and OpenAI for embeddings.
 
         Args:
-            neo4j_uri: Neo4j connection URI (default: from settings)
-            neo4j_user: Neo4j username
-            neo4j_password: Neo4j password
+            neo4j_uri: Neo4j connection URI (default: from settings based on provider)
+            neo4j_user: Neo4j username (default: from settings based on provider)
+            neo4j_password: Neo4j password (default: from settings based on provider)
             anthropic_api_key: Anthropic API key for LLM (default: from settings)
             openai_api_key: OpenAI API key for embeddings (default: from settings)
         """
-        self.neo4j_uri = neo4j_uri or settings.neo4j_uri
+        # Use provider-aware settings methods for Neo4j configuration
+        self.neo4j_uri = neo4j_uri or settings.get_effective_neo4j_uri()
+        effective_user = neo4j_user or settings.get_effective_neo4j_user()
+        effective_password = neo4j_password or settings.get_effective_neo4j_password()
         self.anthropic_api_key = anthropic_api_key or settings.anthropic_api_key
         self.openai_api_key = openai_api_key or settings.openai_api_key
 
         # Initialize Neo4j driver
-        self.driver = GraphDatabase.driver(self.neo4j_uri, auth=(neo4j_user, neo4j_password))
+        self.driver = GraphDatabase.driver(
+            self.neo4j_uri, auth=(effective_user, effective_password)
+        )
 
         # Initialize LLM client with Claude
         llm_client = AnthropicClient(
@@ -75,8 +80,8 @@ class GraphitiClient:
         # Concurrency is controlled by SEMAPHORE_LIMIT environment variable
         self.graphiti = Graphiti(
             self.neo4j_uri,
-            neo4j_user,
-            neo4j_password,
+            effective_user,
+            effective_password,
             llm_client=llm_client,
             embedder=embedder,
             cross_encoder=cross_encoder,
