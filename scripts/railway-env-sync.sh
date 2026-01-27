@@ -9,6 +9,9 @@
 
 # Note: Not using set -e because arithmetic operations can return 1
 
+# Store script path for use in functions
+SCRIPT_PATH="./scripts/railway-env-sync.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -42,7 +45,7 @@ TRANSFORMS=(
 
 # Help message
 show_help() {
-    echo "Usage: $0 [OPTIONS]"
+    echo "Usage: $SCRIPT_PATH [OPTIONS]"
     echo ""
     echo "Syncs environment variables from .env to Railway"
     echo ""
@@ -55,11 +58,20 @@ show_help() {
     echo "  - Railway CLI installed (brew install railway)"
     echo "  - Logged in to Railway (railway login)"
     echo "  - Project linked (railway link)"
+    echo "  - Service created and linked (railway service)"
     echo ""
     echo "Behavior:"
     echo "  - Skips local-only variables (LOCAL_*, TEST_*, REDIS_*, CELERY_*, etc.)"
     echo "  - Transforms ENVIRONMENT→production, DATABASE_PROVIDER→supabase, NEO4J_PROVIDER→auradb"
     echo "  - Masks sensitive values (PASSWORD, KEY, SECRET, TOKEN) in output"
+    echo ""
+    echo "Quick Start (if no service exists):"
+    echo "  1. railway login          # Login to Railway"
+    echo "  2. railway link           # Link to your project"
+    echo "  3. railway up             # Deploy (creates service automatically)"
+    echo "  4. railway service        # Link to the new service"
+    echo "  5. $SCRIPT_PATH --apply             # Sync environment variables"
+    echo "  6. railway up             # Redeploy with new variables"
 }
 
 # Check if a variable should be skipped
@@ -149,12 +161,45 @@ main() {
 
     if [[ "$apply" == true ]]; then
         echo -e "${YELLOW}Mode: APPLY (will set variables in Railway)${NC}"
-        # Verify Railway is linked
+
+        # Verify Railway is linked to a project
         if ! railway status &> /dev/null; then
             echo -e "${RED}Error: Not linked to a Railway project${NC}"
-            echo "Run: railway login && railway link"
+            echo ""
+            echo "Run these commands first:"
+            echo "  railway login    # Login to Railway"
+            echo "  railway link     # Link to your project"
             exit 1
         fi
+
+        # Check if a service is linked
+        local service_status=$(railway status 2>&1)
+        if echo "$service_status" | grep -q "Service: None"; then
+            echo -e "${RED}Error: No service linked${NC}"
+            echo ""
+            echo -e "${YELLOW}You need to create and link a service first:${NC}"
+            echo ""
+            echo "  ${BLUE}Option 1: Deploy to create service automatically${NC}"
+            echo "    railway up              # Creates service from Dockerfile"
+            echo "    railway service         # Link to the new service"
+            echo "    $SCRIPT_PATH --apply              # Then run this script again"
+            echo "    railway up              # Redeploy with variables"
+            echo ""
+            echo "  ${BLUE}Option 2: Create empty service first${NC}"
+            echo "    railway service create  # Create empty service"
+            echo "    railway service         # Link to it"
+            echo "    $SCRIPT_PATH --apply              # Sync variables"
+            echo "    railway up              # Deploy"
+            echo ""
+            echo "  ${BLUE}Option 3: Via Railway Dashboard${NC}"
+            echo "    1. Go to railway.app → Your project"
+            echo "    2. Click '+ New Service' → 'Empty Service' or 'GitHub Repo'"
+            echo "    3. Run: railway service   # Link to it locally"
+            echo "    4. Run: $SCRIPT_PATH --apply"
+            exit 1
+        fi
+
+        echo ""
     else
         echo -e "${GREEN}Mode: DRY RUN (showing what would be set)${NC}"
     fi
