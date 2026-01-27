@@ -4,7 +4,6 @@ import json
 import time
 from datetime import datetime
 
-import google.generativeai as genai
 from anthropic import Anthropic
 from openai import OpenAI
 
@@ -372,38 +371,48 @@ class ThemeAnalyzer:
                     response_text = response.choices[0].message.content
 
                 elif provider_config.provider == Provider.GOOGLE_AI:
-                    # Configure Gemini
-                    genai.configure(api_key=provider_config.api_key)
+                    # Use the new google-genai SDK
+                    from google import genai
+                    from google.genai import types
 
-                    generation_config = {
-                        "temperature": 0.3,
-                        "max_output_tokens": 8192,
-                    }
+                    client = genai.Client(api_key=provider_config.api_key)
 
-                    model = genai.GenerativeModel(
-                        model_name=provider_model_id, generation_config=generation_config
+                    config = types.GenerateContentConfig(
+                        max_output_tokens=8192,
+                        temperature=0.3,
                     )
 
-                    response = model.generate_content(prompt)
+                    response = client.models.generate_content(
+                        model=provider_model_id,
+                        contents=prompt,
+                        config=config,
+                    )
 
                     # Track provider and token usage
                     self.provider_used = provider_config.provider
 
-                    # Gemini usage metadata isn't always available in the same format
-                    # but usually response.usage_metadata is available
-                    if hasattr(response, "usage_metadata"):
-                        self.input_tokens = response.usage_metadata.prompt_token_count
-                        self.output_tokens = response.usage_metadata.candidates_token_count
-                    else:
-                        # Estimate if not available (rare for Gemini API)
-                        self.input_tokens = 0
-                        self.output_tokens = 0
+                    # Extract token counts from usage metadata
+                    self.input_tokens = (
+                        response.usage_metadata.prompt_token_count if response.usage_metadata else 0
+                    )
+                    self.output_tokens = (
+                        response.usage_metadata.candidates_token_count
+                        if response.usage_metadata
+                        else 0
+                    )
 
                     self.model_version = self.model_config.get_model_version(
                         self.model, self.provider_used
                     )
 
-                    response_text = response.text
+                    # Extract text from response
+                    text = ""
+                    if response.candidates and response.candidates[0].content.parts:
+                        for part in response.candidates[0].content.parts:
+                            if hasattr(part, "text") and part.text:
+                                text = part.text
+                                break
+                    response_text = text
 
                 # Success - break out of failover loop
                 break

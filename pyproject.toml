@@ -39,6 +39,7 @@ dependencies = [
     # Agent Frameworks
     "anthropic>=0.40.0",  # Claude SDK
     "openai>=1.51.0",     # OpenAI SDK
+    "google-genai>=1.0.0",  # Google Gemini SDK (newer unified SDK)
     "tavily-python>=0.3.0", # Tavily Web Search
 
     # HTTP/Requests
