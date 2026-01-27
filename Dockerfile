@@ -9,7 +9,7 @@ FROM python:3.12-slim as builder
 WORKDIR /app
 
 # Install uv for fast dependency management
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir --root-user-action=ignore uv
 
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
@@ -25,8 +25,8 @@ FROM python:3.12-slim as runtime
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install runtime dependencies (DEBIAN_FRONTEND suppresses interactive prompts)
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
