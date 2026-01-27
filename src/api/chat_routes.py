@@ -474,9 +474,9 @@ async def generate_ai_response_streaming(
             else:
                 yield chunk, None
     except Exception as e:
-        logger.error(f"Error generating AI response: {e}")
+        logger.error(f"Error generating AI response: {e}", exc_info=True)
         # Yield error as content
-        yield f"\n\n[Error: {e!s}]", None
+        yield "\n\n[Error: An internal error occurred. Please try again.]", None
         # Yield minimal metadata
         metadata = MessageMetadata(
             model=model,
@@ -1238,9 +1238,9 @@ async def apply_action(conversation_id: str, request: ApplyActionRequest) -> dic
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error applying action: {e}")
+            logger.error(f"Error applying action: {e}", exc_info=True)
             db.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail="An internal error occurred while applying the action.")
 
         return {
             "status": "applied",
