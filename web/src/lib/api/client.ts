@@ -25,10 +25,14 @@ import type { ApiError } from "@/types"
 /**
  * API configuration
  *
- * In development, Vite proxies /api requests to the backend.
- * In production, this would be the full backend URL.
+ * In development, Vite proxies /api requests to the backend (uses relative URL).
+ * In production, VITE_API_URL environment variable points to the backend service.
+ *
+ * @example Production: VITE_API_URL=https://api.example.com
  */
-const API_BASE_URL = "/api/v1"
+const API_BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  : "/api/v1"
 
 /**
  * Default request timeout in milliseconds
