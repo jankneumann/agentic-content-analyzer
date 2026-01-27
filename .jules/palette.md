@@ -5,3 +5,7 @@
 ## 2025-02-12 - Missing ARIA on Icon-Only Buttons
 **Learning:** shadcn/ui Button components with `size="icon"` are frequently used without `aria-label`, making them inaccessible to screen readers. This pattern is common in toolbars and chat interfaces.
 **Action:** Always check `size="icon"` buttons during code review and add descriptive `aria-label` props.
+
+## 2025-02-14 - Accessibility for Toggle Buttons
+**Learning:** Toggle buttons that change icon/text based on state need dynamic `aria-label`s to accurately reflect the action (e.g., "Expand sidebar" vs "Collapse sidebar").
+**Action:** Ensure state-switching buttons update their accessible name.
