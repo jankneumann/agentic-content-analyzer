@@ -31,7 +31,7 @@ import type { ApiError } from "@/types"
  * @example Production: VITE_API_URL=https://api.example.com
  */
 const API_BASE_URL = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, "")}/api/v1`
   : "/api/v1"
 
 /**
