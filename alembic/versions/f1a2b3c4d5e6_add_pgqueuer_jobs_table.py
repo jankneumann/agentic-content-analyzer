@@ -24,6 +24,41 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Check if table already exists (may have been created by PGQueuer directly)
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            """
+            SELECT table_name FROM information_schema.tables
+            WHERE table_name = 'pgqueuer_jobs'
+            """
+        )
+    )
+    if result.fetchone():
+        # Table already exists, skip creation but ensure function exists
+        op.execute(
+            """
+            CREATE OR REPLACE FUNCTION pgqueuer_enqueue(
+                p_entrypoint TEXT,
+                p_payload JSONB DEFAULT '{}'::jsonb,
+                p_priority INTEGER DEFAULT 0
+            ) RETURNS BIGINT AS $$
+            DECLARE
+                v_job_id BIGINT;
+            BEGIN
+                INSERT INTO pgqueuer_jobs (entrypoint, payload, priority, status, created_at, execute_after)
+                VALUES (p_entrypoint, p_payload, p_priority, 'queued', NOW(), NOW())
+                RETURNING id INTO v_job_id;
+
+                PERFORM pg_notify('pgqueuer', p_entrypoint);
+
+                RETURN v_job_id;
+            END;
+            $$ LANGUAGE plpgsql;
+            """
+        )
+        return
+
     # Create the pgqueuer_jobs table for durable task queue
     op.create_table(
         "pgqueuer_jobs",
