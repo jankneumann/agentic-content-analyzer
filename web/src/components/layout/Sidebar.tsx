@@ -218,6 +218,7 @@ export function Sidebar({
             "w-full justify-center",
             !isCollapsed && "justify-start"
           )}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {isCollapsed ? (
             <ChevronRight className="h-4 w-4" />
