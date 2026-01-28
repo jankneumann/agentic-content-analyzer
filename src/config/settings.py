@@ -168,6 +168,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     google_api_key: str | None = None
     tavily_api_key: str | None = None
+    admin_api_key: str | None = None  # Protects sensitive endpoints
 
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
