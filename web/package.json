@@ -13,8 +13,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e": "playwright test --ignore-snapshots",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:smoke": "playwright test --project=smoke"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",
@@ -47,6 +48,7 @@
     "workbox-window": "^7.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
     "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/typography": "^0.5.19",

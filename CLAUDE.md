@@ -69,6 +69,13 @@ python -m src.processors.digest_creator --type daily
 # Testing
 pytest                                  # All tests
 pytest tests/api/ -v                   # API tests only
+
+# E2E Testing (Playwright)
+cd web && pnpm test:e2e                 # All E2E tests (mocked, no backend needed)
+cd web && pnpm test:e2e:ui             # Visual Playwright inspector
+cd web && pnpm test:e2e:smoke          # Smoke tests (requires real backend)
+cd web && pnpm exec playwright test tests/e2e/layout/  # Run specific folder
+cd web && pnpm exec playwright show-report             # View HTML report
 ```
 
 ## Model Configuration
@@ -228,6 +235,10 @@ NEO4J_PASSWORD=newsletter_password
 | Dialog `min-w-[600px]` breaks mobile | Use `md:min-w-[600px]` — CSS `min-width` overrides `max-width`, causing overflow |
 | iOS status bar hides header | Apply `pt-[var(--safe-area-top)]` to AppShell root and fixed overlays |
 | Fixed grid-cols-N in dialogs | Use responsive breakpoints: `grid-cols-2 md:grid-cols-4` |
+| E2E tests need `--ignore-snapshots` | Default `test:e2e` script adds this flag; snapshot tests not used |
+| E2E mock data must use snake_case | API responses use snake_case; mock factories in `fixtures/mock-data.ts` |
+| E2E smoke tests need real backend | `pnpm test:e2e:smoke` requires backend running; excluded from default run |
+| Import `test` from `../fixtures` | E2E tests must import custom `test` (not `@playwright/test`) for page objects and mocks |
 
 ## Quick Links by Task
 
@@ -247,6 +258,8 @@ NEO4J_PASSWORD=newsletter_password
 - Database provider tests: [docs/DEVELOPMENT.md#database-provider-testing](docs/DEVELOPMENT.md#database-provider-testing)
 - Neon integration tests: [docs/SETUP.md#test-architecture](docs/SETUP.md#test-architecture)
 - Supabase integration tests: [docs/SETUP.md#supabase-test-architecture](docs/SETUP.md#supabase-test-architecture)
+- E2E test infrastructure: `web/tests/e2e/fixtures/` (page objects, API mocks, mock data factories)
+- E2E page objects: `web/tests/e2e/fixtures/pages/*.page.ts`
 
 ### Storage & Infrastructure
 - Image storage configuration: [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional)
