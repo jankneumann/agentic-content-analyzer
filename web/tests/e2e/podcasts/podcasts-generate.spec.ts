@@ -5,7 +5,7 @@
  * voice provider options, and submit behavior.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Generate Podcast Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {

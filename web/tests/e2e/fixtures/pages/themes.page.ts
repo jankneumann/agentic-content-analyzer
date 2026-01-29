@@ -10,7 +10,7 @@ export class ThemesPage extends BasePage {
 
   constructor(page: Page) {
     super(page)
-    this.analyzeButton = page.getByRole("button", { name: /analyze/i })
+    this.analyzeButton = page.getByRole("button", { name: /analyze/i }).first()
     this.statsCards = page.locator(".grid").first()
     this.themeList = page.locator("main")
     this.themeItems = page.locator('[data-testid="theme-item"], .border.rounded').filter({ hasText: /theme|trend|category/i })

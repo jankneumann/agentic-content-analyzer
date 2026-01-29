@@ -5,13 +5,13 @@
  * pagination, empty state, and stats cards.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 import {
   createContentListResponse,
   createContentListItem,
   createContentStats,
   createEmptyContentListResponse,
-} from "../../fixtures/mock-data"
+} from "../fixtures/mock-data"
 
 test.describe("Contents List Page", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -136,10 +136,12 @@ test.describe("Contents List Page", () => {
     await contentsPage.navigate()
 
     // Stats from createContentStats: total=42, pending=5, completed=28, failed=3
-    await expect(contentsPage.page.getByText("42")).toBeVisible()
-    await expect(contentsPage.page.getByText("Total")).toBeVisible()
-    await expect(contentsPage.page.getByText("Pending")).toBeVisible()
-    await expect(contentsPage.page.getByText("Completed")).toBeVisible()
-    await expect(contentsPage.page.getByText("Failed")).toBeVisible()
+    // Scope to stats grid to avoid matching status badges in the table
+    const statsGrid = contentsPage.page.locator(".grid").first()
+    await expect(statsGrid.getByText("42")).toBeVisible()
+    await expect(statsGrid.getByText("Total")).toBeVisible()
+    await expect(statsGrid.getByText("Pending")).toBeVisible()
+    await expect(statsGrid.getByText("Completed")).toBeVisible()
+    await expect(statsGrid.getByText("Failed")).toBeVisible()
   })
 })

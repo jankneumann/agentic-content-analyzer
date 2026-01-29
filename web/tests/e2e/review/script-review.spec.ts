@@ -4,9 +4,15 @@
  * Tests for /review/script/:id page: two-pane layout,
  * left pane (digest), right pane (script), section-level review,
  * and revision panel.
+ *
+ * The ReviewHeader renders:
+ * - <h1> title: "Review Script"
+ * - Back label in <span class="hidden sm:inline"> (hidden on mobile)
+ * - Navigation: "{position} of {total}" in a <span>
+ * - Prev/Next buttons with aria-labels "Previous item" / "Next item"
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Script Review Page", () => {
   test.beforeEach(async ({ apiMocks, page }) => {
@@ -14,8 +20,8 @@ test.describe("Script Review Page", () => {
     await apiMocks.mockScriptDetail()
     await apiMocks.mockDigestDetail()
 
-    // Mock script navigation
-    await page.route("**/api/v1/scripts/*/navigation", (route) =>
+    // Mock script navigation (trailing * matches query params)
+    await page.route("**/api/v1/scripts/*/navigation*", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -50,7 +56,9 @@ test.describe("Script Review Page", () => {
   test("navigates to script review page", async ({ reviewPage }) => {
     await reviewPage.navigateToScriptReview(1)
 
-    await expect(reviewPage.page.getByText("Review Script")).toBeVisible()
+    await expect(
+      reviewPage.page.getByRole("heading", { name: "Review Script", level: 1 })
+    ).toBeVisible()
   })
 
   test("two-pane layout renders", async ({ reviewPage }) => {
@@ -92,23 +100,28 @@ test.describe("Script Review Page", () => {
   test("script shows dialogue text", async ({ reviewPage }) => {
     await reviewPage.navigateToScriptReview(1)
 
-    // From createScriptSection dialogue
+    // From createScriptSection dialogue — text appears in each section, use .first()
     await expect(
-      reviewPage.page.getByText(/Welcome to another episode/)
+      reviewPage.page.getByText(/Welcome to another episode/).first()
     ).toBeVisible()
   })
 
   test("back link navigates to scripts", async ({ reviewPage }) => {
     await reviewPage.navigateToScriptReview(1)
 
-    await expect(reviewPage.page.getByText("Back to Scripts")).toBeVisible()
+    // Back label is inside a link to /scripts; the text "Back to Scripts" is
+    // in a <span class="hidden sm:inline"> so it may be hidden on mobile.
+    // Assert the link itself exists pointing to /scripts.
+    await expect(
+      reviewPage.page.locator("a[href='/scripts']").first()
+    ).toBeVisible()
   })
 
   test("navigation shows position info", async ({ reviewPage }) => {
     await reviewPage.navigateToScriptReview(1)
 
     // Navigation shows "1 of 3"
-    await expect(reviewPage.page.getByText(/1.*of.*3/i)).toBeVisible()
+    await expect(reviewPage.page.getByText("1 of 3")).toBeVisible()
   })
 
   test("next navigation button is visible", async ({ reviewPage }) => {

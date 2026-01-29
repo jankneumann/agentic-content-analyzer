@@ -5,7 +5,7 @@
  * date range tabs, configuration options, and empty state.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Themes Analysis Page", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -24,7 +24,7 @@ test.describe("Themes Analysis Page", () => {
   test("stats cards show emerging themes count", async ({ themesPage }) => {
     await themesPage.navigate()
 
-    await expect(themesPage.page.getByText("Emerging")).toBeVisible()
+    await expect(themesPage.page.getByText("Emerging").first()).toBeVisible()
     // From createThemeAnalysisResult: emerging_themes_count = 1
     await expect(themesPage.page.getByText("1").first()).toBeVisible()
   })
@@ -79,7 +79,7 @@ test.describe("Themes Analysis Page", () => {
     await themesPage.navigate()
 
     // From createThemeData: relevance_score = 0.92 -> "92%"
-    await expect(themesPage.page.getByText("92%")).toBeVisible()
+    await expect(themesPage.page.getByText("92%").first()).toBeVisible()
   })
 
   test("analyze button is visible", async ({ themesPage }) => {

@@ -5,7 +5,7 @@
  * voice/speed/provider info, and dialog lifecycle.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Audio Digest Player Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -47,9 +47,9 @@ test.describe("Audio Digest Player Dialog", () => {
     await audioDigestsPage.clickTableRow(0)
 
     const dialog = await audioDigestsPage.waitForDialog()
-    // From createAudioDigestDetail: voice = "nova"
+    // From createAudioDigestDetail: voice = "nova" (capitalize is CSS-only)
     await expect(dialog.getByText("Voice:")).toBeVisible()
-    await expect(dialog.getByText("Nova").first()).toBeVisible()
+    await expect(dialog.getByText("nova").first()).toBeVisible()
   })
 
   test("dialog shows speed info", async ({ audioDigestsPage }) => {
@@ -60,7 +60,7 @@ test.describe("Audio Digest Player Dialog", () => {
     const dialog = await audioDigestsPage.waitForDialog()
     // From createAudioDigestDetail: speed = 1.0
     await expect(dialog.getByText("Speed:")).toBeVisible()
-    await expect(dialog.getByText("1x")).toBeVisible()
+    await expect(dialog.getByText("1x").first()).toBeVisible()
   })
 
   test("dialog shows provider info", async ({ audioDigestsPage }) => {
@@ -69,9 +69,9 @@ test.describe("Audio Digest Player Dialog", () => {
     await audioDigestsPage.clickTableRow(0)
 
     const dialog = await audioDigestsPage.waitForDialog()
-    // From createAudioDigestDetail: provider = "openai"
+    // From createAudioDigestDetail: provider = "openai" (capitalize is CSS-only)
     await expect(dialog.getByText("Provider:")).toBeVisible()
-    await expect(dialog.getByText("Openai").first()).toBeVisible()
+    await expect(dialog.getByText("openai").first()).toBeVisible()
   })
 
   test("dialog shows file size", async ({ audioDigestsPage }) => {
@@ -124,7 +124,7 @@ test.describe("Audio Digest Player Dialog", () => {
     const dialog = await audioDigestsPage.waitForDialog()
     await expect(dialog).toBeVisible()
 
-    await dialog.getByRole("button", { name: "Close" }).click()
+    await dialog.getByRole("button", { name: "Close" }).first().click()
     await expect(audioDigestsPage.dialog).not.toBeVisible()
   })
 

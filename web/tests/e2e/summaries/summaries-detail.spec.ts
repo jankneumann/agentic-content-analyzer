@@ -5,7 +5,7 @@
  * or view icon in the summaries list.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Summary Detail Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -165,7 +165,7 @@ test.describe("Summary Detail Dialog", () => {
     await expect(dialog).toBeVisible()
 
     // Close via the Close button in footer
-    await dialog.getByRole("button", { name: /close/i }).click()
+    await dialog.getByRole("button", { name: /close/i }).first().click()
 
     await expect(dialog).not.toBeVisible()
   })

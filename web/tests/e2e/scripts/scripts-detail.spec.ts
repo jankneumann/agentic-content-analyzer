@@ -5,7 +5,7 @@
  * Verifies script metadata, dialogue sections, speaker badges, and dialog lifecycle.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Script Detail Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -89,8 +89,9 @@ test.describe("Script Detail Dialog", () => {
 
     const dialog = await scriptsPage.waitForDialog()
     // From createScriptSection: alex says "Welcome to another episode..."
+    // Text appears in each section (5 total), so use .first()
     await expect(
-      dialog.getByText(/Welcome to another episode/)
+      dialog.getByText(/Welcome to another episode/).first()
     ).toBeVisible()
   })
 
@@ -102,7 +103,7 @@ test.describe("Script Detail Dialog", () => {
 
     const dialog = await scriptsPage.waitForDialog()
     // From createScriptSection: first dialogue has emphasis "excited"
-    await expect(dialog.getByText("[excited]")).toBeVisible()
+    await expect(dialog.getByText("[excited]").first()).toBeVisible()
   })
 
   test("dialog shows section word counts", async ({ scriptsPage }) => {
@@ -125,7 +126,7 @@ test.describe("Script Detail Dialog", () => {
     const dialog = await scriptsPage.waitForDialog()
     await expect(dialog).toBeVisible()
 
-    await dialog.getByRole("button", { name: "Close" }).click()
+    await dialog.getByRole("button", { name: "Close" }).first().click()
     await expect(scriptsPage.dialog).not.toBeVisible()
   })
 

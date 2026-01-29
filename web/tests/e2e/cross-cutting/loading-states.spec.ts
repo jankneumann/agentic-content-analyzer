@@ -6,7 +6,7 @@
  * slow network conditions so the loading UI is observable.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 import * as mockData from "../fixtures/mock-data"
 
 test.describe("Loading States", () => {
@@ -43,7 +43,7 @@ test.describe("Loading States", () => {
     await expect(loadingIndicator).toBeVisible({ timeout: 3_000 })
 
     // After the delay, data should eventually appear
-    await expect(page.getByRole("table").or(page.getByText(/AI Weekly/i))).toBeVisible({
+    await expect(page.getByRole("table")).toBeVisible({
       timeout: 10_000,
     })
   })
@@ -79,9 +79,7 @@ test.describe("Loading States", () => {
     await expect(loadingIndicator).toBeVisible({ timeout: 3_000 })
 
     // Data should eventually load
-    await expect(
-      page.getByRole("table").or(page.getByText(/Daily AI/i))
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole("table")).toBeVisible({ timeout: 10_000 })
   })
 
   test("Summaries page shows loading indicator during data fetch", async ({
@@ -115,9 +113,7 @@ test.describe("Loading States", () => {
     await expect(loadingIndicator).toBeVisible({ timeout: 3_000 })
 
     // Data should eventually load
-    await expect(
-      page.getByRole("table").or(page.getByText(/AI Weekly/i))
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole("table")).toBeVisible({ timeout: 10_000 })
   })
 
   test("Loading indicator disappears after data loads", async ({
@@ -145,9 +141,7 @@ test.describe("Loading States", () => {
     await page.goto("/contents")
 
     // Wait for data to fully load
-    await expect(
-      page.getByRole("table").or(page.getByText(/AI Weekly/i))
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole("table")).toBeVisible({ timeout: 10_000 })
 
     // Loading indicators should be gone
     const skeletons = page.locator('[class*="skeleton"], [class*="Skeleton"], [class*="animate-pulse"]')

@@ -4,7 +4,7 @@
  * Tests the review queue page and navigation to digest review pages.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Digest Review Integration", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -15,7 +15,9 @@ test.describe("Digest Review Integration", () => {
     await reviewPage.navigate()
 
     // Should show the Review Queue heading
-    await expect(reviewPage.page.getByText("Review Queue")).toBeVisible()
+    await expect(
+      reviewPage.page.locator("main").getByRole("heading", { name: "Review Queue" })
+    ).toBeVisible()
 
     // Should show the Pending Digests section
     await expect(reviewPage.page.getByText("Pending Digests")).toBeVisible()

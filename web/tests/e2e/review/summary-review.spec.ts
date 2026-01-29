@@ -4,10 +4,16 @@
  * Tests for /review/summary/:id page: two-pane layout,
  * left pane (original content), right pane (summary),
  * feedback panel, and regenerate button.
+ *
+ * The ReviewHeader renders:
+ * - <h1> title: "Review Summary"
+ * - Back label in <span class="hidden sm:inline"> (hidden on mobile)
+ * - Navigation: "{position} of {total}" in a <span>
+ * - Prev/Next buttons with aria-labels "Previous item" / "Next item"
  */
 
-import { test, expect } from "../../fixtures"
-import * as mockData from "../../fixtures/mock-data"
+import { test, expect } from "../fixtures"
+import * as mockData from "../fixtures/mock-data"
 
 test.describe("Summary Review Page", () => {
   test.beforeEach(async ({ apiMocks, page }) => {
@@ -15,15 +21,12 @@ test.describe("Summary Review Page", () => {
     await apiMocks.mockContentDetail()
     await apiMocks.mockSummaryDetail()
 
-    // Mock content-with-summary endpoint
-    await page.route("**/api/v1/contents/*/with-summary", (route) =>
+    // Mock the summaries/by-content endpoint (app calls GET /api/v1/summaries/by-content/{contentId})
+    await page.route("**/api/v1/summaries/by-content/*", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          ...mockData.createContent(),
-          summary: mockData.createSummary(),
-        }),
+        body: JSON.stringify(mockData.createSummary()),
       })
     )
 
@@ -78,7 +81,9 @@ test.describe("Summary Review Page", () => {
   test("navigates to summary review page", async ({ reviewPage }) => {
     await reviewPage.navigateToSummaryReview(1)
 
-    await expect(reviewPage.page.getByText("Review Summary")).toBeVisible()
+    await expect(
+      reviewPage.page.getByRole("heading", { name: "Review Summary", level: 1 })
+    ).toBeVisible()
   })
 
   test("two-pane layout renders", async ({ reviewPage }) => {
@@ -91,6 +96,7 @@ test.describe("Summary Review Page", () => {
   test("left pane shows source content label", async ({ reviewPage }) => {
     await reviewPage.navigateToSummaryReview(1)
 
+    // ReviewPaneHeader renders "Source Content" as an h3
     await expect(reviewPage.page.getByText("Source Content")).toBeVisible()
   })
 
@@ -104,14 +110,19 @@ test.describe("Summary Review Page", () => {
   test("back link navigates to summaries", async ({ reviewPage }) => {
     await reviewPage.navigateToSummaryReview(1)
 
-    await expect(reviewPage.page.getByText("Back to Summaries")).toBeVisible()
+    // Back label is inside a link to /summaries; the text "Back to Summaries" is
+    // in a <span class="hidden sm:inline"> so it may be hidden on mobile.
+    // Assert the link itself exists pointing to /summaries.
+    await expect(
+      reviewPage.page.locator("a[href='/summaries']").first()
+    ).toBeVisible()
   })
 
   test("navigation shows position info", async ({ reviewPage }) => {
     await reviewPage.navigateToSummaryReview(1)
 
     // Navigation shows "1 of 10"
-    await expect(reviewPage.page.getByText(/1.*of.*10/i)).toBeVisible()
+    await expect(reviewPage.page.getByText("1 of 10")).toBeVisible()
   })
 
   test("next navigation button is visible", async ({ reviewPage }) => {

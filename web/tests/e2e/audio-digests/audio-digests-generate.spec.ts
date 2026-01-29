@@ -5,7 +5,7 @@
  * voice selection, speed slider, provider selection, and submit behavior.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Generate Audio Digest Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -59,7 +59,7 @@ test.describe("Generate Audio Digest Dialog", () => {
     await audioDigestsPage.openGenerateDialog()
 
     const dialog = await audioDigestsPage.waitForDialog()
-    await expect(dialog.getByText("Voice")).toBeVisible()
+    await expect(dialog.getByText("Voice", { exact: true })).toBeVisible()
   })
 
   test("dialog shows speed slider", async ({ audioDigestsPage }) => {

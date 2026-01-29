@@ -5,8 +5,8 @@
  * stats cards, and empty state.
  */
 
-import { test, expect } from "../../fixtures"
-import { createDigestListItem, createDigestStatistics } from "../../fixtures/mock-data"
+import { test, expect } from "../fixtures"
+import { createDigestListItem, createDigestStatistics } from "../fixtures/mock-data"
 
 test.describe("Digests List Page", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -38,13 +38,13 @@ test.describe("Digests List Page", () => {
     await expect(digestsPage.page.getByRole("columnheader", { name: /period/i })).toBeVisible()
     await expect(digestsPage.page.getByRole("columnheader", { name: /status/i })).toBeVisible()
 
-    // Verify type badges
-    await expect(digestsPage.page.getByText("daily")).toBeVisible()
-    await expect(digestsPage.page.getByText("weekly")).toBeVisible()
+    // Verify type badges (use exact match to avoid matching page description text)
+    await expect(digestsPage.table.getByText("daily", { exact: true })).toBeVisible()
+    await expect(digestsPage.table.getByText("weekly", { exact: true })).toBeVisible()
 
     // Verify status badges
-    await expect(digestsPage.page.getByText("Completed")).toBeVisible()
-    await expect(digestsPage.page.getByText("Pending Review")).toBeVisible()
+    await expect(digestsPage.table.getByText("Completed")).toBeVisible()
+    await expect(digestsPage.table.getByText("Pending Review")).toBeVisible()
   })
 
   test("search input filters digests", async ({ digestsPage }) => {
@@ -87,16 +87,19 @@ test.describe("Digests List Page", () => {
     await digestsPage.navigate()
 
     // Stats from createDigestStatistics: total=15, pending_review=3, approved=2, delivered=1
-    await expect(digestsPage.page.getByText("Total")).toBeVisible()
-    await expect(digestsPage.page.getByText("15")).toBeVisible()
+    // Scope to stats grid to avoid matching status badges in the table
+    const statsGrid = digestsPage.page.locator(".grid").first()
+    await expect(statsGrid).toBeVisible()
+    await expect(statsGrid.getByText("Total")).toBeVisible()
+    await expect(statsGrid.getByText("15")).toBeVisible()
 
-    await expect(digestsPage.page.getByText("Pending Review")).toBeVisible()
-    await expect(digestsPage.page.getByText("3")).toBeVisible()
+    await expect(statsGrid.getByText("Pending Review")).toBeVisible()
+    await expect(statsGrid.getByText("3")).toBeVisible()
 
-    await expect(digestsPage.page.getByText("Approved")).toBeVisible()
-    await expect(digestsPage.page.getByText("2")).toBeVisible()
+    await expect(statsGrid.getByText("Approved")).toBeVisible()
+    await expect(statsGrid.getByText("2")).toBeVisible()
 
-    await expect(digestsPage.page.getByText("Delivered")).toBeVisible()
+    await expect(statsGrid.getByText("Delivered")).toBeVisible()
   })
 
   test("shows empty state when no digests exist", async ({ digestsPage, apiMocks }) => {

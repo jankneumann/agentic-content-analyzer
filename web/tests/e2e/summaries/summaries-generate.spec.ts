@@ -4,7 +4,7 @@
  * Tests the generate summaries dialog for triggering AI summarization.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Generate Summaries Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {

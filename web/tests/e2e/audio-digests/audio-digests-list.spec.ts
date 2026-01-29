@@ -5,7 +5,7 @@
  * delete button with confirmation, empty state, and stats display.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Audio Digests List Page", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -56,7 +56,7 @@ test.describe("Audio Digests List Page", () => {
     await audioDigestsPage.navigate()
 
     // From createAudioDigestListItem: speed = 1.0
-    await expect(audioDigestsPage.page.getByText("1x")).toBeVisible()
+    await expect(audioDigestsPage.page.getByText("1x").first()).toBeVisible()
   })
 
   test("table shows duration column", async ({ audioDigestsPage }) => {
@@ -135,17 +135,18 @@ test.describe("Audio Digests List Page", () => {
     await apiMocks.mockAudioDigestsEmpty()
     await audioDigestsPage.navigate()
 
+    // Both header and empty state have a "Generate Audio" button; verify at least one exists
     await expect(
-      audioDigestsPage.page.getByRole("button", { name: /generate audio/i })
+      audioDigestsPage.page.getByRole("button", { name: /generate audio/i }).first()
     ).toBeVisible()
   })
 
   test("stats cards display audio digest statistics", async ({ audioDigestsPage }) => {
     await audioDigestsPage.navigate()
 
-    await expect(audioDigestsPage.page.getByText("Total")).toBeVisible()
-    await expect(audioDigestsPage.page.getByText("Processing")).toBeVisible()
-    await expect(audioDigestsPage.page.getByText("Completed")).toBeVisible()
+    await expect(audioDigestsPage.page.getByText("Total", { exact: true })).toBeVisible()
+    await expect(audioDigestsPage.page.getByText("Processing", { exact: true })).toBeVisible()
+    await expect(audioDigestsPage.page.getByText("Completed").first()).toBeVisible()
     await expect(audioDigestsPage.page.getByText("Total Duration")).toBeVisible()
   })
 

@@ -5,8 +5,8 @@
  * empty state, and stats display.
  */
 
-import { test, expect } from "../../fixtures"
-import * as mockData from "../../fixtures/mock-data"
+import { test, expect } from "../fixtures"
+import * as mockData from "../fixtures/mock-data"
 
 test.describe("Scripts List Page", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -79,17 +79,20 @@ test.describe("Scripts List Page", () => {
     await scriptsPage.navigate()
 
     // The stats cards show Total, Pending Review, Revision Requested, Approved, Completed
-    await expect(scriptsPage.page.getByText("Total")).toBeVisible()
-    await expect(scriptsPage.page.getByText("Pending Review")).toBeVisible()
-    await expect(scriptsPage.page.getByText("Approved")).toBeVisible()
-    await expect(scriptsPage.page.getByText("Completed")).toBeVisible()
+    // Scope to the stats grid to avoid matching table status badges
+    const statsArea = scriptsPage.page.locator(".grid").first()
+    await expect(statsArea.getByText("Total")).toBeVisible()
+    await expect(statsArea.getByText("Pending Review")).toBeVisible()
+    await expect(statsArea.getByText("Approved")).toBeVisible()
+    await expect(statsArea.getByText("Completed")).toBeVisible()
   })
 
   test("stats cards show correct counts from mock data", async ({ scriptsPage }) => {
     await scriptsPage.navigate()
 
     // From createScriptReviewStatistics: total=12
-    await expect(scriptsPage.page.getByText("12")).toBeVisible()
+    const statsArea = scriptsPage.page.locator(".grid").first()
+    await expect(statsArea.getByText("12")).toBeVisible()
   })
 
   test("search input filters scripts by title", async ({ scriptsPage }) => {
@@ -116,6 +119,6 @@ test.describe("Scripts List Page", () => {
   test("table shows duration column", async ({ scriptsPage }) => {
     await scriptsPage.navigate()
 
-    await expect(scriptsPage.page.getByText("12 min")).toBeVisible()
+    await expect(scriptsPage.page.getByText("12 min").first()).toBeVisible()
   })
 })

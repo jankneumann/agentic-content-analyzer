@@ -24,7 +24,7 @@ export class ReviewPage extends BasePage {
     this.approveButton = page.getByRole("button", { name: /approve/i })
     this.rejectButton = page.getByRole("button", { name: /reject/i })
     this.prevButton = page.getByRole("button", { name: /prev|previous/i })
-    this.nextButton = page.getByRole("button", { name: /next/i })
+    this.nextButton = page.getByRole("button", { name: /next/i }).first()
   }
 
   async navigate(): Promise<void> {

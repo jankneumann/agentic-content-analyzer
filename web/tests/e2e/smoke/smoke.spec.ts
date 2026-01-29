@@ -23,10 +23,10 @@ test.describe("Smoke Tests @smoke", () => {
   test("navigation works end-to-end", async ({ page }) => {
     await page.goto("/")
 
-    await page.getByRole("link", { name: "Content" }).click()
+    await page.getByRole("link", { name: "Content", exact: true }).click()
     await expect(page).toHaveURL(/\/contents/)
 
-    await page.getByRole("link", { name: "Digests" }).click()
+    await page.getByRole("link", { name: "Digests", exact: true }).click()
     await expect(page).toHaveURL(/\/digests/)
   })
 
@@ -50,9 +50,9 @@ test.describe("Smoke Tests @smoke", () => {
   test("themes page loads without errors", async ({ page }) => {
     await page.goto("/themes")
 
-    // Themes page should show either analysis data or an empty prompt
+    // Themes page should show the heading
     await expect(
-      page.locator("main").getByText(/theme|analysis|no analysis|analyze/i)
+      page.getByRole("heading", { name: "Themes", level: 1 })
     ).toBeVisible({ timeout: 10000 })
   })
 

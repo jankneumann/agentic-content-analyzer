@@ -5,7 +5,7 @@
  * daily or weekly digest generation.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Generate Digest Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {

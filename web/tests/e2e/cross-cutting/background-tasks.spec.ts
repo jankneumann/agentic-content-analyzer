@@ -5,7 +5,7 @@
  * task is triggered, showing task type and status to the user.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 import * as mockData from "../fixtures/mock-data"
 
 test.describe("Background Tasks", () => {
@@ -147,19 +147,6 @@ test.describe("Background Tasks", () => {
         ),
       })
     )
-    // Mock approved digests for the script generation dialog
-    await page.route("**/api/v1/digests/?*", (route) => {
-      if (route.request().url().includes("status=APPROVED")) {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([
-            mockData.createDigestListItem({ id: 1, status: "APPROVED" }),
-          ]),
-        })
-      }
-      return route.fallback()
-    })
 
     await scriptsPage.navigate()
     await scriptsPage.openGenerateDialog()
@@ -167,10 +154,16 @@ test.describe("Background Tasks", () => {
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
 
+    // Select a digest from the dropdown (required before Generate is enabled)
+    const digestSelect = dialog.getByRole("combobox", { name: /source digest/i })
+    await digestSelect.click()
+    // Pick the first available approved/completed digest from the mocked list
+    const firstOption = page.getByRole("option").first()
+    await firstOption.click()
+
     // Click the generate button inside the dialog
     const generateButton = dialog
-      .getByRole("button", { name: /generate|start/i })
-      .last()
+      .getByRole("button", { name: /generate script/i })
     await generateButton.click()
 
     // Dialog should close

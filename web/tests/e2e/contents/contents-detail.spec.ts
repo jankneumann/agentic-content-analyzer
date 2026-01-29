@@ -5,8 +5,8 @@
  * or the view icon in the contents list.
  */
 
-import { test, expect } from "../../fixtures"
-import { createContent } from "../../fixtures/mock-data"
+import { test, expect } from "../fixtures"
+import { createContent } from "../fixtures/mock-data"
 
 test.describe("Content Detail Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -67,8 +67,8 @@ test.describe("Content Detail Dialog", () => {
     // Should show author
     await expect(dialog.getByText("Jane Smith")).toBeVisible()
 
-    // Should show source type badge
-    await expect(dialog.getByText("Gmail")).toBeVisible()
+    // Should show source type badge (use exact match to avoid matching "gmail_html")
+    await expect(dialog.getByText("Gmail", { exact: true })).toBeVisible()
   })
 
   test("dialog shows markdown content", async ({ contentsPage }) => {
@@ -84,8 +84,9 @@ test.describe("Content Detail Dialog", () => {
     await expect(dialog).toBeVisible()
 
     // Should render the markdown content (rendered view by default)
-    // The mock has "# AI Weekly" as markdown content
-    await expect(dialog.getByText("AI Weekly")).toBeVisible()
+    // The mock has "# AI Weekly\n\nGPT-5 has been announced..." as markdown content
+    // Use a unique text from the body to avoid matching title/publication
+    await expect(dialog.getByText("GPT-5 has been announced")).toBeVisible()
   })
 
   test("dialog shows metadata section with parser and status", async ({ contentsPage }) => {

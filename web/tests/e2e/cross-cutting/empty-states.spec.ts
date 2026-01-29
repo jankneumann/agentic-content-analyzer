@@ -6,7 +6,7 @@
  * clearly that no items exist rather than showing a broken layout.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Empty States", () => {
   test.beforeEach(async ({ apiMocks }) => {

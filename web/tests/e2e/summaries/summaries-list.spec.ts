@@ -5,12 +5,12 @@
  * and empty state.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 import {
   createSummaryListResponse,
   createSummaryListItem,
   createEmptyPaginatedResponse,
-} from "../../fixtures/mock-data"
+} from "../fixtures/mock-data"
 import type { SummaryListItem } from "../../../src/types"
 
 test.describe("Summaries List Page", () => {
@@ -99,7 +99,7 @@ test.describe("Summaries List Page", () => {
 
     // Should have a Generate Summaries button in empty state
     await expect(
-      summariesPage.page.getByRole("button", { name: /generate summaries/i })
+      summariesPage.page.getByRole("button", { name: /generate summaries/i }).first()
     ).toBeVisible()
   })
 

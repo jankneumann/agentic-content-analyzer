@@ -5,7 +5,7 @@
  * approve/reject buttons, and navigation.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Script Review Page", () => {
   test.beforeEach(async ({ apiMocks, page }) => {

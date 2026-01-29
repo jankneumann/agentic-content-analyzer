@@ -306,7 +306,7 @@ export class ApiMocks {
   }
 
   async mockDigestStats(data?: unknown): Promise<void> {
-    await this.page.route("**/api/v1/digests/stats", (route) =>
+    await this.page.route("**/api/v1/digests/statistics", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -411,7 +411,7 @@ export class ApiMocks {
   }
 
   async mockScriptStats(data?: unknown): Promise<void> {
-    await this.page.route("**/api/v1/scripts/stats", (route) =>
+    await this.page.route("**/api/v1/scripts/statistics", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -504,7 +504,7 @@ export class ApiMocks {
   }
 
   async mockPodcastStats(data?: unknown): Promise<void> {
-    await this.page.route("**/api/v1/podcasts/stats", (route) =>
+    await this.page.route("**/api/v1/podcasts/statistics", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -582,7 +582,7 @@ export class ApiMocks {
   }
 
   async mockAudioDigestStats(data?: unknown): Promise<void> {
-    await this.page.route("**/api/v1/audio-digests/stats", (route) =>
+    await this.page.route("**/api/v1/audio-digests/statistics", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",

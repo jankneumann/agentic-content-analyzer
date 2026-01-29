@@ -5,7 +5,7 @@
  * from Gmail, RSS feeds, and YouTube.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Ingest Contents Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -57,8 +57,8 @@ test.describe("Ingest Contents Dialog", () => {
       "active"
     )
 
-    // Description should update to RSS
-    await expect(dialog.getByText(/rss feeds/i)).toBeVisible()
+    // Description should update to RSS-specific text
+    await expect(dialog.getByText(/fetch articles from configured rss feeds/i)).toBeVisible()
 
     // Switch to YouTube tab
     await dialog.getByRole("tab", { name: /youtube/i }).click()
@@ -67,8 +67,8 @@ test.describe("Ingest Contents Dialog", () => {
       "active"
     )
 
-    // Description should update to YouTube
-    await expect(dialog.getByText(/youtube/i)).toBeVisible()
+    // Description should update to YouTube-specific text
+    await expect(dialog.getByText(/fetch transcripts from configured youtube playlists/i)).toBeVisible()
   })
 
   test("max results slider is adjustable", async ({ contentsPage }) => {
@@ -83,8 +83,8 @@ test.describe("Ingest Contents Dialog", () => {
     // Default value should be displayed (50)
     await expect(dialog.getByText("50")).toBeVisible()
 
-    // The slider should be present
-    const slider = dialog.getByRole("slider")
+    // The max results slider should be present (first of two sliders)
+    const slider = dialog.getByRole("slider").first()
     await expect(slider).toBeVisible()
   })
 

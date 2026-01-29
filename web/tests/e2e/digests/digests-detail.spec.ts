@@ -5,8 +5,8 @@
  * tabbed sections, recommendations, sources, and review actions.
  */
 
-import { test, expect } from "../../fixtures"
-import { createDigestDetail, createDigestListItem } from "../../fixtures/mock-data"
+import { test, expect } from "../fixtures"
+import { createDigestDetail, createDigestListItem } from "../fixtures/mock-data"
 
 test.describe("Digest Detail Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -214,7 +214,7 @@ test.describe("Digest Detail Dialog", () => {
     await expect(dialog).toBeVisible()
 
     // Close via the Close button in the footer
-    await dialog.getByRole("button", { name: /close/i }).click()
+    await dialog.getByRole("button", { name: /close/i }).first().click()
 
     await expect(dialog).not.toBeVisible()
   })

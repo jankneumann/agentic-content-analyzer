@@ -15,7 +15,7 @@
  * desktop-only and mobile-only tests run in the correct project.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Desktop Layout", () => {
   test.beforeEach(async ({ apiMocks }) => {

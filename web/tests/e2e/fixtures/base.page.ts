@@ -68,18 +68,19 @@ export class BasePage {
     this.mobileBackdrop = page.locator(".fixed.inset-0.bg-black\\/50")
     this.mobileSidebar = page.locator(".fixed.inset-y-0.left-0 aside")
 
-    // Navigation links
+    // Navigation links (scoped to sidebar to avoid matching dashboard quick-action links)
+    const sidebar = page.locator("aside")
     this.navLinks = {
-      dashboard: page.getByRole("link", { name: "Dashboard" }),
-      content: page.getByRole("link", { name: "Content" }),
-      summaries: page.getByRole("link", { name: "Summaries" }),
-      themes: page.getByRole("link", { name: "Themes" }),
-      digests: page.getByRole("link", { name: "Digests" }),
-      scripts: page.getByRole("link", { name: "Scripts" }),
-      podcasts: page.getByRole("link", { name: "Podcasts" }),
-      audioDigests: page.getByRole("link", { name: "Audio Digests" }),
-      reviewQueue: page.getByRole("link", { name: "Review Queue" }),
-      settings: page.getByRole("link", { name: "Settings" }),
+      dashboard: sidebar.getByRole("link", { name: "Dashboard", exact: true }),
+      content: sidebar.getByRole("link", { name: "Content", exact: true }),
+      summaries: sidebar.getByRole("link", { name: "Summaries", exact: true }),
+      themes: sidebar.getByRole("link", { name: "Themes", exact: true }),
+      digests: sidebar.getByRole("link", { name: "Digests", exact: true }),
+      scripts: sidebar.getByRole("link", { name: "Scripts", exact: true }),
+      podcasts: sidebar.getByRole("link", { name: "Podcasts", exact: true }),
+      audioDigests: sidebar.getByRole("link", { name: "Audio Digests", exact: true }),
+      reviewQueue: sidebar.getByRole("link", { name: "Review Queue", exact: true }),
+      settings: sidebar.getByRole("link", { name: "Settings", exact: true }),
     }
   }
 
@@ -148,7 +149,7 @@ export class BasePage {
   /** Close a dialog via the X button */
   async closeDialog(): Promise<void> {
     const dialog = this.page.getByRole("dialog")
-    await dialog.getByRole("button", { name: "Close" }).click()
+    await dialog.getByRole("button", { name: "Close" }).first().click()
   }
 
   /** Close dialog via Escape */

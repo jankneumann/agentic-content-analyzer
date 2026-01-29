@@ -5,7 +5,7 @@
  * duration/file size columns, and empty state.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Podcasts List Page", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -69,7 +69,8 @@ test.describe("Podcasts List Page", () => {
     await podcastsPage.navigate()
 
     // From createPodcastListItem: status = "completed"
-    await expect(podcastsPage.page.getByText("Completed")).toBeVisible()
+    // "Completed" appears in both the stats card and the table status badge
+    await expect(podcastsPage.page.getByRole("table").getByText("Completed")).toBeVisible()
   })
 
   test("empty state displays when no podcasts exist", async ({ apiMocks, podcastsPage }) => {
@@ -83,16 +84,16 @@ test.describe("Podcasts List Page", () => {
     await apiMocks.mockPodcastsEmpty()
     await podcastsPage.navigate()
 
-    // The empty state has a "Generate Audio" button
-    await expect(podcastsPage.page.getByRole("button", { name: /generate audio/i })).toBeVisible()
+    // Both header and empty state have a "Generate Audio" button; verify at least one exists
+    await expect(podcastsPage.page.getByRole("button", { name: /generate audio/i }).first()).toBeVisible()
   })
 
   test("stats cards display podcast statistics", async ({ podcastsPage }) => {
     await podcastsPage.navigate()
 
-    await expect(podcastsPage.page.getByText("Total")).toBeVisible()
-    await expect(podcastsPage.page.getByText("Generating")).toBeVisible()
-    await expect(podcastsPage.page.getByText("Completed")).toBeVisible()
+    await expect(podcastsPage.page.getByText("Total", { exact: true })).toBeVisible()
+    await expect(podcastsPage.page.getByText("Generating", { exact: true })).toBeVisible()
+    await expect(podcastsPage.page.getByText("Completed").first()).toBeVisible()
     await expect(podcastsPage.page.getByText("Total Duration")).toBeVisible()
   })
 

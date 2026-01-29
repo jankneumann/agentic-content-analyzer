@@ -5,7 +5,7 @@
  * length tabs, and submit behavior.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Generate Script Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {

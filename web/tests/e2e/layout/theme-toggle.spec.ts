@@ -13,7 +13,7 @@
  * - Falls back to system preference via prefers-color-scheme
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Theme Toggle", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -86,12 +86,13 @@ test.describe("Theme Toggle", () => {
   })
 
   test("theme persists across page reload", async ({ basePage }) => {
-    // Start clean
-    await basePage.page.addInitScript(() => {
-      localStorage.removeItem("theme")
-    })
-
+    // Clear theme before navigating (use evaluate, not addInitScript,
+    // because addInitScript runs on EVERY page load including reload,
+    // which would clear the theme we want to persist)
     await basePage.goto("/")
+    await basePage.page.evaluate(() => localStorage.removeItem("theme"))
+    await basePage.page.reload()
+    await basePage.page.waitForLoadState("domcontentloaded")
 
     // Toggle to dark
     await basePage.toggleTheme()
@@ -101,7 +102,7 @@ test.describe("Theme Toggle", () => {
     await basePage.page.reload()
     await basePage.page.waitForLoadState("domcontentloaded")
 
-    // Dark mode should be preserved
+    // Dark mode should be preserved (read from localStorage on init)
     expect(await basePage.isDarkMode()).toBe(true)
   })
 

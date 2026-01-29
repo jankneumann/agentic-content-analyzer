@@ -5,7 +5,7 @@
  * voice info, audio player elements, and dialog lifecycle.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 test.describe("Podcast Player Dialog", () => {
   test.beforeEach(async ({ apiMocks }) => {
@@ -39,7 +39,8 @@ test.describe("Podcast Player Dialog", () => {
 
     const dialog = await podcastsPage.waitForDialog()
     // From createPodcastDetail: duration_seconds = 718 -> "11:58"
-    await expect(dialog.getByText(/11:58/)).toBeVisible()
+    // Duration appears in both dialog description and audio player time display
+    await expect(dialog.getByText(/11:58/).first()).toBeVisible()
   })
 
   test("dialog shows voice provider info", async ({ podcastsPage }) => {
@@ -113,7 +114,7 @@ test.describe("Podcast Player Dialog", () => {
     const dialog = await podcastsPage.waitForDialog()
     await expect(dialog).toBeVisible()
 
-    await dialog.getByRole("button", { name: "Close" }).click()
+    await dialog.getByRole("button", { name: "Close" }).first().click()
     await expect(podcastsPage.dialog).not.toBeVisible()
   })
 

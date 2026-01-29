@@ -7,7 +7,7 @@
  * All tests mock the API to avoid real backend dependencies.
  */
 
-import { test, expect } from "../../fixtures"
+import { test, expect } from "../fixtures"
 
 /** All sidebar navigation items with their expected routes and labels */
 const NAV_ITEMS = [
