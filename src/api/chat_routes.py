@@ -19,6 +19,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from src.config import settings
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
 from src.models.content import Content
@@ -878,7 +879,7 @@ async def get_chat_config() -> ChatConfigResponse:
     return ChatConfigResponse(
         available_models=available_models,
         default_model=default_model,
-        web_search_enabled=bool(get_model_config().settings.tavily_api_key),
+        web_search_enabled=bool(settings.tavily_api_key),
         max_message_length=2000,
         max_history_length=50,
     )
@@ -1240,7 +1241,9 @@ async def apply_action(conversation_id: str, request: ApplyActionRequest) -> dic
         except Exception as e:
             logger.error(f"Error applying action: {e}", exc_info=True)
             db.rollback()
-            raise HTTPException(status_code=500, detail="An internal error occurred while applying the action.")
+            raise HTTPException(
+                status_code=500, detail="An internal error occurred while applying the action."
+            )
 
         return {
             "status": "applied",
