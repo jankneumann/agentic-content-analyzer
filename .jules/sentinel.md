@@ -22,3 +22,8 @@
 **Vulnerability:** The `generate_ai_response_streaming` and `apply_action` endpoints in `src/api/chat_routes.py` caught generic `Exception` and returned `str(e)` to the client, leaking potential sensitive details.
 **Learning:** This vulnerability pattern (leaking `str(e)`) was previously identified in `upload_routes.py` but persisted in other endpoints. Security fixes must be applied systematically across the entire codebase, not just in the spot where they were first found.
 **Prevention:** When identifying a vulnerability pattern, search the entire codebase for similar occurrences (e.g., `grep` for `str(e)` inside `except` blocks) to ensure complete remediation.
+
+## 2025-05-27 - [Information Leakage in Summary API]
+**Vulnerability:** The `regenerate_with_feedback` endpoint in `src/api/summary_routes.py` caught generic `Exception` and yielded `str(e)` in the Server-Sent Events stream. This could expose internal error details like database connection strings to the client.
+**Learning:** Streaming responses are often overlooked when auditing error handling. The pattern of yielding `{"error": str(e)}` in a generator is just as dangerous as returning it in a standard JSON response.
+**Prevention:** Ensure that all error handlers, including those inside generators for streaming responses, log the actual error internally and yield/return a sanitized, generic error message to the client.
