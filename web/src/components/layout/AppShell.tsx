@@ -77,7 +77,7 @@ export function AppShell({ children, className }: AppShellProps) {
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className={cn("flex h-screen overflow-hidden", className)}>
+      <div className={cn("flex h-screen overflow-hidden pt-[var(--safe-area-top)]", className)}>
         {/* Desktop Sidebar */}
         <div className="hidden md:block">
           <Sidebar
@@ -96,7 +96,7 @@ export function AppShell({ children, className }: AppShellProps) {
               aria-hidden="true"
             />
             {/* Sidebar */}
-            <div className="fixed inset-y-0 left-0 z-50 md:hidden">
+            <div className="fixed inset-y-0 left-0 z-50 pt-[var(--safe-area-top)] md:hidden">
               <Sidebar
                 isCollapsed={false}
                 onToggleCollapse={() => setIsMobileMenuOpen(false)}

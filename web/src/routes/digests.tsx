@@ -465,7 +465,7 @@ function DigestsPage() {
         open={!!selectedDigestId}
         onOpenChange={(open) => !open && setSelectedDigestId(null)}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+        <DialogContent className="w-full md:w-[50vw] md:min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>{selectedDigest?.title ?? "Digest Details"}</DialogTitle>
             <DialogDescription>
@@ -485,7 +485,7 @@ function DigestsPage() {
             <ScrollArea className="flex-1 min-h-0 pr-4">
               <div className="space-y-6 py-4">
                 {/* Metadata row */}
-                <div className="grid grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                   <div>
                     <span className="text-muted-foreground">Content Items:</span>{" "}
                     <span className="font-medium">{selectedDigest.content_count}</span>

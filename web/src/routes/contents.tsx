@@ -632,7 +632,7 @@ function ContentsPage() {
           }
         }}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+        <DialogContent className="w-full md:w-[50vw] md:min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />

@@ -225,6 +225,9 @@ NEO4J_PASSWORD=newsletter_password
 | VITE_API_URL trailing slash | Causes double-slash (`//api/v1/`); strip with `.replace(/\/$/, "")` |
 | CORS blocks cross-origin frontend | Set `ALLOWED_ORIGINS` env var on backend with frontend URL |
 | Migrations create existing tables | Make idempotent: check `information_schema.tables` before `create_table` |
+| Dialog `min-w-[600px]` breaks mobile | Use `md:min-w-[600px]` — CSS `min-width` overrides `max-width`, causing overflow |
+| iOS status bar hides header | Apply `pt-[var(--safe-area-top)]` to AppShell root and fixed overlays |
+| Fixed grid-cols-N in dialogs | Use responsive breakpoints: `grid-cols-2 md:grid-cols-4` |
 
 ## Quick Links by Task
 

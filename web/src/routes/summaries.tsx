@@ -441,7 +441,7 @@ function SummariesPage() {
         open={!!selectedSummaryId}
         onOpenChange={(open) => !open && setSelectedSummaryId(null)}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+        <DialogContent className="w-full md:w-[50vw] md:min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>Summary Details</DialogTitle>
             <DialogDescription>
@@ -531,7 +531,7 @@ function SummariesPage() {
 
                 {/* Metadata */}
                 <div className="pt-4 border-t">
-                  <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
                     <div>
                       <span className="text-muted-foreground">Model:</span>{" "}
                       <span className="font-medium">{selectedSummary.model_used}</span>

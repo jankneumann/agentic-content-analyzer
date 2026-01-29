@@ -486,7 +486,7 @@ function ScriptsPage() {
         open={!!selectedScriptId}
         onOpenChange={(open) => !open && setSelectedScriptId(null)}
       >
-        <DialogContent className="w-[50vw] min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
+        <DialogContent className="w-full md:w-[50vw] md:min-w-[600px] max-w-[95vw] h-[70vh] min-h-[400px] max-h-[95vh] resize flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>Script Details</DialogTitle>
             <DialogDescription>
@@ -506,7 +506,7 @@ function ScriptsPage() {
                 <ScrollArea className="flex-1 min-h-0 pr-4">
                   <div className="space-y-6 py-4">
                     {/* Script metadata */}
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div>
                         <span className="text-sm text-muted-foreground">Title:</span>{" "}
                         <span className="font-medium">{script.title ?? "Untitled"}</span>
