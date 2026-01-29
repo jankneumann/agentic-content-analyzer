@@ -85,7 +85,7 @@ interface CollapsibleSummaryProps {
   defaultOpen?: boolean
 }
 
-function CollapsibleSummary({ summary, defaultOpen = false }: CollapsibleSummaryProps) {
+const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, defaultOpen = false }: CollapsibleSummaryProps) {
   const [isOpen, setIsOpen] = React.useState(defaultOpen)
 
   const sectionCount =
@@ -242,7 +242,7 @@ function CollapsibleSummary({ summary, defaultOpen = false }: CollapsibleSummary
       </div>
     </Collapsible>
   )
-}
+})
 
 interface SummarySectionProps {
   title: string
@@ -250,7 +250,7 @@ interface SummarySectionProps {
   children: React.ReactNode
 }
 
-function SummarySection({ title, icon, children }: SummarySectionProps) {
+const SummarySection = React.memo(function SummarySection({ title, icon, children }: SummarySectionProps) {
   return (
     <div>
       <h4 className="text-xs font-medium uppercase text-muted-foreground mb-1.5 flex items-center gap-1.5">
@@ -260,7 +260,7 @@ function SummarySection({ title, icon, children }: SummarySectionProps) {
       {children}
     </div>
   )
-}
+})
 
 interface CollapsibleSubSectionProps {
   title: string
@@ -270,7 +270,7 @@ interface CollapsibleSubSectionProps {
   children: React.ReactNode
 }
 
-function CollapsibleSubSection({
+const CollapsibleSubSection = React.memo(function CollapsibleSubSection({
   title,
   icon,
   count,
@@ -306,7 +306,7 @@ function CollapsibleSubSection({
       </CollapsibleContent>
     </Collapsible>
   )
-}
+})
 
 function EmptyState() {
   return (
