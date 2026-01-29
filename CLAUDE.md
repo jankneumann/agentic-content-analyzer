@@ -34,6 +34,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [UX Design](docs/UX_DESIGN.md) | Frontend patterns |
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
 | [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
+| [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
 
 **Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
 
@@ -218,6 +219,12 @@ NEO4J_PASSWORD=newsletter_password
 | Model-schema drift breaks migrations | Don't assume columns exist in DB; check before creating FK constraints |
 | Railway custom image build slow | Use GHCR pre-built image; Rust extensions take ~20 min to compile |
 | Railway MinIO auto-discovery | Set `RAILWAY_PUBLIC_DOMAIN` or explicit `RAILWAY_MINIO_ENDPOINT` |
+| Railway PORT is dynamic | Use `${PORT:-8000}` in shell form CMD; never hardcode port in Dockerfile |
+| Cloud DB has no tables | Supabase/Neon start empty; run `alembic upgrade head` against production |
+| Alembic multiple heads after relinearize | Run `alembic heads`; fix orphan `down_revision` to rejoin main chain |
+| VITE_API_URL trailing slash | Causes double-slash (`//api/v1/`); strip with `.replace(/\/$/, "")` |
+| CORS blocks cross-origin frontend | Set `ALLOWED_ORIGINS` env var on backend with frontend URL |
+| Migrations create existing tables | Make idempotent: check `information_schema.tables` before `create_table` |
 
 ## Quick Links by Task
 
@@ -242,6 +249,11 @@ NEO4J_PASSWORD=newsletter_password
 - Image storage configuration: [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional)
 - Database providers: [docs/SETUP.md#environment-configuration](docs/SETUP.md#environment-configuration)
 - Supabase storage setup: [docs/SETUP.md#supabase-storage-setup](docs/SETUP.md#supabase-storage-setup)
+
+### Deployment
+- Railway deployment guide: [docs/MOBILE_DEPLOYMENT.md#deployment](docs/MOBILE_DEPLOYMENT.md#deployment)
+- Deployment lessons learned: [docs/MOBILE_DEPLOYMENT.md#deployment-lessons-learned](docs/MOBILE_DEPLOYMENT.md#deployment-lessons-learned)
+- Docker entrypoint pattern: [docs/MOBILE_DEPLOYMENT.md#docker-entrypoint-pattern](docs/MOBILE_DEPLOYMENT.md#docker-entrypoint-pattern)
 
 ### Review & Delivery
 - Digest review workflow: [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md)

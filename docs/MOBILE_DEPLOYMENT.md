@@ -20,7 +20,11 @@
 | Railway deployment config | ✅ Complete | `Dockerfile`, `railway.toml` |
 | iOS Shortcuts documentation | ✅ Complete | `shortcuts/README.md` |
 | Mobile save template | ✅ Complete | `src/templates/save.html` |
-| Alembic migration for PGQueuer | ⏳ Pending | — |
+| Alembic migration for PGQueuer | ✅ Complete | `alembic/versions/f1a2b3c4d5e6_add_pgqueuer_jobs_table.py` |
+| Docker entrypoint with auto-migrations | ✅ Complete | `docker-entrypoint.sh` |
+| Frontend deployment (RAILPACK) | ✅ Complete | `web/railway.json` |
+| Watch paths for selective deploys | ✅ Complete | `railway.toml`, `web/railway.json` |
+| CORS for cross-origin frontend | ✅ Complete | `ALLOWED_ORIGINS` env var |
 | pg_cron scheduled jobs | ⏳ Pending | — |
 
 ### Key Implementation Decisions
@@ -276,6 +280,102 @@ SELECT cron.schedule(
     $$SELECT pgqueuer_enqueue('scan_newsletters', '{}')$$
 );
 ```
+
+## Deployment Lessons Learned
+
+Collected during the initial Railway deployment (January 2026).
+
+### Database Migrations Must Be Run Against Production
+
+Cloud database providers (Supabase, Neon) give you an **empty database**. Your application schema lives in Alembic migrations and must be explicitly applied:
+
+```bash
+# Run against production via Railway CLI
+railway run alembic upgrade head
+
+# Or check current state first
+railway run alembic current
+```
+
+The Docker entrypoint (`docker-entrypoint.sh`) now runs `alembic upgrade head` automatically on every container startup, ensuring the schema is always in sync with the deployed code.
+
+### Docker Entrypoint Pattern
+
+The container uses an entrypoint script instead of a direct `CMD`:
+
+```bash
+#!/bin/bash
+set -e
+echo "Running database migrations..."
+alembic upgrade head
+echo "Starting application..."
+exec uvicorn src.api.app:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+Key details:
+- `set -e` ensures the container fails fast if migrations fail
+- `exec` replaces the shell process so signals (SIGTERM) reach uvicorn
+- `${PORT:-8000}` uses Railway's dynamic PORT or defaults to 8000
+
+### Railway Dynamic PORT
+
+Railway assigns a PORT environment variable dynamically. The Dockerfile must **not** hardcode the port:
+
+```dockerfile
+# ✅ Correct: shell form expands $PORT
+CMD ["./docker-entrypoint.sh"]
+
+# ❌ Wrong: hardcoded port ignores Railway's assignment
+CMD ["uvicorn", "src.api.app:app", "--port", "8000"]
+```
+
+### Frontend as Separate Service
+
+The React/Vite frontend (`web/`) deploys as a separate Railway service using RAILPACK (auto-detects Vite, serves with Caddy). Key configuration:
+
+- **`VITE_API_URL`**: Must be set as a Railway env var pointing to the backend URL (e.g., `https://aca-production-410f.up.railway.app`)
+- **Trailing slash bug**: The API client strips trailing slashes from `VITE_API_URL` to prevent double-slash paths (`//api/v1/...`)
+- **CORS**: Backend must set `ALLOWED_ORIGINS` to include the frontend URL
+
+```bash
+# Backend env vars for CORS
+ALLOWED_ORIGINS=https://your-frontend.up.railway.app,http://localhost:5173
+```
+
+### Watch Paths for Monorepo
+
+Both services use watch paths to avoid unnecessary rebuilds:
+
+| Config | Watch Paths | Triggers On |
+|--------|-------------|-------------|
+| `railway.toml` (backend) | `src/**`, `alembic/**`, `Dockerfile`, `pyproject.toml`, etc. | Backend code changes |
+| `web/railway.json` (frontend) | `web/**` | Frontend code changes |
+
+### Idempotent Migrations
+
+Migrations that create tables or objects that might already exist (e.g., PGQueuer creates its own tables) must check first:
+
+```python
+def upgrade() -> None:
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT table_name FROM information_schema.tables WHERE table_name = 'my_table'"
+    ))
+    if result.fetchone():
+        return  # Already exists
+    op.create_table("my_table", ...)
+```
+
+### Alembic Multiple Heads
+
+Migration relinearization can create orphan branches (multiple heads). Diagnose with:
+
+```bash
+alembic heads     # Should show exactly ONE head
+alembic branches  # Shows where forks occurred
+```
+
+Fix by updating the orphan migration's `down_revision` to point to the correct parent in the main chain.
 
 ## Cost Estimate
 
