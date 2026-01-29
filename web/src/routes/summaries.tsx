@@ -596,6 +596,7 @@ function SummaryRow({
               className="h-7 w-7"
               onClick={onView}
               title="View summary details"
+              aria-label="View summary details"
             >
               <Eye className="h-4 w-4" />
             </Button>
@@ -610,6 +611,7 @@ function SummaryRow({
                 params={{ id: String(summary.content_id) }}
                 search={{ source: "content" }}
                 title="Review summary side-by-side"
+                aria-label="Review summary side-by-side"
               >
                 <FileSearch className="h-4 w-4" />
               </Link>

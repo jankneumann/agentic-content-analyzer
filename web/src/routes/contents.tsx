@@ -511,6 +511,7 @@ function ContentsPage() {
                               className="h-7 w-7"
                               onClick={() => setSelectedContentId(content.id)}
                               title="View content"
+                              aria-label="View content"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -526,6 +527,7 @@ function ContentsPage() {
                                   params={{ id: String(content.id) }}
                                   search={{ source: "content" }}
                                   title="Review summary"
+                                  aria-label="Review summary"
                                 >
                                   <FileSearch className="h-4 w-4" />
                                 </Link>
