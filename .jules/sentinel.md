@@ -17,3 +17,8 @@
 **Vulnerability:** The `LocalFileStorage._resolve_path` method simply concatenated the base path with the user-provided relative path using `pathlib.Path` division operator (`/`). This allowed attackers to access files outside the storage directory using `../` segments (e.g., `images/../../etc/passwd`).
 **Learning:** `pathlib.Path` concatenation does not automatically sandbox paths. If the right-hand operand contains `..`, the resulting path can resolve outside the left-hand operand's directory.
 **Prevention:** Always use `.resolve()` on the final path and check `path.is_relative_to(base_path.resolve())` to ensure the file remains within the intended directory.
+
+## 2025-05-26 - [Information Leakage in Chat API]
+**Vulnerability:** The `generate_ai_response_streaming` and `apply_action` endpoints in `src/api/chat_routes.py` caught generic `Exception` and returned `str(e)` to the client, leaking potential sensitive details.
+**Learning:** This vulnerability pattern (leaking `str(e)`) was previously identified in `upload_routes.py` but persisted in other endpoints. Security fixes must be applied systematically across the entire codebase, not just in the spot where they were first found.
+**Prevention:** When identifying a vulnerability pattern, search the entire codebase for similar occurrences (e.g., `grep` for `str(e)` inside `except` blocks) to ensure complete remediation.
