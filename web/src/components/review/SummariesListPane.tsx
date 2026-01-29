@@ -31,7 +31,8 @@ interface SummariesListPaneProps {
   className?: string
 }
 
-export function SummariesListPane({ summaries, isLoading = false, className }: SummariesListPaneProps) {
+// Memoized to prevent re-renders when parent layout changes (e.g. chat streaming, resizing)
+export const SummariesListPane = React.memo(function SummariesListPane({ summaries, isLoading = false, className }: SummariesListPaneProps) {
   if (isLoading) {
     return (
       <div className={cn("flex h-full flex-col", className)}>
@@ -78,7 +79,7 @@ export function SummariesListPane({ summaries, isLoading = false, className }: S
       </ScrollArea>
     </div>
   )
-}
+})
 
 interface CollapsibleSummaryProps {
   summary: DigestSourceSummary
