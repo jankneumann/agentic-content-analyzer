@@ -4,6 +4,15 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
+watchPatterns = [
+  "src/**",
+  "alembic/**",
+  "Dockerfile",
+  "docker-entrypoint.sh",
+  "pyproject.toml",
+  "uv.lock",
+  "railway.toml",
+]
 
 [deploy]
 # Health check configuration
