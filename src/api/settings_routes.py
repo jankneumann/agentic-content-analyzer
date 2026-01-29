@@ -6,9 +6,10 @@ Endpoints for managing application settings including:
 - Future: model preferences, feature flags, etc.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.api.dependencies import verify_admin_key
 from src.models.settings import PromptOverride
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
@@ -165,7 +166,11 @@ async def get_prompt(key: str) -> PromptInfo:
         )
 
 
-@router.put("/prompts/{key:path}", response_model=PromptUpdateResponse)
+@router.put(
+    "/prompts/{key:path}",
+    response_model=PromptUpdateResponse,
+    dependencies=[Depends(verify_admin_key)],
+)
 async def update_prompt(key: str, request: PromptUpdateRequest) -> PromptUpdateResponse:
     """Update or clear a prompt override.
 
@@ -212,7 +217,11 @@ async def update_prompt(key: str, request: PromptUpdateRequest) -> PromptUpdateR
             )
 
 
-@router.delete("/prompts/{key:path}", response_model=PromptUpdateResponse)
+@router.delete(
+    "/prompts/{key:path}",
+    response_model=PromptUpdateResponse,
+    dependencies=[Depends(verify_admin_key)],
+)
 async def reset_prompt(key: str) -> PromptUpdateResponse:
     """Reset a prompt override to its default value.
 
