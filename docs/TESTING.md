@@ -441,3 +441,229 @@ ModuleNotFoundError: No module named 'src'
 ```bash
 uv pip install -e ".[dev]"
 ```
+
+---
+
+## E2E Testing (Playwright)
+
+The frontend has a comprehensive Playwright E2E test suite covering all pages, dialogs, navigation, accessibility, and error states.
+
+### Quick Reference
+
+```bash
+cd web
+
+# Run all E2E tests (API mocked, no backend needed)
+pnpm test:e2e
+
+# Run specific project
+pnpm exec playwright test --project=chromium
+pnpm exec playwright test --project="Mobile Chrome"
+pnpm exec playwright test --project="Mobile Safari"
+
+# Run specific test folder or file
+pnpm exec playwright test tests/e2e/layout/
+pnpm exec playwright test tests/e2e/review/digest-review.spec.ts
+
+# Visual Playwright inspector (debug mode)
+pnpm test:e2e:ui
+
+# Run smoke tests (requires real backend running)
+pnpm test:e2e:smoke
+
+# View HTML report after a run
+pnpm exec playwright show-report
+```
+
+### Test Architecture
+
+Tests are organized by domain with shared infrastructure:
+
+```
+web/tests/e2e/
+├── fixtures/                     # Shared test infrastructure
+│   ├── index.ts                  # Custom test export with fixtures
+│   ├── base.page.ts              # Base page object (sidebar, header)
+│   ├── api-mocks.ts              # ApiMocks class (route interception)
+│   ├── mock-data.ts              # Typed response factories
+│   └── pages/*.page.ts           # Page objects (10 pages)
+├── layout/                       # Navigation, responsive, theme toggle
+├── dashboard/                    # Dashboard stats, quick actions
+├── contents/                     # List, detail dialog, ingest dialog
+├── summaries/                    # List, detail, generate
+├── digests/                      # List, detail, generate, review
+├── scripts/                      # List, detail, generate, review
+├── podcasts/                     # List, player, generate
+├── audio-digests/                # List, player, generate
+├── themes/                       # Analysis page, analyze dialog
+├── review/                       # Queue, digest/summary/script review
+├── cross-cutting/                # Accessibility, errors, loading, empty states
+├── smoke/                        # Integration tests (real backend)
+├── pwa.spec.ts                   # PWA manifest, offline, service worker
+└── generation-dialogs.spec.ts    # Generation dialog user flows
+```
+
+### Playwright Projects
+
+| Project | Purpose | API Mocking | Backend Required |
+|---------|---------|-------------|------------------|
+| `chromium` | Desktop Chrome (default) | Yes | No |
+| `Mobile Chrome` | Pixel 7 viewport | Yes | No |
+| `Mobile Safari` | iPhone 14 viewport | Yes | No |
+| `smoke` | Integration smoke tests | No | **Yes** |
+
+Default projects exclude smoke tests via `grepInvert: /@smoke/`.
+
+### API Mocking Strategy
+
+All non-smoke tests use **Playwright route interception** for deterministic, fast tests:
+
+```typescript
+import { test, expect } from "../fixtures"
+
+test.describe("My Feature", () => {
+  test.beforeEach(async ({ apiMocks }) => {
+    // Mock ALL API endpoints with default data
+    await apiMocks.mockAllDefaults()
+  })
+
+  test("renders data", async ({ page, contentsPage }) => {
+    await contentsPage.navigate()
+    await expect(page.getByRole("table")).toBeVisible()
+  })
+})
+```
+
+**Key `ApiMocks` methods:**
+- `mockAllDefaults()` — Mocks all endpoints with realistic data
+- `mockAllEmpty()` — Returns empty lists/zero counts (for empty state tests)
+- `mockAllErrors()` — Returns 500 errors (for error state tests)
+- `mockWithError(pattern, status, message)` — Mock specific endpoint with error
+- Individual methods: `mockContentsList()`, `mockDigestDetail()`, etc.
+
+### Page Object Pattern
+
+Page objects encapsulate locators and common actions:
+
+```typescript
+import { test, expect } from "../fixtures"
+
+test("contents page loads", async ({ contentsPage, apiMocks }) => {
+  await apiMocks.mockAllDefaults()
+  await contentsPage.navigate()  // Uses BasePage.goto("/contents")
+
+  await expect(contentsPage.table).toBeVisible()
+  await expect(contentsPage.searchInput).toBeVisible()
+})
+```
+
+### Mock Data Factories
+
+Typed factories in `fixtures/mock-data.ts` match API response shapes:
+
+```typescript
+import * as mockData from "../fixtures/mock-data"
+
+// Create with defaults
+const content = mockData.createContent()
+
+// Override specific fields
+const custom = mockData.createContentListItem({
+  title: "Custom Title",
+  status: "pending",
+})
+
+// Create list responses
+const listResponse = mockData.createContentListResponse({ total: 50 })
+```
+
+### Writing New Tests
+
+1. **Import from fixtures**, not `@playwright/test`:
+   ```typescript
+   import { test, expect } from "../fixtures"
+   ```
+
+2. **Always mock APIs** in `beforeEach`:
+   ```typescript
+   test.beforeEach(async ({ apiMocks }) => {
+     await apiMocks.mockAllDefaults()
+   })
+   ```
+
+3. **Use semantic locators** — prefer `getByRole()` over `getByText()`:
+   ```typescript
+   // ✅ Good — specific, resilient
+   page.getByRole("heading", { name: "Dashboard", level: 1 })
+   page.getByRole("button", { name: /generate/i })
+
+   // ❌ Avoid — matches substrings, ambiguous
+   page.getByText("Dashboard")
+   page.locator(".my-class")
+   ```
+
+4. **Handle strict mode** — Playwright rejects locators matching multiple elements:
+   ```typescript
+   // ✅ Scope to parent container
+   page.locator("main").getByText("Content")
+
+   // ✅ Use exact match
+   page.getByText("Source", { exact: true })
+
+   // ✅ Use .first() when multiple matches are expected
+   page.getByRole("button", { name: /close/i }).first()
+   ```
+
+5. **Route patterns must handle query params** — add trailing `*`:
+   ```typescript
+   // ✅ Matches /api/v1/items/1/navigation?status=pending
+   await page.route("**/api/v1/items/*/navigation*", handler)
+
+   // ❌ Won't match URLs with query parameters
+   await page.route("**/api/v1/items/*/navigation", handler)
+   ```
+
+6. **Mock data must be complete** — include all fields components access:
+   ```typescript
+   // ❌ Crashes: component does `obj.strategic_insights.length`
+   { id: 1, title: "Item" }
+
+   // ✅ Include arrays even if empty
+   { id: 1, title: "Item", strategic_insights: [], technical_details: [] }
+   ```
+
+### Common Pitfalls
+
+| Pitfall | Solution |
+|---------|----------|
+| `getByText("Content")` matches "Ingest Content" | Use `{ exact: true }` or `getByRole("link", { name: "Content", exact: true })` |
+| Sidebar text duplicates main content | Scope to `page.locator("main")` or `page.locator("aside")` |
+| Dialog has 2 close buttons (X + text) | Use `.first()` on `getByRole("button", { name: /close/i })` |
+| Route pattern misses query params | Add trailing `*`: `**/api/v1/path*` |
+| Mock missing array fields → crash | Components accessing `.length` on undefined throw; include all array fields |
+| Smoke tests fail without backend | Expected — smoke tests excluded from default projects via `grepInvert` |
+| PWA manifest returns HTML in dev | VitePWA only serves manifest in production builds |
+| Route handler not matching | Routes are LIFO — register specific patterns AFTER general ones |
+| Stats cards text matches table badges | Scope stats assertions to `.grid` container: `page.locator(".grid").first()` |
+
+### Accessibility Testing
+
+All pages are audited with `@axe-core/playwright` for WCAG 2.0 AA:
+
+```typescript
+import AxeBuilder from "@axe-core/playwright"
+
+const results = await new AxeBuilder({ page })
+  .disableRules(["heading-order", "button-name", "scrollable-region-focusable"])
+  .analyze()
+
+const violations = results.violations.filter(
+  (v) => v.impact === "critical" || v.impact === "serious"
+)
+expect(violations).toEqual([])
+```
+
+**Disabled rules** (known app-level issues, not test bugs):
+- `heading-order` — Heading levels not sequential in some layouts
+- `button-name` — Some icon-only buttons lack discernible text
+- `scrollable-region-focusable` — Main scrollable region needs tabIndex

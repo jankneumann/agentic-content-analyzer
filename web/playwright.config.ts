@@ -46,14 +46,17 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      grepInvert: /@smoke/,
     },
     {
       name: "Mobile Chrome",
       use: { ...devices["Pixel 7"] },
+      grepInvert: /@smoke/,
     },
     {
       name: "Mobile Safari",
       use: { ...devices["iPhone 14"] },
+      grepInvert: /@smoke/,
     },
     {
       name: "smoke",

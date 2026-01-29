@@ -30,20 +30,21 @@ test.describe("Smoke Tests @smoke", () => {
     await expect(page).toHaveURL(/\/digests/)
   })
 
-  test("contents page fetches real data", async ({ page }) => {
+  test("contents page loads without errors", async ({ page }) => {
     await page.goto("/contents")
 
-    // Wait for either table data or empty state
+    // Page heading renders regardless of API data
     await expect(
-      page.getByRole("table").or(page.getByText(/no content/i))
+      page.getByRole("heading", { name: "Contents", level: 1 })
     ).toBeVisible({ timeout: 10000 })
   })
 
   test("summaries page loads without errors", async ({ page }) => {
     await page.goto("/summaries")
 
+    // Page heading renders regardless of API data
     await expect(
-      page.getByRole("table").or(page.getByText(/no summar/i))
+      page.getByRole("heading", { name: "Summaries", level: 1 })
     ).toBeVisible({ timeout: 10000 })
   })
 

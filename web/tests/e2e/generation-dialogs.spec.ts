@@ -1,14 +1,15 @@
-import { test, expect } from "@playwright/test"
-
 /**
  * E2E Tests for Generation Dialogs
  *
  * Tests the full user flow for triggering various generation tasks
- * through the UI dialogs.
+ * through the UI dialogs. Uses API mocking for consistent rendering.
  */
 
+import { test, expect } from "./fixtures"
+
 test.describe("Theme Analysis Dialog", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
     await page.goto("/themes")
   })
 
@@ -28,9 +29,9 @@ test.describe("Theme Analysis Dialog", () => {
     await page.click('button[role="tab"]:has-text("Last Month")')
     await expect(page.locator('button[role="tab"][data-state="active"]')).toHaveText("Last Month")
 
-    // Click Custom tab
+    // Click Custom tab — shows 2 date inputs (start + end)
     await page.click('button[role="tab"]:has-text("Custom")')
-    await expect(page.locator('input[type="date"]')).toBeVisible()
+    await expect(page.locator('input[type="date"]').first()).toBeVisible()
   })
 
   test("can configure analysis parameters", async ({ page }) => {
@@ -61,7 +62,8 @@ test.describe("Theme Analysis Dialog", () => {
 })
 
 test.describe("Digest Generation Dialog", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
     await page.goto("/digests")
   })
 
@@ -93,7 +95,8 @@ test.describe("Digest Generation Dialog", () => {
 })
 
 test.describe("Summary Generation Dialog", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
     await page.goto("/summaries")
   })
 
@@ -105,7 +108,8 @@ test.describe("Summary Generation Dialog", () => {
 })
 
 test.describe("Script Generation Dialog", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
     await page.goto("/scripts")
   })
 
@@ -126,7 +130,8 @@ test.describe("Script Generation Dialog", () => {
 })
 
 test.describe("Podcast Audio Generation Dialog", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
     await page.goto("/podcasts")
   })
 
@@ -139,15 +144,18 @@ test.describe("Podcast Audio Generation Dialog", () => {
 })
 
 test.describe("Ingest Contents Dialog", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
     await page.goto("/contents")
   })
 
   test("opens ingest dialog", async ({ page }) => {
     await page.click('button:has-text("Ingest")')
 
-    await expect(page.getByRole("dialog")).toBeVisible()
-    await expect(page.getByText("Source")).toBeVisible()
+    const dialog = page.getByRole("dialog")
+    await expect(dialog).toBeVisible()
+    // "Source" appears as both a tab label and form label; scope to dialog + first()
+    await expect(dialog.getByText("Source", { exact: true }).first()).toBeVisible()
   })
 
   test("can select Gmail or RSS source", async ({ page }) => {
@@ -160,6 +168,10 @@ test.describe("Ingest Contents Dialog", () => {
 })
 
 test.describe("Background Tasks Indicator", () => {
+  test.beforeEach(async ({ apiMocks }) => {
+    await apiMocks.mockAllDefaults()
+  })
+
   test("shows background tasks panel when task is running", async ({ page }) => {
     // Go to themes and trigger an analysis
     await page.goto("/themes")

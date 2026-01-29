@@ -237,8 +237,15 @@ NEO4J_PASSWORD=newsletter_password
 | Fixed grid-cols-N in dialogs | Use responsive breakpoints: `grid-cols-2 md:grid-cols-4` |
 | E2E tests need `--ignore-snapshots` | Default `test:e2e` script adds this flag; snapshot tests not used |
 | E2E mock data must use snake_case | API responses use snake_case; mock factories in `fixtures/mock-data.ts` |
-| E2E smoke tests need real backend | `pnpm test:e2e:smoke` requires backend running; excluded from default run |
+| E2E smoke tests need real backend | `pnpm test:e2e:smoke` requires backend running; excluded via `grepInvert: /@smoke/` |
 | Import `test` from `../fixtures` | E2E tests must import custom `test` (not `@playwright/test`) for page objects and mocks |
+| Playwright strict mode violations | Use `.first()`, `{ exact: true }`, or scope to parent (`.locator("main")`) when locators match multiple elements |
+| Playwright route needs trailing `*` | Route patterns like `**/api/v1/items/*/nav` won't match query params; add trailing `*` |
+| Mock data must include all array fields | Components accessing `obj.field.length` crash if `field` is undefined; include empty `[]` arrays |
+| `getByText` matches substrings | `getByText("Content")` matches "Ingest Content" too; use `{ exact: true }` or `getByRole` |
+| Sidebar text duplicates main content | Scope to `page.locator("main")` or `page.locator("aside")` to avoid matching both |
+| VitePWA manifest not in dev mode | `/manifest.webmanifest` returns HTML in dev; manifest only generated in production builds |
+| Route registration order is LIFO | Playwright matches last-registered route first; register specific routes after general ones |
 
 ## Quick Links by Task
 
@@ -258,6 +265,7 @@ NEO4J_PASSWORD=newsletter_password
 - Database provider tests: [docs/DEVELOPMENT.md#database-provider-testing](docs/DEVELOPMENT.md#database-provider-testing)
 - Neon integration tests: [docs/SETUP.md#test-architecture](docs/SETUP.md#test-architecture)
 - Supabase integration tests: [docs/SETUP.md#supabase-test-architecture](docs/SETUP.md#supabase-test-architecture)
+- E2E testing guide: [docs/TESTING.md#e2e-testing-playwright](docs/TESTING.md#e2e-testing-playwright)
 - E2E test infrastructure: `web/tests/e2e/fixtures/` (page objects, API mocks, mock data factories)
 - E2E page objects: `web/tests/e2e/fixtures/pages/*.page.ts`
 
