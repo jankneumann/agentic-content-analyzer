@@ -1,10 +1,11 @@
 ## 1. Source Configuration Foundation
 
 - [ ] 1.1 Create `src/config/sources.py` with Pydantic models for source config (`SourceBase`, `RSSSource`, `YouTubePlaylistSource` with `visibility` field, `YouTubeChannelSource` with `visibility` field, `YouTubeRSSSource`, `PodcastSource`, `GmailSource`, `SourcesConfig`)
-- [ ] 1.2 Add `SOURCES_CONFIG_FILE` setting to `src/config/settings.py` (default: `sources.yaml`)
-- [ ] 1.3 Add `get_sources_config()` method to Settings that loads and validates `sources.yaml`
-- [ ] 1.4 Implement fallback logic: if `sources.yaml` missing, read from `rss_feeds.txt` + `youtube_playlists.txt`
-- [ ] 1.5 Write unit tests for source config parsing, validation, and fallback behavior
+- [ ] 1.2 Add `SOURCES_CONFIG_DIR` and `SOURCES_CONFIG_FILE` settings to `src/config/settings.py` (defaults: `sources.d` and `sources.yaml`)
+- [ ] 1.3 Implement `sources.d/` directory loader: scan `*.yaml` files alphabetically, apply cascading defaults (`_defaults.yaml` globals → per-file `defaults` → per-entry fields), merge all `sources` lists
+- [ ] 1.4 Add `get_sources_config()` method to Settings with three-tier resolution: `sources.d/` → `sources.yaml` → legacy fallback
+- [ ] 1.5 Implement legacy fallback logic: if neither `sources.d/` nor `sources.yaml` exist, read from `rss_feeds.txt` + `youtube_playlists.txt`
+- [ ] 1.6 Write unit tests for source config parsing, validation, directory loading, per-file defaults (including `type` default), cascading default resolution, single-file loading, and fallback behavior
 
 ## 2. Migration Tooling
 
@@ -13,8 +14,10 @@
 - [ ] 2.3 Implement `youtube_playlists.txt` → YAML converter (preserving descriptions)
 - [ ] 2.4 Implement `AI-ML-Data-News.md` parser to extract RSS feeds, podcast feeds, and YouTube channels with names
 - [ ] 2.5 Implement deduplication across all inputs (by URL/ID)
-- [ ] 2.6 Generate initial `sources.yaml` from existing config + markdown reference
-- [ ] 2.7 Write tests for migration script (markdown parsing, dedup, output format)
+- [ ] 2.6 Implement `--output-dir sources.d` mode: split by type into `_defaults.yaml`, `rss.yaml`, `youtube.yaml`, `podcasts.yaml`, `gmail.yaml`
+- [ ] 2.7 Implement `--output sources.yaml` mode: single merged file (for simpler setups)
+- [ ] 2.8 Generate initial `sources.d/` from existing config + markdown reference
+- [ ] 2.9 Write tests for migration script (markdown parsing, dedup, split output, single file output)
 
 ## 3. RSS Ingestion Integration
 

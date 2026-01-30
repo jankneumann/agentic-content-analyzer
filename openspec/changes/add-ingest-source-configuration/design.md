@@ -15,9 +15,9 @@ A reference file (`AI-ML-Data-News.md`) contains ~350 RSS news feeds, ~70 podcas
 ## Goals / Non-Goals
 
 ### Goals
-- Single file for all ingestion source definitions
+- Unified config for all ingestion source definitions, split by type into `sources.d/*.yaml`
 - Human-readable format with metadata (names, tags, descriptions)
-- Support YouTube channels and podcast RSS feeds as new source types
+- Support YouTube playlists, channels, RSS feeds, and podcast RSS feeds
 - Per-source configuration (language prefs, max entries, enabled/disabled)
 - Backward compatibility with existing config files during transition
 - Parseable by both humans and tooling
@@ -30,17 +30,20 @@ A reference file (`AI-ML-Data-News.md`) contains ~350 RSS news feeds, ~70 podcas
 
 ## Decisions
 
-### Decision 1: YAML over JSON for config format
-**Choice**: YAML (`sources.yaml`)
-**Rationale**: YAML supports comments (critical for documenting sources), is more readable for large lists, and is the standard for configuration files in Python ecosystems. JSON lacks comments and becomes unwieldy at 500+ entries.
+### Decision 1: YAML format with `sources.d/` directory and per-file defaults
+**Choice**: YAML config files in a `sources.d/` directory. Each file can define `defaults` at the top level (including `type`), which are applied to all `sources` entries in that file. Files can be organized by source type (e.g., `rss.yaml`) or by topic (e.g., `ai-research.yaml` mixing RSS + YouTube + Podcast).
+**Rationale**: With ~500+ sources across 6 types, a single monolithic file becomes unwieldy (~2000 lines). Per-file defaults eliminate repetition — a file like `rss.yaml` sets `type: rss` once in defaults rather than on every entry. Topic-based files (e.g., `ai-research.yaml`) can mix types by overriding `type` per entry. YAML supports comments (critical for documenting sources) and is the standard for configuration files in Python ecosystems.
+**Loading order**: The system loads all `*.yaml` files from `sources.d/` alphabetically and merges them into a single `SourcesConfig`. Global defaults from `_defaults.yaml` (if present) are applied first, then per-file defaults override globals, then per-entry fields override file defaults.
+**Default resolution**: `_defaults.yaml globals` → `per-file defaults` → `per-entry fields` (most specific wins)
 **Alternatives considered**:
+- Single `sources.yaml` — unwieldy at 500+ entries, hard to navigate by type
 - JSON — no comments, verbose for nested config
 - TOML — awkward for arrays of heterogeneous objects
 - Python dict — not editable by non-developers
 
 ### Decision 2: Flat source list with type discriminator
 **Choice**: Each source entry has an explicit `type` field (`rss`, `youtube_playlist`, `youtube_channel`, `youtube_rss`, `podcast`, `gmail`)
-**Rationale**: Simpler to validate, search, and filter than nested grouping. Enables mixed ordering (e.g., grouping by topic across types). Tags provide the grouping mechanism.
+**Rationale**: Simpler to validate, search, and filter than nested grouping. Enables mixed ordering (e.g., grouping by topic across types). Tags provide the grouping mechanism. YouTube playlists remain a first-class type — the existing `youtube_playlists.txt` entries map directly to `type: youtube_playlist` entries.
 **Alternative considered**: Nested by source type (e.g., `youtube.channels[]`, `rss.feeds[]`) — harder to reorder, duplicates structure.
 
 ### Decision 3: Pydantic models for source config validation
@@ -89,36 +92,74 @@ A reference file (`AI-ML-Data-News.md`) contains ~350 RSS news feeds, ~70 podcas
 - Logs clearly indicate which sources were skipped and why
 
 ### Decision 6: Backward compatibility approach
-**Choice**: If `sources.yaml` exists, use it exclusively. If not, fall back to `rss_feeds.txt` + `youtube_playlists.txt`.
-**Rationale**: Clean migration path. Operators can migrate at their own pace. Once `sources.yaml` is adopted, legacy files can be removed.
+**Choice**: If `sources.d/` directory exists, load all YAML files from it. Else if `sources.yaml` exists, use it. Otherwise, fall back to `rss_feeds.txt` + `youtube_playlists.txt`.
+**Rationale**: Clean migration path with three tiers. Operators can migrate at their own pace. The `sources.d/` directory is the recommended layout for production use. A single `sources.yaml` is supported for simpler setups. Legacy files work until migration is complete.
 
-## Config File Schema
+## Config Directory Structure
+
+The recommended layout uses a `sources.d/` directory at the project root. Files can be organized **by type** or **by topic** — or a mix of both:
+
+```
+sources.d/
+├── _defaults.yaml          # Global defaults (loaded first due to _ prefix)
+├── rss.yaml                # RSS article feeds (~350 entries)
+├── youtube.yaml            # YouTube playlists, channels, and RSS feeds (~120+ entries)
+├── podcasts.yaml           # Podcast RSS feeds (~70 entries)
+├── gmail.yaml              # Gmail query sources
+└── ai-research.yaml        # (optional) Mixed-type file grouped by topic
+```
+
+A single `sources.yaml` file is also supported for simpler setups.
+
+### Default Resolution Order
+
+Each file can define its own `defaults` section. Values cascade in this order (most specific wins):
+
+```
+_defaults.yaml (global) → per-file defaults → per-entry fields
+```
+
+For example, `rss.yaml` sets `defaults.type: rss` so entries don't need to repeat `type: rss` on every line. A topic file like `ai-research.yaml` leaves `type` unset in defaults and specifies it per entry instead.
+
+### `sources.d/_defaults.yaml`
 
 ```yaml
-# sources.yaml — Unified ingestion source configuration
+# Global defaults — applied to all sources across all files
 version: 1
 
-# Global defaults (overridable per source)
 defaults:
   max_entries: 10
   days_back: 7
   enabled: true
+```
+
+### `sources.d/rss.yaml`
+
+```yaml
+# Per-file default: all entries in this file are type: rss
+defaults:
+  type: rss
 
 sources:
-  # --- RSS Article Feeds ---
-  - type: rss
-    url: https://www.latent.space/feed
+  # No need to repeat "type: rss" — inherited from file defaults
+  - url: https://www.latent.space/feed
     name: Latent Space
     tags: [ai, engineering, newsletter]
-    max_entries: 20  # Override default
+    max_entries: 20  # Override global default
 
-  - type: rss
-    url: https://blog.bytebytego.com/feed
+  - url: https://blog.bytebytego.com/feed
     name: ByteByteGo
     tags: [architecture, systems]
     enabled: false  # Temporarily disabled
+```
 
-  # --- YouTube Playlists ---
+### `sources.d/youtube.yaml`
+
+```yaml
+# YouTube file — mixes playlists, channels, and RSS feeds
+# No single type default since this file contains multiple YouTube types
+sources:
+  # --- YouTube Playlists (existing, migrated from youtube_playlists.txt) ---
   - type: youtube_playlist
     id: PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6
     name: Public test playlist
@@ -131,47 +172,102 @@ sources:
     visibility: private  # Requires OAuth — skipped if token expired
     tags: [ai, curated]
 
-  # --- YouTube Channels (NEW) ---
+  # --- YouTube Channels (NEW — resolved to uploads playlist via API) ---
   - type: youtube_channel
     channel_id: UCbfYPyITQ-7l4upoX8nvctg
     name: Two Minute Papers
-    visibility: public  # Channels are public by default
+    visibility: public
     tags: [ai, research, video]
     languages: [en]
 
-  # --- YouTube RSS Feeds (NEW) ---
+  # --- YouTube RSS Feeds (NEW — zero API quota, parsed via feedparser) ---
   - type: youtube_rss
     url: https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg
     name: Two Minute Papers
     tags: [ai, research]
+```
 
-  # --- Podcast RSS Feeds (NEW) ---
-  - type: podcast
-    url: https://feeds.megaphone.fm/hubermanlab
+### `sources.d/podcasts.yaml`
+
+```yaml
+# Per-file default: all entries are type: podcast
+defaults:
+  type: podcast
+  transcribe: true
+  stt_provider: openai
+
+sources:
+  - url: https://feeds.megaphone.fm/hubermanlab
     name: Huberman Lab
     tags: [science, health]
-    transcribe: true  # Enable audio STT fallback if no text transcript found
-    stt_provider: openai  # openai | local_whisper (only used as fallback)
     languages: [en]
 
-  # --- Gmail (existing, now in config) ---
-  - type: gmail
-    query: "label:newsletters-ai"
+  - url: https://lexfridman.com/feed/podcast/
+    name: Lex Fridman Podcast
+    tags: [ai, interviews]
+    transcribe: false  # Override: transcripts available in feed
+```
+
+### `sources.d/gmail.yaml`
+
+```yaml
+defaults:
+  type: gmail
+
+sources:
+  - query: "label:newsletters-ai"
     name: AI Newsletter Label
     tags: [newsletters]
     max_results: 50
 ```
 
+### `sources.d/ai-research.yaml` (optional — topic-based mixed-type file)
+
+```yaml
+# Topic-based file: groups AI research sources across types
+# No type default — each entry specifies its own type
+sources:
+  - type: rss
+    url: https://arxiv.org/rss/cs.AI
+    name: arXiv CS.AI
+    tags: [ai, research, papers]
+
+  - type: youtube_channel
+    channel_id: UCbfYPyITQ-7l4upoX8nvctg
+    name: Two Minute Papers
+    tags: [ai, research, video]
+
+  - type: podcast
+    url: https://feeds.megaphone.fm/TWiML
+    name: TWIML AI Podcast
+    tags: [ai, research, interviews]
+    transcribe: true
+```
+
 ## Pydantic Model Hierarchy
 
 ```python
+class SourceDefaults(BaseModel):
+    """Defaults that can be set globally (_defaults.yaml) or per file.
+    Any field here can be overridden per source entry."""
+    type: str | None = None  # Allows per-file type default (e.g., "rss")
+    enabled: bool = True
+    max_entries: int = 10
+    days_back: int = 7
+    tags: list[str] = []
+    # Type-specific defaults (only applied when type matches)
+    visibility: Literal["public", "private"] = "public"
+    transcribe: bool = True
+    stt_provider: Literal["openai", "local_whisper"] = "openai"
+    languages: list[str] = ["en"]
+
 class SourceBase(BaseModel):
     """Base for all source definitions."""
     type: str
     name: str | None = None
     tags: list[str] = []
     enabled: bool = True
-    max_entries: int | None = None  # Override global default
+    max_entries: int | None = None  # Override global/file default
 
 class RSSSource(SourceBase):
     type: Literal["rss"] = "rss"
@@ -211,10 +307,42 @@ Source = Annotated[
     Field(discriminator="type"),
 ]
 
+class SourceFileConfig(BaseModel):
+    """Schema for each YAML file in sources.d/"""
+    defaults: SourceDefaults = SourceDefaults()  # Per-file defaults
+    sources: list[dict] = []  # Raw dicts — defaults applied before validation
+
 class SourcesConfig(BaseModel):
+    """Merged config after loading all files."""
     version: int = 1
-    defaults: SourceDefaults = SourceDefaults()
+    defaults: SourceDefaults = SourceDefaults()  # Global defaults
     sources: list[Source] = []
+```
+
+### Default Application Logic
+
+```python
+def load_sources_directory(sources_dir: Path) -> SourcesConfig:
+    """Load and merge all YAML files from sources.d/"""
+    global_defaults = {}
+    all_sources = []
+
+    for yaml_file in sorted(sources_dir.glob("*.yaml")):
+        file_config = SourceFileConfig(**yaml.safe_load(yaml_file))
+
+        if yaml_file.name == "_defaults.yaml":
+            global_defaults = file_config.defaults.model_dump(exclude_unset=True)
+            continue
+
+        file_defaults = file_config.defaults.model_dump(exclude_unset=True)
+
+        for raw_source in file_config.sources:
+            # Merge: global defaults → file defaults → entry fields
+            merged = {**global_defaults, **file_defaults, **raw_source}
+            all_sources.append(merged)
+
+    # Validate all merged entries via discriminated union
+    return SourcesConfig(sources=all_sources)
 ```
 
 ## Podcast Ingestion Architecture
@@ -263,6 +391,10 @@ Dedup check (source_id = podcast:{episode_guid})
 ## Migration Script Design
 
 ```bash
+# Output split by type into sources.d/ (recommended)
+python -m src.config.migrate_sources [--from-markdown AI-ML-Data-News.md] [--output-dir sources.d]
+
+# Output single file (simpler setups)
 python -m src.config.migrate_sources [--from-markdown AI-ML-Data-News.md] [--output sources.yaml]
 ```
 
@@ -275,18 +407,19 @@ The migration script will:
    - "AI, ML, Big Data Podcasts" → `type: podcast` entries
    - "AI, ML, Big Data Videos" → `type: youtube_rss` entries (with channel_id extracted from URL)
 5. Deduplicate URLs across all inputs
-6. Output merged `sources.yaml`
+6. Output either:
+   - `--output-dir sources.d/` → split files by type: `_defaults.yaml`, `rss.yaml`, `youtube.yaml`, `podcasts.yaml`, `gmail.yaml`
+   - `--output sources.yaml` → single merged file (default)
 
 ## Risks / Trade-offs
 
-- **Large config file**: ~500+ sources will make `sources.yaml` long (~2000 lines). Mitigation: good commenting, tags for filtering, and future support for `sources.d/` directory pattern.
+- **Config file management at scale**: ~500+ sources across 6 types. Mitigation: `sources.d/` directory splits by type, keeping each file focused (~50-350 entries). Migration script outputs split layout by default.
 - **Podcast transcription costs**: Tier 1-2 (text transcripts) are free. Tier 3 (audio STT) costs $0.006/min. With transcript-first strategy, most podcasts won't need audio transcription. Mitigation: `transcribe: false` default for bulk import, enable selectively.
-- **YouTube API quota**: Channel resolution uses 1 unit per call (10,000 daily quota). With ~120 channels, this is negligible. RSS feeds use zero quota.
+- **YouTube API quota**: Channel resolution uses 1 unit per call (10,000 daily quota). With ~120 channels, this is negligible. Playlist ingestion uses existing quota. RSS feeds use zero quota.
 - **STT dependency**: Adds OpenAI Whisper as a new dependency for podcast audio fallback. Already have `OPENAI_API_KEY`.
-- **YouTube OAuth expiry**: Token expires periodically, blocking private playlist access. Mitigation: `visibility` flag enables graceful degradation — public sources continue via API key.
+- **YouTube OAuth expiry**: Token expires periodically, blocking private playlist access. Mitigation: `visibility` flag enables graceful degradation — public playlists and channels continue via API key.
 
 ## Open Questions
 
-1. Should we support `sources.d/*.yaml` directory for splitting large configs by category?
-2. Should podcast audio transcription (Tier 3) be synchronous or queued via Celery for long episodes?
-3. Should YouTube RSS feeds trigger transcript fetching (requires video ID extraction)?
+1. Should podcast audio transcription (Tier 3) be synchronous or queued via Celery for long episodes?
+2. Should YouTube RSS feeds trigger transcript fetching (requires video ID extraction)?

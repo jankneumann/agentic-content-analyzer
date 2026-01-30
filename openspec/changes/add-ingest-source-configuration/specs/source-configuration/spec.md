@@ -1,23 +1,42 @@
 ## ADDED Requirements
 
 ### Requirement: Unified Source Configuration File
-The system SHALL load ingestion source definitions from a single YAML configuration file (`sources.yaml`) at the project root.
+The system SHALL load ingestion source definitions from YAML configuration files. The system SHALL support two layouts:
+1. **Directory layout** (`sources.d/`): Multiple YAML files split by source type, loaded alphabetically and merged
+2. **Single file layout** (`sources.yaml`): All sources in one file
 
-The configuration file SHALL support a `version` field, global `defaults`, and a `sources` list where each entry has a `type` discriminator field.
+Each YAML file SHALL support a `defaults` section and a `sources` list. Defaults (including `type`) cascade: `_defaults.yaml` globals → per-file `defaults` → per-entry fields (most specific wins). This allows type-specific files (e.g., `rss.yaml` with `defaults.type: rss`) and topic-based mixed-type files (e.g., `ai-research.yaml` with `type` per entry).
 
-#### Scenario: Load sources from YAML
-- **WHEN** `sources.yaml` exists at the configured path
-- **THEN** the system loads and validates all source entries using Pydantic models
+#### Scenario: Load sources from `sources.d/` directory
+- **WHEN** a `sources.d/` directory exists at the project root
+- **THEN** the system loads all `*.yaml` files from the directory in alphabetical order
+- **AND** merges all `sources` lists into a single validated `SourcesConfig`
+- **AND** applies defaults from `_defaults.yaml` (if present) to all sources
+- **AND** sources with `enabled: false` are excluded from ingestion
+
+#### Scenario: Load sources from single `sources.yaml`
+- **WHEN** `sources.d/` does not exist but `sources.yaml` exists at the configured path
+- **THEN** the system loads and validates all source entries from the single file using Pydantic models
 - **AND** sources with `enabled: false` are excluded from ingestion
 
 #### Scenario: Fallback to legacy config files
-- **WHEN** `sources.yaml` does not exist
+- **WHEN** neither `sources.d/` nor `sources.yaml` exist
 - **THEN** the system falls back to reading `rss_feeds.txt` and `youtube_playlists.txt`
-- **AND** a warning is logged recommending migration to `sources.yaml`
+- **AND** a warning is logged recommending migration to `sources.d/`
+
+#### Scenario: Per-file type default
+- **WHEN** a YAML file in `sources.d/` defines `defaults: { type: rss }`
+- **THEN** all source entries in that file inherit `type: rss` unless the entry overrides `type` explicitly
+- **AND** entries without a `url` field (required for `type: rss`) still fail validation
+
+#### Scenario: Topic-based mixed-type file
+- **WHEN** a YAML file defines sources with different `type` values per entry and no `type` in `defaults`
+- **THEN** each entry is validated independently using its own `type` discriminator
+- **AND** entries missing `type` (with no file-level default) raise a validation error
 
 #### Scenario: Invalid YAML config
-- **WHEN** `sources.yaml` contains invalid entries (missing required fields, unknown type)
-- **THEN** the system raises a validation error with specific field-level details
+- **WHEN** any YAML config file contains invalid entries (missing required fields, unknown type)
+- **THEN** the system raises a validation error with specific field-level details including the filename
 - **AND** valid sources are not partially loaded (fail-fast behavior)
 
 ### Requirement: Source Type Support
@@ -33,14 +52,24 @@ The system SHALL support the following source types in the configuration file:
 - **WHEN** a source with `type: rss` and `url` field is defined
 - **THEN** the system includes it in RSS ingestion with optional `name`, `tags`, and `max_entries` override
 
+#### Scenario: YouTube playlist source entry
+- **WHEN** a source with `type: youtube_playlist` and `id` field is defined
+- **THEN** the system ingests videos from the playlist using the existing `ingest_playlist()` method
+- **AND** respects the `visibility` field for OAuth graceful degradation
+
 #### Scenario: YouTube channel source entry
 - **WHEN** a source with `type: youtube_channel` and `channel_id` field is defined
 - **THEN** the system resolves the channel ID to an uploads playlist ID via the YouTube Data API
 - **AND** ingests videos from the resolved playlist
 
+#### Scenario: YouTube RSS source entry
+- **WHEN** a source with `type: youtube_rss` and `url` field is defined
+- **THEN** the system parses the YouTube RSS feed to extract video IDs and metadata
+- **AND** fetches transcripts for discovered videos using the existing transcript pipeline
+
 #### Scenario: Podcast source entry
 - **WHEN** a source with `type: podcast` and `url` field is defined
-- **THEN** the system fetches the podcast RSS feed, downloads audio enclosures, and transcribes them
+- **THEN** the system fetches the podcast RSS feed and applies the transcript-first strategy
 - **AND** stores the transcript as a Content record with `source_type=PODCAST`
 
 ### Requirement: Per-Source Metadata
@@ -136,14 +165,19 @@ When the YouTube OAuth token is expired or unavailable, the system SHALL:
 - **AND** continues processing non-YouTube sources (RSS, Gmail, Podcast)
 
 ### Requirement: Migration Script
-The system SHALL provide a CLI migration script that converts existing configuration files into `sources.yaml`.
+The system SHALL provide a CLI migration script that converts existing configuration files into the `sources.d/` directory layout or a single `sources.yaml`.
 
 The script SHALL support importing from `rss_feeds.txt`, `youtube_playlists.txt`, and optionally from the `AI-ML-Data-News.md` reference file.
 
-#### Scenario: Migrate existing config files
-- **WHEN** the migration script is run without `--from-markdown`
+#### Scenario: Migrate to split directory layout (default)
+- **WHEN** the migration script is run with `--output-dir sources.d`
+- **THEN** it creates `sources.d/` with separate files per type: `_defaults.yaml`, `rss.yaml`, `youtube.yaml`, `podcasts.yaml`, `gmail.yaml`
+- **AND** each file contains only sources of its type
+
+#### Scenario: Migrate to single file
+- **WHEN** the migration script is run with `--output sources.yaml`
 - **THEN** it reads `rss_feeds.txt` and `youtube_playlists.txt`
-- **AND** outputs a valid `sources.yaml` with all entries
+- **AND** outputs a valid `sources.yaml` with all entries in a single file
 
 #### Scenario: Migrate with markdown reference
 - **WHEN** the migration script is run with `--from-markdown AI-ML-Data-News.md`
@@ -157,13 +191,18 @@ The script SHALL support importing from `rss_feeds.txt`, `youtube_playlists.txt`
 
 ### Requirement: Source Configuration Settings
 The system SHALL provide the following settings for source configuration:
-- `SOURCES_CONFIG_FILE` — path to `sources.yaml` (default: `sources.yaml` in project root)
+- `SOURCES_CONFIG_DIR` — path to `sources.d/` directory (default: `sources.d` in project root)
+- `SOURCES_CONFIG_FILE` — path to `sources.yaml` fallback (default: `sources.yaml` in project root)
 - `PODCAST_STT_PROVIDER` — STT provider for podcast transcription (`openai` or `local_whisper`, default: `openai`)
 - `PODCAST_MAX_DURATION_MINUTES` — maximum episode duration to transcribe (default: `120`)
 - `PODCAST_TEMP_DIR` — temporary directory for audio downloads (default: `/tmp/podcast_downloads`)
 
-#### Scenario: Custom config file path
-- **WHEN** `SOURCES_CONFIG_FILE=config/my-sources.yaml` is set
+#### Scenario: Custom config directory path
+- **WHEN** `SOURCES_CONFIG_DIR=config/sources.d` is set
+- **THEN** the system loads sources from `config/sources.d/*.yaml` instead of the default path
+
+#### Scenario: Custom config file path (single file fallback)
+- **WHEN** `SOURCES_CONFIG_DIR` does not exist and `SOURCES_CONFIG_FILE=config/my-sources.yaml` is set
 - **THEN** the system loads sources from `config/my-sources.yaml` instead of the default path
 
 #### Scenario: Podcast settings override
