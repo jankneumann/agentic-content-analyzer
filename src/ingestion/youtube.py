@@ -10,7 +10,7 @@ import argparse
 import json
 import os
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
@@ -29,7 +29,7 @@ from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from src.config.sources import YouTubePlaylistSource
+    from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource
 
 logger = get_logger(__name__)
 
@@ -112,6 +112,56 @@ class YouTubeClient:
 
         self.service = build("youtube", "v3", developerKey=api_key)
         logger.info("YouTube API client initialized (API key)")
+
+    # In-memory cache for channel_id → uploads playlist ID
+    _channel_playlist_cache: ClassVar[dict[str, str]] = {}
+
+    def resolve_channel_to_playlist(self, channel_id: str) -> str | None:
+        """Resolve a YouTube channel ID to its uploads playlist ID.
+
+        Uses the YouTube Data API channels().list(part="contentDetails") to look
+        up the channel's "uploads" playlist, which contains all public videos.
+
+        Results are cached in-memory to avoid repeated API calls for the same
+        channel across multiple ingestion runs within a single process.
+
+        Args:
+            channel_id: YouTube channel ID (e.g. "UCxxxxxx")
+
+        Returns:
+            Uploads playlist ID (e.g. "UUxxxxxx") or None if not found.
+        """
+        # Check cache first
+        if channel_id in self._channel_playlist_cache:
+            cached = self._channel_playlist_cache[channel_id]
+            logger.debug(f"Channel {channel_id} → playlist {cached} (cached)")
+            return cached
+
+        try:
+            request = self.service.channels().list(
+                part="contentDetails",
+                id=channel_id,
+            )
+            response = request.execute()
+
+            items = response.get("items", [])
+            if not items:
+                logger.warning(f"Channel not found: {channel_id}")
+                return None
+
+            related = items[0]["contentDetails"]["relatedPlaylists"]
+            uploads_id = related.get("uploads")
+            if uploads_id:
+                self._channel_playlist_cache[channel_id] = uploads_id
+                logger.info(f"Resolved channel {channel_id} → playlist {uploads_id}")
+            else:
+                logger.warning(f"No uploads playlist for channel {channel_id}")
+
+            return uploads_id
+
+        except HttpError as e:
+            logger.error(f"Error resolving channel {channel_id}: {e}")
+            return None
 
     def get_playlist_videos(
         self,
@@ -612,6 +662,77 @@ class YouTubeContentIngestionService:
 
         if skipped_private:
             logger.info(f"Skipped {skipped_private} private playlist(s) due to missing OAuth")
+
+        return total
+
+    def ingest_channels(
+        self,
+        sources: list[YouTubeChannelSource] | None = None,
+        max_videos_per_channel: int = 10,
+        after_date: datetime | None = None,
+        force_reprocess: bool = False,
+    ) -> int:
+        """Ingest transcripts from YouTube channels by resolving to uploads playlists.
+
+        Each channel is resolved to its uploads playlist via the YouTube Data API,
+        then ingested using the same playlist ingestion logic.
+
+        Source resolution:
+        1. sources parameter (YouTubeChannelSource objects)
+        2. SourcesConfig (YAML files)
+
+        Sources with visibility='private' are skipped when OAuth is unavailable.
+        """
+        # --- Source resolution ---
+        resolved_sources: list[YouTubeChannelSource] = []
+
+        if sources is not None:
+            resolved_sources = [s for s in sources if s.enabled]
+        else:
+            config = settings.get_sources_config()
+            resolved_sources = config.get_youtube_channel_sources()
+
+        if not resolved_sources:
+            logger.info("No YouTube channels configured")
+            return 0
+
+        # --- Resolve and ingest ---
+        skipped_private = 0
+        total = 0
+        for source in resolved_sources:
+            if source.visibility == "private" and not self.client.oauth_available:
+                skipped_private += 1
+                logger.warning(
+                    f"Skipping private channel '{source.name or source.channel_id}' "
+                    "(OAuth not available)"
+                )
+                continue
+
+            # Resolve channel to uploads playlist
+            playlist_id = self.client.resolve_channel_to_playlist(source.channel_id)
+            if not playlist_id:
+                logger.warning(
+                    f"Could not resolve channel '{source.name or source.channel_id}' "
+                    "to uploads playlist, skipping"
+                )
+                continue
+
+            try:
+                max_videos = source.max_entries or max_videos_per_channel
+                count = self.ingest_playlist(
+                    playlist_id=playlist_id,
+                    max_videos=max_videos,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                    languages=source.languages,
+                )
+                total += count
+            except Exception as e:
+                logger.error(f"Error ingesting channel {source.name or source.channel_id}: {e}")
+                continue
+
+        if skipped_private:
+            logger.info(f"Skipped {skipped_private} private channel(s) due to missing OAuth")
 
         return total
 

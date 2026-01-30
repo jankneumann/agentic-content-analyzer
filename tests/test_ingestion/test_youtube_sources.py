@@ -8,8 +8,9 @@ YouTubeContentIngestionService respects visibility flags, uses the
 from unittest.mock import MagicMock, patch
 
 from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
 
-from src.config.sources import YouTubePlaylistSource
+from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource
 from src.ingestion.youtube import YouTubeClient, YouTubeContentIngestionService
 
 # ---------------------------------------------------------------------------
@@ -286,4 +287,191 @@ class TestYouTubePerSourceSettings:
 
         mock_ingest.assert_called_once()
         assert mock_ingest.call_args.kwargs["playlist_id"] == "PL_active"
+        assert total == 1
+
+
+# ---------------------------------------------------------------------------
+# TestYouTubeChannelResolution
+# ---------------------------------------------------------------------------
+
+
+class TestYouTubeChannelResolution:
+    """Tests for YouTubeClient.resolve_channel_to_playlist()."""
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    def test_resolves_channel_to_uploads_playlist(self):
+        """Channel ID should resolve to uploads playlist ID."""
+        client = YouTubeClient()
+        client.service.channels.return_value.list.return_value.execute.return_value = {
+            "items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UU_uploads_123"}}}]
+        }
+        # Clear class-level cache for test isolation
+        YouTubeClient._channel_playlist_cache = {}
+
+        result = client.resolve_channel_to_playlist("UC_channel_123")
+
+        assert result == "UU_uploads_123"
+        client.service.channels.return_value.list.assert_called_once_with(
+            part="contentDetails",
+            id="UC_channel_123",
+        )
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    def test_returns_none_for_unknown_channel(self):
+        """Unknown channel should return None."""
+        client = YouTubeClient()
+        client.service.channels.return_value.list.return_value.execute.return_value = {"items": []}
+        YouTubeClient._channel_playlist_cache = {}
+
+        result = client.resolve_channel_to_playlist("UC_nonexistent")
+
+        assert result is None
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    def test_caches_resolved_playlist(self):
+        """Second call for same channel should use cache, not API."""
+        client = YouTubeClient()
+        client.service.channels.return_value.list.return_value.execute.return_value = {
+            "items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UU_cached"}}}]
+        }
+        YouTubeClient._channel_playlist_cache = {}
+
+        # First call hits API
+        result1 = client.resolve_channel_to_playlist("UC_cached_test")
+        # Second call should use cache
+        result2 = client.resolve_channel_to_playlist("UC_cached_test")
+
+        assert result1 == "UU_cached"
+        assert result2 == "UU_cached"
+        # API should only be called once
+        assert client.service.channels.return_value.list.return_value.execute.call_count == 1
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    def test_handles_http_error(self):
+        """HttpError from API should return None, not raise."""
+        client = YouTubeClient()
+        resp = MagicMock()
+        resp.status = 403
+        client.service.channels.return_value.list.return_value.execute.side_effect = HttpError(
+            resp=resp, content=b"Forbidden"
+        )
+        YouTubeClient._channel_playlist_cache = {}
+
+        result = client.resolve_channel_to_playlist("UC_forbidden")
+
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# TestYouTubeChannelIngestion
+# ---------------------------------------------------------------------------
+
+
+class TestYouTubeChannelIngestion:
+    """Tests for YouTubeContentIngestionService.ingest_channels()."""
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    @patch.object(YouTubeContentIngestionService, "ingest_playlist", return_value=5)
+    def test_resolves_and_ingests_channel(self, mock_ingest):
+        """Channel source should be resolved to playlist and ingested."""
+        sources = [
+            YouTubeChannelSource(channel_id="UC_test", name="Test Channel"),
+        ]
+
+        service = YouTubeContentIngestionService()
+        service.client.oauth_available = True
+        service.client.resolve_channel_to_playlist = MagicMock(return_value="UU_test")
+
+        total = service.ingest_channels(sources=sources)
+
+        service.client.resolve_channel_to_playlist.assert_called_once_with("UC_test")
+        mock_ingest.assert_called_once()
+        assert mock_ingest.call_args.kwargs["playlist_id"] == "UU_test"
+        assert total == 5
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    @patch.object(YouTubeContentIngestionService, "ingest_playlist", return_value=1)
+    def test_skips_unresolvable_channel(self, mock_ingest):
+        """Channel that can't be resolved should be skipped."""
+        sources = [
+            YouTubeChannelSource(channel_id="UC_bad", name="Bad Channel"),
+        ]
+
+        service = YouTubeContentIngestionService()
+        service.client.oauth_available = True
+        service.client.resolve_channel_to_playlist = MagicMock(return_value=None)
+
+        total = service.ingest_channels(sources=sources)
+
+        mock_ingest.assert_not_called()
+        assert total == 0
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    @patch.object(YouTubeContentIngestionService, "ingest_playlist", return_value=3)
+    def test_private_channel_skipped_without_oauth(self, mock_ingest):
+        """Private channels are skipped when OAuth is unavailable."""
+        sources = [
+            YouTubeChannelSource(
+                channel_id="UC_priv", name="Private Channel", visibility="private"
+            ),
+        ]
+
+        service = YouTubeContentIngestionService()
+        service.client.oauth_available = False
+
+        total = service.ingest_channels(sources=sources)
+
+        mock_ingest.assert_not_called()
+        assert total == 0
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    @patch.object(YouTubeContentIngestionService, "ingest_playlist", return_value=2)
+    def test_passes_channel_languages(self, mock_ingest):
+        """Channel languages should be passed through to ingest_playlist."""
+        sources = [
+            YouTubeChannelSource(channel_id="UC_lang", name="Lang Channel", languages=["de", "en"]),
+        ]
+
+        service = YouTubeContentIngestionService()
+        service.client.oauth_available = True
+        service.client.resolve_channel_to_playlist = MagicMock(return_value="UU_lang")
+
+        service.ingest_channels(sources=sources)
+
+        assert mock_ingest.call_args.kwargs["languages"] == ["de", "en"]
+
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    @patch.object(YouTubeContentIngestionService, "ingest_playlist", return_value=1)
+    def test_per_channel_max_entries(self, mock_ingest):
+        """Channel max_entries should override default max_videos_per_channel."""
+        sources = [
+            YouTubeChannelSource(channel_id="UC_limited", name="Limited", max_entries=3),
+        ]
+
+        service = YouTubeContentIngestionService()
+        service.client.oauth_available = True
+        service.client.resolve_channel_to_playlist = MagicMock(return_value="UU_limited")
+
+        service.ingest_channels(sources=sources, max_videos_per_channel=25)
+
+        assert mock_ingest.call_args.kwargs["max_videos"] == 3
+
+    @patch("src.ingestion.youtube.settings")
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    @patch.object(YouTubeContentIngestionService, "ingest_playlist", return_value=1)
+    def test_loads_channels_from_config(self, mock_ingest, mock_settings):
+        """When no sources param, loads from SourcesConfig."""
+        mock_config = MagicMock()
+        mock_config.get_youtube_channel_sources.return_value = [
+            YouTubeChannelSource(channel_id="UC_config", name="Config Channel"),
+        ]
+        mock_settings.get_sources_config.return_value = mock_config
+
+        service = YouTubeContentIngestionService()
+        service.client.oauth_available = True
+        service.client.resolve_channel_to_playlist = MagicMock(return_value="UU_config")
+
+        total = service.ingest_channels()
+
+        mock_settings.get_sources_config.assert_called_once()
         assert total == 1
