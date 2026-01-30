@@ -205,6 +205,19 @@ async def _run_content_ingestion(
                 force_reprocess=force_reprocess,
             )
 
+        elif source == ContentSource.PODCAST:
+            from src.ingestion.podcast import PodcastContentIngestionService
+
+            podcast_service = PodcastContentIngestionService()
+            # Sources loaded automatically from SourcesConfig
+            count = await asyncio.to_thread(
+                lambda: podcast_service.ingest_all_feeds(
+                    max_entries_per_feed=max_results,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
+            )
+
         else:
             _ingestion_tasks[task_id]["status"] = "error"
             _ingestion_tasks[task_id]["message"] = (
@@ -253,6 +266,7 @@ async def trigger_content_ingestion(
     - gmail: Fetch newsletters from Gmail inbox
     - rss: Fetch articles from configured RSS feeds
     - youtube: Fetch transcripts from configured YouTube playlists
+    - podcast: Fetch transcripts from configured podcast feeds
     """
     import uuid
 

@@ -7,7 +7,7 @@
  */
 
 import * as React from "react"
-import { Loader2, Mail, Rss, Download, Youtube } from "lucide-react"
+import { Loader2, Mail, Mic, Rss, Download, Youtube } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -67,6 +67,8 @@ export function IngestContentsDialog({
         return "RSS"
       case "youtube":
         return "YouTube"
+      case "podcast":
+        return "Podcast"
       default:
         return s
     }
@@ -80,6 +82,8 @@ export function IngestContentsDialog({
         return "Fetch articles from configured RSS feeds"
       case "youtube":
         return "Fetch transcripts from configured YouTube playlists"
+      case "podcast":
+        return "Fetch transcripts from configured podcast feeds"
       default:
         return ""
     }
@@ -94,7 +98,7 @@ export function IngestContentsDialog({
             Ingest Content
           </DialogTitle>
           <DialogDescription>
-            Fetch content from Gmail, RSS feeds, or YouTube.
+            Fetch content from Gmail, RSS feeds, YouTube, or Podcasts.
           </DialogDescription>
         </DialogHeader>
 
@@ -103,7 +107,7 @@ export function IngestContentsDialog({
           <div className="space-y-2">
             <Label>Source</Label>
             <Tabs value={source} onValueChange={(v) => setSource(v as ContentSource)}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="gmail" className="gap-1.5">
                   <Mail className="h-4 w-4" />
                   Gmail
@@ -116,6 +120,10 @@ export function IngestContentsDialog({
                   <Youtube className="h-4 w-4" />
                   YouTube
                 </TabsTrigger>
+                <TabsTrigger value="podcast" className="gap-1.5">
+                  <Mic className="h-4 w-4" />
+                  Podcast
+                </TabsTrigger>
               </TabsList>
             </Tabs>
             <p className="text-xs text-muted-foreground">
@@ -126,7 +134,7 @@ export function IngestContentsDialog({
           {/* Max Results */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Maximum {source === "youtube" ? "Videos" : "Results"}</Label>
+              <Label>Maximum {source === "youtube" ? "Videos" : source === "podcast" ? "Episodes" : "Results"}</Label>
               <span className="text-sm font-medium">{maxResults}</span>
             </div>
             <Slider
@@ -139,7 +147,9 @@ export function IngestContentsDialog({
             <p className="text-xs text-muted-foreground">
               {source === "youtube"
                 ? "Maximum videos to fetch per playlist"
-                : "Limit the number of items to fetch"}
+                : source === "podcast"
+                  ? "Maximum episodes to fetch per feed"
+                  : "Limit the number of items to fetch"}
             </p>
           </div>
 
