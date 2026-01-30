@@ -9,6 +9,7 @@ Content Sources:
 - RSS: RSS/Atom feed articles
 - FILE_UPLOAD: Uploaded documents (PDF, DOCX, etc.)
 - YOUTUBE: YouTube video transcripts
+- PODCAST: Podcast episode transcripts
 - MANUAL: Manually created content via API
 """
 
@@ -48,6 +49,7 @@ class ContentSource(str, Enum):
     RSS = "rss"
     FILE_UPLOAD = "file_upload"
     YOUTUBE = "youtube"
+    PODCAST = "podcast"
     MANUAL = "manual"  # Manually created via API
     WEBPAGE = "webpage"  # Future: scraped web pages
     OTHER = "other"
@@ -136,9 +138,7 @@ class Content(Base):  # type: ignore[valid-type, misc]
     error_message = Column(Text, nullable=True)
 
     # Timestamps
-    ingested_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, index=True
-    )
+    ingested_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     parsed_at = Column(DateTime, nullable=True)
     processed_at = Column(DateTime, nullable=True)  # When summarization completed
 
