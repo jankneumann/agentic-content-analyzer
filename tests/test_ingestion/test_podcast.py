@@ -466,6 +466,83 @@ class TestPodcastIngestion:
 
 
 # ---------------------------------------------------------------------------
+# TestPodcastSTTProviderValidation
+# ---------------------------------------------------------------------------
+
+
+class TestPodcastSTTProviderValidation:
+    """Tests that unsupported STT providers are rejected early."""
+
+    @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
+    def test_unsupported_provider_returns_none_without_downloading(self):
+        """Unsupported STT provider (e.g. local_whisper) returns None immediately.
+
+        The audio should NOT be downloaded when the provider isn't implemented,
+        to avoid wasting bandwidth on content that can't be transcribed.
+        """
+        service = PodcastContentIngestionService()
+
+        with patch("src.ingestion.podcast.httpx") as mock_httpx:
+            result = service._transcribe_audio(
+                audio_url="https://cdn.example.com/episode.mp3",
+                stt_provider="local_whisper",
+            )
+
+            assert result is None
+            # httpx.Client should NOT have been called — no download attempted
+            mock_httpx.Client.assert_not_called()
+
+    @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
+    def test_unsupported_provider_logs_error(self):
+        """Unsupported STT provider logs an error with the provider name."""
+        service = PodcastContentIngestionService()
+
+        with patch("src.ingestion.podcast.logger") as mock_logger:
+            service._transcribe_audio(
+                audio_url="https://cdn.example.com/episode.mp3",
+                stt_provider="local_whisper",
+            )
+
+            mock_logger.error.assert_called_once()
+            error_msg = mock_logger.error.call_args[0][0]
+            assert "local_whisper" in error_msg
+            assert "not yet implemented" in error_msg
+
+    @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
+    def test_openai_provider_proceeds_to_download(self):
+        """The 'openai' provider is supported and proceeds to download audio."""
+        service = PodcastContentIngestionService()
+
+        with (
+            patch("src.ingestion.podcast.settings") as mock_settings,
+            patch("src.ingestion.podcast.httpx") as mock_httpx,
+            patch.object(service, "_transcribe_openai", return_value="transcribed text"),
+        ):
+            mock_settings.podcast_max_duration_minutes = 120
+            mock_settings.podcast_temp_dir = "/tmp/test_podcast"  # noqa: S108
+
+            mock_response = MagicMock()
+            mock_response.content = b"fake audio data"
+            mock_response.headers = {"content-type": "audio/mpeg"}
+            mock_response.raise_for_status = MagicMock()
+
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_httpx.Client.return_value = mock_client
+
+            result = service._transcribe_audio(
+                audio_url="https://cdn.example.com/episode.mp3",
+                stt_provider="openai",
+            )
+
+            assert result == "transcribed text"
+            # httpx.Client WAS called — download happened
+            mock_httpx.Client.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # TestPodcastSourceResolution
 # ---------------------------------------------------------------------------
 

@@ -19,7 +19,8 @@ from src.models.youtube import TranscriptSegment, YouTubeTranscript
 
 def _mock_init(self, use_oauth=True):
     """Mock YouTubeClient init that avoids real auth."""
-    self.service = MagicMock()
+    self._service = MagicMock()
+    self._authenticated = True
     self.use_oauth = use_oauth
     self.oauth_available = False
 
@@ -142,6 +143,57 @@ class TestYouTubeRSSParsing:
         assert len(result) == 2
         assert result[0]["video_id"] == "vid0"
         assert result[1]["video_id"] == "vid1"
+
+
+# ---------------------------------------------------------------------------
+# TestYouTubeRSSNoApiKey
+# ---------------------------------------------------------------------------
+
+
+class TestYouTubeRSSNoApiKey:
+    """Tests that YouTube RSS ingestion works without an API key."""
+
+    @patch("src.ingestion.youtube.settings")
+    @patch("feedparser.parse")
+    def test_rss_service_works_without_api_key(self, mock_parse, mock_settings):
+        """YouTubeRSSIngestionService can be created and parse feeds without API key.
+
+        The RSS path only uses feedparser + youtube-transcript-api, so it should
+        not require a YouTube Data API key. Authentication is deferred until a
+        Data API method is actually called.
+        """
+        mock_settings.get_youtube_api_key.return_value = None
+        mock_settings.youtube_token_file = "/nonexistent/token.json"
+        mock_settings.youtube_credentials_file = "/nonexistent/creds.json"
+
+        # Service creation should succeed without any API credentials
+        service = YouTubeRSSIngestionService()
+
+        # Feed parsing should work (doesn't need Data API)
+        entries = [_make_feed_entry(video_id="vid001", title="Test")]
+        mock_parse.return_value = _make_mock_feed(entries)
+        result = service._parse_feed("https://youtube.com/feeds/videos.xml?channel_id=UC123")
+
+        assert len(result) == 1
+        assert result[0]["video_id"] == "vid001"
+
+    @patch("src.ingestion.youtube.settings")
+    def test_data_api_access_still_raises_without_key(self, mock_settings):
+        """Accessing Data API methods without credentials raises ValueError."""
+        mock_settings.get_youtube_api_key.return_value = None
+        mock_settings.youtube_token_file = "/nonexistent/token.json"
+        mock_settings.youtube_credentials_file = "/nonexistent/creds.json"
+
+        client = YouTubeClient(use_oauth=False)
+
+        # Client creation succeeds (lazy auth)
+        assert client._authenticated is False
+
+        # But accessing .service triggers authentication and fails
+        import pytest
+
+        with pytest.raises(ValueError, match="YOUTUBE_API_KEY"):
+            _ = client.service
 
 
 # ---------------------------------------------------------------------------

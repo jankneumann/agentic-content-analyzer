@@ -20,7 +20,8 @@ from src.ingestion.youtube import YouTubeClient, YouTubeContentIngestionService
 
 def _mock_init(self, use_oauth=True):
     """Mock YouTubeClient init that avoids real auth."""
-    self.service = MagicMock()
+    self._service = MagicMock()
+    self._authenticated = True
     self.use_oauth = use_oauth
     self.oauth_available = False  # Default to no OAuth
 
@@ -39,6 +40,9 @@ class TestYouTubeOAuthFallback:
         """When OAuth succeeds, oauth_available should be True."""
         client = YouTubeClient(use_oauth=True)
 
+        # Auth is lazy — trigger it by accessing .service
+        _ = client.service
+
         mock_oauth.assert_called_once()
         mock_api_key.assert_not_called()
         assert client.oauth_available is True
@@ -48,6 +52,9 @@ class TestYouTubeOAuthFallback:
     def test_refresh_error_falls_back_to_api_key(self, mock_oauth, mock_api_key):
         """When _authenticate_oauth raises RefreshError, fall back to API key."""
         client = YouTubeClient(use_oauth=True)
+
+        # Auth is lazy — trigger it by accessing .service
+        _ = client.service
 
         mock_oauth.assert_called_once()
         mock_api_key.assert_called_once()
@@ -63,6 +70,9 @@ class TestYouTubeOAuthFallback:
         """When _authenticate_oauth raises FileNotFoundError, fall back to API key."""
         client = YouTubeClient(use_oauth=True)
 
+        # Auth is lazy — trigger it by accessing .service
+        _ = client.service
+
         mock_oauth.assert_called_once()
         mock_api_key.assert_called_once()
         assert client.oauth_available is False
@@ -73,8 +83,19 @@ class TestYouTubeOAuthFallback:
         """When use_oauth=False, skip OAuth entirely and oauth_available=False."""
         client = YouTubeClient(use_oauth=False)
 
+        # Auth is lazy — trigger it by accessing .service
+        _ = client.service
+
         mock_oauth.assert_not_called()
         mock_api_key.assert_called_once()
+        assert client.oauth_available is False
+
+    def test_no_auth_without_service_access(self):
+        """Client creation without accessing .service doesn't trigger auth."""
+        client = YouTubeClient(use_oauth=False)
+
+        # No auth triggered yet
+        assert client._authenticated is False
         assert client.oauth_available is False
 
 

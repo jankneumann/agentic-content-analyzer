@@ -22,13 +22,16 @@ class TestYouTubeClient:
     @patch("src.ingestion.youtube.build")
     @patch("src.ingestion.youtube.settings")
     def test_authenticate_api_key(self, mock_settings: Mock, mock_build: Mock) -> None:
-        """Test API key authentication."""
+        """Test API key authentication (triggered lazily on .service access)."""
         mock_settings.get_youtube_api_key.return_value = "test-api-key"
 
         client = YouTubeClient(use_oauth=False)
 
+        # Auth is lazy — trigger it by accessing .service
+        _ = client.service
+
         mock_build.assert_called_once_with("youtube", "v3", developerKey="test-api-key")
-        assert client.service is not None
+        assert client._service is not None
 
     @patch("src.ingestion.youtube.build")
     @patch("src.ingestion.youtube.settings")
@@ -36,8 +39,11 @@ class TestYouTubeClient:
         """Test API key authentication fails when key is missing."""
         mock_settings.get_youtube_api_key.return_value = None
 
+        client = YouTubeClient(use_oauth=False)
+
+        # Auth is lazy — accessing .service triggers the error
         with pytest.raises(ValueError, match="YOUTUBE_API_KEY or GOOGLE_API_KEY required"):
-            YouTubeClient(use_oauth=False)
+            _ = client.service
 
     def test_parse_date_valid(self) -> None:
         """Test parsing valid ISO 8601 date."""

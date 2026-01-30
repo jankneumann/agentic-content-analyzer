@@ -51,10 +51,39 @@ class YouTubeClient:
             use_oauth: If True, attempt OAuth for private playlist access.
                       Falls back to API key if OAuth credentials are unavailable or expired.
         """
-        self.service: Any = None
+        self._service: Any = None
         self.use_oauth = use_oauth
         self.oauth_available: bool = False
-        self._authenticate()
+        self._authenticated: bool = False
+
+    def _ensure_service(self) -> Any:
+        """Lazily authenticate and return the YouTube Data API service.
+
+        Authentication is deferred until a method actually needs the Data API
+        (e.g. get_playlist_videos, resolve_channel_to_playlist). This allows
+        transcript-only usage (get_transcript) without requiring any API credentials.
+
+        Returns:
+            Authenticated YouTube Data API service object.
+
+        Raises:
+            ValueError: If no API key or OAuth credentials are available.
+        """
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+        return self._service
+
+    @property
+    def service(self) -> Any:
+        """YouTube Data API service (lazy-authenticated on first access)."""
+        return self._ensure_service()
+
+    @service.setter
+    def service(self, value: Any) -> None:
+        """Allow setting service directly (used in tests)."""
+        self._service = value
+        self._authenticated = True
 
     def _authenticate(self) -> None:
         """Authenticate with YouTube API, falling back to API key if OAuth fails."""
@@ -99,7 +128,7 @@ class YouTubeClient:
                 token.write(creds.to_json())
             logger.info("YouTube credentials saved")
 
-        self.service = build("youtube", "v3", credentials=creds)
+        self._service = build("youtube", "v3", credentials=creds)
         logger.info("YouTube API client initialized (OAuth)")
 
     def _authenticate_api_key(self) -> None:
@@ -110,7 +139,7 @@ class YouTubeClient:
                 "YOUTUBE_API_KEY or GOOGLE_API_KEY required for public playlist access"
             )
 
-        self.service = build("youtube", "v3", developerKey=api_key)
+        self._service = build("youtube", "v3", developerKey=api_key)
         logger.info("YouTube API client initialized (API key)")
 
     # In-memory cache for channel_id → uploads playlist ID

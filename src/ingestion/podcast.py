@@ -12,7 +12,7 @@ import re
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import feedparser
 import httpx
@@ -369,6 +369,9 @@ class PodcastContentIngestionService:
 
         return "\n".join(lines)
 
+    # Providers that have a working transcription implementation
+    SUPPORTED_STT_PROVIDERS: ClassVar[set[str]] = {"openai"}
+
     def _transcribe_audio(
         self,
         audio_url: str,
@@ -383,6 +386,15 @@ class PodcastContentIngestionService:
         Returns:
             Transcribed text or None if transcription fails.
         """
+        # Validate provider before downloading audio to avoid wasted bandwidth
+        if stt_provider not in self.SUPPORTED_STT_PROVIDERS:
+            logger.error(
+                f"STT provider '{stt_provider}' is not yet implemented. "
+                f"Supported providers: {', '.join(sorted(self.SUPPORTED_STT_PROVIDERS))}. "
+                f"Skipping audio transcription for: {audio_url}"
+            )
+            return None
+
         max_duration = settings.podcast_max_duration_minutes
         temp_dir = settings.podcast_temp_dir
         temp_path: str | None = None
@@ -417,11 +429,7 @@ class PodcastContentIngestionService:
                     temp_path = f.name
 
             # Transcribe using configured provider
-            if stt_provider == "openai":
-                return self._transcribe_openai(temp_path, languages)
-            else:
-                logger.warning(f"Unsupported STT provider: {stt_provider}")
-                return None
+            return self._transcribe_openai(temp_path, languages)
 
         except Exception as e:
             logger.error(f"Audio transcription failed: {e}")
