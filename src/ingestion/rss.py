@@ -2,10 +2,16 @@
 
 Provides Content model ingestion for RSS feeds using the unified content model.
 Creates Content records with markdown as the primary format.
+
+Supports both legacy URL-based ingestion and config-driven ingestion via
+RSSSource objects from the unified source configuration system.
 """
+
+from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import feedparser
@@ -19,6 +25,9 @@ from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.config.sources import RSSSource
 
 logger = get_logger(__name__)
 
@@ -47,6 +56,8 @@ class RSSClient:
         feed_url: str,
         max_entries: int = 10,
         after_date: datetime | None = None,
+        source_name: str | None = None,
+        source_tags: list[str] | None = None,
     ) -> list[ContentData]:
         """
         Fetch content from an RSS feed as ContentData (unified Content model).
@@ -55,6 +66,8 @@ class RSSClient:
             feed_url: RSS feed URL
             max_entries: Maximum number of entries to fetch
             after_date: Only fetch entries published after this date
+            source_name: Optional source name from config (included in metadata)
+            source_tags: Optional source tags from config (included in metadata)
 
         Returns:
             List of ContentData objects ready for Content table
@@ -90,7 +103,13 @@ class RSSClient:
 
                 # Convert entry to ContentData
                 try:
-                    content = self._parse_entry_content(entry, publication_name, feed_url)
+                    content = self._parse_entry_content(
+                        entry,
+                        publication_name,
+                        feed_url,
+                        source_name=source_name,
+                        source_tags=source_tags,
+                    )
                     contents.append(content)
                     logger.debug(f"Parsed content: {content.title}")
                 except Exception as e:
@@ -148,6 +167,8 @@ class RSSClient:
         entry: feedparser.FeedParserDict,
         publication_name: str,
         feed_url: str,
+        source_name: str | None = None,
+        source_tags: list[str] | None = None,
     ) -> ContentData:
         """
         Parse a feed entry into a ContentData object.
@@ -160,6 +181,8 @@ class RSSClient:
             entry: Feed entry
             publication_name: Name of the publication
             feed_url: Feed URL
+            source_name: Optional source name from config (included in metadata)
+            source_tags: Optional source tags from config (included in metadata)
 
         Returns:
             ContentData object
@@ -214,6 +237,16 @@ class RSSClient:
         # Generate content hash from normalized markdown
         content_hash = generate_markdown_hash(markdown_content) if markdown_content else ""
 
+        metadata: dict = {
+            "feed_url": feed_url,
+            "entry_id": entry.get("id"),
+            "extraction_method": extraction_method,
+        }
+        if source_name:
+            metadata["source_name"] = source_name
+        if source_tags:
+            metadata["source_tags"] = source_tags
+
         return ContentData(
             source_type=ContentSource.RSS,
             source_id=source_id,
@@ -224,11 +257,7 @@ class RSSClient:
             published_date=published_date,
             markdown_content=markdown_content,
             links_json=links if links else None,
-            metadata_json={
-                "feed_url": feed_url,
-                "entry_id": entry.get("id"),
-                "extraction_method": extraction_method,
-            },
+            metadata_json=metadata,
             raw_content=raw_html,
             raw_format="html" if raw_html else "text",
             parser_used=parser_used,
@@ -380,6 +409,7 @@ class RSSContentIngestionService:
 
     def ingest_content(
         self,
+        sources: list[RSSSource] | None = None,
         feed_urls: list[str] | None = None,
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
@@ -388,9 +418,16 @@ class RSSContentIngestionService:
         """
         Ingest content from RSS feeds and store as Content records.
 
+        Source resolution order:
+        1. ``sources`` parameter (RSSSource objects with metadata)
+        2. ``feed_urls`` parameter (raw URL list, backward compatible)
+        3. SourcesConfig YAML files (sources.d/ or sources.yaml)
+        4. Legacy settings (RSS_FEEDS env var, rss_feeds.txt)
+
         Args:
-            feed_urls: List of RSS feed URLs (defaults to config)
-            max_entries_per_feed: Maximum entries per feed
+            sources: List of RSSSource config objects (preferred)
+            feed_urls: List of RSS feed URLs (backward compatible)
+            max_entries_per_feed: Default max entries per feed
             after_date: Only fetch after this date
             force_reprocess: If True, reprocess existing content
 
@@ -399,24 +436,51 @@ class RSSContentIngestionService:
         """
         logger.info("Starting RSS content ingestion (unified Content model)...")
 
-        # Get feed URLs from config if not provided
-        if feed_urls is None:
-            feed_urls = settings.get_rss_feed_urls()
+        # Resolve sources with fallback chain
+        if sources is None and feed_urls is None:
+            # Try SourcesConfig first, fall back to legacy
+            sources_config = settings.get_sources_config()
+            sources = sources_config.get_rss_sources()
 
-        if not feed_urls:
+            if not sources:
+                # Legacy fallback
+                legacy_urls = settings.get_rss_feed_urls()
+                if legacy_urls:
+                    from src.config.sources import RSSSource as _RSSSource
+
+                    sources = [_RSSSource(url=url) for url in legacy_urls]
+
+        if sources is None and feed_urls is not None:
+            # Convert raw URLs to RSSSource objects for uniform processing
+            from src.config.sources import RSSSource as _RSSSource
+
+            sources = [_RSSSource(url=url) for url in feed_urls]
+
+        if not sources:
             logger.warning(
-                "No RSS feed URLs configured. Please set RSS_FEEDS or create rss_feeds.txt"
+                "No RSS sources configured. Add sources to sources.d/rss.yaml, "
+                "set RSS_FEEDS, or create rss_feeds.txt"
             )
             return 0
 
-        logger.info(f"Fetching from {len(feed_urls)} RSS feeds for Content model")
-
-        # Fetch content from all feeds
-        contents = self.client.fetch_multiple_contents(
-            feed_urls=feed_urls,
-            max_entries_per_feed=max_entries_per_feed,
-            after_date=after_date,
+        enabled_sources = [s for s in sources if s.enabled]
+        logger.info(
+            f"Fetching from {len(enabled_sources)} RSS sources "
+            f"({len(sources) - len(enabled_sources)} disabled)"
         )
+
+        # Fetch content from all enabled sources with per-source settings
+        contents: list[ContentData] = []
+        for source in enabled_sources:
+            max_entries = source.max_entries or max_entries_per_feed
+            fetched = self.client.fetch_content(
+                feed_url=source.url,
+                max_entries=max_entries,
+                after_date=after_date,
+                source_name=source.name,
+                source_tags=source.tags if source.tags else None,
+            )
+            contents.extend(fetched)
 
         if not contents:
             logger.info("No content found")

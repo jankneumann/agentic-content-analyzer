@@ -185,6 +185,7 @@ async def _run_content_ingestion(
             from src.ingestion.rss import RSSContentIngestionService
 
             rss_service = RSSContentIngestionService()
+            # Sources loaded automatically from SourcesConfig with legacy fallback
             count = await asyncio.to_thread(
                 lambda: rss_service.ingest_content(
                     max_entries_per_feed=max_results,
