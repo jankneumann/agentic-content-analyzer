@@ -4,12 +4,15 @@ Provides Content model ingestion for YouTube videos using the unified content mo
 Creates Content records with markdown-formatted transcripts including timestamp links.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -24,6 +27,9 @@ from src.models.youtube import TranscriptSegment, YouTubeTranscript
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.config.sources import YouTubePlaylistSource
 
 logger = get_logger(__name__)
 
@@ -42,19 +48,27 @@ class YouTubeClient:
         Initialize YouTube client.
 
         Args:
-            use_oauth: If True, use OAuth for private playlist access.
-                      If False, use API key for public playlists only.
+            use_oauth: If True, attempt OAuth for private playlist access.
+                      Falls back to API key if OAuth credentials are unavailable or expired.
         """
         self.service: Any = None
         self.use_oauth = use_oauth
+        self.oauth_available: bool = False
         self._authenticate()
 
     def _authenticate(self) -> None:
-        """Authenticate with YouTube API."""
+        """Authenticate with YouTube API, falling back to API key if OAuth fails."""
         if self.use_oauth:
-            self._authenticate_oauth()
-        else:
-            self._authenticate_api_key()
+            try:
+                self._authenticate_oauth()
+                self.oauth_available = True
+                return
+            except (RefreshError, FileNotFoundError) as e:
+                logger.warning(
+                    f"OAuth authentication failed ({type(e).__name__}), "
+                    "falling back to API key. Private playlists will be skipped."
+                )
+        self._authenticate_api_key()
 
     def _authenticate_oauth(self) -> None:
         """Authenticate using OAuth2 (for private playlists)."""
@@ -526,33 +540,78 @@ class YouTubeContentIngestionService:
 
     def ingest_all_playlists(
         self,
+        sources: list[YouTubePlaylistSource] | None = None,
         playlist_ids: list[str] | None = None,
         max_videos_per_playlist: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
     ) -> int:
-        """Ingest transcripts from multiple playlists as Content records."""
-        if playlist_ids is None:
-            playlists = settings.get_youtube_playlists()
-            playlist_ids = [p["id"] for p in playlists if p["id"]]
+        """Ingest transcripts from multiple playlists as Content records.
 
-        if not playlist_ids:
+        Source resolution (in priority order):
+        1. sources parameter (YouTubePlaylistSource objects)
+        2. playlist_ids parameter (backward compatible)
+        3. SourcesConfig (YAML files)
+        4. Legacy settings (youtube_playlists.txt)
+
+        Sources with visibility='private' are skipped when OAuth is unavailable.
+        """
+        # --- Source resolution ---
+        resolved_sources: list[YouTubePlaylistSource] = []
+
+        if sources is not None:
+            resolved_sources = [s for s in sources if s.enabled]
+        elif playlist_ids is not None:
+            # Backward compatibility: wrap raw IDs as source objects
+            from src.config.sources import YouTubePlaylistSource as YTSource
+
+            resolved_sources = [YTSource(id=pid) for pid in playlist_ids if pid]
+        else:
+            # Try SourcesConfig first
+            config = settings.get_sources_config()
+            resolved_sources = config.get_youtube_playlist_sources()
+
+            if not resolved_sources:
+                # Fall back to legacy settings
+                legacy = settings.get_youtube_playlists()
+                if legacy:
+                    from src.config.sources import YouTubePlaylistSource as YTSource
+
+                    resolved_sources = [
+                        YTSource(id=p["id"], name=p.get("description")) for p in legacy if p["id"]
+                    ]
+
+        if not resolved_sources:
             logger.warning("No YouTube playlists configured")
             return 0
 
+        # --- Visibility filtering ---
+        skipped_private = 0
         total = 0
-        for playlist_id in playlist_ids:
+        for source in resolved_sources:
+            if source.visibility == "private" and not self.client.oauth_available:
+                skipped_private += 1
+                logger.warning(
+                    f"Skipping private playlist '{source.name or source.id}' "
+                    "(OAuth not available)"
+                )
+                continue
+
             try:
+                max_videos = source.max_entries or max_videos_per_playlist
                 count = self.ingest_playlist(
-                    playlist_id=playlist_id,
-                    max_videos=max_videos_per_playlist,
+                    playlist_id=source.id,
+                    max_videos=max_videos,
                     after_date=after_date,
                     force_reprocess=force_reprocess,
                 )
                 total += count
             except Exception as e:
-                logger.error(f"Error ingesting playlist {playlist_id}: {e}")
+                logger.error(f"Error ingesting playlist {source.name or source.id}: {e}")
                 continue
+
+        if skipped_private:
+            logger.info(f"Skipped {skipped_private} private playlist(s) due to missing OAuth")
 
         return total
 
