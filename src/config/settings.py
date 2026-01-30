@@ -1,10 +1,15 @@
 """Application configuration management."""
 
+from __future__ import annotations
+
 import logging
 import warnings
 from functools import lru_cache
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from src.config.sources import SourcesConfig
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -174,7 +179,11 @@ class Settings(BaseSettings):
     gmail_credentials_file: str = "credentials.json"
     gmail_token_file: str = "token.json"
 
-    # Substack RSS Configuration
+    # Unified Source Configuration
+    sources_config_dir: str = "sources.d"  # Directory with per-type YAML files
+    sources_config_file: str = "sources.yaml"  # Single-file fallback
+
+    # Substack RSS Configuration (legacy — use sources.d/ instead)
     # Comma-separated list of RSS feed URLs
     rss_feeds: str = ""
     rss_feeds_file: str = "rss_feeds.txt"  # Optional file with one feed per line
@@ -182,8 +191,13 @@ class Settings(BaseSettings):
     # YouTube Configuration
     youtube_credentials_file: str = "youtube_credentials.json"
     youtube_token_file: str = "youtube_token.json"
-    youtube_playlists_file: str = "youtube_playlists.txt"  # Config file for playlist IDs
+    youtube_playlists_file: str = "youtube_playlists.txt"  # Legacy — use sources.d/ instead
     youtube_api_key: str | None = None  # For public playlists (falls back to google_api_key)
+
+    # Podcast Ingestion Configuration
+    podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"
+    podcast_max_duration_minutes: int = 120  # Max episode duration to transcribe
+    podcast_temp_dir: str = "/tmp/podcast_downloads"  # Temp dir for audio downloads  # noqa: S108
 
     # YouTube Keyframe Extraction (optional feature)
     youtube_keyframe_extraction: bool = False  # Enable/disable keyframe extraction
@@ -288,7 +302,7 @@ class Settings(BaseSettings):
     elevenlabs_voice_sam_female: str = ""
 
     @model_validator(mode="after")
-    def configure_local_supabase(self) -> "Settings":
+    def configure_local_supabase(self) -> Settings:
         """Auto-configure settings when local Supabase mode is enabled.
 
         When SUPABASE_LOCAL=true, automatically sets:
@@ -344,7 +358,7 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def validate_database_provider_config(self) -> "Settings":
+    def validate_database_provider_config(self) -> Settings:
         """Validate database provider configuration at startup.
 
         Ensures the configured provider has the required URL configured.
@@ -385,7 +399,7 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def validate_neo4j_provider_config(self) -> "Settings":
+    def validate_neo4j_provider_config(self) -> Settings:
         """Validate Neo4j provider configuration at startup.
 
         Ensures the configured provider has the required credentials configured.
@@ -687,6 +701,26 @@ class Settings(BaseSettings):
                     )
 
         return playlists
+
+    def get_sources_config(self) -> SourcesConfig:
+        """Get unified source configuration with three-tier resolution.
+
+        Resolution order:
+        1. sources.d/ directory (SOURCES_CONFIG_DIR) — recommended
+        2. sources.yaml (SOURCES_CONFIG_FILE) — simpler setups
+        3. Legacy files (rss_feeds.txt + youtube_playlists.txt) — fallback
+
+        Returns:
+            SourcesConfig with validated sources from the best available config
+        """
+        from src.config.sources import load_sources_config
+
+        return load_sources_config(
+            sources_dir=self.sources_config_dir,
+            sources_file=self.sources_config_file,
+            rss_feeds_file=self.rss_feeds_file,
+            youtube_playlists_file=self.youtube_playlists_file,
+        )
 
     def get_model_config(self) -> ModelConfig:
         """
