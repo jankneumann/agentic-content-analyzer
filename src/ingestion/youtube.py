@@ -29,7 +29,7 @@ from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource
+    from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource, YouTubeRSSSource
 
 logger = get_logger(__name__)
 
@@ -642,8 +642,7 @@ class YouTubeContentIngestionService:
             if source.visibility == "private" and not self.client.oauth_available:
                 skipped_private += 1
                 logger.warning(
-                    f"Skipping private playlist '{source.name or source.id}' "
-                    "(OAuth not available)"
+                    f"Skipping private playlist '{source.name or source.id}' (OAuth not available)"
                 )
                 continue
 
@@ -796,6 +795,226 @@ class YouTubeContentIngestionService:
             logger.error(f"Keyframe extraction error: {e}")
 
         return metadata_json
+
+
+class YouTubeRSSIngestionService:
+    """Service for ingesting YouTube videos discovered via RSS/Atom feeds.
+
+    YouTube channels provide Atom feeds at:
+    https://www.youtube.com/feeds/videos.xml?channel_id=UC...
+
+    This service parses these feeds to discover new videos, then fetches
+    transcripts using the YouTube Transcript API (no YouTube Data API quota used
+    for discovery).
+    """
+
+    def __init__(self) -> None:
+        """Initialize YouTube RSS ingestion service."""
+        self.client = YouTubeClient(use_oauth=False)
+
+    def _parse_feed(self, feed_url: str, max_entries: int = 10) -> list[dict[str, Any]]:
+        """Parse a YouTube RSS/Atom feed and extract video metadata.
+
+        Args:
+            feed_url: URL of the YouTube RSS feed
+            max_entries: Maximum entries to process
+
+        Returns:
+            List of dicts with video_id, title, published_date, channel_title, link
+        """
+        import feedparser
+
+        feed = feedparser.parse(feed_url)
+
+        if feed.bozo and not feed.entries:
+            logger.warning(f"Failed to parse YouTube RSS feed: {feed_url}")
+            return []
+
+        videos = []
+        for entry in feed.entries[:max_entries]:
+            # YouTube Atom feeds include video ID in yt:videoId tag
+            video_id = entry.get("yt_videoid")
+            if not video_id:
+                # Fallback: extract from link
+                link = entry.get("link", "")
+                if "watch?v=" in link:
+                    video_id = link.split("watch?v=")[1].split("&")[0]
+
+            if not video_id:
+                continue
+
+            # Parse published date
+            published = None
+            if hasattr(entry, "published_parsed") and entry.published_parsed:
+                try:
+                    published = datetime(*entry.published_parsed[:6], tzinfo=UTC)
+                except (TypeError, ValueError):
+                    pass
+
+            videos.append(
+                {
+                    "video_id": video_id,
+                    "title": entry.get("title", ""),
+                    "channel_title": entry.get("author", feed.feed.get("title", "")),
+                    "published_date": published,
+                    "link": entry.get("link", ""),
+                }
+            )
+
+        return videos
+
+    def ingest_feed(
+        self,
+        feed_url: str,
+        max_entries: int = 10,
+        after_date: datetime | None = None,
+        force_reprocess: bool = False,
+        source_name: str | None = None,
+        source_tags: list[str] | None = None,
+    ) -> int:
+        """Ingest videos from a single YouTube RSS feed.
+
+        Args:
+            feed_url: YouTube RSS feed URL
+            max_entries: Maximum videos to process
+            after_date: Only include videos published after this date
+            force_reprocess: Re-fetch already existing videos
+            source_name: Optional name for metadata
+            source_tags: Optional tags for metadata
+
+        Returns:
+            Number of content items ingested
+        """
+        videos = self._parse_feed(feed_url, max_entries=max_entries)
+
+        if not videos:
+            logger.info(f"No videos found in RSS feed: {feed_url}")
+            return 0
+
+        count = 0
+        with get_db() as db:
+            for video in videos:
+                video_id = video["video_id"]
+                source_id = f"youtube:{video_id}"
+
+                # Date filter
+                if (
+                    after_date
+                    and video.get("published_date")
+                    and video["published_date"] < after_date
+                ):
+                    continue
+
+                # Dedup check
+                if not force_reprocess:
+                    existing = db.query(Content).filter(Content.source_id == source_id).first()
+                    if existing:
+                        logger.debug(f"Skipping existing video: {video_id}")
+                        continue
+
+                # Fetch transcript
+                transcript = self.client.get_transcript(video_id)
+                if not transcript:
+                    logger.info(f"No transcript available for {video_id}: {video['title']}")
+                    continue
+
+                # Enrich transcript with feed metadata
+                if not transcript.title and video.get("title"):
+                    transcript.title = video["title"]
+                if not transcript.channel_title and video.get("channel_title"):
+                    transcript.channel_title = video["channel_title"]
+                if not transcript.published_date and video.get("published_date"):
+                    transcript.published_date = video["published_date"]
+
+                # Convert to markdown
+                markdown_content = transcript_to_markdown(transcript)
+                content_hash = generate_markdown_hash(markdown_content)
+
+                # Build metadata
+                metadata: dict[str, Any] = {
+                    "video_id": video_id,
+                    "language": transcript.language,
+                    "is_auto_generated": transcript.is_auto_generated,
+                    "segment_count": len(transcript.segments),
+                    "duration_seconds": transcript.duration_seconds,
+                    "thumbnail_url": transcript.thumbnail_url,
+                    "feed_url": feed_url,
+                    "discovery_method": "rss",
+                }
+                if source_name:
+                    metadata["source_name"] = source_name
+                if source_tags:
+                    metadata["source_tags"] = source_tags
+
+                try:
+                    content = Content(
+                        source_type=ContentSource.YOUTUBE,
+                        source_id=source_id,
+                        title=transcript.title or video.get("title", f"Video {video_id}"),
+                        source_url=f"https://www.youtube.com/watch?v={video_id}",
+                        raw_content=json.dumps(transcript.to_storage_dict()),
+                        raw_format="transcript_json",
+                        markdown_content=markdown_content,
+                        content_hash=content_hash,
+                        parser_used="youtube_transcript_api",
+                        status=ContentStatus.PARSED,
+                        published_date=video.get("published_date"),
+                        metadata_json=metadata,
+                    )
+                    db.add(content)
+                    db.commit()
+                    count += 1
+                    logger.info(f"Ingested YouTube RSS video: {video['title']}")
+                except Exception as e:
+                    logger.error(f"Error creating content for video {video_id}: {e}")
+                    db.rollback()
+                    continue
+
+        return count
+
+    def ingest_all_feeds(
+        self,
+        sources: list[YouTubeRSSSource] | None = None,
+        max_entries_per_feed: int = 10,
+        after_date: datetime | None = None,
+        force_reprocess: bool = False,
+    ) -> int:
+        """Ingest videos from multiple YouTube RSS feeds.
+
+        Source resolution:
+        1. sources parameter (YouTubeRSSSource objects)
+        2. SourcesConfig (YAML files)
+        """
+        resolved_sources: list[YouTubeRSSSource] = []
+
+        if sources is not None:
+            resolved_sources = [s for s in sources if s.enabled]
+        else:
+            config = settings.get_sources_config()
+            resolved_sources = config.get_youtube_rss_sources()
+
+        if not resolved_sources:
+            logger.info("No YouTube RSS feeds configured")
+            return 0
+
+        total = 0
+        for source in resolved_sources:
+            try:
+                max_entries = source.max_entries or max_entries_per_feed
+                count = self.ingest_feed(
+                    feed_url=source.url,
+                    max_entries=max_entries,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                    source_name=source.name,
+                    source_tags=source.tags if source.tags else None,
+                )
+                total += count
+            except Exception as e:
+                logger.error(f"Error ingesting YouTube RSS feed {source.name or source.url}: {e}")
+                continue
+
+        return total
 
 
 def main() -> None:
