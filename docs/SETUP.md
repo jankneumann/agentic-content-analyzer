@@ -968,6 +968,11 @@ ENABLE_DOCLING=true                    # Enable Docling parser (default: true)
 DOCLING_ENABLE_OCR=false               # Enable OCR for scanned documents (default: false)
 DOCLING_MAX_FILE_SIZE_MB=100           # Maximum file size for Docling (default: 100MB)
 DOCLING_TIMEOUT_SECONDS=300            # Processing timeout (default: 300s)
+
+# Podcast Ingestion (STT)
+PODCAST_STT_PROVIDER=openai             # STT provider (default: openai)
+PODCAST_MAX_DURATION_MINUTES=120        # Max audio length for transcription (default: 120)
+PODCAST_TEMP_DIR=/tmp/podcast_audio     # Temp directory for audio downloads
 ```
 
 See [Model Configuration](MODEL_CONFIGURATION.md) for detailed model selection options.

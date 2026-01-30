@@ -61,6 +61,7 @@ make dev-stop      # Stop servers
 python -m src.ingestion.gmail          # Gmail newsletters
 python -m src.ingestion.substack       # RSS feeds
 python -m src.ingestion.youtube        # YouTube playlists
+python -m src.ingestion.podcast        # Podcast feeds
 
 # Processing
 python -m src.processors.summarizer    # Summarize pending content
@@ -76,6 +77,34 @@ cd web && pnpm test:e2e:ui             # Visual Playwright inspector
 cd web && pnpm test:e2e:smoke          # Smoke tests (requires real backend)
 cd web && pnpm exec playwright test tests/e2e/layout/  # Run specific folder
 cd web && pnpm exec playwright show-report             # View HTML report
+```
+
+## Source Configuration
+
+Configure ingestion sources via YAML files in `sources.d/` directory:
+
+```bash
+# sources.d/ structure
+sources.d/
+  _defaults.yaml    # Global defaults (max_entries, enabled)
+  rss.yaml          # RSS feed sources
+  youtube.yaml      # YouTube playlists, channels, RSS feeds
+  podcasts.yaml     # Podcast feeds (with transcript settings)
+  gmail.yaml        # Gmail query sources
+```
+
+Each source supports: `name`, `url`/`id`, `tags`, `enabled`, `max_entries`.
+
+**YouTube sources** support `visibility: public|private` — private sources require OAuth and are skipped if OAuth fails.
+
+**Podcast sources** use a 3-tier transcript strategy:
+1. Feed-embedded text (>=500 chars)
+2. Linked transcript page (regex URL detection)
+3. Audio transcription via STT (gated by `transcribe: true`)
+
+**Migration from legacy config:**
+```bash
+python -m src.config.migrate_sources --output-dir sources.d
 ```
 
 ## Model Configuration
@@ -246,6 +275,7 @@ NEO4J_PASSWORD=newsletter_password
 | Sidebar text duplicates main content | Scope to `page.locator("main")` or `page.locator("aside")` to avoid matching both |
 | VitePWA manifest not in dev mode | `/manifest.webmanifest` returns HTML in dev; manifest only generated in production builds |
 | Route registration order is LIFO | Playwright matches last-registered route first; register specific routes after general ones |
+| Podcast transcription needs STT key | Set `OPENAI_API_KEY` for Whisper; `transcribe: false` in source to skip |
 
 ## Quick Links by Task
 
