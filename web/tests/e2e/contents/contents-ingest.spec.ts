@@ -2,7 +2,7 @@
  * Contents Ingest Dialog Tests
  *
  * Tests the ingest content dialog for fetching content
- * from Gmail, RSS feeds, and YouTube.
+ * from Gmail, RSS feeds, YouTube, and Podcasts.
  */
 
 import { test, expect } from "../fixtures"
@@ -27,17 +27,18 @@ test.describe("Ingest Contents Dialog", () => {
     await expect(dialog.getByText("Ingest Content")).toBeVisible()
   })
 
-  test("dialog shows source tabs (Gmail, RSS, YouTube)", async ({ contentsPage }) => {
+  test("dialog shows source tabs (Gmail, RSS, YouTube, Podcast)", async ({ contentsPage }) => {
     await contentsPage.navigate()
     await contentsPage.openIngestDialog()
 
     const dialog = contentsPage.page.getByRole("dialog")
     await expect(dialog).toBeVisible()
 
-    // Should have three source tabs
+    // Should have four source tabs
     await expect(dialog.getByRole("tab", { name: /gmail/i })).toBeVisible()
     await expect(dialog.getByRole("tab", { name: /rss/i })).toBeVisible()
     await expect(dialog.getByRole("tab", { name: /youtube/i })).toBeVisible()
+    await expect(dialog.getByRole("tab", { name: /podcast/i })).toBeVisible()
 
     // Gmail should be selected by default
     const gmailTab = dialog.getByRole("tab", { name: /gmail/i })
@@ -69,6 +70,16 @@ test.describe("Ingest Contents Dialog", () => {
 
     // Description should update to YouTube-specific text
     await expect(dialog.getByText(/fetch transcripts from configured youtube playlists/i)).toBeVisible()
+
+    // Switch to Podcast tab
+    await dialog.getByRole("tab", { name: /podcast/i }).click()
+    await expect(dialog.getByRole("tab", { name: /podcast/i })).toHaveAttribute(
+      "data-state",
+      "active"
+    )
+
+    // Description should update to Podcast-specific text
+    await expect(dialog.getByText(/fetch transcripts from configured podcast feeds/i)).toBeVisible()
   })
 
   test("max results slider is adjustable", async ({ contentsPage }) => {
@@ -112,6 +123,34 @@ test.describe("Ingest Contents Dialog", () => {
     const ingestSubmitButton = dialog.getByRole("button", { name: /ingest from gmail/i })
     await expect(ingestSubmitButton).toBeVisible()
     await ingestSubmitButton.click()
+
+    // Dialog should close after submission
+    await expect(dialog).not.toBeVisible({ timeout: 5000 })
+  })
+
+  test("can submit podcast ingestion", async ({ contentsPage }) => {
+    await contentsPage.navigate()
+    await contentsPage.openIngestDialog()
+
+    const dialog = contentsPage.page.getByRole("dialog")
+
+    // Switch to Podcast tab
+    await dialog.getByRole("tab", { name: /podcast/i }).click()
+    await expect(dialog.getByRole("tab", { name: /podcast/i })).toHaveAttribute(
+      "data-state",
+      "active"
+    )
+
+    // Should show podcast-specific description
+    await expect(dialog.getByText(/fetch transcripts from configured podcast feeds/i)).toBeVisible()
+
+    // Should show "Maximum Episodes" label
+    await expect(dialog.getByText("Maximum Episodes", { exact: true })).toBeVisible()
+
+    // Click the ingest button
+    const ingestButton = dialog.getByRole("button", { name: /ingest from podcast/i })
+    await expect(ingestButton).toBeVisible()
+    await ingestButton.click()
 
     // Dialog should close after submission
     await expect(dialog).not.toBeVisible({ timeout: 5000 })

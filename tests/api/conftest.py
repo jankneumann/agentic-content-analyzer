@@ -116,6 +116,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
         patch("src.api.chat_routes.get_db", mock_get_db),
         patch("src.api.settings_routes.get_db", mock_get_db),
         patch("src.api.content_routes.get_db", mock_get_db),
+        patch("src.api.source_routes.get_db", mock_get_db),
         patch("src.api.upload_routes.get_db", mock_get_db),
         patch("src.api.save_routes.get_db", mock_get_db),
         patch("src.services.script_review_service.get_db", mock_get_db),

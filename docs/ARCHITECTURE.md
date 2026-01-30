@@ -15,7 +15,7 @@
   - OpenAI SDK (Agents/Assistants API)
   - Google ADK (Agent Development Kit)
   - Microsoft Agent Framework (Semantic Kernel or AutoGen)
-- **Ingestion**: Gmail API, feedparser (RSS), YouTube Data API
+- **Ingestion**: Gmail API, feedparser (RSS/Podcasts), YouTube Data API, OpenAI Whisper (STT)
 - **Task Queue**: Celery + Redis
 - **Web**: FastAPI (APIs, web UI)
 - **Testing**: pytest
@@ -34,6 +34,7 @@ src/
     gmail.py        # Gmail API integration
     rss.py          # RSS feed parser (Substack, etc.)
     youtube.py      # YouTube playlist/transcript ingestion
+    podcast.py      # Podcast feed transcript ingestion
     files.py        # File upload processing
   models/           # Data models (Pydantic + SQLAlchemy)
     content.py      # Unified Content model (all content)
@@ -112,7 +113,7 @@ This enables **direct performance comparisons** across frameworks:
 ### Content
 The Content model is the data model for all ingested content:
 
-- **Source Types**: GMAIL, RSS, YOUTUBE, FILE_UPLOAD
+- **Source Types**: GMAIL, RSS, YOUTUBE, PODCAST, FILE_UPLOAD
 - **Source Tracking**: source_id, source_url for deduplication
 - **Parsed Content**: markdown_content (LLM-optimized)
 - **Structured Data**: tables_json, links_json, metadata_json
@@ -126,6 +127,7 @@ class ContentSource(str, Enum):
     GMAIL = "gmail"
     RSS = "rss"
     YOUTUBE = "youtube"
+    PODCAST = "podcast"
     FILE_UPLOAD = "file_upload"
 ```
 
@@ -219,6 +221,16 @@ The `render_with_embeds()` utility replaces these with actual content.
 - Playlist config file: `youtube_playlists.txt` with `PLAYLIST_ID | description` format
 - API key fallback: `settings.get_youtube_api_key()` returns YOUTUBE_API_KEY or falls back to GOOGLE_API_KEY
 
+### Podcast Ingestion (`PodcastContentIngestionService`)
+- Fetches podcast RSS feeds via feedparser
+- **3-tier transcript extraction**:
+  1. Feed-embedded: `<content:encoded>`, `<description>`, `<itunes:summary>` (if ≥ 500 chars)
+  2. Linked page: Detects `/transcript` or `/show-notes` URLs in show notes
+  3. Audio fallback: Downloads audio and transcribes via OpenAI Whisper (gated by `transcribe: true`)
+- Deduplicates by `source_id=podcast:{episode_guid}`
+- Stores `raw_format` per tier: `feed_transcript`, `linked_transcript`, or `audio_transcript`
+- Source config: `sources.d/podcasts.yaml` with per-feed `transcribe`, `stt_provider`, `languages`
+
 ### File Upload Ingestion (`FileContentIngestionService`)
 - Processes uploads via `ParserRouter` → stores as Content records
 - SHA-256 file hash for deduplication, links duplicates to canonical record
@@ -264,6 +276,7 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 - `GmailContentIngestionService` - Email ingestion
 - `RSSContentIngestionService` - RSS/Atom feeds
 - `YouTubeContentIngestionService` - YouTube transcripts with timestamps
+- `PodcastContentIngestionService` - Podcast feed transcripts
 - `FileContentIngestionService` - PDF, DOCX, PPTX, etc.
 
 ### Stage 2: Summarization
@@ -338,11 +351,16 @@ The legacy Newsletter API has been removed. Use the Content API instead.
 | GET | `/documents/formats` | List supported formats |
 | GET | `/documents/{id}` | Get document status |
 
+### Sources API (`/api/v1/sources`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sources` | List configured sources with content counts |
+
 ## Content API Features
 
 The Content API provides:
 
-1. **Source Types**: Explicit `source_type` field (gmail, rss, youtube, file_upload)
+1. **Source Types**: Explicit `source_type` field (gmail, rss, youtube, podcast, file_upload)
 2. **Markdown First**: `markdown_content` is primary, `raw_content` stored for re-parsing
 3. **Deduplication**: Built-in via `content_hash` and `canonical_id`
 4. **Richer Metadata**: `tables_json`, `links_json`, `metadata_json` for structured data

@@ -16,6 +16,7 @@
  * - rss: Fetched from RSS feed
  * - file_upload: Uploaded document (PDF, DOCX, etc.)
  * - youtube: YouTube video transcript
+ * - podcast: Podcast episode transcript
  * - manual: Manually created via API
  * - webpage: Scraped web page (future)
  * - other: Other sources
@@ -25,6 +26,7 @@ export type ContentSource =
   | "rss"
   | "file_upload"
   | "youtube"
+  | "podcast"
   | "manual"
   | "webpage"
   | "other"

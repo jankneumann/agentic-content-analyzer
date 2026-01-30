@@ -185,6 +185,7 @@ async def _run_content_ingestion(
             from src.ingestion.rss import RSSContentIngestionService
 
             rss_service = RSSContentIngestionService()
+            # Sources loaded automatically from SourcesConfig with legacy fallback
             count = await asyncio.to_thread(
                 lambda: rss_service.ingest_content(
                     max_entries_per_feed=max_results,
@@ -202,6 +203,19 @@ async def _run_content_ingestion(
                 max_videos_per_playlist=max_results,
                 after_date=after_date,
                 force_reprocess=force_reprocess,
+            )
+
+        elif source == ContentSource.PODCAST:
+            from src.ingestion.podcast import PodcastContentIngestionService
+
+            podcast_service = PodcastContentIngestionService()
+            # Sources loaded automatically from SourcesConfig
+            count = await asyncio.to_thread(
+                lambda: podcast_service.ingest_all_feeds(
+                    max_entries_per_feed=max_results,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
             )
 
         else:
@@ -252,6 +266,7 @@ async def trigger_content_ingestion(
     - gmail: Fetch newsletters from Gmail inbox
     - rss: Fetch articles from configured RSS feeds
     - youtube: Fetch transcripts from configured YouTube playlists
+    - podcast: Fetch transcripts from configured podcast feeds
     """
     import uuid
 
