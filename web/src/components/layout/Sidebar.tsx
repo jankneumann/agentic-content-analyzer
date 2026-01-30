@@ -75,6 +75,7 @@ function NavItemComponent({
           <a
             href={item.href}
             onClick={handleClick}
+            aria-current={isActive ? "page" : undefined}
             className={cn(
               // Base styles
               "flex h-10 w-10 items-center justify-center rounded-md",
@@ -105,6 +106,7 @@ function NavItemComponent({
     <a
       href={item.href}
       onClick={handleClick}
+      aria-current={isActive ? "page" : undefined}
       className={cn(
         // Base styles
         "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
