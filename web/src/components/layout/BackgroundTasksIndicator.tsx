@@ -27,6 +27,12 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -117,14 +123,22 @@ function TaskItem({
 
       {/* Remove button (only for completed/failed) */}
       {!isActive && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 flex-shrink-0"
-          onClick={onRemove}
-        >
-          <X className="h-3 w-3" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 flex-shrink-0"
+              onClick={onRemove}
+              aria-label={`Remove task: ${task.title}`}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Remove task</p>
+          </TooltipContent>
+        </Tooltip>
       )}
     </div>
   )
@@ -159,8 +173,9 @@ export function BackgroundTasksIndicator() {
       : 0
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80">
-      <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+    <TooltipProvider>
+      <div className="fixed bottom-4 right-4 z-50 w-80">
+        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
         {/* Header / Trigger */}
         <CollapsibleTrigger asChild>
           <Button
@@ -251,7 +266,8 @@ export function BackgroundTasksIndicator() {
             )}
           </div>
         </CollapsibleContent>
-      </Collapsible>
-    </div>
+        </Collapsible>
+      </div>
+    </TooltipProvider>
   )
 }
