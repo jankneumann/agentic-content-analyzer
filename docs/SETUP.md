@@ -999,6 +999,42 @@ OTEL_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
+**Testing with local Opik (Docker)**:
+
+A `docker-compose.opik.yml` is included to run Opik self-hosted alongside your normal dev stack with no port conflicts:
+
+```bash
+# Start your normal stack (postgres, redis, neo4j)
+docker compose up -d
+
+# Start Opik (separate Docker project — no port conflicts)
+docker compose -f docker-compose.opik.yml -p opik up -d
+
+# Wait ~60s for Opik backend to run migrations, then open:
+#   Opik UI:   http://localhost:5173
+#   Opik API:  http://localhost:8080
+```
+
+Configure `.env` to send traces to local Opik:
+
+```bash
+OBSERVABILITY_PROVIDER=opik
+OTEL_ENABLED=true
+# No OTEL_EXPORTER_OTLP_ENDPOINT needed — defaults to http://localhost:5173/api/v1/private/otel
+OPIK_PROJECT_NAME=newsletter-aggregator
+OTEL_LOG_PROMPTS=true                   # Optional: see prompt/completion text in Opik
+```
+
+Run the app and trigger an LLM call (chat, summarizer, etc.) — traces appear in the Opik UI at `http://localhost:5173`.
+
+Port isolation: Opik's internal Redis and Python backend are **not** exposed to the host, so they won't conflict with our Redis (6379) or FastAPI (8000). Only the Opik frontend (5173) and backend API (8080) are exposed.
+
+Tear down when done:
+
+```bash
+docker compose -f docker-compose.opik.yml -p opik down
+```
+
 **Health endpoints**:
 - `GET /health` — Liveness probe (always 200 if process alive)
 - `GET /ready` — Readiness probe (200 if database OK, 503 otherwise)
