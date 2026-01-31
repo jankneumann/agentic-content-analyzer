@@ -143,6 +143,7 @@ def setup_logging() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("opentelemetry").setLevel(logging.WARNING)
 
     # Suppress verbose output from AI/ML libraries
     logging.getLogger("openai").setLevel(logging.WARNING)

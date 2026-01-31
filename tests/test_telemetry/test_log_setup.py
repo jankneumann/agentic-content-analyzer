@@ -39,8 +39,16 @@ def _enabled_settings(mock_settings):
 
 @pytest.fixture()
 def mock_settings():
-    """Patch settings in the log_setup module."""
-    with patch("src.telemetry.log_setup.settings") as ms:
+    """Patch settings in both log_setup and otel_setup modules.
+
+    log_setup reads settings for gate checks (otel_enabled, otel_logs_enabled, endpoint).
+    otel_setup reads settings in _build_exporter_config (endpoint, headers).
+    Both must see the same mock to avoid creating exporters with invalid endpoints.
+    """
+    with (
+        patch("src.telemetry.log_setup.settings") as ms,
+        patch("src.telemetry.otel_setup.settings", ms),
+    ):
         yield ms
 
 
