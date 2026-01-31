@@ -7,6 +7,40 @@ from datetime import UTC, datetime
 
 from src.config import settings
 
+# Attributes that are part of LogRecord internals or OTel injection —
+# excluded from the "extra" section of JSON output.  Module-level frozenset
+# avoids per-call allocation on every log line.
+_INTERNAL_LOG_ATTRS = frozenset(
+    {
+        "name",
+        "msg",
+        "args",
+        "created",
+        "relativeCreated",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "pathname",
+        "filename",
+        "module",
+        "levelno",
+        "levelname",
+        "msecs",
+        "process",
+        "processName",
+        "thread",
+        "threadName",
+        "taskName",
+        "message",
+        "otelTraceID",
+        "otelSpanID",
+        "otelServiceName",
+        "otelTraceSampled",
+    }
+)
+
 
 class JsonFormatter(logging.Formatter):
     """JSON Lines formatter for structured log output.
@@ -35,42 +69,11 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info and record.exc_info[0] is not None:
             log_entry["exception"] = self.formatException(record.exc_info)
 
-        # Add extra attributes (skip internal logging attrs)
-        _internal_attrs = {
-            "name",
-            "msg",
-            "args",
-            "created",
-            "relativeCreated",
-            "exc_info",
-            "exc_text",
-            "stack_info",
-            "lineno",
-            "funcName",
-            "pathname",
-            "filename",
-            "module",
-            "levelno",
-            "levelname",
-            "msecs",
-            "process",
-            "processName",
-            "thread",
-            "threadName",
-            "taskName",
-            "message",
-            "otelTraceID",
-            "otelSpanID",
-            "otelServiceName",
-            "otelTraceSampled",
-        }
+        # Add extra attributes (skip internal logging attrs).
+        # Non-serializable values are handled by default=str in json.dumps below.
         for key, value in record.__dict__.items():
-            if key not in _internal_attrs and not key.startswith("_"):
-                try:
-                    json.dumps(value)  # Only include JSON-serializable values
-                    log_entry[key] = value
-                except (TypeError, ValueError):
-                    log_entry[key] = str(value)
+            if key not in _INTERNAL_LOG_ATTRS and not key.startswith("_"):
+                log_entry[key] = value
 
         return json.dumps(log_entry, default=str)
 

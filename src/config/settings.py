@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from src.config.sources import SourcesConfig
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
@@ -336,6 +336,17 @@ class Settings(BaseSettings):
 
     # Health Check Configuration
     health_check_timeout_seconds: int = 5  # Timeout for health check probes
+
+    @field_validator("otel_logs_export_level")
+    @classmethod
+    def validate_otel_logs_export_level(cls, v: str) -> str:
+        """Validate that otel_logs_export_level is a known Python logging level."""
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if v.upper() not in valid_levels:
+            raise ValueError(
+                f"OTEL_LOGS_EXPORT_LEVEL must be one of {sorted(valid_levels)}, got '{v}'"
+            )
+        return v.upper()
 
     @model_validator(mode="after")
     def configure_local_supabase(self) -> Settings:

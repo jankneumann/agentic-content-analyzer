@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from opentelemetry.sdk.resources import Resource
 
 from src.config import settings
 from src.utils.logging import get_logger
@@ -33,7 +34,26 @@ def _parse_headers(headers_str: str | None) -> dict[str, str]:
     return result
 
 
-def _create_resource() -> object:
+def _build_exporter_config(path_suffix: str) -> tuple[str, dict[str, str]]:
+    """Build (endpoint, headers) for an OTLP exporter.
+
+    Appends the path_suffix (e.g. "/v1/traces", "/v1/logs") to the base
+    endpoint if not already present, and parses the OTLP headers string.
+
+    Args:
+        path_suffix: OTLP path to append (e.g. "/v1/traces", "/v1/logs")
+
+    Returns:
+        Tuple of (endpoint_url, headers_dict)
+    """
+    headers = _parse_headers(settings.otel_exporter_otlp_headers)
+    endpoint = settings.otel_exporter_otlp_endpoint or ""
+    if not endpoint.endswith(path_suffix):
+        endpoint = f"{endpoint.rstrip('/')}{path_suffix}"
+    return endpoint, headers
+
+
+def _create_resource() -> Resource:
     """Create a shared OTel Resource for all signal providers.
 
     Returns the same Resource identity for TracerProvider, LoggerProvider,
@@ -43,9 +63,9 @@ def _create_resource() -> object:
     Returns:
         An opentelemetry.sdk.resources.Resource instance
     """
-    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.resources import Resource as _Resource
 
-    return Resource.create(
+    return _Resource.create(
         {
             "service.name": settings.otel_service_name,
             "telemetry.sdk.name": "opentelemetry",
@@ -95,12 +115,8 @@ def setup_otel_infrastructure(app: FastAPI | None = None) -> None:
     # Shared resource for all OTel signal providers (traces, logs, metrics)
     resource = _create_resource()
 
-    # Configure exporter
-    headers = _parse_headers(settings.otel_exporter_otlp_headers)
-    endpoint = settings.otel_exporter_otlp_endpoint
-    if not endpoint.endswith("/v1/traces"):
-        endpoint = f"{endpoint.rstrip('/')}/v1/traces"
-
+    # Configure trace exporter
+    endpoint, headers = _build_exporter_config("/v1/traces")
     exporter = OTLPSpanExporter(
         endpoint=endpoint,
         headers=headers,
