@@ -4,9 +4,6 @@ import json
 import time
 from datetime import datetime
 
-from anthropic import Anthropic
-from openai import OpenAI
-
 from src.config.models import ModelConfig, ModelStep, Provider, get_model_config
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
@@ -18,6 +15,7 @@ from src.models.theme import (
     ThemeTrend,
 )
 from src.processors.historical_context import HistoricalContextAnalyzer
+from src.services.llm_router import LLMRouter
 from src.storage.database import get_db
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger
@@ -57,6 +55,9 @@ class ThemeAnalyzer:
         # Get model for theme analysis step (or use override)
         self.model = model_override or model_config.get_model_for_step(ModelStep.THEME_ANALYSIS)
 
+        # Initialize LLM router
+        self.llm_router = LLMRouter(model_config)
+
         # Determine framework based on model family
         model_family = model_config.get_family(self.model)
         self.framework = model_family.value  # "claude", "gemini", "gpt"
@@ -64,7 +65,7 @@ class ThemeAnalyzer:
         if use_large_context:
             # If large context requested but model not set to Gemini, warn but proceed
             if self.framework != "gemini":
-                logger.info(
+                logger.warning(
                     "Large context analysis requested. Ensure a Gemini Flash model "
                     "is configured for optimal performance."
                 )
@@ -280,6 +281,11 @@ class ThemeAnalyzer:
             relevance_threshold=relevance_threshold,
         )
 
+        # Split prompt into system and user parts (simple split)
+        lines = prompt.split("\n", 1)
+        system_prompt = lines[0]
+        user_prompt = lines[1] if len(lines) > 1 else ""
+
         # Call LLM for analysis with provider failover
         start_time = time.time()
 
@@ -291,11 +297,16 @@ class ThemeAnalyzer:
             return []
 
         # Filter supported providers
-        # TODO: Add support for AWS Bedrock, Vertex AI (when dependencies are available)
         supported_providers = [
             p
             for p in providers
-            if p.provider in [Provider.ANTHROPIC, Provider.OPENAI, Provider.GOOGLE_AI]
+            if p.provider in [
+                Provider.ANTHROPIC,
+                Provider.AWS_BEDROCK,
+                Provider.GOOGLE_VERTEX,
+                Provider.OPENAI,
+                Provider.GOOGLE_AI
+            ]
         ]
 
         if not supported_providers:
@@ -310,109 +321,22 @@ class ThemeAnalyzer:
             try:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
 
-                # Get provider-specific model ID
-                provider_model_id = self.model_config.get_provider_model_id(
-                    self.model, provider_config.provider
+                response = await self.llm_router.generate(
+                    model=self.model,
+                    provider=provider_config.provider,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=8000 if "claude" in self.model else 4000,
+                    temperature=0.3,
                 )
 
-                if provider_config.provider == Provider.ANTHROPIC:
-                    # Create client for this provider
-                    client = Anthropic(api_key=provider_config.api_key)
+                # Track provider and token usage
+                self.provider_used = response.provider
+                self.input_tokens = response.input_tokens
+                self.output_tokens = response.output_tokens
+                self.model_version = response.model_version
 
-                    response = client.messages.create(
-                        model=provider_model_id,
-                        max_tokens=8000,
-                        temperature=0.3,
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": prompt,
-                            }
-                        ],
-                    )
-
-                    # Track provider and token usage
-                    self.provider_used = provider_config.provider
-                    self.input_tokens = response.usage.input_tokens
-                    self.output_tokens = response.usage.output_tokens
-                    self.model_version = self.model_config.get_model_version(
-                        self.model, self.provider_used
-                    )
-
-                    response_text = response.content[0].text
-
-                elif provider_config.provider == Provider.OPENAI:
-                    client = OpenAI(api_key=provider_config.api_key)
-
-                    response = client.chat.completions.create(
-                        model=provider_model_id,
-                        temperature=0.3,
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": prompt,
-                            }
-                        ],
-                        max_tokens=4000,
-                    )
-
-                    # Track provider and token usage
-                    self.provider_used = provider_config.provider
-                    if hasattr(response.usage, "prompt_tokens"):
-                        self.input_tokens = response.usage.prompt_tokens
-                        self.output_tokens = response.usage.completion_tokens
-                    else:
-                        self.input_tokens = 0
-                        self.output_tokens = 0
-                    self.model_version = self.model_config.get_model_version(
-                        self.model, self.provider_used
-                    )
-
-                    response_text = response.choices[0].message.content
-
-                elif provider_config.provider == Provider.GOOGLE_AI:
-                    # Use the new google-genai SDK
-                    from google import genai
-                    from google.genai import types
-
-                    client = genai.Client(api_key=provider_config.api_key)
-
-                    config = types.GenerateContentConfig(
-                        max_output_tokens=8192,
-                        temperature=0.3,
-                    )
-
-                    response = client.models.generate_content(
-                        model=provider_model_id,
-                        contents=prompt,
-                        config=config,
-                    )
-
-                    # Track provider and token usage
-                    self.provider_used = provider_config.provider
-
-                    # Extract token counts from usage metadata
-                    self.input_tokens = (
-                        response.usage_metadata.prompt_token_count if response.usage_metadata else 0
-                    )
-                    self.output_tokens = (
-                        response.usage_metadata.candidates_token_count
-                        if response.usage_metadata
-                        else 0
-                    )
-
-                    self.model_version = self.model_config.get_model_version(
-                        self.model, self.provider_used
-                    )
-
-                    # Extract text from response
-                    text = ""
-                    if response.candidates and response.candidates[0].content.parts:
-                        for part in response.candidates[0].content.parts:
-                            if hasattr(part, "text") and part.text:
-                                text = part.text
-                                break
-                    response_text = text
+                response_text = response.text
 
                 # Success - break out of failover loop
                 break
