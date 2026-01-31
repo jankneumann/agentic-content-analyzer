@@ -125,8 +125,13 @@ class OpikProvider:
             resource = Resource.create({"service.name": self._service_name})
             self._tracer_provider = TracerProvider(resource=resource)
 
+            # Ensure endpoint includes /v1/traces path
+            endpoint = self._get_endpoint()
+            if not endpoint.endswith("/v1/traces"):
+                endpoint = f"{endpoint.rstrip('/')}/v1/traces"
+
             exporter = OTLPSpanExporter(
-                endpoint=f"{self._get_endpoint()}/v1/traces",
+                endpoint=endpoint,
                 headers=self._build_headers(),
             )
             self._tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
