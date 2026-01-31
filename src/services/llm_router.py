@@ -227,11 +227,15 @@ class LLMRouter:
             # Explicit provider (AWS Bedrock for Claude)
             response = await router.generate("claude-sonnet-4-5", provider=Provider.AWS_BEDROCK, ...)
         """
+        import time
+
         resolved_provider = self.resolve_provider(model, provider)
         logger.info(f"Generating with model={model}, provider={resolved_provider.value}")
 
+        start_time = time.monotonic()
+
         if resolved_provider == Provider.GOOGLE_AI:
-            return await self._generate_gemini(
+            response = await self._generate_gemini(
                 model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
             )
         elif resolved_provider in (
@@ -239,15 +243,28 @@ class LLMRouter:
             Provider.AWS_BEDROCK,
             Provider.GOOGLE_VERTEX,
         ):
-            return await self._generate_anthropic(
+            response = await self._generate_anthropic(
                 model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
             )
         elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            return await self._generate_openai(
+            response = await self._generate_openai(
                 model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
             )
         else:
             raise ValueError(f"Unsupported provider: {resolved_provider}")
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        self._trace_llm_call(
+            model=model,
+            provider=resolved_provider.value,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response=response,
+            duration_ms=duration_ms,
+            max_tokens=max_tokens,
+        )
+
+        return response
 
     async def generate_with_tools(
         self,
@@ -279,11 +296,15 @@ class LLMRouter:
         Returns:
             LLMResponse with final text and usage stats
         """
+        import time
+
         resolved_provider = self.resolve_provider(model, provider)
         logger.info(f"Generating with tools: model={model}, provider={resolved_provider.value}")
 
+        start_time = time.monotonic()
+
         if resolved_provider == Provider.GOOGLE_AI:
-            return await self._generate_gemini_with_tools(
+            response = await self._generate_gemini_with_tools(
                 model,
                 resolved_provider,
                 system_prompt,
@@ -299,7 +320,7 @@ class LLMRouter:
             Provider.AWS_BEDROCK,
             Provider.GOOGLE_VERTEX,
         ):
-            return await self._generate_anthropic_with_tools(
+            response = await self._generate_anthropic_with_tools(
                 model,
                 resolved_provider,
                 system_prompt,
@@ -311,7 +332,7 @@ class LLMRouter:
                 max_iterations,
             )
         elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            return await self._generate_openai_with_tools(
+            response = await self._generate_openai_with_tools(
                 model,
                 resolved_provider,
                 system_prompt,
@@ -324,6 +345,62 @@ class LLMRouter:
             )
         else:
             raise ValueError(f"Unsupported provider: {resolved_provider}")
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        self._trace_llm_call(
+            model=model,
+            provider=resolved_provider.value,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response=response,
+            duration_ms=duration_ms,
+            max_tokens=max_tokens,
+            metadata={"tool_count": len(tools), "max_iterations": max_iterations},
+        )
+
+        return response
+
+    # =========================================================================
+    # Telemetry
+    # =========================================================================
+
+    def _trace_llm_call(
+        self,
+        *,
+        model: str,
+        provider: str,
+        system_prompt: str,
+        user_prompt: str,
+        response: LLMResponse,
+        duration_ms: float,
+        max_tokens: int | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Record an LLM call to the observability provider.
+
+        Called after each generate() or generate_with_tools() call.
+        Uses the lazy singleton from src.telemetry to avoid import-time
+        side effects.
+        """
+        try:
+            from src.telemetry import get_provider
+
+            obs = get_provider()
+            obs.trace_llm_call(
+                model=model,
+                provider=provider,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                response_text=response.text,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                duration_ms=duration_ms,
+                max_tokens=max_tokens,
+                metadata=metadata,
+            )
+        except Exception as e:
+            # Never let telemetry failures break LLM calls
+            logger.debug(f"Telemetry trace failed: {e}")
 
     # =========================================================================
     # Anthropic / Claude Implementation (Anthropic API, Bedrock, Vertex AI)

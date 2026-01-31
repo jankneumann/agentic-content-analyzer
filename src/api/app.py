@@ -15,6 +15,9 @@ from src.api.chat_routes import router as chat_router
 from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
 from src.api.files_routes import router as files_router
+from src.api.health_routes import router as health_router
+from src.api.middleware.error_handler import register_error_handlers
+from src.api.middleware.telemetry import TraceIdMiddleware
 from src.api.podcast_routes import router as podcast_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
@@ -29,9 +32,18 @@ from src.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
-    # Startup
+    # Startup: Initialize telemetry (observability provider + OTel infrastructure)
+    from src.telemetry import setup_telemetry
+
+    setup_telemetry(app=app)
+
     yield
-    # Shutdown
+
+    # Shutdown: Flush and close telemetry
+    from src.telemetry import shutdown_telemetry
+
+    shutdown_telemetry()
+
     # Close queue connection if it was opened
     try:
         from src.queue.setup import close_queue
@@ -59,6 +71,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Telemetry middleware — adds X-Trace-Id header to responses
+app.add_middleware(TraceIdMiddleware)
+
+# Structured error handling — includes trace_id in error responses
+register_error_handlers(app)
+
 # Include routers
 app.include_router(audio_digest_router)
 app.include_router(content_router)
@@ -73,12 +91,7 @@ app.include_router(upload_router)
 app.include_router(files_router)
 app.include_router(save_router)  # Mobile content capture
 app.include_router(source_router)
-
-
-@app.get("/health", tags=["system"])
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "newsletter-aggregator"}
+app.include_router(health_router)  # Health and readiness probes
 
 
 @app.get("/api/v1/system/config", tags=["system"])
