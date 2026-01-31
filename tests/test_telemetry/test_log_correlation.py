@@ -139,6 +139,25 @@ class TestJsonFormatter:
         assert "stack_info" in parsed
         assert "test.py" in parsed["stack_info"]
 
+    def test_handles_bad_format_args_gracefully(self):
+        """Should not crash if record.getMessage() fails due to bad args."""
+        formatter = JsonFormatter()
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="Hello %s %s",
+            args=("world",),  # Missing second arg
+            exc_info=None,
+        )
+
+        output = formatter.format(record)
+        parsed = json.loads(output)
+
+        # Should fall back to raw message string
+        assert parsed["message"] == "Hello %s %s"
+
     def test_excludes_color_message(self):
         """Uvicorn's color_message should not appear in JSON output."""
         formatter = JsonFormatter()

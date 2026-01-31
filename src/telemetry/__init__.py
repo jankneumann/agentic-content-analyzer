@@ -85,5 +85,6 @@ def reset_telemetry() -> None:
     shutdown_otel_log_bridge()
 
     if _provider is not None:
+        _provider.flush()
         _provider.shutdown()
     _provider = None

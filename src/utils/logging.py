@@ -52,11 +52,18 @@ class JsonFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
+        # Defensive getMessage: if args don't match the format string, fall back
+        # to the raw message rather than crashing the entire logging pipeline.
+        try:
+            message = record.getMessage()
+        except Exception:
+            message = str(record.msg)
+
         log_entry: dict = {
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": message,
         }
 
         # Add trace context if injected by LoggingInstrumentor

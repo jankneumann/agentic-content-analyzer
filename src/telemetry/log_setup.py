@@ -138,10 +138,12 @@ def shutdown_otel_log_bridge() -> None:
         finally:
             _logger_provider = None
 
-    # Uninstrument logging
+    # Uninstrument logging (best-effort; ImportError if package not installed)
     try:
         from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
         LoggingInstrumentor().uninstrument()
-    except (ImportError, Exception):
-        pass
+    except Exception:
+        logger.debug(
+            "LoggingInstrumentor uninstrument skipped (not available or already uninstrumented)"
+        )
