@@ -494,7 +494,8 @@ async def regenerate_with_feedback(
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Failed to generate summary'})}\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+            logger.error(f"Error regenerating summary: {e}", exc_info=True)
+            yield f"data: {json.dumps({'status': 'error', 'message': 'An internal error occurred.'})}\n\n"
 
     return StreamingResponse(
         generate_preview(),
