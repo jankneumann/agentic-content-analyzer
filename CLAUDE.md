@@ -233,6 +233,34 @@ NEO4J_PASSWORD=newsletter_password
 3. Save the connection URI and generated password
 4. Set `NEO4J_PROVIDER=auradb` with the credentials above
 
+## Observability
+
+Two-layer architecture: **LLM observability** (provider-abstracted) + **infrastructure telemetry** (OpenTelemetry auto-instrumentation).
+
+| Provider | `OBSERVABILITY_PROVIDER` | SDK | Use Case |
+|----------|--------------------------|-----|----------|
+| Noop | `noop` (default) | None | Zero overhead, disabled state |
+| Opik | `opik` | OTel + gen_ai.* | Self-hosted or Comet Cloud |
+| Braintrust | `braintrust` | Native SDK | Evaluations, scoring, prompt mgmt |
+| OTel | `otel` | Pure OTel | Generic OTLP backend (Jaeger, Grafana, etc.) |
+
+```bash
+# .env - Enable observability
+OBSERVABILITY_PROVIDER=braintrust   # or "opik", "otel", "noop"
+BRAINTRUST_API_KEY=sk-xxx           # Required for Braintrust
+OTEL_ENABLED=true                   # Enable infrastructure auto-instrumentation
+OTEL_EXPORTER_OTLP_ENDPOINT=https://api.braintrust.dev/otel/v1/traces
+```
+
+**Key files:**
+- `src/telemetry/__init__.py` — `setup_telemetry()`, `get_provider()`, `shutdown_telemetry()`
+- `src/telemetry/providers/` — Provider implementations (factory pattern)
+- `src/telemetry/otel_setup.py` — OTel infrastructure (FastAPI, SQLAlchemy, httpx)
+- `src/telemetry/metrics.py` — OTel meters (LLM requests, tokens, duration)
+- `src/api/health_routes.py` — `/health` (liveness) and `/ready` (readiness)
+- `src/api/middleware/telemetry.py` — X-Trace-Id response header
+- `src/api/middleware/error_handler.py` — Structured JSON errors with trace_id
+
 ## Critical Gotchas
 
 ⚠️ **These will bite you if ignored:**
@@ -276,6 +304,8 @@ NEO4J_PASSWORD=newsletter_password
 | VitePWA manifest not in dev mode | `/manifest.webmanifest` returns HTML in dev; manifest only generated in production builds |
 | Route registration order is LIFO | Playwright matches last-registered route first; register specific routes after general ones |
 | Podcast transcription needs STT key | Set `OPENAI_API_KEY` for Whisper; `transcribe: false` in source to skip |
+| Telemetry mock patch target | Patch `src.telemetry.get_provider` (source module), NOT `src.services.llm_router.get_provider` — local imports aren't module attrs |
+| Telemetry tests need anthropic_api_key | Pass `anthropic_api_key="test-key"` to `Settings(_env_file=None)` in observability tests |
 
 ## Quick Links by Task
 

@@ -67,6 +67,16 @@ dependencies = [
 
     # HTML to Markdown Conversion
     "trafilatura>=2.0.0",  # Academic-quality web content extraction
+
+    # Observability (OpenTelemetry core)
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
+
+    # Observability (auto-instrumentation)
+    "opentelemetry-instrumentation-fastapi>=0.41b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.41b0",
+    "opentelemetry-instrumentation-httpx>=0.41b0",
 ]
 
 [project.optional-dependencies]
@@ -84,6 +94,12 @@ dev = [
 ]
 ocr = [
     "docling[ocr]>=2.60.0",  # OCR support for scanned documents
+]
+braintrust = [
+    "braintrust>=0.0.160",  # Braintrust SDK for LLM observability
+]
+metrics = [
+    "opentelemetry-exporter-prometheus>=0.41b0",  # Prometheus metrics export
 ]
 
 [build-system]
