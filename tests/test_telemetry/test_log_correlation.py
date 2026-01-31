@@ -119,6 +119,46 @@ class TestJsonFormatter:
         assert "exception" in parsed
         assert "ValueError: test error" in parsed["exception"]
 
+    def test_includes_stack_info(self):
+        """Should include stack_info when logger.info('msg', stack_info=True) is used."""
+        formatter = JsonFormatter()
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="with stack",
+            args=(),
+            exc_info=None,
+        )
+        record.stack_info = 'Stack (most recent call last):\n  File "test.py", line 1'
+
+        output = formatter.format(record)
+        parsed = json.loads(output)
+
+        assert "stack_info" in parsed
+        assert "test.py" in parsed["stack_info"]
+
+    def test_excludes_color_message(self):
+        """Uvicorn's color_message should not appear in JSON output."""
+        formatter = JsonFormatter()
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="GET / 200",
+            args=(),
+            exc_info=None,
+        )
+        record.color_message = "\033[32mGET / 200\033[0m"
+
+        output = formatter.format(record)
+        parsed = json.loads(output)
+
+        assert "color_message" not in parsed
+        assert parsed["message"] == "GET / 200"
+
 
 class TestTraceContextFormatter:
     """Tests for the text formatter with trace context."""

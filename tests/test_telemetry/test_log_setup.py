@@ -102,6 +102,7 @@ class TestSetupOtelLogBridge:
         """A LoggingHandler should be added to the root logger."""
         root_handlers_before = len(logging.getLogger().handlers)
 
+        import src.telemetry.log_setup as log_setup_module
         from src.telemetry.log_setup import setup_otel_log_bridge
 
         setup_otel_log_bridge(resource=test_resource)
@@ -113,6 +114,9 @@ class TestSetupOtelLogBridge:
 
         new_handler = logging.getLogger().handlers[-1]
         assert isinstance(new_handler, LoggingHandler)
+
+        # Verify module-level handler reference is set
+        assert log_setup_module._otel_handler is new_handler
 
     @pytest.mark.usefixtures("otel_log_bridge_cleanup")
     def test_export_level_respected(self, mock_settings, test_resource):
@@ -152,16 +156,33 @@ class TestShutdownOtelLogBridge:
     """Tests for shutdown_otel_log_bridge function."""
 
     @pytest.mark.usefixtures("otel_log_bridge_cleanup")
-    def test_shutdown_cleans_up_provider(self, _enabled_settings, test_resource):
-        """Shutdown should set _logger_provider to None."""
+    def test_shutdown_cleans_up_provider_and_handler(self, _enabled_settings, test_resource):
+        """Shutdown should set both _logger_provider and _otel_handler to None."""
         import src.telemetry.log_setup as log_setup_module
         from src.telemetry.log_setup import setup_otel_log_bridge, shutdown_otel_log_bridge
 
         setup_otel_log_bridge(resource=test_resource)
         assert log_setup_module._logger_provider is not None
+        assert log_setup_module._otel_handler is not None
 
         shutdown_otel_log_bridge()
         assert log_setup_module._logger_provider is None
+        assert log_setup_module._otel_handler is None
+
+    @pytest.mark.usefixtures("otel_log_bridge_cleanup")
+    def test_reset_telemetry_cleans_up_log_bridge(self, _enabled_settings, test_resource):
+        """reset_telemetry() should also shut down the OTel log bridge."""
+        import src.telemetry.log_setup as log_setup_module
+        from src.telemetry import reset_telemetry
+        from src.telemetry.log_setup import setup_otel_log_bridge
+
+        setup_otel_log_bridge(resource=test_resource)
+        assert log_setup_module._logger_provider is not None
+        assert log_setup_module._otel_handler is not None
+
+        reset_telemetry()
+        assert log_setup_module._logger_provider is None
+        assert log_setup_module._otel_handler is None
 
     def test_shutdown_is_idempotent(self):
         """Shutdown should not raise when called without setup."""

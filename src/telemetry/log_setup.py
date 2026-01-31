@@ -99,16 +99,18 @@ def setup_otel_log_bridge(resource: Resource) -> LoggerProvider | None:
     # set_logging_format=False: we manage our own formatters
     LoggingInstrumentor().instrument(set_logging_format=False)
 
-    # Add LoggingHandler to root logger for OTLP export
+    # Add LoggingHandler to root logger for OTLP export.
+    # Log the setup message *before* attaching the handler so the bootstrap
+    # message itself is not the first record exported to the backend.
     export_level = getattr(logging, settings.otel_logs_export_level.upper(), logging.WARNING)
-    handler = LoggingHandler(level=export_level, logger_provider=_logger_provider)
-    logging.getLogger().addHandler(handler)
-    _otel_handler = handler
-
     logger.info(
         f"OTel log bridge enabled (export_level={settings.otel_logs_export_level}, "
         f"endpoint={endpoint})"
     )
+
+    handler = LoggingHandler(level=export_level, logger_provider=_logger_provider)
+    logging.getLogger().addHandler(handler)
+    _otel_handler = handler
 
     return _logger_provider
 

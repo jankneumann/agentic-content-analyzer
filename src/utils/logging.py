@@ -38,6 +38,8 @@ _INTERNAL_LOG_ATTRS = frozenset(
         "otelSpanID",
         "otelServiceName",
         "otelTraceSampled",
+        # Framework-injected attrs that duplicate existing fields
+        "color_message",  # uvicorn: ANSI-colored duplicate of message
     }
 )
 
@@ -68,6 +70,10 @@ class JsonFormatter(logging.Formatter):
         # Add exception info if present
         if record.exc_info and record.exc_info[0] is not None:
             log_entry["exception"] = self.formatException(record.exc_info)
+
+        # Add stack info if present (e.g. logger.info("msg", stack_info=True))
+        if record.stack_info:
+            log_entry["stack_info"] = self.formatStack(record.stack_info)
 
         # Add extra attributes (skip internal logging attrs).
         # Non-serializable values are handled by default=str in json.dumps below.
