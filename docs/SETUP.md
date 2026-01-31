@@ -965,6 +965,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=        # OTLP HTTP endpoint
 OTEL_EXPORTER_OTLP_HEADERS=         # Comma-separated key=value pairs
 OTEL_LOG_PROMPTS=false               # Log prompt/completion text (PII risk)
 
+# OTel Log Bridge (requires OTEL_ENABLED=true)
+OTEL_LOGS_ENABLED=true               # Enable log bridge to OTLP export (default: true)
+OTEL_LOGS_EXPORT_LEVEL=WARNING       # Min level for OTLP export (DEBUG/INFO/WARNING/ERROR)
+LOG_FORMAT=json                      # Console output: "json" (default) or "text"
+
 # Opik (Comet Cloud or self-hosted)
 OPIK_API_KEY=                        # Comet Cloud API key
 OPIK_WORKSPACE=                      # Comet Cloud workspace

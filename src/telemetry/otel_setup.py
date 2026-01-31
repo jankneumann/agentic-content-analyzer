@@ -33,6 +33,27 @@ def _parse_headers(headers_str: str | None) -> dict[str, str]:
     return result
 
 
+def _create_resource() -> object:
+    """Create a shared OTel Resource for all signal providers.
+
+    Returns the same Resource identity for TracerProvider, LoggerProvider,
+    and MeterProvider so that traces, logs, and metrics are correlated by
+    service.name and deployment.environment.
+
+    Returns:
+        An opentelemetry.sdk.resources.Resource instance
+    """
+    from opentelemetry.sdk.resources import Resource
+
+    return Resource.create(
+        {
+            "service.name": settings.otel_service_name,
+            "telemetry.sdk.name": "opentelemetry",
+            "deployment.environment": settings.environment,
+        }
+    )
+
+
 def setup_otel_infrastructure(app: FastAPI | None = None) -> None:
     """Configure OTel auto-instrumentation for infrastructure.
 
@@ -62,7 +83,6 @@ def setup_otel_infrastructure(app: FastAPI | None = None) -> None:
     try:
         from opentelemetry import trace
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-        from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError:
@@ -72,14 +92,8 @@ def setup_otel_infrastructure(app: FastAPI | None = None) -> None:
         )
         return
 
-    # Configure resource
-    resource = Resource.create(
-        {
-            "service.name": settings.otel_service_name,
-            "telemetry.sdk.name": "opentelemetry",
-            "deployment.environment": settings.environment,
-        }
-    )
+    # Shared resource for all OTel signal providers (traces, logs, metrics)
+    resource = _create_resource()
 
     # Configure exporter
     headers = _parse_headers(settings.otel_exporter_otlp_headers)
@@ -120,6 +134,11 @@ def setup_otel_infrastructure(app: FastAPI | None = None) -> None:
 
     # Auto-instrumentation: httpx
     _instrument_httpx()
+
+    # OTel log bridge: attach LoggingHandler to export logs via OTLP
+    from src.telemetry.log_setup import setup_otel_log_bridge
+
+    setup_otel_log_bridge(resource)
 
     logger.info(
         f"OTel infrastructure instrumentation initialized "

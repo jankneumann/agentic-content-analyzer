@@ -317,6 +317,13 @@ class Settings(BaseSettings):
     otel_traces_sampler: str = "parentbased_traceidratio"
     otel_traces_sampler_arg: float = 1.0  # 1.0 = 100% in dev, lower in prod
 
+    # OTel Log Bridge (requires otel_enabled=True)
+    otel_logs_enabled: bool = True  # Enable log bridge to OTLP (gated by otel_enabled)
+    otel_logs_export_level: str = (
+        "WARNING"  # Min level for OTLP export (DEBUG, INFO, WARNING, ERROR)
+    )
+    log_format: Literal["text", "json"] = "json"  # Console output format
+
     # Opik Configuration (Comet Cloud or self-hosted)
     opik_api_key: str | None = None  # Comet Cloud API key
     opik_workspace: str | None = None  # Comet Cloud workspace
