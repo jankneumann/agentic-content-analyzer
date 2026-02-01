@@ -185,3 +185,69 @@ class TestObservabilityProviderType:
             otel_exporter_otlp_endpoint="http://localhost:4318",
         )
         assert s.observability_provider == "otel"
+
+
+class TestOtelLogBridgeSettings:
+    """Tests for OTel log bridge settings and validation."""
+
+    def test_default_logs_enabled(self):
+        """OTel log bridge should be enabled by default."""
+        s = Settings(
+            _env_file=None, database_url="postgresql://localhost/test", anthropic_api_key="test-key"
+        )
+        assert s.otel_logs_enabled is True
+
+    def test_default_export_level(self):
+        """Default export level should be WARNING (uppercase)."""
+        s = Settings(
+            _env_file=None, database_url="postgresql://localhost/test", anthropic_api_key="test-key"
+        )
+        assert s.otel_logs_export_level == "WARNING"
+
+    def test_default_log_format(self):
+        """Default log format should be json."""
+        s = Settings(
+            _env_file=None, database_url="postgresql://localhost/test", anthropic_api_key="test-key"
+        )
+        assert s.log_format == "json"
+
+    def test_export_level_normalized_to_uppercase(self):
+        """Export level should be normalized to uppercase."""
+        s = Settings(
+            _env_file=None,
+            database_url="postgresql://localhost/test",
+            anthropic_api_key="test-key",
+            otel_logs_export_level="error",
+        )
+        assert s.otel_logs_export_level == "ERROR"
+
+    def test_valid_export_levels_accepted(self):
+        """All standard Python logging levels should be accepted."""
+        for level in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+            s = Settings(
+                _env_file=None,
+                database_url="postgresql://localhost/test",
+                anthropic_api_key="test-key",
+                otel_logs_export_level=level,
+            )
+            assert s.otel_logs_export_level == level
+
+    def test_invalid_export_level_rejected(self):
+        """Invalid export level should raise ValueError."""
+        with pytest.raises(ValueError, match="OTEL_LOGS_EXPORT_LEVEL"):
+            Settings(
+                _env_file=None,
+                database_url="postgresql://localhost/test",
+                anthropic_api_key="test-key",
+                otel_logs_export_level="WARNNG",
+            )
+
+    def test_log_format_text_accepted(self):
+        """text log format should be accepted."""
+        s = Settings(
+            _env_file=None,
+            database_url="postgresql://localhost/test",
+            anthropic_api_key="test-key",
+            log_format="text",
+        )
+        assert s.log_format == "text"

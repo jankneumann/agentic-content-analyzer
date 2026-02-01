@@ -62,6 +62,12 @@ def shutdown_telemetry() -> None:
     Flushes buffered data and releases resources.
     """
     global _provider
+
+    # Shut down OTel log bridge first (flush buffered log records)
+    from src.telemetry.log_setup import shutdown_otel_log_bridge
+
+    shutdown_otel_log_bridge()
+
     if _provider is not None:
         _provider.flush()
         _provider.shutdown()
@@ -72,6 +78,13 @@ def shutdown_telemetry() -> None:
 def reset_telemetry() -> None:
     """Reset telemetry state (for testing)."""
     global _provider
+
+    # Reset OTel log bridge (flush + remove handler + uninstrument)
+    from src.telemetry.log_setup import shutdown_otel_log_bridge
+
+    shutdown_otel_log_bridge()
+
     if _provider is not None:
+        _provider.flush()
         _provider.shutdown()
     _provider = None
