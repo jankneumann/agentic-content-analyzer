@@ -122,6 +122,7 @@ function TaskItem({
           size="icon"
           className="h-6 w-6 flex-shrink-0"
           onClick={onRemove}
+          aria-label={`Remove task: ${task.title}`}
         >
           <X className="h-3 w-3" />
         </Button>
@@ -231,6 +232,7 @@ export function BackgroundTasksIndicator() {
                     size="sm"
                     className="h-6 text-xs"
                     onClick={clearCompleted}
+                    aria-label="Clear all completed tasks"
                   >
                     Clear all
                   </Button>
