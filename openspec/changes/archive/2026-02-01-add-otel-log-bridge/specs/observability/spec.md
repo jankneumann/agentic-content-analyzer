@@ -57,8 +57,6 @@ The system SHALL use the same OTel Resource identity across traces, metrics, and
 - **WHEN** a trace and a log are exported from the same request
 - **THEN** both SHALL have identical service.name and deployment.environment attributes
 
-## MODIFIED Requirements
-
 ### Requirement: Distributed Tracing
 
 The system SHALL support OpenTelemetry distributed tracing.
