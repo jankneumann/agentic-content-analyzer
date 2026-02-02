@@ -250,9 +250,12 @@ OBSERVABILITY_PROVIDER=braintrust   # or "opik", "otel", "noop"
 BRAINTRUST_API_KEY=sk-xxx           # Required for Braintrust
 OTEL_ENABLED=true                   # Enable infrastructure auto-instrumentation
 OTEL_EXPORTER_OTLP_ENDPOINT=https://api.braintrust.dev/otel/v1/traces
+
+# Frontend OTel (in web/.env or passed at build time)
+VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vitals
 ```
 
-**Key files:**
+**Key files (backend):**
 - `src/telemetry/__init__.py` — `setup_telemetry()`, `get_provider()`, `shutdown_telemetry()`
 - `src/telemetry/providers/` — Provider implementations (factory pattern)
 - `src/telemetry/otel_setup.py` — OTel infrastructure (FastAPI, SQLAlchemy, httpx)
@@ -262,6 +265,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT=https://api.braintrust.dev/otel/v1/traces
 - `src/api/health_routes.py` — `/health` (liveness) and `/ready` (readiness)
 - `src/api/middleware/telemetry.py` — X-Trace-Id response header
 - `src/api/middleware/error_handler.py` — Structured JSON errors with trace_id
+- `src/api/otel_proxy_routes.py` — Frontend OTLP proxy (`/api/v1/otel/v1/traces`)
+
+**Key files (frontend):**
+- `web/src/lib/telemetry/index.ts` — Public API (`initTelemetry`, `getTracer`, `isOtelEnabled`)
+- `web/src/lib/telemetry/setup.ts` — OTel SDK init (WebTracerProvider, FetchInstrumentation)
+- `web/src/lib/telemetry/web-vitals.ts` — Core Web Vitals → OTel spans bridge
+- `web/src/components/ErrorBoundary.tsx` — React Error Boundary with OTel span creation
 
 ## Critical Gotchas
 
@@ -311,6 +321,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT=https://api.braintrust.dev/otel/v1/traces
 | `logging.basicConfig()` only works once | OTel log bridge uses `addHandler()` directly — never call `basicConfig()` after `setup_logging()` |
 | Log bridge needs both flags | Requires `OTEL_ENABLED=true` AND `OTEL_LOGS_ENABLED=true` — logs gate on the parent OTel flag |
 | Export level ≠ console level | `OTEL_LOGS_EXPORT_LEVEL` controls OTLP export only; `LOG_LEVEL` still controls console output |
+| Frontend OTel needs backend OTel | `VITE_OTEL_ENABLED=true` requires `OTEL_ENABLED=true` on backend for OTLP proxy to accept traces |
+| Frontend OTel is no-op by default | Zero overhead when disabled; OTel SDK dynamically imported only when `VITE_OTEL_ENABLED=true` |
+| initTelemetry must run before React | Called at module scope in `__root.tsx` so fetch instrumentation is active before TanStack Query fires |
 
 ## Quick Links by Task
 

@@ -14,9 +14,17 @@ import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { AppShell, BackgroundTasksIndicator } from "@/components/layout"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { Toaster } from "@/components/ui/sonner"
 import { BackgroundTasksProvider } from "@/contexts/BackgroundTasksContext"
+import { initTelemetry } from "@/lib/telemetry"
+
+// Initialize OTel before React renders so fetch instrumentation
+// is active before TanStack Query makes its first API call.
+// This is a fire-and-forget call — telemetry initialization
+// should never block app rendering.
+initTelemetry()
 
 /**
  * TanStack Query client
@@ -47,16 +55,18 @@ const queryClient = new QueryClient({
  */
 function RootComponent() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BackgroundTasksProvider>
-        <AppShell>
-          <Outlet />
-        </AppShell>
-        <BackgroundTasksIndicator />
-        <PWAUpdatePrompt />
-        <Toaster />
-      </BackgroundTasksProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BackgroundTasksProvider>
+          <AppShell>
+            <Outlet />
+          </AppShell>
+          <BackgroundTasksIndicator />
+          <PWAUpdatePrompt />
+          <Toaster />
+        </BackgroundTasksProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 

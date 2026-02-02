@@ -1004,6 +1004,21 @@ OTEL_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
+**Frontend OTel tracing** (browser → backend trace propagation):
+
+```bash
+# In web/.env (or passed at build time)
+VITE_OTEL_ENABLED=true               # Enable browser trace propagation + Web Vitals
+```
+
+When enabled, the frontend:
+- Auto-instruments all `fetch()` calls with W3C `traceparent` headers
+- Measures Core Web Vitals (LCP, INP, CLS, FCP, TTFB) as OTel spans
+- Captures React Error Boundary crashes with trace correlation
+- Exports traces via backend proxy (`POST /api/v1/otel/v1/traces`)
+
+**Requirements**: Backend OTel must also be enabled (`OTEL_ENABLED=true`) for the OTLP proxy to accept traces.
+
 **Health endpoints**:
 - `GET /health` — Liveness probe (always 200 if process alive)
 - `GET /ready` — Readiness probe (200 if database OK, 503 otherwise)
