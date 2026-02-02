@@ -9,3 +9,7 @@
 ## 2025-02-14 - Accessibility for Toggle Buttons
 **Learning:** Toggle buttons that change icon/text based on state need dynamic `aria-label`s to accurately reflect the action (e.g., "Expand sidebar" vs "Collapse sidebar").
 **Action:** Ensure state-switching buttons update their accessible name.
+
+## 2025-02-19 - Current Page Indication in Navigation
+**Learning:** Navigation items often rely solely on visual styling (e.g., background color) to indicate the active page, which is insufficient for screen reader users.
+**Action:** Always add `aria-current="page"` to the link or button representing the current page in a navigation menu.
