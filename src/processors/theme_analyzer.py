@@ -300,12 +300,13 @@ class ThemeAnalyzer:
         supported_providers = [
             p
             for p in providers
-            if p.provider in [
+            if p.provider
+            in [
                 Provider.ANTHROPIC,
                 Provider.AWS_BEDROCK,
                 Provider.GOOGLE_VERTEX,
                 Provider.OPENAI,
-                Provider.GOOGLE_AI
+                Provider.GOOGLE_AI,
             ]
         ]
 
@@ -321,6 +322,9 @@ class ThemeAnalyzer:
             try:
                 logger.info(f"Trying provider: {provider_config.provider.value}")
 
+                # LLMRouter resolves credentials from environment variables
+                # (ANTHROPIC_API_KEY, AWS_REGION, etc.) — not from provider_config.api_key.
+                # Only the provider enum is needed for routing.
                 response = await self.llm_router.generate(
                     model=self.model,
                     provider=provider_config.provider,
