@@ -82,6 +82,11 @@ async function saveUrl() {
     return;
   }
 
+  if (!currentUrl.startsWith('http://') && !currentUrl.startsWith('https://')) {
+    showStatus('error', 'Only http:// and https:// URLs can be saved');
+    return;
+  }
+
   // Disable button and show loading
   saveBtn.disabled = true;
   saveBtn.textContent = 'Saving...';

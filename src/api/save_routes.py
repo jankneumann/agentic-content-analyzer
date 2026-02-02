@@ -72,7 +72,7 @@ async def _enqueue_extraction(content_id: int) -> None:
         queries = await get_queue_queries()
         await queries.enqueue("extract_url_content", {"content_id": content_id})
         logger.info(f"Enqueued extraction task for content_id={content_id}")
-    except (ImportError, Exception) as e:
+    except Exception as e:
         if isinstance(e, ImportError):
             logger.warning("PGQueuer not available, using direct extraction")
         else:
