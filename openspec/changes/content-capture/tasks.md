@@ -28,36 +28,36 @@
 
 ## 4. Save URL API
 
-- [ ] 4.1 Create `src/api/save_routes.py`
-- [ ] 4.2 Implement `POST /api/v1/content/save-url`
-- [ ] 4.3 Add URL validation
-- [ ] 4.4 Add duplicate detection by URL
-- [ ] 4.5 Implement `GET /api/v1/content/{id}/status`
-- [ ] 4.6 Configure CORS for extension
+- [x] 4.1 Create `src/api/save_routes.py`
+- [x] 4.2 Implement `POST /api/v1/content/save-url`
+- [x] 4.3 Add URL validation
+- [x] 4.4 Add duplicate detection by URL
+- [x] 4.5 Implement `GET /api/v1/content/{id}/status`
+- [x] 4.6 Configure CORS for extension
 
 ## 5. URL Content Extraction
 
-- [ ] 5.1 Create `src/services/url_extractor.py`
-- [ ] 5.2 Integrate with existing `ParserRouter`
-- [ ] 5.3 Add Readability-style extraction for articles
-- [ ] 5.4 Handle extraction failures gracefully
-- [ ] 5.5 Add timeout handling for slow sites
-- [ ] 5.6 Respect rate limiting (add delays)
+- [x] 5.1 Create `src/services/url_extractor.py`
+- [x] 5.2 Integrate with trafilatura for content extraction
+- [x] 5.3 Add Readability-style extraction (via trafilatura)
+- [x] 5.4 Handle extraction failures gracefully
+- [x] 5.5 Add timeout handling for slow sites (30s default)
+- [x] 5.6 Add content size and type validation
 
 ## 6. Bookmarklet Save Page
 
-- [ ] 6.1 Create `GET /save` endpoint
-- [ ] 6.2 Create `src/templates/save.html` template
-- [ ] 6.3 Pre-fill form with URL params
-- [ ] 6.4 Add save button that calls API
-- [ ] 6.5 Show success/redirect after save
+- [x] 6.1 Create `GET /api/v1/content/save` endpoint
+- [x] 6.2 Create `src/templates/save.html` template
+- [x] 6.3 Pre-fill form with URL params
+- [x] 6.4 Add save button that calls API
+- [x] 6.5 Show success with "Save another" option
 
 ## 7. Testing
 
 - [ ] 7.1 Manual extension testing in Chrome
-- [ ] 7.2 API tests for save-url endpoint
-- [ ] 7.3 Test duplicate URL detection
-- [ ] 7.4 Test extraction for various page types
+- [x] 7.2 API tests for save-url endpoint
+- [x] 7.3 Test duplicate URL detection
+- [x] 7.4 Test extraction for various page types
 - [ ] 7.5 Test bookmarklet in multiple browsers
 
 ## 8. Documentation
