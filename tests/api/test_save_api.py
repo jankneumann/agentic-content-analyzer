@@ -233,8 +233,7 @@ class TestSavePageEndpoint:
         response = client.get("/api/v1/content/save?url=https://example.com/prefilled")
 
         assert response.status_code == 200
-        # The URL should appear in the form (implementation may vary)
-        assert "https://example.com/prefilled" in response.text or response.status_code == 200
+        assert "https://example.com/prefilled" in response.text
 
     def test_save_page_prefills_title_and_excerpt(self, client):
         """Pre-fills title and excerpt from query parameters."""
@@ -246,24 +245,41 @@ class TestSavePageEndpoint:
         )
 
         assert response.status_code == 200
+        assert "Test Title" in response.text
+        assert "Selected text" in response.text
 
 
 class TestCORSConfiguration:
     """Tests for CORS configuration allowing mobile clients."""
 
-    def test_cors_allows_all_origins_for_save_url(self, client):
-        """CORS headers allow requests from any origin."""
-        # This tests the preflight OPTIONS request
-        response = client.options(
+    def test_cors_allows_configured_origins(self, client):
+        """CORS headers allow requests from configured origins."""
+        # Send a regular request with Origin header to check CORS response
+        response = client.get(
+            "/api/v1/content/save",
+            headers={"Origin": "http://localhost:3000"},
+        )
+
+        assert response.status_code == 200
+        # CORS middleware should include Access-Control-Allow-Origin for configured origins
+        cors_header = response.headers.get("access-control-allow-origin")
+        assert cors_header is not None, "CORS Access-Control-Allow-Origin header missing"
+
+
+class TestInputValidation:
+    """Tests for request validation edge cases."""
+
+    def test_save_url_rejects_oversized_tags(self, client):
+        """Rejects tags exceeding per-tag length limit."""
+        response = client.post(
             "/api/v1/content/save-url",
-            headers={
-                "Origin": "http://localhost:3000",
-                "Access-Control-Request-Method": "POST",
+            json={
+                "url": "https://example.com/tag-test",
+                "tags": ["a" * 101],  # Exceeds 100 char limit
             },
         )
 
-        # Should allow the request (200 or 204)
-        assert response.status_code in [200, 204, 405]  # 405 if OPTIONS not explicitly handled
+        assert response.status_code == 422
 
 
 class TestEnqueueExtraction:

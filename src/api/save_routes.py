@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, StringConstraints
 
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
@@ -32,7 +32,9 @@ class SaveURLRequest(BaseModel):
     url: HttpUrl = Field(..., description="URL to save and extract content from")
     title: str | None = Field(None, max_length=1000, description="Optional title")
     excerpt: str | None = Field(None, max_length=5000, description="Optional excerpt/selection")
-    tags: list[str] | None = Field(default=None, max_length=20, description="Optional tags")
+    tags: list[Annotated[str, StringConstraints(max_length=100)]] | None = Field(
+        default=None, max_length=20, description="Optional tags"
+    )
     notes: str | None = Field(None, max_length=10000, description="Optional user notes")
     source: str | None = Field(None, max_length=50, description="Capture source identifier")
 

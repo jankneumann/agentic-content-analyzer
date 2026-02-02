@@ -205,21 +205,21 @@ class TestParseHTML:
             assert metadata.get("parser_fallback") is True
 
     @pytest.mark.asyncio
-    async def test_parse_html_fallback_on_import_error(self):
-        """Falls back to basic extraction when trafilatura is not installed."""
+    async def test_parse_html_fallback_on_extraction_error(self):
+        """Falls back to basic extraction when trafilatura raises an error."""
         mock_db = MagicMock()
         extractor = URLExtractor(mock_db)
 
-        html_content = "<html><body><p>Content without trafilatura</p></body></html>"
+        html_content = "<html><body><p>Content with error</p></body></html>"
 
-        with patch.dict("sys.modules", {"trafilatura": None}):
-            # Force ImportError by patching the import
-            with patch("src.services.url_extractor.URLExtractor._parse_html") as mock_parse:
-                # Simulate fallback behavior
-                mock_parse.return_value = ("Content without trafilatura", {"parser_fallback": True})
+        with patch("trafilatura.extract") as mock_extract:
+            mock_extract.side_effect = Exception("Trafilatura internal error")
 
-                result = await mock_parse(html_content, "https://example.com")
-                assert result[1]["parser_fallback"] is True
+            markdown, metadata = await extractor._parse_html(html_content, "https://example.com")
+
+            assert "Content with error" in markdown
+            assert metadata.get("parser_fallback") is True
+            assert "parser_error" in metadata
 
 
 class TestBasicHTMLExtraction:
@@ -363,6 +363,46 @@ class TestExtractContent:
 
                 # User-provided title should be preserved
                 assert mock_content.title == "My Custom Title"
+
+    @pytest.mark.asyncio
+    async def test_extract_content_transitions_to_parsing_status(self):
+        """Verifies status transitions to PARSING before extraction begins."""
+        mock_db = MagicMock()
+        mock_content = MagicMock(spec=Content)
+        mock_content.id = 1
+        mock_content.source_url = "https://example.com/article"
+        mock_content.title = "https://example.com/article"
+        mock_content.metadata_json = None
+
+        status_history = []
+
+        def track_status(value):
+            status_history.append(value)
+
+        type(mock_content).status = property(
+            lambda self: status_history[-1] if status_history else ContentStatus.PENDING,
+            lambda self, v: track_status(v),
+        )
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_content
+
+        extractor = URLExtractor(mock_db)
+
+        with patch.object(extractor, "_fetch_url", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = (
+                "<html><body>Content</body></html>",
+                "https://example.com/article",
+            )
+            with patch.object(extractor, "_parse_html", new_callable=AsyncMock) as mock_parse:
+                mock_parse.return_value = ("# Article", {"word_count": 1})
+                await extractor.extract_content(1)
+
+        # First status change should be PARSING, then PARSED
+        assert ContentStatus.PARSING in status_history
+        assert ContentStatus.PARSED in status_history
+        assert status_history.index(ContentStatus.PARSING) < status_history.index(
+            ContentStatus.PARSED
+        )
 
     @pytest.mark.asyncio
     async def test_extract_content_not_found(self):
