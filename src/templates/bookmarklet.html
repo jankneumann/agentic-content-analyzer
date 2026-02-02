@@ -189,7 +189,7 @@
 
     <script>
         // Build bookmarklet code using the current server as the base URL
-        const BASE_URL = '{{ api_base_url }}';
+        const BASE_URL = {{ api_base_url | tojson }};
 
         const bookmarkletCode = "javascript:(function(){var b='" + BASE_URL + "';var u=encodeURIComponent(location.href);var t=encodeURIComponent(document.title);var s=encodeURIComponent((window.getSelection()||'').toString().slice(0,500));window.open(b+'/api/v1/content/save?url='+u+'&title='+t+'&excerpt='+s,'_blank','width=600,height=500');})();";
 

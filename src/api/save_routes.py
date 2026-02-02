@@ -64,7 +64,7 @@ class ContentStatusResponse(BaseModel):
 async def _enqueue_extraction(content_id: int) -> None:
     """Enqueue URL extraction task.
 
-    Uses PGQueuer if available, otherwise uses FastAPI BackgroundTasks.
+    Uses PGQueuer if available, otherwise falls back to direct extraction.
     """
     try:
         from src.queue.setup import get_queue_queries
@@ -72,10 +72,13 @@ async def _enqueue_extraction(content_id: int) -> None:
         queries = await get_queue_queries()
         await queries.enqueue("extract_url_content", {"content_id": content_id})
         logger.info(f"Enqueued extraction task for content_id={content_id}")
-    except ImportError:
-        logger.warning("PGQueuer not available, using direct extraction")
+    except (ImportError, Exception) as e:
+        if isinstance(e, ImportError):
+            logger.warning("PGQueuer not available, using direct extraction")
+        else:
+            logger.warning(f"PGQueuer enqueue failed ({e}), using direct extraction")
+
         from src.services.url_extractor import URLExtractor
-        from src.storage.database import get_db
 
         with get_db() as db:
             extractor = URLExtractor(db)
@@ -167,9 +170,7 @@ async def get_content_status(content_id: int) -> ContentStatusResponse:
 
         return ContentStatusResponse(
             content_id=content.id,
-            status=content.status.value
-            if hasattr(content.status, "value")
-            else str(content.status),
+            status=content.status.value,
             title=content.title,
             word_count=word_count,
             error=content.error_message,
