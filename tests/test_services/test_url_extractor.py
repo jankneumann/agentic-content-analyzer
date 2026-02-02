@@ -44,6 +44,10 @@ class TestFetchURL:
         mock_response = MagicMock()
         mock_response.text = "<html><body><h1>Test Article</h1></body></html>"
         mock_response.url = "https://example.com/article"
+        mock_response.headers = {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": "100",
+        }
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
@@ -71,6 +75,7 @@ class TestFetchURL:
         mock_response = MagicMock()
         mock_response.text = "<html><body>Content</body></html>"
         mock_response.url = "https://example.com/final-url"  # Different from original
+        mock_response.headers = {"content-type": "text/html"}
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
@@ -102,6 +107,46 @@ class TestFetchURL:
 
             with pytest.raises(httpx.HTTPStatusError):
                 await extractor._fetch_url("https://example.com/not-found")
+
+    @pytest.mark.asyncio
+    async def test_fetch_url_rejects_oversized_content(self):
+        """Rejects responses with Content-Length exceeding the limit."""
+        mock_db = MagicMock()
+        extractor = URLExtractor(mock_db)
+
+        mock_response = MagicMock()
+        mock_response.headers = {"content-type": "text/html", "content-length": "999999999"}
+        mock_response.url = "https://example.com/huge-page"
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client_instance = AsyncMock()
+            mock_client_instance.get.return_value = mock_response
+            mock_client_instance.__aenter__.return_value = mock_client_instance
+            mock_client_instance.__aexit__.return_value = None
+            mock_client.return_value = mock_client_instance
+
+            with pytest.raises(ValueError, match="Content too large"):
+                await extractor._fetch_url("https://example.com/huge-page")
+
+    @pytest.mark.asyncio
+    async def test_fetch_url_rejects_non_html_content(self):
+        """Rejects responses with non-HTML content types."""
+        mock_db = MagicMock()
+        extractor = URLExtractor(mock_db)
+
+        mock_response = MagicMock()
+        mock_response.headers = {"content-type": "application/pdf"}
+        mock_response.url = "https://example.com/document.pdf"
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client_instance = AsyncMock()
+            mock_client_instance.get.return_value = mock_response
+            mock_client_instance.__aenter__.return_value = mock_client_instance
+            mock_client_instance.__aexit__.return_value = None
+            mock_client.return_value = mock_client_instance
+
+            with pytest.raises(ValueError, match="Unsupported content type"):
+                await extractor._fetch_url("https://example.com/document.pdf")
 
 
 class TestParseHTML:
@@ -258,7 +303,7 @@ class TestExtractContent:
         mock_content = MagicMock(spec=Content)
         mock_content.id = 1
         mock_content.source_url = "https://example.com/article"
-        mock_content.title = None
+        mock_content.title = "https://example.com/article"  # URL placeholder
         mock_content.metadata_json = None
 
         mock_db.query.return_value.filter.return_value.first.return_value = mock_content
@@ -282,8 +327,42 @@ class TestExtractContent:
                 # Verify status transitions
                 assert mock_content.status == ContentStatus.PARSED
                 assert mock_content.markdown_content == "# Article\n\nContent"
+                # Title should be updated from URL placeholder to extracted title
                 assert mock_content.title == "Article"
+                # Content hash should be recalculated
+                assert mock_content.content_hash == generate_markdown_hash("# Article\n\nContent")
                 mock_db.commit.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_extract_content_preserves_user_provided_title(self):
+        """Does not overwrite user-provided title with extracted title."""
+        mock_db = MagicMock()
+        mock_content = MagicMock(spec=Content)
+        mock_content.id = 1
+        mock_content.source_url = "https://example.com/article"
+        mock_content.title = "My Custom Title"  # User-provided, not URL placeholder
+        mock_content.metadata_json = None
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_content
+
+        extractor = URLExtractor(mock_db)
+
+        with patch.object(extractor, "_fetch_url", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = (
+                "<html><body>Content</body></html>",
+                "https://example.com/article",
+            )
+
+            with patch.object(extractor, "_parse_html", new_callable=AsyncMock) as mock_parse:
+                mock_parse.return_value = (
+                    "# Extracted Title\n\nContent",
+                    {"title": "Extracted Title", "word_count": 2},
+                )
+
+                result = await extractor.extract_content(1)
+
+                # User-provided title should be preserved
+                assert mock_content.title == "My Custom Title"
 
     @pytest.mark.asyncio
     async def test_extract_content_not_found(self):
