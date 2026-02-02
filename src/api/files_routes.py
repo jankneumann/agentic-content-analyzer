@@ -11,7 +11,7 @@ import mimetypes
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from src.services.file_storage import get_storage
 from src.utils.logging import get_logger
@@ -128,12 +128,28 @@ async def get_file(
         signed_url = await storage.get_signed_url(storage_path, expires_in=3600)
         return RedirectResponse(url=signed_url, status_code=302)
 
-    # For local storage, serve the file directly
-    file_data = await storage.get(storage_path)
-    file_size = len(file_data)
+    # Check for local file optimization (prevents DoS from loading large files into RAM)
+    local_path = storage.get_local_path(storage_path)
     content_type = get_content_type(path)
 
-    # Handle range requests for streaming
+    if local_path and local_path.exists():
+        # Let FastAPI/Starlette handle the streaming and ranges
+        return FileResponse(
+            path=local_path,
+            media_type=content_type,
+            filename=path.split("/")[-1],
+            headers={
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    # Fallback for non-redirecting cloud storage or if local path resolution failed
+    # WARNING: This loads the entire file into memory. Ensure S3/Cloud providers use signed URLs.
+    file_data = await storage.get(storage_path)
+    file_size = len(file_data)
+
+    # Handle range requests manually for memory-loaded content
     if range:
         start, end = parse_range_header(range, file_size)
         content_length = end - start + 1
@@ -193,10 +209,17 @@ async def head_file(bucket: str, path: str):
     if not await storage.exists(storage_path):
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Get file to determine size
-    file_data = await storage.get(storage_path)
-    file_size = len(file_data)
+    # Get file metadata
     content_type = get_content_type(path)
+    local_path = storage.get_local_path(storage_path)
+
+    if local_path and local_path.exists():
+        file_size = local_path.stat().st_size
+    else:
+        # Fallback: load file to check size (expensive!)
+        # Ideally storage provider should support get_metadata(path)
+        file_data = await storage.get(storage_path)
+        file_size = len(file_data)
 
     return Response(
         content=b"",
