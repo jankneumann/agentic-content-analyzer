@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Install Bookmarklet - Newsletter Aggregator</title>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #1a1a1a;
+            --input-bg: #f5f5f5;
+            --input-border: #e0e0e0;
+            --primary-color: #4f46e5;
+            --primary-hover: #4338ca;
+            --success-color: #22c55e;
+            --muted-color: #666;
+            --card-bg: #f9fafb;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #1a1a1a;
+                --text-color: #e5e5e5;
+                --input-bg: #2a2a2a;
+                --input-border: #404040;
+                --primary-color: #6366f1;
+                --primary-hover: #818cf8;
+                --muted-color: #999;
+                --card-bg: #222;
+            }
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+        h2 { font-size: 18px; font-weight: 600; margin: 24px 0 12px; }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--muted-color);
+            margin-bottom: 24px;
+        }
+
+        .step {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            line-height: 28px;
+            text-align: center;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            margin-right: 8px;
+        }
+
+        .step-title {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .step-content {
+            margin-top: 8px;
+            font-size: 14px;
+            color: var(--muted-color);
+        }
+
+        .bookmarklet-link {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            margin: 16px 0;
+            cursor: grab;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        .bookmarklet-link:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .bookmarklet-link:active {
+            cursor: grabbing;
+        }
+
+        .drag-hint {
+            font-size: 13px;
+            color: var(--muted-color);
+            font-style: italic;
+        }
+
+        .mobile-note {
+            font-size: 13px;
+            color: var(--muted-color);
+            background-color: var(--card-bg);
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+
+        .mobile-note strong {
+            color: var(--text-color);
+        }
+
+        code {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 12px;
+            background-color: var(--input-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .code-block {
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 8px 0;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Save to Newsletter Aggregator</h1>
+    <p class="subtitle">Install this bookmarklet to save any webpage with one click.</p>
+
+    <h2>Install</h2>
+
+    <div class="step">
+        <span class="step-number">1</span>
+        <span class="step-title">Drag to your bookmarks bar</span>
+        <div class="step-content">
+            <p>Drag the button below to your browser's bookmarks bar:</p>
+            <p>
+                <a id="bookmarklet" class="bookmarklet-link" href="#">Save to Aggregator</a>
+            </p>
+            <p class="drag-hint">Click and drag the button above into your bookmarks bar.</p>
+        </div>
+    </div>
+
+    <div class="step">
+        <span class="step-number">2</span>
+        <span class="step-title">Use it on any page</span>
+        <div class="step-content">
+            <p>Visit any webpage, optionally select some text, then click the bookmarklet in your bookmarks bar. A save form will open with the URL, title, and selected text pre-filled.</p>
+        </div>
+    </div>
+
+    <div class="mobile-note">
+        <strong>Mobile browsers:</strong> On iOS Safari, create a regular bookmark first, then edit it and replace the URL with the bookmarklet code below.
+        <div class="code-block" id="bookmarklet-code"></div>
+    </div>
+
+    <h2>How It Works</h2>
+    <div class="step">
+        <div class="step-content">
+            <p>The bookmarklet captures the current page URL, title, and any selected text, then opens the save form. The content is queued for extraction and processing through your Newsletter Aggregator pipeline.</p>
+        </div>
+    </div>
+
+    <script>
+        // Build bookmarklet code using the current server as the base URL
+        const BASE_URL = '{{ api_base_url }}';
+
+        const bookmarkletCode = "javascript:(function(){var b='" + BASE_URL + "';var u=encodeURIComponent(location.href);var t=encodeURIComponent(document.title);var s=encodeURIComponent((window.getSelection()||'').toString().slice(0,500));window.open(b+'/api/v1/content/save?url='+u+'&title='+t+'&excerpt='+s,'_blank','width=600,height=500');})();";
+
+        document.getElementById('bookmarklet').href = bookmarkletCode;
+        document.getElementById('bookmarklet-code').textContent = bookmarkletCode;
+    </script>
+</body>
+</html>

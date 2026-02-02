@@ -206,3 +206,22 @@ async def save_page(
             "api_base_url": api_base_url,
         },
     )
+
+
+# Bookmarklet generator/installation page
+@router.get("/bookmarklet", response_class=HTMLResponse, include_in_schema=False)
+async def bookmarklet_page(request: Request) -> HTMLResponse:
+    """Render the bookmarklet installation page.
+
+    Generates a bookmarklet pre-configured with this server's URL.
+    Users drag the link to their bookmarks bar for one-click saving.
+    """
+    api_base_url = str(request.base_url).rstrip("/")
+
+    return templates.TemplateResponse(
+        "bookmarklet.html",
+        {
+            "request": request,
+            "api_base_url": api_base_url,
+        },
+    )

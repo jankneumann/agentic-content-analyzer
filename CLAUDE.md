@@ -34,6 +34,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [UX Design](docs/UX_DESIGN.md) | Frontend patterns |
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
 | [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
+| [Content Capture](docs/CONTENT_CAPTURE.md) | Chrome extension, bookmarklet, save URL API |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
 
 **Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
