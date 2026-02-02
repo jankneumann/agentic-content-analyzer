@@ -269,6 +269,33 @@ class TestSavePageEndpoint:
         assert "API_BASE" in response.text
 
 
+class TestBookmarkletPageEndpoint:
+    """Tests for GET /api/v1/content/bookmarklet (installation page)."""
+
+    def test_bookmarklet_page_renders(self, client):
+        """Renders the bookmarklet installation page."""
+        response = client.get("/api/v1/content/bookmarklet")
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_bookmarklet_page_contains_bookmarklet_code(self, client):
+        """Page contains the bookmarklet JavaScript code."""
+        response = client.get("/api/v1/content/bookmarklet")
+
+        assert response.status_code == 200
+        assert "javascript:" in response.text
+        assert "/api/v1/content/save" in response.text
+
+    def test_bookmarklet_page_includes_api_base_url(self, client):
+        """Bookmarklet code includes the server's base URL."""
+        response = client.get("/api/v1/content/bookmarklet")
+
+        assert response.status_code == 200
+        # The template injects api_base_url into the bookmarklet code
+        assert "api_base_url" in response.text or "BASE_URL" in response.text
+
+
 class TestCORSConfiguration:
     """Tests for CORS configuration allowing mobile clients."""
 

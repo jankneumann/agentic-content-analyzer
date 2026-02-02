@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import httpx
+from sqlalchemy.orm.attributes import flag_modified
 
 from src.models.content import Content, ContentSource, ContentStatus
 from src.utils.content_hash import generate_markdown_hash
@@ -25,7 +26,7 @@ DEFAULT_TIMEOUT = 30.0
 MAX_CONTENT_SIZE = 10 * 1024 * 1024
 
 # Allowed content types for HTML extraction
-ALLOWED_CONTENT_TYPES = ("text/html", "text/", "application/xhtml+xml")
+ALLOWED_CONTENT_TYPES = ("text/html", "application/xhtml+xml")
 
 # User agent for web requests
 USER_AGENT = (
@@ -95,10 +96,11 @@ class URLExtractor:
             if metadata.get("title") and content.title == content.source_url:
                 content.title = metadata["title"]
 
-            # Store additional metadata
+            # Store additional metadata (use flag_modified for JSON mutation tracking)
             if content.metadata_json is None:
                 content.metadata_json = {}
             content.metadata_json.update(metadata)
+            flag_modified(content, "metadata_json")
 
             self.db.commit()
             logger.info(f"Successfully extracted content from {content.source_url}")
