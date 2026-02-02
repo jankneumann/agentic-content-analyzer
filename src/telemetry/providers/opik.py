@@ -32,8 +32,10 @@ GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 GEN_AI_PROMPT = "gen_ai.prompt"
 GEN_AI_COMPLETION = "gen_ai.completion"
 
-# Default Comet Cloud OTLP endpoint
+# Default OTLP endpoints
+# Both follow the pattern: {base}/api/v1/private/otel (OTLPSpanExporter appends /v1/traces)
 COMET_CLOUD_OTLP_ENDPOINT = "https://www.comet.com/opik/api/v1/private/otel"
+SELF_HOSTED_OTLP_ENDPOINT = "http://localhost:5173/api/v1/private/otel"
 
 
 class OpikProvider:
@@ -101,12 +103,14 @@ class OpikProvider:
         """Get the OTLP endpoint URL.
 
         Defaults to Comet Cloud if API key is set and no explicit endpoint.
+        For self-hosted, uses the Opik nginx proxy which routes
+        /api/v1/private/otel/* to the backend's OTLP handler.
         """
         if self._endpoint:
             return self._endpoint
         if self._api_key:
             return COMET_CLOUD_OTLP_ENDPOINT
-        return "http://localhost:5173/api"
+        return SELF_HOSTED_OTLP_ENDPOINT
 
     def setup(self, app: FastAPI | None = None) -> None:
         """Initialize OTel SDK with OTLP exporter pointing to Opik."""
