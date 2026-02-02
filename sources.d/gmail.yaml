@@ -1,0 +1,5 @@
+defaults:
+  type: gmail
+sources:
+- query: label:newsletters-ai
+  max_results: 50
