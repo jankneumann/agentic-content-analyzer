@@ -5,6 +5,7 @@ supporting iOS Shortcuts, bookmarklets, and web forms.
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
@@ -21,8 +22,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/content", tags=["save"])
 
-# Templates for the web save page
-templates = Jinja2Templates(directory="src/templates")
+# Templates for the web save page (path relative to this file, not CWD)
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 
 # Request/Response Models
@@ -178,9 +180,9 @@ async def get_content_status(content_id: int) -> ContentStatusResponse:
 @router.get("/save", response_class=HTMLResponse, include_in_schema=False)
 async def save_page(
     request: Request,
-    url: Annotated[str | None, Query(description="URL to save")] = None,
-    title: Annotated[str | None, Query(description="Page title")] = None,
-    excerpt: Annotated[str | None, Query(description="Selected text")] = None,
+    url: Annotated[str | None, Query(description="URL to save", max_length=2000)] = None,
+    title: Annotated[str | None, Query(description="Page title", max_length=1000)] = None,
+    excerpt: Annotated[str | None, Query(description="Selected text", max_length=5000)] = None,
 ) -> HTMLResponse:
     """Render the web save page.
 
@@ -191,6 +193,9 @@ async def save_page(
 
     Query params are pre-filled into the form.
     """
+    # Derive API base URL from request for cross-origin bookmarklet support
+    api_base_url = str(request.base_url).rstrip("/")
+
     return templates.TemplateResponse(
         "save.html",
         {
@@ -198,5 +203,6 @@ async def save_page(
             "url": url or "",
             "title": title or "",
             "excerpt": excerpt or "",
+            "api_base_url": api_base_url,
         },
     )

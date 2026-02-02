@@ -196,9 +196,18 @@
     <div id="status" class="status hidden"></div>
 
     <script>
+        // API base URL injected from server (supports cross-origin bookmarklet use)
+        const API_BASE = '{{ api_base_url }}';
         const form = document.getElementById('save-form');
         const submitBtn = document.getElementById('submit-btn');
         const statusDiv = document.getElementById('status');
+
+        function resetForm() {
+            form.reset();
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save';
+            statusDiv.classList.add('hidden');
+        }
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -219,7 +228,7 @@
                     source: 'web_save_page'
                 };
 
-                const response = await fetch('/api/v1/content/save-url', {
+                const response = await fetch(API_BASE + '/api/v1/content/save-url', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -232,11 +241,12 @@
                 if (response.ok) {
                     statusDiv.className = 'status success';
                     if (result.duplicate) {
-                        statusDiv.textContent = `URL already saved (ID: ${result.content_id})`;
+                        statusDiv.innerHTML = `URL already saved (ID: ${result.content_id}). <a href="#" onclick="resetForm(); return false;">Save another</a>`;
                     } else {
-                        statusDiv.textContent = `Saved! Content ID: ${result.content_id}. Extraction in progress.`;
+                        statusDiv.innerHTML = `Saved! Content ID: ${result.content_id}. Extraction in progress. <a href="#" onclick="resetForm(); return false;">Save another</a>`;
                     }
-                    submitBtn.textContent = 'Saved ✓';
+                    submitBtn.textContent = 'Saved';
+                    submitBtn.disabled = true;
                 } else {
                     throw new Error(result.detail || 'Save failed');
                 }

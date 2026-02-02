@@ -248,6 +248,26 @@ class TestSavePageEndpoint:
         assert "Test Title" in response.text
         assert "Selected text" in response.text
 
+    def test_save_page_escapes_special_characters(self, client):
+        """Verifies XSS protection via Jinja2 autoescaping."""
+        response = client.get(
+            '/api/v1/content/save?url=https://example.com/"onmouseover="alert(1)'
+            '&title=<script>alert("xss")</script>'
+        )
+
+        assert response.status_code == 200
+        # Raw script tag should not appear in output (Jinja2 escapes it)
+        assert "<script>alert" not in response.text
+        # Escaped version should be present
+        assert "&lt;script&gt;" in response.text or "&#" in response.text
+
+    def test_save_page_includes_api_base_url(self, client):
+        """Save page includes the API base URL for cross-origin support."""
+        response = client.get("/api/v1/content/save")
+
+        assert response.status_code == 200
+        assert "API_BASE" in response.text
+
 
 class TestCORSConfiguration:
     """Tests for CORS configuration allowing mobile clients."""
