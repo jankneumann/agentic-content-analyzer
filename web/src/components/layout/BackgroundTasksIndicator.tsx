@@ -32,6 +32,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   useBackgroundTasks,
   taskTypeLabels,
   type TaskType,
@@ -117,14 +123,24 @@ function TaskItem({
 
       {/* Remove button (only for completed/failed) */}
       {!isActive && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 flex-shrink-0"
-          onClick={onRemove}
-        >
-          <X className="h-3 w-3" />
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 flex-shrink-0"
+                onClick={onRemove}
+                aria-label={`Remove task: ${task.title}`}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Remove task</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
     </div>
   )
