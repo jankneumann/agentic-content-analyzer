@@ -1,0 +1,5 @@
+version: 1
+defaults:
+  enabled: true
+  max_entries: 50
+  days_back: 7

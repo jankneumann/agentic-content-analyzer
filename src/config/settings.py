@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from src.config.sources import SourcesConfig
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
@@ -24,6 +24,9 @@ PoolerModeType = Literal["transaction", "session"]
 
 # Type alias for Neo4j provider
 Neo4jProviderType = Literal["local", "auradb"]
+
+# Type alias for observability provider
+ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel"]
 
 # Audio digest voice presets (maps friendly names to provider-specific voice IDs)
 AUDIO_DIGEST_VOICE_PRESETS: dict[str, dict[str, str]] = {
@@ -301,6 +304,50 @@ class Settings(BaseSettings):
     elevenlabs_voice_sam_male: str = ""
     elevenlabs_voice_sam_female: str = ""
 
+    # Observability Provider Configuration
+    # Explicit provider selection — matches database/storage provider patterns
+    observability_provider: ObservabilityProviderType = "noop"
+
+    # OpenTelemetry (infrastructure layer — used by all providers except noop)
+    otel_enabled: bool = False  # Enable OTel auto-instrumentation (FastAPI, SQLAlchemy, httpx)
+    otel_service_name: str = "newsletter-aggregator"
+    otel_exporter_otlp_endpoint: str | None = None  # OTLP HTTP endpoint URL
+    otel_exporter_otlp_headers: str | None = None  # Comma-separated key=value headers
+    otel_log_prompts: bool = False  # Log prompt/completion text (PII risk)
+    otel_traces_sampler: str = "parentbased_traceidratio"
+    otel_traces_sampler_arg: float = 1.0  # 1.0 = 100% in dev, lower in prod
+
+    # OTel Log Bridge (requires otel_enabled=True)
+    otel_logs_enabled: bool = True  # Enable log bridge to OTLP (gated by otel_enabled)
+    otel_logs_export_level: str = (
+        "WARNING"  # Min level for OTLP export (DEBUG, INFO, WARNING, ERROR)
+    )
+    log_format: Literal["text", "json"] = "json"  # Console output format
+
+    # Opik Configuration (Comet Cloud or self-hosted)
+    opik_api_key: str | None = None  # Comet Cloud API key
+    opik_workspace: str | None = None  # Comet Cloud workspace
+    opik_project_name: str = "newsletter-aggregator"  # Opik project name
+
+    # Braintrust Configuration
+    braintrust_api_key: str | None = None  # Braintrust API key
+    braintrust_project_name: str = "newsletter-aggregator"  # Braintrust project name
+    braintrust_api_url: str = "https://api.braintrust.dev"  # Braintrust API URL
+
+    # Health Check Configuration
+    health_check_timeout_seconds: int = 5  # Timeout for health check probes
+
+    @field_validator("otel_logs_export_level")
+    @classmethod
+    def validate_otel_logs_export_level(cls, v: str) -> str:
+        """Validate that otel_logs_export_level is a known Python logging level."""
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if v.upper() not in valid_levels:
+            raise ValueError(
+                f"OTEL_LOGS_EXPORT_LEVEL must be one of {sorted(valid_levels)}, got '{v}'"
+            )
+        return v.upper()
+
     @model_validator(mode="after")
     def configure_local_supabase(self) -> Settings:
         """Auto-configure settings when local Supabase mode is enabled.
@@ -422,6 +469,34 @@ class Settings(BaseSettings):
                     )
             case "local":
                 # Local provider uses local settings or legacy fallbacks
+                pass
+        return self
+
+    @model_validator(mode="after")
+    def validate_observability_provider_config(self) -> Settings:
+        """Validate observability provider configuration at startup.
+
+        Ensures the configured provider has the required credentials.
+
+        Raises:
+            ValueError: If provider configuration is invalid
+        """
+        match self.observability_provider:
+            case "braintrust":
+                if not self.braintrust_api_key:
+                    raise ValueError(
+                        "OBSERVABILITY_PROVIDER=braintrust requires BRAINTRUST_API_KEY to be set. "
+                        "Get this from https://www.braintrust.dev/app/settings"
+                    )
+            case "opik":
+                # Opik works without API key for self-hosted; warn but don't error
+                pass
+            case "otel":
+                if not self.otel_exporter_otlp_endpoint:
+                    raise ValueError(
+                        "OBSERVABILITY_PROVIDER=otel requires OTEL_EXPORTER_OTLP_ENDPOINT to be set."
+                    )
+            case "noop":
                 pass
         return self
 
@@ -800,6 +875,7 @@ def get_settings() -> Settings:
         f"URL: {s._mask_url(s.get_effective_database_url())}"
     )
     logger.info(f"Neo4j provider: {s.neo4j_provider} | " f"URI: {s.get_effective_neo4j_uri()}")
+    logger.info(f"Observability provider: {s.observability_provider}")
     return s
 
 

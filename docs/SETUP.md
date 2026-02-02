@@ -947,6 +947,82 @@ Features:
 
 > **Note**: S3 access keys provide full storage access. Keep them secure and never expose them to clients.
 
+### Observability Variables (Optional)
+
+The newsletter aggregator supports pluggable observability via a provider factory pattern. Two layers work together:
+
+1. **LLM Observability**: Traces LLM calls (model, tokens, prompt/completion) via the selected provider
+2. **Infrastructure Telemetry**: Auto-instruments FastAPI, SQLAlchemy, and httpx via OpenTelemetry
+
+```bash
+# Provider selection (default: noop — zero overhead)
+OBSERVABILITY_PROVIDER=noop          # noop, opik, braintrust, or otel
+
+# OpenTelemetry infrastructure (auto-instrumentation)
+OTEL_ENABLED=false                   # Enable OTel auto-instrumentation
+OTEL_SERVICE_NAME=newsletter-aggregator
+OTEL_EXPORTER_OTLP_ENDPOINT=        # OTLP HTTP endpoint
+OTEL_EXPORTER_OTLP_HEADERS=         # Comma-separated key=value pairs
+OTEL_LOG_PROMPTS=false               # Log prompt/completion text (PII risk)
+
+# OTel Log Bridge (requires OTEL_ENABLED=true)
+OTEL_LOGS_ENABLED=true               # Enable log bridge to OTLP export (default: true)
+OTEL_LOGS_EXPORT_LEVEL=WARNING       # Min level for OTLP export (DEBUG/INFO/WARNING/ERROR)
+LOG_FORMAT=json                      # Console output: "json" (default) or "text"
+
+# Opik (Comet Cloud or self-hosted)
+OPIK_API_KEY=                        # Comet Cloud API key
+OPIK_WORKSPACE=                      # Comet Cloud workspace
+OPIK_PROJECT_NAME=newsletter-aggregator
+
+# Braintrust (cloud)
+BRAINTRUST_API_KEY=                  # Required when using braintrust provider
+BRAINTRUST_PROJECT_NAME=newsletter-aggregator
+BRAINTRUST_API_URL=https://api.braintrust.dev
+
+# Health checks
+HEALTH_CHECK_TIMEOUT_SECONDS=5       # Timeout for readiness probe checks
+```
+
+**Provider quick-start examples**:
+
+```bash
+# Braintrust (cloud — recommended for evaluations and scoring)
+OBSERVABILITY_PROVIDER=braintrust
+BRAINTRUST_API_KEY=sk-xxx
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=https://api.braintrust.dev/otel/v1/traces
+
+# Opik (self-hosted via Docker)
+OBSERVABILITY_PROVIDER=opik
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5173/api/v1/private/otel
+
+# Generic OTel (any OTLP backend — Jaeger, Grafana Tempo, etc.)
+OBSERVABILITY_PROVIDER=otel
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+**Frontend OTel tracing** (browser → backend trace propagation):
+
+```bash
+# In web/.env (or passed at build time)
+VITE_OTEL_ENABLED=true               # Enable browser trace propagation + Web Vitals
+```
+
+When enabled, the frontend:
+- Auto-instruments all `fetch()` calls with W3C `traceparent` headers
+- Measures Core Web Vitals (LCP, INP, CLS, FCP, TTFB) as OTel spans
+- Captures React Error Boundary crashes with trace correlation
+- Exports traces via backend proxy (`POST /api/v1/otel/v1/traces`)
+
+**Requirements**: Backend OTel must also be enabled (`OTEL_ENABLED=true`) for the OTLP proxy to accept traces.
+
+**Health endpoints**:
+- `GET /health` — Liveness probe (always 200 if process alive)
+- `GET /ready` — Readiness probe (200 if database OK, 503 otherwise)
+
 ### Optional Variables
 
 ```bash

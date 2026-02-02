@@ -16,7 +16,10 @@ from sqlalchemy import func
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
 from src.storage.database import get_db
+from src.utils.logging import get_logger
 from src.utils.summary_markdown import parse_markdown_summary
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/summaries", tags=["summaries"])
 
@@ -495,7 +498,7 @@ async def regenerate_with_feedback(
 
         except Exception as e:
             logger.error(f"Error regenerating summary: {e}", exc_info=True)
-            yield f"data: {json.dumps({'status': 'error', 'message': 'An internal error occurred.'})}\n\n"
+            yield f"data: {json.dumps({'status': 'error', 'message': 'An internal error occurred during regeneration.'})}\n\n"
 
     return StreamingResponse(
         generate_preview(),

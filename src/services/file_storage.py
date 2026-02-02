@@ -121,6 +121,18 @@ class FileStorageProvider(ABC):
         """
         ...
 
+    def get_local_path(self, path: str) -> Path | None:
+        """
+        Get the local filesystem path if available.
+
+        Args:
+            path: Storage path
+
+        Returns:
+            Path object if file is local, None otherwise
+        """
+        return None
+
     @property
     @abstractmethod
     def provider_name(self) -> str:
@@ -281,6 +293,15 @@ class LocalFileStorage(FileStorageProvider):
         """Get file:// URL for local file."""
         full_path = self._resolve_path(path)
         return f"file://{full_path.absolute()}"
+
+    def get_local_path(self, path: str) -> Path | None:
+        """Get the resolved local path."""
+        try:
+            return self._resolve_path(path)
+        except ValueError:
+            # If path traversal detected or invalid path, return None
+            # The caller will likely try other methods or fail later
+            return None
 
     @property
     def provider_name(self) -> str:
