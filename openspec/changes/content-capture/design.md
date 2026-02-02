@@ -65,7 +65,7 @@ javascript:(function(){
   var u=encodeURIComponent(location.href);
   var t=encodeURIComponent(document.title);
   var s=encodeURIComponent(window.getSelection().toString().slice(0,500));
-  window.open('https://YOUR_APP/save?url='+u+'&title='+t+'&excerpt='+s);
+  window.open('https://YOUR_APP/api/v1/content/save?url='+u+'&title='+t+'&excerpt='+s);
 })();
 ```
 
@@ -130,7 +130,7 @@ GET /api/v1/content/{id}/status
 Response: { "status": "parsed", "title": "..." }
 
 # Web save page (for bookmarklet)
-GET /save?url=...&title=...&excerpt=...
+GET /api/v1/content/save?url=...&title=...&excerpt=...
 Response: HTML page with save form
 ```
 

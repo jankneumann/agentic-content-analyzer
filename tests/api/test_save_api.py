@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from src.models.content import Content, ContentSource, ContentStatus
+from src.utils.content_hash import generate_markdown_hash
 
 
 class TestSaveURLEndpoint:
@@ -41,14 +42,21 @@ class TestSaveURLEndpoint:
         assert content.title == "Test Article"
         assert content.status == ContentStatus.PENDING
         assert content.source_type == ContentSource.WEBPAGE
+        # Verify NOT NULL fields are populated
+        assert content.source_id == "webpage:https://example.com/article"
+        assert content.markdown_content == ""
+        assert content.content_hash is not None and len(content.content_hash) == 64
 
     def test_save_url_detects_duplicate(self, client, db_session):
         """Returns existing content for duplicate URL."""
         # Create existing content
         existing = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/existing",
             source_url="https://example.com/existing",
             title="Existing Article",
+            markdown_content="Existing content.",
+            content_hash=generate_markdown_hash("Existing content."),
             status=ContentStatus.PARSED,
             ingested_at=datetime.now(UTC),
         )
@@ -134,8 +142,11 @@ class TestContentStatusEndpoint:
         """Returns status for pending content."""
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/pending",
             source_url="https://example.com/pending",
             title="Pending Article",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
             status=ContentStatus.PENDING,
             ingested_at=datetime.now(UTC),
         )
@@ -156,10 +167,14 @@ class TestContentStatusEndpoint:
         """Returns status with word count for parsed content."""
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/parsed",
             source_url="https://example.com/parsed",
             title="Parsed Article",
-            status=ContentStatus.PARSED,
             markdown_content="This is the extracted content with several words.",
+            content_hash=generate_markdown_hash(
+                "This is the extracted content with several words."
+            ),
+            status=ContentStatus.PARSED,
             ingested_at=datetime.now(UTC),
         )
         db_session.add(content)
@@ -176,8 +191,11 @@ class TestContentStatusEndpoint:
         """Returns error message for failed content."""
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/failed",
             source_url="https://example.com/failed",
             title="Failed Article",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
             status=ContentStatus.FAILED,
             error_message="Connection timeout after 30 seconds",
             ingested_at=datetime.now(UTC),
@@ -215,8 +233,7 @@ class TestSavePageEndpoint:
         response = client.get("/api/v1/content/save?url=https://example.com/prefilled")
 
         assert response.status_code == 200
-        # The URL should appear in the form (implementation may vary)
-        assert "https://example.com/prefilled" in response.text or response.status_code == 200
+        assert "https://example.com/prefilled" in response.text
 
     def test_save_page_prefills_title_and_excerpt(self, client):
         """Pre-fills title and excerpt from query parameters."""
@@ -228,24 +245,61 @@ class TestSavePageEndpoint:
         )
 
         assert response.status_code == 200
+        assert "Test Title" in response.text
+        assert "Selected text" in response.text
+
+    def test_save_page_escapes_special_characters(self, client):
+        """Verifies XSS protection via Jinja2 autoescaping."""
+        response = client.get(
+            '/api/v1/content/save?url=https://example.com/"onmouseover="alert(1)'
+            '&title=<script>alert("xss")</script>'
+        )
+
+        assert response.status_code == 200
+        # Raw script tag should not appear in output (Jinja2 escapes it)
+        assert "<script>alert" not in response.text
+        # Escaped version should be present
+        assert "&lt;script&gt;" in response.text or "&#" in response.text
+
+    def test_save_page_includes_api_base_url(self, client):
+        """Save page includes the API base URL for cross-origin support."""
+        response = client.get("/api/v1/content/save")
+
+        assert response.status_code == 200
+        assert "API_BASE" in response.text
 
 
 class TestCORSConfiguration:
     """Tests for CORS configuration allowing mobile clients."""
 
-    def test_cors_allows_all_origins_for_save_url(self, client):
-        """CORS headers allow requests from any origin."""
-        # This tests the preflight OPTIONS request
-        response = client.options(
+    def test_cors_allows_configured_origins(self, client):
+        """CORS headers allow requests from configured origins."""
+        # Send a regular request with Origin header to check CORS response
+        response = client.get(
+            "/api/v1/content/save",
+            headers={"Origin": "http://localhost:3000"},
+        )
+
+        assert response.status_code == 200
+        # CORS middleware should include Access-Control-Allow-Origin for configured origins
+        cors_header = response.headers.get("access-control-allow-origin")
+        assert cors_header is not None, "CORS Access-Control-Allow-Origin header missing"
+
+
+class TestInputValidation:
+    """Tests for request validation edge cases."""
+
+    def test_save_url_rejects_oversized_tags(self, client):
+        """Rejects tags exceeding per-tag length limit."""
+        response = client.post(
             "/api/v1/content/save-url",
-            headers={
-                "Origin": "http://localhost:3000",
-                "Access-Control-Request-Method": "POST",
+            json={
+                "url": "https://example.com/tag-test",
+                "tags": ["a" * 101],  # Exceeds 100 char limit
             },
         )
 
-        # Should allow the request (200 or 204)
-        assert response.status_code in [200, 204, 405]  # 405 if OPTIONS not explicitly handled
+        assert response.status_code == 422
 
 
 class TestEnqueueExtraction:
@@ -255,7 +309,7 @@ class TestEnqueueExtraction:
         """Uses PGQueuer to enqueue extraction when available."""
         mock_queries = AsyncMock()
 
-        with patch("src.api.save_routes.get_queue_queries", return_value=mock_queries):
+        with patch("src.queue.setup.get_queue_queries", return_value=mock_queries):
             response = client.post(
                 "/api/v1/content/save-url",
                 json={"url": "https://example.com/enqueue-test"},

@@ -5,23 +5,26 @@ supporting iOS Shortcuts, bookmarklets, and web forms.
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, StringConstraints
 
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
+from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/content", tags=["save"])
 
-# Templates for the web save page
-templates = Jinja2Templates(directory="src/templates")
+# Templates for the web save page (path relative to this file, not CWD)
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 
 # Request/Response Models
@@ -31,7 +34,9 @@ class SaveURLRequest(BaseModel):
     url: HttpUrl = Field(..., description="URL to save and extract content from")
     title: str | None = Field(None, max_length=1000, description="Optional title")
     excerpt: str | None = Field(None, max_length=5000, description="Optional excerpt/selection")
-    tags: list[str] | None = Field(default=None, max_length=20, description="Optional tags")
+    tags: list[Annotated[str, StringConstraints(max_length=100)]] | None = Field(
+        default=None, max_length=20, description="Optional tags"
+    )
     notes: str | None = Field(None, max_length=10000, description="Optional user notes")
     source: str | None = Field(None, max_length=50, description="Capture source identifier")
 
@@ -68,18 +73,13 @@ async def _enqueue_extraction(content_id: int) -> None:
         await queries.enqueue("extract_url_content", {"content_id": content_id})
         logger.info(f"Enqueued extraction task for content_id={content_id}")
     except ImportError:
-        logger.warning("PGQueuer not available, using sync extraction")
-        # Fallback: run extraction synchronously (not recommended for production)
+        logger.warning("PGQueuer not available, using direct extraction")
         from src.services.url_extractor import URLExtractor
         from src.storage.database import get_db
 
         with get_db() as db:
             extractor = URLExtractor(db)
-            import asyncio
-
-            # Store task reference to prevent garbage collection
-            _bg_task = asyncio.create_task(extractor.extract_content(content_id))
-            _bg_task.add_done_callback(lambda t: None)  # Prevent unhandled exception warning
+            await extractor.extract_content(content_id)
 
 
 @router.post("/save-url", response_model=SaveURLResponse, status_code=201)
@@ -122,8 +122,11 @@ async def save_url(
         # Create content record
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id=f"webpage:{url_str}",
             source_url=url_str,
             title=request.title or url_str,  # Use URL as title until extracted
+            markdown_content="",  # Placeholder until extraction completes
+            content_hash=generate_markdown_hash(""),
             status=ContentStatus.PENDING,
             metadata_json=metadata if metadata else None,
             ingested_at=datetime.now(UTC),
@@ -177,9 +180,9 @@ async def get_content_status(content_id: int) -> ContentStatusResponse:
 @router.get("/save", response_class=HTMLResponse, include_in_schema=False)
 async def save_page(
     request: Request,
-    url: Annotated[str | None, Query(description="URL to save")] = None,
-    title: Annotated[str | None, Query(description="Page title")] = None,
-    excerpt: Annotated[str | None, Query(description="Selected text")] = None,
+    url: Annotated[str | None, Query(description="URL to save", max_length=2000)] = None,
+    title: Annotated[str | None, Query(description="Page title", max_length=1000)] = None,
+    excerpt: Annotated[str | None, Query(description="Selected text", max_length=5000)] = None,
 ) -> HTMLResponse:
     """Render the web save page.
 
@@ -190,6 +193,9 @@ async def save_page(
 
     Query params are pre-filled into the form.
     """
+    # Derive API base URL from request for cross-origin bookmarklet support
+    api_base_url = str(request.base_url).rstrip("/")
+
     return templates.TemplateResponse(
         "save.html",
         {
@@ -197,5 +203,6 @@ async def save_page(
             "url": url or "",
             "title": title or "",
             "excerpt": excerpt or "",
+            "api_base_url": api_base_url,
         },
     )

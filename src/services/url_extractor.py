@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from src.models.content import Content, ContentSource, ContentStatus
+from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -19,6 +20,12 @@ logger = get_logger(__name__)
 
 # Default timeout for URL fetching
 DEFAULT_TIMEOUT = 30.0
+
+# Maximum content size to download (10MB)
+MAX_CONTENT_SIZE = 10 * 1024 * 1024
+
+# Allowed content types for HTML extraction
+ALLOWED_CONTENT_TYPES = ("text/html", "text/", "application/xhtml+xml")
 
 # User agent for web requests
 USER_AGENT = (
@@ -79,12 +86,13 @@ class URLExtractor:
 
             # Update content record
             content.markdown_content = markdown_content
+            content.content_hash = generate_markdown_hash(markdown_content)
             content.status = ContentStatus.PARSED
             content.parsed_at = datetime.now(UTC)
             content.parser_used = "URLExtractor"
 
-            # Update title if not set and we extracted one
-            if not content.title and metadata.get("title"):
+            # Update title if still set to URL placeholder
+            if metadata.get("title") and content.title == content.source_url:
                 content.title = metadata["title"]
 
             # Store additional metadata
@@ -116,6 +124,7 @@ class URLExtractor:
 
         Raises:
             httpx.HTTPError: If fetch fails
+            ValueError: If content is too large or not HTML
         """
         async with httpx.AsyncClient(
             timeout=DEFAULT_TIMEOUT,
@@ -125,7 +134,24 @@ class URLExtractor:
             response = await client.get(url)
             response.raise_for_status()
 
-            return response.text, str(response.url)
+            # Check content size
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > MAX_CONTENT_SIZE:
+                raise ValueError(
+                    f"Content too large: {content_length} bytes (max {MAX_CONTENT_SIZE})"
+                )
+
+            # Check content type
+            content_type = response.headers.get("content-type", "")
+            if not any(content_type.startswith(ct) for ct in ALLOWED_CONTENT_TYPES):
+                raise ValueError(f"Unsupported content type: {content_type} (expected HTML)")
+
+            # Check actual response size
+            text = response.text
+            if len(text.encode("utf-8")) > MAX_CONTENT_SIZE:
+                raise ValueError(f"Response body too large (max {MAX_CONTENT_SIZE} bytes)")
+
+            return text, str(response.url)
 
     async def _parse_html(self, html_content: str, url: str) -> tuple[str, dict]:
         """Parse HTML content to markdown.
@@ -273,8 +299,11 @@ async def extract_url_to_content(
 
     content = Content(
         source_type=ContentSource.WEBPAGE,
+        source_id=f"webpage:{url}",
         source_url=url,
         title=title or url,  # Use URL as title until extracted
+        markdown_content="",  # Placeholder until extraction completes
+        content_hash=generate_markdown_hash(""),
         status=ContentStatus.PENDING,
         metadata_json=metadata if metadata else None,
         ingested_at=datetime.now(UTC),

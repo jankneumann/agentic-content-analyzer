@@ -44,7 +44,7 @@ The system SHALL provide an API for saving URLs.
 - **GIVEN** URL already exists in system
 - **WHEN** same URL is submitted
 - **THEN** existing content ID SHALL be returned
-- **AND** status SHALL indicate "duplicate"
+- **AND** status SHALL indicate "exists"
 
 ### Requirement: Content Extraction
 
