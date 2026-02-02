@@ -19,6 +19,7 @@ from src.services.url_extractor import (
     URLExtractor,
     extract_url_to_content,
 )
+from src.utils.content_hash import generate_markdown_hash
 
 
 class TestURLExtractorInit:
@@ -347,6 +348,14 @@ class TestExtractURLToContent:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
+        added_content = None
+
+        def capture_add(content):
+            nonlocal added_content
+            added_content = content
+
+        mock_db.add.side_effect = capture_add
+
         result = await extract_url_to_content(
             mock_db,
             "https://example.com/new-article",
@@ -356,6 +365,12 @@ class TestExtractURLToContent:
 
         mock_db.add.assert_called_once()
         mock_db.commit.assert_called_once()
+
+        # Verify NOT NULL fields are populated
+        assert added_content is not None
+        assert added_content.source_id == "webpage:https://example.com/new-article"
+        assert added_content.markdown_content == ""
+        assert added_content.content_hash == generate_markdown_hash("")
 
     @pytest.mark.asyncio
     async def test_returns_existing_for_duplicate_url(self):

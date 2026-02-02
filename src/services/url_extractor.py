@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from src.models.content import Content, ContentSource, ContentStatus
+from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -273,8 +274,11 @@ async def extract_url_to_content(
 
     content = Content(
         source_type=ContentSource.WEBPAGE,
+        source_id=f"webpage:{url}",
         source_url=url,
         title=title or url,  # Use URL as title until extracted
+        markdown_content="",  # Placeholder until extraction completes
+        content_hash=generate_markdown_hash(""),
         status=ContentStatus.PENDING,
         metadata_json=metadata if metadata else None,
         ingested_at=datetime.now(UTC),

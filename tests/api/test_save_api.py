@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from src.models.content import Content, ContentSource, ContentStatus
+from src.utils.content_hash import generate_markdown_hash
 
 
 class TestSaveURLEndpoint:
@@ -41,14 +42,21 @@ class TestSaveURLEndpoint:
         assert content.title == "Test Article"
         assert content.status == ContentStatus.PENDING
         assert content.source_type == ContentSource.WEBPAGE
+        # Verify NOT NULL fields are populated
+        assert content.source_id == "webpage:https://example.com/article"
+        assert content.markdown_content == ""
+        assert content.content_hash is not None and len(content.content_hash) == 64
 
     def test_save_url_detects_duplicate(self, client, db_session):
         """Returns existing content for duplicate URL."""
         # Create existing content
         existing = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/existing",
             source_url="https://example.com/existing",
             title="Existing Article",
+            markdown_content="Existing content.",
+            content_hash=generate_markdown_hash("Existing content."),
             status=ContentStatus.PARSED,
             ingested_at=datetime.now(UTC),
         )
@@ -134,8 +142,11 @@ class TestContentStatusEndpoint:
         """Returns status for pending content."""
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/pending",
             source_url="https://example.com/pending",
             title="Pending Article",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
             status=ContentStatus.PENDING,
             ingested_at=datetime.now(UTC),
         )
@@ -156,10 +167,14 @@ class TestContentStatusEndpoint:
         """Returns status with word count for parsed content."""
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/parsed",
             source_url="https://example.com/parsed",
             title="Parsed Article",
-            status=ContentStatus.PARSED,
             markdown_content="This is the extracted content with several words.",
+            content_hash=generate_markdown_hash(
+                "This is the extracted content with several words."
+            ),
+            status=ContentStatus.PARSED,
             ingested_at=datetime.now(UTC),
         )
         db_session.add(content)
@@ -176,8 +191,11 @@ class TestContentStatusEndpoint:
         """Returns error message for failed content."""
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/failed",
             source_url="https://example.com/failed",
             title="Failed Article",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
             status=ContentStatus.FAILED,
             error_message="Connection timeout after 30 seconds",
             ingested_at=datetime.now(UTC),
@@ -255,7 +273,7 @@ class TestEnqueueExtraction:
         """Uses PGQueuer to enqueue extraction when available."""
         mock_queries = AsyncMock()
 
-        with patch("src.api.save_routes.get_queue_queries", return_value=mock_queries):
+        with patch("src.queue.setup.get_queue_queries", return_value=mock_queries):
             response = client.post(
                 "/api/v1/content/save-url",
                 json={"url": "https://example.com/enqueue-test"},

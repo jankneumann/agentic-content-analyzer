@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
+from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -68,18 +69,13 @@ async def _enqueue_extraction(content_id: int) -> None:
         await queries.enqueue("extract_url_content", {"content_id": content_id})
         logger.info(f"Enqueued extraction task for content_id={content_id}")
     except ImportError:
-        logger.warning("PGQueuer not available, using sync extraction")
-        # Fallback: run extraction synchronously (not recommended for production)
+        logger.warning("PGQueuer not available, using direct extraction")
         from src.services.url_extractor import URLExtractor
         from src.storage.database import get_db
 
         with get_db() as db:
             extractor = URLExtractor(db)
-            import asyncio
-
-            # Store task reference to prevent garbage collection
-            _bg_task = asyncio.create_task(extractor.extract_content(content_id))
-            _bg_task.add_done_callback(lambda t: None)  # Prevent unhandled exception warning
+            await extractor.extract_content(content_id)
 
 
 @router.post("/save-url", response_model=SaveURLResponse, status_code=201)
@@ -122,8 +118,11 @@ async def save_url(
         # Create content record
         content = Content(
             source_type=ContentSource.WEBPAGE,
+            source_id=f"webpage:{url_str}",
             source_url=url_str,
             title=request.title or url_str,  # Use URL as title until extracted
+            markdown_content="",  # Placeholder until extraction completes
+            content_hash=generate_markdown_hash(""),
             status=ContentStatus.PENDING,
             metadata_json=metadata if metadata else None,
             ingested_at=datetime.now(UTC),
