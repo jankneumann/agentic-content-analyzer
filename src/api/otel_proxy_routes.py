@@ -59,11 +59,14 @@ async def proxy_traces(request: Request) -> Response:
 
     # Check content-length before reading body
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > MAX_BODY_SIZE:
-        return JSONResponse(
-            status_code=413,
-            content={"detail": f"Payload too large. Maximum size is {MAX_BODY_SIZE} bytes"},
-        )
+    try:
+        if content_length and int(content_length) > MAX_BODY_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"Payload too large. Maximum size is {MAX_BODY_SIZE} bytes"},
+            )
+    except (ValueError, TypeError):
+        pass  # Malformed content-length header; body size check below will catch it
 
     # Read body with size limit
     body = await request.body()

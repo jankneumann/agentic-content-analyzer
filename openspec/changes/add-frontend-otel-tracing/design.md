@@ -32,7 +32,9 @@ SSE request would link the entire progress stream to the backend processing span
 
 Use `@opentelemetry/instrumentation-fetch` which monkey-patches the global `fetch()` function.
 This automatically instruments all calls made by `apiClient`, React Query, and SSE without
-modifying any application code.
+modifying any application code. The `propagateTraceHeaderCorsUrls` option is scoped to the
+API origin only (same-origin in dev, `VITE_API_URL` origin in production) to prevent leaking
+trace context to third-party CDNs or analytics services.
 
 Alternative considered: manually adding `traceparent` headers in `apiClient`. Rejected because
 it would miss SSE calls and any future direct `fetch()` usage.

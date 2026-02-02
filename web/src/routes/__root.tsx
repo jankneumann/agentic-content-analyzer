@@ -22,9 +22,9 @@ import { initTelemetry } from "@/lib/telemetry"
 
 // Initialize OTel before React renders so fetch instrumentation
 // is active before TanStack Query makes its first API call.
-// This is a fire-and-forget call — telemetry initialization
-// should never block app rendering.
-initTelemetry()
+// Fire-and-forget: telemetry initialization should never block app rendering.
+// The .catch() prevents unhandled-promise-rejection warnings in strict environments.
+initTelemetry().catch(() => {})
 
 /**
  * TanStack Query client
