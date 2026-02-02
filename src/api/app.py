@@ -18,6 +18,7 @@ from src.api.files_routes import router as files_router
 from src.api.health_routes import router as health_router
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.telemetry import TraceIdMiddleware
+from src.api.otel_proxy_routes import router as otel_proxy_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
@@ -92,6 +93,7 @@ app.include_router(files_router)
 app.include_router(save_router)  # Mobile content capture
 app.include_router(source_router)
 app.include_router(health_router)  # Health and readiness probes
+app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 
 @app.get("/api/v1/system/config", tags=["system"])

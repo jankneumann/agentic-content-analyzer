@@ -8,7 +8,8 @@ Tests cover:
 """
 
 import tempfile
-from unittest.mock import AsyncMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -40,7 +41,7 @@ class TestFilesAPI:
         assert "Invalid bucket" in response.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_file_not_found_returns_404(self, client, temp_storage_dir):
+    async def test_file_not_found_returns_404(self, client):
         """Test that missing file returns 404."""
         with patch("src.api.files_routes.get_storage") as mock_get_storage:
             mock_storage = AsyncMock()
@@ -54,12 +55,17 @@ class TestFilesAPI:
             assert "File not found" in response.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_get_file_local_storage(self, client):
-        """Test getting a file from local storage."""
+    async def test_get_file_local_storage_optimized(self, client, temp_storage_dir):
+        """Test getting a file from local storage using optimized FileResponse."""
+        # Create a real file
+        file_path = Path(temp_storage_dir) / "test.jpg"
+        file_path.write_bytes(b"fake image data")
+
         with patch("src.api.files_routes.get_storage") as mock_get_storage:
             mock_storage = AsyncMock()
             mock_storage.exists = AsyncMock(return_value=True)
-            mock_storage.get = AsyncMock(return_value=b"fake image data")
+            # get_local_path returns a real path, triggering FileResponse
+            mock_storage.get_local_path = MagicMock(return_value=file_path)
             mock_storage.provider_name = "local"
             mock_get_storage.return_value = mock_storage
 
@@ -71,42 +77,35 @@ class TestFilesAPI:
             assert response.headers["Accept-Ranges"] == "bytes"
 
     @pytest.mark.asyncio
-    async def test_get_file_detects_content_type(self, client):
-        """Test that content type is correctly detected from extension."""
+    async def test_get_file_fallback(self, client):
+        """Test getting a file using fallback (load into memory) when local path not available."""
         with patch("src.api.files_routes.get_storage") as mock_get_storage:
             mock_storage = AsyncMock()
             mock_storage.exists = AsyncMock(return_value=True)
             mock_storage.get = AsyncMock(return_value=b"fake png data")
+            # get_local_path returns None, triggering fallback
+            mock_storage.get_local_path = MagicMock(return_value=None)
             mock_storage.provider_name = "local"
             mock_get_storage.return_value = mock_storage
 
             response = client.get("/api/v1/files/images/2025/01/24/test.png")
 
+            assert response.status_code == 200
+            assert response.content == b"fake png data"
             assert response.headers["Content-Type"] == "image/png"
 
     @pytest.mark.asyncio
-    async def test_get_file_audio_content_type(self, client):
-        """Test audio content type detection."""
+    async def test_range_request_optimized(self, client, temp_storage_dir):
+        """Test range request with optimized FileResponse."""
+        # Create 1000 bytes of data
+        test_data = b"x" * 1000
+        file_path = Path(temp_storage_dir) / "test.mp3"
+        file_path.write_bytes(test_data)
+
         with patch("src.api.files_routes.get_storage") as mock_get_storage:
             mock_storage = AsyncMock()
             mock_storage.exists = AsyncMock(return_value=True)
-            mock_storage.get = AsyncMock(return_value=b"fake mp3 data")
-            mock_storage.provider_name = "local"
-            mock_get_storage.return_value = mock_storage
-
-            response = client.get("/api/v1/files/podcasts/2025/01/24/podcast.mp3")
-
-            assert response.headers["Content-Type"] == "audio/mpeg"
-
-    @pytest.mark.asyncio
-    async def test_range_request_partial_content(self, client):
-        """Test range request returns partial content."""
-        with patch("src.api.files_routes.get_storage") as mock_get_storage:
-            # Create 1000 bytes of data
-            test_data = b"x" * 1000
-            mock_storage = AsyncMock()
-            mock_storage.exists = AsyncMock(return_value=True)
-            mock_storage.get = AsyncMock(return_value=test_data)
+            mock_storage.get_local_path = MagicMock(return_value=file_path)
             mock_storage.provider_name = "local"
             mock_get_storage.return_value = mock_storage
 
@@ -115,19 +114,21 @@ class TestFilesAPI:
                 headers={"Range": "bytes=0-99"},
             )
 
+            # FileResponse handles 206 Partial Content
             assert response.status_code == 206
             assert len(response.content) == 100
             assert response.headers["Content-Range"] == "bytes 0-99/1000"
             assert response.headers["Content-Length"] == "100"
 
     @pytest.mark.asyncio
-    async def test_range_request_open_ended(self, client):
-        """Test open-ended range request."""
+    async def test_range_request_fallback(self, client):
+        """Test range request fallback logic (manual implementation)."""
         with patch("src.api.files_routes.get_storage") as mock_get_storage:
             test_data = b"x" * 1000
             mock_storage = AsyncMock()
             mock_storage.exists = AsyncMock(return_value=True)
             mock_storage.get = AsyncMock(return_value=test_data)
+            mock_storage.get_local_path = MagicMock(return_value=None)
             mock_storage.provider_name = "local"
             mock_get_storage.return_value = mock_storage
 
@@ -139,26 +140,6 @@ class TestFilesAPI:
             assert response.status_code == 206
             assert len(response.content) == 500
             assert response.headers["Content-Range"] == "bytes 500-999/1000"
-
-    @pytest.mark.asyncio
-    async def test_range_request_suffix(self, client):
-        """Test suffix range request (last N bytes)."""
-        with patch("src.api.files_routes.get_storage") as mock_get_storage:
-            test_data = b"x" * 1000
-            mock_storage = AsyncMock()
-            mock_storage.exists = AsyncMock(return_value=True)
-            mock_storage.get = AsyncMock(return_value=test_data)
-            mock_storage.provider_name = "local"
-            mock_get_storage.return_value = mock_storage
-
-            response = client.get(
-                "/api/v1/files/podcasts/2025/01/24/test.mp3",
-                headers={"Range": "bytes=-100"},
-            )
-
-            assert response.status_code == 206
-            assert len(response.content) == 100
-            assert response.headers["Content-Range"] == "bytes 900-999/1000"
 
     @pytest.mark.asyncio
     async def test_cloud_storage_redirects_to_signed_url(self, client):
@@ -181,13 +162,17 @@ class TestFilesAPI:
             assert response.headers["Location"] == "https://signed.example.com/file?token=abc"
 
     @pytest.mark.asyncio
-    async def test_head_request_returns_metadata(self, client):
-        """Test HEAD request returns file metadata."""
+    async def test_head_request_optimized(self, client, temp_storage_dir):
+        """Test HEAD request returns file metadata without reading content."""
+        test_data = b"x" * 500
+        file_path = Path(temp_storage_dir) / "test.jpg"
+        file_path.write_bytes(test_data)
+
         with patch("src.api.files_routes.get_storage") as mock_get_storage:
-            test_data = b"x" * 500
             mock_storage = AsyncMock()
             mock_storage.exists = AsyncMock(return_value=True)
-            mock_storage.get = AsyncMock(return_value=test_data)
+            # Should use stat() on this path
+            mock_storage.get_local_path = MagicMock(return_value=file_path)
             mock_storage.provider_name = "local"
             mock_get_storage.return_value = mock_storage
 

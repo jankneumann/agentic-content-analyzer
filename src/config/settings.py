@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from src.config.sources import SourcesConfig
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
@@ -317,6 +317,13 @@ class Settings(BaseSettings):
     otel_traces_sampler: str = "parentbased_traceidratio"
     otel_traces_sampler_arg: float = 1.0  # 1.0 = 100% in dev, lower in prod
 
+    # OTel Log Bridge (requires otel_enabled=True)
+    otel_logs_enabled: bool = True  # Enable log bridge to OTLP (gated by otel_enabled)
+    otel_logs_export_level: str = (
+        "WARNING"  # Min level for OTLP export (DEBUG, INFO, WARNING, ERROR)
+    )
+    log_format: Literal["text", "json"] = "json"  # Console output format
+
     # Opik Configuration (Comet Cloud or self-hosted)
     opik_api_key: str | None = None  # Comet Cloud API key
     opik_workspace: str | None = None  # Comet Cloud workspace
@@ -329,6 +336,17 @@ class Settings(BaseSettings):
 
     # Health Check Configuration
     health_check_timeout_seconds: int = 5  # Timeout for health check probes
+
+    @field_validator("otel_logs_export_level")
+    @classmethod
+    def validate_otel_logs_export_level(cls, v: str) -> str:
+        """Validate that otel_logs_export_level is a known Python logging level."""
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if v.upper() not in valid_levels:
+            raise ValueError(
+                f"OTEL_LOGS_EXPORT_LEVEL must be one of {sorted(valid_levels)}, got '{v}'"
+            )
+        return v.upper()
 
     @model_validator(mode="after")
     def configure_local_supabase(self) -> Settings:

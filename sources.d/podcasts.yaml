@@ -1,0 +1,76 @@
+defaults:
+  type: podcast
+  transcribe: false
+sources:
+- name: Adventures in Machine Learning
+  url: https://topenddevs.com/podcasts/adventures-in-machine-learning/rss.rss
+- name: AI in Financial Services Podcast
+  url: https://aiandbanking.libsyn.com/rss
+- name: 'AI Today Podcast: Artificial Intelligence Insights, Experts, and Opinion'
+  url: https://feeds.blubrry.com/feeds/aitoday.xml
+- name: Babbage from The Economist
+  url: https://feeds.acast.com/public/shows/e421d786-ec36-4148-aa99-7a3b2928a779
+- name: Data Engineering Podcast
+  url: https://www.dataengineeringpodcast.com/feed/mp3/
+- name: Data Science at Home
+  url: https://datascienceathome.com/feed.xml
+- name: Data Skeptic
+  url: https://dataskeptic.libsyn.com/rss
+- name: Data Stories
+  url: https://datastori.es/feed/
+- name: DataTalks.Club
+  url: https://anchor.fm/s/41286f68/podcast/rss
+- name: Episodes - The ChatGPT Report
+  url: https://www.thechatgptreport.com/episodes?format=rss
+- name: Eye On A.I.
+  url: https://aneyeonai.libsyn.com/rss
+- name: Geomob
+  url: https://geomob-podcast.castos.com/feed
+- name: Global AI - The Podcast
+  url: https://anchor.fm/s/443868ac/podcast/rss
+- name: 'Gradient Dissent: Exploring Machine Learning, AI, Deep Learning, Computer
+    Vision'
+  url: https://feeds.captivate.fm/gradient-dissent/
+- name: Harvard Data Science Review Podcast
+  url: https://feed.podbean.com/hdsr/feed.xml
+- name: MLOps.community
+  url: https://anchor.fm/s/174cb1b8/podcast/rss
+- name: NLP Highlights
+  url: http://feeds.soundcloud.com/users/soundcloud:users:306749289/sounds.rss
+- name: Not So Standard Deviations
+  url: http://nssdeviations.com/rss
+- name: Postgres FM
+  url: https://feeds.transistor.fm/postgres-fm
+- name: 'Practical AI: Machine Learning, Data Science'
+  url: https://changelog.com/practicalai/feed
+- name: Small Data Forum Podcast
+  url: http://lexisnexisbis.libsyn.com/rss
+- name: Talk Python To Me
+  url: https://talkpython.fm/episodes/rss
+- name: 'The AI Breakdown: Daily Artificial Intelligence News and Discussions'
+  url: https://feeds.libsyn.com/468519/rss
+- name: The AI in Business Podcast
+  url: http://podcast.emerj.com/rss
+- name: The AI Podcast
+  url: http://feeds.soundcloud.com/users/soundcloud:users:264034133/sounds.rss
+- name: The Artificial Intelligence Podcast
+  url: https://anchor.fm/s/3952c6f8/podcast/rss
+- name: The Artists of Data Science
+  url: https://feeds.fireside.fm/theartistsofdatascience/rss
+- name: The Data Engineering Show
+  url: https://feeds.transistor.fm/the-data-engineering-show
+- name: The Data Exchange
+  url: https://thedataexchange.media/feed/
+- name: The Gradient Podcast
+  url: https://api.substack.com/feed/podcast/265424/s/1354.rss
+- name: The Machine Learning Podcast
+  url: https://www.themachinelearningpodcast.com/rss
+- name: The Marketing AI Show
+  url: https://feeds.megaphone.fm/marketingai
+- name: The TWIML AI Podcast (formerly This Week in Machine Learning &amp; Artificial
+    Intelligence)
+  url: https://twimlai.com/feed
+- name: This Day in AI Podcast
+  url: https://feeds.transistor.fm/this-day-in-ai
+- name: 'Utilizing Tech Season 5: Utilizing Edge'
+  url: https://anchor.fm/s/32ec7408/podcast/rss

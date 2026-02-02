@@ -213,12 +213,12 @@ async def regenerate_digest_task(digest_id: int) -> None:
         logger.info(f"Digest {digest_id} regenerated successfully")
 
     except Exception as e:
-        logger.error(f"Digest regeneration failed: {e}")
+        logger.error(f"Digest regeneration failed: {e}", exc_info=True)
         with get_db() as db:
             digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
             if digest_record:
                 digest_record.status = DigestStatus.FAILED
-                digest_record.review_notes = str(e)
+                digest_record.review_notes = "An internal error occurred during digest regeneration."
                 db.commit()
 
 
@@ -296,11 +296,11 @@ async def generate_digest_task(request: DigestRequest) -> None:
         logger.info(f"Digest {digest_id} generated successfully")
 
     except Exception as e:
-        logger.error(f"Digest generation failed: {e}")
+        logger.error(f"Digest generation failed: {e}", exc_info=True)
         with get_db() as db:
             digest_record = db.query(Digest).filter(Digest.id == digest_id).first()
             digest_record.status = DigestStatus.FAILED
-            digest_record.review_notes = str(e)
+            digest_record.review_notes = "An internal error occurred during digest generation."
             db.commit()
 
 

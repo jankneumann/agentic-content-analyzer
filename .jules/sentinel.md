@@ -22,3 +22,13 @@
 **Vulnerability:** The `generate_ai_response_streaming` and `apply_action` endpoints in `src/api/chat_routes.py` caught generic `Exception` and returned `str(e)` to the client, leaking potential sensitive details.
 **Learning:** This vulnerability pattern (leaking `str(e)`) was previously identified in `upload_routes.py` but persisted in other endpoints. Security fixes must be applied systematically across the entire codebase, not just in the spot where they were first found.
 **Prevention:** When identifying a vulnerability pattern, search the entire codebase for similar occurrences (e.g., `grep` for `str(e)` inside `except` blocks) to ensure complete remediation.
+
+## 2025-05-26 - [DoS Vulnerability in File Serving]
+**Vulnerability:** The `get_file` endpoint in `src/api/files_routes.py` loaded entire files into memory using `storage.get()` before serving them. For large files (e.g., podcasts, videos), this could cause memory exhaustion (DoS).
+**Learning:** Abstractions like `storage.get()` that return `bytes` are convenient for small files but dangerous for large media files.
+**Prevention:** Implement streaming interfaces (`open_stream` or exposing local paths) in storage providers. Use framework capabilities like `FileResponse` or `StreamingResponse` to stream content efficiently.
+
+## 2025-05-27 - [Pervasive Error Leakage in Background Tasks]
+**Vulnerability:** Background tasks for content ingestion (`content_routes.py`), summarization (`summary_routes.py`), and digest generation (`digest_routes.py`) were all catching generic `Exception` and saving `str(e)` to user-visible status fields (`message`, `review_notes`) or SSE streams. This confirmed the previous finding was part of a widespread pattern.
+**Learning:** When moving logic to background tasks or SSE streams, developers often carry over the "return error string" pattern for status reporting, overlooking that these status updates are user-facing and can leak internal state (DB auth errors, API key issues).
+**Prevention:** Treat task status messages and SSE error events as public API responses. Never include raw exception strings. Use generic error messages for the user and log the full traceback server-side.

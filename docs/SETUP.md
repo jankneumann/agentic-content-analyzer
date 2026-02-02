@@ -965,6 +965,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=        # OTLP HTTP endpoint
 OTEL_EXPORTER_OTLP_HEADERS=         # Comma-separated key=value pairs
 OTEL_LOG_PROMPTS=false               # Log prompt/completion text (PII risk)
 
+# OTel Log Bridge (requires OTEL_ENABLED=true)
+OTEL_LOGS_ENABLED=true               # Enable log bridge to OTLP export (default: true)
+OTEL_LOGS_EXPORT_LEVEL=WARNING       # Min level for OTLP export (DEBUG/INFO/WARNING/ERROR)
+LOG_FORMAT=json                      # Console output: "json" (default) or "text"
+
 # Opik (Comet Cloud or self-hosted)
 OPIK_API_KEY=                        # Comet Cloud API key
 OPIK_WORKSPACE=                      # Comet Cloud workspace
@@ -1020,10 +1025,12 @@ Configure `.env` to send traces to local Opik:
 ```bash
 OBSERVABILITY_PROVIDER=opik
 OTEL_ENABLED=true
-# No OTEL_EXPORTER_OTLP_ENDPOINT needed — defaults to http://localhost:5173/api/v1/private/otel
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5173/api/v1/private/otel  # Required for infra tracing (FastAPI, SQLAlchemy, httpx spans)
 OPIK_PROJECT_NAME=newsletter-aggregator
 OTEL_LOG_PROMPTS=true                   # Optional: see prompt/completion text in Opik
 ```
+
+> **Note**: `OTEL_EXPORTER_OTLP_ENDPOINT` is required for infrastructure tracing (FastAPI, SQLAlchemy, httpx auto-instrumentation). Without it, `setup_otel_infrastructure` returns early and only LLM-level spans from the Opik provider will appear. Set it to Opik's OTLP endpoint for full end-to-end visibility.
 
 Run the app and trigger an LLM call (chat, summarizer, etc.) — traces appear in the Opik UI at `http://localhost:5173`.
 
@@ -1034,6 +1041,21 @@ Tear down when done:
 ```bash
 docker compose -f docker-compose.opik.yml -p opik down
 ```
+
+**Frontend OTel tracing** (browser → backend trace propagation):
+
+```bash
+# In web/.env (or passed at build time)
+VITE_OTEL_ENABLED=true               # Enable browser trace propagation + Web Vitals
+```
+
+When enabled, the frontend:
+- Auto-instruments all `fetch()` calls with W3C `traceparent` headers
+- Measures Core Web Vitals (LCP, INP, CLS, FCP, TTFB) as OTel spans
+- Captures React Error Boundary crashes with trace correlation
+- Exports traces via backend proxy (`POST /api/v1/otel/v1/traces`)
+
+**Requirements**: Backend OTel must also be enabled (`OTEL_ENABLED=true`) for the OTLP proxy to accept traces.
 
 **Health endpoints**:
 - `GET /health` — Liveness probe (always 200 if process alive)
