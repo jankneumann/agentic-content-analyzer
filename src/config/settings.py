@@ -224,7 +224,7 @@ class Settings(BaseSettings):
         )
 
     # Environment
-    environment: Literal["development", "production"] = "development"
+    environment: Literal["development", "production", "test"] = "development"
     log_level: str = "INFO"
 
     # CORS Configuration
