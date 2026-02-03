@@ -766,8 +766,7 @@ def validate_profile(
             )
             if not has_required:
                 errors.append(
-                    f"providers.{cat1}={val1} requires {cat2} configuration "
-                    f"({', '.join(required)})"
+                    f"providers.{cat1}={val1} requires {cat2} configuration ({', '.join(required)})"
                 )
 
     return errors

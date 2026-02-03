@@ -733,7 +733,7 @@ class Settings(BaseSettings):
             The configured database provider ("local", "supabase", or "neon")
         """
         warnings.warn(
-            "detected_database_provider is deprecated. " "Use settings.database_provider directly.",
+            "detected_database_provider is deprecated. Use settings.database_provider directly.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1058,7 +1058,7 @@ def get_settings() -> Settings:
         f"Database provider: {s.database_provider} | "
         f"URL: {s._mask_url(s.get_effective_database_url())}"
     )
-    logger.info(f"Neo4j provider: {s.neo4j_provider} | " f"URI: {s.get_effective_neo4j_uri()}")
+    logger.info(f"Neo4j provider: {s.neo4j_provider} | URI: {s.get_effective_neo4j_uri()}")
     logger.info(f"Observability provider: {s.observability_provider}")
     return s
 

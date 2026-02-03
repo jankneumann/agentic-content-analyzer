@@ -199,8 +199,7 @@ class FileContentIngestionService:
         self.db.refresh(content)
 
         logger.info(
-            f"Ingested {filename} as content ID {content.id} "
-            f"(parser: {doc_content.parser_used})"
+            f"Ingested {filename} as content ID {content.id} (parser: {doc_content.parser_used})"
         )
 
         return content

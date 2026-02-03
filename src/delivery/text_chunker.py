@@ -150,7 +150,7 @@ class TextChunker:
                 current_pos += 1
 
         logger.debug(
-            f"Split {len(text)} chars into {len(chunks)} chunks " f"(max_chars={self.max_chars})"
+            f"Split {len(text)} chars into {len(chunks)} chunks (max_chars={self.max_chars})"
         )
 
         return chunks

@@ -126,7 +126,7 @@ class ImageExtractor:
             from PIL import Image as PILImage
         except ImportError:
             logger.warning(
-                "imagehash/Pillow not installed. " "Install with: pip install imagehash Pillow"
+                "imagehash/Pillow not installed. Install with: pip install imagehash Pillow"
             )
             return None
 

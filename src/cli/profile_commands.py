@@ -214,7 +214,7 @@ def validate_profile_cmd(
 
     try:
         if strict:
-            is_valid, errors, warnings = validate_profile_strict(name, profiles_dir)
+            _is_valid, errors, warnings = validate_profile_strict(name, profiles_dir)
 
             if warnings:
                 typer.echo(typer.style("Warnings:", fg=typer.colors.YELLOW))

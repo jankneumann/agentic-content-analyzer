@@ -88,9 +88,7 @@ async def run_theme_analysis(
         _analysis_results[analysis_id] = result
         _analysis_status[analysis_id] = "completed"
 
-        logger.info(
-            f"Theme analysis {analysis_id} completed: " f"{result.total_themes} themes found"
-        )
+        logger.info(f"Theme analysis {analysis_id} completed: {result.total_themes} themes found")
 
     except Exception as e:
         logger.error(f"Theme analysis {analysis_id} failed: {e}", exc_info=True)
@@ -154,9 +152,7 @@ async def analyze_themes(
 
     _analysis_status[analysis_id] = "queued"
 
-    logger.info(
-        f"Theme analysis {analysis_id} queued: " f"{start_date.date()} to {end_date.date()}"
-    )
+    logger.info(f"Theme analysis {analysis_id} queued: {start_date.date()} to {end_date.date()}")
 
     return AnalyzeThemesResponse(
         status="queued",
