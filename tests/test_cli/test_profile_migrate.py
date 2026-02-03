@@ -210,6 +210,15 @@ class TestEnvFileParsing:
 
         assert variables == {"FOO": "bar", "BAZ": "qux"}
 
+    def test_handles_export_prefix(self, tmp_path: Path) -> None:
+        """Test that 'export KEY=value' syntax is handled."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("export FOO=bar\nexport BAZ=qux\nREGULAR=value\n")
+
+        variables, _ = _parse_env_file(env_file)
+
+        assert variables == {"FOO": "bar", "BAZ": "qux", "REGULAR": "value"}
+
     def test_handles_quoted_values(self, tmp_path: Path) -> None:
         """Test that quoted values are unquoted."""
         env_file = tmp_path / ".env"

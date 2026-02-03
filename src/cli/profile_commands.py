@@ -70,6 +70,9 @@ def list_profiles(
 
     if not profiles:
         typer.echo(f"No profiles found in {profiles_dir}")
+        typer.echo()
+        typer.echo("To create a profile from your .env file:")
+        typer.echo("  newsletter-cli profile migrate --dry-run")
         raise typer.Exit(0)
 
     active_name = _get_active_profile_name()
@@ -312,8 +315,14 @@ def inspect_settings(
         for key, value in api_keys.items():
             typer.echo(f"  {key}: {value}")
 
+    except ProfileError as e:
+        typer.echo(typer.style(f"Profile error: {e}", fg=typer.colors.RED))
+        raise typer.Exit(1)
+    except ValueError as e:
+        typer.echo(typer.style(f"Configuration error: {e}", fg=typer.colors.RED))
+        raise typer.Exit(1)
     except Exception as e:
-        typer.echo(typer.style(f"Error loading settings: {e}", fg=typer.colors.RED))
+        typer.echo(typer.style(f"Unexpected error loading settings: {e}", fg=typer.colors.RED))
         raise typer.Exit(1)
 
 
@@ -366,10 +375,13 @@ def _parse_env_file(env_path: Path) -> tuple[dict[str, str], dict[str, str]]:
                 current_comment = ""
                 continue
 
-            # Parse key=value
+            # Parse key=value (also handles "export KEY=value" syntax)
             if "=" in line:
                 key, _, value = line.partition("=")
                 key = key.strip()
+                # Strip "export " prefix if present (common in shell-compatible .env files)
+                if key.startswith("export "):
+                    key = key[7:]
                 value = value.strip()
 
                 # Remove quotes from value
