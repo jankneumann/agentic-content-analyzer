@@ -47,9 +47,7 @@ def list_available_scripts():
 
     with get_db() as db:
         scripts = (
-            db.query(PodcastScriptRecord)
-            .order_by(PodcastScriptRecord.created_at.desc())
-            .all()
+            db.query(PodcastScriptRecord).order_by(PodcastScriptRecord.created_at.desc()).all()
         )
 
         if not scripts:
@@ -59,13 +57,15 @@ def list_available_scripts():
         print("\n" + "=" * 100)
         print("AVAILABLE PODCAST SCRIPTS")
         print("=" * 100)
-        print(
-            f"\n{'ID':<6} {'Title':<50} {'Words':<8} {'Duration':<10} {'Status':<20}"
-        )
+        print(f"\n{'ID':<6} {'Title':<50} {'Words':<8} {'Duration':<10} {'Status':<20}")
         print("-" * 100)
 
         for script in scripts:
-            duration = f"{script.estimated_duration_seconds // 60}m {script.estimated_duration_seconds % 60}s" if script.estimated_duration_seconds else "N/A"
+            duration = (
+                f"{script.estimated_duration_seconds // 60}m {script.estimated_duration_seconds % 60}s"
+                if script.estimated_duration_seconds
+                else "N/A"
+            )
             status = script.status.value if script.status else "unknown"
             title = script.title[:47] + "..." if len(script.title) > 50 else script.title
 
@@ -78,9 +78,7 @@ def list_available_scripts():
         print("\nTo use a script: python -m scripts.generate_podcast --script-id <ID>\n")
 
 
-async def interactive_script_review(
-    review_service, script_id: int, script
-) -> bool:
+async def interactive_script_review(review_service, script_id: int, script) -> bool:
     """Interactive CLI review workflow for podcast scripts.
 
     Shows each section and allows user to approve, revise, or reject.
@@ -170,9 +168,10 @@ async def interactive_script_review(
 
                 # Reload script to show updated version
                 from src.models.podcast import PodcastScript
+
                 script = PodcastScript.model_validate(updated_script.script_json)
 
-                print(f"✅ Section revised! Showing updated section:\n")
+                print("✅ Section revised! Showing updated section:\n")
                 print(f"{'─' * 80}")
                 print(f"SECTION {section_num}: {script.sections[section_index].title}")
                 print(f"{'─' * 80}\n")
@@ -193,7 +192,11 @@ async def interactive_script_review(
 
         elif choice == "x":
             # Reject script
-            confirm = input("\n⚠️  Are you sure you want to reject this script? (yes/no): ").strip().lower()
+            confirm = (
+                input("\n⚠️  Are you sure you want to reject this script? (yes/no): ")
+                .strip()
+                .lower()
+            )
             if confirm == "yes":
                 request = ScriptReviewRequest(
                     script_id=script_id,
@@ -306,9 +309,7 @@ async def generate_podcast(
         print(f"\n📄 Loading existing script {script_id}...")
         with get_db() as db:
             script_record = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.id == script_id)
-                .first()
+                db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
 
             if not script_record:
@@ -317,14 +318,16 @@ async def generate_podcast(
 
             print(f"✅ Loaded script: {script_record.title}")
             print(f"   Word count: {script_record.word_count}")
-            print(f"   Estimated duration: {script_record.estimated_duration_seconds}s ({script_record.estimated_duration_seconds // 60}m {script_record.estimated_duration_seconds % 60}s)")
+            print(
+                f"   Estimated duration: {script_record.estimated_duration_seconds}s ({script_record.estimated_duration_seconds // 60}m {script_record.estimated_duration_seconds % 60}s)"
+            )
             print(f"   Status: {script_record.status.value}")
 
             script = PodcastScript.model_validate(script_record.script_json)
 
         # Ensure script is approved
         if script_record.status != PodcastStatus.SCRIPT_APPROVED:
-            print(f"\n📋 Script not yet approved. Auto-approving...")
+            print("\n📋 Script not yet approved. Auto-approving...")
             with get_db() as db:
                 script_rec = (
                     db.query(PodcastScriptRecord)
@@ -333,7 +336,7 @@ async def generate_podcast(
                 )
                 script_rec.status = PodcastStatus.SCRIPT_APPROVED
                 db.commit()
-            print(f"   Script approved!")
+            print("   Script approved!")
 
     else:
         # Generate new script from digest
@@ -372,16 +375,18 @@ async def generate_podcast(
         try:
             creator = PodcastCreator()
             script_record = await creator.generate_script(request)
-            print(f"✅ Script generated successfully!")
+            print("✅ Script generated successfully!")
             print(f"   Script ID: {script_record.id}")
             print(f"   Title: {script_record.title}")
             print(f"   Word count: {script_record.word_count}")
-            print(f"   Estimated duration: {script_record.estimated_duration_seconds}s ({script_record.estimated_duration_seconds // 60}m {script_record.estimated_duration_seconds % 60}s)")
+            print(
+                f"   Estimated duration: {script_record.estimated_duration_seconds}s ({script_record.estimated_duration_seconds // 60}m {script_record.estimated_duration_seconds % 60}s)"
+            )
             print(f"   Status: {script_record.status.value}")
 
             # Show script preview
             script = PodcastScript.model_validate(script_record.script_json)
-            print(f"\n   Script structure:")
+            print("\n   Script structure:")
             print(f"   └─ Intro: {script.intro.title}")
             for i, section in enumerate(script.sections, 1):
                 print(f"   └─ Section {i}: {section.title}")
@@ -408,11 +413,10 @@ async def generate_podcast(
                 )
                 script_rec.status = PodcastStatus.SCRIPT_APPROVED
                 db.commit()
-            print(f"   Script approved!")
+            print("   Script approved!")
         else:
             # Interactive review
             from src.services.script_review_service import ScriptReviewService
-            from src.models.podcast import ScriptReviewAction, ScriptReviewRequest
 
             review_service = ScriptReviewService()
             approved = await interactive_script_review(review_service, script_record.id, script)
@@ -443,20 +447,22 @@ async def generate_podcast(
             speed=speed,
         )
 
-        print(f"\n✅ Podcast generated successfully!")
+        print("\n✅ Podcast generated successfully!")
         print(f"   Podcast ID: {podcast.id}")
         print(f"   Audio file: {podcast.audio_url}")
-        print(f"   Duration: {podcast.duration_seconds}s ({podcast.duration_seconds // 60}m {podcast.duration_seconds % 60}s)")
+        print(
+            f"   Duration: {podcast.duration_seconds}s ({podcast.duration_seconds // 60}m {podcast.duration_seconds % 60}s)"
+        )
         print(f"   File size: {podcast.file_size_bytes / 1024:.1f} KB")
         print(f"   Format: {podcast.audio_format}")
 
         # Check if file exists
         audio_path = Path(podcast.audio_url)
         if audio_path.exists():
-            print(f"\n🎧 You can listen to the podcast at:")
+            print("\n🎧 You can listen to the podcast at:")
             print(f"   {audio_path.absolute()}")
         else:
-            print(f"\n⚠️  Warning: Audio file not found at expected path")
+            print("\n⚠️  Warning: Audio file not found at expected path")
 
     except Exception as e:
         print(f"❌ Audio generation failed: {e}")
@@ -467,25 +473,25 @@ async def generate_podcast(
 
     # Summary
     print(f"\n{'=' * 60}")
-    print(f"✅ PODCAST GENERATED!")
+    print("✅ PODCAST GENERATED!")
     print(f"{'=' * 60}")
-    print(f"\nGenerated content:")
+    print("\nGenerated content:")
     print(f"  Script: ID {script_record.id} in database")
     print(f"  Audio: {podcast.audio_url}")
-    print(f"\nVoice configuration:")
+    print("\nVoice configuration:")
     print(f"  Provider: {voice_provider.value}")
     print(f"  Alex: {alex_voice.value}")
     print(f"  Sam: {sam_voice.value}")
     print(f"  Type: {podcast_type.value}")
-    print(f"\nNext steps:")
-    print(f"  1. Listen to the podcast to verify quality")
-    print(f"  2. Try different voice configurations:")
-    print(f"     python -m scripts.generate_podcast --alex-gender female --sam-gender male")
-    print(f"  3. Test with longer podcast lengths:")
-    print(f"     python -m scripts.generate_podcast --type standard")
+    print("\nNext steps:")
+    print("  1. Listen to the podcast to verify quality")
+    print("  2. Try different voice configurations:")
+    print("     python -m scripts.generate_podcast --alex-gender female --sam-gender male")
+    print("  3. Test with longer podcast lengths:")
+    print("     python -m scripts.generate_podcast --type standard")
     if not use_elevenlabs:
-        print(f"  4. Test with ElevenLabs:")
-        print(f"     python -m scripts.generate_podcast --elevenlabs")
+        print("  4. Test with ElevenLabs:")
+        print("     python -m scripts.generate_podcast --elevenlabs")
 
 
 if __name__ == "__main__":

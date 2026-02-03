@@ -62,10 +62,12 @@ def main() -> None:
         print(f"\n✓ Successfully ingested {count} newsletters from RSS feeds")
         print("\nYou can now view them in the database:")
         print("  docker exec -it newsletter-postgres psql -U newsletter_user -d newsletters")
-        print("  SELECT id, title, publication, published_date, status FROM newsletters WHERE source = 'RSS';")
+        print(
+            "  SELECT id, title, publication, published_date, status FROM newsletters WHERE source = 'RSS';"
+        )
 
         if count == 0:
-            print("\nℹ️  No new newsletters found. Make sure you have:")
+            print("\nInfo: No new newsletters found. Make sure you have:")
             print("  1. Set RSS_FEEDS in .env (comma-separated URLs), or")
             print("  2. Created rss_feeds.txt with feed URLs (one per line), or")
             print("  3. Provided --feeds argument with URLs")

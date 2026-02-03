@@ -23,12 +23,7 @@ TEST_DB_NAME = "newsletters_test"
 def run_command(cmd: list[str], check: bool = True) -> bool:
     """Run shell command and return success status."""
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=check
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=check)
         return result.returncode == 0
     except subprocess.CalledProcessError as e:
         if check:
@@ -43,7 +38,7 @@ def check_postgres_running() -> bool:
     # Check if Docker container is running
     return run_command(
         ["docker", "ps", "--filter", "name=newsletter-postgres", "--format", "{{.Names}}"],
-        check=False
+        check=False,
     )
 
 
@@ -51,19 +46,19 @@ def database_exists(db_name: str) -> bool:
     """Check if database exists."""
     # Use docker exec to run psql inside the container
     cmd = [
-        "docker", "exec",
-        "-e", f"PGPASSWORD={DB_PASSWORD}",  # Set password as env var
+        "docker",
+        "exec",
+        "-e",
+        f"PGPASSWORD={DB_PASSWORD}",  # Set password as env var
         "newsletter-postgres",
-        "psql", "-U", DB_USER, "-lqt"
+        "psql",
+        "-U",
+        DB_USER,
+        "-lqt",
     ]
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return db_name in result.stdout
     except subprocess.CalledProcessError:
         return False
@@ -74,11 +69,18 @@ def drop_database(db_name: str) -> bool:
     print(f"Dropping existing database '{db_name}'...")
 
     cmd = [
-        "docker", "exec",
-        "-e", f"PGPASSWORD={DB_PASSWORD}",
+        "docker",
+        "exec",
+        "-e",
+        f"PGPASSWORD={DB_PASSWORD}",
         "newsletter-postgres",
-        "psql", "-U", DB_USER, "-d", "postgres",  # Connect to postgres database
-        "-c", f"DROP DATABASE IF EXISTS {db_name};"
+        "psql",
+        "-U",
+        DB_USER,
+        "-d",
+        "postgres",  # Connect to postgres database
+        "-c",
+        f"DROP DATABASE IF EXISTS {db_name};",
     ]
 
     try:
@@ -95,11 +97,18 @@ def create_database(db_name: str) -> bool:
     print(f"Creating database '{db_name}'...")
 
     cmd = [
-        "docker", "exec",
-        "-e", f"PGPASSWORD={DB_PASSWORD}",
+        "docker",
+        "exec",
+        "-e",
+        f"PGPASSWORD={DB_PASSWORD}",
         "newsletter-postgres",
-        "psql", "-U", DB_USER, "-d", "postgres",  # Connect to postgres database
-        "-c", f"CREATE DATABASE {db_name};"
+        "psql",
+        "-U",
+        DB_USER,
+        "-d",
+        "postgres",  # Connect to postgres database
+        "-c",
+        f"CREATE DATABASE {db_name};",
     ]
 
     try:
@@ -124,7 +133,7 @@ def run_migrations(db_name: str) -> bool:
 
     try:
         subprocess.run(cmd, env=env, check=True, capture_output=True)
-        print(f"✓ Migrations completed")
+        print("✓ Migrations completed")
         return True
     except subprocess.CalledProcessError as e:
         print(f"✗ Failed to run migrations: {e.stderr.decode()}")
@@ -172,7 +181,9 @@ def main():
     print("  pytest tests/integration/ -v")
     print()
     print("Set TEST_DATABASE_URL environment variable to override:")
-    print(f"  export TEST_DATABASE_URL=postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{TEST_DB_NAME}")
+    print(
+        f"  export TEST_DATABASE_URL=postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{TEST_DB_NAME}"
+    )
     print()
 
 

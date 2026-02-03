@@ -110,14 +110,14 @@ def check_dependencies() -> bool:
         print_warning("pytest is not installed (tests will be skipped)")
 
     # Check mypy
-    result = subprocess.run(["mypy", "--version"], capture_output=True)
+    result = subprocess.run(["mypy", "--version"], capture_output=True, check=False)  # noqa: S607
     if result.returncode == 0:
         print_success("mypy is installed")
     else:
         print_warning("mypy is not installed (type checking will be skipped)")
 
     # Check ruff
-    result = subprocess.run(["ruff", "--version"], capture_output=True)
+    result = subprocess.run(["ruff", "--version"], capture_output=True, check=False)  # noqa: S607
     if result.returncode == 0:
         print_success("ruff is installed")
     else:
@@ -147,8 +147,6 @@ def check_imports() -> bool:
 
     # Check FileIngestionService import
     try:
-        from src.ingestion.files import FileIngestionService
-
         print_success("FileIngestionService imports successfully")
     except Exception as e:
         print_error(f"FileIngestionService import failed: {e}")
@@ -190,7 +188,7 @@ def run_linting() -> bool:
     ]
 
     return run_command(
-        ["ruff", "check"] + new_files,
+        ["ruff", "check", *new_files],
         "Linting passed",
         check=False,
     )
@@ -207,7 +205,7 @@ def run_type_checking() -> bool:
     ]
 
     return run_command(
-        ["mypy"] + new_files,
+        ["mypy", *new_files],
         "Type checking passed",
         check=False,
     )
@@ -229,7 +227,7 @@ def run_tests() -> bool:
             return False
 
     return run_command(
-        ["pytest"] + test_files + ["-v", "--tb=short"],
+        ["pytest", *test_files, "-v", "--tb=short"],
         "All tests passed",
         check=False,
     )
@@ -256,9 +254,7 @@ def test_migration(skip: bool = False) -> bool:
     print_header("Testing Database Migration")
 
     # Check migration file exists
-    migration_file = Path(
-        "alembic/versions/4d78f715c284_add_documents_table.py"
-    )
+    migration_file = Path("alembic/versions/4d78f715c284_add_documents_table.py")
     if not migration_file.exists():
         print_error(f"Migration file not found: {migration_file}")
         return False
@@ -281,14 +277,11 @@ def test_migration(skip: bool = False) -> bool:
         return False
 
     # Upgrade again
-    if not run_command(
+    return run_command(
         ["alembic", "upgrade", "head"],
         "Migration re-upgrade succeeded",
         check=False,
-    ):
-        return False
-
-    return True
+    )
 
 
 def test_docling_parsing() -> bool:
@@ -345,19 +338,13 @@ def print_summary(results: dict[str, bool]) -> None:
     if passed == total:
         print(f"{Colors.GREEN}{Colors.BOLD}All {total} checks passed!{Colors.RESET}")
     else:
-        print(
-            f"{Colors.YELLOW}{Colors.BOLD}{passed}/{total} checks passed{Colors.RESET}"
-        )
-        print(
-            f"{Colors.RED}{Colors.BOLD}{total - passed} checks failed{Colors.RESET}"
-        )
+        print(f"{Colors.YELLOW}{Colors.BOLD}{passed}/{total} checks passed{Colors.RESET}")
+        print(f"{Colors.RED}{Colors.BOLD}{total - passed} checks failed{Colors.RESET}")
 
 
 def main() -> int:
     """Run all validation checks."""
-    parser = argparse.ArgumentParser(
-        description="Validate Docling parser integration"
-    )
+    parser = argparse.ArgumentParser(description="Validate Docling parser integration")
     parser.add_argument(
         "--skip-tests",
         action="store_true",
