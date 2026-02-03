@@ -220,8 +220,7 @@ class RevisionContext:
             "Retrieve full content of a specific item when you need detailed information"
         )
         parts.append(
-            "- **search_content(query)**: "
-            "Search across all content for specific topics or keywords"
+            "- **search_content(query)**: Search across all content for specific topics or keywords"
         )
 
         return "\n".join(parts)

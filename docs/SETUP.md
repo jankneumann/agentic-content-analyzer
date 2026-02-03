@@ -44,6 +44,36 @@ uv pip install -r requirements.txt
 
 ### 4. Configure Environment
 
+You have two options for configuration:
+
+**Option A: Use Profiles (Recommended)**
+
+Profiles provide organized, validated configuration with inheritance:
+
+```bash
+# List available profiles
+newsletter-cli profile list
+
+# Validate the local profile
+newsletter-cli profile validate local
+
+# Create secrets file for your API keys
+cat > .secrets.yaml << 'EOF'
+ANTHROPIC_API_KEY: sk-ant-your-key-here
+OPENAI_API_KEY: sk-your-key-here  # Optional
+EOF
+
+# Activate the local profile
+export PROFILE=local
+
+# Verify configuration
+newsletter-cli profile inspect
+```
+
+See [Profiles Guide](PROFILES.md) for complete documentation.
+
+**Option B: Traditional .env File**
+
 ```bash
 # Copy example environment file
 cp .env.example .env

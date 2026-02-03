@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system ruff mypy
+
+      - name: Run Ruff linter
+        run: ruff check src/
+
+      - name: Run Ruff formatter check
+        run: ruff format --check src/
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: newsletter_user
+          POSTGRES_PASSWORD: newsletter_password
+          POSTGRES_DB: newsletters
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
+          REDIS_URL: redis://localhost:6379/0
+          ANTHROPIC_API_KEY: test-key-for-ci
+          ENVIRONMENT: test
+        run: |
+          pytest tests/test_config/ tests/test_cli/ -v
+
+  validate-profiles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      - name: Validate all profiles
+        env:
+          ANTHROPIC_API_KEY: test-key-for-ci
+        run: |
+          echo "Validating profile templates..."
+          for profile in profiles/*.yaml; do
+            name=$(basename "$profile" .yaml)
+            echo "Validating profile: $name"
+            python -m src.cli profile validate "$name" || exit 1
+          done
+          echo "All profiles validated successfully!"
+
+      - name: Check for hardcoded secrets in profiles
+        run: |
+          echo "Checking for hardcoded secrets in profiles..."
+          # Check for common secret patterns in profile files
+          if grep -rE "(sk-ant-|sk-[a-zA-Z0-9]{20,}|password\s*[:=]\s*['\"][^$][^'\"]+['\"])" profiles/*.yaml; then
+            echo "::error::Potential hardcoded secrets found in profile files!"
+            exit 1
+          fi
+          echo "No hardcoded secrets detected."

@@ -2,10 +2,10 @@
 
 import argparse
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from src.models.digest import Digest, DigestData, DigestRequest, DigestStatus, DigestType
+from src.models.digest import Digest, DigestRequest, DigestStatus, DigestType
 from src.processors.digest_creator import DigestCreator
 from src.storage.database import get_db
 from src.utils.digest_formatter import DigestFormatter
@@ -48,7 +48,7 @@ async def main_async(args) -> None:
 
     # Display results
     print(f"\n{'='*80}")
-    print(f"DAILY DIGEST GENERATED")
+    print("DAILY DIGEST GENERATED")
     print(f"{'='*80}")
     print(f"\nDate: {period_start.date()}")
     print(f"Newsletters Analyzed: {digest.newsletter_count}")
@@ -73,11 +73,15 @@ async def main_async(args) -> None:
         with get_db() as db:
             # Convert DigestSection objects to dicts
             strategic_insights = [section.model_dump() for section in digest.strategic_insights]
-            technical_developments = [section.model_dump() for section in digest.technical_developments]
+            technical_developments = [
+                section.model_dump() for section in digest.technical_developments
+            ]
             emerging_trends = [section.model_dump() for section in digest.emerging_trends]
 
             # Determine initial status (PENDING_REVIEW by default, APPROVED if auto-approved)
-            initial_status = DigestStatus.APPROVED if args.auto_approve else DigestStatus.PENDING_REVIEW
+            initial_status = (
+                DigestStatus.APPROVED if args.auto_approve else DigestStatus.PENDING_REVIEW
+            )
 
             db_digest = Digest(
                 digest_type=digest.digest_type,
@@ -93,17 +97,19 @@ async def main_async(args) -> None:
                 historical_context=digest.historical_context or [],
                 newsletter_count=digest.newsletter_count,
                 status=initial_status,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
                 agent_framework=digest.agent_framework,
                 model_used=digest.model_used,
                 token_usage=digest.token_usage,
-                processing_time_seconds=int(digest.processing_time_seconds) if digest.processing_time_seconds else None,
+                processing_time_seconds=int(digest.processing_time_seconds)
+                if digest.processing_time_seconds
+                else None,
             )
 
             # Set review metadata if auto-approved
             if args.auto_approve:
                 db_digest.reviewed_by = "auto-approval"
-                db_digest.reviewed_at = datetime.now(timezone.utc)
+                db_digest.reviewed_at = datetime.now(UTC)
             db.add(db_digest)
             db.commit()
 
@@ -130,10 +136,12 @@ async def main_async(args) -> None:
     # Performance summary
     if digest.newsletter_count > 0:
         print(f"\n{'='*80}")
-        print(f"PERFORMANCE METRICS")
+        print("PERFORMANCE METRICS")
         print(f"{'='*80}")
         print(f"Processing Time: {digest.processing_time_seconds:.2f}s")
-        print(f"Average per newsletter: {digest.processing_time_seconds / digest.newsletter_count:.2f}s")
+        print(
+            f"Average per newsletter: {digest.processing_time_seconds / digest.newsletter_count:.2f}s"
+        )
     else:
         print(f"\n⚠️  No newsletters found for {period_start.date()}")
 

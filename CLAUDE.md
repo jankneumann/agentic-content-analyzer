@@ -26,6 +26,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | Doc | Purpose |
 |-----|---------|
 | [Setup](docs/SETUP.md) | Environment setup, configuration |
+| [Profiles](docs/PROFILES.md) | Profile-based configuration, inheritance, migration |
 | [Architecture](docs/ARCHITECTURE.md) | System design, ingestion, parsers, data models |
 | [Development](docs/DEVELOPMENT.md) | Commands, patterns, database, testing |
 | [Model Config](docs/MODEL_CONFIGURATION.md) | LLM selection, providers, costs |
@@ -107,6 +108,61 @@ Each source supports: `name`, `url`/`id`, `tags`, `enabled`, `max_entries`.
 ```bash
 python -m src.config.migrate_sources --output-dir sources.d
 ```
+
+## Profile Configuration
+
+Profiles provide named configuration bundles that replace scattered `.env` variables with structured YAML files. Each profile defines provider choices (database, storage, neo4j, observability) and their settings.
+
+```bash
+# Activate a profile
+export PROFILE=local           # Use profiles/local.yaml
+
+# CLI Commands
+newsletter-cli profile list                    # List available profiles
+newsletter-cli profile show local              # Show resolved settings
+newsletter-cli profile validate local          # Validate configuration
+newsletter-cli profile inspect                 # Show effective Settings
+newsletter-cli profile migrate --dry-run       # Preview .env migration
+```
+
+**Profile structure** (`profiles/local.yaml`):
+```yaml
+name: local
+extends: base                    # Inherit from base.yaml
+description: Docker Compose local development
+
+providers:
+  database: local
+  neo4j: local
+  storage: local
+  observability: noop
+
+settings:
+  database_url: postgresql://localhost:5432/newsletters
+  neo4j_uri: bolt://localhost:7687
+  anthropic_api_key: ${ANTHROPIC_API_KEY}  # Reference secrets
+```
+
+**Secrets management** (`.secrets.yaml` - gitignored):
+```yaml
+ANTHROPIC_API_KEY: sk-ant-...
+OPENAI_API_KEY: sk-...
+NEO4J_PASSWORD: secret123
+```
+
+**Precedence order** (highest to lowest):
+1. Environment variables (always win)
+2. Profile settings (from `profiles/{name}.yaml`)
+3. Secrets file (`.secrets.yaml`)
+4. `.env` file (fallback when no profile active)
+5. Default values
+
+**Migration from `.env`**:
+```bash
+newsletter-cli profile migrate --env-file .env --output my-profile
+```
+
+See [docs/PROFILES.md](docs/PROFILES.md) for complete guide.
 
 ## Model Configuration
 
@@ -325,6 +381,10 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Frontend OTel needs backend OTel | `VITE_OTEL_ENABLED=true` requires `OTEL_ENABLED=true` on backend for OTLP proxy to accept traces |
 | Frontend OTel is no-op by default | Zero overhead when disabled; OTel SDK dynamically imported only when `VITE_OTEL_ENABLED=true` |
 | initTelemetry must run before React | Called at module scope in `__root.tsx` so fetch instrumentation is active before TanStack Query fires |
+| Profile not loading | Ensure `PROFILE` env var is set; profiles live in `profiles/` directory |
+| Profile validation errors | Run `newsletter-cli profile validate <name>` to see all errors |
+| Secrets not interpolating | Check `.secrets.yaml` exists and key names match `${VAR}` references |
+| Profile inheritance cycles | Profiles cannot extend themselves or form circular `extends` chains |
 
 ## Quick Links by Task
 
@@ -348,6 +408,11 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 - E2E test infrastructure: `web/tests/e2e/fixtures/` (page objects, API mocks, mock data factories)
 - E2E page objects: `web/tests/e2e/fixtures/pages/*.page.ts`
 
+### Configuration
+- Profile guide: [docs/PROFILES.md](docs/PROFILES.md)
+- Profile CLI reference: [docs/PROFILES.md#cli-commands](docs/PROFILES.md#cli-commands)
+- Migrating from .env: [docs/PROFILES.md#migration-from-env](docs/PROFILES.md#migration-from-env)
+
 ### Storage & Infrastructure
 - Image storage configuration: [docs/SETUP.md#image-storage-variables-optional](docs/SETUP.md#image-storage-variables-optional)
 - Database providers: [docs/SETUP.md#environment-configuration](docs/SETUP.md#environment-configuration)
@@ -365,9 +430,15 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 
 ## Environment Configuration
 
-Minimum required in `.env`:
-
+**Option 1: Use profiles** (recommended for new setups):
 ```bash
+export PROFILE=local           # Activates profiles/local.yaml
+newsletter-cli profile list    # See available profiles
+```
+
+**Option 2: Traditional .env** (still fully supported):
+```bash
+# Minimum required in .env
 DATABASE_URL=postgresql://localhost/newsletters
 REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
@@ -375,7 +446,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ENVIRONMENT=development
 ```
 
-See [Setup Guide](docs/SETUP.md#environment-configuration) for complete options.
+See [Setup Guide](docs/SETUP.md#environment-configuration) for complete options, or [Profiles Guide](docs/PROFILES.md) for profile-based configuration.
 
 ## Getting Help
 

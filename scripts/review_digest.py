@@ -3,10 +3,9 @@
 import argparse
 import asyncio
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from src.models.digest import DigestStatus
 from src.services.review_service import ReviewService
 from src.utils.digest_formatter import DigestFormatter
 from src.utils.logging import get_logger, setup_logging
@@ -48,7 +47,7 @@ async def list_pending_reviews() -> None:
     print("\n")
 
 
-async def view_digest(digest_id: int, format: str = "markdown") -> Optional[Any]:
+async def view_digest(digest_id: int, format: str = "markdown") -> Any | None:
     """Display digest content for review.
 
     Args:
@@ -102,7 +101,7 @@ async def view_digest(digest_id: int, format: str = "markdown") -> Optional[Any]
 
 async def interactive_revision_session(
     digest_id: int,
-    reviewer: Optional[str] = None,
+    reviewer: str | None = None,
 ) -> Any:
     """Multi-turn conversational revision session (CLI interaction).
 
@@ -131,7 +130,7 @@ async def interactive_revision_session(
     # 2. Initialize session tracking
     session = {
         "session_id": session_id,
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(UTC).isoformat(),
         "reviewer": reviewer or "cli-user",
         "turns": [],
         "final_action": None,
@@ -158,7 +157,7 @@ async def interactive_revision_session(
 
     turn_number = 0
     working_digest = context.digest
-    conversation_history: List[Dict[str, Any]] = []
+    conversation_history: list[dict[str, Any]] = []
 
     while True:
         user_input = input("You: ").strip()
@@ -275,7 +274,7 @@ async def interactive_revision_session(
         )
 
     # 5. Session complete
-    session["ended_at"] = datetime.now(timezone.utc).isoformat()
+    session["ended_at"] = datetime.now(UTC).isoformat()
 
     # 6. Final review
     print("\n" + "=" * 80)
@@ -286,7 +285,7 @@ async def interactive_revision_session(
     # Show cost summary
     cost = service.calculate_revision_cost()
     print("\n" + "=" * 80)
-    print(f"Session Summary:")
+    print("Session Summary:")
     print(f"  - Turns: {turn_number}")
     print(f"  - Changes Applied: {working_digest.revision_count}")
     print(f"  - Estimated Cost: ${cost:.4f}")
@@ -334,8 +333,8 @@ async def interactive_revision_session(
 async def quick_review(
     digest_id: int,
     action: str,
-    notes: Optional[str] = None,
-    reviewer: Optional[str] = None,
+    notes: str | None = None,
+    reviewer: str | None = None,
 ) -> bool:
     """Quick approve/reject without revision (batch mode).
 
@@ -469,9 +468,9 @@ Examples:
             digest = asyncio.run(view_digest(args.id, args.format))
             if digest:
                 print("Available actions:")
-                print(f"  --revise-interactive  : Start interactive AI revision")
-                print(f"  --action approve      : Quick approve")
-                print(f"  --action reject       : Quick reject")
+                print("  --revise-interactive  : Start interactive AI revision")
+                print("  --action approve      : Quick approve")
+                print("  --action reject       : Quick reject")
                 print()
 
     else:

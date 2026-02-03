@@ -233,13 +233,48 @@ Check extraction status.
 
 ## Deployment
 
+### Configuration Options
+
+You have two options for configuring Railway deployments:
+
+**Option A: Profile-Based Configuration (Recommended)**
+
+Use the pre-configured `railway` profile which sets all providers and references Railway-injected environment variables:
+
+```bash
+# In Railway service settings, set:
+PROFILE=railway
+
+# Railway auto-injects these (referenced by the profile):
+# - RAILWAY_DATABASE_URL
+# - MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
+# - NEO4J_AURADB_URI, NEO4J_AURADB_PASSWORD
+
+# You must set these secrets manually:
+ANTHROPIC_API_KEY=sk-ant-...
+BRAINTRUST_API_KEY=sk-...  # For observability
+```
+
+The `profiles/railway.yaml` profile configures:
+- `database: railway` — Uses Railway's PostgreSQL
+- `storage: railway` — Uses Railway's MinIO
+- `neo4j: auradb` — Uses Neo4j AuraDB (cloud)
+- `observability: braintrust` — Enables Braintrust telemetry
+
+See [Profiles Guide](PROFILES.md) for customization options.
+
+**Option B: Traditional Environment Variables**
+
+Set all variables directly in Railway's service settings (legacy approach).
+
 ### Railway Service Configuration
 
 **Service 1: Web API**
 - Name: `web`
 - Start Command: `uvicorn src.api.app:app --host 0.0.0.0 --port $PORT`
 - Environment Variables:
-  - `DATABASE_PROVIDER`: `neon` (or `supabase`, `local`)
+  - `PROFILE`: `railway` (recommended) OR set individual providers:
+  - `DATABASE_PROVIDER`: `railway` (or `neon`, `supabase`, `local`)
   - `DATABASE_URL`: Connection string
   - `ALLOWED_ORIGINS`: `*` (for iOS Shortcuts)
 

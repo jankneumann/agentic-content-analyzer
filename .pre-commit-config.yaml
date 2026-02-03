@@ -30,6 +30,16 @@ repos:
       - id: check-merge-conflict
       - id: detect-private-key
 
+  # Secret detection in profile files
+  - repo: local
+    hooks:
+      - id: check-profile-secrets
+        name: Check for secrets in profile files
+        entry: ./scripts/check-profile-secrets.sh
+        language: script
+        files: ^profiles/.*\.yaml$
+        pass_filenames: false
+
   # Type checking with mypy
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.14.1
@@ -43,7 +53,7 @@ repos:
           - types-pytz
           - types-PyYAML
         args: [--ignore-missing-imports]
-        exclude: ^(tests/|alembic/)
+        exclude: ^(tests/|alembic/|scripts/)
 
 # Configuration
 default_language_version:

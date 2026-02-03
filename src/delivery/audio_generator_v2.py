@@ -16,9 +16,9 @@ from pathlib import Path
 
 from src.config import settings
 from src.delivery.audio_utils import concatenate_mp3_files
-from src.delivery.dialogue_batcher import DialogueBatcher
+from src.delivery.dialogue_batcher import DialogueBatch, DialogueBatcher
 from src.delivery.tts_service import TTSService
-from src.models.podcast import PodcastScript, VoicePersona, VoiceProvider
+from src.models.podcast import PodcastScript, PodcastSection, VoicePersona, VoiceProvider
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -177,7 +177,9 @@ class PodcastAudioGeneratorV2:
         sem = asyncio.Semaphore(5)
         completed_batches = 0
 
-        async def process_batch(index, section, batch):
+        async def process_batch(
+            index: int, section: PodcastSection, batch: DialogueBatch
+        ) -> list[bytes]:
             nonlocal completed_batches
             async with sem:
                 # Synthesize
@@ -185,8 +187,7 @@ class PodcastAudioGeneratorV2:
                 text = batch.combined_text_ssml if self.use_ssml else batch.combined_text
 
                 logger.debug(
-                    f"TTS call for {batch.speaker}, "
-                    f"{len(text)} chars, {len(batch.turns)} turns"
+                    f"TTS call for {batch.speaker}, {len(text)} chars, {len(batch.turns)} turns"
                 )
 
                 try:
@@ -225,8 +226,7 @@ class PodcastAudioGeneratorV2:
         try:
             # Create tasks
             tasks = [
-                process_batch(i, section, batch)
-                for i, (section, batch) in enumerate(all_batches)
+                process_batch(i, section, batch) for i, (section, batch) in enumerate(all_batches)
             ]
 
             # Execute

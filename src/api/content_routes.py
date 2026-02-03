@@ -233,7 +233,9 @@ async def _run_content_ingestion(
     except Exception as e:
         logger.error(f"Content ingestion failed: {e}", exc_info=True)
         _ingestion_tasks[task_id]["status"] = "error"
-        _ingestion_tasks[task_id]["message"] = "An internal error occurred during content ingestion."
+        _ingestion_tasks[task_id]["message"] = (
+            "An internal error occurred during content ingestion."
+        )
 
 
 class DuplicateInfo(BaseModel):
@@ -836,7 +838,9 @@ async def _run_content_summarization(
     except Exception as e:
         logger.error(f"Content summarization task failed: {e}", exc_info=True)
         _summarization_tasks[task_id]["status"] = "error"
-        _summarization_tasks[task_id]["message"] = "An internal error occurred during summarization."
+        _summarization_tasks[task_id]["message"] = (
+            "An internal error occurred during summarization."
+        )
 
 
 @router.get("/summarize/status/{task_id}")
