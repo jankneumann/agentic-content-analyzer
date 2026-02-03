@@ -4,7 +4,8 @@ These tasks handle background operations like URL content extraction,
 summarization, and other content processing pipelines.
 """
 
-from typing import TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, Any
 
 from pgqueuer import PgQueuer
 from pgqueuer.models import Job
@@ -15,6 +16,31 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+
+def _decode_payload(job: Job) -> dict[str, Any]:
+    """Decode job payload from bytes to dict.
+
+    PGQueuer stores payloads as bytes (bytea in PostgreSQL).
+    This helper decodes JSON bytes back to a Python dict.
+
+    Args:
+        job: The PGQueuer Job instance
+
+    Returns:
+        Decoded payload as dict, or empty dict if payload is None/empty
+    """
+    if job.payload is None:
+        return {}
+    try:
+        result = json.loads(job.payload.decode("utf-8"))
+        if isinstance(result, dict):
+            return result
+        logger.warning(f"Job payload is not a dict: {type(result)}")
+        return {}
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.warning(f"Failed to decode job payload: {e}")
+        return {}
 
 
 def register_content_tasks(pgq: PgQueuer) -> None:
@@ -38,7 +64,8 @@ def register_content_tasks(pgq: PgQueuer) -> None:
         from src.services.url_extractor import URLExtractor
         from src.storage.database import get_db
 
-        content_id = job.payload.get("content_id")
+        payload = _decode_payload(job)
+        content_id = payload.get("content_id")
         if not content_id:
             logger.error("extract_url_content: missing content_id in payload")
             return
@@ -64,8 +91,9 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             content_id: int - ID of the Content record to process
             task_type: str - Type of processing (summarize, extract_entities, etc.)
         """
-        content_id = job.payload.get("content_id")
-        task_type = job.payload.get("task_type", "summarize")
+        payload = _decode_payload(job)
+        content_id = payload.get("content_id")
+        task_type = payload.get("task_type", "summarize")
 
         if not content_id:
             logger.error("process_content: missing content_id in payload")
@@ -97,8 +125,8 @@ def register_content_tasks(pgq: PgQueuer) -> None:
         Payload: (optional)
             labels: list[str] - Gmail labels to scan (default: ["newsletters"])
         """
-
-        labels = job.payload.get("labels", ["newsletters"])
+        payload = _decode_payload(job)
+        labels = payload.get("labels", ["newsletters"])
         logger.info(f"Scanning newsletters with labels: {labels}")
 
         try:
