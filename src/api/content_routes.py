@@ -11,6 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
+from sqlalchemy.orm import defer
 
 from src.models.content import (
     Content,
@@ -389,6 +390,17 @@ async def list_contents(
             query = query.order_by(sort_column.asc())
         else:
             query = query.order_by(sort_column.desc())
+
+        # OPTIMIZATION: Defer heavy text/json columns for list view
+        # This is safer than load_only as it automatically includes new lightweight columns
+        query = query.options(
+            defer(Content.markdown_content),
+            defer(Content.tables_json),
+            defer(Content.links_json),
+            defer(Content.metadata_json),
+            defer(Content.raw_content),
+            defer(Content.error_message),
+        )
 
         # Apply pagination
         contents = query.offset(offset).limit(page_size).all()
