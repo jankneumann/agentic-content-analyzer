@@ -152,6 +152,52 @@
       color: var(--muted-color);
       margin-top: 2px;
     }
+
+    .capture-toggle-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background-color: var(--input-bg);
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    .capture-toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .capture-toggle-label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary-color);
+      cursor: pointer;
+    }
+
+    .capture-status {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .capture-status.captured {
+      background-color: rgba(34, 197, 94, 0.15);
+      color: var(--success-color);
+    }
+
+    .capture-status.url-only {
+      background-color: rgba(79, 70, 229, 0.1);
+      color: var(--primary-color);
+    }
+
+    .capture-status.fallback {
+      background-color: rgba(234, 179, 8, 0.15);
+      color: #d97706;
+    }
   </style>
 </head>
 <body>
@@ -178,6 +224,14 @@
       <label for="tags">Tags</label>
       <input type="text" id="tags" placeholder="ai, technology, research">
       <div class="tags-hint">Comma-separated</div>
+    </div>
+
+    <div class="capture-toggle-group">
+      <label class="capture-toggle-label">
+        <input type="checkbox" id="capture-toggle" checked>
+        <span>Capture full page</span>
+      </label>
+      <span id="capture-status" class="capture-status"></span>
     </div>
 
     <button id="save-btn">Save</button>

@@ -345,3 +345,159 @@ class TestEnqueueExtraction:
         assert response.status_code == 201
         # Note: Due to background task execution, we can't easily verify the enqueue call
         # in this test. The _enqueue_extraction function is tested separately.
+
+
+class TestSavePageEndpointAPI:
+    """Tests for POST /api/v1/content/save-page (client HTML capture)."""
+
+    def test_save_page_creates_content_with_html(self, client, db_session):
+        """Successfully creates content record with HTML payload."""
+        html_content = (
+            "<html><head><title>Test Article</title></head><body><p>Test content</p></body></html>"
+        )
+
+        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
+            response = client.post(
+                "/api/v1/content/save-page",
+                json={
+                    "url": "https://example.com/paywall-article",
+                    "html": html_content,
+                    "title": "Test Paywall Article",
+                    "source": "chrome_extension",
+                },
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "queued"
+        assert data["duplicate"] is False
+        assert "content_id" in data
+        assert data["message"] == "Page saved. Content processing in progress."
+
+        # Verify content was created with correct metadata
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content is not None
+        assert content.source_url == "https://example.com/paywall-article"
+        assert content.title == "Test Paywall Article"
+        assert content.status == ContentStatus.PENDING
+        assert content.source_type == ContentSource.WEBPAGE
+        assert content.metadata_json["capture_method"] == "client_html"
+        assert content.metadata_json["capture_source"] == "chrome_extension"
+
+    def test_save_page_rejects_missing_html(self, client):
+        """Rejects request without required html field."""
+        response = client.post(
+            "/api/v1/content/save-page",
+            json={
+                "url": "https://example.com/no-html",
+            },
+        )
+
+        assert response.status_code == 422  # Validation error
+
+    def test_save_page_rejects_missing_url(self, client):
+        """Rejects request without required url field."""
+        response = client.post(
+            "/api/v1/content/save-page",
+            json={
+                "html": "<html></html>",
+            },
+        )
+
+        assert response.status_code == 422  # Validation error
+
+    def test_save_page_detects_duplicate_url(self, client, db_session):
+        """Returns existing content for duplicate URL."""
+        # Create existing content
+        existing = Content(
+            source_type=ContentSource.WEBPAGE,
+            source_id="webpage:https://example.com/existing-page",
+            source_url="https://example.com/existing-page",
+            title="Existing Page",
+            markdown_content="Existing content.",
+            content_hash=generate_markdown_hash("Existing content."),
+            status=ContentStatus.PARSED,
+            ingested_at=datetime.now(UTC),
+        )
+        db_session.add(existing)
+        db_session.commit()
+        existing_id = existing.id
+
+        # Try to save the same URL with HTML
+        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
+            response = client.post(
+                "/api/v1/content/save-page",
+                json={
+                    "url": "https://example.com/existing-page",
+                    "html": "<html><body>Different content</body></html>",
+                },
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "exists"
+        assert data["duplicate"] is True
+        assert data["content_id"] == existing_id
+
+    def test_save_page_with_all_optional_fields(self, client, db_session):
+        """Saves all optional fields to metadata."""
+        html_content = "<html><body><p>Full page content</p></body></html>"
+
+        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
+            response = client.post(
+                "/api/v1/content/save-page",
+                json={
+                    "url": "https://example.com/full-page",
+                    "html": html_content,
+                    "title": "Full Page Article",
+                    "excerpt": "Selected text from the page.",
+                    "tags": ["ai", "technology"],
+                    "notes": "Important article about AI.",
+                    "source": "chrome_extension",
+                },
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Verify all metadata was stored
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content.metadata_json["capture_method"] == "client_html"
+        assert content.metadata_json["excerpt"] == "Selected text from the page."
+        assert content.metadata_json["tags"] == ["ai", "technology"]
+        assert content.metadata_json["notes"] == "Important article about AI."
+        assert content.metadata_json["capture_source"] == "chrome_extension"
+
+    def test_save_page_rejects_oversized_html(self, client):
+        """Rejects HTML payload exceeding 5 MB limit."""
+        # Create HTML larger than 5 MB
+        oversized_html = "<html>" + "x" * (5 * 1024 * 1024 + 1) + "</html>"
+
+        response = client.post(
+            "/api/v1/content/save-page",
+            json={
+                "url": "https://example.com/large-page",
+                "html": oversized_html,
+            },
+        )
+
+        assert response.status_code == 422  # Validation error for size constraint
+
+    def test_save_page_uses_url_as_title_when_not_provided(self, client, db_session):
+        """Uses URL as title when title not provided."""
+        html_content = "<html><body><p>Content</p></body></html>"
+
+        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
+            response = client.post(
+                "/api/v1/content/save-page",
+                json={
+                    "url": "https://example.com/no-title-page",
+                    "html": html_content,
+                },
+            )
+
+        assert response.status_code == 201
+        content = (
+            db_session.query(Content).filter(Content.id == response.json()["content_id"]).first()
+        )
+        assert content.title == "https://example.com/no-title-page"
