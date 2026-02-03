@@ -56,7 +56,7 @@ Body: {
   "tags": [...],                  # Optional tags
   "source": "chrome_extension"    # Capture source
 }
-Response: { "content_id": 123, "status": "queued", "image_count": 0 }
+Response: { "content_id": 123, "status": "queued", "message": "Content queued for processing", "duplicate": false }
 ```
 
 ### Decision 3: Capture mode toggle in extension popup

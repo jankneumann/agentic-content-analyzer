@@ -4,21 +4,19 @@
 
 The system SHALL provide an API endpoint for saving pre-captured HTML content with image extraction.
 
-#### Scenario: Save captured page with images
+#### Scenario: Save captured page
 
-- **GIVEN** `POST /api/v1/content/save-page` with URL, title, and rendered HTML
-- **WHEN** the page contains images
-- **THEN** content SHALL be queued for processing
+- **GIVEN** `POST /api/v1/content/save-page` with required URL and HTML fields
+- **WHEN** the request is valid
+- **THEN** content SHALL be queued for background processing
 - **AND** content ID SHALL be returned
-- **AND** image_count SHALL be returned in the response
+- **AND** status SHALL be "queued"
 
-#### Scenario: Save captured page without images
+#### Scenario: Request field validation
 
-- **GIVEN** `POST /api/v1/content/save-page` with URL, title, and rendered HTML
-- **WHEN** the page contains no images
-- **THEN** content SHALL be queued for processing
-- **AND** content ID SHALL be returned
-- **AND** image_count SHALL be 0
+- **GIVEN** `POST /api/v1/content/save-page`
+- **WHEN** url or html fields are missing
+- **THEN** the server SHALL return 422 Unprocessable Entity
 
 #### Scenario: Reject oversized HTML
 
