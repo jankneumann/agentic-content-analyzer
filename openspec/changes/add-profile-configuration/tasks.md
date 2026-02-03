@@ -35,6 +35,7 @@
   - Env var precedence over file
   - Missing file returns empty dict
   - Secret masking in string representation
+  - Malformed YAML raises `SecretsParseError` with line number
 
 ## 3. Profile Inheritance
 
