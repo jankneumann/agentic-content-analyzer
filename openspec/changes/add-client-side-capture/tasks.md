@@ -23,7 +23,7 @@
 - [ ] 2.4 Extract images from HTML using `ImageExtractor.extract_from_html(html, base_url=source_url)`
 - [ ] 2.5 Download and store images via `ImageExtractor.save_extracted_images()` with `FileStorageProvider`
 - [ ] 2.6 Rewrite image URLs in markdown content to point to local storage paths (`/api/v1/files/images/{path}`)
-- [ ] 2.7 Update Content record with markdown, content_hash, title (from extraction), image count in metadata, and status=PARSED
+- [ ] 2.7 Update Content record with markdown, content_hash, title (from extraction), `metadata_json["image_count"]`, and status=PARSED
 - [ ] 2.8 Handle processing failures — set status=FAILED with error_message
 
 ## 3. Extension: DOM Capture and UI
