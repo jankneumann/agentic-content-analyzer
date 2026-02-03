@@ -53,7 +53,7 @@ repos:
           - types-pytz
           - types-PyYAML
         args: [--ignore-missing-imports]
-        exclude: ^(tests/|alembic/)
+        exclude: ^(tests/|alembic/|scripts/)
 
 # Configuration
 default_language_version:
