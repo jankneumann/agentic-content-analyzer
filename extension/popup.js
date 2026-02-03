@@ -78,23 +78,36 @@ async function init() {
 
   // Get selected text and capture DOM in parallel
   if (tab && tab.id) {
+    const capturePromises = [];
+
     // Capture selected text
-    try {
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => window.getSelection().toString(),
-      });
-      if (result && result.result) {
-        excerptInput.value = result.result.slice(0, 5000);
-      }
-    } catch {
-      // Can't access page (e.g., chrome:// URLs) — ignore
-    }
+    capturePromises.push(
+      chrome.scripting
+        .executeScript({
+          target: { tabId: tab.id },
+          func: () => window.getSelection().toString(),
+        })
+        .then(([result]) => {
+          if (result && result.result) {
+            excerptInput.value = result.result.slice(0, 5000);
+          }
+        })
+        .catch(() => {
+          // Can't access page (e.g., chrome:// URLs) — ignore
+        })
+    );
 
     // Capture DOM if full page capture is enabled
     if (config.captureFullPage !== false) {
-      capturedHtml = await captureDOM(tab.id);
+      capturePromises.push(
+        captureDOM(tab.id).then((html) => {
+          capturedHtml = html;
+        })
+      );
     }
+
+    // Wait for all captures to complete
+    await Promise.all(capturePromises);
   }
 
   // Update capture status indicator
