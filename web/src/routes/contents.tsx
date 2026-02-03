@@ -17,6 +17,7 @@ import {
   Mail,
   Rss,
   Youtube,
+  Mic,
   Upload,
   Globe,
   CheckCircle,
@@ -145,6 +146,10 @@ const sourceConfig: Record<
   youtube: {
     label: "YouTube",
     icon: <Youtube className="h-3 w-3" />,
+  },
+  podcast: {
+    label: "Podcast",
+    icon: <Mic className="h-3 w-3" />,
   },
   file_upload: {
     label: "Upload",

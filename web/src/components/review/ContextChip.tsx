@@ -36,8 +36,9 @@ export function ContextChip({ item, onRemove }: ContextChipProps) {
       <Tooltip>
         <TooltipTrigger asChild>
           <div
+            tabIndex={0}
             className={cn(
-              "group flex items-center gap-1.5 rounded-md border px-2 py-1",
+              "group flex items-center gap-1.5 rounded-md border px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
               "bg-muted/50 text-xs transition-colors hover:bg-muted",
               item.source === "left"
                 ? "border-blue-500/30"
@@ -65,7 +66,7 @@ export function ContextChip({ item, onRemove }: ContextChipProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+              className="h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
               onClick={(e) => {
                 e.stopPropagation()
                 onRemove()

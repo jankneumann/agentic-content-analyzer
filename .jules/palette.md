@@ -13,3 +13,7 @@
 ## 2025-02-19 - Current Page Indication in Navigation
 **Learning:** Navigation items often rely solely on visual styling (e.g., background color) to indicate the active page, which is insufficient for screen reader users.
 **Action:** Always add `aria-current="page"` to the link or button representing the current page in a navigation menu.
+
+## 2025-05-20 - Hidden Interactive Elements Accessibility
+**Learning:** Interactive elements hidden by default (e.g., `opacity-0` on hover) must become visible when focused via keyboard to be accessible. Relying solely on `group-hover` excludes keyboard users.
+**Action:** Always pair `group-hover:opacity-100` with `focus:opacity-100` and `group-focus-within:opacity-100` for hidden actions.
