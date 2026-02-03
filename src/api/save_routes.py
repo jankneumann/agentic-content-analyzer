@@ -1,7 +1,7 @@
 """Save URL API endpoints for mobile content capture.
 
 These endpoints allow saving URLs for background content extraction,
-supporting iOS Shortcuts, bookmarklets, and web forms.
+supporting iOS Shortcuts, bookmarklets, Chrome extension, and web forms.
 """
 
 from datetime import UTC, datetime
@@ -19,6 +19,9 @@ from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Maximum HTML payload size (5 MB)
+MAX_HTML_SIZE = 5 * 1024 * 1024
 
 router = APIRouter(prefix="/api/v1/content", tags=["save"])
 
@@ -41,6 +44,22 @@ class SaveURLRequest(BaseModel):
     source: str | None = Field(None, max_length=50, description="Capture source identifier")
 
 
+class SavePageRequest(BaseModel):
+    """Request body for saving a page with client-captured HTML."""
+
+    url: HttpUrl = Field(..., description="Source URL (for dedup and metadata)")
+    html: Annotated[str, StringConstraints(max_length=MAX_HTML_SIZE)] = Field(
+        ..., description="Rendered HTML from the browser (max 5 MB)"
+    )
+    title: str | None = Field(None, max_length=1000, description="Page title")
+    excerpt: str | None = Field(None, max_length=5000, description="Optional excerpt/selection")
+    tags: list[Annotated[str, StringConstraints(max_length=100)]] | None = Field(
+        default=None, max_length=20, description="Optional tags"
+    )
+    notes: str | None = Field(None, max_length=10000, description="Optional user notes")
+    source: str | None = Field(None, max_length=50, description="Capture source identifier")
+
+
 class SaveURLResponse(BaseModel):
     """Response for save URL operation."""
 
@@ -48,6 +67,10 @@ class SaveURLResponse(BaseModel):
     status: str = Field(..., description="Status: 'queued' or 'exists'")
     message: str = Field(..., description="Human-readable message")
     duplicate: bool = Field(False, description="Whether URL was already saved")
+
+
+# SavePageResponse uses the same shape as SaveURLResponse for consistency
+SavePageResponse = SaveURLResponse
 
 
 class ContentStatusResponse(BaseModel):
@@ -83,6 +106,18 @@ async def _enqueue_extraction(content_id: int) -> None:
         with get_db() as db:
             extractor = URLExtractor(db)
             await extractor.extract_content(content_id)
+
+
+# Helper to process client-supplied HTML
+async def _process_client_html(content_id: int, html: str, source_url: str) -> None:
+    """Process client-supplied HTML.
+
+    Parses HTML to markdown, extracts and stores images, and updates the Content record.
+    """
+    from src.services.html_processor import process_client_html
+
+    with get_db() as db:
+        await process_client_html(db, content_id, html, source_url)
 
 
 @router.post("/save-url", response_model=SaveURLResponse, status_code=201)
@@ -153,6 +188,76 @@ async def save_url(
     )
 
 
+@router.post("/save-page", response_model=SavePageResponse, status_code=201)
+async def save_page(
+    request: SavePageRequest,
+    background_tasks: BackgroundTasks,
+) -> SavePageResponse:
+    """Save a page with client-captured HTML content.
+
+    Creates a Content record and processes the HTML to extract markdown and images.
+    Returns immediately with the content ID for status polling.
+
+    This endpoint is used by the Chrome extension when "Capture full page" mode
+    is enabled, allowing capture of paywall-gated and JS-rendered content.
+
+    If the URL already exists, returns the existing content ID with status "exists".
+    """
+    url_str = str(request.url)
+
+    with get_db() as db:
+        # Check for duplicate by URL
+        existing = db.query(Content).filter(Content.source_url == url_str).first()
+        if existing:
+            return SavePageResponse(
+                content_id=existing.id,
+                status="exists",
+                message="URL already saved.",
+                duplicate=True,
+            )
+
+        # Build metadata with capture method flag
+        metadata: dict = {"capture_method": "client_html"}
+        if request.excerpt:
+            metadata["excerpt"] = request.excerpt
+        if request.tags:
+            metadata["tags"] = request.tags
+        if request.notes:
+            metadata["notes"] = request.notes
+        if request.source:
+            metadata["capture_source"] = request.source
+
+        # Create content record
+        content = Content(
+            source_type=ContentSource.WEBPAGE,
+            source_id=f"webpage:{url_str}",
+            source_url=url_str,
+            title=request.title or url_str,  # Use URL as title until extracted
+            markdown_content="",  # Placeholder until processing completes
+            content_hash=generate_markdown_hash(""),
+            status=ContentStatus.PENDING,
+            metadata_json=metadata,
+            ingested_at=datetime.now(UTC),
+        )
+
+        db.add(content)
+        db.commit()
+        db.refresh(content)
+
+        content_id = content.id
+        logger.info(f"Created content record for client HTML: id={content_id}, url={url_str}")
+
+    # Process HTML in background
+    background_tasks.add_task(_process_client_html, content_id, request.html, url_str)
+
+    return SavePageResponse(
+        content_id=content_id,
+        status="queued",
+        message="Page saved. Content processing in progress.",
+        duplicate=False,
+    )
+
+
 @router.get("/{content_id}/status", response_model=ContentStatusResponse)
 async def get_content_status(content_id: int) -> ContentStatusResponse:
     """Get the extraction status of a content record.
@@ -179,7 +284,7 @@ async def get_content_status(content_id: int) -> ContentStatusResponse:
 
 # Web Save Page (for bookmarklet and mobile fallback)
 @router.get("/save", response_class=HTMLResponse, include_in_schema=False)
-async def save_page(
+async def save_page_form(
     request: Request,
     url: Annotated[str | None, Query(description="URL to save", max_length=2000)] = None,
     title: Annotated[str | None, Query(description="Page title", max_length=1000)] = None,

@@ -4,8 +4,22 @@ Save web content to your Newsletter Aggregator while browsing. Two capture metho
 
 | Method | Best For | Browser Support |
 |--------|----------|-----------------|
-| Chrome Extension | Desktop Chrome users | Chrome, Chromium-based |
+| Chrome Extension | Desktop Chrome users, paywall content | Chrome, Chromium-based |
 | Bookmarklet | Universal fallback | All browsers including mobile Safari |
+
+## Capture Modes
+
+The Chrome extension supports two capture modes:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Full Page** (default) | Captures the rendered DOM from your browser | Paywall-gated content, JS-rendered SPAs, authenticated pages |
+| **URL Only** | Sends only the URL for server-side fetching | Public articles, faster saves, smaller payloads |
+
+Full page capture works because:
+- The extension captures `document.documentElement.outerHTML` — exactly what you see in your browser
+- Your authenticated session's content is captured, including paid articles and login-required pages
+- Images are extracted and stored locally to ensure they persist
 
 ## Chrome Extension
 
@@ -30,15 +44,23 @@ Save web content to your Newsletter Aggregator while browsing. Two capture metho
 2. Optionally select text (captured as an excerpt)
 3. Click the extension icon
 4. Review pre-filled fields, add tags if desired
-5. Click **Save**
+5. Toggle **"Capture full page"** based on your needs:
+   - **On** (default): Captures the full rendered page — best for paywall content
+   - **Off**: Sends only the URL for server-side extraction — faster for public pages
+6. Click **Save**
+
+The capture status indicator shows:
+- ✓ "Full page captured" — DOM successfully captured
+- "URL only" — URL-only mode selected
+- "Capture failed (URL only)" — DOM capture failed, falling back to URL
 
 ### Permissions
 
 | Permission | Purpose |
 |------------|---------|
 | `activeTab` | Access current tab's URL and title when clicked |
-| `scripting` | Capture selected text from the active page |
-| `storage` | Persist API URL and key settings across sessions |
+| `scripting` | Capture selected text and full DOM from the active page |
+| `storage` | Persist API URL, key, and capture mode settings across sessions |
 
 ## Bookmarklet
 
@@ -73,7 +95,7 @@ The bookmarklet executes a small JavaScript snippet that:
 
 ## Save URL API
 
-Both capture methods use the same API endpoint:
+The bookmarklet and URL-only mode use this endpoint:
 
 ```
 POST /api/v1/content/save-url
@@ -98,6 +120,53 @@ Content-Type: application/json
   "duplicate": false
 }
 ```
+
+## Save Page API (Full Page Capture)
+
+The Chrome extension uses this endpoint when full page capture is enabled:
+
+```
+POST /api/v1/content/save-page
+Content-Type: application/json
+
+{
+  "url": "https://example.com/article",
+  "html": "<html>...(rendered DOM)...</html>",
+  "title": "Article Title",
+  "excerpt": "Selected text excerpt",
+  "tags": ["ai", "research"],
+  "source": "chrome_extension"
+}
+```
+
+**Response** (201):
+```json
+{
+  "content_id": 123,
+  "status": "queued",
+  "message": "Page saved. Content processing in progress.",
+  "duplicate": false
+}
+```
+
+### Key Differences from save-url
+
+| Aspect | save-url | save-page |
+|--------|----------|-----------|
+| HTML source | Server fetches URL anonymously | Client sends rendered DOM |
+| Paywall content | ❌ Blocked | ✓ Captured |
+| JS-rendered SPAs | ❌ Empty shell | ✓ Full content |
+| Image extraction | ❌ Not supported | ✓ Extracted & stored locally |
+| Payload size | ~100 bytes | Up to 5 MB |
+| Processing | Server-side fetch + parse | Parse client HTML directly |
+
+### HTML Payload Limits
+
+- Maximum HTML size: **5 MB**
+- Maximum images per page: **20**
+- Maximum image size: **5 MB** per image
+
+Oversized payloads return HTTP 422 validation error.
 
 ### Status Polling
 
@@ -129,10 +198,11 @@ Status values: `pending` → `parsing` → `parsed` | `failed`
 
 ### Extension Settings (chrome.storage.sync)
 
-| Setting | Required | Description |
-|---------|----------|-------------|
-| `apiUrl` | Yes | Base URL of your Newsletter Aggregator instance |
-| `apiKey` | No | API key or Supabase anon key for authentication |
+| Setting | Required | Default | Description |
+|---------|----------|---------|-------------|
+| `apiUrl` | Yes | - | Base URL of your Newsletter Aggregator instance |
+| `apiKey` | No | - | API key or Supabase anon key for authentication |
+| `captureFullPage` | No | `true` | Enable full page capture (DOM) vs URL-only mode |
 
 ## Troubleshooting
 
@@ -142,10 +212,13 @@ Status values: `pending` → `parsing` → `parsed` | `failed`
 |-------|----------|
 | "No API URL configured" | Open extension options and set your API URL |
 | "Failed to fetch" | Check that your API URL is correct and the server is running |
-| "Save failed" (422) | The URL format may be invalid |
+| "Save failed" (422) | The URL format may be invalid, or HTML payload too large |
+| "Capture failed (URL only)" | DOM capture failed on this page; content restricted |
 | Can't capture selected text | Some pages (chrome://, file://) restrict extension access |
 | Extension not visible | Click the puzzle piece icon and pin the extension |
 | CORS error | Ensure `ALLOWED_ORIGINS` includes `chrome-extension://` or is set to `*` |
+| Large page fails to save | Disable full page capture; HTML may exceed 5 MB limit |
+| Images not extracted | Server downloads images after save; some may require auth |
 
 ### Bookmarklet
 
