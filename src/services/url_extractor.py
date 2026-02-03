@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from src.models.content import Content, ContentSource, ContentStatus
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
+from src.utils.security import validate_url
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -128,10 +129,24 @@ class URLExtractor:
             httpx.HTTPError: If fetch fails
             ValueError: If content is too large or not HTML
         """
+        # Validate URL to prevent SSRF
+        await validate_url(url)
+
+        async def check_redirect(response: httpx.Response) -> None:
+            if response.is_redirect:
+                target = response.headers.get("Location")
+                if target:
+                    from urllib.parse import urljoin
+
+                    # Resolve relative URLs
+                    target_url = urljoin(str(response.url), target)
+                    await validate_url(target_url)
+
         async with httpx.AsyncClient(
             timeout=DEFAULT_TIMEOUT,
             follow_redirects=True,
             headers={"User-Agent": USER_AGENT},
+            event_hooks={"response": [check_redirect]},
         ) as client:
             response = await client.get(url)
             response.raise_for_status()

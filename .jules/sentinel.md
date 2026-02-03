@@ -32,3 +32,8 @@
 **Vulnerability:** Background tasks for content ingestion (`content_routes.py`), summarization (`summary_routes.py`), and digest generation (`digest_routes.py`) were all catching generic `Exception` and saving `str(e)` to user-visible status fields (`message`, `review_notes`) or SSE streams. This confirmed the previous finding was part of a widespread pattern.
 **Learning:** When moving logic to background tasks or SSE streams, developers often carry over the "return error string" pattern for status reporting, overlooking that these status updates are user-facing and can leak internal state (DB auth errors, API key issues).
 **Prevention:** Treat task status messages and SSE error events as public API responses. Never include raw exception strings. Use generic error messages for the user and log the full traceback server-side.
+
+## 2025-05-28 - [SSRF in URL Content Extraction]
+**Vulnerability:** The `URLExtractor` in `src/services/url_extractor.py` accepted user-provided URLs (via `save-url` endpoint) and fetched them using `httpx` without validating if the target was an internal or private IP address. This allowed potential Server-Side Request Forgery (SSRF) attacks against internal services (e.g., AWS metadata, localhost databases).
+**Learning:** Fetching URLs provided by users is always risky. Libraries like `httpx` and `requests` do not block private IPs by default. DNS Rebinding attacks can also bypass simple hostname checks.
+**Prevention:** Implement strict URL validation (`src.utils.security.validate_url`) that resolves hostnames and checks against private/reserved IP ranges before fetching. Use HTTP client hooks (e.g., `event_hooks` in `httpx`) to validate redirect targets as well.
