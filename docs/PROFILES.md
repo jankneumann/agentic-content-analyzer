@@ -387,6 +387,91 @@ After migration, you may want to:
 3. Organize settings into logical groups
 4. Add comments for documentation
 
+## Profile-Based Development Workflow
+
+Make targets simplify profile-based development by automatically setting `PROFILE` and ensuring dependencies are running.
+
+### Quick Start Commands
+
+```bash
+# Local development without observability (default)
+make dev-local        # Sets PROFILE=local, starts API + frontend
+
+# Local development with LLM tracing
+make opik-up          # Start Opik observability stack
+make dev-opik         # Sets PROFILE=local-opik, verifies Opik, starts API + frontend
+
+# View LLM traces
+open http://localhost:5174    # Opik UI
+```
+
+### Available Make Targets
+
+| Target | Profile | Description |
+|--------|---------|-------------|
+| `make dev-local` | `local` | Start dev servers without observability |
+| `make dev-opik` | `local-opik` | Start dev servers with Opik LLM tracing |
+| `make opik-up` | — | Start Opik stack (waits for health check) |
+| `make opik-down` | — | Stop Opik stack |
+| `make opik-logs` | — | Tail Opik stack logs |
+| `make full-up` | — | Start core services + Opik |
+| `make full-down` | — | Stop all services |
+| `make verify-profile` | (current) | Verify API health and profile |
+| `make verify-opik` | — | Verify Opik receives traces |
+
+### Opik Observability Stack
+
+Opik is a self-hosted LLM observability platform that traces all LLM calls including model, tokens, and prompt/completion text.
+
+**Port assignment**: Opik UI runs on port **5174** (not 5173) to avoid conflict with Vite dev server.
+
+```bash
+# Start Opik (first time may take ~60s for migrations)
+make opik-up
+
+# View Opik UI
+open http://localhost:5174
+
+# Stop when done
+make opik-down
+```
+
+### local-opik Profile
+
+The `local-opik` profile extends `local` with Opik observability enabled:
+
+```yaml
+# profiles/local-opik.yaml
+name: local-opik
+extends: local
+description: Local development with Opik self-hosted LLM tracing
+
+providers:
+  observability: opik
+
+settings:
+  observability:
+    otel_enabled: true
+    otel_exporter_otlp_endpoint: "http://localhost:5174/api/v1/private/otel"
+```
+
+### E2E Verification
+
+Verify your profile configuration works end-to-end:
+
+```bash
+# Start dev servers
+make dev-opik
+
+# In another terminal, verify profile
+make verify-profile
+
+# Verify Opik receives traces
+make verify-opik
+```
+
+---
+
 ## Available Profiles
 
 ### base.yaml
@@ -405,6 +490,20 @@ Docker Compose local development:
 export PROFILE=local
 docker compose up -d
 ```
+
+### local-opik.yaml
+
+Local development with Opik LLM tracing:
+
+```bash
+make opik-up         # Start Opik stack
+export PROFILE=local-opik
+make api             # Or: make dev-opik
+```
+
+- Extends `local` profile
+- Enables Opik observability provider
+- Exports traces to `http://localhost:5174/api/v1/private/otel`
 
 ### railway.yaml
 

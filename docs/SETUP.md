@@ -1036,7 +1036,21 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 **Testing with local Opik (Docker)**:
 
-A `docker-compose.opik.yml` is included to run Opik self-hosted alongside your normal dev stack with no port conflicts:
+A `docker-compose.opik.yml` is included to run Opik self-hosted alongside your normal dev stack. Make targets simplify management:
+
+```bash
+# Recommended: Use make targets
+make opik-up          # Start Opik stack (waits for health check)
+make dev-opik         # Start API with PROFILE=local-opik (verifies Opik first)
+
+# View traces
+open http://localhost:5174    # Opik UI
+
+# Stop when done
+make opik-down
+```
+
+**Manual Docker commands** (alternative):
 
 ```bash
 # Start your normal stack (postgres, redis, neo4j)
@@ -1046,30 +1060,54 @@ docker compose up -d
 docker compose -f docker-compose.opik.yml -p opik up -d
 
 # Wait ~60s for Opik backend to run migrations, then open:
-#   Opik UI:   http://localhost:5173
+#   Opik UI:   http://localhost:5174
 #   Opik API:  http://localhost:8080
 ```
 
-Configure `.env` to send traces to local Opik:
+**Configuration options**:
+
+**Option A: Use the local-opik profile (Recommended)**:
+
+```bash
+export PROFILE=local-opik
+make api
+```
+
+The `local-opik` profile automatically configures all Opik settings.
+
+**Option B: Configure `.env` manually**:
 
 ```bash
 OBSERVABILITY_PROVIDER=opik
 OTEL_ENABLED=true
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5173/api/v1/private/otel  # Required for infra tracing (FastAPI, SQLAlchemy, httpx spans)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5174/api/v1/private/otel  # Required for infra tracing
 OPIK_PROJECT_NAME=newsletter-aggregator
 OTEL_LOG_PROMPTS=true                   # Optional: see prompt/completion text in Opik
 ```
 
 > **Note**: `OTEL_EXPORTER_OTLP_ENDPOINT` is required for infrastructure tracing (FastAPI, SQLAlchemy, httpx auto-instrumentation). Without it, `setup_otel_infrastructure` returns early and only LLM-level spans from the Opik provider will appear. Set it to Opik's OTLP endpoint for full end-to-end visibility.
 
-Run the app and trigger an LLM call (chat, summarizer, etc.) — traces appear in the Opik UI at `http://localhost:5173`.
+Run the app and trigger an LLM call (chat, summarizer, etc.) — traces appear in the Opik UI at `http://localhost:5174`.
 
-Port isolation: Opik's internal Redis and Python backend are **not** exposed to the host, so they won't conflict with our Redis (6379) or FastAPI (8000). Only the Opik frontend (5173) and backend API (8080) are exposed.
+**Port isolation**:
+- Opik UI: port **5174** (not 5173, to avoid Vite conflict)
+- Opik API: port 8080
+- Opik's internal Redis and Python backend are **not** exposed to the host
 
-Tear down when done:
+This means you can run Vite dev server (5173), FastAPI (8000), and Opik (5174, 8080) simultaneously.
+
+**Verification**:
 
 ```bash
-docker compose -f docker-compose.opik.yml -p opik down
+# Verify Opik is healthy and receives traces
+make verify-opik
+```
+
+**Tear down when done**:
+
+```bash
+make opik-down
+# Or: docker compose -f docker-compose.opik.yml -p opik down
 ```
 
 **Frontend OTel tracing** (browser → backend trace propagation):

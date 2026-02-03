@@ -7,17 +7,26 @@
 #   docker compose up -d                                    # our stack
 #   docker compose -f docker-compose.opik.yml -p opik up -d  # opik stack
 #
-# Then configure .env:
+# Or use Make targets (recommended):
+#   make opik-up      # Start Opik stack with health check
+#   make opik-down    # Stop Opik stack
+#   make dev-opik     # Start API with Opik tracing enabled
+#
+# Then configure profile or .env:
+#   export PROFILE=local-opik   # Uses profiles/local-opik.yaml
+#
+# Or manually in .env:
 #   OBSERVABILITY_PROVIDER=opik
 #   OTEL_ENABLED=true
-#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5173/api/v1/private/otel
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5174/api/v1/private/otel
 #
 # UIs:
-#   Opik:   http://localhost:5173
+#   Opik:   http://localhost:5174  (port 5174 to avoid Vite conflict on 5173)
 #   Jaeger: http://localhost:16686  (only with COMPOSE_PROFILES=otel)
 #
 # Tear down:
 #   docker compose -f docker-compose.opik.yml -p opik down
+#   # or: make opik-down
 #
 # =============================================================================
 
@@ -206,7 +215,7 @@ services:
       PYTHON_CODE_EXECUTOR_STRATEGY: process
       PYTHON_CODE_EXECUTOR_EXEC_TIMEOUT_IN_SECS: 3
       PYTHON_BACKEND_PORT: 8000
-      OPIK_REVERSE_PROXY_URL: http://frontend:5173/api
+      OPIK_REVERSE_PROXY_URL: http://frontend:5174/api
       OPIK_URL_OVERRIDE: http://backend:8080
       REDIS_URL: redis://:opik@redis:6379/0
       RQ_WORKER_ENABLED: "true"
@@ -224,20 +233,20 @@ services:
     image: ghcr.io/comet-ml/opik/opik-frontend:${OPIK_VERSION:-latest}
     hostname: frontend
     ports:
-      - "5173:5173"    # Opik UI (nginx proxies /api/* to backend:8080)
+      - "5174:5174"    # Opik UI (port 5174 to avoid conflict with Vite on 5173)
     volumes:
       - ./opik/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --fail-early http://localhost:5173/health"]
+      test: ["CMD-SHELL", "curl --fail --fail-early http://localhost:5174/health"]
       interval: 1s
       timeout: 30s
       retries: 10
       start_period: 1s
     environment:
-      NGINX_PORT: 5173
+      NGINX_PORT: 5174
       OTEL_TRACE: "off"
 
   # ---------------------------------------------------------------------------
