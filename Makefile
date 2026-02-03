@@ -304,32 +304,10 @@ verify-opik:  ## Verify Opik tracing works E2E (requires: PROFILE=local-opik, Op
 	fi
 	@echo "   ✓ Opik UI is accessible"
 	@echo ""
-	@echo "3. Checking OTLP endpoint accepts traces..."
-	@if ! curl -sf -X POST http://localhost:5174/api/v1/private/otel/v1/traces \
-		-H "Content-Type: application/json" \
-		-d '{"resourceSpans":[]}' >/dev/null 2>&1; then \
-		echo "   ✗ OTLP endpoint not accepting traces"; \
-		exit 1; \
-	fi
-	@echo "   ✓ OTLP endpoint is accepting traces"
-	@echo ""
-	@echo "4. Sending test trace via OTel SDK..."
-	@python -c "\
-from opentelemetry import trace; \
-from opentelemetry.sdk.trace import TracerProvider; \
-from opentelemetry.sdk.trace.export import BatchSpanProcessor; \
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter; \
-from opentelemetry.sdk.resources import Resource; \
-provider = TracerProvider(resource=Resource.create({'service.name': 'verify-opik-test'})); \
-exporter = OTLPSpanExporter(endpoint='http://localhost:5174/api/v1/private/otel/v1/traces'); \
-provider.add_span_processor(BatchSpanProcessor(exporter)); \
-trace.set_tracer_provider(provider); \
-tracer = trace.get_tracer('verify-opik'); \
-with tracer.start_as_current_span('make-verify-opik-test') as span: \
-    span.set_attribute('test.source', 'make-verify-opik'); \
-provider.force_flush(); \
-print('   ✓ Test trace sent successfully'); \
-" 2>&1 || echo "   ✗ Failed to send test trace"
+	@echo "3. Sending test trace via OTel SDK..."
+	@python scripts/send_test_trace.py --service verify-opik-test 2>&1 && \
+		echo "   ✓ Test trace sent successfully" || \
+		echo "   ✗ Failed to send test trace"
 	@echo ""
 	@echo "✓ Opik verification complete!"
 	@echo ""
