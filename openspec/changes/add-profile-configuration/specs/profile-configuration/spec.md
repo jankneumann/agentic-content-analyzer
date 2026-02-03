@@ -160,6 +160,17 @@ Secret resolution precedence (highest to lowest):
 - **THEN** secret values SHALL be masked as "***" or "[MASKED]"
 - **AND** non-secret values SHALL be shown in full
 
+Secrets are identified by:
+1. Values loaded from `.secrets.yaml` file
+2. Keys matching secret patterns: `*_KEY`, `*_SECRET`, `*_PASSWORD`, `*_TOKEN`
+3. Values matching credential URL patterns (passwords in connection strings)
+
+#### Scenario: Malformed secrets YAML
+- **GIVEN** `.secrets.yaml` exists but contains invalid YAML
+- **WHEN** secrets are loaded
+- **THEN** a `SecretsParseError` SHALL be raised
+- **AND** the error message SHALL include the line number
+
 ### Requirement: Profile Activation
 
 The system SHALL activate profiles based on the `PROFILE` environment variable.
@@ -188,6 +199,20 @@ Activation order:
 - **WHEN** Settings is initialized
 - **THEN** settings SHALL be loaded from `.env` file
 - **AND** behavior SHALL match the current Pydantic Settings loading
+
+#### Scenario: Profiles directory does not exist
+- **GIVEN** the `profiles/` directory does not exist
+- **AND** `PROFILE` env var is not set
+- **WHEN** Settings is initialized
+- **THEN** settings SHALL fall back to `.env` file loading
+- **AND** no error SHALL be raised about missing profiles directory
+
+#### Scenario: Profile specified but profiles directory missing
+- **GIVEN** the `profiles/` directory does not exist
+- **AND** `PROFILE=railway` is set
+- **WHEN** Settings is initialized
+- **THEN** a `ProfileNotFoundError` SHALL be raised
+- **AND** the error message SHALL indicate the profiles directory is missing
 
 #### Scenario: Profile overrides .env values
 - **GIVEN** `.env` contains `DATABASE_PROVIDER=local`
@@ -281,9 +306,10 @@ The system SHALL provide a CLI command to migrate existing `.env` configurations
 - **AND** no files SHALL be created or modified
 
 #### Scenario: Migration preserves comments
-- **GIVEN** `.env` contains comments describing sections
-- **WHEN** migration is executed
-- **THEN** relevant comments SHALL be preserved as YAML comments in the profile
+- **GIVEN** `.env` contains comments describing sections (lines starting with `#`)
+- **WHEN** migration is executed with `--preserve-comments` flag
+- **THEN** section header comments SHALL be converted to YAML comments
+- **AND** inline comments on variable lines SHALL be preserved where possible
 
 ### Requirement: Default Profile Templates
 
@@ -307,7 +333,14 @@ Templates:
 - **AND** it SHALL contain `settings.storage.minio_root_password: ${MINIO_ROOT_PASSWORD}`
 - **AND** YAML comments SHALL explain that Railway auto-injects these variables
 
-#### Scenario: Template profiles are valid
-- **WHEN** each template profile is validated
-- **THEN** validation SHALL pass with only expected missing secrets
-- **AND** no structural errors SHALL be present
+#### Scenario: Template profiles are valid structurally
+- **WHEN** each template profile is validated for structure only (ignoring unresolved variables)
+- **THEN** all required fields SHALL be present
+- **AND** all provider values SHALL be valid literals
+- **AND** all settings keys SHALL match expected schema
+
+#### Scenario: Template profiles list required secrets
+- **GIVEN** a template profile references `${SECRET_VAR}` without defaults
+- **WHEN** the profile is validated with secrets checking enabled
+- **THEN** validation SHALL list missing secrets as warnings (not errors)
+- **AND** the warning SHALL indicate which secrets need to be provided
