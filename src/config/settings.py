@@ -1,22 +1,134 @@
-"""Application configuration management."""
+"""Application configuration management.
+
+Settings can be loaded from:
+1. Profile-based configuration (when PROFILE env var is set)
+2. Traditional .env file (backward compatible default)
+
+Profile loading order (highest to lowest priority):
+1. Environment variables (always win)
+2. Profile values (from profiles/{name}.yaml)
+3. .env file values
+4. Default values
+
+See docs/PROFILES.md for profile configuration guide.
+"""
 
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 from functools import lru_cache
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from src.config.sources import SourcesConfig
 
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from src.config.models import ModelConfig, Provider, ProviderConfig
 
 logger = logging.getLogger(__name__)
+
+# Track the active profile name (set during Settings initialization)
+_active_profile_name: str | None = None
+
+
+def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a profile dict into Settings-compatible flat dict.
+
+    Converts nested profile structure to flat key-value pairs matching
+    Settings field names (uppercase env-style names).
+
+    Args:
+        profile_data: Loaded and interpolated profile data
+
+    Returns:
+        Flat dict suitable for Settings model initialization
+    """
+    result: dict[str, Any] = {}
+
+    # Map providers to Settings provider fields
+    providers = profile_data.get("providers", {})
+    if "database" in providers:
+        result["database_provider"] = providers["database"]
+    if "neo4j" in providers:
+        result["neo4j_provider"] = providers["neo4j"]
+    if "storage" in providers:
+        result["storage_provider"] = providers["storage"]
+    if "observability" in providers:
+        result["observability_provider"] = providers["observability"]
+
+    # Flatten settings sections
+    settings = profile_data.get("settings", {})
+
+    # Top-level settings (environment, log_level, etc.)
+    for key in ["environment", "log_level", "allowed_origins"]:
+        if key in settings:
+            result[key] = settings[key]
+
+    # Nested sections - flatten each one
+    section_mappings = [
+        "database",
+        "neo4j",
+        "storage",
+        "observability",
+        "api_keys",
+        "digest",
+    ]
+
+    for section in section_mappings:
+        section_data = settings.get(section, {})
+        if isinstance(section_data, dict):
+            for key, value in section_data.items():
+                if value is not None:
+                    result[key] = value
+
+    return result
+
+
+def _load_profile_settings() -> dict[str, Any] | None:
+    """Load profile settings if PROFILE env var is set.
+
+    Returns:
+        Flattened profile settings dict, or None if no profile active
+    """
+    global _active_profile_name
+
+    profile_name = os.environ.get("PROFILE")
+    if not profile_name:
+        return None
+
+    try:
+        # Import here to avoid circular imports
+        from src.config.profiles import ProfileError, load_profile
+
+        profile = load_profile(profile_name)
+        _active_profile_name = profile_name
+
+        # Convert Profile model to dict and flatten
+        profile_dict = profile.model_dump()
+        return _flatten_profile_to_settings(profile_dict)
+
+    except ProfileError as e:
+        logger.error(f"Failed to load profile '{profile_name}': {e}")
+        raise
+
+
+def get_active_profile_name() -> str | None:
+    """Get the currently active profile name.
+
+    Returns:
+        Profile name if one is active, None otherwise
+    """
+    return _active_profile_name
+
 
 # Type alias for database provider
 DatabaseProviderType = Literal["local", "supabase", "neon", "railway"]
@@ -37,6 +149,40 @@ AUDIO_DIGEST_VOICE_PRESETS: dict[str, dict[str, str]] = {
 }
 
 
+class ProfileSettingsSource(PydanticBaseSettingsSource):
+    """Custom settings source that loads from profile configuration.
+
+    Loads values from profiles/{name}.yaml when PROFILE env var is set.
+    Has lower priority than environment variables but higher than .env file.
+    """
+
+    def __init__(self, settings_cls: type[BaseSettings]):
+        super().__init__(settings_cls)
+        self._profile_settings: dict[str, Any] | None = None
+        self._loaded = False
+
+    def _load_once(self) -> dict[str, Any]:
+        """Load profile settings once and cache."""
+        if not self._loaded:
+            self._profile_settings = _load_profile_settings()
+            self._loaded = True
+        return self._profile_settings or {}
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        """Get value for a specific field from profile settings.
+
+        Returns:
+            Tuple of (value, field_name, is_complex)
+        """
+        profile_data = self._load_once()
+        value = profile_data.get(field_name)
+        return value, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        """Return all settings from profile."""
+        return self._load_once()
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -46,6 +192,36 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",  # Ignore unknown env vars (common in shared .env files)
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Customize settings sources to include profile configuration.
+
+        Priority order (highest to lowest):
+        1. init_settings (values passed to Settings())
+        2. env_settings (environment variables)
+        3. profile_settings (from profiles/{name}.yaml when PROFILE is set)
+        4. dotenv_settings (.env file)
+        5. file_secret_settings
+
+        This ensures environment variables always win, but profile values
+        take precedence over .env file values.
+        """
+        profile_settings = ProfileSettingsSource(settings_cls)
+        return (
+            init_settings,
+            env_settings,
+            profile_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     # Environment
     environment: Literal["development", "production"] = "development"
@@ -869,6 +1045,14 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     s = Settings()
+
+    # Log active profile if one is set
+    profile_name = get_active_profile_name()
+    if profile_name:
+        logger.info(f"Active profile: {profile_name}")
+    else:
+        logger.info("No profile active (using .env configuration)")
+
     # Log provider configuration at startup
     logger.info(
         f"Database provider: {s.database_provider} | "
