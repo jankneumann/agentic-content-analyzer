@@ -114,8 +114,11 @@ class TestProfileLoadsIntoSettings:
         )
 
         # Patch the profiles dir and PROFILE env var
+        # Use patch.dict context to safely modify os.environ (restores on exit)
+        # We use clear=True to ensure NO environment variables (like DATABASE_URL or ENVIRONMENT)
+        # interfere with the test, ensuring we only test profile loading.
         with (
-            patch.dict(os.environ, {"PROFILE": "test-base"}, clear=False),
+            patch.dict(os.environ, {"PROFILE": "test-base"}, clear=True),
             patch("src.config.profiles.get_profiles_dir", return_value=temp_profiles_dir),
             patch("src.config.settings._load_profile_settings") as mock_load,
         ):
@@ -145,10 +148,8 @@ class TestProfileLoadsIntoSettings:
         """Test that Settings works normally when no profile is set."""
         from src.config.settings import Settings
 
-        with patch.dict(os.environ, {}, clear=False):
-            # Remove PROFILE if it exists
-            os.environ.pop("PROFILE", None)
-
+        # Clear environment to ensure defaults are used
+        with patch.dict(os.environ, {}, clear=True):
             # Create settings - should use .env or defaults
             settings = Settings(
                 _env_file=None,
