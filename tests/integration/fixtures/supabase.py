@@ -42,7 +42,7 @@ SUPABASE_CONFIGURED = bool(
 
 # Skip reason for when Supabase is not configured
 SKIP_REASON = (
-    "Supabase credentials not configured " "(SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD required)"
+    "Supabase credentials not configured (SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD required)"
 )
 
 

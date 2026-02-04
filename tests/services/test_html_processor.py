@@ -110,7 +110,7 @@ class TestExtractMarkdownAndTitle:
         </html>
         """
 
-        markdown, title = _extract_markdown_and_title(html, "https://example.com")
+        markdown, _title = _extract_markdown_and_title(html, "https://example.com")
 
         assert markdown is not None
         assert len(markdown) > 0
@@ -143,7 +143,7 @@ class TestExtractMarkdownAndTitle:
         """Returns None for empty or minimal HTML."""
         html = "<html><head></head><body></body></html>"
 
-        markdown, title = _extract_markdown_and_title(html, "https://example.com")
+        markdown, _title = _extract_markdown_and_title(html, "https://example.com")
 
         # Trafilatura returns None/empty for pages with no content
         assert markdown is None or markdown.strip() == ""
@@ -152,7 +152,7 @@ class TestExtractMarkdownAndTitle:
         """Returns None for malformed HTML that can't be parsed."""
         html = "not valid html at all"
 
-        markdown, title = _extract_markdown_and_title(html, "https://example.com")
+        markdown, _title = _extract_markdown_and_title(html, "https://example.com")
 
         # Should handle gracefully
         assert markdown is None or markdown.strip() == ""

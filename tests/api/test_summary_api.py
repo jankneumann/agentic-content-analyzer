@@ -148,7 +148,7 @@ class TestGetSummaryByContent:
 
     def test_get_summary_by_content_returns_detail(self, client, sample_content_with_summary):
         """Test getting summary by content ID."""
-        content, summary = sample_content_with_summary
+        content, _summary = sample_content_with_summary
 
         response = client.get(f"/api/v1/summaries/by-content/{content.id}")
 
@@ -279,7 +279,7 @@ class TestSummaryNavigation:
 
     def test_navigation_first_item_no_prev(self, client, sample_content_with_summary):
         """Test first item has no previous."""
-        content, summary = sample_content_with_summary
+        _content, summary = sample_content_with_summary
 
         response = client.get(f"/api/v1/summaries/{summary.id}/navigation")
 

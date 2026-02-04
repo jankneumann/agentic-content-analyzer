@@ -8,7 +8,7 @@ This module provides models for:
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 from sqlalchemy import (
@@ -27,7 +27,7 @@ from src.models.base import Base
 # --- Enums ---
 
 
-class PodcastLength(str, Enum):
+class PodcastLength(StrEnum):
     """Podcast duration options."""
 
     BRIEF = "brief"  # 5 minutes (~750-1000 words)
@@ -35,7 +35,7 @@ class PodcastLength(str, Enum):
     EXTENDED = "extended"  # 30 minutes (~4500-6000 words)
 
 
-class PodcastStatus(str, Enum):
+class PodcastStatus(StrEnum):
     """Status of podcast script/audio generation."""
 
     PENDING = "pending"
@@ -48,7 +48,7 @@ class PodcastStatus(str, Enum):
     FAILED = "failed"
 
 
-class VoiceProvider(str, Enum):
+class VoiceProvider(StrEnum):
     """Text-to-speech provider options."""
 
     ELEVENLABS = "elevenlabs"
@@ -57,7 +57,7 @@ class VoiceProvider(str, Enum):
     OPENAI_TTS = "openai_tts"
 
 
-class VoicePersona(str, Enum):
+class VoicePersona(StrEnum):
     """Voice persona options - each persona available in male/female variants.
 
     Alex Chen: VP of Engineering - Strategic perspective
@@ -70,7 +70,7 @@ class VoicePersona(str, Enum):
     SAM_FEMALE = "sam_female"  # Distinguished Engineer - Female voice
 
 
-class ScriptReviewAction(str, Enum):
+class ScriptReviewAction(StrEnum):
     """Actions available during script review."""
 
     APPROVE = "approve"

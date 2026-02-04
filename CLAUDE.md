@@ -59,6 +59,23 @@ make dev-bg        # Start frontend + backend in background
 make dev-logs      # View logs
 make dev-stop      # Stop servers
 
+# Profile-based development
+make dev-local     # Start with PROFILE=local (no observability)
+make dev-opik      # Start with PROFILE=local-opik (requires: make opik-up)
+
+# Opik observability stack
+make opik-up       # Start Opik stack (waits for health)
+make opik-down     # Stop Opik stack
+make opik-logs     # Tail Opik logs
+
+# Full stack management
+make full-up       # Start core services + Opik
+make full-down     # Stop all services
+
+# Verification
+make verify-profile # Verify API health and current profile
+make verify-opik    # Verify Opik receives traces
+
 # Content Ingestion
 python -m src.ingestion.gmail          # Gmail newsletters
 python -m src.ingestion.substack       # RSS feeds

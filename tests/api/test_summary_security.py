@@ -3,12 +3,17 @@
 Focuses on information leakage and other security vulnerabilities.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
+
 from src.models.content import Content
 from src.models.summary import Summary
 
-def test_regenerate_with_feedback_error_leakage(client: TestClient, sample_content_with_summary: tuple[Content, Summary]):
+
+def test_regenerate_with_feedback_error_leakage(
+    client: TestClient, sample_content_with_summary: tuple[Content, Summary]
+):
     """
     Test that exceptions during regeneration do not leak sensitive information.
 
@@ -16,13 +21,15 @@ def test_regenerate_with_feedback_error_leakage(client: TestClient, sample_conte
     sensitive data (like a DB connection string), that data is NOT exposed
     to the client in the response.
     """
-    content, summary = sample_content_with_summary
+    _content, summary = sample_content_with_summary
     sensitive_secret = "CRITICAL_SECRET_VALUE"
 
     # Mock the summarizer to raise an exception with sensitive info
     # We patch the ContentSummarizer because it is aliased as NewsletterSummarizer
     # and imported inside the endpoint function.
-    with patch("src.processors.summarizer.ContentSummarizer.summarize_content_with_feedback") as mock_summarize:
+    with patch(
+        "src.processors.summarizer.ContentSummarizer.summarize_content_with_feedback"
+    ) as mock_summarize:
         mock_summarize.side_effect = Exception(f"Database connection failed: {sensitive_secret}")
 
         response = client.post(
@@ -40,7 +47,9 @@ def test_regenerate_with_feedback_error_leakage(client: TestClient, sample_conte
         assert '"status": "error"' in content_text
 
         # KEY ASSERTION: The sensitive secret should NOT be in the response
-        assert sensitive_secret not in content_text, "VULNERABILITY: Sensitive secret leaked in error message!"
+        assert (
+            sensitive_secret not in content_text
+        ), "VULNERABILITY: Sensitive secret leaked in error message!"
 
         # Assert that we get the safe generic error message
         assert "An internal error occurred during regeneration" in content_text

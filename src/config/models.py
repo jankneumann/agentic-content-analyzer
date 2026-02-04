@@ -45,13 +45,13 @@ Usage:
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 import yaml
 
 
-class Provider(str, Enum):
+class Provider(StrEnum):
     """LLM provider/platform."""
 
     ANTHROPIC = "anthropic"  # Anthropic API (direct)
@@ -62,7 +62,7 @@ class Provider(str, Enum):
     GOOGLE_AI = "google_ai"  # Google AI Studio (direct)
 
 
-class ModelFamily(str, Enum):
+class ModelFamily(StrEnum):
     """Model family (across providers)."""
 
     CLAUDE = "claude"
@@ -70,7 +70,7 @@ class ModelFamily(str, Enum):
     GPT = "gpt"
 
 
-class ModelStep(str, Enum):
+class ModelStep(StrEnum):
     """Pipeline steps that use LLMs."""
 
     SUMMARIZATION = "summarization"  # Individual content summarization
@@ -149,9 +149,9 @@ class ProviderModelConfig:
         return match.group(1) if match else "unknown"
 
 
-def load_model_registry() -> (
-    tuple[dict[str, ModelInfo], dict[tuple[str, Provider], ProviderModelConfig], dict[str, str]]
-):
+def load_model_registry() -> tuple[
+    dict[str, ModelInfo], dict[tuple[str, Provider], ProviderModelConfig], dict[str, str]
+]:
     """Load model registry from YAML configuration file.
 
     Returns:
@@ -189,7 +189,7 @@ def load_model_registry() -> (
         provider_str, model_id = key.split(".", 1)
         provider = Provider(provider_str)
 
-        provider_model_configs[(model_id, provider)] = ProviderModelConfig(
+        provider_model_configs[model_id, provider] = ProviderModelConfig(
             model_id=model_id,  # General ID (e.g., "claude-sonnet-4-5")
             provider=provider,
             provider_model_id=pmc_data["provider_model_id"],  # NEW: Provider-specific ID
