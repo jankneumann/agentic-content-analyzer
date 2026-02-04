@@ -413,6 +413,16 @@ from tests.integration.fixtures.neon import (  # noqa: E402, F401
     requires_neon,
 )
 
+# Import Opik fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/opik.py
+from tests.integration.fixtures.opik import (  # noqa: E402, F401
+    opik_available,
+    opik_provider,
+    opik_test_helpers,
+    requires_opik,
+    unique_project_name,
+)
+
 # Import Supabase fixtures to make them available to all integration tests
 # These fixtures are defined in tests/integration/fixtures/supabase.py
 from tests.integration.fixtures.supabase import (  # noqa: E402, F401

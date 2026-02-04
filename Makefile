@@ -47,6 +47,13 @@ test:  ## Run tests
 test-cov:  ## Run tests with coverage report
 	pytest --cov=src --cov-report=term-missing --cov-report=html
 
+test-opik:  ## Run Opik integration tests (requires: make opik-up)
+	@if ! curl -sf http://localhost:8080/health-check >/dev/null 2>&1; then \
+		echo "✗ Opik is not running! Start with: make opik-up"; \
+		exit 1; \
+	fi
+	pytest tests/integration/test_opik_integration.py -v
+
 test-integration:  ## Run integration tests (requires test services)
 	pytest tests/integration/ -v
 
@@ -151,7 +158,7 @@ dev:  ## Start both frontend and backend for development (requires tmux or run i
 dev-bg:  ## Start frontend and backend in background (logs to .dev-logs/)
 	@mkdir -p .dev-logs
 	@echo "Starting backend API on http://localhost:8000..."
-	@nohup bash -c 'source .venv/bin/activate && WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000' > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
+	@nohup bash -c 'source .venv/bin/activate && PROFILE=$(PROFILE) WATCHFILES_FORCE_POLLING=true uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000' > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
 	@echo "Starting frontend on http://localhost:5173..."
 	@nohup sh -c 'cd web && npm run dev' > .dev-logs/web.log 2>&1 & echo $$! > .dev-logs/web.pid
 	@sleep 2
