@@ -124,6 +124,7 @@ class Content(Base):  # type: ignore[valid-type, misc]
         Integer,
         ForeignKey("contents.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )  # FK to canonical Content if duplicate
 
     # Processing status
