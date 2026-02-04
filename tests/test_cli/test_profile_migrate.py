@@ -234,7 +234,7 @@ class TestEnvFileParsing:
         env_file = tmp_path / ".env"
         env_file.write_text("# This is a comment\nFOO=bar\n")
 
-        variables, comments = _parse_env_file(env_file)
+        _variables, comments = _parse_env_file(env_file)
 
         assert "FOO" in comments
         assert comments["FOO"] == "This is a comment"
@@ -244,7 +244,7 @@ class TestEnvFileParsing:
         env_file = tmp_path / ".env"
         env_file.write_text("# Line 1\n# Line 2\nFOO=bar\n")
 
-        variables, comments = _parse_env_file(env_file)
+        _variables, comments = _parse_env_file(env_file)
 
         assert "Line 1" in comments["FOO"]
         assert "Line 2" in comments["FOO"]
@@ -254,7 +254,7 @@ class TestEnvFileParsing:
         env_file = tmp_path / ".env"
         env_file.write_text("# Comment 1\n\n# Comment 2\nFOO=bar\n")
 
-        variables, comments = _parse_env_file(env_file)
+        _variables, comments = _parse_env_file(env_file)
 
         assert comments["FOO"] == "Comment 2"
 

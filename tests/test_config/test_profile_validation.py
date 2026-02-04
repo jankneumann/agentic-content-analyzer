@@ -411,7 +411,9 @@ class TestValidateProfileStrict:
         with open(temp_profiles_dir / "test.yaml", "w") as f:
             yaml.dump(profile_data, f)
 
-        is_valid, errors, warnings = validate_profile_strict("test", profiles_dir=temp_profiles_dir)
+        is_valid, errors, _warnings = validate_profile_strict(
+            "test", profiles_dir=temp_profiles_dir
+        )
 
         assert is_valid
         assert errors == []
@@ -428,14 +430,16 @@ class TestValidateProfileStrict:
         with open(temp_profiles_dir / "test.yaml", "w") as f:
             yaml.dump(profile_data, f)
 
-        is_valid, errors, warnings = validate_profile_strict("test", profiles_dir=temp_profiles_dir)
+        is_valid, errors, _warnings = validate_profile_strict(
+            "test", profiles_dir=temp_profiles_dir
+        )
 
         assert not is_valid
         assert any("neon_database_url" in e for e in errors)
 
     def test_missing_profile_file_fails(self, temp_profiles_dir: Path) -> None:
         """Test that missing profile file fails strict validation."""
-        is_valid, errors, warnings = validate_profile_strict(
+        is_valid, errors, _warnings = validate_profile_strict(
             "nonexistent", profiles_dir=temp_profiles_dir
         )
 
@@ -447,7 +451,7 @@ class TestValidateProfileStrict:
         with open(temp_profiles_dir / "broken.yaml", "w") as f:
             f.write("name: test\n  bad_indent: [unclosed")
 
-        is_valid, errors, warnings = validate_profile_strict(
+        is_valid, errors, _warnings = validate_profile_strict(
             "broken", profiles_dir=temp_profiles_dir
         )
 
@@ -470,7 +474,9 @@ class TestValidateProfileStrict:
         with open(temp_profiles_dir / "test.yaml", "w") as f:
             yaml.dump(profile_data, f)
 
-        is_valid, errors, warnings = validate_profile_strict("test", profiles_dir=temp_profiles_dir)
+        is_valid, _errors, warnings = validate_profile_strict(
+            "test", profiles_dir=temp_profiles_dir
+        )
 
         # Profile is structurally valid, but has unresolved var
         # The exact behavior depends on whether we treat missing as error/warning
