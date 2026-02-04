@@ -119,6 +119,11 @@ class TestProfileLoadsIntoSettings:
             patch("src.config.profiles.get_profiles_dir", return_value=temp_profiles_dir),
             patch("src.config.settings._load_profile_settings") as mock_load,
         ):
+            # Remove interfering env vars if present
+            os.environ.pop("DATABASE_URL", None)
+            os.environ.pop("ENVIRONMENT", None)
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+
             # Simulate what _load_profile_settings returns
             mock_load.return_value = {
                 "database_provider": "local",
@@ -148,6 +153,9 @@ class TestProfileLoadsIntoSettings:
         with patch.dict(os.environ, {}, clear=False):
             # Remove PROFILE if it exists
             os.environ.pop("PROFILE", None)
+            # Remove environment overrides
+            os.environ.pop("DATABASE_URL", None)
+            os.environ.pop("ENVIRONMENT", None)
 
             # Create settings - should use .env or defaults
             settings = Settings(
