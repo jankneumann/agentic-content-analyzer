@@ -6,7 +6,6 @@ Provides a provider-abstracted observability layer supporting multiple backends:
 - braintrust: Native Braintrust SDK for rich LLM tracing
 - otel: Generic OpenTelemetry OTLP export to any backend
 """
-# ruff: noqa: RUF067 - this module intentionally has implementation code
 
 from __future__ import annotations
 
