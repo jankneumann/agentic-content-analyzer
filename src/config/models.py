@@ -149,9 +149,9 @@ class ProviderModelConfig:
         return match.group(1) if match else "unknown"
 
 
-def load_model_registry() -> (
-    tuple[dict[str, ModelInfo], dict[tuple[str, Provider], ProviderModelConfig], dict[str, str]]
-):
+def load_model_registry() -> tuple[
+    dict[str, ModelInfo], dict[tuple[str, Provider], ProviderModelConfig], dict[str, str]
+]:
     """Load model registry from YAML configuration file.
 
     Returns:
