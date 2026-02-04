@@ -13,3 +13,7 @@
 ## 2025-02-19 - Current Page Indication in Navigation
 **Learning:** Navigation items often rely solely on visual styling (e.g., background color) to indicate the active page, which is insufficient for screen reader users.
 **Action:** Always add `aria-current="page"` to the link or button representing the current page in a navigation menu.
+
+## 2025-02-22 - Accessibility of Hover-Only Metadata
+**Learning:** Metadata hidden with `opacity-0` and revealed on `group-hover` is invisible to keyboard-only users.
+**Action:** When adding interactive elements (like a "Copy" button) to such a group, add `group-focus-within:opacity-100` to the container so that tabbing into the interactive element reveals the metadata context.
