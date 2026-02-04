@@ -145,7 +145,7 @@ async def generate_audio_task(
             sam_voice=sam_voice,
         )
 
-        # Create output directory
+        # Create output directory (fast local I/O, acceptable in async context)
         output_dir = Path("output/podcasts")
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"podcast_{podcast_id}.mp3"
