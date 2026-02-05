@@ -118,10 +118,6 @@ class TestProfileLoadsIntoSettings:
         # to ensure values come from the profile.
         env_vars = {"PROFILE": "test-base"}
 
-        # Explicitly remove interfering vars if they exist in the real env
-        # Note: patch.dict with clear=True would remove everything, which might be too aggressive
-        # if other things rely on PATH etc. So we carefully construct what we want.
-
         with (
             patch.dict(os.environ, env_vars, clear=False),
             patch("src.config.profiles.get_profiles_dir", return_value=temp_profiles_dir),
