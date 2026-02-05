@@ -168,8 +168,6 @@ class TestProfileLoadsIntoSettings:
         with patch.dict(os.environ, {}, clear=False):
             # Remove PROFILE if it exists
             os.environ.pop("PROFILE", None)
-            # Remove ENVIRONMENT if it exists (might be set in CI)
-            os.environ.pop("ENVIRONMENT", None)
             # Remove interfering env vars
             for var in ["DATABASE_URL", "ENVIRONMENT"]:
                 os.environ.pop(var, None)
