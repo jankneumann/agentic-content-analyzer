@@ -248,34 +248,36 @@ Validation checks:
 
 ### Requirement: Profile CLI Commands
 
-The system SHALL provide CLI commands for profile management under `newsletter-cli profile`.
+The system SHALL provide CLI commands for profile management under `aca profile`.
+
+This modifies the existing requirement which uses `newsletter-cli profile`. The `newsletter-cli` entrypoint SHALL continue to work as a deprecated alias (see `cli-interface` spec for backward compatibility).
 
 #### Scenario: List available profiles
-- **WHEN** `newsletter-cli profile list` is executed
+- **WHEN** `aca profile list` is executed
 - **THEN** all profiles in `profiles/` SHALL be listed
 - **AND** each entry SHALL show: name, extends (if any), description (if any)
 - **AND** the currently active profile SHALL be marked
 
 #### Scenario: Show resolved profile
-- **WHEN** `newsletter-cli profile show railway` is executed
+- **WHEN** `aca profile show railway` is executed
 - **THEN** the fully resolved profile SHALL be displayed
 - **AND** inherited values SHALL show their source
 - **AND** secret values SHALL be masked
 
 #### Scenario: Validate profile
-- **WHEN** `newsletter-cli profile validate railway` is executed
+- **WHEN** `aca profile validate railway` is executed
 - **AND** the profile is valid
 - **THEN** "Profile 'railway' is valid" SHALL be printed
 - **AND** exit code SHALL be 0
 
 #### Scenario: Validate invalid profile
-- **WHEN** `newsletter-cli profile validate broken` is executed
+- **WHEN** `aca profile validate broken` is executed
 - **AND** the profile has validation errors
 - **THEN** all errors SHALL be printed
 - **AND** exit code SHALL be 1
 
 #### Scenario: Inspect effective configuration
-- **WHEN** `newsletter-cli profile inspect` is executed
+- **WHEN** `aca profile inspect` is executed
 - **THEN** the effective Settings SHALL be displayed
 - **AND** each value SHALL show its source (profile, secrets, env, default)
 - **AND** secrets SHALL be masked
@@ -285,7 +287,7 @@ The system SHALL provide CLI commands for profile management under `newsletter-c
 The system SHALL provide a CLI command to migrate existing `.env` configurations to profile format.
 
 #### Scenario: Migrate .env to profile
-- **WHEN** `newsletter-cli profile migrate --from .env --to profiles/migrated.yaml` is executed
+- **WHEN** `aca profile migrate --from .env --to profiles/migrated.yaml` is executed
 - **THEN** a new profile file SHALL be created
 - **AND** provider choices SHALL be extracted from `*_PROVIDER` variables
 - **AND** non-secret settings SHALL be written to the profile
@@ -298,7 +300,7 @@ The system SHALL provide a CLI command to migrate existing `.env` configurations
 - **AND** the profile SHALL reference `${ANTHROPIC_API_KEY}`
 
 #### Scenario: Dry run migration
-- **WHEN** `newsletter-cli profile migrate --dry-run` is executed
+- **WHEN** `aca profile migrate --dry-run` is executed
 - **THEN** the would-be profile content SHALL be printed to stdout
 - **AND** no files SHALL be created or modified
 
