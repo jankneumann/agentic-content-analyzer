@@ -170,9 +170,6 @@ class TestProfileLoadsIntoSettings:
             os.environ.pop("PROFILE", None)
             # Remove ENVIRONMENT if it exists (might be set in CI)
             os.environ.pop("ENVIRONMENT", None)
-            # Remove DATABASE_PROVIDER if it exists
-            os.environ.pop("DATABASE_PROVIDER", None)
-
             # Remove interfering env vars
             for var in ["DATABASE_URL", "ENVIRONMENT"]:
                 os.environ.pop(var, None)
