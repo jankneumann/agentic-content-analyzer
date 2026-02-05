@@ -165,6 +165,11 @@ The system SHALL provide `aca analyze` subcommands for theme analysis.
 - **THEN** theme analysis SHALL run for the provided date range
 - **AND** discovered themes SHALL be displayed with names and related content counts
 
+#### Scenario: Analyze themes with default range
+- **WHEN** `aca analyze themes` is executed without `--start` or `--end`
+- **THEN** theme analysis SHALL run for the last 7 days
+- **AND** discovered themes SHALL be displayed
+
 ### Requirement: Graph subcommands
 The system SHALL provide `aca graph` subcommands for knowledge graph workflows.
 
