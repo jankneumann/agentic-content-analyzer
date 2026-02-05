@@ -12,8 +12,8 @@
 - [ ] 2.2 Create sync adapter module `src/cli/adapters.py` with wrapper functions that run async service methods via `asyncio.run()`. Async services needing adapters: `DigestCreator.create_digest()`, `PodcastScriptGenerator.generate_script()`, `ReviewService.list_pending_reviews()`, `ReviewService.start_revision_session()`, `ReviewService.process_revision_turn()`, `ReviewService.apply_revision()`, `ReviewService.finalize_review()`, `ThemeAnalyzer` methods. Sync services (no adapter needed): all ingestion services, `ContentSummarizer`.
   - **File scope**: `src/cli/adapters.py`
   - **Depends on**: 2.1 (needs app structure)
-- [ ] 2.3 Add deprecation shims: update legacy `__main__.py` modules in `src/ingestion/` and `src/processors/` to emit `DeprecationWarning` and delegate to `aca` commands; keep `newsletter-cli` as alias entrypoint
-  - **File scope**: `src/ingestion/*/__main__.py`, `src/processors/*/__main__.py`, `pyproject.toml`
+- [ ] 2.3 Add deprecation shims: update legacy `__main__.py` modules in `src/ingestion/` and `src/processors/` to emit `DeprecationWarning` and delegate to service calls directly (not subprocess). The `newsletter-cli` alias entrypoint is already registered in pyproject.toml by task 2.1.
+  - **File scope**: `src/ingestion/*/__main__.py`, `src/processors/*/__main__.py`
   - **Depends on**: 2.1, all 3.x tasks (needs commands to exist before delegating)
 
 ## 3. Command Implementations (each creates its own file — parallelizable after 2.1 + 2.2)
@@ -44,8 +44,8 @@
 - [ ] 3.9 Implement `src/cli/manage_commands.py`: setup-gmail, verify-setup, railway-sync, check-profile-secrets subcommands
   - **File scope**: `src/cli/manage_commands.py`
   - **Depends on**: 2.1, 2.2
-- [ ] 3.10 Rename existing `src/cli/profile_commands.py` to use `aca profile` command naming; update imports in app.py
-  - **File scope**: `src/cli/profile_commands.py`, `src/cli/app.py`
+- [ ] 3.10 Update existing `src/cli/profile_commands.py` to use `aca profile` command naming (app.py import is already pre-wired in task 2.1)
+  - **File scope**: `src/cli/profile_commands.py`
   - **Depends on**: 2.1
 
 ## 4. Documentation (depends on all 3.x tasks)
