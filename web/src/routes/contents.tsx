@@ -729,7 +729,7 @@ function ContentsPage() {
                           {selectedContent.markdown_content}
                         </pre>
                       ) : (
-                        <div className="prose prose-sm max-w-none dark:prose-invert">
+                        <div className="prose prose-sm max-w-none">
                           <ReactMarkdown>
                             {selectedContent.markdown_content}
                           </ReactMarkdown>
