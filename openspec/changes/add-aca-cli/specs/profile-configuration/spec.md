@@ -4,6 +4,8 @@
 
 The system SHALL provide CLI commands for profile management under `aca profile`.
 
+This modifies the existing requirement which uses `newsletter-cli profile`. The `newsletter-cli` entrypoint SHALL continue to work as a deprecated alias (see `cli-interface` spec for backward compatibility).
+
 #### Scenario: List available profiles
 - **WHEN** `aca profile list` is executed
 - **THEN** all profiles in `profiles/` SHALL be listed
