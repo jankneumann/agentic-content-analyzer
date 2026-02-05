@@ -438,7 +438,7 @@ class TestCostCalculation:
 
         # Get cost estimate (will use first available provider for each model)
         estimate = config.get_cost_estimate(
-            newsletters_per_day=10,
+            content_items_per_day=10,
             digests_per_week=2,
             youtube_videos_per_week=5,
         )

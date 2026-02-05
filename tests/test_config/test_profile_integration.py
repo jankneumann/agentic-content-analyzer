@@ -114,11 +114,27 @@ class TestProfileLoadsIntoSettings:
         )
 
         # Patch the profiles dir and PROFILE env var
+        # We need to clear environment variables that might interfere (like DATABASE_URL from CI)
+        # to ensure values come from the profile.
+        env_vars = {"PROFILE": "test-base"}
+
+        # Explicitly remove interfering vars if they exist in the real env
+        # Note: patch.dict with clear=True would remove everything, which might be too aggressive
+        # if other things rely on PATH etc. So we carefully construct what we want.
+
         with (
-            patch.dict(os.environ, {"PROFILE": "test-base"}, clear=False),
+            patch.dict(os.environ, env_vars, clear=False),
             patch("src.config.profiles.get_profiles_dir", return_value=temp_profiles_dir),
             patch("src.config.settings._load_profile_settings") as mock_load,
         ):
+            # Remove interfering variables from the patched environment
+            if "DATABASE_URL" in os.environ:
+                os.environ.pop("DATABASE_URL")
+            if "ENVIRONMENT" in os.environ:
+                os.environ.pop("ENVIRONMENT")
+            if "ANTHROPIC_API_KEY" in os.environ:
+                os.environ.pop("ANTHROPIC_API_KEY")
+
             # Simulate what _load_profile_settings returns
             mock_load.return_value = {
                 "database_provider": "local",
@@ -148,6 +164,10 @@ class TestProfileLoadsIntoSettings:
         with patch.dict(os.environ, {}, clear=False):
             # Remove PROFILE if it exists
             os.environ.pop("PROFILE", None)
+            # Remove ENVIRONMENT if it exists (might be set in CI)
+            os.environ.pop("ENVIRONMENT", None)
+            # Remove DATABASE_PROVIDER if it exists
+            os.environ.pop("DATABASE_PROVIDER", None)
 
             # Create settings - should use .env or defaults
             settings = Settings(
