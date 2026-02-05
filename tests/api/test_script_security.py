@@ -1,28 +1,28 @@
+from contextlib import contextmanager
+from unittest.mock import patch
 
 import pytest
-from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
-from src.models.podcast import PodcastScriptRecord, PodcastStatus, PodcastRequest, PodcastLength
+
 from src.api.script_routes import regenerate_script_task
+from src.models.podcast import PodcastLength, PodcastRequest, PodcastScriptRecord, PodcastStatus
+
 
 @pytest.mark.asyncio
-async def test_script_generation_error_leakage(db_session):
+async def test_script_generation_error_leakage(db_session, sample_digest):
     """
     Test that exceptions raised during script generation do not leak sensitive details
     into the database error_message field.
     """
-    # 1. Setup - Create a script record
+    # 1. Setup - Create a script record using the sample_digest fixture
     script_record = PodcastScriptRecord(
-        digest_id=1,
-        length="standard",
-        status=PodcastStatus.SCRIPT_GENERATING.value
+        digest_id=sample_digest.id, length="standard", status=PodcastStatus.SCRIPT_GENERATING.value
     )
     db_session.add(script_record)
     db_session.commit()
     db_session.refresh(script_record)
 
     script_id = script_record.id
-    request = PodcastRequest(digest_id=1, length=PodcastLength.STANDARD)
+    request = PodcastRequest(digest_id=sample_digest.id, length=PodcastLength.STANDARD)
 
     # 2. Mock the generator to raise a sensitive exception
     sensitive_info = "Connection failed to postgres://user:pass@1.2.3.4:5432/db"
@@ -31,9 +31,11 @@ async def test_script_generation_error_leakage(db_session):
     def mock_get_db():
         yield db_session
 
-    with patch("src.processors.podcast_script_generator.PodcastScriptGenerator") as MockGenerator, \
-         patch("src.api.script_routes.get_db", side_effect=mock_get_db):
-
+    # Patch at the import site (where the class is used), not where it's defined
+    with (
+        patch("src.api.script_routes.PodcastScriptGenerator") as MockGenerator,
+        patch("src.api.script_routes.get_db", side_effect=mock_get_db),
+    ):
         instance = MockGenerator.return_value
         # Make generate_script raise an exception
         instance.generate_script.side_effect = Exception(sensitive_info)
@@ -50,21 +52,28 @@ async def test_script_generation_error_leakage(db_session):
     assert sensitive_info not in script_record.error_message
     assert script_record.error_message == "Script generation failed due to an internal error."
 
+
 @pytest.mark.asyncio
-async def test_audio_generation_error_leakage(db_session):
+async def test_audio_generation_error_leakage(db_session, sample_digest):
     """
     Test that exceptions raised during audio generation do not leak sensitive details
     into the database error_message field.
     """
-    from src.models.podcast import Podcast, PodcastScriptRecord, PodcastStatus, VoiceProvider, VoicePersona
     from src.api.podcast_routes import generate_audio_task
+    from src.models.podcast import (
+        Podcast,
+        PodcastScriptRecord,
+        PodcastStatus,
+        VoicePersona,
+        VoiceProvider,
+    )
 
-    # 1. Setup - Create a script and podcast record
+    # 1. Setup - Create a script and podcast record using the sample_digest fixture
     script_record = PodcastScriptRecord(
-        digest_id=1,
+        digest_id=sample_digest.id,
         length="standard",
         status=PodcastStatus.SCRIPT_APPROVED.value,
-        script_json={"title": "Test", "sections": []}
+        script_json={"title": "Test", "sections": []},
     )
     db_session.add(script_record)
     db_session.commit()
@@ -73,7 +82,7 @@ async def test_audio_generation_error_leakage(db_session):
         script_id=script_record.id,
         status="generating",
         voice_provider=VoiceProvider.OPENAI_TTS.value,
-        audio_format="mp3"
+        audio_format="mp3",
     )
     db_session.add(podcast)
     db_session.commit()
@@ -88,9 +97,12 @@ async def test_audio_generation_error_leakage(db_session):
     def mock_get_db():
         yield db_session
 
-    with patch("src.delivery.audio_generator.PodcastAudioGenerator") as MockGenerator, \
-         patch("src.api.podcast_routes.get_db", side_effect=mock_get_db):
-
+    # PodcastAudioGenerator is imported lazily inside generate_audio_task,
+    # so patching the source module works here
+    with (
+        patch("src.delivery.audio_generator.PodcastAudioGenerator") as MockGenerator,
+        patch("src.api.podcast_routes.get_db", side_effect=mock_get_db),
+    ):
         instance = MockGenerator.return_value
         # Make generate_podcast raise an exception
         instance.generate_podcast.side_effect = Exception(sensitive_info)
@@ -101,7 +113,7 @@ async def test_audio_generation_error_leakage(db_session):
             podcast_id=podcast_id,
             voice_provider=VoiceProvider.OPENAI_TTS,
             alex_voice=VoicePersona.ALEX_MALE,
-            sam_voice=VoicePersona.SAM_FEMALE
+            sam_voice=VoicePersona.SAM_FEMALE,
         )
 
     # 4. Verify - Check the error message in DB
