@@ -9,7 +9,9 @@ from src.config.settings import settings
 api_key_header = APIKeyHeader(name="X-Admin-Key", auto_error=False)
 
 
-async def verify_admin_key(api_key: str | None = Security(api_key_header)) -> str:
+async def verify_admin_key(
+    api_key: str | None = Security(api_key_header),
+) -> str:
     """
     Verify the admin API key.
 

@@ -1,6 +1,7 @@
-import pytest
 from unittest.mock import MagicMock
+
 from src.services.prompt_service import PromptService
+
 
 class TestPromptServiceUnit:
     def teardown_method(self):

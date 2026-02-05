@@ -358,8 +358,7 @@ class S3FileStorage(FileStorageProvider):
         )
         self._client = None
         logger.debug(
-            f"S3FileStorage initialized for bucket '{storage_bucket}' "
-            f"(S3 bucket: {self._bucket})"
+            f"S3FileStorage initialized for bucket '{storage_bucket}' (S3 bucket: {self._bucket})"
         )
 
     @property

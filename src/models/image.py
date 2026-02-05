@@ -11,7 +11,7 @@ and support perceptual hash-based deduplication.
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from src.models.summary import Summary
 
 
-class ImageSource(str, Enum):
+class ImageSource(StrEnum):
     """Image source types.
 
     Defines how the image was obtained:

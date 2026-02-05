@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from src.models.theme import ThemeAnalysis, ThemeAnalysisRequest
 from src.processors.theme_analyzer import ThemeAnalyzer
@@ -50,7 +51,7 @@ async def main_async(args) -> None:
 
     # Display results
     print(f"\n{'='*80}")
-    print(f"THEME ANALYSIS RESULTS")
+    print("THEME ANALYSIS RESULTS")
     print(f"{'='*80}")
     print(f"\nDate Range: {start_date.date()} to {end_date.date()}")
     print(f"Newsletters Analyzed: {result.newsletter_count}")
@@ -61,21 +62,23 @@ async def main_async(args) -> None:
     print(f"\n{'='*80}")
 
     if result.themes:
-        print(f"\nTOP THEMES (sorted by relevance):\n")
+        print("\nTOP THEMES (sorted by relevance):\n")
 
         for i, theme in enumerate(result.themes, 1):
             print(f"{i}. {theme.name}")
             print(f"   Category: {theme.category.value}")
             print(f"   Trend: {theme.trend.value}")
             print(f"   Mentions: {theme.mention_count} newsletters")
-            print(f"   Relevance: {theme.relevance_score:.2f} "
-                  f"(Strategic: {theme.strategic_relevance:.2f}, "
-                  f"Tactical: {theme.tactical_relevance:.2f})")
+            print(
+                f"   Relevance: {theme.relevance_score:.2f} "
+                f"(Strategic: {theme.strategic_relevance:.2f}, "
+                f"Tactical: {theme.tactical_relevance:.2f})"
+            )
             print(f"   Novelty: {theme.novelty_score:.2f}")
             print(f"   Description: {theme.description}")
 
             if theme.key_points:
-                print(f"   Key Points:")
+                print("   Key Points:")
                 for point in theme.key_points[:3]:  # Show top 3
                     print(f"   • {point}")
 
@@ -88,10 +91,12 @@ async def main_async(args) -> None:
 
             if theme.historical_context:
                 hist = theme.historical_context
-                print(f"   Historical: {hist.total_mentions} mentions since "
-                      f"{hist.first_mention.strftime('%Y-%m-%d')} ({hist.mention_frequency})")
+                print(
+                    f"   Historical: {hist.total_mentions} mentions since "
+                    f"{hist.first_mention.strftime('%Y-%m-%d')} ({hist.mention_frequency})"
+                )
                 if hist.previous_discussions:
-                    print(f"   Previous Points:")
+                    print("   Previous Points:")
                     for prev in hist.previous_discussions[:2]:
                         print(f"   • {prev}")
 
@@ -132,28 +137,30 @@ async def main_async(args) -> None:
 
     # Export to JSON if requested
     if args.output:
-        with open(args.output, "w") as f:
-            json.dump(result.model_dump(), f, indent=2, default=str)
+        json_content = json.dumps(result.model_dump(), indent=2, default=str)
+        Path(args.output).write_text(json_content)
         print(f"✓ Results exported to {args.output}")
 
     # Performance metrics
     print(f"\n{'='*80}")
-    print(f"PERFORMANCE METRICS")
+    print("PERFORMANCE METRICS")
     print(f"{'='*80}")
     print(f"Processing Time: {result.processing_time_seconds:.2f}s")
     print(f"Newsletters/second: {result.newsletter_count / result.processing_time_seconds:.2f}")
-    print(f"Average time per newsletter: {result.processing_time_seconds / result.newsletter_count:.2f}s")
+    print(
+        f"Average time per newsletter: {result.processing_time_seconds / result.newsletter_count:.2f}s"
+    )
 
     # Check if we should recommend Gemini Flash
     if result.processing_time_seconds > 30 and not args.use_large_context:
         print(f"\n⚠️  RECOMMENDATION: Processing took {result.processing_time_seconds:.0f}s")
-        print(f"   Consider using --use-large-context flag to enable Gemini Flash")
-        print(f"   for faster processing with large context windows.")
+        print("   Consider using --use-large-context flag to enable Gemini Flash")
+        print("   for faster processing with large context windows.")
 
     if result.newsletter_count > 50 and not args.use_large_context:
         print(f"\n⚠️  RECOMMENDATION: Analyzing {result.newsletter_count} newsletters")
-        print(f"   Consider using --use-large-context flag for better performance")
-        print(f"   with large batches.")
+        print("   Consider using --use-large-context flag for better performance")
+        print("   with large batches.")
 
 
 def main() -> None:

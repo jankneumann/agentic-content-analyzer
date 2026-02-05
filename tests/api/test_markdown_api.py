@@ -17,7 +17,7 @@ class TestSummaryMarkdownAPI:
 
     def test_summary_api_returns_markdown(self, client, sample_content_with_summary):
         """Summary API returns markdown_content field."""
-        content, summary = sample_content_with_summary
+        _content, summary = sample_content_with_summary
 
         response = client.get(f"/api/v1/summaries/{summary.id}")
         assert response.status_code == 200
@@ -30,7 +30,7 @@ class TestSummaryMarkdownAPI:
 
     def test_summary_api_returns_theme_tags(self, client, sample_content_with_summary):
         """Summary API returns theme_tags field."""
-        content, summary = sample_content_with_summary
+        _content, summary = sample_content_with_summary
 
         response = client.get(f"/api/v1/summaries/{summary.id}")
         assert response.status_code == 200
@@ -42,7 +42,7 @@ class TestSummaryMarkdownAPI:
 
     def test_summary_by_content_returns_markdown(self, client, sample_content_with_summary):
         """Summary by content_id endpoint returns markdown fields."""
-        content, summary = sample_content_with_summary
+        content, _summary = sample_content_with_summary
 
         response = client.get(f"/api/v1/summaries/by-content/{content.id}")
         assert response.status_code == 200

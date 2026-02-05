@@ -1,23 +1,27 @@
 """Integration tests for ThemeAnalyzer fetching logic."""
 
+from contextlib import contextmanager
 from datetime import datetime
 from unittest.mock import MagicMock
-from contextlib import contextmanager
+
 import pytest
 from sqlalchemy.orm import Session
 
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.summary import NewsletterSummary
 from src.processors.theme_analyzer import ThemeAnalyzer
-from src.storage.database import get_db
+
 
 @pytest.fixture
 def mock_get_db(db_session):
     """Mock get_db to return the test database session."""
+
     @contextmanager
     def _mock():
         yield db_session
+
     return _mock
+
 
 # Override autouse fixture from conftest.py to avoid Neo4j connection
 @pytest.fixture(autouse=True)
@@ -25,10 +29,12 @@ def clean_neo4j():
     """Mock clean_neo4j to avoid connecting to real Neo4j."""
     pass
 
+
 @pytest.fixture(scope="module")
 def neo4j_driver():
     """Mock neo4j_driver to avoid connecting to real Neo4j."""
     return MagicMock()
+
 
 @pytest.fixture
 def sample_contents_db(db_session: Session):
@@ -42,7 +48,7 @@ def sample_contents_db(db_session: Session):
             source_id="rss-1",
             content_hash="hash1",
             markdown_content="Content 1",
-            status=ContentStatus.COMPLETED
+            status=ContentStatus.COMPLETED,
         ),
         Content(
             title="Vector Databases",
@@ -52,7 +58,7 @@ def sample_contents_db(db_session: Session):
             source_id="gmail-1",
             content_hash="hash2",
             markdown_content="Content 2",
-            status=ContentStatus.COMPLETED
+            status=ContentStatus.COMPLETED,
         ),
         Content(
             title="LLM Updates",
@@ -62,7 +68,7 @@ def sample_contents_db(db_session: Session):
             source_id="rss-2",
             content_hash="hash3",
             markdown_content="Content 3",
-            status=ContentStatus.COMPLETED
+            status=ContentStatus.COMPLETED,
         ),
         # Content outside date range
         Content(
@@ -73,7 +79,7 @@ def sample_contents_db(db_session: Session):
             source_id="rss-3",
             content_hash="hash4",
             markdown_content="Content 4",
-            status=ContentStatus.COMPLETED
+            status=ContentStatus.COMPLETED,
         ),
         # Content with different status
         Content(
@@ -84,7 +90,7 @@ def sample_contents_db(db_session: Session):
             source_id="rss-4",
             content_hash="hash5",
             markdown_content="Content 5",
-            status=ContentStatus.PENDING
+            status=ContentStatus.PENDING,
         ),
     ]
 
@@ -96,6 +102,7 @@ def sample_contents_db(db_session: Session):
         db_session.refresh(content)
 
     return contents
+
 
 @pytest.fixture
 def sample_summaries_db(db_session: Session, sample_contents_db):
@@ -112,7 +119,7 @@ def sample_summaries_db(db_session: Session, sample_contents_db):
             relevance_scores={"score": 0.9},
             agent_framework="claude",
             model_used="claude-3-opus",
-            theme_tags=["tag1", "tag2"]
+            theme_tags=["tag1", "tag2"],
         ),
         NewsletterSummary(
             content_id=sample_contents_db[1].id,
@@ -125,7 +132,7 @@ def sample_summaries_db(db_session: Session, sample_contents_db):
             relevance_scores={"score": 0.8},
             agent_framework="claude",
             model_used="claude-3-opus",
-            theme_tags=["tag3"]
+            theme_tags=["tag3"],
         ),
     ]
 
@@ -134,6 +141,7 @@ def sample_summaries_db(db_session: Session, sample_contents_db):
     db_session.commit()
 
     return summaries
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -172,9 +180,12 @@ async def test_fetch_contents_integration(db_session, sample_contents_db, mock_g
         assert "published_date" in content
         assert "source_type" in content
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_fetch_summaries_integration(db_session, sample_contents_db, sample_summaries_db, mock_get_db):
+async def test_fetch_summaries_integration(
+    db_session, sample_contents_db, sample_summaries_db, mock_get_db
+):
     """Test fetching summaries from database (INTEGRATION TEST)."""
 
     with pytest.MonkeyPatch.context() as m:
@@ -183,7 +194,7 @@ async def test_fetch_summaries_integration(db_session, sample_contents_db, sampl
         analyzer = ThemeAnalyzer()
 
         # Get IDs for contents that have summaries
-        content_ids = [c.id for c in sample_contents_db[:3]] # Includes one without summary
+        content_ids = [c.id for c in sample_contents_db[:3]]  # Includes one without summary
 
         summaries = await analyzer._fetch_summaries(content_ids)
 
@@ -194,7 +205,7 @@ async def test_fetch_summaries_integration(db_session, sample_contents_db, sampl
         summary_contents = {s["content_id"] for s in summaries}
         assert sample_contents_db[0].id in summary_contents
         assert sample_contents_db[1].id in summary_contents
-        assert sample_contents_db[2].id not in summary_contents # No summary for this one
+        assert sample_contents_db[2].id not in summary_contents  # No summary for this one
 
         # Verify structure
         summary = summaries[0]

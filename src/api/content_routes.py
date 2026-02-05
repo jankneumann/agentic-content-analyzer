@@ -234,7 +234,9 @@ async def _run_content_ingestion(
     except Exception as e:
         logger.error(f"Content ingestion failed: {e}", exc_info=True)
         _ingestion_tasks[task_id]["status"] = "error"
-        _ingestion_tasks[task_id]["message"] = "An internal error occurred during content ingestion."
+        _ingestion_tasks[task_id]["message"] = (
+            "An internal error occurred during content ingestion."
+        )
 
 
 class DuplicateInfo(BaseModel):
@@ -452,12 +454,12 @@ async def get_content_stats() -> ContentStats:
         by_source = {source.value: count for source, count in source_counts}
 
         # Count content items that don't have summaries yet
-        # This is content with no matching Summary.content_id
-        content_with_summaries = (
-            db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).subquery()
-        )
+        # Use LEFT JOIN to find content without summaries (more efficient than NOT IN subquery)
         needs_summarization_count = (
-            db.query(Content).filter(~Content.id.in_(content_with_summaries)).count()
+            db.query(func.count(Content.id))
+            .outerjoin(Summary, Content.id == Summary.content_id)
+            .filter(Summary.id.is_(None))
+            .scalar()
         )
 
         return ContentStats(
@@ -848,7 +850,9 @@ async def _run_content_summarization(
     except Exception as e:
         logger.error(f"Content summarization task failed: {e}", exc_info=True)
         _summarization_tasks[task_id]["status"] = "error"
-        _summarization_tasks[task_id]["message"] = "An internal error occurred during summarization."
+        _summarization_tasks[task_id]["message"] = (
+            "An internal error occurred during summarization."
+        )
 
 
 @router.get("/summarize/status/{task_id}")

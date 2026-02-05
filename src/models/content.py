@@ -14,7 +14,7 @@ Content Sources:
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from src.models.summary import Summary
 
 
-class ContentSource(str, Enum):
+class ContentSource(StrEnum):
     """Content source types.
 
     Unified enum replacing NewsletterSource with additional values
@@ -55,7 +55,7 @@ class ContentSource(str, Enum):
     OTHER = "other"
 
 
-class ContentStatus(str, Enum):
+class ContentStatus(StrEnum):
     """Processing status for content."""
 
     PENDING = "pending"  # Ingested, awaiting parsing
@@ -124,6 +124,7 @@ class Content(Base):  # type: ignore[valid-type, misc]
         Integer,
         ForeignKey("contents.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )  # FK to canonical Content if duplicate
 
     # Processing status

@@ -263,9 +263,9 @@ def get_artifact_content(db: Session, artifact_type: str, artifact_id: int) -> s
         notable_quotes = "\n".join(f'- "{q}"' for q in (summary.notable_quotes or []))
 
         content = f"""### Source Content
-**From:** {source_content.author if source_content else 'Unknown'}
-**Title:** {source_content.title if source_content else 'Unknown'}
-**Date:** {source_content.published_date if source_content else 'Unknown'}
+**From:** {source_content.author if source_content else "Unknown"}
+**Title:** {source_content.title if source_content else "Unknown"}
+**Date:** {source_content.published_date if source_content else "Unknown"}
 
 {source_text}
 
@@ -277,19 +277,19 @@ def get_artifact_content(db: Session, artifact_type: str, artifact_id: int) -> s
 {summary.executive_summary}
 
 **Key Themes:**
-{key_themes or 'None identified'}
+{key_themes or "None identified"}
 
 **Strategic Insights:**
-{strategic_insights or 'None identified'}
+{strategic_insights or "None identified"}
 
 **Technical Details:**
-{technical_details or 'None identified'}
+{technical_details or "None identified"}
 
 **Actionable Items:**
-{actionable_items or 'None identified'}
+{actionable_items or "None identified"}
 
 **Notable Quotes:**
-{notable_quotes or 'None identified'}
+{notable_quotes or "None identified"}
 """
         return content
 
@@ -347,13 +347,13 @@ def get_artifact_content(db: Session, artifact_type: str, artifact_id: int) -> s
 ---
 
 **Strategic Insights:**
-{strategic_insights or 'None identified'}
+{strategic_insights or "None identified"}
 
 **Technical Developments:**
-{technical_developments or 'None identified'}
+{technical_developments or "None identified"}
 
 **Emerging Trends:**
-{emerging_trends or 'None identified'}
+{emerging_trends or "None identified"}
 """
         return content
 

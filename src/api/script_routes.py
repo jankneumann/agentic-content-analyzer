@@ -10,15 +10,15 @@ Provides REST endpoints for:
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.models.chat import Conversation, MessageRole
 from src.models.podcast import (
     PodcastLength,
     PodcastRequest,
+    PodcastScriptRecord,
     PodcastStatus,
     ScriptReviewAction,
     ScriptReviewRequest,
 )
-from src.models.chat import Conversation, MessageRole
-from src.models.podcast import PodcastScriptRecord
 from src.processors.podcast_script_generator import PodcastScriptGenerator
 from src.services.script_review_service import ScriptReviewService
 from src.storage.database import get_db
@@ -160,9 +160,10 @@ async def regenerate_script_task(script_id: int, request: PodcastRequest) -> Non
             # If there are custom instructions, save them in review notes/history
             if request.custom_instructions:
                 history_entry = {
-                   "timestamp": getattr(script_record, 'created_at', None) and script_record.created_at.isoformat(),
-                   "action": "regeneration",
-                   "instructions": request.custom_instructions
+                    "timestamp": getattr(script_record, "created_at", None)
+                    and script_record.created_at.isoformat(),
+                    "action": "regeneration",
+                    "instructions": request.custom_instructions,
                 }
                 history = script_record.revision_history or []
                 history.append(history_entry)
@@ -173,14 +174,14 @@ async def regenerate_script_task(script_id: int, request: PodcastRequest) -> Non
         logger.info(f"Script {script_id} generated successfully")
 
     except Exception as e:
-        logger.error(f"Script generation failed: {e}")
+        logger.error(f"Script generation failed: {e}", exc_info=True)
         with get_db() as db:
             script_record = (
                 db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
             if script_record:
                 script_record.status = PodcastStatus.FAILED.value
-                script_record.error_message = str(e)
+                script_record.error_message = "Script generation failed due to an internal error."
                 db.commit()
 
 
@@ -250,12 +251,12 @@ async def regenerate_script(
         if conversation:
             # Extract user messages as instructions
             user_messages = [
-                msg.content
-                for msg in conversation.messages
-                if msg.role == MessageRole.USER.value
+                msg.content for msg in conversation.messages if msg.role == MessageRole.USER.value
             ]
             if user_messages:
-                custom_instructions = "User instructions:\n" + "\n".join(f"- {msg}" for msg in user_messages)
+                custom_instructions = "User instructions:\n" + "\n".join(
+                    f"- {msg}" for msg in user_messages
+                )
 
         # Create new script record
         new_script = PodcastScriptRecord(

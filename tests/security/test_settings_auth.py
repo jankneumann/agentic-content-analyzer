@@ -1,6 +1,5 @@
-
 import os
-import pytest
+
 from fastapi.testclient import TestClient
 
 # Mock env vars BEFORE importing app
@@ -14,6 +13,7 @@ os.environ["TAVILY_API_KEY"] = "tv-test-key"
 from src.api.app import app
 
 client = TestClient(app)
+
 
 def test_update_prompt_auth():
     """Test authentication for updating prompts."""
@@ -43,6 +43,7 @@ def test_update_prompt_auth():
     except Exception:
         # If client raises exception due to app crash (DB error), that's fine for this test
         pass
+
 
 def test_reset_prompt_auth():
     """Test authentication for resetting prompts."""

@@ -167,7 +167,7 @@ class TestDocumentContent:
             parser_used="markitdown",
         )
 
-        raw_text, raw_html, links = content.to_newsletter_content()
+        raw_text, _raw_html, links = content.to_newsletter_content()
 
         assert raw_text == "Simple content"
         assert links == []

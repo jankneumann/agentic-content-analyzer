@@ -1,9 +1,8 @@
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-import pytest
-import shutil
 import asyncio
+import sys
+from unittest.mock import MagicMock
+
+import pytest
 
 # === Dependency Mocking ===
 mock_settings = MagicMock()
@@ -36,7 +35,8 @@ sys.modules["openai"] = MagicMock()
 sys.modules["google.oauth2"] = MagicMock()
 
 # Now import
-from src.services.file_storage import LocalFileStorage
+from src.services.file_storage import LocalFileStorage  # noqa: E402
+
 
 class TestStorageTraversal:
     @pytest.fixture
@@ -54,21 +54,21 @@ class TestStorageTraversal:
         return storage, storage_dir, secret_file
 
     def test_path_traversal_read(self, storage_setup):
-        storage, storage_dir, secret_file = storage_setup
+        storage, _storage_dir, _secret_file = storage_setup
         traversal_path = "test/../secret.txt"
 
         with pytest.raises(ValueError, match="Path traversal detected"):
             asyncio.run(storage.get(traversal_path))
 
     def test_path_traversal_exists(self, storage_setup):
-        storage, storage_dir, secret_file = storage_setup
+        storage, _storage_dir, _secret_file = storage_setup
         traversal_path = "test/../secret.txt"
 
         with pytest.raises(ValueError, match="Path traversal detected"):
             asyncio.run(storage.exists(traversal_path))
 
     def test_path_traversal_delete(self, storage_setup):
-        storage, storage_dir, secret_file = storage_setup
+        storage, _storage_dir, _secret_file = storage_setup
         traversal_path = "test/../secret.txt"
 
         with pytest.raises(ValueError, match="Path traversal detected"):

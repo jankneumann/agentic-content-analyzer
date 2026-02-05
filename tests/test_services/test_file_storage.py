@@ -633,7 +633,6 @@ class TestRailwayFileStorage:
 
     def test_initialization_with_explicit_config(self):
         """Test initialization with explicit configuration."""
-        from src.services.file_storage import RailwayFileStorage
 
         storage = RailwayFileStorage(
             bucket="test-bucket",
@@ -650,7 +649,6 @@ class TestRailwayFileStorage:
 
     def test_initialization_requires_endpoint(self):
         """Test that initialization fails without endpoint configuration."""
-        from src.services.file_storage import RailwayFileStorage
 
         with patch("src.services.file_storage.settings") as mock_settings:
             mock_settings.railway_minio_endpoint = None
@@ -663,7 +661,6 @@ class TestRailwayFileStorage:
 
     def test_initialization_requires_credentials(self):
         """Test that initialization fails without credentials."""
-        from src.services.file_storage import RailwayFileStorage
 
         with patch("src.services.file_storage.settings") as mock_settings:
             mock_settings.railway_minio_endpoint = "http://minio:9000"
@@ -683,7 +680,6 @@ class TestRailwayFileStorage:
         so path-style addressing (https://endpoint/bucket/key) must be used instead
         of virtual-hosted style (https://bucket.endpoint/key).
         """
-        from src.services.file_storage import RailwayFileStorage
 
         storage = RailwayFileStorage(
             bucket="test-bucket",
@@ -703,7 +699,6 @@ class TestRailwayFileStorage:
 
     def test_get_url_uses_path_style(self):
         """Test URL generation uses path-style format."""
-        from src.services.file_storage import RailwayFileStorage
 
         storage = RailwayFileStorage(
             bucket="my-bucket",
@@ -722,7 +717,6 @@ class TestRailwayFileStorage:
 
     def test_provider_name(self):
         """Test provider_name returns 'railway'."""
-        from src.services.file_storage import RailwayFileStorage
 
         storage = RailwayFileStorage(
             bucket="test-bucket",
@@ -736,7 +730,6 @@ class TestRailwayFileStorage:
 
     def test_inherits_s3_operations(self):
         """Test that Railway storage inherits S3 operations."""
-        from src.services.file_storage import RailwayFileStorage
 
         storage = RailwayFileStorage(
             bucket="test-bucket",
@@ -755,7 +748,6 @@ class TestRailwayFileStorage:
 
     def test_auto_discovery_from_railway_public_domain(self):
         """Test endpoint auto-discovery from RAILWAY_PUBLIC_DOMAIN env var."""
-        from src.services.file_storage import RailwayFileStorage
 
         with patch("src.services.file_storage.settings") as mock_settings:
             mock_settings.railway_minio_endpoint = None
