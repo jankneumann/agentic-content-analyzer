@@ -1,5 +1,5 @@
-"""CLI package for newsletter aggregator commands."""
+"""CLI package for the Agentic Content Aggregator."""
 
-from src.cli.main import app
+from src.cli.app import app
 
 __all__ = ["app"]

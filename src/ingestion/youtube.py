@@ -1047,10 +1047,21 @@ class YouTubeRSSIngestionService:
 
 
 def main() -> None:
-    """CLI entry point for YouTube ingestion.
+    """CLI entry point for YouTube ingestion (deprecated).
 
     Uses the unified Content model for all ingestion by default.
+
+    .. deprecated::
+        Use ``aca ingest youtube`` instead of ``python -m src.ingestion.youtube``.
     """
+    import warnings
+
+    warnings.warn(
+        "Running 'python -m src.ingestion.youtube' is deprecated. "
+        "Use 'aca ingest youtube' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     parser = argparse.ArgumentParser(description="Ingest YouTube transcripts")
     parser.add_argument(
         "--playlist-id",

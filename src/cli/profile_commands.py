@@ -1,10 +1,11 @@
 """CLI commands for profile management.
 
 Usage:
-    newsletter-cli profile list
-    newsletter-cli profile show <name>
-    newsletter-cli profile validate <name>
-    newsletter-cli profile inspect
+    aca profile list
+    aca profile show <name>
+    aca profile validate <name>
+    aca profile inspect
+    aca profile migrate
 """
 
 from __future__ import annotations
@@ -72,7 +73,7 @@ def list_profiles(
         typer.echo(f"No profiles found in {profiles_dir}")
         typer.echo()
         typer.echo("To create a profile from your .env file:")
-        typer.echo("  newsletter-cli profile migrate --dry-run")
+        typer.echo("  aca profile migrate --dry-run")
         raise typer.Exit(0)
 
     active_name = _get_active_profile_name()
@@ -467,9 +468,9 @@ def migrate_env(
     Use --secret-patterns to add custom patterns.
 
     Examples:
-        newsletter-cli profile migrate
-        newsletter-cli profile migrate --env-file .env.production --output production
-        newsletter-cli profile migrate --dry-run
+        aca profile migrate
+        aca profile migrate --env-file .env.production --output production
+        aca profile migrate --dry-run
     """
     import yaml
 

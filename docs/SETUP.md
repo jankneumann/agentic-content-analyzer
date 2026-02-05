@@ -52,10 +52,10 @@ Profiles provide organized, validated configuration with inheritance:
 
 ```bash
 # List available profiles
-newsletter-cli profile list
+aca profile list
 
 # Validate the local profile
-newsletter-cli profile validate local
+aca profile validate local
 
 # Create secrets file for your API keys
 cat > .secrets.yaml << 'EOF'
@@ -67,7 +67,7 @@ EOF
 export PROFILE=local
 
 # Verify configuration
-newsletter-cli profile inspect
+aca profile inspect
 ```
 
 See [Profiles Guide](PROFILES.md) for complete documentation.
@@ -1178,8 +1178,10 @@ See [Model Configuration](MODEL_CONFIGURATION.md) for detailed model selection o
 ### 3. First-Time Authorization
 
 ```bash
-# Run Gmail ingestion (will trigger OAuth flow)
-python -m src.ingestion.gmail
+# Set up Gmail OAuth (or run ingestion to trigger auth flow)
+aca manage setup-gmail
+# Or directly ingest (will trigger OAuth flow on first run)
+aca ingest gmail
 
 # Browser will open for authorization
 # After auth, token.json will be saved for future use
