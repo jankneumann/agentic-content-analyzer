@@ -29,7 +29,12 @@ export function ReviewHeader({
     <div className="flex shrink-0 items-center justify-between border-b bg-background px-4 py-3">
       {/* Back button */}
       <Link to={backTo}>
-        <Button variant="ghost" size="sm" className="gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2"
+          aria-label={backLabel}
+        >
           <ArrowLeft className="h-4 w-4" />
           <span className="hidden sm:inline">{backLabel}</span>
         </Button>
