@@ -17,7 +17,7 @@
  * const { data } = useContents({ source_type: 'gmail' })
  */
 
-import { apiClient } from "./client"
+import { apiClient, API_BASE_URL } from "./client"
 import type {
   Content,
   ContentListResponse,
@@ -244,9 +244,7 @@ export function trackContentSummarization(
   onProgress?: (event: ContentSummarizationProgressEvent) => void
 ): Promise<ContentSummarizationProgressEvent> {
   return new Promise((resolve, reject) => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
-
-    fetch(`${baseUrl}/api/v1/contents/summarize/status/${taskId}`, {
+    fetch(`${API_BASE_URL}/contents/summarize/status/${taskId}`, {
       headers: {
         Accept: "text/event-stream",
       },
