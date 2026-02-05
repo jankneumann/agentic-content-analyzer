@@ -172,19 +172,19 @@ async def generate_audio_task(
         logger.info(f"Audio generation completed for podcast {podcast_id}")
 
     except Exception as e:
-        logger.error(f"Audio generation failed: {e}")
+        logger.error(f"Audio generation failed: {e}", exc_info=True)
         with get_db() as db:
             podcast = db.query(Podcast).filter(Podcast.id == podcast_id).first()
             if podcast:
                 podcast.status = "failed"
-                podcast.error_message = str(e)
+                podcast.error_message = "Audio generation failed due to an internal error."
 
             script_record = (
                 db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
             if script_record:
                 script_record.status = PodcastStatus.FAILED.value
-                script_record.error_message = str(e)
+                script_record.error_message = "Audio generation failed due to an internal error."
 
             db.commit()
 

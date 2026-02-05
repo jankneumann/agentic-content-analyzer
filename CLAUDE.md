@@ -402,6 +402,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Profile validation errors | Run `newsletter-cli profile validate <name>` to see all errors |
 | Secrets not interpolating | Check `.secrets.yaml` exists and key names match `${VAR}` references |
 | Profile inheritance cycles | Profiles cannot extend themselves or form circular `extends` chains |
+| Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
 
 ## Quick Links by Task
 

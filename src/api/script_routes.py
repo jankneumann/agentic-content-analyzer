@@ -174,14 +174,14 @@ async def regenerate_script_task(script_id: int, request: PodcastRequest) -> Non
         logger.info(f"Script {script_id} generated successfully")
 
     except Exception as e:
-        logger.error(f"Script generation failed: {e}")
+        logger.error(f"Script generation failed: {e}", exc_info=True)
         with get_db() as db:
             script_record = (
                 db.query(PodcastScriptRecord).filter(PodcastScriptRecord.id == script_id).first()
             )
             if script_record:
                 script_record.status = PodcastStatus.FAILED.value
-                script_record.error_message = str(e)
+                script_record.error_message = "Script generation failed due to an internal error."
                 db.commit()
 
 

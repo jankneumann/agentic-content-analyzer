@@ -2,6 +2,10 @@
 **Learning:** Core timestamp columns like `created_at` or `ingested_at` were missing database indexes despite being used frequently in `order_by` clauses for feed generation.
 **Action:** Always verify indexes on columns used for sorting or filtering, especially in core content tables. Use `sqlalchemy.inspect` or check `__table__.indexes` in tests to prevent regression.
 
+## 2026-01-20 - Subquery Performance
+**Learning:** `NOT IN` subqueries (e.g., `~Content.id.in_(subquery)`) can be highly inefficient, especially on large datasets.
+**Action:** Prefer `LEFT JOIN` ... `WHERE IS NULL` pattern for finding records without related records.
+
 ## 2026-01-26 - Missing Foreign Key Index on Self-Referential Relationship
 **Learning:** The `canonical_id` self-referential foreign key in `Content` model was missing an index, causing potential performance issues during deduplication checks and deletion (cascading updates).
 **Action:** Ensure all Foreign Keys, especially those used in filtering or joins (like self-referential ones), have `index=True` or an explicit index defined.
