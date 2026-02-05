@@ -127,13 +127,9 @@ class TestProfileLoadsIntoSettings:
             patch("src.config.profiles.get_profiles_dir", return_value=temp_profiles_dir),
             patch("src.config.settings._load_profile_settings") as mock_load,
         ):
-            # Remove interfering variables from the patched environment
-            if "DATABASE_URL" in os.environ:
-                os.environ.pop("DATABASE_URL")
-            if "ENVIRONMENT" in os.environ:
-                os.environ.pop("ENVIRONMENT")
-            if "ANTHROPIC_API_KEY" in os.environ:
-                os.environ.pop("ANTHROPIC_API_KEY")
+            # Clean up env vars that might interfere (from CI environment)
+            for var in ["DATABASE_URL", "ENVIRONMENT", "LOG_LEVEL", "ANTHROPIC_API_KEY"]:
+                os.environ.pop(var, None)
 
             # Simulate what _load_profile_settings returns
             mock_load.return_value = {
@@ -177,11 +173,15 @@ class TestProfileLoadsIntoSettings:
             # Remove DATABASE_PROVIDER if it exists
             os.environ.pop("DATABASE_PROVIDER", None)
 
+            # Remove interfering env vars
+            for var in ["DATABASE_URL", "ENVIRONMENT"]:
+                os.environ.pop(var, None)
+
             # Create settings - should use .env or defaults
             settings = Settings(
                 _env_file=None,
                 anthropic_api_key="test-key",  # Required field
-                environment="development", # Explicitly set for test stability
+                environment="development",  # Explicitly set for test stability
             )
 
             # Should have defaults
