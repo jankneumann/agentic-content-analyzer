@@ -26,31 +26,36 @@ All ingestion uses the unified Content model.
 
 ```bash
 # Fetch content from Gmail newsletters
-python -m src.ingestion.gmail
+aca ingest gmail
 
-# Fetch content from Substack RSS feeds
-python -m src.ingestion.substack
+# Fetch content from RSS feeds
+aca ingest rss
 
 # Fetch content from YouTube playlists
-python -m src.ingestion.youtube
+aca ingest youtube
 
 # Force reprocess existing content
-python -m src.ingestion.gmail --force
-python -m src.ingestion.substack --force
+aca ingest gmail --force
+aca ingest rss --force
 ```
 
 ### Processing
 
 ```bash
-# Summarize all pending content (via API)
-# Use the web UI at /summaries or call:
+# Summarize all pending content
+aca summarize pending
+
+# Or via API:
 curl -X POST http://localhost:8000/api/v1/contents/summarize
 
 # Create a daily digest
-python -m src.processors.digest_creator --type daily
+aca create-digest daily
 
 # Create a weekly digest
-python -m src.processors.digest_creator --type weekly
+aca create-digest weekly
+
+# Run full pipeline (ingest → summarize → digest)
+aca pipeline daily
 ```
 
 ### Review Workflow

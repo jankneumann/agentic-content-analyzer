@@ -1,0 +1,96 @@
+"""Root CLI entrypoint for the aca command.
+
+Usage:
+    aca ingest gmail
+    aca summarize pending
+    aca create-digest daily
+    aca pipeline daily
+    aca review list
+    aca analyze themes
+    aca graph query
+    aca podcast generate
+    aca manage verify-setup
+    aca profile list
+
+Or run as module:
+    python -m src.cli
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+from typing import Annotated
+
+import typer
+
+from src.cli.analyze_commands import app as analyze_app
+from src.cli.digest_commands import app as digest_app
+from src.cli.graph_commands import app as graph_app
+from src.cli.ingest_commands import app as ingest_app
+from src.cli.manage_commands import app as manage_app
+
+# Import output utilities from the shared module (avoids circular imports)
+from src.cli.output import _set_json_mode, is_json_mode, output_result  # noqa: F401
+from src.cli.pipeline_commands import app as pipeline_app
+from src.cli.podcast_commands import app as podcast_app
+from src.cli.profile_commands import app as profile_app
+from src.cli.review_commands import app as review_app
+from src.cli.summarize_commands import app as summarize_app
+
+# Root Typer application
+app = typer.Typer(
+    name="aca",
+    help="Agentic Content Aggregator — unified CLI for ingesting, summarizing, and delivering AI/Data newsletters.",
+    no_args_is_help=True,
+)
+
+# Register all sub-command groups
+app.add_typer(ingest_app, name="ingest")
+app.add_typer(summarize_app, name="summarize")
+app.add_typer(digest_app, name="create-digest")
+app.add_typer(pipeline_app, name="pipeline")
+app.add_typer(review_app, name="review")
+app.add_typer(analyze_app, name="analyze")
+app.add_typer(graph_app, name="graph")
+app.add_typer(podcast_app, name="podcast")
+app.add_typer(manage_app, name="manage")
+app.add_typer(profile_app, name="profile")
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        try:
+            version = importlib.metadata.version("agentic-newsletter-aggregator")
+        except importlib.metadata.PackageNotFoundError:
+            version = "0.1.0-dev"
+        typer.echo(f"aca {version}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main_callback(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            help="Show version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Output in JSON format (machine-readable).",
+        ),
+    ] = False,
+) -> None:
+    """Agentic Content Aggregator CLI.
+
+    Ingest newsletters, summarize content, create digests, and manage
+    the full content pipeline from a single command.
+    """
+    if json_output:
+        _set_json_mode(True)

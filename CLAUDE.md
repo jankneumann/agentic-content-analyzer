@@ -76,15 +76,28 @@ make full-down     # Stop all services
 make verify-profile # Verify API health and current profile
 make verify-opik    # Verify Opik receives traces
 
-# Content Ingestion
-python -m src.ingestion.gmail          # Gmail newsletters
-python -m src.ingestion.substack       # RSS feeds
-python -m src.ingestion.youtube        # YouTube playlists
-python -m src.ingestion.podcast        # Podcast feeds
+# Content Ingestion (aca CLI)
+aca ingest gmail                       # Gmail newsletters
+aca ingest rss                         # RSS feeds
+aca ingest youtube                     # YouTube playlists
+aca ingest podcast                     # Podcast feeds
+aca ingest files <path...>             # Local file ingestion
 
 # Processing
-python -m src.processors.summarizer    # Summarize pending content
-python -m src.processors.digest_creator --type daily
+aca summarize pending                  # Summarize pending content
+aca create-digest daily                # Create daily digest
+aca create-digest weekly               # Create weekly digest
+aca pipeline daily                     # Full daily pipeline (ingest → summarize → digest)
+
+# Review & Delivery
+aca review list                        # List pending reviews
+aca review view <id>                   # View digest content
+aca analyze themes                     # Analyze themes across content
+aca podcast generate --digest-id <id>  # Generate podcast script
+
+# Management
+aca manage verify-setup                # Check service connectivity
+aca manage check-profile-secrets       # Find unresolved secrets
 
 # Testing
 pytest                                  # All tests
@@ -135,11 +148,11 @@ Profiles provide named configuration bundles that replace scattered `.env` varia
 export PROFILE=local           # Use profiles/local.yaml
 
 # CLI Commands
-newsletter-cli profile list                    # List available profiles
-newsletter-cli profile show local              # Show resolved settings
-newsletter-cli profile validate local          # Validate configuration
-newsletter-cli profile inspect                 # Show effective Settings
-newsletter-cli profile migrate --dry-run       # Preview .env migration
+aca profile list                    # List available profiles
+aca profile show local              # Show resolved settings
+aca profile validate local          # Validate configuration
+aca profile inspect                 # Show effective Settings
+aca profile migrate --dry-run       # Preview .env migration
 ```
 
 **Profile structure** (`profiles/local.yaml`):
@@ -176,7 +189,7 @@ NEO4J_PASSWORD: secret123
 
 **Migration from `.env`**:
 ```bash
-newsletter-cli profile migrate --env-file .env --output my-profile
+aca profile migrate --env-file .env --output my-profile
 ```
 
 See [docs/PROFILES.md](docs/PROFILES.md) for complete guide.
@@ -399,7 +412,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Frontend OTel is no-op by default | Zero overhead when disabled; OTel SDK dynamically imported only when `VITE_OTEL_ENABLED=true` |
 | initTelemetry must run before React | Called at module scope in `__root.tsx` so fetch instrumentation is active before TanStack Query fires |
 | Profile not loading | Ensure `PROFILE` env var is set; profiles live in `profiles/` directory |
-| Profile validation errors | Run `newsletter-cli profile validate <name>` to see all errors |
+| Profile validation errors | Run `aca profile validate <name>` to see all errors |
 | Secrets not interpolating | Check `.secrets.yaml` exists and key names match `${VAR}` references |
 | Profile inheritance cycles | Profiles cannot extend themselves or form circular `extends` chains |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
@@ -451,7 +464,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 **Option 1: Use profiles** (recommended for new setups):
 ```bash
 export PROFILE=local           # Activates profiles/local.yaml
-newsletter-cli profile list    # See available profiles
+aca profile list    # See available profiles
 ```
 
 **Option 2: Traditional .env** (still fully supported):

@@ -44,29 +44,29 @@ When resolving settings, the system uses this priority order (highest first):
 
 ```bash
 # List available profiles
-newsletter-cli profile list
+aca profile list
 
 # Validate a profile before using
-newsletter-cli profile validate local
+aca profile validate local
 
 # Activate a profile
 export PROFILE=local
 
 # Verify effective configuration
-newsletter-cli profile inspect
+aca profile inspect
 ```
 
 ### Creating Your First Profile
 
 ```bash
 # Migrate from existing .env (preview first)
-newsletter-cli profile migrate --dry-run
+aca profile migrate --dry-run
 
 # Create the profile
-newsletter-cli profile migrate --output my-profile
+aca profile migrate --output my-profile
 
 # Review and activate
-newsletter-cli profile show my-profile
+aca profile show my-profile
 export PROFILE=my-profile
 ```
 
@@ -275,8 +275,8 @@ Some provider combinations have additional requirements:
 List all available profiles:
 
 ```bash
-newsletter-cli profile list
-newsletter-cli profile list --dir /path/to/profiles
+aca profile list
+aca profile list --dir /path/to/profiles
 ```
 
 Output shows profile name, description, extends relationship, and marks the active profile.
@@ -286,9 +286,9 @@ Output shows profile name, description, extends relationship, and marks the acti
 Display a profile with resolved inheritance:
 
 ```bash
-newsletter-cli profile show local
-newsletter-cli profile show local --raw          # Show unresolved YAML
-newsletter-cli profile show local --show-secrets # Reveal secret values
+aca profile show local
+aca profile show local --raw          # Show unresolved YAML
+aca profile show local --show-secrets # Reveal secret values
 ```
 
 ### profile validate
@@ -296,8 +296,8 @@ newsletter-cli profile show local --show-secrets # Reveal secret values
 Validate a profile for completeness and correctness:
 
 ```bash
-newsletter-cli profile validate local
-newsletter-cli profile validate local --strict  # Also check unresolved variables
+aca profile validate local
+aca profile validate local --strict  # Also check unresolved variables
 ```
 
 Exit codes:
@@ -309,8 +309,8 @@ Exit codes:
 Show effective Settings (profile + env + secrets merged):
 
 ```bash
-newsletter-cli profile inspect
-newsletter-cli profile inspect --show-secrets
+aca profile inspect
+aca profile inspect --show-secrets
 ```
 
 ### profile migrate
@@ -319,16 +319,16 @@ Convert `.env` file to profile format:
 
 ```bash
 # Preview migration
-newsletter-cli profile migrate --dry-run
+aca profile migrate --dry-run
 
 # Create profile
-newsletter-cli profile migrate --output production
+aca profile migrate --output production
 
 # Custom source file
-newsletter-cli profile migrate --env-file .env.production --output production
+aca profile migrate --env-file .env.production --output production
 
 # Additional secret patterns
-newsletter-cli profile migrate --secret-patterns "PRIVATE,INTERNAL"
+aca profile migrate --secret-patterns "PRIVATE,INTERNAL"
 ```
 
 ## Migration from .env
@@ -337,7 +337,7 @@ newsletter-cli profile migrate --secret-patterns "PRIVATE,INTERNAL"
 
 1. **Preview the migration**:
    ```bash
-   newsletter-cli profile migrate --dry-run
+   aca profile migrate --dry-run
    ```
 
 2. **Review the output** for:
@@ -347,7 +347,7 @@ newsletter-cli profile migrate --secret-patterns "PRIVATE,INTERNAL"
 
 3. **Run the migration**:
    ```bash
-   newsletter-cli profile migrate --output my-profile
+   aca profile migrate --output my-profile
    ```
 
 4. **Review generated files**:
@@ -356,13 +356,13 @@ newsletter-cli profile migrate --secret-patterns "PRIVATE,INTERNAL"
 
 5. **Validate the profile**:
    ```bash
-   newsletter-cli profile validate my-profile --strict
+   aca profile validate my-profile --strict
    ```
 
 6. **Test with the profile**:
    ```bash
    export PROFILE=my-profile
-   newsletter-cli profile inspect
+   aca profile inspect
    ```
 
 7. **Remove or keep .env**:
@@ -582,7 +582,7 @@ api_key: sk-ant-actual-secret
 Always validate after changes:
 
 ```bash
-newsletter-cli profile validate my-profile --strict
+aca profile validate my-profile --strict
 ```
 
 ### 4. Document Custom Profiles
@@ -615,17 +615,17 @@ echo $PROFILE
 ls profiles/
 
 # Check for syntax errors
-newsletter-cli profile validate $PROFILE
+aca profile validate $PROFILE
 ```
 
 ### Validation Errors
 
 ```bash
 # See all errors at once
-newsletter-cli profile validate my-profile
+aca profile validate my-profile
 
 # Check with strict mode for unresolved variables
-newsletter-cli profile validate my-profile --strict
+aca profile validate my-profile --strict
 ```
 
 ### Secrets Not Resolving
@@ -646,7 +646,7 @@ echo $ANTHROPIC_API_KEY
 
 ```bash
 # Show raw profile to see extends
-newsletter-cli profile show my-profile --raw
+aca profile show my-profile --raw
 
 # Verify parent exists
 ls profiles/base.yaml
