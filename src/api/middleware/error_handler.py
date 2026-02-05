@@ -47,7 +47,7 @@ def register_error_handlers(app: FastAPI) -> None:
         )
         body: dict[str, Any] = {
             "error": "Internal Server Error",
-            "detail": str(exc),
+            "detail": "An internal error occurred",
         }
         if trace_id:
             body["trace_id"] = trace_id
