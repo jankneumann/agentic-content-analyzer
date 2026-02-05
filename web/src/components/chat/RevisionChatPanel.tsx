@@ -26,6 +26,7 @@ import {
   Search,
   Bug,
 } from "lucide-react"
+import { API_BASE_URL } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
@@ -235,9 +236,8 @@ export function RevisionChatPanel({
     setDebugDialogOpen(true)
 
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
       const response = await fetch(
-        `${baseUrl}/api/v1/chat/conversations/${conversationId}/context`
+        `${API_BASE_URL}/chat/conversations/${conversationId}/context`
       )
       if (!response.ok) {
         throw new Error(`Failed to fetch context: ${response.statusText}`)

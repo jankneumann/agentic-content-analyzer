@@ -18,7 +18,7 @@
  * })
  */
 
-import { apiClient } from "./client"
+import { apiClient, API_BASE_URL } from "./client"
 import type {
   Conversation,
   ConversationListItem,
@@ -164,8 +164,6 @@ export async function sendMessage(
   onChunk?: (chunk: MessageChunk) => void
 ): Promise<ChatMessage> {
   return new Promise((resolve, reject) => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
-
     // Convert request to API format
     const body = {
       content: request.content,
@@ -173,7 +171,7 @@ export async function sendMessage(
       model: request.model,
     }
 
-    fetch(`${baseUrl}/api/v1/chat/conversations/${conversationId}/messages`, {
+    fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -280,9 +278,7 @@ export async function regenerateLastMessage(
   onChunk?: (chunk: MessageChunk) => void
 ): Promise<ChatMessage> {
   return new Promise((resolve, reject) => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
-
-    fetch(`${baseUrl}/api/v1/chat/conversations/${conversationId}/regenerate`, {
+    fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/regenerate`, {
       method: "POST",
       headers: {
         Accept: "text/event-stream",

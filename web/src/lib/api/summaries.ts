@@ -14,7 +14,7 @@
  * const result = await triggerSummarization({ newsletterIds: ['id1', 'id2'] })
  */
 
-import { apiClient } from "./client"
+import { apiClient, API_BASE_URL } from "./client"
 import type {
   Summary,
   SummaryListItem,
@@ -221,8 +221,6 @@ export function regenerateSummaryWithFeedback(
   onProgress?: (event: RegenerationProgressEvent) => void
 ): Promise<SummaryPreviewData | null> {
   return new Promise((resolve, reject) => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || ""
-
     // Convert request to API format
     const body = {
       feedback: request.feedback,
@@ -233,7 +231,7 @@ export function regenerateSummaryWithFeedback(
       preview_only: request.previewOnly ?? true,
     }
 
-    fetch(`${baseUrl}/api/v1/summaries/${summaryId}/regenerate-with-feedback`, {
+    fetch(`${API_BASE_URL}/summaries/${summaryId}/regenerate-with-feedback`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
