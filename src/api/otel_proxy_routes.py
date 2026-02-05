@@ -92,6 +92,11 @@ async def proxy_traces(request: Request) -> Response:
                 key, value = pair.split("=", 1)
                 upstream_headers[key.strip()] = value.strip()
 
+    # Add Opik project name header to route frontend traces to the correct project
+    # This matches the header the backend Opik provider uses for direct traces
+    if settings.opik_project_name:
+        upstream_headers["projectName"] = settings.opik_project_name
+
     # Forward to OTLP collector
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
