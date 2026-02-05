@@ -123,6 +123,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
+preview = true  # Enable preview rules for CI/local consistency
 select = [
     "E",      # pycodestyle errors
     "F",      # Pyflakes
@@ -161,6 +162,10 @@ ignore = [
     "C416",   # unnecessary comprehension (minor)
     "N806",   # variable naming in function (CONSTANTS are fine)
     "RUF022", # __all__ sorting (not critical)
+    "RUF029", # async without await (FastAPI requires async even for sync handlers)
+    "RUF067", # __init__ only re-exports (our __init__.py files have valid impl code)
+    "S404",   # subprocess import (we control the inputs)
+    "ASYNC240", # pathlib in async (temp file ops are fast enough)
 ]
 
 [tool.ruff.lint.per-file-ignores]

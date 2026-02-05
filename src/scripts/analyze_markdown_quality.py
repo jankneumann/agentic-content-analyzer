@@ -127,7 +127,7 @@ def print_content_analysis(
         verbose: Whether to show full preview
         max_preview: Maximum characters to show in preview
     """
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     title = content.title[:60] if content.title else "N/A"
     print(f"ID: {content.id} | Title: {title}...")
     source = content.source_type.value if content.source_type else "Unknown"
@@ -167,7 +167,7 @@ def print_aggregate_stats(all_stats: list[MarkdownStats]) -> None:
         print("\n⚠️  No content items with markdown found")
         return
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("📈 AGGREGATE STATISTICS")
     print("=" * 80)
 

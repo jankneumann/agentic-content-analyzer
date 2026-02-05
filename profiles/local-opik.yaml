@@ -1,0 +1,30 @@
+# Local Development Profile with Opik Observability
+# ==================================================
+# Extends local profile with Opik self-hosted LLM tracing enabled.
+# Requires Opik stack running via `make opik-up`.
+#
+# Usage:
+#   make opik-up          # Start Opik stack (waits for health)
+#   export PROFILE=local-opik
+#   make api              # or: make dev-opik
+#
+# UIs:
+#   Opik:   http://localhost:5174
+#   API:    http://localhost:8000
+#   Vite:   http://localhost:5173  (runs simultaneously, no conflict)
+
+name: local-opik
+extends: local
+description: Local development with Opik self-hosted LLM tracing
+
+# Override observability provider
+providers:
+  observability: opik
+
+# Opik-specific settings
+settings:
+  observability:
+    otel_enabled: true
+    otel_service_name: newsletter-aggregator
+    # Opik OTLP endpoint (nginx proxies to backend:8080)
+    otel_exporter_otlp_endpoint: "http://localhost:5174/api/v1/private/otel"

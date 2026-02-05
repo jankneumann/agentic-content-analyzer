@@ -395,7 +395,7 @@ class TestContentWithSummary:
 
     def test_get_content_shows_completed_status(self, client, sample_content_with_summary):
         """Content with summary shows completed status."""
-        content, summary = sample_content_with_summary
+        content, _summary = sample_content_with_summary
         response = client.get(f"/api/v1/contents/{content.id}")
         assert response.status_code == 200
         data = response.json()

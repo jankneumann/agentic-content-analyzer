@@ -84,7 +84,7 @@ class TestFetchURL:
             mock_client_instance.__aexit__.return_value = None
             mock_client.return_value = mock_client_instance
 
-            html, final_url = await extractor._fetch_url("https://example.com/redirect")
+            _html, final_url = await extractor._fetch_url("https://example.com/redirect")
 
             assert final_url == "https://example.com/final-url"
 

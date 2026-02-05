@@ -1,7 +1,7 @@
 """Digest data models."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from src.models.audio_digest import AudioDigest
 
 
-class DigestType(str, Enum):
+class DigestType(StrEnum):
     """Digest type."""
 
     DAILY = "daily"
@@ -22,7 +22,7 @@ class DigestType(str, Enum):
     SUB_DIGEST = "sub_digest"  # Sub-digest for hierarchical digest creation
 
 
-class DigestStatus(str, Enum):
+class DigestStatus(StrEnum):
     """Digest generation status."""
 
     PENDING = "PENDING"

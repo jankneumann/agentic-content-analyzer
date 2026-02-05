@@ -185,7 +185,7 @@
   --secondary-foreground: hsl(210 40% 98%);
 
   --muted: hsl(217.2 32.6% 17.5%);
-  --muted-foreground: hsl(215 20.2% 65.1%);
+  --muted-foreground: hsl(215 20% 80%);
 
   --accent: hsl(217.2 32.6% 17.5%);
   --accent-foreground: hsl(210 40% 98%);
@@ -234,45 +234,36 @@
 /**
  * Prose/Typography Customizations
  *
- * Customize the @tailwindcss/typography plugin to match our theme.
- * These styles ensure markdown content renders properly with
- * appropriate heading sizes, list styles, and spacing.
+ * Override @tailwindcss/typography plugin defaults to match our theme.
+ *
+ * IMPORTANT: These styles are OUTSIDE any @layer because:
+ * - The typography plugin generates its defaults as unlayered styles
+ * - In CSS cascade, unlayered styles beat layered styles (regardless of layer order)
+ * - By placing our overrides outside layers AND after the plugin import,
+ *   our rules take precedence due to source order
+ *
+ * The plugin sets: --tw-prose-body: oklch(37.3% 0.034 259.733) (dark gray)
+ * We override with: --tw-prose-body: var(--foreground) (theme-aware)
  */
-@layer components {
-  .prose {
-    --tw-prose-body: var(--foreground);
-    --tw-prose-headings: var(--foreground);
-    --tw-prose-links: var(--primary);
-    --tw-prose-bold: var(--foreground);
-    --tw-prose-counters: var(--muted-foreground);
-    --tw-prose-bullets: var(--muted-foreground);
-    --tw-prose-hr: var(--border);
-    --tw-prose-quotes: var(--foreground);
-    --tw-prose-quote-borders: var(--border);
-    --tw-prose-captions: var(--muted-foreground);
-    --tw-prose-code: var(--foreground);
-    --tw-prose-pre-code: var(--foreground);
-    --tw-prose-pre-bg: var(--muted);
-    --tw-prose-th-borders: var(--border);
-    --tw-prose-td-borders: var(--border);
-  }
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--muted);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
 
-  /* Ensure dark mode prose uses inverted colors */
-  .dark .prose {
-    --tw-prose-invert-body: var(--foreground);
-    --tw-prose-invert-headings: var(--foreground);
-    --tw-prose-invert-links: hsl(210 40% 80%);
-    --tw-prose-invert-bold: var(--foreground);
-    --tw-prose-invert-counters: var(--muted-foreground);
-    --tw-prose-invert-bullets: var(--muted-foreground);
-    --tw-prose-invert-hr: var(--border);
-    --tw-prose-invert-quotes: var(--foreground);
-    --tw-prose-invert-quote-borders: var(--border);
-    --tw-prose-invert-captions: var(--muted-foreground);
-    --tw-prose-invert-code: var(--foreground);
-    --tw-prose-invert-pre-code: var(--foreground);
-    --tw-prose-invert-pre-bg: var(--muted);
-    --tw-prose-invert-th-borders: var(--border);
-    --tw-prose-invert-td-borders: var(--border);
-  }
+/* Dark mode: lighter link color for better contrast */
+.dark .prose {
+  --tw-prose-links: hsl(210 40% 80%);
 }

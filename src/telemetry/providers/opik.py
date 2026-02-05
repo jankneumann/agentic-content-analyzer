@@ -32,10 +32,9 @@ GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 GEN_AI_PROMPT = "gen_ai.prompt"
 GEN_AI_COMPLETION = "gen_ai.completion"
 
-# Default OTLP endpoints
-# Both follow the pattern: {base}/api/v1/private/otel (OTLPSpanExporter appends /v1/traces)
+# Default OTLP endpoint for Comet Cloud
+# Follows the pattern: {base}/api/v1/private/otel (OTLPSpanExporter appends /v1/traces)
 COMET_CLOUD_OTLP_ENDPOINT = "https://www.comet.com/opik/api/v1/private/otel"
-SELF_HOSTED_OTLP_ENDPOINT = "http://localhost:5173/api/v1/private/otel"
 
 
 class OpikProvider:
@@ -99,18 +98,19 @@ class OpikProvider:
 
         return headers
 
-    def _get_endpoint(self) -> str:
+    def _get_endpoint(self) -> str | None:
         """Get the OTLP endpoint URL.
 
-        Defaults to Comet Cloud if API key is set and no explicit endpoint.
-        For self-hosted, uses the Opik nginx proxy which routes
-        /api/v1/private/otel/* to the backend's OTLP handler.
+        Returns the configured endpoint, defaulting to Comet Cloud if
+        API key is set. For self-hosted Opik, the endpoint must be
+        configured via profile (no hardcoded fallback).
         """
         if self._endpoint:
             return self._endpoint
         if self._api_key:
             return COMET_CLOUD_OTLP_ENDPOINT
-        return SELF_HOSTED_OTLP_ENDPOINT
+        # Self-hosted requires explicit endpoint configuration
+        return None
 
     def setup(self, app: FastAPI | None = None) -> None:
         """Initialize OTel SDK with OTLP exporter pointing to Opik."""
@@ -126,11 +126,19 @@ class OpikProvider:
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+            # Validate endpoint is configured for self-hosted
+            endpoint = self._get_endpoint()
+            if endpoint is None:
+                logger.error(
+                    "Opik provider requires endpoint configuration for self-hosted. "
+                    "Set otel_exporter_otlp_endpoint in your profile or use OPIK_API_KEY for Comet Cloud."
+                )
+                return
+
             resource = Resource.create({"service.name": self._service_name})
             self._tracer_provider = TracerProvider(resource=resource)
 
             # Ensure endpoint includes /v1/traces path
-            endpoint = self._get_endpoint()
             if not endpoint.endswith("/v1/traces"):
                 endpoint = f"{endpoint.rstrip('/')}/v1/traces"
 

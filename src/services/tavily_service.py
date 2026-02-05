@@ -27,7 +27,9 @@ class TavilyService:
         else:
             logger.warning("Tavily API key not configured. Web search will be unavailable.")
 
-    def search(self, query: str, search_depth: str = "basic", max_results: int = 3) -> list[dict[str, Any]]:
+    def search(
+        self, query: str, search_depth: str = "basic", max_results: int = 3
+    ) -> list[dict[str, Any]]:
         """Perform a web search.
 
         Args:
@@ -78,6 +80,7 @@ class TavilyService:
 
 # Global instance
 _tavily_service = None
+
 
 def get_tavily_service() -> TavilyService:
     """Get the singleton Tavily service instance."""

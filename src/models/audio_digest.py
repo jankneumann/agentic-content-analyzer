@@ -6,7 +6,7 @@ with configurable voice and speed options.
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (
@@ -24,7 +24,7 @@ from sqlalchemy.orm import relationship
 from src.models.base import Base
 
 
-class AudioDigestStatus(str, Enum):
+class AudioDigestStatus(StrEnum):
     """Status of audio digest generation."""
 
     PENDING = "pending"

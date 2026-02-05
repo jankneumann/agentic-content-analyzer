@@ -1,7 +1,7 @@
 """Theme analysis data models."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
@@ -9,7 +9,7 @@ from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
 from src.models.base import Base
 
 
-class ThemeCategory(str, Enum):
+class ThemeCategory(StrEnum):
     """Theme categorization."""
 
     ML_AI = "ml_ai"  # LLMs, agents, RAG, fine-tuning
@@ -22,7 +22,7 @@ class ThemeCategory(str, Enum):
     OTHER = "other"  # Miscellaneous
 
 
-class ThemeTrend(str, Enum):
+class ThemeTrend(StrEnum):
     """Theme trend classification."""
 
     EMERGING = "emerging"  # New topic, recent mentions

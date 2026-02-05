@@ -37,3 +37,8 @@
 **Vulnerability:** The `URLExtractor` in `src/services/url_extractor.py` accepted user-provided URLs (via `save-url` endpoint) and fetched them using `httpx` without validating if the target was an internal or private IP address. This allowed potential Server-Side Request Forgery (SSRF) attacks against internal services (e.g., AWS metadata, localhost databases).
 **Learning:** Fetching URLs provided by users is always risky. Libraries like `httpx` and `requests` do not block private IPs by default. DNS Rebinding attacks can also bypass simple hostname checks.
 **Prevention:** Implement strict URL validation (`src.utils.security.validate_url`) that resolves hostnames and checks against private/reserved IP ranges before fetching. Use HTTP client hooks (e.g., `event_hooks` in `httpx`) to validate redirect targets as well.
+
+## 2025-05-29 - [Persistent Error Leakage in Podcast/Script Tasks]
+**Vulnerability:** Background tasks for podcast script generation (`generate_script_task`) and audio generation (`generate_audio_task`) caught generic `Exception` and saved `str(e)` to the `error_message` database field. This exposed internal error details (including potential secrets or connection strings) to API consumers, despite previous efforts to fix this pattern elsewhere.
+**Learning:** Security fixes are often incomplete if they rely on manual discovery. The "leak `str(e)`" pattern appeared in modules (`script_routes.py`, `podcast_routes.py`) that were missed in previous remediation waves.
+**Prevention:** Use automated code scanning (SAST) or `grep` across the *entire* codebase to identify all instances of `error_message = str(e)` or similar patterns. Establish a strict rule: never assign raw exception strings to user-visible data models.

@@ -137,6 +137,10 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+
+# Profile secrets (NEVER commit secrets!)
+.secrets.yaml
+.secrets.yml
 .venv
 env/
 venv/

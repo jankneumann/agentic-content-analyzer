@@ -229,7 +229,7 @@ def load_sources_directory(sources_dir: Path) -> SourcesConfig:
 
     enabled_count = sum(1 for s in config.sources if s.enabled)
     logger.info(
-        f"Loaded {len(config.sources)} sources from {sources_dir} " f"({enabled_count} enabled)"
+        f"Loaded {len(config.sources)} sources from {sources_dir} ({enabled_count} enabled)"
     )
     return config
 
@@ -267,9 +267,7 @@ def load_sources_yaml(file_path: Path) -> SourcesConfig:
         raise ValueError(f"Source validation failed in {file_path}: {e}") from e
 
     enabled_count = sum(1 for s in config.sources if s.enabled)
-    logger.info(
-        f"Loaded {len(config.sources)} sources from {file_path} " f"({enabled_count} enabled)"
-    )
+    logger.info(f"Loaded {len(config.sources)} sources from {file_path} ({enabled_count} enabled)")
     return config
 
 

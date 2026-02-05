@@ -31,14 +31,11 @@ import argparse
 import asyncio
 import logging
 import sys
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from src.ingestion.gmail import GmailIngestionService
 from src.ingestion.rss import RSSIngestionService
-from src.models.digest import Digest, DigestData, DigestRequest, DigestStatus, DigestType
-from src.models.newsletter import Newsletter, ProcessingStatus
+from src.models.digest import Digest, DigestRequest, DigestStatus, DigestType
 from src.processors.digest_creator import DigestCreator
 from src.processors.summarizer import NewsletterSummarizer
 from src.storage.database import get_db
@@ -62,7 +59,7 @@ class NewsletterPipeline:
     async def run_daily_pipeline(
         self,
         date: datetime,
-        sources: list[str] = ["gmail", "rss"],
+        sources: list[str] | None = None,
         auto_approve: bool = False,
     ) -> dict:
         """
@@ -76,6 +73,8 @@ class NewsletterPipeline:
         Returns:
             Statistics dictionary with counts and errors
         """
+        if sources is None:
+            sources = ["gmail", "rss"]
         logger.info(f"Starting daily pipeline for {date.date()}")
 
         # Step 1: Ingest newsletters (optional)
@@ -106,7 +105,7 @@ class NewsletterPipeline:
     async def run_weekly_pipeline(
         self,
         end_date: datetime,
-        sources: list[str] = ["gmail", "rss"],
+        sources: list[str] | None = None,
         auto_approve: bool = False,
     ) -> dict:
         """
@@ -120,6 +119,8 @@ class NewsletterPipeline:
         Returns:
             Statistics dictionary
         """
+        if sources is None:
+            sources = ["gmail", "rss"]
         start_date = end_date - timedelta(days=7)
         logger.info(f"Starting weekly pipeline for {start_date.date()} to {end_date.date()}")
 
@@ -226,7 +227,7 @@ class NewsletterPipeline:
         period_start: datetime,
         period_end: datetime,
         auto_approve: bool,
-    ) -> Optional[int]:
+    ) -> int | None:
         """
         Create and save digest.
 
@@ -330,8 +331,8 @@ Examples:
 
     parser.add_argument(
         "--date",
-        type=lambda s: datetime.strptime(s, "%Y-%m-%d"),
-        default=datetime.now(),
+        type=lambda s: datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=UTC),
+        default=datetime.now(UTC),
         help="Date to process (YYYY-MM-DD, default: today)",
     )
 

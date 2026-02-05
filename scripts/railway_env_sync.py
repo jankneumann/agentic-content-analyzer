@@ -220,7 +220,7 @@ Examples:
 
     # Check Railway status
     if args.apply:
-        ok, error = check_railway_status()
+        _ok, error = check_railway_status()
         if error == "no_cli":
             print(f"{RED}Error: Railway CLI not installed{NC}")
             print("Install with: brew install railway")
@@ -298,7 +298,7 @@ Examples:
             transform_note = f" {BLUE}(transformed){NC}" if transformed else ""
 
             if args.apply:
-                success, error = set_railway_variable(name, value)
+                _success, _error = set_railway_variable(name, value)
                 # Railway CLI sometimes returns errors even on success
                 # We'll verify at the end
                 applied_vars.append((name, value))

@@ -1,0 +1,97 @@
+# Base Profile - Development Defaults
+# ====================================
+# This profile provides sensible defaults for local development.
+# Other profiles should extend this one and override specific settings.
+#
+# Usage:
+#   export PROFILE=base
+#   python -m src.api.app
+#
+# Or extend in another profile:
+#   extends: base
+
+name: base
+description: Base configuration with local development defaults
+
+# =============================================================================
+# Provider Choices
+# =============================================================================
+# Choose which infrastructure providers to use.
+# Options are validated at startup.
+
+providers:
+  database: local      # local, supabase, neon, railway
+  neo4j: local         # local, auradb
+  storage: local       # local, s3, supabase, railway
+  observability: noop  # noop, opik, braintrust, otel
+
+# =============================================================================
+# Settings
+# =============================================================================
+
+settings:
+  # ---------------------------------------------------------------------------
+  # Environment
+  # ---------------------------------------------------------------------------
+  environment: development
+  log_level: INFO
+  allowed_origins: "http://localhost:5173,http://localhost:3000"
+
+  # ---------------------------------------------------------------------------
+  # Database Settings
+  # ---------------------------------------------------------------------------
+  database:
+    # Default local PostgreSQL (Docker Compose)
+    database_url: "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
+    redis_url: "redis://localhost:6379/0"
+
+  # ---------------------------------------------------------------------------
+  # Neo4j / Knowledge Graph Settings
+  # ---------------------------------------------------------------------------
+  neo4j:
+    # Default local Neo4j (Docker Compose)
+    neo4j_uri: "bolt://localhost:7687"
+    neo4j_user: neo4j
+    neo4j_password: "${NEO4J_PASSWORD:-newsletter_password}"
+    semaphore_limit: 1
+
+  # ---------------------------------------------------------------------------
+  # Storage Settings
+  # ---------------------------------------------------------------------------
+  storage:
+    storage_provider: local
+    image_storage_provider: local
+    image_storage_path: "data/images"
+    image_max_size_mb: 10
+
+  # ---------------------------------------------------------------------------
+  # Observability Settings
+  # ---------------------------------------------------------------------------
+  observability:
+    otel_enabled: false
+    otel_service_name: newsletter-aggregator
+
+  # ---------------------------------------------------------------------------
+  # API Keys (loaded from secrets)
+  # ---------------------------------------------------------------------------
+  # These use ${VAR} syntax to reference secrets from .secrets.yaml
+  # Environment variables always take precedence.
+  api_keys:
+    anthropic_api_key: "${ANTHROPIC_API_KEY}"
+    openai_api_key: "${OPENAI_API_KEY:-}"
+    google_api_key: "${GOOGLE_API_KEY:-}"
+    tavily_api_key: "${TAVILY_API_KEY:-}"
+    elevenlabs_api_key: "${ELEVENLABS_API_KEY:-}"
+    sendgrid_api_key: "${SENDGRID_API_KEY:-}"
+
+  # ---------------------------------------------------------------------------
+  # Digest Settings
+  # ---------------------------------------------------------------------------
+  digest:
+    digest_context_window_percentage: 0.5
+    digest_newsletter_budget_percentage: 0.6
+    digest_theme_budget_percentage: 0.3
+    digest_prompt_overhead_percentage: 0.1
+    daily_digest_hour: 7
+    weekly_digest_day: 1
+    weekly_digest_hour: 7

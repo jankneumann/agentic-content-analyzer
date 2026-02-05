@@ -1,12 +1,12 @@
 """Document content models for unified parser output."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class DocumentFormat(str, Enum):
+class DocumentFormat(StrEnum):
     """Supported input document formats."""
 
     PDF = "pdf"

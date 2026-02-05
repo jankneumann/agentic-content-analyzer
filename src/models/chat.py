@@ -1,7 +1,7 @@
 """Chat data models for AI revision conversations."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import (
     JSON,
@@ -19,7 +19,7 @@ from sqlalchemy.orm import relationship
 from src.models.base import Base
 
 
-class ArtifactType(str, Enum):
+class ArtifactType(StrEnum):
     """Type of artifact the conversation is about."""
 
     SUMMARY = "summary"
@@ -27,7 +27,7 @@ class ArtifactType(str, Enum):
     SCRIPT = "script"
 
 
-class MessageRole(str, Enum):
+class MessageRole(StrEnum):
     """Role of message sender."""
 
     USER = "user"

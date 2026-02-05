@@ -49,15 +49,15 @@ STANDARD_SECTIONS = {
 }
 
 # Pattern for embedded references: [TYPE:id] or [TYPE:id|params]
-EMBED_PATTERN = re.compile(r"\[(?P<type>TABLE|IMAGE|CODE):(?P<id>[^\]|]+)(?:\|(?P<params>[^\]]+))?\]")
+EMBED_PATTERN = re.compile(
+    r"\[(?P<type>TABLE|IMAGE|CODE):(?P<id>[^\]|]+)(?:\|(?P<params>[^\]]+))?\]"
+)
 
 # Pattern for theme hashtags: #theme-name or #ThemeName
 HASHTAG_PATTERN = re.compile(r"#([a-zA-Z][a-zA-Z0-9_-]*)")
 
 # Pattern for relevance scores: **Category Name**: 0.85 or Category Name: 0.85
-SCORE_PATTERN = re.compile(
-    r"(?:\*\*)?([A-Za-z][A-Za-z0-9 _-]+?)(?:\*\*)?:\s*(\d+\.?\d*)"
-)
+SCORE_PATTERN = re.compile(r"(?:\*\*)?([A-Za-z][A-Za-z0-9 _-]+?)(?:\*\*)?:\s*(\d+\.?\d*)")
 
 
 def parse_sections(markdown: str) -> list[MarkdownSection]:

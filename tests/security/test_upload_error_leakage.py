@@ -13,12 +13,14 @@ sys.modules["graphiti_core.llm_client"] = MagicMock()
 sys.modules["graphiti_core.llm_client.anthropic_client"] = MagicMock()
 sys.modules["graphiti_core.nodes"] = MagicMock()
 
-import pytest
-from unittest.mock import patch, AsyncMock
-from fastapi.testclient import TestClient
-from src.api.app import app
+from unittest.mock import AsyncMock, patch  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from src.api.app import app  # noqa: E402
 
 client = TestClient(app)
+
 
 def test_upload_error_leakage_mitigated():
     """
@@ -31,13 +33,13 @@ def test_upload_error_leakage_mitigated():
     with patch("src.api.upload_routes.FileContentIngestionService") as mock_service:
         mock_instance = mock_service.return_value
         # Mocking ingest_bytes to raise an exception
-        mock_instance.ingest_bytes = AsyncMock(side_effect=RuntimeError(f"Connection failed: {sensitive_data}"))
+        mock_instance.ingest_bytes = AsyncMock(
+            side_effect=RuntimeError(f"Connection failed: {sensitive_data}")
+        )
 
         # We also need to mock get_db to avoid actual DB connection
         with patch("src.api.upload_routes.get_db"):
-            files = {
-                "file": ("test.txt", b"dummy content", "text/plain")
-            }
+            files = {"file": ("test.txt", b"dummy content", "text/plain")}
 
             response = client.post("/api/v1/documents/upload", files=files)
 

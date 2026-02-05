@@ -1,0 +1,79 @@
+# Railway Deployment Profile
+# ===========================
+# Extends base profile for Railway.app deployment.
+# Uses Railway PostgreSQL, MinIO for storage, and Neo4j AuraDB.
+#
+# Railway auto-injects these environment variables:
+#   - RAILWAY_DATABASE_URL (or DATABASE_URL)
+#   - MINIO_ROOT_USER, MINIO_ROOT_PASSWORD (if MinIO service added)
+#   - PORT (for the web service)
+#
+# Required secrets in .secrets.yaml or environment:
+#   - NEO4J_AURADB_URI
+#   - NEO4J_AURADB_PASSWORD
+#   - BRAINTRUST_API_KEY (for observability)
+#   - ANTHROPIC_API_KEY
+#
+# Usage:
+#   Set PROFILE=railway in Railway service variables
+
+name: railway
+extends: base
+description: Railway.app production deployment
+
+providers:
+  database: railway
+  neo4j: auradb
+  storage: railway
+  observability: braintrust
+
+settings:
+  environment: production
+  log_level: INFO
+
+  # CORS - update with your Railway frontend URL
+  allowed_origins: "${ALLOWED_ORIGINS:-https://your-app.up.railway.app}"
+
+  database:
+    # Railway auto-injects DATABASE_URL or RAILWAY_DATABASE_URL
+    railway_database_url: "${RAILWAY_DATABASE_URL:-${DATABASE_URL}}"
+    redis_url: "${REDIS_URL:-redis://localhost:6379/0}"
+
+    # Railway PostgreSQL pool settings (optimized for Hobby plan)
+    railway_pool_size: 3
+    railway_max_overflow: 2
+    railway_pool_recycle: 300
+    railway_pool_timeout: 30
+
+  neo4j:
+    # Neo4j AuraDB (free tier available)
+    neo4j_auradb_uri: "${NEO4J_AURADB_URI}"
+    neo4j_auradb_user: neo4j
+    neo4j_auradb_password: "${NEO4J_AURADB_PASSWORD}"
+
+  storage:
+    # Railway MinIO (auto-injected credentials)
+    storage_provider: railway
+    minio_root_user: "${MINIO_ROOT_USER}"
+    minio_root_password: "${MINIO_ROOT_PASSWORD}"
+    railway_minio_endpoint: "${RAILWAY_MINIO_ENDPOINT:-}"
+    railway_minio_bucket: "${RAILWAY_MINIO_BUCKET:-newsletter-files}"
+
+  observability:
+    # Braintrust for LLM observability
+    braintrust_api_key: "${BRAINTRUST_API_KEY}"
+    braintrust_project_name: newsletter-aggregator
+
+    # Enable OTel infrastructure tracing
+    otel_enabled: true
+    otel_service_name: newsletter-aggregator
+    otel_exporter_otlp_endpoint: "https://api.braintrust.dev/otel/v1/traces"
+
+  api_keys:
+    anthropic_api_key: "${ANTHROPIC_API_KEY}"
+    openai_api_key: "${OPENAI_API_KEY:-}"
+    google_api_key: "${GOOGLE_API_KEY:-}"
+    tavily_api_key: "${TAVILY_API_KEY:-}"
+    elevenlabs_api_key: "${ELEVENLABS_API_KEY:-}"
+    sendgrid_api_key: "${SENDGRID_API_KEY:-}"
+    admin_api_key: "${ADMIN_API_KEY:-}"

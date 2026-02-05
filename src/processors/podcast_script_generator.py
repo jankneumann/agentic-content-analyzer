@@ -815,7 +815,7 @@ class PodcastScriptGenerator:
 Content: {content.title}
 Publication: {content.publication}
 Date: {content.published_date}
-Source: {content.source_type.value if content.source_type else 'unknown'}
+Source: {content.source_type.value if content.source_type else "unknown"}
 
 {text}
 """

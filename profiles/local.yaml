@@ -1,0 +1,39 @@
+# Local Development Profile
+# ==========================
+# Extends base profile with Docker Compose local development settings.
+# All services run locally via Docker Compose.
+#
+# Usage:
+#   docker compose up -d
+#   export PROFILE=local
+#   python -m src.api.app
+
+name: local
+extends: base
+description: Local development with Docker Compose services
+
+# Providers - all local
+providers:
+  database: local
+  neo4j: local
+  storage: local
+  observability: noop
+
+settings:
+  environment: development
+  log_level: DEBUG
+
+  database:
+    # Local PostgreSQL from Docker Compose
+    database_url: "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
+    redis_url: "redis://localhost:6379/0"
+
+  neo4j:
+    # Local Neo4j from Docker Compose
+    neo4j_local_uri: "bolt://localhost:7687"
+    neo4j_local_user: neo4j
+    neo4j_local_password: "${NEO4J_PASSWORD:-newsletter_password}"
+
+  storage:
+    storage_provider: local
+    image_storage_path: "data/images"

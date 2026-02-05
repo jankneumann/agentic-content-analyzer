@@ -92,8 +92,7 @@ async def _detect_default_branch(manager: NeonBranchManager) -> str:
             return branch.name
 
     raise RuntimeError(
-        "No root branch found in Neon project. "
-        "Please set NEON_DEFAULT_BRANCH environment variable."
+        "No root branch found in Neon project. Please set NEON_DEFAULT_BRANCH environment variable."
     )
 
 

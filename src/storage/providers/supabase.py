@@ -193,8 +193,7 @@ class SupabaseProvider:
         direct_url = self.get_direct_url()
         if direct_url is None:
             raise ValueError(
-                "Supabase queue URL requires either local=True or "
-                "both project_ref and db_password"
+                "Supabase queue URL requires either local=True or both project_ref and db_password"
             )
         return direct_url
 

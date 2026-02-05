@@ -1,0 +1,72 @@
+# Supabase Cloud Profile
+# =======================
+# Extends base profile for Supabase Cloud deployment.
+# Uses Supabase PostgreSQL and Storage with Neo4j AuraDB.
+#
+# Required secrets in .secrets.yaml or environment:
+#   - SUPABASE_PROJECT_REF (your Supabase project ID)
+#   - SUPABASE_DB_PASSWORD
+#   - SUPABASE_ACCESS_KEY_ID (from Dashboard > Settings > API > S3 Access Keys)
+#   - SUPABASE_SECRET_ACCESS_KEY
+#   - NEO4J_AURADB_URI
+#   - NEO4J_AURADB_PASSWORD
+#   - ANTHROPIC_API_KEY
+#
+# Usage:
+#   export PROFILE=supabase-cloud
+#   python -m src.api.app
+
+name: supabase-cloud
+extends: base
+description: Supabase Cloud with Neo4j AuraDB
+
+providers:
+  database: supabase
+  neo4j: auradb
+  storage: supabase
+  observability: braintrust
+
+settings:
+  environment: production
+  log_level: INFO
+
+  database:
+    # Supabase Cloud PostgreSQL
+    supabase_project_ref: "${SUPABASE_PROJECT_REF}"
+    supabase_db_password: "${SUPABASE_DB_PASSWORD}"
+    supabase_region: "${SUPABASE_REGION:-us-east-1}"
+    supabase_pooler_mode: transaction
+    supabase_az: "0"
+
+    redis_url: "${REDIS_URL:-redis://localhost:6379/0}"
+
+  neo4j:
+    # Neo4j AuraDB (free tier available)
+    neo4j_auradb_uri: "${NEO4J_AURADB_URI}"
+    neo4j_auradb_user: neo4j
+    neo4j_auradb_password: "${NEO4J_AURADB_PASSWORD}"
+
+  storage:
+    # Supabase Storage (S3-compatible API)
+    storage_provider: supabase
+    supabase_storage_bucket: images
+    supabase_access_key_id: "${SUPABASE_ACCESS_KEY_ID}"
+    supabase_secret_access_key: "${SUPABASE_SECRET_ACCESS_KEY}"
+    supabase_storage_public: false
+
+  observability:
+    # Braintrust for LLM observability
+    braintrust_api_key: "${BRAINTRUST_API_KEY:-}"
+    braintrust_project_name: newsletter-aggregator
+
+    otel_enabled: true
+    otel_service_name: newsletter-aggregator
+    otel_exporter_otlp_endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT:-https://api.braintrust.dev/otel/v1/traces}"
+
+  api_keys:
+    anthropic_api_key: "${ANTHROPIC_API_KEY}"
+    openai_api_key: "${OPENAI_API_KEY:-}"
+    google_api_key: "${GOOGLE_API_KEY:-}"
+    tavily_api_key: "${TAVILY_API_KEY:-}"
+    elevenlabs_api_key: "${ELEVENLABS_API_KEY:-}"
+    sendgrid_api_key: "${SENDGRID_API_KEY:-}"

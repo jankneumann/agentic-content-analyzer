@@ -89,10 +89,14 @@ export async function initTelemetry(): Promise<void> {
     })
 
     // Create resource identifying this service
+    // opik.project_name routes traces to the correct Opik project
+    const projectName =
+      import.meta.env.VITE_OPIK_PROJECT_NAME || "newsletter-aggregator"
     const resource = resourceFromAttributes({
       [ATTR_SERVICE_NAME]: "newsletter-frontend",
       "deployment.environment":
         import.meta.env.MODE === "production" ? "production" : "development",
+      "opik.project_name": projectName,
     })
 
     // Configure the tracer provider
