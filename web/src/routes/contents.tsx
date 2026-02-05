@@ -17,6 +17,7 @@ import {
   Mail,
   Rss,
   Youtube,
+  Mic,
   Upload,
   Globe,
   CheckCircle,
