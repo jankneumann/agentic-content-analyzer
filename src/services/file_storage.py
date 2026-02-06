@@ -712,12 +712,10 @@ class RailwayFileStorage(S3FileStorage):
             access_key_id: MinIO access key. Defaults to MINIO_ROOT_USER
             secret_access_key: MinIO secret key. Defaults to MINIO_ROOT_PASSWORD
         """
-        import os
-
         # Get endpoint URL (priority: explicit > settings > Railway env var)
         if endpoint_url:
             self._endpoint = endpoint_url
-        elif getattr(settings, "railway_minio_endpoint", None):
+        elif settings.railway_minio_endpoint:
             self._endpoint = settings.railway_minio_endpoint
         else:
             # Auto-discover from Railway's public domain
@@ -732,13 +730,11 @@ class RailwayFileStorage(S3FileStorage):
 
         # Get credentials (priority: explicit > settings > Railway env var)
         self._access_key = (
-            access_key_id
-            or getattr(settings, "minio_root_user", None)
-            or os.environ.get("MINIO_ROOT_USER")
+            access_key_id or settings.minio_root_user or os.environ.get("MINIO_ROOT_USER")
         )
         self._secret_key = (
             secret_access_key
-            or getattr(settings, "minio_root_password", None)
+            or settings.minio_root_password
             or os.environ.get("MINIO_ROOT_PASSWORD")
         )
 
@@ -751,7 +747,7 @@ class RailwayFileStorage(S3FileStorage):
         # Get bucket name (priority: explicit > settings > env var)
         if bucket:
             bucket_name = bucket
-        elif getattr(settings, "railway_minio_bucket", None):
+        elif settings.railway_minio_bucket:
             bucket_name = settings.railway_minio_bucket
         else:
             bucket_name = os.environ.get("MINIO_BUCKET", "images")

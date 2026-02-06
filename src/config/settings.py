@@ -616,6 +616,12 @@ class Settings(BaseSettings):
                         "DATABASE_PROVIDER=railway requires DATABASE_URL or RAILWAY_DATABASE_URL "
                         "to be set."
                     )
+                # Warn if using default localhost URL — likely misconfigured for Railway
+                if not self.railway_database_url and "localhost" in effective_url:
+                    logger.warning(
+                        "DATABASE_PROVIDER=railway but DATABASE_URL points to localhost. "
+                        "Set RAILWAY_DATABASE_URL or update DATABASE_URL for Railway deployment."
+                    )
             case "local":
                 # Local provider uses local_database_url or database_url
                 pass
@@ -791,6 +797,9 @@ class Settings(BaseSettings):
                 return self._get_supabase_direct_url()
             case "neon":
                 return self._get_neon_direct_url()
+            case "railway":
+                # Railway uses direct connections (no pooler), same URL for app and migrations
+                return self.railway_database_url or self.database_url
             case _:  # "local" or any other value
                 return self.local_database_url or self.database_url
 

@@ -323,7 +323,7 @@ class TestNeonProvider:
         assert options["pool_size"] == 5  # Conservative for Neon
         assert options["pool_recycle"] == 300  # 5 min recycle
         assert options["connect_args"]["sslmode"] == "require"
-        assert "statement_timeout" in options["connect_args"]["options"]
+        # Note: Neon intentionally omits statement_timeout — not supported on pooled connections
 
     def test_health_check_success(self):
         """Health check returns True on success."""
@@ -384,6 +384,7 @@ class TestRailwayProvider:
         assert options["max_overflow"] == 2  # Hobby plan default
         assert options["pool_recycle"] == 300  # 5 min recycle
         assert options["connect_args"]["sslmode"] == "require"
+        assert "statement_timeout" in options["connect_args"]["options"]
 
     def test_health_check_success(self):
         """Health check returns True on success."""

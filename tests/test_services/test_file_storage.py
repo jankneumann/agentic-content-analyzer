@@ -680,6 +680,7 @@ class TestRailwayFileStorage:
         so path-style addressing (https://endpoint/bucket/key) must be used instead
         of virtual-hosted style (https://bucket.endpoint/key).
         """
+        pytest.importorskip("boto3", reason="boto3 required for path-style addressing test")
 
         storage = RailwayFileStorage(
             bucket="test-bucket",
