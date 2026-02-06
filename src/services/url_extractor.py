@@ -108,7 +108,7 @@ class URLExtractor:
 
             return content
 
-        except Exception as e:
+        except Exception:
             # Mark as failed
             content.status = ContentStatus.FAILED
             # Secure error message to prevent information leakage
