@@ -47,6 +47,7 @@ dependencies = [
     # HTTP/Requests
     "httpx>=0.26.0",
     "requests>=2.31.0",
+    "substack_api @ git+https://github.com/NHagar/substack_api@main",
 
     # Email Delivery
     "sendgrid>=6.11.0",

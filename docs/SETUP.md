@@ -1136,6 +1136,9 @@ When enabled, the frontend:
 GMAIL_CREDENTIALS_FILE=credentials.json
 GMAIL_TOKEN_FILE=token.json
 
+# Substack Ingestion
+SUBSTACK_SESSION_COOKIE=...  # Value of the substack.sid cookie
+
 # Email Delivery (production only)
 SENDGRID_API_KEY=...
 
@@ -1185,6 +1188,34 @@ aca ingest gmail
 
 # Browser will open for authorization
 # After auth, token.json will be saved for future use
+```
+
+## Substack API Setup
+
+Substack paid posts require an authenticated session cookie. Use the
+`SUBSTACK_SESSION_COOKIE` environment variable to store the `substack.sid`
+cookie value (never commit this to git).
+
+### 1. Capture the session cookie
+
+1. Log in to Substack in your browser.
+2. Open DevTools → **Application** → **Cookies** → `https://substack.com`.
+3. Copy the value of the `substack.sid` cookie.
+
+### 2. Export the cookie for ingestion
+
+```bash
+export SUBSTACK_SESSION_COOKIE="substack.sid cookie value here"
+```
+
+### 3. Sync subscriptions and ingest
+
+```bash
+# Generate sources.d/substack.yaml with your subscriptions
+aca ingest substack-sync
+
+# Enable any desired sources in sources.d/substack.yaml, then ingest
+aca ingest substack
 ```
 
 ## Troubleshooting

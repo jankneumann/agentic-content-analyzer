@@ -362,6 +362,9 @@ class Settings(BaseSettings):
     sources_config_dir: str = "sources.d"  # Directory with per-type YAML files
     sources_config_file: str = "sources.yaml"  # Single-file fallback
 
+    # Substack Configuration
+    substack_session_cookie: str | None = None  # Value of the substack.sid cookie
+
     # Substack RSS Configuration (legacy — use sources.d/ instead)
     # Comma-separated list of RSS feed URLs
     rss_feeds: str = ""

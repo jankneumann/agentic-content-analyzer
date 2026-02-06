@@ -3,6 +3,8 @@
 Usage:
     aca ingest gmail
     aca ingest rss
+    aca ingest substack
+    aca ingest substack-sync
     aca ingest youtube
     aca ingest podcast
     aca ingest files <path...>
@@ -127,6 +129,100 @@ def rss(
         output_result({"source": "rss", "ingested": count})
     else:
         console.print(f"[green]RSS ingestion complete.[/green] {count} item(s) ingested.")
+
+
+# ---------------------------------------------------------------------------
+# aca ingest substack
+# ---------------------------------------------------------------------------
+
+
+@app.command("substack")
+def substack(
+    max: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum posts per Substack source."),
+    ] = 10,
+    days: Annotated[
+        int | None,
+        typer.Option("--days", "-d", help="Only fetch posts from the last N days."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+    session_cookie: Annotated[
+        str | None,
+        typer.Option("--session-cookie", help="Override SUBSTACK_SESSION_COOKIE value."),
+    ] = None,
+) -> None:
+    """Ingest posts from Substack sources configured in sources.d/substack.yaml."""
+    from rich.console import Console
+
+    console = Console()
+    after_date = _days_to_after_date(days)
+
+    try:
+        from src.ingestion.substack import SubstackContentIngestionService
+
+        service = SubstackContentIngestionService(session_cookie=session_cookie)
+        try:
+            count = service.ingest_content(
+                max_entries_per_source=max,
+                after_date=after_date,
+                force_reprocess=force,
+            )
+        finally:
+            service.close()
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "substack"}, success=False)
+        else:
+            console.print(f"[red]Substack ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "substack", "ingested": count})
+    else:
+        console.print(f"[green]Substack ingestion complete.[/green] {count} item(s) ingested.")
+
+
+@app.command("substack-sync")
+def substack_sync(
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Path to write substack.yaml (default: sources.d/substack.yaml).",
+        ),
+    ] = None,
+    session_cookie: Annotated[
+        str | None,
+        typer.Option("--session-cookie", help="Override SUBSTACK_SESSION_COOKIE value."),
+    ] = None,
+) -> None:
+    """Sync Substack subscriptions into sources.d/substack.yaml."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from src.ingestion.substack import sync_substack_sources
+
+        count = sync_substack_sources(output_path=output, session_cookie=session_cookie)
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "substack-sync"}, success=False)
+        else:
+            console.print(f"[red]Substack sync failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "substack-sync", "updated": count})
+    else:
+        console.print(
+            f"[green]Substack sync complete.[/green] {count} source(s) updated."
+        )
 
 
 # ---------------------------------------------------------------------------
