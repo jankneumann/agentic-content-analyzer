@@ -332,9 +332,7 @@ class SubstackContentIngestionService:
                         )
                         db.add(content)
                         count += 1
-                        logger.info(
-                            f"Linked duplicate to canonical ID {substack_duplicate.id}"
-                        )
+                        logger.info(f"Linked duplicate to canonical ID {substack_duplicate.id}")
                         continue
 
                     if content_duplicate:
@@ -412,9 +410,7 @@ class SubstackContentIngestionService:
             source_url=source.url,
         )
         if canonical_url is None and post.get("slug"):
-            canonical_url = normalize_substack_url(
-                f"{source.url.rstrip('/')}/p/{post['slug']}"
-            )
+            canonical_url = normalize_substack_url(f"{source.url.rstrip('/')}/p/{post['slug']}")
         canonical_url = canonical_url or source.url
 
         published_date = self._parse_date(post.get("post_date") or post.get("published_at"))

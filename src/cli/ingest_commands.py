@@ -220,9 +220,7 @@ def substack_sync(
     if is_json_mode():
         output_result({"source": "substack-sync", "updated": count})
     else:
-        console.print(
-            f"[green]Substack sync complete.[/green] {count} source(s) updated."
-        )
+        console.print(f"[green]Substack sync complete.[/green] {count} source(s) updated.")
 
 
 # ---------------------------------------------------------------------------
