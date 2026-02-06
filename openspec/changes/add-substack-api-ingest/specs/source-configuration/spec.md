@@ -1,12 +1,12 @@
 ## ADDED Requirements
 ### Requirement: Substack Subscription Sync
-The system SHALL provide a Substack subscription sync that fetches the authenticated user's Substack subscriptions and writes them to `sources.d/substack.yaml` (Substack.yml).
+The system SHALL provide a Substack subscription sync that fetches the authenticated user's Substack subscriptions and writes them to `sources.d/substack.yaml`.
 
 The sync process SHALL preserve existing `enabled`, `tags`, and `name` fields for matching subscriptions and append new subscriptions with `enabled: false` by default so users can opt in.
 
 #### Scenario: Sync adds new Substack subscriptions
 - **WHEN** a user runs the Substack subscription sync with a valid session cookie
-- **THEN** the system writes `sources.d/substack.yaml` (Substack.yml) with one entry per subscription
+- **THEN** the system writes `sources.d/substack.yaml` with one entry per subscription
 - **AND** newly discovered subscriptions are added with `enabled: false`
 - **AND** existing entries keep their prior `enabled` and `tags` values
 
@@ -62,6 +62,6 @@ The system SHALL support the following source types in the configuration file:
 - **AND** stores the transcript as a Content record with `source_type=PODCAST`
 
 #### Scenario: Substack source entry
-- **WHEN** a source with `type: substack` and `url` field is defined in `sources.d/substack.yaml` (Substack.yml)
+- **WHEN** a source with `type: substack` and `url` field is defined in `sources.d/substack.yaml`
 - **THEN** the system fetches the latest Substack posts via the Substack API
 - **AND** stores Content records with the canonical Substack URL in metadata

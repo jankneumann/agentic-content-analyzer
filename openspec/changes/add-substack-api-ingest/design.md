@@ -12,7 +12,7 @@ We need an authenticated Substack ingestion path that can read a user's subscrip
   - Build a UI for managing Substack sources.
 
 ## Decisions
-- Decision: Use `sources.d/substack.yaml` (Substack.yml) with `type: substack` entries, mirroring existing source configuration patterns.
+- Decision: Use `sources.d/substack.yaml` with `type: substack` entries, mirroring existing source configuration patterns.
 - Decision: Store the session cookie in environment configuration (e.g., `SUBSTACK_SESSION_COOKIE`) and never in YAML files.
 - Decision: Deduplicate Substack ingestion by canonical URL across RSS, Gmail, and Substack sources before writing Content records.
 - Alternatives considered: Substack RSS-only ingestion (insufficient for paid content and subscription discovery).
