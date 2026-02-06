@@ -22,6 +22,13 @@ from src.services.url_extractor import (
 from src.utils.content_hash import generate_markdown_hash
 
 
+# Patch flag_modified to avoid AttributeError with mocks
+@pytest.fixture(autouse=True)
+def mock_flag_modified():
+    with patch("src.services.url_extractor.flag_modified") as m:
+        yield m
+
+
 class TestURLExtractorInit:
     """Tests for URLExtractor initialization."""
 
@@ -60,11 +67,13 @@ class TestFetchURL:
 
             assert html == "<html><body><h1>Test Article</h1></body></html>"
             assert final_url == "https://example.com/article"
-            mock_client.assert_called_once_with(
-                timeout=DEFAULT_TIMEOUT,
-                follow_redirects=True,
-                headers={"User-Agent": USER_AGENT},
-            )
+
+            # Verify arguments (checking partial match for event_hooks)
+            call_kwargs = mock_client.call_args.kwargs
+            assert call_kwargs["timeout"] == DEFAULT_TIMEOUT
+            assert call_kwargs["follow_redirects"] is True
+            assert call_kwargs["headers"] == {"User-Agent": USER_AGENT}
+            assert "event_hooks" in call_kwargs
 
     @pytest.mark.asyncio
     async def test_fetch_url_follows_redirects(self):
@@ -456,6 +465,31 @@ class TestExtractContent:
             assert mock_content.status == ContentStatus.FAILED
             assert mock_content.error_message is not None
             mock_db.commit.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_extract_content_prevents_information_leakage(self):
+        """Verifies that exception details are NOT leaked to error_message."""
+        mock_db = MagicMock()
+        mock_content = MagicMock(spec=Content)
+        mock_content.id = 1
+        mock_content.source_url = "https://example.com/article"
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_content
+
+        extractor = URLExtractor(mock_db)
+
+        secret_key = "sk_live_SECRET_KEY_12345"
+        error_msg = f"Connection failed to database at postgres://user:{secret_key}@host:5432/db"
+
+        with patch.object(extractor, "_fetch_url", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.side_effect = Exception(error_msg)
+
+            with pytest.raises(Exception):
+                await extractor.extract_content(1)
+
+            assert mock_content.status == ContentStatus.FAILED
+            assert secret_key not in mock_content.error_message
+            assert mock_content.error_message == "Content extraction failed. Please try again later."
 
 
 class TestExtractURLToContent:
