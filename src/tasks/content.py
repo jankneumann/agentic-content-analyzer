@@ -4,6 +4,7 @@ These tasks handle background operations like URL content extraction,
 summarization, and other content processing pipelines.
 """
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+# Exponential backoff delays for rate limit retries (in seconds)
+RATE_LIMIT_BACKOFF_DELAYS = [5, 10, 20]
 
 
 def _decode_payload(job: Job) -> dict[str, Any]:
@@ -141,6 +145,168 @@ def register_content_tasks(pgq: PgQueuer) -> None:
 
         except Exception as e:
             logger.error(f"Newsletter scan failed: {e}")
+            raise
+
+    @pgq.entrypoint("summarize_content")
+    async def summarize_content(job: Job) -> None:
+        """Summarize a content item.
+
+        This task is typically enqueued by enqueue_summarization_job()
+        and processed by the worker pool.
+
+        Payload:
+            content_id: int - ID of the Content record to summarize
+        """
+        # Import here to avoid circular imports
+        from anthropic import RateLimitError
+
+        from src.processors.summarizer import ContentSummarizer
+        from src.queue.setup import reconcile_batch_job_status, update_job_progress
+
+        payload = _decode_payload(job)
+        content_id = payload.get("content_id")
+        if not content_id:
+            logger.error("summarize_content: missing content_id in payload")
+            return
+
+        logger.info(f"Starting summarization for content_id={content_id}")
+
+        # Update progress at start
+        await update_job_progress(job.id, 10, "Starting summarization")
+
+        # Retry loop with exponential backoff for rate limits
+        last_error: Exception | None = None
+
+        for attempt, delay in enumerate([*RATE_LIMIT_BACKOFF_DELAYS, None], start=1):
+            try:
+                summarizer = ContentSummarizer()
+                success = summarizer.summarize_content(content_id)
+
+                if success:
+                    await update_job_progress(job.id, 100, "Completed")
+                    logger.info(f"Summarization completed for content_id={content_id}")
+                    # Check if this completes a batch job
+                    await reconcile_batch_job_status(content_id)
+                    return
+                else:
+                    # Summarization failed but not due to exception
+                    raise RuntimeError(
+                        f"Summarization returned failure for content_id={content_id}"
+                    )
+
+            except RateLimitError as e:
+                last_error = e
+                if delay is not None:
+                    logger.warning(
+                        f"Rate limited on attempt {attempt} for content_id={content_id}, "
+                        f"retrying in {delay}s"
+                    )
+                    await update_job_progress(
+                        job.id, 10, f"Rate limited, retrying in {delay}s (attempt {attempt})"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # All retries exhausted
+                    logger.error(
+                        f"Rate limit exceeded after {len(RATE_LIMIT_BACKOFF_DELAYS)} retries "
+                        f"for content_id={content_id}"
+                    )
+                    raise
+
+            except Exception as e:
+                # Non-rate-limit errors should not be retried
+                logger.error(f"Summarization failed for content_id={content_id}: {e}")
+                raise
+
+        # Should not reach here, but handle gracefully
+        if last_error:
+            raise last_error
+
+    @pgq.entrypoint("ingest_content")
+    async def ingest_content(job: Job) -> None:
+        """Ingest content from a source.
+
+        This task handles content ingestion from various sources
+        (Gmail, RSS, YouTube, Podcast) via the job queue.
+
+        Payload:
+            source: str - Content source type (gmail, rss, youtube, podcast)
+            max_results: int - Maximum items to fetch
+            days_back: int - Days back to search
+            force_reprocess: bool - Force reprocess existing content
+        """
+        from datetime import UTC, datetime, timedelta
+
+        from src.queue.setup import update_job_progress
+
+        payload = _decode_payload(job)
+        source = payload.get("source", "gmail")
+        max_results = payload.get("max_results", 50)
+        days_back = payload.get("days_back", 7)
+        force_reprocess = payload.get("force_reprocess", False)
+
+        logger.info(f"Starting ingestion for source={source}")
+        await update_job_progress(job.id, 10, f"Starting {source} ingestion")
+
+        after_date = datetime.now(UTC) - timedelta(days=days_back)
+
+        try:
+            if source == "gmail":
+                from src.ingestion.gmail import GmailContentIngestionService
+
+                gmail_service = GmailContentIngestionService()
+                count = await asyncio.to_thread(
+                    gmail_service.ingest_content,
+                    max_results=max_results,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
+
+            elif source == "rss":
+                from src.ingestion.rss import RSSContentIngestionService
+
+                rss_service = RSSContentIngestionService()
+                count = await asyncio.to_thread(
+                    lambda: rss_service.ingest_content(
+                        max_entries_per_feed=max_results,
+                        after_date=after_date,
+                        force_reprocess=force_reprocess,
+                    )
+                )
+
+            elif source == "youtube":
+                from src.ingestion.youtube import YouTubeContentIngestionService
+
+                youtube_service = YouTubeContentIngestionService(use_oauth=True)
+                count = await asyncio.to_thread(
+                    youtube_service.ingest_all_playlists,
+                    max_videos_per_playlist=max_results,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
+
+            elif source == "podcast":
+                from src.ingestion.podcast import PodcastContentIngestionService
+
+                podcast_service = PodcastContentIngestionService()
+                count = await asyncio.to_thread(
+                    lambda: podcast_service.ingest_all_feeds(
+                        max_entries_per_feed=max_results,
+                        after_date=after_date,
+                        force_reprocess=force_reprocess,
+                    )
+                )
+
+            else:
+                logger.error(f"Unsupported source for ingestion: {source}")
+                await update_job_progress(job.id, 0, f"Error: Unsupported source '{source}'")
+                raise ValueError(f"Unsupported source: {source}")
+
+            await update_job_progress(job.id, 100, f"Ingested {count} items from {source}")
+            logger.info(f"Ingestion completed for source={source}: {count} items")
+
+        except Exception as e:
+            logger.error(f"Ingestion failed for source={source}: {e}")
             raise
 
     logger.info("Content tasks registered with PGQueuer")

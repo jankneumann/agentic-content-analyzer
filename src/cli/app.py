@@ -11,6 +11,8 @@ Usage:
     aca podcast generate
     aca manage verify-setup
     aca profile list
+    aca worker start
+    aca jobs list
 
 Or run as module:
     python -m src.cli
@@ -27,6 +29,7 @@ from src.cli.analyze_commands import app as analyze_app
 from src.cli.digest_commands import app as digest_app
 from src.cli.graph_commands import app as graph_app
 from src.cli.ingest_commands import app as ingest_app
+from src.cli.job_commands import app as job_app
 from src.cli.manage_commands import app as manage_app
 
 # Import output utilities from the shared module (avoids circular imports)
@@ -36,6 +39,7 @@ from src.cli.podcast_commands import app as podcast_app
 from src.cli.profile_commands import app as profile_app
 from src.cli.review_commands import app as review_app
 from src.cli.summarize_commands import app as summarize_app
+from src.cli.worker_commands import app as worker_app
 
 # Root Typer application
 app = typer.Typer(
@@ -55,6 +59,8 @@ app.add_typer(graph_app, name="graph")
 app.add_typer(podcast_app, name="podcast")
 app.add_typer(manage_app, name="manage")
 app.add_typer(profile_app, name="profile")
+app.add_typer(worker_app, name="worker")
+app.add_typer(job_app, name="jobs")
 
 
 def _version_callback(value: bool) -> None:

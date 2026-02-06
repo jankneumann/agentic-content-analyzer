@@ -99,6 +99,18 @@ aca podcast generate --digest-id <id>  # Generate podcast script
 aca manage verify-setup                # Check service connectivity
 aca manage check-profile-secrets       # Find unresolved secrets
 
+# Job Queue Workers
+aca worker start                       # Start worker (5 concurrent tasks)
+aca worker start --concurrency 10      # Custom concurrency (max 20)
+
+# Job Management
+aca jobs list                          # List all jobs
+aca jobs list --status failed          # Filter by status
+aca jobs show <id>                     # View job details
+aca jobs retry <id>                    # Retry a failed job
+aca jobs retry --failed                # Retry all failed jobs
+aca jobs cleanup --older-than 30d      # Clean up old completed jobs
+
 # Testing
 pytest                                  # All tests
 pytest tests/api/ -v                   # API tests only
