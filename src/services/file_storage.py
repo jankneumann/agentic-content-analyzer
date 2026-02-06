@@ -714,9 +714,9 @@ class RailwayFileStorage(S3FileStorage):
         """
         # Get endpoint URL (priority: explicit > settings > Railway env var)
         if endpoint_url:
-            self._endpoint = endpoint_url
+            self._endpoint = endpoint_url.rstrip("/")
         elif settings.railway_minio_endpoint:
-            self._endpoint = settings.railway_minio_endpoint
+            self._endpoint = settings.railway_minio_endpoint.rstrip("/")
         else:
             # Auto-discover from Railway's public domain
             railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
