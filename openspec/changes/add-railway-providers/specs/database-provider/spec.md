@@ -24,6 +24,12 @@ The system SHALL support Railway as a PostgreSQL provider using a custom Docker 
   - `max_overflow=2` (conservative for shared hosting)
   - `pool_recycle=300` for connection refresh
   - `sslmode=require` for secure connections
+  - `statement_timeout=30000` (30s) for runaway query protection
+
+#### Scenario: Railway migration URL routing
+- **WHEN** `get_migration_database_url()` is called with `DATABASE_PROVIDER=railway`
+- **THEN** it SHALL return `RAILWAY_DATABASE_URL` if set, otherwise `DATABASE_URL`
+- **AND** it SHALL NOT fall through to the local provider's URL
 
 #### Scenario: Railway extension support flags
 - **WHEN** Railway provider is used with the custom PostgreSQL image

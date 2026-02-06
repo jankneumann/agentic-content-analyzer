@@ -680,6 +680,7 @@ class TestRailwayFileStorage:
         so path-style addressing (https://endpoint/bucket/key) must be used instead
         of virtual-hosted style (https://bucket.endpoint/key).
         """
+        pytest.importorskip("boto3", reason="boto3 required for path-style addressing test")
 
         storage = RailwayFileStorage(
             bucket="test-bucket",
@@ -745,6 +746,23 @@ class TestRailwayFileStorage:
         assert hasattr(storage, "delete")
         assert hasattr(storage, "exists")
         assert hasattr(storage, "_generate_key")
+
+    def test_endpoint_trailing_slash_stripped(self):
+        """Test that trailing slash is stripped from endpoint URL."""
+
+        storage = RailwayFileStorage(
+            bucket="test-bucket",
+            storage_bucket="images",
+            endpoint_url="https://minio.railway.app/",
+            access_key_id="minioadmin",
+            secret_access_key="miniosecret",
+        )
+
+        url = storage.get_url("images/2025/01/15/test.jpg")
+
+        # Should NOT have double slash
+        assert "railway.app//test-bucket" not in url
+        assert url == "https://minio.railway.app/test-bucket/images/2025/01/15/test.jpg"
 
     def test_auto_discovery_from_railway_public_domain(self):
         """Test endpoint auto-discovery from RAILWAY_PUBLIC_DOMAIN env var."""

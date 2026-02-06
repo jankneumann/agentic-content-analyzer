@@ -165,6 +165,7 @@ class TestDatabaseUrlMethods:
             "DATABASE_URL",
             "LOCAL_DATABASE_URL",
             "NEON_DATABASE_URL",
+            "RAILWAY_DATABASE_URL",
             "SUPABASE_PROJECT_REF",
             "SUPABASE_DB_PASSWORD",
             "NEON_DIRECT_URL",
@@ -254,6 +255,39 @@ class TestDatabaseUrlMethods:
         # Migration URL is direct URL
         migration = settings.get_migration_database_url()
         assert "db.test-project.supabase.co" in migration
+
+    def test_railway_provider_migration_url_uses_railway_url(self):
+        """Railway provider should use RAILWAY_DATABASE_URL for migrations, not local."""
+        os.environ["DATABASE_PROVIDER"] = "railway"
+        os.environ["DATABASE_URL"] = "postgresql://user:pass@localhost/fallback"
+        os.environ["RAILWAY_DATABASE_URL"] = (
+            "postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        # Both effective and migration URLs should use the Railway URL
+        assert (
+            settings.get_effective_database_url()
+            == "postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+        assert (
+            settings.get_migration_database_url()
+            == "postgresql://user:pass@postgres.railway.internal:5432/railway"
+        )
+
+    def test_railway_provider_migration_url_falls_back_to_database_url(self):
+        """Railway provider should fall back to DATABASE_URL if RAILWAY_DATABASE_URL not set."""
+        os.environ["DATABASE_PROVIDER"] = "railway"
+        os.environ["DATABASE_URL"] = "postgresql://user:pass@some-host/railway"
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        assert settings.get_migration_database_url() == "postgresql://user:pass@some-host/railway"
 
 
 class TestDeprecatedDetectedDatabaseProvider:
