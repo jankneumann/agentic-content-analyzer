@@ -1,21 +1,40 @@
-import os
+"""Security tests for settings authentication.
 
+Tests that prompt update/reset endpoints require proper admin API key authentication.
+"""
+
+import pytest
 from fastapi.testclient import TestClient
 
-# Mock env vars BEFORE importing app
-# We set a known admin key for testing
-os.environ["ADMIN_API_KEY"] = "secret-admin-key"
-# Required by other modules
-os.environ["ANTHROPIC_API_KEY"] = "sk-test-key"
-os.environ["OPENAI_API_KEY"] = "sk-test-key"
-os.environ["TAVILY_API_KEY"] = "tv-test-key"
 
-from src.api.app import app
+@pytest.fixture
+def client(monkeypatch):
+    """Create a test client with required environment variables.
 
-client = TestClient(app)
+    The environment variables must be set before importing the app module
+    to ensure Settings is created with the correct values.
+    """
+    # Set required environment variables BEFORE importing app
+    monkeypatch.setenv("ADMIN_API_KEY", "secret-admin-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    monkeypatch.setenv("TAVILY_API_KEY", "tv-test-key")
+
+    # Clear settings cache to force reload with new env vars
+    from src.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    # Now import app (which will create Settings with our env vars)
+    from src.api.app import app
+
+    yield TestClient(app)
+
+    # Clear cache again after test
+    get_settings.cache_clear()
 
 
-def test_update_prompt_auth():
+def test_update_prompt_auth(client):
     """Test authentication for updating prompts."""
     url = "/api/v1/settings/prompts/chat.summary.system"
     payload = {"value": "You are a hacked AI."}
@@ -35,17 +54,14 @@ def test_update_prompt_auth():
     # but that means it passed the auth check!
     try:
         response = client.put(url, json=payload, headers={"X-Admin-Key": "secret-admin-key"})
-        # If DB connection works (e.g. using sqlite fallback? no, it uses postgres),
-        # it might be 404 if prompt not found, or 200.
-        # But if DB fails, it raises 500.
-        # Either way, if it is NOT 401/403, we passed auth.
+        # If it is NOT 401/403, we passed auth.
         assert response.status_code not in (401, 403)
     except Exception:
         # If client raises exception due to app crash (DB error), that's fine for this test
         pass
 
 
-def test_reset_prompt_auth():
+def test_reset_prompt_auth(client):
     """Test authentication for resetting prompts."""
     url = "/api/v1/settings/prompts/chat.summary.system"
 

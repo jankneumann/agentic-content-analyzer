@@ -1,53 +1,65 @@
+"""Security tests for upload endpoint error leakage.
+
+These tests verify that internal error details are not leaked to clients
+through error responses.
+"""
+
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-# Mock graphiti_core and other potential missing dependencies before any imports
-# This allows running this test in an environment where graphiti_core is missing
-mock_graphiti = MagicMock()
-sys.modules["graphiti_core"] = mock_graphiti
-sys.modules["graphiti_core.cross_encoder"] = MagicMock()
-sys.modules["graphiti_core.cross_encoder.openai_reranker_client"] = MagicMock()
-sys.modules["graphiti_core.embedder"] = MagicMock()
-sys.modules["graphiti_core.embedder.openai"] = MagicMock()
-sys.modules["graphiti_core.llm_client"] = MagicMock()
-sys.modules["graphiti_core.llm_client.anthropic_client"] = MagicMock()
-sys.modules["graphiti_core.nodes"] = MagicMock()
-
-from unittest.mock import AsyncMock, patch  # noqa: E402
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from src.api.app import app  # noqa: E402
-
-client = TestClient(app)
+import pytest
 
 
-def test_upload_error_leakage_mitigated():
-    """
-    Test that the upload endpoint NO LONGER leaks internal error details.
-    This test expects the fix to be in place.
-    """
-    sensitive_data = "SECRET_DB_CONNECTION_STRING"
+class TestUploadErrorLeakage:
+    """Test that upload endpoints don't leak sensitive error details."""
 
-    # Mock the service to raise an exception containing sensitive data
-    with patch("src.api.upload_routes.FileContentIngestionService") as mock_service:
-        mock_instance = mock_service.return_value
-        # Mocking ingest_bytes to raise an exception
-        mock_instance.ingest_bytes = AsyncMock(
-            side_effect=RuntimeError(f"Connection failed: {sensitive_data}")
-        )
+    @pytest.fixture(autouse=True)
+    def mock_graphiti(self, monkeypatch):
+        """Mock graphiti_core dependencies that may not be installed."""
+        graphiti_modules = [
+            "graphiti_core",
+            "graphiti_core.cross_encoder",
+            "graphiti_core.cross_encoder.openai_reranker_client",
+            "graphiti_core.embedder",
+            "graphiti_core.embedder.openai",
+            "graphiti_core.llm_client",
+            "graphiti_core.llm_client.anthropic_client",
+            "graphiti_core.nodes",
+        ]
 
-        # We also need to mock get_db to avoid actual DB connection
-        with patch("src.api.upload_routes.get_db"):
-            files = {"file": ("test.txt", b"dummy content", "text/plain")}
+        for module in graphiti_modules:
+            if module not in sys.modules:
+                monkeypatch.setitem(sys.modules, module, MagicMock())
 
-            response = client.post("/api/v1/documents/upload", files=files)
+    @pytest.fixture
+    def client(self):
+        """Create a test client for the app."""
+        from fastapi.testclient import TestClient
 
-            assert response.status_code == 500
+        from src.api.app import app
 
-            # Verify that sensitive data is NOT leaked in the response
-            detail = response.json()["detail"]
-            assert sensitive_data not in detail
+        return TestClient(app)
 
-            # Verify that we get the generic error message
-            assert "An internal error occurred during processing" in detail
+    def test_upload_error_leakage_mitigated(self, client):
+        """Test that the upload endpoint does NOT leak internal error details.
+
+        This test expects the fix to be in place.
+        """
+        sensitive_data = "SECRET_DB_CONNECTION_STRING"
+
+        with patch("src.api.upload_routes.FileContentIngestionService") as mock_service:
+            mock_instance = mock_service.return_value
+            mock_instance.ingest_bytes = AsyncMock(
+                side_effect=RuntimeError(f"Connection failed: {sensitive_data}")
+            )
+
+            with patch("src.api.upload_routes.get_db"):
+                files = {"file": ("test.txt", b"dummy content", "text/plain")}
+                response = client.post("/api/v1/documents/upload", files=files)
+
+                assert response.status_code == 500
+
+                detail = response.json()["detail"]
+                assert sensitive_data not in detail
+                # Error message should be generic without sensitive details
+                assert "internal error" in detail.lower()

@@ -41,6 +41,23 @@ TEST_DATABASE_URL = os.getenv(
 )
 
 
+@pytest.fixture(autouse=True)
+def api_test_env(monkeypatch):
+    """Set up environment variables required for API tests.
+
+    This sets ADMIN_API_KEY which is required by the settings routes
+    to allow authenticated access.
+    """
+    monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")
+
+    # Clear settings cache to pick up the new env var
+    from src.config.settings import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def test_db_engine():
     """Create test database engine.
@@ -92,12 +109,56 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
     connection.close()
 
 
+class AuthenticatedTestClient:
+    """Wrapper around TestClient that adds admin auth headers to mutating requests."""
+
+    def __init__(self, client: TestClient, admin_key: str):
+        self._client = client
+        self._admin_key = admin_key
+
+    def _add_auth_headers(self, kwargs):
+        """Add admin auth header for requests that need it."""
+        headers = kwargs.get("headers", {})
+        if "X-Admin-Key" not in headers:
+            headers["X-Admin-Key"] = self._admin_key
+        kwargs["headers"] = headers
+        return kwargs
+
+    def get(self, *args, **kwargs):
+        return self._client.get(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._client.post(*args, **kwargs)
+
+    def put(self, *args, **kwargs):
+        kwargs = self._add_auth_headers(kwargs)
+        return self._client.put(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        kwargs = self._add_auth_headers(kwargs)
+        return self._client.delete(*args, **kwargs)
+
+    def patch(self, *args, **kwargs):
+        kwargs = self._add_auth_headers(kwargs)
+        return self._client.patch(*args, **kwargs)
+
+    def stream(self, *args, **kwargs):
+        """Pass through to underlying client's stream method."""
+        return self._client.stream(*args, **kwargs)
+
+    def __getattr__(self, name):
+        """Delegate unknown attributes to the underlying client."""
+        return getattr(self._client, name)
+
+
 @pytest.fixture
-def client(db_session) -> Generator[TestClient, None, None]:
-    """Create FastAPI TestClient with test database override.
+def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
+    """Create FastAPI TestClient with test database override and admin auth.
 
     Patches get_db in all route modules to use the test database session,
     ensuring all API operations use the test database with transaction rollback.
+
+    PUT, DELETE, and PATCH requests automatically include the X-Admin-Key header.
     """
     from unittest.mock import patch
 
@@ -123,7 +184,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
         patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):
         with TestClient(app) as test_client:
-            yield test_client
+            yield AuthenticatedTestClient(test_client, "test-admin-key")
 
 
 # ==============================================================================

@@ -30,7 +30,6 @@ import {
   Plus,
   Code,
   BookOpen,
-  Mic,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"

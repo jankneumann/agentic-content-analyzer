@@ -3,7 +3,7 @@ import secrets
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 
-from src.config.settings import settings
+from src.config.settings import get_settings
 
 # Define the API key header scheme
 api_key_header = APIKeyHeader(name="X-Admin-Key", auto_error=False)
@@ -24,6 +24,9 @@ async def verify_admin_key(
     Raises:
         HTTPException: If the key is missing, invalid, or not configured.
     """
+    # Get settings dynamically to support testing with different env vars
+    settings = get_settings()
+
     if not settings.admin_api_key:
         # Fail secure: if no admin key is configured, deny access to sensitive endpoints
         raise HTTPException(

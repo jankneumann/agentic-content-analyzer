@@ -1,46 +1,22 @@
+"""Security tests for path traversal vulnerabilities in file storage.
+
+These tests verify that malicious paths with traversal sequences (../) are
+properly rejected to prevent unauthorized file access.
+"""
+
 import asyncio
-import sys
-from unittest.mock import MagicMock
 
 import pytest
 
-# === Dependency Mocking ===
-mock_settings = MagicMock()
-mock_settings.storage_local_paths = {}
-mock_settings.image_storage_provider = "local"
-mock_settings.storage_provider = "local"
-mock_settings.storage_bucket_providers = {}
-mock_settings.storage_s3_buckets = {}
-mock_settings.storage_supabase_buckets = {}
-
-mock_config = MagicMock()
-mock_config.settings = mock_settings
-
-sys.modules["src.config"] = mock_config
-sys.modules["src.config.settings"] = mock_config
-sys.modules["src.config.models"] = MagicMock()
-sys.modules["src.utils.logging"] = MagicMock()
-
-# Mock all other services to prevent cascading imports
-sys.modules["src.services.chat_service"] = MagicMock()
-sys.modules["src.services.content_service"] = MagicMock()
-sys.modules["src.services.image_extractor"] = MagicMock()
-sys.modules["src.services.prompt_service"] = MagicMock()
-sys.modules["src.services.review_service"] = MagicMock()
-sys.modules["src.services.script_review_service"] = MagicMock()
-
-# Also mock external libs that might be missing
-sys.modules["anthropic"] = MagicMock()
-sys.modules["openai"] = MagicMock()
-sys.modules["google.oauth2"] = MagicMock()
-
-# Now import
-from src.services.file_storage import LocalFileStorage  # noqa: E402
+from src.services.file_storage import LocalFileStorage
 
 
 class TestStorageTraversal:
+    """Test path traversal prevention in LocalFileStorage."""
+
     @pytest.fixture
     def storage_setup(self, tmp_path):
+        """Set up a test storage directory with a secret file outside of it."""
         # Create base storage directory
         storage_dir = tmp_path / "storage"
         storage_dir.mkdir()
@@ -54,6 +30,7 @@ class TestStorageTraversal:
         return storage, storage_dir, secret_file
 
     def test_path_traversal_read(self, storage_setup):
+        """Test that path traversal in read operations is rejected."""
         storage, _storage_dir, _secret_file = storage_setup
         traversal_path = "test/../secret.txt"
 
@@ -61,6 +38,7 @@ class TestStorageTraversal:
             asyncio.run(storage.get(traversal_path))
 
     def test_path_traversal_exists(self, storage_setup):
+        """Test that path traversal in exists operations is rejected."""
         storage, _storage_dir, _secret_file = storage_setup
         traversal_path = "test/../secret.txt"
 
@@ -68,6 +46,7 @@ class TestStorageTraversal:
             asyncio.run(storage.exists(traversal_path))
 
     def test_path_traversal_delete(self, storage_setup):
+        """Test that path traversal in delete operations is rejected."""
         storage, _storage_dir, _secret_file = storage_setup
         traversal_path = "test/../secret.txt"
 

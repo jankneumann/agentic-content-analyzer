@@ -1,22 +1,32 @@
+"""Security tests for global error handler.
 
-import os
-from unittest.mock import patch
+Tests that the global error handler does not leak sensitive information
+in error responses.
+"""
 
-# Set required environment variables before importing application modules
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-key"
-os.environ["OPENAI_API_KEY"] = "sk-test-key"
-os.environ["GRAPHITI_URL"] = "http://localhost:8080"
-os.environ["GRAPHITI_API_KEY"] = "test-key"
-
-from fastapi import FastAPI, Request
-from fastapi.testclient import TestClient
-from src.api.middleware.error_handler import register_error_handlers
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from src.api.middleware.error_handler import register_error_handlers
+
+
+@pytest.fixture(autouse=True)
+def setup_env(monkeypatch):
+    """Set up required environment variables for tests.
+
+    Uses monkeypatch to ensure proper cleanup after each test.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    monkeypatch.setenv("GRAPHITI_URL", "http://localhost:8080")
+    monkeypatch.setenv("GRAPHITI_API_KEY", "test-key")
+
 
 def test_global_error_handler_leakage():
-    """
-    Test that the global error handler intentionally leaks sensitive information
-    before the fix, and hides it after the fix.
+    """Test that the global error handler does not leak sensitive information.
+
+    Verifies that after the fix, sensitive data is not exposed in error responses.
     """
     app = FastAPI()
     register_error_handlers(app)

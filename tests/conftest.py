@@ -4,6 +4,7 @@ This module provides:
 - Factory Boy factories registered as pytest fixtures
 - Database session fixtures with proper cleanup
 - Common test utilities
+- Environment isolation between tests
 
 Factory Usage:
     Factories are registered as fixtures via pytest-factoryboy.
@@ -37,6 +38,63 @@ from sqlalchemy.orm import sessionmaker
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.summary import SummaryFactory
+
+# =============================================================================
+# Environment Isolation
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def isolate_environment():
+    """Isolate environment variables between tests.
+
+    This fixture snapshots the environment before each test and restores it
+    after the test completes. This prevents test pollution where one test's
+    environment modifications affect subsequent tests.
+
+    Note: This uses yield-based cleanup which runs even if tests fail.
+    For better isolation, tests should use monkeypatch.setenv() instead of
+    directly modifying os.environ.
+    """
+    # Snapshot current environment
+    original_env = os.environ.copy()
+
+    yield
+
+    # Restore original environment
+    # First, remove any keys that were added during the test
+    for key in list(os.environ.keys()):
+        if key not in original_env:
+            del os.environ[key]
+
+    # Then restore any keys that were modified or removed
+    for key, value in original_env.items():
+        os.environ[key] = value
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    """Clear the Settings singleton cache before and after each test.
+
+    This ensures each test gets a fresh Settings instance and prevents
+    cached settings from one test affecting another.
+    """
+    try:
+        from src.config.settings import get_settings
+
+        get_settings.cache_clear()
+    except ImportError:
+        pass  # Settings module not available
+
+    yield
+
+    try:
+        from src.config.settings import get_settings
+
+        get_settings.cache_clear()
+    except ImportError:
+        pass
+
 
 # Register factories as fixtures
 # This creates:
