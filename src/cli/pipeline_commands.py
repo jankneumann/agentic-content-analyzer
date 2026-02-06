@@ -190,8 +190,8 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     from src.ingestion.gmail import GmailContentIngestionService
     from src.ingestion.podcast import PodcastContentIngestionService
     from src.ingestion.rss import RSSContentIngestionService
-    from src.ingestion.youtube import YouTubeContentIngestionService
     from src.ingestion.substack import SubstackContentIngestionService
+    from src.ingestion.youtube import YouTubeContentIngestionService
 
     typer.echo("  Running parallel ingestion (5 sources)...")
 

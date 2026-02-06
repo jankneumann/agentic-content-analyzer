@@ -417,7 +417,7 @@ class GmailClient:
                     "gmail_message_id": message_id,
                     "has_html": bool(html_body),
                     "has_text": bool(text_body),
-                    **({\"substack_url\": canonical_substack_url} if canonical_substack_url else {}),
+                    **({"substack_url": canonical_substack_url} if canonical_substack_url else {}),
                 },
                 raw_content=html_body,  # Preserve original HTML
                 raw_format="html" if html_body else "text",
