@@ -7,7 +7,7 @@ listing, retrieving, creating, deleting, and ingesting content records.
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
@@ -21,6 +21,7 @@ from src.models.content import (
     ContentSource,
     ContentStatus,
 )
+from src.models.jobs import JobStatus
 from src.services.content_service import ContentService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -149,94 +150,62 @@ class IngestResponse(BaseModel):
 
 
 # ============================================================================
-# In-memory task storage (would use Redis in production)
+# Job Queue Integration for Ingestion (replaces in-memory task storage)
 # ============================================================================
 
-_ingestion_tasks: dict[str, dict] = {}
 
-
-async def _run_content_ingestion(
-    task_id: str,
+async def _enqueue_ingestion_job(
     source: ContentSource,
     max_results: int,
     days_back: int,
     force_reprocess: bool,
-) -> None:
-    """Background content ingestion task using unified Content model."""
-    from datetime import UTC, timedelta
+) -> int:
+    """Enqueue an ingestion job to pgqueuer_jobs table.
+
+    Returns the job ID for status tracking.
+    """
+    import json
+
+    import asyncpg
+
+    from src.queue.setup import (
+        _sqlalchemy_url_to_asyncpg,
+        get_queue_connection_string,
+    )
+
+    queue_url = get_queue_connection_string()
+    asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+    conn = await asyncpg.connect(asyncpg_url)
 
     try:
-        _ingestion_tasks[task_id]["status"] = "processing"
-        _ingestion_tasks[task_id]["message"] = f"Starting {source.value} content ingestion"
-
-        after_date = datetime.now(UTC) - timedelta(days=days_back)
-
-        if source == ContentSource.GMAIL:
-            from src.ingestion.gmail import GmailContentIngestionService
-
-            service = GmailContentIngestionService()
-            count = await asyncio.to_thread(
-                service.ingest_content,
-                max_results=max_results,
-                after_date=after_date,
-                force_reprocess=force_reprocess,
-            )
-
-        elif source == ContentSource.RSS:
-            from src.ingestion.rss import RSSContentIngestionService
-
-            rss_service = RSSContentIngestionService()
-            # Sources loaded automatically from SourcesConfig with legacy fallback
-            count = await asyncio.to_thread(
-                lambda: rss_service.ingest_content(
-                    max_entries_per_feed=max_results,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                )
-            )
-
-        elif source == ContentSource.YOUTUBE:
-            from src.ingestion.youtube import YouTubeContentIngestionService
-
-            service = YouTubeContentIngestionService(use_oauth=True)
-            count = await asyncio.to_thread(
-                service.ingest_all_playlists,
-                max_videos_per_playlist=max_results,
-                after_date=after_date,
-                force_reprocess=force_reprocess,
-            )
-
-        elif source == ContentSource.PODCAST:
-            from src.ingestion.podcast import PodcastContentIngestionService
-
-            podcast_service = PodcastContentIngestionService()
-            # Sources loaded automatically from SourcesConfig
-            count = await asyncio.to_thread(
-                lambda: podcast_service.ingest_all_feeds(
-                    max_entries_per_feed=max_results,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                )
-            )
-
-        else:
-            _ingestion_tasks[task_id]["status"] = "error"
-            _ingestion_tasks[task_id]["message"] = (
-                f"Unsupported source for ingestion: {source.value}"
-            )
-            return
-
-        _ingestion_tasks[task_id]["status"] = "completed"
-        _ingestion_tasks[task_id]["progress"] = 100
-        _ingestion_tasks[task_id]["processed"] = count
-        _ingestion_tasks[task_id]["message"] = f"Ingested {count} content items from {source.value}"
-
-    except Exception as e:
-        logger.error(f"Content ingestion failed: {e}", exc_info=True)
-        _ingestion_tasks[task_id]["status"] = "error"
-        _ingestion_tasks[task_id]["message"] = (
-            "An internal error occurred during content ingestion."
+        payload = json.dumps(
+            {
+                "source": source.value,
+                "max_results": max_results,
+                "days_back": days_back,
+                "force_reprocess": force_reprocess,
+                "progress": 0,
+                "message": "Queued",
+            }
         )
+
+        job_id: int = await conn.fetchval(
+            """
+            INSERT INTO pgqueuer_jobs (entrypoint, payload, status, created_at, execute_after)
+            VALUES ('ingest_content', $1::jsonb, 'queued', NOW(), NOW())
+            RETURNING id
+            """,
+            payload,
+        )
+
+        # Notify workers
+        await conn.execute("SELECT pg_notify('pgqueuer', 'ingest_content')")
+
+        logger.info(f"Enqueued ingestion job {job_id} for source {source.value}")
+        return job_id
+
+    finally:
+        await conn.close()
 
 
 class DuplicateInfo(BaseModel):
@@ -257,12 +226,11 @@ class DuplicateInfo(BaseModel):
 @router.post("/ingest", response_model=IngestResponse)
 async def trigger_content_ingestion(
     request: IngestRequest,
-    background_tasks: BackgroundTasks,
 ) -> IngestResponse:
     """
     Trigger content ingestion from a source.
 
-    Starts a background task and returns a task ID for progress tracking.
+    Enqueues an ingestion job to the pgqueuer_jobs table and returns the job ID.
     Use the /ingest/status/{task_id} endpoint to get real-time progress via SSE.
 
     Supported sources:
@@ -271,34 +239,17 @@ async def trigger_content_ingestion(
     - youtube: Fetch transcripts from configured YouTube playlists
     - podcast: Fetch transcripts from configured podcast feeds
     """
-    import uuid
-
-    task_id = str(uuid.uuid4())
-
-    # Initialize task state
-    _ingestion_tasks[task_id] = {
-        "status": "queued",
-        "progress": 0,
-        "total": 0,
-        "processed": 0,
-        "source": request.source.value,
-        "message": "Ingestion queued",
-        "started_at": datetime.utcnow().isoformat(),
-    }
-
-    # Start background ingestion
-    background_tasks.add_task(
-        _run_content_ingestion,
-        task_id,
-        request.source,
-        request.max_results,
-        request.days_back,
-        request.force_reprocess,
+    # Enqueue job to pgqueuer_jobs table (persistent, survives restarts)
+    job_id = await _enqueue_ingestion_job(
+        source=request.source,
+        max_results=request.max_results,
+        days_back=request.days_back,
+        force_reprocess=request.force_reprocess,
     )
 
     return IngestResponse(
-        task_id=task_id,
-        message="Content ingestion started",
+        task_id=str(job_id),
+        message="Content ingestion queued",
         source=request.source,
         max_results=request.max_results,
     )
@@ -310,22 +261,49 @@ async def get_ingestion_status(task_id: str) -> StreamingResponse:
     Get content ingestion task status via Server-Sent Events.
 
     Stream real-time progress updates for the ingestion task.
+    Reads from pgqueuer_jobs table for persistent status tracking.
     """
-    if task_id not in _ingestion_tasks:
+    from src.queue.setup import get_job_status
+
+    # Validate task_id is a valid job ID
+    try:
+        job_id = int(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid task ID format")
+
+    # Check job exists
+    job = await get_job_status(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Task not found")
 
     async def event_generator():
         import json
 
         while True:
-            if task_id not in _ingestion_tasks:
+            job = await get_job_status(job_id)
+            if not job:
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
                 break
 
-            task = _ingestion_tasks[task_id]
-            yield f"data: {json.dumps(task)}\n\n"
+            # Map job record to SSE response format
+            payload = job.payload or {}
+            task_data = {
+                "status": _map_job_status_to_task_status(job.status),
+                "progress": payload.get("progress", 0),
+                "total": payload.get("total", 0),
+                "processed": payload.get("processed", 0),
+                "source": payload.get("source", "unknown"),
+                "message": payload.get("message", ""),
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+            }
 
-            if task["status"] in ("completed", "error"):
+            if job.error:
+                task_data["message"] = job.error
+
+            yield f"data: {json.dumps(task_data)}\n\n"
+
+            # Check for terminal states
+            if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
                 break
 
             await asyncio.sleep(0.5)
@@ -338,6 +316,17 @@ async def get_ingestion_status(task_id: str) -> StreamingResponse:
             "Connection": "keep-alive",
         },
     )
+
+
+def _map_job_status_to_task_status(job_status: JobStatus) -> str:
+    """Map JobStatus enum to legacy task status strings for SSE compatibility."""
+    mapping = {
+        JobStatus.QUEUED: "queued",
+        JobStatus.IN_PROGRESS: "processing",
+        JobStatus.COMPLETED: "completed",
+        JobStatus.FAILED: "error",
+    }
+    return mapping.get(job_status, "unknown")
 
 
 @router.get("", response_model=ContentListResponse)
@@ -701,26 +690,102 @@ class SummarizeContentResponse(BaseModel):
     content_ids: list[int]
 
 
-# In-memory task storage for summarization
-_summarization_tasks: dict[str, dict] = {}
+# ============================================================================
+# Job Queue Integration for Summarization (replaces in-memory task storage)
+# ============================================================================
+
+
+async def _enqueue_summarization_batch_job(
+    content_ids: list[int],
+    force: bool,
+) -> int:
+    """Enqueue a batch summarization job to track overall progress.
+
+    Individual content items are enqueued as separate jobs via enqueue_summarization_job.
+    This function creates a parent job to track the batch progress.
+
+    Returns the batch job ID for status tracking.
+    """
+    import json
+
+    import asyncpg
+
+    from src.queue.setup import (
+        _sqlalchemy_url_to_asyncpg,
+        enqueue_summarization_job,
+        get_queue_connection_string,
+    )
+
+    queue_url = get_queue_connection_string()
+    asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+    conn = await asyncpg.connect(asyncpg_url)
+
+    try:
+        # Create batch tracking job
+        payload = json.dumps(
+            {
+                "content_ids": content_ids,
+                "force": force,
+                "total": len(content_ids),
+                "enqueued": 0,
+                "completed": 0,
+                "failed": 0,
+                "progress": 0,
+                "message": "Enqueueing individual jobs",
+            }
+        )
+
+        batch_job_id: int = await conn.fetchval(
+            """
+            INSERT INTO pgqueuer_jobs (entrypoint, payload, status, created_at, execute_after)
+            VALUES ('summarize_batch', $1::jsonb, 'in_progress', NOW(), NOW())
+            RETURNING id
+            """,
+            payload,
+        )
+
+        logger.info(f"Created batch summarization job {batch_job_id} for {len(content_ids)} items")
+
+    finally:
+        await conn.close()
+
+    # Enqueue individual summarization jobs
+    enqueued_count = 0
+    for content_id in content_ids:
+        job_id = await enqueue_summarization_job(content_id)
+        if job_id is not None:
+            enqueued_count += 1
+
+    # Update batch job with enqueued count
+    conn = await asyncpg.connect(asyncpg_url)
+    try:
+        await conn.execute(
+            """
+            UPDATE pgqueuer_jobs
+            SET payload = payload || $1::jsonb
+            WHERE id = $2
+            """,
+            json.dumps({"enqueued": enqueued_count, "message": f"Enqueued {enqueued_count} jobs"}),
+            batch_job_id,
+        )
+    finally:
+        await conn.close()
+
+    return batch_job_id
 
 
 @router.post("/summarize", response_model=SummarizeContentResponse)
 async def trigger_content_summarization(
     request: SummarizeContentRequest,
-    background_tasks: BackgroundTasks,
 ) -> SummarizeContentResponse:
     """
     Trigger summarization for content records.
 
     If content_ids is empty, summarizes all pending/parsed content.
+    Enqueues jobs to pgqueuer_jobs table for worker processing.
     Use the /summarize/status/{task_id} endpoint to get real-time progress via SSE.
     """
-    import uuid
-
     from src.models.summary import Summary
-
-    task_id = str(uuid.uuid4())
 
     # Get content to process
     with get_db() as db:
@@ -764,95 +829,21 @@ async def trigger_content_summarization(
 
     if not content_ids:
         return SummarizeContentResponse(
-            task_id=task_id,
+            task_id="0",
             message="No content to summarize",
             queued_count=0,
             content_ids=[],
         )
 
-    # Initialize task state
-    _summarization_tasks[task_id] = {
-        "status": "queued",
-        "progress": 0,
-        "total": len(content_ids),
-        "processed": 0,
-        "completed": 0,
-        "failed": 0,
-        "current_content_id": None,
-        "message": "Summarization queued",
-        "started_at": datetime.utcnow().isoformat(),
-    }
-
-    # Start background summarization
-    background_tasks.add_task(
-        _run_content_summarization,
-        task_id,
-        content_ids,
-        request.force,
-    )
+    # Enqueue batch job to pgqueuer_jobs table (persistent, survives restarts)
+    batch_job_id = await _enqueue_summarization_batch_job(content_ids, request.force)
 
     return SummarizeContentResponse(
-        task_id=task_id,
-        message="Content summarization started",
+        task_id=str(batch_job_id),
+        message="Content summarization queued",
         queued_count=len(content_ids),
         content_ids=content_ids,
     )
-
-
-async def _run_content_summarization(
-    task_id: str,
-    content_ids: list[int],
-    force: bool,
-) -> None:
-    """Background content summarization task."""
-    try:
-        from src.processors.summarizer import NewsletterSummarizer
-
-        _summarization_tasks[task_id]["status"] = "processing"
-        _summarization_tasks[task_id]["message"] = "Starting content summarization"
-
-        summarizer = NewsletterSummarizer()
-        total = len(content_ids)
-
-        for i, content_id in enumerate(content_ids):
-            _summarization_tasks[task_id]["current_content_id"] = content_id
-            _summarization_tasks[task_id]["message"] = f"Summarizing content {content_id}"
-
-            try:
-                success = await asyncio.to_thread(
-                    summarizer.summarize_content,
-                    content_id,
-                )
-
-                if success:
-                    _summarization_tasks[task_id]["completed"] += 1
-                else:
-                    _summarization_tasks[task_id]["failed"] += 1
-
-            except Exception as e:
-                logger.error(f"Error summarizing content {content_id}: {e}", exc_info=True)
-                _summarization_tasks[task_id]["failed"] += 1
-                _summarization_tasks[task_id]["message"] = "Error: Processing failed"
-
-            _summarization_tasks[task_id]["processed"] = i + 1
-            _summarization_tasks[task_id]["progress"] = int((i + 1) / total * 100)
-
-        completed = _summarization_tasks[task_id]["completed"]
-        failed = _summarization_tasks[task_id]["failed"]
-
-        _summarization_tasks[task_id]["status"] = "completed"
-        _summarization_tasks[task_id]["progress"] = 100
-        _summarization_tasks[task_id]["message"] = (
-            f"Completed: {completed} summaries created, {failed} failed"
-        )
-        _summarization_tasks[task_id]["current_content_id"] = None
-
-    except Exception as e:
-        logger.error(f"Content summarization task failed: {e}", exc_info=True)
-        _summarization_tasks[task_id]["status"] = "error"
-        _summarization_tasks[task_id]["message"] = (
-            "An internal error occurred during summarization."
-        )
 
 
 @router.get("/summarize/status/{task_id}")
@@ -861,22 +852,144 @@ async def get_content_summarization_status(task_id: str) -> StreamingResponse:
     Get content summarization task status via Server-Sent Events.
 
     Stream real-time progress updates for the summarization task.
+    Reads from pgqueuer_jobs table for persistent status tracking.
+
+    For batch jobs, aggregates progress from individual summarization jobs.
     """
-    if task_id not in _summarization_tasks:
+    from src.queue.setup import get_job_status
+
+    # Validate task_id is a valid job ID
+    try:
+        job_id = int(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid task ID format")
+
+    # Check job exists
+    job = await get_job_status(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Task not found")
 
     async def event_generator():
         import json
 
+        import asyncpg
+
+        from src.queue.setup import (
+            _sqlalchemy_url_to_asyncpg,
+            get_queue_connection_string,
+        )
+
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+
         while True:
-            if task_id not in _summarization_tasks:
+            job = await get_job_status(job_id)
+            if not job:
                 yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
                 break
 
-            task = _summarization_tasks[task_id]
-            yield f"data: {json.dumps(task)}\n\n"
+            payload = job.payload or {}
 
-            if task["status"] in ("completed", "error"):
+            # For batch jobs, count individual job progress
+            if job.entrypoint == "summarize_batch":
+                content_ids = payload.get("content_ids", [])
+                total = len(content_ids)
+
+                if total > 0:
+                    # Query status of individual summarize_content jobs
+                    conn = await asyncpg.connect(asyncpg_url)
+                    try:
+                        # Count completed and failed jobs for our content_ids
+                        # Jobs have payload->content_id matching our list
+                        result = await conn.fetch(
+                            """
+                            SELECT status, COUNT(*) as cnt
+                            FROM pgqueuer_jobs
+                            WHERE entrypoint = 'summarize_content'
+                              AND (payload->>'content_id')::int = ANY($1::int[])
+                            GROUP BY status
+                            """,
+                            content_ids,
+                        )
+
+                        completed = 0
+                        failed = 0
+                        in_progress = 0
+                        for row in result:
+                            if row["status"] == "completed":
+                                completed = row["cnt"]
+                            elif row["status"] == "failed":
+                                failed = row["cnt"]
+                            elif row["status"] == "in_progress":
+                                in_progress = row["cnt"]
+
+                        processed = completed + failed
+                        progress = int((processed / total) * 100) if total > 0 else 0
+
+                        # Determine batch status
+                        if processed == total:
+                            batch_status = "completed"
+                            # Update batch job to completed
+                            await conn.execute(
+                                """
+                                UPDATE pgqueuer_jobs
+                                SET status = 'completed', completed_at = NOW()
+                                WHERE id = $1 AND status != 'completed'
+                                """,
+                                job_id,
+                            )
+                        elif in_progress > 0 or processed < total:
+                            batch_status = "processing"
+                        else:
+                            batch_status = "queued"
+
+                    finally:
+                        await conn.close()
+
+                    task_data = {
+                        "status": batch_status,
+                        "progress": progress,
+                        "total": total,
+                        "processed": processed,
+                        "completed": completed,
+                        "failed": failed,
+                        "current_content_id": None,
+                        "message": payload.get("message", f"Processed {processed}/{total}"),
+                        "started_at": job.started_at.isoformat() if job.started_at else None,
+                    }
+                else:
+                    task_data = {
+                        "status": "completed",
+                        "progress": 100,
+                        "total": 0,
+                        "processed": 0,
+                        "completed": 0,
+                        "failed": 0,
+                        "current_content_id": None,
+                        "message": "No content to summarize",
+                        "started_at": job.started_at.isoformat() if job.started_at else None,
+                    }
+            else:
+                # Single summarization job
+                task_data = {
+                    "status": _map_job_status_to_task_status(job.status),
+                    "progress": payload.get("progress", 0),
+                    "total": 1,
+                    "processed": 1 if job.status in (JobStatus.COMPLETED, JobStatus.FAILED) else 0,
+                    "completed": 1 if job.status == JobStatus.COMPLETED else 0,
+                    "failed": 1 if job.status == JobStatus.FAILED else 0,
+                    "current_content_id": payload.get("content_id"),
+                    "message": payload.get("message", ""),
+                    "started_at": job.started_at.isoformat() if job.started_at else None,
+                }
+
+            if job.error:
+                task_data["message"] = job.error
+
+            yield f"data: {json.dumps(task_data)}\n\n"
+
+            # Check for terminal states
+            if task_data["status"] in ("completed", "error"):
                 break
 
             await asyncio.sleep(0.5)

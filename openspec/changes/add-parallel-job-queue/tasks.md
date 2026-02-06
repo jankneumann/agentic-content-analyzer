@@ -102,22 +102,22 @@
 **Depends on:** Section 2
 **Modifies:** `src/api/content_routes.py` (different functions, can parallelize 5.1 and 5.2)
 
-- [ ] 5.1 Replace `_ingestion_tasks` dict with `pgqueuer_jobs` queries in `src/api/content_routes.py`
+- [x] 5.1 Replace `_ingestion_tasks` dict with `pgqueuer_jobs` queries in `src/api/content_routes.py`
   - **Depends on:** 2.1
   - Modifies: `trigger_content_ingestion()`, `get_ingestion_status()`
-- [ ] 5.2 Replace `_summarization_tasks` dict with `pgqueuer_jobs` queries
+- [x] 5.2 Replace `_summarization_tasks` dict with `pgqueuer_jobs` queries
   - **Depends on:** 2.1
   - Modifies: `trigger_content_summarization()`, `get_summarization_status()`
   - Can run in parallel with 5.1 (different functions)
-- [ ] 5.3 Update SSE endpoints to read from database
+- [x] 5.3 Update SSE endpoints to read from database
   - **Depends on:** 5.1, 5.2
   - Poll at ~500ms intervals (400-600ms acceptable)
   - Close gracefully on terminal state
-- [ ] 5.4 Create `src/api/job_routes.py` with list/status/retry endpoints
+- [x] 5.4 Create `src/api/job_routes.py` with list/status/retry endpoints
   - **Depends on:** 2.4
   - GET /jobs (with filters), GET /jobs/{id}, POST /jobs/{id}/retry
   - Return JSON per spec (pagination included)
-- [ ] 5.5 Add job routes to FastAPI app
+- [x] 5.5 Add job routes to FastAPI app
   - **Depends on:** 5.4
   - Register router in `src/api/app.py`
 
