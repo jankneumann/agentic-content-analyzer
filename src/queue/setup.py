@@ -9,15 +9,28 @@ Key features:
 - Priority-based execution
 - Retry logic with backoff
 - Direct database connections (bypasses pooler)
+- Job progress tracking via payload JSON
+
+Job Payload Schema:
+    {
+        "content_id": int,      # ID of content being processed
+        "progress": 0-100,      # Completion percentage
+        "message": str          # Current status message
+    }
 """
 
-from typing import TYPE_CHECKING
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 from pgqueuer import PgQueuer
 from pgqueuer.db import AsyncpgDriver
 from pgqueuer.queries import Queries
 
+from src.models.jobs import JobListItem, JobRecord, JobStatus
 from src.storage.database import get_queue_connection_string
 from src.utils.logging import get_logger
 
@@ -167,3 +180,434 @@ async def init_queue_schema() -> None:
 
     finally:
         await conn.close()
+
+
+# ============================================================================
+# Job Status Helpers (Tasks 2.1, 2.2, 2.3)
+# ============================================================================
+
+
+async def get_job_status(job_id: int) -> JobRecord | None:
+    """Fetch job status by ID.
+
+    Used by SSE endpoints and CLI to query job progress.
+
+    Args:
+        job_id: The job ID to look up
+
+    Returns:
+        JobRecord if found, None if job doesn't exist
+    """
+    global _connection
+
+    if _connection is None:
+        # Get a temporary connection for the query
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                id,
+                entrypoint,
+                status,
+                payload,
+                priority,
+                error,
+                retry_count,
+                created_at,
+                started_at,
+                completed_at
+            FROM pgqueuer_jobs
+            WHERE id = $1
+            """,
+            job_id,
+        )
+
+        if row is None:
+            return None
+
+        # Parse payload from JSONB
+        payload = row["payload"] if row["payload"] else {}
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+
+        return JobRecord(
+            id=row["id"],
+            entrypoint=row["entrypoint"],
+            status=JobStatus(row["status"]),
+            payload=payload,
+            priority=row["priority"],
+            error=row["error"],
+            retry_count=row["retry_count"],
+            created_at=row["created_at"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+        )
+
+    finally:
+        if should_close:
+            await conn.close()
+
+
+async def update_job_progress(
+    job_id: int,
+    progress: int,
+    message: str,
+) -> None:
+    """Update job progress in the payload.
+
+    Merges progress and message into the existing payload JSON,
+    and refreshes updated_at timestamp for stale job detection.
+
+    Args:
+        job_id: The job ID to update
+        progress: Completion percentage (0-100)
+        message: Current status message
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    try:
+        # Merge progress into existing payload
+        progress_data = json.dumps({"progress": progress, "message": message})
+        await conn.execute(
+            """
+            UPDATE pgqueuer_jobs
+            SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb
+            WHERE id = $2
+            """,
+            progress_data,
+            job_id,
+        )
+        logger.debug(f"Updated job {job_id} progress: {progress}% - {message}")
+
+    finally:
+        if should_close:
+            await conn.close()
+
+
+async def list_jobs(
+    *,
+    status: JobStatus | None = None,
+    entrypoint: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[list[JobListItem], int]:
+    """List jobs with optional filters.
+
+    Args:
+        status: Filter by job status
+        entrypoint: Filter by task entrypoint
+        limit: Maximum jobs to return (default 20, max 100)
+        offset: Pagination offset
+
+    Returns:
+        Tuple of (jobs list, total count)
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    # Clamp limit
+    limit = min(limit, 100)
+
+    try:
+        # Build WHERE clause
+        conditions = []
+        params: list[Any] = []
+        param_idx = 1
+
+        if status:
+            conditions.append(f"status = ${param_idx}")
+            params.append(status.value)
+            param_idx += 1
+
+        if entrypoint:
+            conditions.append(f"entrypoint = ${param_idx}")
+            params.append(entrypoint)
+            param_idx += 1
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        # Get total count
+        # Note: where_clause is built from controlled inputs (status/entrypoint enum values)
+        # not user input, so this is safe from SQL injection
+        count_query = f"SELECT COUNT(*) FROM pgqueuer_jobs WHERE {where_clause}"  # noqa: S608
+        total = await conn.fetchval(count_query, *params)
+
+        # Get jobs
+        params.extend([limit, offset])
+        # Note: where_clause is built from controlled inputs, not user input
+        query = f"""
+            SELECT
+                id,
+                entrypoint,
+                status,
+                payload,
+                error,
+                created_at,
+                started_at
+            FROM pgqueuer_jobs
+            WHERE {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ${param_idx} OFFSET ${param_idx + 1}
+        """  # noqa: S608
+
+        rows = await conn.fetch(query, *params)
+
+        jobs = []
+        for row in rows:
+            payload = row["payload"] if row["payload"] else {}
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+
+            jobs.append(
+                JobListItem(
+                    id=row["id"],
+                    entrypoint=row["entrypoint"],
+                    status=JobStatus(row["status"]),
+                    progress=payload.get("progress", 0),
+                    error=row["error"],
+                    created_at=row["created_at"],
+                    updated_at=row["started_at"],
+                )
+            )
+
+        return jobs, total
+
+    finally:
+        if should_close:
+            await conn.close()
+
+
+async def retry_failed_job(job_id: int) -> JobRecord | None:
+    """Re-enqueue a failed job for retry.
+
+    Only works for jobs in 'failed' status.
+
+    Args:
+        job_id: The job ID to retry
+
+    Returns:
+        Updated JobRecord if successful, None if job not found or not retryable
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    try:
+        # Only retry failed jobs
+        result = await conn.fetchrow(
+            """
+            UPDATE pgqueuer_jobs
+            SET
+                status = 'queued',
+                error = NULL,
+                retry_count = retry_count + 1,
+                started_at = NULL,
+                completed_at = NULL,
+                execute_after = NOW()
+            WHERE id = $1 AND status = 'failed'
+            RETURNING id
+            """,
+            job_id,
+        )
+
+        if result is None:
+            return None
+
+        # Notify workers
+        await conn.execute("SELECT pg_notify('pgqueuer', 'job_retry')")
+
+        return await get_job_status(job_id)
+
+    finally:
+        if should_close:
+            await conn.close()
+
+
+async def cleanup_old_jobs(older_than_days: int = 30) -> int:
+    """Delete old completed jobs.
+
+    Only deletes jobs with status='completed'. Never deletes
+    queued, in_progress, or failed jobs.
+
+    Args:
+        older_than_days: Delete completed jobs older than this many days
+
+    Returns:
+        Number of jobs deleted
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    try:
+        cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
+
+        result = await conn.execute(
+            """
+            DELETE FROM pgqueuer_jobs
+            WHERE status = 'completed'
+              AND completed_at < $1
+            """,
+            cutoff,
+        )
+
+        # Parse "DELETE N" result
+        count = int(result.split()[-1]) if result else 0
+        logger.info(f"Cleaned up {count} old completed jobs (older than {older_than_days} days)")
+        return count
+
+    finally:
+        if should_close:
+            await conn.close()
+
+
+async def mark_stale_jobs_failed(stale_threshold_hours: int = 1) -> int:
+    """Mark stale in_progress jobs as failed.
+
+    Jobs stuck in 'in_progress' for longer than the threshold
+    are assumed to have crashed and are marked failed.
+
+    Args:
+        stale_threshold_hours: Hours before a job is considered stale
+
+    Returns:
+        Number of jobs marked as failed
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    try:
+        cutoff = datetime.now(UTC) - timedelta(hours=stale_threshold_hours)
+
+        result = await conn.execute(
+            """
+            UPDATE pgqueuer_jobs
+            SET
+                status = 'failed',
+                error = 'stale_timeout',
+                completed_at = NOW()
+            WHERE status = 'in_progress'
+              AND started_at < $1
+            """,
+            cutoff,
+        )
+
+        # Parse "UPDATE N" result
+        count = int(result.split()[-1]) if result else 0
+        if count > 0:
+            logger.warning(
+                f"Marked {count} stale jobs as failed (threshold: {stale_threshold_hours}h)"
+            )
+        return count
+
+    finally:
+        if should_close:
+            await conn.close()
+
+
+async def enqueue_summarization_job(content_id: int) -> int | None:
+    """Enqueue a content item for summarization.
+
+    Implements idempotency: skips if the content_id is already
+    queued or in_progress for summarization.
+
+    Args:
+        content_id: ID of the content to summarize
+
+    Returns:
+        Job ID if enqueued, None if already in queue
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    try:
+        # Check if already queued or in_progress
+        existing = await conn.fetchval(
+            """
+            SELECT id FROM pgqueuer_jobs
+            WHERE entrypoint = 'summarize_content'
+              AND (payload->>'content_id')::int = $1
+              AND status IN ('queued', 'in_progress')
+            """,
+            content_id,
+        )
+
+        if existing:
+            logger.debug(f"Content {content_id} already in queue (job {existing})")
+            return None
+
+        # Enqueue new job
+        payload = json.dumps({"content_id": content_id, "progress": 0, "message": "Queued"})
+        job_id: int | None = await conn.fetchval(
+            """
+            INSERT INTO pgqueuer_jobs (entrypoint, payload, status, created_at, execute_after)
+            VALUES ('summarize_content', $1::jsonb, 'queued', NOW(), NOW())
+            RETURNING id
+            """,
+            payload,
+        )
+
+        # Notify workers
+        await conn.execute("SELECT pg_notify('pgqueuer', 'summarize_content')")
+
+        logger.info(f"Enqueued summarization job {job_id} for content {content_id}")
+        return job_id
+
+    finally:
+        if should_close:
+            await conn.close()
