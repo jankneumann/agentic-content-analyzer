@@ -161,7 +161,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
         from anthropic import RateLimitError
 
         from src.processors.summarizer import ContentSummarizer
-        from src.queue.setup import update_job_progress
+        from src.queue.setup import reconcile_batch_job_status, update_job_progress
 
         payload = _decode_payload(job)
         content_id = payload.get("content_id")
@@ -185,6 +185,8 @@ def register_content_tasks(pgq: PgQueuer) -> None:
                 if success:
                     await update_job_progress(job.id, 100, "Completed")
                     logger.info(f"Summarization completed for content_id={content_id}")
+                    # Check if this completes a batch job
+                    await reconcile_batch_job_status(content_id)
                     return
                 else:
                     # Summarization failed but not due to exception

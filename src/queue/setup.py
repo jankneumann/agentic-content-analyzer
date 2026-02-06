@@ -611,3 +611,115 @@ async def enqueue_summarization_job(content_id: int) -> int | None:
     finally:
         if should_close:
             await conn.close()
+
+
+async def reconcile_batch_job_status(
+    content_id: int,
+    *,
+    include_current_as_completed: bool = True,
+) -> None:
+    """Check and update batch job status after a child job completes.
+
+    When a summarize_content job finishes, this function checks if it belongs
+    to a summarize_batch parent job. If all child jobs are now complete,
+    it marks the parent batch job as completed.
+
+    This ensures batch jobs reach terminal state without requiring SSE polling.
+
+    Args:
+        content_id: The content_id of the just-completed child job
+        include_current_as_completed: If True, count the current job as completed
+            even if PGQueuer hasn't updated its status yet. Set to True when calling
+            from within a task that's about to return successfully.
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    try:
+        # Find any in_progress batch jobs that include this content_id
+        batch_jobs = await conn.fetch(
+            """
+            SELECT id, payload
+            FROM pgqueuer_jobs
+            WHERE entrypoint = 'summarize_batch'
+              AND status = 'in_progress'
+              AND payload->'content_ids' @> $1::jsonb
+            """,
+            json.dumps([content_id]),
+        )
+
+        for batch_job in batch_jobs:
+            batch_id = batch_job["id"]
+            payload = batch_job["payload"] or {}
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+
+            content_ids = payload.get("content_ids", [])
+            if not content_ids:
+                continue
+
+            # Count completed and failed child jobs for this batch
+            result = await conn.fetch(
+                """
+                SELECT status, COUNT(*) as cnt
+                FROM pgqueuer_jobs
+                WHERE entrypoint = 'summarize_content'
+                  AND (payload->>'content_id')::int = ANY($1)
+                  AND status IN ('completed', 'failed')
+                GROUP BY status
+                """,
+                content_ids,
+            )
+
+            completed = 0
+            failed = 0
+            for row in result:
+                if row["status"] == "completed":
+                    completed = row["cnt"]
+                elif row["status"] == "failed":
+                    failed = row["cnt"]
+
+            # If called from within a completing task, check if the current job
+            # is still 'in_progress' and count it as completing
+            if include_current_as_completed:
+                current_job_status = await conn.fetchval(
+                    """
+                    SELECT status FROM pgqueuer_jobs
+                    WHERE entrypoint = 'summarize_content'
+                      AND (payload->>'content_id')::int = $1
+                      AND status = 'in_progress'
+                    """,
+                    content_id,
+                )
+                if current_job_status:
+                    # Current job is still in_progress but about to complete
+                    completed += 1
+
+            total = len(content_ids)
+            processed = completed + failed
+
+            # If all child jobs are done, mark the batch as completed
+            if processed >= total:
+                await conn.execute(
+                    """
+                    UPDATE pgqueuer_jobs
+                    SET status = 'completed', completed_at = NOW()
+                    WHERE id = $1 AND status = 'in_progress'
+                    """,
+                    batch_id,
+                )
+                logger.info(
+                    f"Batch job {batch_id} completed: {completed} succeeded, {failed} failed"
+                )
+
+    finally:
+        if should_close:
+            await conn.close()
