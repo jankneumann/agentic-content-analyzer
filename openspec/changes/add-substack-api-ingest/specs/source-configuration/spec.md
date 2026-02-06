@@ -19,10 +19,10 @@ The system SHALL read a Substack session cookie from configuration (e.g., `SUBST
 - **AND** only public Substack data is ingested
 
 ### Requirement: Substack URL Deduplication
-The system SHALL deduplicate Substack ingested posts by canonical Substack URL before creating new Content records.
+The system SHALL deduplicate Substack ingested posts by canonical Substack URL across RSS, Gmail, and Substack sources before creating new Content records.
 
 #### Scenario: Duplicate Substack URLs across sources
-- **WHEN** two Substack sources produce posts with the same canonical Substack URL
+- **WHEN** RSS, Gmail, or Substack ingestion produces posts with the same canonical Substack URL
 - **THEN** the system creates a single Content record for that URL
 - **AND** logs a debug message noting the deduplication decision
 
