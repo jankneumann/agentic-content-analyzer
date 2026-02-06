@@ -222,14 +222,23 @@ class TestStreamAudio:
 
     def test_stream_audio_file_not_found(self, client, sample_podcast, db_session):
         """Test streaming audio when file doesn't exist returns 404."""
-        # sample_podcast has audio_url pointing to non-existent file
-        response = client.get(f"/api/v1/podcasts/{sample_podcast.id}/audio")
+        from unittest.mock import AsyncMock, patch
+
+        # Mock storage to return False for exists check
+        mock_storage = AsyncMock()
+        mock_storage.exists = AsyncMock(return_value=False)
+
+        with patch("src.services.file_storage.get_storage", return_value=mock_storage):
+            with patch("os.path.exists", return_value=False):
+                response = client.get(f"/api/v1/podcasts/{sample_podcast.id}/audio")
 
         assert response.status_code == 404
         assert "file not found" in response.json()["detail"].lower()
 
     def test_stream_audio_success(self, client, sample_podcast, db_session, tmp_path):
         """Test streaming audio successfully returns file."""
+        from unittest.mock import AsyncMock, patch
+
         # Create a temporary audio file
         audio_file = tmp_path / "test_podcast.mp3"
         audio_file.write_bytes(b"fake audio content")
@@ -238,7 +247,14 @@ class TestStreamAudio:
         sample_podcast.audio_url = str(audio_file)
         db_session.commit()
 
-        response = client.get(f"/api/v1/podcasts/{sample_podcast.id}/audio")
+        # Mock storage to return True for exists check and return file content
+        mock_storage = AsyncMock()
+        mock_storage.exists = AsyncMock(return_value=True)
+        mock_storage.provider_name = "local"
+        mock_storage.get = AsyncMock(return_value=b"fake audio content")
+
+        with patch("src.services.file_storage.get_storage", return_value=mock_storage):
+            response = client.get(f"/api/v1/podcasts/{sample_podcast.id}/audio")
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "audio/mpeg"

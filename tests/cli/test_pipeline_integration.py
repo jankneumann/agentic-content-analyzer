@@ -32,14 +32,16 @@ def _make_ingestion_patches(
     rss_result: int | Exception = 3,
     youtube_result: int | Exception = 1,
     podcast_result: int | Exception = 1,
+    substack_result: int | Exception = 0,
 ):
-    """Build mock patches for all 4 ingestion services.
+    """Build mock patches for all 5 ingestion services.
 
     Args:
         gmail_result: Return value or exception for Gmail ingestion.
         rss_result: Return value or exception for RSS ingestion.
         youtube_result: Return value or exception for YouTube ingestion.
         podcast_result: Return value or exception for Podcast ingestion.
+        substack_result: Return value or exception for Substack ingestion.
 
     Returns:
         Dict of context-manager patches keyed by service name.
@@ -59,11 +61,12 @@ def _make_ingestion_patches(
         "rss": _mock_service("ingest_content", rss_result),
         "youtube": _mock_service("ingest_all_playlists", youtube_result),
         "podcast": _mock_service("ingest_all_feeds", podcast_result),
+        "substack": _mock_service("ingest_content", substack_result),
     }
 
 
 def _apply_ingestion_patches(mocks: dict):
-    """Return a combined context manager that patches all 4 ingestion services."""
+    """Return a combined context manager that patches all 5 ingestion services."""
     from contextlib import ExitStack
 
     stack = ExitStack()
@@ -73,6 +76,7 @@ def _apply_ingestion_patches(mocks: dict):
             "rss": "src.ingestion.rss.RSSContentIngestionService",
             "youtube": "src.ingestion.youtube.YouTubeContentIngestionService",
             "podcast": "src.ingestion.podcast.PodcastContentIngestionService",
+            "substack": "src.ingestion.substack.SubstackContentIngestionService",
         }
         stack.enter_context(patch(module_map[name], mock_cls))
     return stack
@@ -109,7 +113,7 @@ class TestParallelIngestionPartialFailure:
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
     def test_pipeline_succeeds_when_two_sources_fail(self, mock_summarizer, mock_digest):
-        """Pipeline continues when 2 of 4 ingestion sources fail."""
+        """Pipeline continues when 2 of 5 ingestion sources fail."""
         mock_summarizer.return_value.summarize_pending_contents.return_value = 3
         mock_result = MagicMock()
         mock_result.title = "Daily Digest"
@@ -125,13 +129,13 @@ class TestParallelIngestionPartialFailure:
 
         assert result.exit_code == 0
         assert "completed successfully" in result.output
-        # Should show 2 completed, 2 failed
-        assert "2/4 complete" in result.output
+        # Should show 3 completed (rss, podcast, substack), 2 failed (gmail, youtube)
+        assert "3/5 complete" in result.output
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
     def test_pipeline_succeeds_when_three_sources_fail(self, mock_summarizer, mock_digest):
-        """Pipeline continues even when 3 of 4 sources fail — only needs 1."""
+        """Pipeline continues even when 3 of 5 sources fail — only needs 1."""
         mock_summarizer.return_value.summarize_pending_contents.return_value = 1
         mock_result = MagicMock()
         mock_result.title = "Daily Digest"
@@ -143,13 +147,14 @@ class TestParallelIngestionPartialFailure:
             rss_result=RuntimeError("fail"),
             youtube_result=RuntimeError("fail"),
             podcast_result=1,
+            # substack succeeds with 0 items
         )
         with _apply_ingestion_patches(mocks):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
-        # 1 completed, 3 failed
-        assert "1/4 complete" in result.output
+        # 2 completed (podcast, substack), 3 failed (gmail, rss, youtube)
+        assert "2/5 complete" in result.output
 
 
 class TestParallelIngestionAllFail:
@@ -162,6 +167,7 @@ class TestParallelIngestionAllFail:
             rss_result=RuntimeError("RSS timeout"),
             youtube_result=RuntimeError("YouTube quota"),
             podcast_result=RuntimeError("Podcast DNS"),
+            substack_result=RuntimeError("Substack error"),
         )
         with _apply_ingestion_patches(mocks):
             result = runner.invoke(app, ["pipeline", "daily"])
@@ -176,13 +182,14 @@ class TestParallelIngestionAllFail:
             rss_result=RuntimeError("RSS timeout"),
             youtube_result=RuntimeError("YouTube quota"),
             podcast_result=RuntimeError("Podcast DNS"),
+            substack_result=RuntimeError("Substack error"),
         )
         with _apply_ingestion_patches(mocks):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 1
-        # All 4 failed
-        assert "0/4 complete" in result.output
+        # All 5 failed
+        assert "0/5 complete" in result.output
 
 
 # =============================================================================
@@ -242,7 +249,7 @@ class TestParallelExecution:
     @pytest.mark.asyncio
     async def test_ingestion_uses_asyncio_gather(self):
         """Verify _run_ingestion_stage_async uses asyncio.gather for parallel execution."""
-        # We test the async function directly and verify all 4 sources run
+        # We test the async function directly and verify all 5 sources run
         from src.cli.pipeline_commands import _run_ingestion_stage_async
 
         with (
@@ -262,15 +269,20 @@ class TestParallelExecution:
                 "src.ingestion.podcast.PodcastContentIngestionService",
                 return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=1)),
             ),
+            patch(
+                "src.ingestion.substack.SubstackContentIngestionService",
+                return_value=MagicMock(ingest_content=MagicMock(return_value=0)),
+            ),
         ):
             results = await _run_ingestion_stage_async()
 
-        # All 4 sources should have results
-        assert len(results) == 4
+        # All 5 sources should have results
+        assert len(results) == 5
         assert results["gmail"] == 2
         assert results["rss"] == 3
         assert results["youtube"] == 1
         assert results["podcast"] == 1
+        assert results["substack"] == 0
 
     @pytest.mark.asyncio
     async def test_partial_failure_returns_successful_sources_only(self):
@@ -294,12 +306,16 @@ class TestParallelExecution:
                 "src.ingestion.podcast.PodcastContentIngestionService",
                 return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=1)),
             ),
+            patch(
+                "src.ingestion.substack.SubstackContentIngestionService",
+                return_value=MagicMock(ingest_content=MagicMock(return_value=0)),
+            ),
         ):
             results = await _run_ingestion_stage_async()
 
-        # gmail failed, so only 3 sources in results
+        # gmail failed, so only 4 sources in results
         assert "gmail" not in results
-        assert len(results) == 3
+        assert len(results) == 4
 
     @pytest.mark.asyncio
     async def test_all_fail_raises_runtime_error(self):
@@ -326,6 +342,10 @@ class TestParallelExecution:
                 return_value=MagicMock(
                     ingest_all_feeds=MagicMock(side_effect=RuntimeError("fail"))
                 ),
+            ),
+            patch(
+                "src.ingestion.substack.SubstackContentIngestionService",
+                return_value=MagicMock(ingest_content=MagicMock(side_effect=RuntimeError("fail"))),
             ),
         ):
             with pytest.raises(RuntimeError, match="All ingestion sources failed"):

@@ -446,14 +446,28 @@ class TestToolHandlers:
 
     @pytest.mark.asyncio
     async def test_handle_web_search(self):
-        """Test web search handler (stub implementation)."""
+        """Test web search handler uses Tavily service."""
+        from unittest.mock import MagicMock, patch
+
         generator = PodcastScriptGenerator()
 
-        result = await generator._handle_web_search("latest AI news 2025")
+        # Mock Tavily service
+        mock_tavily = MagicMock()
+        mock_tavily.search.return_value = [
+            {"title": "AI News 2025", "content": "Latest AI developments"}
+        ]
+        mock_tavily.format_results.return_value = "## AI News 2025\nLatest AI developments"
 
-        assert "latest AI news 2025" in result
-        assert "pending implementation" in result.lower()
+        with patch(
+            "src.services.tavily_service.get_tavily_service",
+            return_value=mock_tavily,
+        ):
+            result = await generator._handle_web_search("latest AI news 2025")
+
         assert "latest AI news 2025" in generator.web_search_queries
+        mock_tavily.search.assert_called_once_with("latest AI news 2025")
+        mock_tavily.format_results.assert_called_once()
+        assert "AI News 2025" in result
 
 
 class TestScriptParsing:

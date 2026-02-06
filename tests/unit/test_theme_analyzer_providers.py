@@ -1,3 +1,5 @@
+"""Tests for theme analyzer multi-provider support."""
+
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +13,7 @@ from src.config.models import (
 )
 from src.models.theme import ThemeTrend
 from src.processors.theme_analyzer import ThemeAnalyzer
+from src.services.llm_router import LLMResponse
 
 
 @pytest.fixture
@@ -52,9 +55,35 @@ def mock_newsletters_and_summaries():
     return newsletters, summaries
 
 
+@pytest.fixture
+def mock_llm_response():
+    """Create a mock LLMResponse with theme extraction results."""
+    return LLMResponse(
+        text="""
+        [
+            {
+                "name": "Test Theme",
+                "description": "Test Description",
+                "category": "ml_ai",
+                "trend": "emerging",
+                "relevance_score": 0.9,
+                "strategic_relevance": 0.8,
+                "tactical_relevance": 0.7,
+                "novelty_score": 0.6,
+                "cross_functional_impact": 0.5
+            }
+        ]
+        """,
+        provider=Provider.OPENAI,
+        model_version="test-model",
+        input_tokens=100,
+        output_tokens=50,
+    )
+
+
 @pytest.mark.asyncio
 async def test_extract_themes_openai(
-    theme_analyzer, mock_model_config, mock_newsletters_and_summaries
+    theme_analyzer, mock_model_config, mock_newsletters_and_summaries, mock_llm_response
 ):
     newsletters, summaries = mock_newsletters_and_summaries
 
@@ -64,47 +93,21 @@ async def test_extract_themes_openai(
     ]
     mock_model_config.get_provider_model_id.return_value = "gpt-4-test"
 
-    # Mock OpenAI client
-    with patch("src.processors.theme_analyzer.OpenAI") as MockOpenAI:
-        mock_client = MockOpenAI.return_value
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = """
-        [
-            {
-                "name": "Test Theme",
-                "description": "Test Description",
-                "category": "ml_ai",
-                "trend": "emerging",
-                "relevance_score": 0.9,
-                "strategic_relevance": 0.8,
-                "tactical_relevance": 0.7,
-                "novelty_score": 0.6,
-                "cross_functional_impact": 0.5
-            }
-        ]
-        """
-        mock_response.usage.prompt_tokens = 100
-        mock_response.usage.completion_tokens = 50
-        mock_client.chat.completions.create.return_value = mock_response
-
-        # Run extraction
+    # Mock LLMRouter.generate
+    mock_llm_response.provider = Provider.OPENAI
+    with patch.object(theme_analyzer.llm_router, "generate", return_value=mock_llm_response):
         themes = await theme_analyzer._extract_themes_with_llm(newsletters, summaries, [], 10, 0.5)
 
-        # Verify OpenAI client was used
-        MockOpenAI.assert_called_once_with(api_key="test-key")
-        mock_client.chat.completions.create.assert_called_once()
-
-        # Verify theme extraction
-        assert len(themes) == 1
-        assert themes[0].name == "Test Theme"
-        assert themes[0].trend == ThemeTrend.EMERGING
-        assert theme_analyzer.provider_used == Provider.OPENAI
+    # Verify theme extraction
+    assert len(themes) == 1
+    assert themes[0].name == "Test Theme"
+    assert themes[0].trend == ThemeTrend.EMERGING
+    assert theme_analyzer.provider_used == Provider.OPENAI
 
 
 @pytest.mark.asyncio
 async def test_extract_themes_anthropic(
-    theme_analyzer, mock_model_config, mock_newsletters_and_summaries
+    theme_analyzer, mock_model_config, mock_newsletters_and_summaries, mock_llm_response
 ):
     newsletters, summaries = mock_newsletters_and_summaries
 
@@ -114,46 +117,20 @@ async def test_extract_themes_anthropic(
     ]
     mock_model_config.get_provider_model_id.return_value = "claude-test"
 
-    # Mock Anthropic client
-    with patch("src.processors.theme_analyzer.Anthropic") as MockAnthropic:
-        mock_client = MockAnthropic.return_value
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock()]
-        mock_response.content[0].text = """
-        [
-            {
-                "name": "Test Theme",
-                "description": "Test Description",
-                "category": "ml_ai",
-                "trend": "emerging",
-                "relevance_score": 0.9,
-                "strategic_relevance": 0.8,
-                "tactical_relevance": 0.7,
-                "novelty_score": 0.6,
-                "cross_functional_impact": 0.5
-            }
-        ]
-        """
-        mock_response.usage.input_tokens = 100
-        mock_response.usage.output_tokens = 50
-        mock_client.messages.create.return_value = mock_response
-
-        # Run extraction
+    # Mock LLMRouter.generate
+    mock_llm_response.provider = Provider.ANTHROPIC
+    with patch.object(theme_analyzer.llm_router, "generate", return_value=mock_llm_response):
         themes = await theme_analyzer._extract_themes_with_llm(newsletters, summaries, [], 10, 0.5)
 
-        # Verify Anthropic client was used
-        MockAnthropic.assert_called_once_with(api_key="test-key")
-        mock_client.messages.create.assert_called_once()
-
-        # Verify theme extraction
-        assert len(themes) == 1
-        assert themes[0].name == "Test Theme"
-        assert theme_analyzer.provider_used == Provider.ANTHROPIC
+    # Verify theme extraction
+    assert len(themes) == 1
+    assert themes[0].name == "Test Theme"
+    assert theme_analyzer.provider_used == Provider.ANTHROPIC
 
 
 @pytest.mark.asyncio
 async def test_extract_themes_fallback(
-    theme_analyzer, mock_model_config, mock_newsletters_and_summaries
+    theme_analyzer, mock_model_config, mock_newsletters_and_summaries, mock_llm_response
 ):
     """Test fallback from Anthropic (failed) to OpenAI (success)."""
     newsletters, summaries = mock_newsletters_and_summaries
@@ -165,32 +142,23 @@ async def test_extract_themes_fallback(
     ]
     mock_model_config.get_provider_model_id.side_effect = lambda m, p: f"{p}-model"
 
-    with (
-        patch("src.processors.theme_analyzer.Anthropic") as MockAnthropic,
-        patch("src.processors.theme_analyzer.OpenAI") as MockOpenAI,
-    ):
-        # Anthropic fails
-        anthropic_client = MockAnthropic.return_value
-        anthropic_client.messages.create.side_effect = Exception("API Error")
+    # Mock LLMRouter.generate to fail on first call (Anthropic) and succeed on second (OpenAI)
+    call_count = 0
 
-        # OpenAI succeeds
-        openai_client = MockOpenAI.return_value
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "[]"  # Empty themes for simplicity
-        mock_response.usage.prompt_tokens = 100
-        mock_response.usage.completion_tokens = 50
-        openai_client.chat.completions.create.return_value = mock_response
+    async def mock_generate(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First call (Anthropic) fails
+            raise Exception("API Error")
+        # Second call (OpenAI) succeeds
+        mock_llm_response.provider = Provider.OPENAI
+        mock_llm_response.text = "[]"  # Empty themes for simplicity
+        return mock_llm_response
 
-        # Run extraction
+    with patch.object(theme_analyzer.llm_router, "generate", side_effect=mock_generate):
         themes = await theme_analyzer._extract_themes_with_llm(newsletters, summaries, [], 10, 0.5)
 
-        # Verify Anthropic was called and failed
-        MockAnthropic.assert_called_once()
-        anthropic_client.messages.create.assert_called_once()
-
-        # Verify OpenAI was called and succeeded
-        MockOpenAI.assert_called_once()
-        openai_client.chat.completions.create.assert_called_once()
-
-        assert theme_analyzer.provider_used == Provider.OPENAI
+    # Verify fallback occurred
+    assert call_count == 2
+    assert theme_analyzer.provider_used == Provider.OPENAI

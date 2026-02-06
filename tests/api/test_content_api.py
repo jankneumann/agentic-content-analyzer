@@ -340,7 +340,7 @@ class TestTriggerIngestion:
         assert response.status_code == 200
         data = response.json()
         assert "task_id" in data
-        assert data["message"] == "Content ingestion started"
+        assert data["message"] == "Content ingestion queued"
         assert data["source"] == "gmail"
 
     def test_trigger_ingestion_rss(self, client):

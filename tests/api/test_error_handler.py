@@ -37,7 +37,8 @@ class TestStructuredErrorHandler:
         assert response.status_code == 500
         data = response.json()
         assert data["error"] == "Internal Server Error"
-        assert "something went wrong" in data["detail"]
+        # Security: internal error details are not exposed to clients
+        assert data["detail"] == "An internal error occurred"
 
     def test_successful_request_not_affected(self):
         """Normal responses should not be modified."""

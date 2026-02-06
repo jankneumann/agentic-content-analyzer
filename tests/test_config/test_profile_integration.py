@@ -29,16 +29,21 @@ def get_settings_module():
 
 @pytest.fixture(autouse=True)
 def reset_profile_state() -> Generator[None, None, None]:
-    """Reset the profile state before and after each test."""
+    """Reset the profile state and settings cache before and after each test."""
     settings_mod = get_settings_module()
 
     # Reset before test
     settings_mod._active_profile_name = None
+    # Clear settings cache to ensure fresh Settings instances
+    if hasattr(settings_mod, "get_settings"):
+        settings_mod.get_settings.cache_clear()
 
     yield
 
     # Reset after test
     settings_mod._active_profile_name = None
+    if hasattr(settings_mod, "get_settings"):
+        settings_mod.get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -283,10 +288,15 @@ class TestBackwardCompatibility:
 
     def test_existing_validators_still_run(self) -> None:
         """Test that existing model validators still work."""
-        from src.config.settings import Settings
+        from src.config.settings import Settings, get_settings
+
+        # Clear cache before test
+        get_settings.cache_clear()
 
         with patch.dict(os.environ, {}, clear=False):
+            # Ensure no profile or Neon URL override is set
             os.environ.pop("PROFILE", None)
+            os.environ.pop("NEON_DATABASE_URL", None)
 
             # Should raise validation error for invalid config
             with pytest.raises(ValueError):
@@ -295,6 +305,7 @@ class TestBackwardCompatibility:
                     anthropic_api_key="test-key",
                     database_provider="neon",  # Requires Neon URL
                     database_url="postgresql://localhost/not-neon",  # Not a Neon URL
+                    neon_database_url=None,  # Ensure no override
                 )
 
 

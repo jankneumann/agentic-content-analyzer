@@ -239,10 +239,10 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
                 typer.echo(f"    ✓ {source_name}: {count} items ingested")
 
     # Summary
-    typer.echo(f"  [{completed}/4 complete, {failed} failed]")
+    typer.echo(f"  [{completed}/5 complete, {failed} failed]")
 
     # If every source failed, raise so the pipeline reports stage failure
-    if len(errors) == 4 and len(results) == 0:
+    if len(errors) == 5 and len(results) == 0:
         raise RuntimeError(
             "All ingestion sources failed: " + "; ".join(f"{k}: {v}" for k, v in errors.items())
         )

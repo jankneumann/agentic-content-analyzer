@@ -39,6 +39,8 @@ class TestContentSourceEnum:
             "manual",
             "webpage",
             "other",
+            "podcast",
+            "substack",
         }
         actual_sources = {source.value for source in ContentSource}
         assert actual_sources == expected_sources
