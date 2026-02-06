@@ -5,7 +5,7 @@ Usage:
     aca pipeline weekly
 
 Parallel Ingestion:
-    All 4 ingestion sources (Gmail, RSS, YouTube, Podcast) run concurrently
+    All 5 ingestion sources (Gmail, RSS, YouTube, Podcast, Substack) run concurrently
     via asyncio.gather(). Total ingestion time equals the slowest source,
     not the sum of all sources.
 
@@ -178,7 +178,7 @@ async def _ingest_source(
 async def _run_ingestion_stage_async() -> dict[str, int]:
     """Run all ingestion sources in parallel and return counts per source.
 
-    Uses asyncio.gather() to run all 4 sources concurrently.
+    Uses asyncio.gather() to run all 5 sources concurrently.
     Total ingestion time equals the slowest source (not sum of all).
 
     Returns:
@@ -190,15 +190,17 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     from src.ingestion.gmail import GmailContentIngestionService
     from src.ingestion.podcast import PodcastContentIngestionService
     from src.ingestion.rss import RSSContentIngestionService
+    from src.ingestion.substack import SubstackContentIngestionService
     from src.ingestion.youtube import YouTubeContentIngestionService
 
-    typer.echo("  Running parallel ingestion (4 sources)...")
+    typer.echo("  Running parallel ingestion (5 sources)...")
 
     # Create service instances
     gmail_service = GmailContentIngestionService()
     rss_service = RSSContentIngestionService()
     youtube_service = YouTubeContentIngestionService()
     podcast_service = PodcastContentIngestionService()
+    substack_service = SubstackContentIngestionService()
 
     # Define ingestion tasks
     tasks = [
@@ -206,6 +208,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         _ingest_source("rss", rss_service.ingest_content),
         _ingest_source("youtube", youtube_service.ingest_all_playlists),
         _ingest_source("podcast", podcast_service.ingest_all_feeds),
+        _ingest_source("substack", substack_service.ingest_content),
     ]
 
     # Run all sources in parallel

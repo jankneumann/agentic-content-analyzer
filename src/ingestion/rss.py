@@ -25,6 +25,11 @@ from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
+from src.utils.substack import (
+    extract_substack_canonical_url,
+    find_existing_substack_content,
+    normalize_substack_url,
+)
 
 if TYPE_CHECKING:
     from src.config.sources import RSSSource
@@ -231,6 +236,10 @@ class RSSClient:
         # Extract links from HTML (feed content for consistency)
         links = extract_links(raw_html) if raw_html else []
 
+        canonical_substack_url = extract_substack_canonical_url(links=links, source_url=link)
+        if canonical_substack_url:
+            link = canonical_substack_url
+
         # Generate unique source_id from link or content hash
         source_id = self._generate_source_id(entry)
 
@@ -242,6 +251,8 @@ class RSSClient:
             "entry_id": entry.get("id"),
             "extraction_method": extraction_method,
         }
+        if canonical_substack_url:
+            metadata["substack_url"] = canonical_substack_url
         if source_name:
             metadata["source_name"] = source_name
         if source_tags:
@@ -501,9 +512,14 @@ class RSSContentIngestionService:
                         .first()
                     )
 
+                    substack_duplicate = None
+                    if not existing and content_data.source_url:
+                        canonical_url = normalize_substack_url(content_data.source_url)
+                        substack_duplicate = find_existing_substack_content(db, canonical_url)
+
                     # Check by content_hash for cross-source duplicates
                     content_duplicate = None
-                    if not existing and content_data.content_hash:
+                    if not existing and not substack_duplicate and content_data.content_hash:
                         content_duplicate = (
                             db.query(Content)
                             .filter(Content.content_hash == content_data.content_hash)
@@ -534,6 +550,37 @@ class RSSContentIngestionService:
                                 f"{content_data.source_id}"
                             )
                             continue
+
+                    elif substack_duplicate:
+                        logger.info(
+                            f"Substack URL duplicate detected: '{content_data.title}' "
+                            f"matches existing content ID {substack_duplicate.id}"
+                        )
+
+                        content = Content(
+                            source_type=content_data.source_type,
+                            source_id=content_data.source_id,
+                            source_url=content_data.source_url,
+                            title=content_data.title,
+                            author=content_data.author,
+                            publication=content_data.publication,
+                            published_date=content_data.published_date,
+                            markdown_content=content_data.markdown_content,
+                            links_json=content_data.links_json,
+                            metadata_json=content_data.metadata_json,
+                            raw_content=content_data.raw_content,
+                            raw_format=content_data.raw_format,
+                            parser_used=content_data.parser_used,
+                            content_hash=content_data.content_hash,
+                            canonical_id=substack_duplicate.id,
+                            status=ContentStatus.COMPLETED,
+                        )
+                        db.add(content)
+                        count += 1
+                        logger.info(
+                            f"Linked Substack duplicate to canonical ID {substack_duplicate.id}"
+                        )
+                        continue
 
                     elif content_duplicate:
                         logger.info(

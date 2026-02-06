@@ -24,6 +24,11 @@ from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.html_parser import extract_links, html_to_text
 from src.utils.logging import get_logger
+from src.utils.substack import (
+    extract_substack_canonical_url,
+    find_existing_substack_content,
+    normalize_substack_url,
+)
 
 logger = get_logger(__name__)
 
@@ -392,6 +397,8 @@ class GmailClient:
             # Extract links from HTML
             links = extract_links(html_body) if html_body else []
 
+            canonical_substack_url = extract_substack_canonical_url(links=links)
+
             # Generate content hash from normalized markdown
             content_hash = generate_markdown_hash(markdown_content)
 
@@ -399,7 +406,7 @@ class GmailClient:
             content_data = ContentData(
                 source_type=ContentSource.GMAIL,
                 source_id=message_id_header,
-                source_url=None,  # Gmail messages don't have a direct URL
+                source_url=canonical_substack_url,
                 title=subject,
                 author=sender_email,
                 publication=publication,
@@ -410,6 +417,7 @@ class GmailClient:
                     "gmail_message_id": message_id,
                     "has_html": bool(html_body),
                     "has_text": bool(text_body),
+                    **({"substack_url": canonical_substack_url} if canonical_substack_url else {}),
                 },
                 raw_content=html_body,  # Preserve original HTML
                 raw_format="html" if html_body else "text",
@@ -499,9 +507,14 @@ class GmailContentIngestionService:
                         (content_data.source_type, content_data.source_id)
                     )
 
+                    substack_duplicate = None
+                    if not existing and content_data.source_url:
+                        canonical_url = normalize_substack_url(content_data.source_url)
+                        substack_duplicate = find_existing_substack_content(db, canonical_url)
+
                     # If not found by source_id, check by content_hash (cross-source duplicate)
                     content_duplicate = None
-                    if not existing and content_data.content_hash:
+                    if not existing and not substack_duplicate and content_data.content_hash:
                         content_duplicate = existing_by_content_hash.get(content_data.content_hash)
 
                     if existing:
@@ -529,6 +542,37 @@ class GmailContentIngestionService:
                                 f"{content_data.source_id}"
                             )
                             continue
+
+                    elif substack_duplicate:
+                        logger.info(
+                            f"Substack URL duplicate detected: '{content_data.title}' "
+                            f"matches existing content ID {substack_duplicate.id}"
+                        )
+
+                        content = Content(
+                            source_type=content_data.source_type,
+                            source_id=content_data.source_id,
+                            source_url=content_data.source_url,
+                            title=content_data.title,
+                            author=content_data.author,
+                            publication=content_data.publication,
+                            published_date=content_data.published_date,
+                            markdown_content=content_data.markdown_content,
+                            links_json=content_data.links_json,
+                            metadata_json=content_data.metadata_json,
+                            raw_content=content_data.raw_content,
+                            raw_format=content_data.raw_format,
+                            parser_used=content_data.parser_used,
+                            content_hash=content_data.content_hash,
+                            canonical_id=substack_duplicate.id,
+                            status=ContentStatus.COMPLETED,
+                        )
+                        db.add(content)
+                        count += 1
+                        logger.info(
+                            f"Linked Substack duplicate to canonical ID {substack_duplicate.id}"
+                        )
+                        continue
 
                     elif content_duplicate:
                         # Found duplicate by content hash from different source

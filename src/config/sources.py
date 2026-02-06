@@ -4,7 +4,7 @@ Loads ingestion source definitions from YAML config files in sources.d/
 directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
-Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack
 """
 
 import logging
@@ -90,6 +90,11 @@ class GmailSource(SourceBase):
     max_results: int = 50
 
 
+class SubstackSource(SourceBase):
+    type: Literal["substack"] = "substack"
+    url: str
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -97,7 +102,8 @@ Source = Annotated[
     | YouTubeChannelSource
     | YouTubeRSSSource
     | PodcastSource
-    | GmailSource,
+    | GmailSource
+    | SubstackSource,
     Field(discriminator="type"),
 ]
 
@@ -136,6 +142,10 @@ class SourcesConfig(BaseModel):
     def get_gmail_sources(self) -> list[GmailSource]:
         """Get all enabled Gmail sources."""
         return [s for s in self.sources if isinstance(s, GmailSource) and s.enabled]
+
+    def get_substack_sources(self) -> list[SubstackSource]:
+        """Get all enabled Substack sources."""
+        return [s for s in self.sources if isinstance(s, SubstackSource) and s.enabled]
 
 
 # --- Source File Model (per-file schema) ---

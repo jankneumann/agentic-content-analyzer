@@ -10,6 +10,7 @@ Content Sources:
 - FILE_UPLOAD: Uploaded documents (PDF, DOCX, etc.)
 - YOUTUBE: YouTube video transcripts
 - PODCAST: Podcast episode transcripts
+- SUBSTACK: Substack newsletters via Substack API
 - MANUAL: Manually created content via API
 """
 
@@ -50,6 +51,7 @@ class ContentSource(StrEnum):
     FILE_UPLOAD = "file_upload"
     YOUTUBE = "youtube"
     PODCAST = "podcast"
+    SUBSTACK = "substack"
     MANUAL = "manual"  # Manually created via API
     WEBPAGE = "webpage"  # Future: scraped web pages
     OTHER = "other"
