@@ -103,7 +103,7 @@ async def get_queue_queries() -> Queries:
         Queries instance for enqueue operations
     """
     pgq = await get_queue()
-    return Queries(pgq.driver)
+    return Queries(pgq.connection)
 
 
 async def close_queue() -> None:
