@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
+from sqlalchemy.orm import defer, joinedload
 
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
@@ -168,7 +169,29 @@ async def list_summaries(
     """
     with get_db() as db:
         # Join with Content to get title/publication
-        query = db.query(Summary).join(Content, Summary.content_id == Content.id)
+        # OPTIMIZATION: joinedload to avoid N+1 queries, defer to avoid loading heavy fields
+        query = (
+            db.query(Summary)
+            .join(Content, Summary.content_id == Content.id)
+            .options(
+                joinedload(Summary.content).options(
+                    defer(Content.markdown_content),
+                    defer(Content.tables_json),
+                    defer(Content.links_json),
+                    defer(Content.metadata_json),
+                    defer(Content.raw_content),
+                    defer(Content.error_message),
+                ),
+                defer(Summary.strategic_insights),
+                defer(Summary.technical_details),
+                defer(Summary.actionable_items),
+                defer(Summary.notable_quotes),
+                defer(Summary.relevant_links),
+                defer(Summary.relevance_scores),
+                defer(Summary.markdown_content),
+                defer(Summary.theme_tags),
+            )
+        )
 
         # Apply filters
         if content_id:
