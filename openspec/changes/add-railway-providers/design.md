@@ -89,77 +89,33 @@ class RailwayProvider:
 | pg_cron | 1.6.x | Job scheduling within PostgreSQL |
 
 **Custom Dockerfile (`railway/postgres/Dockerfile`) - Multi-stage build:**
+
+The runtime stage uses an external `postgresql.conf` instead of inline `RUN echo` commands for maintainability:
+
 ```dockerfile
-#############################################
-# Stage 1: Builder - compile all extensions
-#############################################
-FROM postgres:16-bookworm AS builder
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    git \
-    curl \
-    postgresql-server-dev-16 \
-    libssl-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Rust (required for pg_search and pgmq)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install pgrx (PostgreSQL extension framework)
-RUN cargo install --locked cargo-pgrx@0.12.6 \
-    && cargo pgrx init --pg16 $(which pg_config)
-
-# Install pgvector
-RUN cd /tmp \
-    && git clone --branch v0.7.4 https://github.com/pgvector/pgvector.git \
-    && cd pgvector \
-    && make && make install \
-    && rm -rf /tmp/pgvector
-
-# Install pg_cron
-RUN cd /tmp \
-    && git clone --branch v1.6.4 https://github.com/citusdata/pg_cron.git \
-    && cd pg_cron \
-    && make && make install \
-    && rm -rf /tmp/pg_cron
-
-# Install pgmq
-RUN cd /tmp \
-    && git clone --branch v1.4.4 https://github.com/tembo-io/pgmq.git \
-    && cd pgmq/pgmq-extension \
-    && cargo pgrx install --release \
-    && rm -rf /tmp/pgmq
-
-# Install pg_search (ParadeDB)
-RUN cd /tmp \
-    && git clone --branch v0.13.0 https://github.com/paradedb/paradedb.git \
-    && cd paradedb/pg_search \
-    && cargo pgrx install --release \
-    && rm -rf /tmp/paradedb
-
-#############################################
-# Stage 2: Runtime - minimal production image
-#############################################
+# Stage 2: Runtime (excerpt)
 FROM postgres:16-bookworm
 
-# Copy compiled extensions from builder
 COPY --from=builder /usr/share/postgresql/16/extension/ /usr/share/postgresql/16/extension/
 COPY --from=builder /usr/lib/postgresql/16/lib/ /usr/lib/postgresql/16/lib/
 
-# Configure PostgreSQL to load extensions requiring shared_preload_libraries
-RUN echo "shared_preload_libraries = 'pg_cron,pgmq,pg_search'" >> /usr/share/postgresql/postgresql.conf.sample
-
-# Initialization script to create extensions
+# External config file (version-controlled, auditable)
+COPY postgresql.conf /etc/postgresql/postgresql.conf
 COPY init-extensions.sql /docker-entrypoint-initdb.d/
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD pg_isready -U postgres || exit 1
+
+CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
 ```
+
+**PostgreSQL configuration (`railway/postgres/postgresql.conf`)** — optimized for Railway Hobby plan (512 MB RAM):
+- `shared_buffers=128MB` (~25% of RAM)
+- `effective_cache_size=256MB` (~50% of RAM)
+- `work_mem=4MB`, `maintenance_work_mem=64MB`
+- `max_connections=20` (conservative; app uses pool_size=3)
+- `shared_preload_libraries='pg_cron'`
+- Logging: slow query threshold 1000ms, connection/disconnect logging
 
 **Image size comparison:**
 - Single-stage build: ~2.1 GB (includes Rust toolchain, build tools)
@@ -522,8 +478,41 @@ case "railway":
 
 **Rollback**: Simply change provider back to previous setting; no data migration needed.
 
+### Decision 9: Deployment Preparation (Dockerfile and Worker Fixes)
+
+**What**: Fix deployment-blocking gaps in the main `Dockerfile` and `src/worker.py` discovered during end-to-end deployment prep.
+
+**Why**: Three issues would prevent successful production deployment:
+
+1. **Missing Braintrust SDK**: `uv sync --no-dev` doesn't install optional extras. Without `--extra braintrust`, `import braintrust` fails silently at runtime — no LLM traces captured despite configuration.
+
+2. **Missing profiles/ and sources.d/**: The Docker image didn't include profile YAML files or source configurations. With `PROFILE=railway`, the app would fail to load any profile settings and fall back to defaults (local providers), causing connection failures.
+
+3. **No worker telemetry**: The API server initializes telemetry in its lifespan handler, but the worker process had no telemetry setup. LLM calls from background jobs (summarization, theme analysis) went untraced.
+
+**Dockerfile changes:**
+```dockerfile
+# Build stage: install braintrust SDK
+RUN uv sync --frozen --no-dev --no-editable --extra braintrust
+
+# Runtime stage: include runtime config files
+COPY profiles/ ./profiles/
+COPY sources.d/ ./sources.d/
+```
+
+**Worker telemetry:**
+```python
+# src/worker.py - app=None skips FastAPI instrumentation
+setup_telemetry(app=None)  # Before main loop
+shutdown_telemetry()        # In finally block
+```
+
+**Env sync fix** (`scripts/railway_env_sync.py`):
+- `DATABASE_PROVIDER` transform was incorrectly set to `"supabase"` — changed to `"railway"`
+- Added `STORAGE_PROVIDER: "railway"` to transforms
+
 ## Open Questions
 
-1. **Should we support Railway's private networking?** - Initial implementation uses public URLs; private networking can be added later if needed
-2. **Should Railway MinIO use internal or public endpoint?** - Default to public for simplicity; document private networking option
-3. **Should we add Railway-specific health checks?** - Standard PostgreSQL health check should work; monitor and adjust if needed
+1. ~~**Should we support Railway's private networking?**~~ Resolved: Initial implementation uses public URLs; private networking can be added later if needed
+2. ~~**Should Railway MinIO use internal or public endpoint?**~~ Resolved: Default to public for simplicity; document private networking option
+3. ~~**Should we add Railway-specific health checks?**~~ Resolved: Standard PostgreSQL health check works; the custom image adds `pg_isready` health check

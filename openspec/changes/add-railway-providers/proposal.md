@@ -19,9 +19,11 @@ This achieves feature parity with Supabase and Neon while keeping everything on 
 ## What Changes
 
 ### Custom PostgreSQL Image
-- Create `railway/postgres/Dockerfile` with PostgreSQL 16 + extensions
+- Create `railway/postgres/Dockerfile` with PostgreSQL 16 + extensions (multi-stage build)
 - Include extensions: pgvector, pg_search (ParadeDB), pgmq, pg_cron
+- Create `railway/postgres/postgresql.conf` with optimized settings for Railway Hobby plan (512 MB RAM)
 - Create init script to enable extensions on database creation
+- Publish pre-built image to GHCR via CI workflow
 - Document build and deployment process
 
 ### Database Provider
@@ -43,22 +45,34 @@ This achieves feature parity with Supabase and Neon while keeping everything on 
   - `MINIO_BUCKET` - Default bucket name
 - Update storage factory to handle Railway provider
 
-### Configuration
-- Update `CLAUDE.md` and `docs/SETUP.md` with Railway provider documentation
+### Deployment Preparation (Dockerfile Fixes)
+- Add `--extra braintrust` to `uv sync` in main `Dockerfile` for Braintrust LLM tracing
+- Add `COPY profiles/` and `COPY sources.d/` to main `Dockerfile` for profile-based configuration
+- Add telemetry initialization to `src/worker.py` (`setup_telemetry(app=None)` / `shutdown_telemetry()`)
+- Fix `scripts/railway_env_sync.py` to use `DATABASE_PROVIDER=railway` (was incorrectly set to `supabase`)
+- Add `STORAGE_PROVIDER=railway` to env sync transforms
+
+### Configuration & Documentation
+- Update `CLAUDE.md` with Railway gotchas (extension pinning, volumes, connection limits, braintrust extra)
+- Update `docs/SETUP.md` with Railway provider documentation
 - Add Railway deployment examples
 
 ## Impact
 
-- **Affected specs**: `database-provider`, `storage-provider` (new spec)
+- **Affected specs**: `database-provider`, `file-storage`, `mobile-cloud-infrastructure`
 - **Affected code**:
   - `railway/postgres/Dockerfile` - Custom PostgreSQL image with extensions
+  - `railway/postgres/postgresql.conf` - Optimized PostgreSQL settings
   - `railway/postgres/init-extensions.sql` - Extension initialization script
+  - `Dockerfile` - Main app image (braintrust extra, profiles, sources.d)
   - `src/config/settings.py` - New Railway settings
   - `src/storage/providers/railway.py` - New database provider
   - `src/storage/providers/factory.py` - Factory update
   - `src/services/file_storage.py` - Railway storage provider
+  - `src/worker.py` - Worker telemetry initialization
+  - `scripts/railway_env_sync.py` - Fixed provider transforms
   - `tests/test_storage/test_providers.py` - Provider tests
   - `CLAUDE.md`, `docs/SETUP.md` - Documentation
 - **No breaking changes**: Existing providers remain unchanged
-- **Dependencies**: None new for application (boto3 already required for S3)
+- **Dependencies**: Braintrust SDK added as optional extra (`--extra braintrust`)
 - **Docker dependencies**: Custom image requires build with Rust toolchain for pgrx-based extensions

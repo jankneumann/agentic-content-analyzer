@@ -2,106 +2,63 @@
 
 ### Requirement: Railway PostgreSQL Provider
 
-The system SHALL support Railway PostgreSQL as a cloud-hosted database provider.
+The system SHALL support Railway as a PostgreSQL provider using a custom Docker image with pre-installed extensions (pgvector, pg_search, pgmq, pg_cron).
 
-#### Scenario: Railway provider selection
+#### Scenario: Railway provider from explicit configuration
 - **GIVEN** `DATABASE_PROVIDER=railway` is set
+- **AND** `DATABASE_URL` or `RAILWAY_DATABASE_URL` is configured
 - **WHEN** the database provider is initialized
 - **THEN** the Railway provider SHALL be selected
-- **AND** the connection URL SHALL use `RAILWAY_DATABASE_URL` or `DATABASE_URL`
 
-#### Scenario: Railway environment variable handling
-- **GIVEN** the application is deployed on Railway
-- **AND** Railway has injected `DATABASE_URL` with the PostgreSQL connection string
-- **WHEN** `DATABASE_PROVIDER=railway` is configured
-- **THEN** the provider SHALL use the Railway-provided URL automatically
+#### Scenario: Railway provider missing URL raises error
+- **GIVEN** `DATABASE_PROVIDER=railway` is set
+- **AND** neither `DATABASE_URL` nor `RAILWAY_DATABASE_URL` is configured
+- **WHEN** the database provider is initialized
+- **THEN** a clear error message SHALL be raised indicating a URL is required
 
 #### Scenario: Railway connection configuration
 - **WHEN** Railway provider is used
 - **THEN** engine options SHALL include:
   - `pool_pre_ping=True` for connection validation
-  - `pool_size=5` (conservative for shared hosting)
+  - `pool_size=3` (default for Hobby plan, 512 MB RAM)
+  - `max_overflow=2` (conservative for shared hosting)
   - `pool_recycle=300` for connection refresh
-  - `sslmode=require` for SSL connections (Railway enforces SSL)
+  - `sslmode=require` for secure connections
 
-#### Scenario: Railway internal vs external connection
-- **GIVEN** the application runs on Railway's private network
-- **WHEN** `DATABASE_URL` contains `.railway.internal`
-- **THEN** the provider SHALL use the internal URL for low-latency connections
-- **AND** no external proxy overhead SHALL occur
+#### Scenario: Railway extension support flags
+- **WHEN** Railway provider is used with the custom PostgreSQL image
+- **THEN** `supports_pg_cron()` SHALL return `True` by default
+- **AND** extension flags (`railway_pg_cron_enabled`, `railway_pgvector_enabled`, `railway_pg_search_enabled`, `railway_pgmq_enabled`) SHALL be configurable via settings
 
-#### Scenario: Railway pg_cron support
-- **GIVEN** the custom PostgreSQL image with pg_cron is deployed
-- **AND** `RAILWAY_PG_CRON_ENABLED=true` (default)
-- **WHEN** `supports_pg_cron()` is called on the Railway provider
-- **THEN** it SHALL return `True`
-- **AND** pg_cron jobs MAY be scheduled within PostgreSQL
-
-#### Scenario: Railway pg_cron disabled
-- **GIVEN** `RAILWAY_PG_CRON_ENABLED=false`
-- **WHEN** `supports_pg_cron()` is called on the Railway provider
-- **THEN** it SHALL return `False`
-- **AND** scheduled jobs MUST use external schedulers
-
-### Requirement: Railway PostgreSQL Extensions
-
-The Railway PostgreSQL custom image SHALL include extensions for feature parity with other cloud providers.
-
-#### Scenario: pgvector extension availability
-- **GIVEN** the custom PostgreSQL image is deployed on Railway
-- **WHEN** the database is initialized
-- **THEN** the `vector` extension SHALL be available
-- **AND** vector similarity search operations SHALL work correctly
-
-#### Scenario: pg_search extension availability
-- **GIVEN** the custom PostgreSQL image is deployed on Railway
-- **WHEN** the database is initialized
-- **THEN** the `pg_search` extension (ParadeDB) SHALL be available
-- **AND** BM25 full-text search operations SHALL work correctly
-
-#### Scenario: pgmq extension availability
-- **GIVEN** the custom PostgreSQL image is deployed on Railway
-- **WHEN** the database is initialized
-- **THEN** the `pgmq` extension SHALL be available
-- **AND** message queue operations SHALL work correctly
-
-#### Scenario: pg_cron extension availability
-- **GIVEN** the custom PostgreSQL image is deployed on Railway
-- **WHEN** the database is initialized
-- **THEN** the `pg_cron` extension SHALL be available
-- **AND** scheduled job operations SHALL work correctly
-
-#### Scenario: Extension initialization on database creation
-- **GIVEN** the custom PostgreSQL container starts
-- **WHEN** the database is created for the first time
-- **THEN** all extensions SHALL be enabled via init script:
-  - `CREATE EXTENSION IF NOT EXISTS vector;`
-  - `CREATE EXTENSION IF NOT EXISTS pg_search;`
-  - `CREATE EXTENSION IF NOT EXISTS pgmq;`
-  - `CREATE EXTENSION IF NOT EXISTS pg_cron;`
+#### Scenario: Railway queue connection
+- **WHEN** `get_queue_url()` is called on the Railway provider
+- **THEN** it SHALL return the same database URL (no pooler separation needed)
+- **AND** `get_queue_options()` SHALL return a larger pool for worker processes
 
 ## MODIFIED Requirements
 
 ### Requirement: Provider Factory
 
-The provider factory SHALL detect and instantiate the appropriate database provider based on configuration, with Railway added to the provider options.
+The provider factory SHALL detect and instantiate the appropriate database provider based on configuration, with Neon added to the detection chain.
 
-> Extends the base Provider Factory requirement to include Railway in the provider list.
+> Extends the base Provider Factory requirement to include Railway in the detection chain.
 
 #### Scenario: Automatic provider detection (MODIFIED)
-> **Change**: Adds Railway as a valid provider option.
+> **Change**: Adds Railway as an explicit provider option.
 
-- **GIVEN** `DATABASE_PROVIDER` is set to a valid provider name
+- **GIVEN** no explicit `DATABASE_PROVIDER` is set
 - **WHEN** the provider factory is called
-- **THEN** the provider SHALL be instantiated based on the value:
-  - `"local"` → LocalPostgresProvider
-  - `"supabase"` → SupabaseProvider
-  - `"neon"` → NeonProvider
-  - `"railway"` → RailwayProvider *(NEW)*
+- **THEN** the provider SHALL be detected based on configuration in order:
+  1. Explicit `DATABASE_PROVIDER` override (supports: `local`, `supabase`, `neon`, `railway`)
+  2. `NEON_PROJECT_ID` present → Neon provider
+  3. `SUPABASE_PROJECT_REF` present → Supabase provider
+  4. `.neon.tech` in DATABASE_URL → Neon provider
+  5. `.supabase.` in DATABASE_URL → Supabase provider
+  6. Default → Local PostgreSQL provider
 
-#### Scenario: Railway provider initialization validation
-- **GIVEN** `DATABASE_PROVIDER=railway`
-- **AND** neither `RAILWAY_DATABASE_URL` nor `DATABASE_URL` is set
-- **WHEN** the provider factory is called
+#### Scenario: Provider initialization failure (MODIFIED)
+> **Change**: Adds diagnostic information to error messages.
+
+- **WHEN** provider configuration is invalid
 - **THEN** a clear error message SHALL be raised
-- **AND** the error SHALL indicate that a database URL is required
+- **AND** the error SHALL indicate which provider was detected and what configuration is missing
