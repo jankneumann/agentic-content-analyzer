@@ -17,7 +17,7 @@
     - Add healthcheck
   - Target image size: ~450 MB (vs ~2.1 GB single-stage)
 - [x] 1.3 Create `railway/postgres/init-extensions.sql` to enable extensions on startup
-- [ ] 1.4 Create `railway/postgres/postgresql.conf` with optimized settings
+- [x] 1.4 Create `railway/postgres/postgresql.conf` with optimized settings
 - [x] 1.5 Add `railway/postgres/README.md` with build and deployment instructions
 - [ ] 1.6 Test Docker image locally:
   ```bash
@@ -129,7 +129,7 @@
   - Environment variable configuration
   - Connection pool sizing by Railway plan
   - Backup configuration and recovery
-- [ ] 7.4 Add Railway to Critical Gotchas table:
+- [x] 7.4 Add Railway to Critical Gotchas table:
   - Custom image build time (~10-15 min first build, use GHCR)
   - Extension version pinning for stability
   - Volume persistence requirements
@@ -139,9 +139,9 @@
 
 ## 8. Validation
 
-- [ ] 8.1 Run `pytest tests/test_storage/test_providers.py -v` to verify provider tests pass
-- [ ] 8.2 Run `pytest tests/test_services/test_file_storage.py -v` to verify storage tests pass
-- [ ] 8.3 Run `mypy src/storage/providers/railway.py src/services/file_storage.py` for type checking
+- [x] 8.1 Run `pytest tests/test_storage/test_providers.py -v` to verify provider tests pass
+- [x] 8.2 Run `pytest tests/test_services/test_file_storage.py -v` to verify storage tests pass
+- [x] 8.3 Run `mypy src/storage/providers/railway.py src/services/file_storage.py` for type checking
 - [ ] 8.4 Test local development with Railway provider (mock credentials)
 - [ ] 8.5 Deploy test instance to Railway and verify:
   - PostgreSQL with all extensions working
@@ -154,17 +154,17 @@
 
 ## Summary
 
-**Completed:** 20/35 tasks (57%)
+**Completed:** 25/35 tasks (71%)
 
 | Section | Status | Notes |
 |---------|--------|-------|
-| 1. PostgreSQL Image | 4/7 | Missing postgresql.conf, local testing |
+| 1. PostgreSQL Image | 5/7 | postgresql.conf done, local testing pending |
 | 2. GHCR CI | 1/4 | Workflow created, needs testing + docs |
 | 3. Database Provider | 7/7 | ✅ Complete |
 | 4. Storage Provider | 3/3 | ✅ Complete |
 | 5. Backup Strategy | 0/4 | Not started (optional for initial deploy) |
 | 6. Testing | 2/4 | Unit tests done, integration pending |
-| 7. Documentation | 4/5 | Missing gotchas update |
-| 8. Validation | 0/5 | Pending deployment |
+| 7. Documentation | 5/5 | ✅ Complete |
+| 8. Validation | 3/5 | Tests + mypy passed; deployment pending |
 
 **Critical for deployment:** Sections 3 and 4 are complete. Initial deployment to Railway is possible without backup strategy (section 5).

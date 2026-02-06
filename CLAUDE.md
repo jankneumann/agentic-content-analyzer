@@ -383,6 +383,10 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Railway custom image build slow | Use GHCR pre-built image; Rust extensions take ~20 min to compile |
 | Railway MinIO auto-discovery | Set `RAILWAY_PUBLIC_DOMAIN` or explicit `RAILWAY_MINIO_ENDPOINT` |
 | Railway PORT is dynamic | Use `${PORT:-8000}` in shell form CMD; never hardcode port in Dockerfile |
+| Railway extension version pinning | Pin git tags in Dockerfile (e.g., `--branch v0.7.4`); unpinned builds break on pgrx mismatches |
+| Railway volumes not persistent by default | Attach a volume in Railway dashboard; without it, data lost on redeploy |
+| Railway Hobby plan connection limits | Use `pool_size=3`, `max_overflow=2`; exceeding causes connection errors |
+| Braintrust extra in Dockerfile | Must add `--extra braintrust` to `uv sync` in Dockerfile; without it `import braintrust` fails silently |
 | Cloud DB has no tables | Supabase/Neon start empty; run `alembic upgrade head` against production |
 | Alembic multiple heads after relinearize | Run `alembic heads`; fix orphan `down_revision` to rejoin main chain |
 | VITE_API_URL trailing slash | Causes double-slash (`//api/v1/`); strip with `.replace(/\/$/, "")` |

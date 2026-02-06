@@ -18,6 +18,7 @@ import sys
 
 from src.queue.setup import close_queue, get_queue
 from src.tasks.content import register_content_tasks
+from src.telemetry import setup_telemetry, shutdown_telemetry
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -45,6 +46,10 @@ async def main() -> None:
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
+    # Initialize telemetry (Braintrust LLM tracing + SQLAlchemy/httpx instrumentation)
+    # app=None skips FastAPI instrumentation since worker has no HTTP server
+    setup_telemetry(app=None)
+
     logger.info("Starting PGQueuer worker...")
 
     try:
@@ -69,6 +74,7 @@ async def main() -> None:
     finally:
         # Clean up
         await close_queue()
+        shutdown_telemetry()
         logger.info("Worker shutdown complete")
 
 

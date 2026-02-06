@@ -47,7 +47,8 @@ SKIP_PATTERNS = [
 # Variables to TRANSFORM for production
 TRANSFORMS = {
     "ENVIRONMENT": "production",
-    "DATABASE_PROVIDER": "supabase",
+    "DATABASE_PROVIDER": "railway",
+    "STORAGE_PROVIDER": "railway",
     "NEO4J_PROVIDER": "auradb",
     "LOG_LEVEL": "INFO",
 }

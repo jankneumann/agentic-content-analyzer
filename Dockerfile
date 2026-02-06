@@ -16,7 +16,8 @@ COPY pyproject.toml uv.lock ./
 
 # Create virtual environment and install dependencies
 # Using --frozen to ensure reproducible builds
-RUN uv sync --frozen --no-dev --no-editable
+# --extra braintrust includes Braintrust SDK for LLM tracing in production
+RUN uv sync --frozen --no-dev --no-editable --extra braintrust
 
 # ============================================
 # Stage 2: Runtime
@@ -37,6 +38,8 @@ COPY --from=builder /app/.venv /app/.venv
 COPY src/ ./src/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
+COPY profiles/ ./profiles/
+COPY sources.d/ ./sources.d/
 
 # Copy and set up entrypoint script
 COPY docker-entrypoint.sh ./

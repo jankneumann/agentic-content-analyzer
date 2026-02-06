@@ -64,12 +64,8 @@ FROM postgres:16-bookworm
 COPY --from=builder /usr/share/postgresql/16/extension/ /usr/share/postgresql/16/extension/
 COPY --from=builder /usr/lib/postgresql/16/lib/ /usr/lib/postgresql/16/lib/
 
-# Configure PostgreSQL to load extensions requiring shared_preload_libraries
-# pg_cron requires shared_preload_libraries to be set
-RUN echo "shared_preload_libraries = 'pg_cron'" >> /usr/share/postgresql/postgresql.conf.sample
-
-# Also set cron.database_name for pg_cron to work properly
-RUN echo "cron.database_name = 'postgres'" >> /usr/share/postgresql/postgresql.conf.sample
+# Copy optimized PostgreSQL configuration
+COPY postgresql.conf /etc/postgresql/postgresql.conf
 
 # Initialization script to create extensions
 COPY init-extensions.sql /docker-entrypoint-initdb.d/
@@ -80,3 +76,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Expose PostgreSQL port
 EXPOSE 5432
+
+# Use custom config file
+CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
