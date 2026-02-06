@@ -203,15 +203,26 @@ export function StreamingMessage({ content, className }: StreamingMessageProps) 
  */
 export function TypingIndicator({ className }: { className?: string }) {
   return (
-    <div className={cn("flex gap-3 px-4 py-3", className)}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+    <div
+      className={cn("flex gap-3 px-4 py-3", className)}
+      role="status"
+      aria-label="Assistant is thinking"
+    >
+      <div
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+        aria-hidden="true"
+      >
         <Bot className="h-4 w-4" />
       </div>
-      <div className="flex items-center gap-1 rounded-2xl bg-muted px-4 py-2">
+      <div
+        className="flex items-center gap-1 rounded-2xl bg-muted px-4 py-2"
+        aria-hidden="true"
+      >
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
       </div>
+      <span className="sr-only">Assistant is thinking...</span>
     </div>
   )
 }
