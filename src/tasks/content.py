@@ -4,6 +4,7 @@ These tasks handle background operations like URL content extraction,
 summarization, and other content processing pipelines.
 """
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+# Exponential backoff delays for rate limit retries (in seconds)
+RATE_LIMIT_BACKOFF_DELAYS = [5, 10, 20]
 
 
 def _decode_payload(job: Job) -> dict[str, Any]:
@@ -142,5 +146,78 @@ def register_content_tasks(pgq: PgQueuer) -> None:
         except Exception as e:
             logger.error(f"Newsletter scan failed: {e}")
             raise
+
+    @pgq.entrypoint("summarize_content")
+    async def summarize_content(job: Job) -> None:
+        """Summarize a content item.
+
+        This task is typically enqueued by enqueue_summarization_job()
+        and processed by the worker pool.
+
+        Payload:
+            content_id: int - ID of the Content record to summarize
+        """
+        # Import here to avoid circular imports
+        from anthropic import RateLimitError
+
+        from src.processors.summarizer import ContentSummarizer
+        from src.queue.setup import update_job_progress
+
+        payload = _decode_payload(job)
+        content_id = payload.get("content_id")
+        if not content_id:
+            logger.error("summarize_content: missing content_id in payload")
+            return
+
+        logger.info(f"Starting summarization for content_id={content_id}")
+
+        # Update progress at start
+        await update_job_progress(job.id, 10, "Starting summarization")
+
+        # Retry loop with exponential backoff for rate limits
+        last_error: Exception | None = None
+
+        for attempt, delay in enumerate([*RATE_LIMIT_BACKOFF_DELAYS, None], start=1):
+            try:
+                summarizer = ContentSummarizer()
+                success = summarizer.summarize_content(content_id)
+
+                if success:
+                    await update_job_progress(job.id, 100, "Completed")
+                    logger.info(f"Summarization completed for content_id={content_id}")
+                    return
+                else:
+                    # Summarization failed but not due to exception
+                    raise RuntimeError(
+                        f"Summarization returned failure for content_id={content_id}"
+                    )
+
+            except RateLimitError as e:
+                last_error = e
+                if delay is not None:
+                    logger.warning(
+                        f"Rate limited on attempt {attempt} for content_id={content_id}, "
+                        f"retrying in {delay}s"
+                    )
+                    await update_job_progress(
+                        job.id, 10, f"Rate limited, retrying in {delay}s (attempt {attempt})"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # All retries exhausted
+                    logger.error(
+                        f"Rate limit exceeded after {len(RATE_LIMIT_BACKOFF_DELAYS)} retries "
+                        f"for content_id={content_id}"
+                    )
+                    raise
+
+            except Exception as e:
+                # Non-rate-limit errors should not be retried
+                logger.error(f"Summarization failed for content_id={content_id}: {e}")
+                raise
+
+        # Should not reach here, but handle gracefully
+        if last_error:
+            raise last_error
 
     logger.info("Content tasks registered with PGQueuer")

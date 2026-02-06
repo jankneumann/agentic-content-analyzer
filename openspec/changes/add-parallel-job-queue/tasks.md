@@ -80,16 +80,16 @@
   - Default concurrency: 5 (via `WORKER_CONCURRENCY` env var)
   - Max concurrency: 20
   - Print "ready" status when workers start
-- [ ] 4.2 Refactor `summarize_pending_contents()` to enqueue jobs instead of direct processing
+- [x] 4.2 Refactor `summarize_pending_contents()` to enqueue jobs instead of direct processing
   - **Depends on:** 4.1
   - **Modifies:** `src/processors/summarizer.py`, `src/cli/pipeline_commands.py`
   - Enqueue with payload: `{"content_id": int}`
   - Skip content_ids already in `queued` or `in_progress` status (idempotency)
-- [ ] 4.3 Add `summarize_content` entrypoint to `src/tasks/content.py` with progress tracking
+- [x] 4.3 Add `summarize_content` entrypoint to `src/tasks/content.py` with progress tracking
   - **Depends on:** 4.1, 2.2
   - Call `update_job_progress(job.id, progress, message)` during processing
   - Handle Anthropic 429 with exponential backoff (5s, 10s, 20s)
-- [ ] 4.4 Add `--wait` flag to pipeline commands to wait for worker completion
+- [x] 4.4 Add `--wait` flag to pipeline commands to wait for worker completion
   - **Depends on:** 4.2
   - Poll `pgqueuer_jobs` until all enqueued jobs complete
 - [x] 4.5 Implement worker health check and graceful shutdown

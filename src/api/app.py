@@ -16,6 +16,7 @@ from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
 from src.api.files_routes import router as files_router
 from src.api.health_routes import router as health_router
+from src.api.job_routes import router as job_router
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.telemetry import TraceIdMiddleware
 from src.api.otel_proxy_routes import router as otel_proxy_router
@@ -93,6 +94,7 @@ app.include_router(files_router)
 app.include_router(save_router)  # Mobile content capture
 app.include_router(source_router)
 app.include_router(health_router)  # Health and readiness probes
+app.include_router(job_router)  # Job queue management
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 

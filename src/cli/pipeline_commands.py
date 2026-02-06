@@ -270,13 +270,57 @@ def _run_ingestion_stage(pipeline_type: str = "daily") -> dict[str, int]:
         return results
 
 
-def _run_summarization_stage(pipeline_type: str = "daily") -> int:
+async def _wait_for_jobs(job_ids: list[int], poll_interval: float = 2.0) -> dict[str, int]:
+    """Wait for a list of jobs to complete.
+
+    Polls the job status until all jobs reach a terminal state (completed/failed).
+
+    Args:
+        job_ids: List of job IDs to wait for
+        poll_interval: Seconds between status checks
+
+    Returns:
+        Dictionary with completed_count and failed_count
+    """
+    from src.queue.setup import get_job_status
+
+    completed = 0
+    failed = 0
+    pending = set(job_ids)
+
+    while pending:
+        for job_id in list(pending):
+            job = await get_job_status(job_id)
+            if job is None:
+                # Job not found (shouldn't happen)
+                pending.discard(job_id)
+                failed += 1
+            elif job.is_terminal:
+                pending.discard(job_id)
+                if job.status.value == "completed":
+                    completed += 1
+                else:
+                    failed += 1
+
+        if pending:
+            typer.echo(
+                f"  Progress: {completed + failed}/{len(job_ids)} "
+                f"({completed} completed, {failed} failed, {len(pending)} pending)"
+            )
+            await asyncio.sleep(poll_interval)
+
+    return {"completed_count": completed, "failed_count": failed}
+
+
+def _run_summarization_stage(pipeline_type: str = "daily", use_queue: bool = False) -> int:
     """Run summarization on all pending content.
 
     Creates an OTel span for the entire summarization stage.
 
     Args:
         pipeline_type: Pipeline type for span attributes (daily, weekly)
+        use_queue: If True, enqueue jobs for worker processing and wait.
+                   If False, process directly (default, backward compatible).
 
     Returns:
         Number of content items successfully summarized.
@@ -284,9 +328,34 @@ def _run_summarization_stage(pipeline_type: str = "daily") -> int:
     from src.processors.summarizer import ContentSummarizer
 
     with _pipeline_stage_span("summarization", pipeline_type) as ctx:
-        typer.echo("  Summarizing pending content...")
         summarizer = ContentSummarizer()
-        count = summarizer.summarize_pending_contents()
+
+        if use_queue:
+            typer.echo("  Enqueueing pending content for summarization...")
+
+            # Enqueue jobs asynchronously
+            async def enqueue_and_wait() -> int:
+                result = await summarizer.enqueue_pending_contents()
+                enqueued = result["enqueued_count"]
+                skipped = result["skipped_count"]
+                job_ids = result["job_ids"]
+                assert isinstance(job_ids, list)  # Always list[int] from enqueue_pending_contents
+
+                if not job_ids:
+                    typer.echo("  No new content to summarize.")
+                    return 0
+
+                typer.echo(f"  Enqueued {enqueued} jobs ({skipped} already in queue)")
+                typer.echo("  Waiting for worker completion...")
+
+                wait_result = await _wait_for_jobs(job_ids)
+                return wait_result["completed_count"]
+
+            count = asyncio.run(enqueue_and_wait())
+        else:
+            typer.echo("  Summarizing pending content...")
+            count = summarizer.summarize_pending_contents()
+
         typer.echo(f"  Summarized {count} content items")
         ctx.set_attribute("item_count", count)
         return count
@@ -354,16 +423,27 @@ def daily(
             help="Target date in YYYY-MM-DD format (default: today).",
         ),
     ] = None,
+    wait: Annotated[
+        bool,
+        typer.Option(
+            "--wait",
+            "-w",
+            help="Enqueue summarization jobs and wait for worker completion instead of direct processing.",
+        ),
+    ] = False,
 ) -> None:
     """Run the full daily pipeline: ingest all sources, summarize, create daily digest.
 
     Stages run sequentially:
     1. Ingest from all configured sources (Gmail, RSS, YouTube, Podcast)
-    2. Summarize all pending content
+    2. Summarize all pending content (or enqueue for workers with --wait)
     3. Create daily digest for the target date
 
     If a stage fails, the pipeline reports which stage failed and exits with code 1.
     Successfully completed stages are NOT rolled back.
+
+    Use --wait flag to enqueue summarization jobs for worker pool processing
+    instead of direct in-process summarization.
     """
     # Parse target date
     if date:
@@ -409,10 +489,11 @@ def daily(
     # Stage 2: Summarization
     typer.echo("\nStage 2/3: Content Summarization")
     try:
-        summarized_count = _run_summarization_stage(pipeline_type="daily")
+        summarized_count = _run_summarization_stage(pipeline_type="daily", use_queue=wait)
         pipeline_result["stages"]["summarization"] = {
             "status": "completed",
             "count": summarized_count,
+            "mode": "queue" if wait else "direct",
         }
     except Exception as e:
         typer.echo(f"\nPipeline failed at Stage 2 (Summarization): {e}")
@@ -466,16 +547,26 @@ def weekly(
             help="Start-of-week date in YYYY-MM-DD format (default: start of current week, Monday).",
         ),
     ] = None,
+    wait: Annotated[
+        bool,
+        typer.Option(
+            "--wait",
+            help="Enqueue summarization jobs and wait for worker completion instead of direct processing.",
+        ),
+    ] = False,
 ) -> None:
     """Run the full weekly pipeline: ingest all sources, summarize, create weekly digest.
 
     Stages run sequentially:
     1. Ingest from all configured sources (Gmail, RSS, YouTube, Podcast)
-    2. Summarize all pending content
+    2. Summarize all pending content (or enqueue for workers with --wait)
     3. Create weekly digest for the target week
 
     If a stage fails, the pipeline reports which stage failed and exits with code 1.
     Successfully completed stages are NOT rolled back.
+
+    Use --wait flag to enqueue summarization jobs for worker pool processing
+    instead of direct in-process summarization.
     """
     # Parse target week start date
     if week:
@@ -525,10 +616,11 @@ def weekly(
     # Stage 2: Summarization
     typer.echo("\nStage 2/3: Content Summarization")
     try:
-        summarized_count = _run_summarization_stage(pipeline_type="weekly")
+        summarized_count = _run_summarization_stage(pipeline_type="weekly", use_queue=wait)
         pipeline_result["stages"]["summarization"] = {
             "status": "completed",
             "count": summarized_count,
+            "mode": "queue" if wait else "direct",
         }
     except Exception as e:
         typer.echo(f"\nPipeline failed at Stage 2 (Summarization): {e}")

@@ -320,6 +320,61 @@ class ContentSummarizer:
         # created_count is always int from summarize_contents
         return int(created_count)  # type: ignore[arg-type]
 
+    async def enqueue_pending_contents(
+        self, limit: int | None = None
+    ) -> dict[str, int | list[int]]:
+        """
+        Enqueue pending content for summarization via job queue.
+
+        Instead of processing synchronously, this method enqueues jobs
+        to the pgqueuer_jobs table for worker pool processing.
+
+        Args:
+            limit: Maximum number to enqueue (None = all)
+
+        Returns:
+            Dictionary with:
+                - 'enqueued_count': Number of jobs successfully enqueued
+                - 'skipped_count': Number already in queue (idempotency)
+                - 'job_ids': List of new job IDs created
+        """
+        from src.queue.setup import enqueue_summarization_job
+
+        # Query for IDs of pending/parsed content
+        with get_db() as db:
+            query = db.query(Content.id).filter(
+                Content.status.in_([ContentStatus.PENDING, ContentStatus.PARSED])
+            )
+
+            if limit:
+                query = query.limit(limit)
+
+            pending_ids = [row[0] for row in query.all()]
+            logger.info(f"Found {len(pending_ids)} pending content records to enqueue")
+
+        enqueued_count = 0
+        skipped_count = 0
+        job_ids: list[int] = []
+
+        for content_id in pending_ids:
+            job_id = await enqueue_summarization_job(content_id)
+            if job_id is not None:
+                enqueued_count += 1
+                job_ids.append(job_id)
+            else:
+                skipped_count += 1
+
+        logger.info(
+            f"Enqueued {enqueued_count} summarization jobs "
+            f"({skipped_count} skipped - already in queue)"
+        )
+
+        return {
+            "enqueued_count": enqueued_count,
+            "skipped_count": skipped_count,
+            "job_ids": job_ids,
+        }
+
     def summarize_content_with_feedback(
         self, content_id: int, feedback_context: str | None
     ) -> dict | None:
