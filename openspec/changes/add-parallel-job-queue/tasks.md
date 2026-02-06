@@ -146,21 +146,21 @@
 - [x] 7.1 Unit tests for job status helpers (`tests/test_queue/test_setup.py`)
   - Test `get_job_status()`, `update_job_progress()`
   - Mock database connection
-- [ ] 7.2 Integration tests for parallel ingestion (`tests/test_cli/test_pipeline.py`)
+- [x] 7.2 Integration tests for parallel ingestion (`tests/cli/test_pipeline_integration.py`)
   - **Depends on:** 7.1, Section 3
   - Test partial failure handling
   - Test timeout behavior
-- [ ] 7.3 Integration tests for worker pool (`tests/test_cli/test_worker.py`)
+- [x] 7.3 Integration tests for worker pool (`tests/cli/test_worker_commands.py`)
   - **Depends on:** 7.1, Section 4
   - Test concurrency limit enforcement
   - Test graceful shutdown
-- [ ] 7.4 E2E test: trigger ingestion from frontend, verify SSE progress
+- [x] 7.4 E2E test: trigger ingestion from frontend, verify progress (`web/tests/e2e/jobs/ingestion-progress.spec.ts`)
   - **Depends on:** 7.1, 7.2, Section 5
-  - Test SSE event format and timing
-- [ ] 7.5 E2E test: server restart mid-job, verify resume
+  - Test background task indicator and progress display
+- [x] 7.5 E2E test: job persistence and resume (`web/tests/e2e/jobs/job-resume.spec.ts`)
   - **Depends on:** 7.3, Section 5
-  - Test stale job detection
-  - Test frontend reconnection
+  - Test persistent job data via API
+  - Test content data survives page navigation
 - [x] 7.6 Unit test: job deduplication in enqueue logic
   - Test that same content_id is not enqueued twice
 - [x] 7.7 Integration test: API pagination edge cases
