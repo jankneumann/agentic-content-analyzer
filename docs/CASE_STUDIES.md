@@ -12,6 +12,7 @@ Historical documentation of major refactoring efforts and lessons learned. This 
 - [Frontend-Backend API Field Mismatch Debugging (January 2025)](#frontend-backend-api-field-mismatch-debugging-january-2025)
 - [Legacy Model Cleanup & Idempotent Migrations (January 2026)](#legacy-model-cleanup--idempotent-migrations-january-2026)
 - [Git Branch Hygiene & Pre-Commit Hooks (January 2025)](#git-branch-hygiene--pre-commit-hooks-january-2025)
+- [Test Suite Bug Scrub: Module Pollution & Settings Isolation (February 2026)](#test-suite-bug-scrub-module-pollution--settings-isolation-february-2026)
 - [General Refactoring Best Practices](#general-refactoring-best-practices)
 
 ---
@@ -1083,6 +1084,304 @@ git checkout -b openspec/mobile-cloud-deployment
 
 ---
 
+## Test Suite Bug Scrub: Module Pollution & Settings Isolation (February 2026)
+
+Successfully diagnosed and fixed 259 failing tests caused by three interconnected issues: a build error, obsolete test files, and test pollution from environment variable leakage and module-level side effects.
+
+### 1. Module-Level sys.modules Pollution
+
+**Problem**: Security tests modified `sys.modules` at module level to mock optional dependencies like `graphiti_core`:
+
+```python
+# test_path_traversal.py (BROKEN - module level)
+import sys
+from unittest.mock import MagicMock
+
+# This executes during pytest COLLECTION, not during test execution!
+sys.modules["graphiti_core"] = MagicMock()
+sys.modules["graphiti_core.embedder"] = MagicMock()
+# ... more mocks
+```
+
+**Impact**: When pytest collected tests, these module-level modifications:
+- Corrupted the import system for ALL subsequent tests
+- Caused unrelated tests to fail with import errors
+- Made failures non-deterministic (depended on collection order)
+- Created 71+ collection errors that blocked entire test modules
+
+**Solution**: Move sys.modules mocking into fixtures with proper cleanup:
+
+```python
+# test_path_traversal.py (FIXED - fixture-based)
+class TestPathTraversal:
+    @pytest.fixture(autouse=True)
+    def mock_graphiti(self, monkeypatch):
+        """Mock graphiti_core dependencies."""
+        graphiti_modules = [
+            "graphiti_core",
+            "graphiti_core.embedder",
+            "graphiti_core.embedder.openai",
+            # ...
+        ]
+        for module in graphiti_modules:
+            if module not in sys.modules:
+                monkeypatch.setitem(sys.modules, module, MagicMock())
+```
+
+**Key Learnings**:
+- **Module-level code runs at collection time** - not test execution time
+- **sys.modules modifications are global** - they affect all tests
+- **monkeypatch.setitem()** provides automatic cleanup after each test
+- **Check `if module not in sys.modules`** - don't overwrite real imports
+- Symptoms: random collection errors, tests pass individually but fail in suite
+
+### 2. Settings Singleton + Module-Level Imports = Test Pollution
+
+**Problem**: The API dependencies module imported settings at module level:
+
+```python
+# src/api/dependencies.py (BROKEN)
+from src.config.settings import settings  # Cached at import time!
+
+async def verify_admin_key(api_key: str | None = ...):
+    if not settings.admin_api_key:  # Uses stale cached settings
+        raise HTTPException(...)
+```
+
+**Impact**: When `tests/api/conftest.py` imported the app:
+1. `from src.api.app import app` triggered all route imports
+2. Routes imported `dependencies.py`
+3. `dependencies.py` captured `settings` at that moment
+4. Test fixtures that later set `ADMIN_API_KEY` env var had no effect
+5. All admin-protected endpoints returned 500 "Admin API key not configured"
+
+**Solution**: Use dynamic `get_settings()` lookup instead of module-level import:
+
+```python
+# src/api/dependencies.py (FIXED)
+from src.config.settings import get_settings  # Factory function, not instance
+
+async def verify_admin_key(api_key: str | None = ...):
+    settings = get_settings()  # Fresh lookup respects current env vars
+    if not settings.admin_api_key:
+        raise HTTPException(...)
+```
+
+**Key Learnings**:
+- **Singletons with module-level imports break testability**
+- **Factory functions (`get_settings()`) enable per-test configuration**
+- **Import order matters** - conftest imports happen before fixtures run
+- Settings validation in `__init__` should use lenient defaults, not raise
+
+### 3. Environment Variable Isolation with Autouse Fixtures
+
+**Problem**: Tests modified `os.environ` directly without cleanup:
+
+```python
+# test_settings.py (BROKEN)
+os.environ["DATABASE_URL"] = "postgresql://test"
+# Test runs...
+# No cleanup! Next test inherits this env var
+```
+
+**Impact**: 256 tests passed individually but failed in full suite runs. Environment variables leaked between tests, causing cascading failures.
+
+**Solution**: Add autouse fixtures to root conftest.py for automatic isolation:
+
+```python
+# tests/conftest.py
+@pytest.fixture(autouse=True)
+def isolate_environment():
+    """Snapshot and restore environment between tests."""
+    original_env = os.environ.copy()
+    yield
+    # Restore original state
+    for key in list(os.environ.keys()):
+        if key not in original_env:
+            del os.environ[key]
+    for key, value in original_env.items():
+        os.environ[key] = value
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    """Clear settings cache before and after each test."""
+    try:
+        from src.config.settings import get_settings
+        get_settings.cache_clear()
+    except ImportError:
+        pass
+    yield
+    try:
+        from src.config.settings import get_settings
+        get_settings.cache_clear()
+    except ImportError:
+        pass
+```
+
+**Key Learnings**:
+- **`monkeypatch.setenv()`** is always preferred over direct `os.environ` modification
+- **Autouse fixtures** guarantee cleanup even if tests fail
+- **Settings cache must be cleared** when env vars change (use `cache_clear()`)
+- **Both before AND after** clearing is needed for complete isolation
+
+### 4. AuthenticatedTestClient Wrapper Pattern
+
+**Problem**: After fixing settings isolation, many API tests needed admin authentication:
+
+```python
+# Multiple tests needed this boilerplate:
+response = client.put(url, json=data, headers={"X-Admin-Key": "test-key"})
+```
+
+**Solution**: Create a wrapper that auto-injects authentication:
+
+```python
+# tests/api/conftest.py
+class AuthenticatedTestClient:
+    """Wrapper that auto-injects admin API key for protected endpoints."""
+
+    def __init__(self, client: TestClient, admin_key: str):
+        self._client = client
+        self._admin_key = admin_key
+
+    def _add_auth_headers(self, kwargs):
+        headers = kwargs.get("headers", {})
+        if "X-Admin-Key" not in headers:
+            headers["X-Admin-Key"] = self._admin_key
+        kwargs["headers"] = headers
+        return kwargs
+
+    def put(self, *args, **kwargs):
+        kwargs = self._add_auth_headers(kwargs)
+        return self._client.put(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        kwargs = self._add_auth_headers(kwargs)
+        return self._client.delete(*args, **kwargs)
+
+    def stream(self, *args, **kwargs):
+        # Don't add auth to streaming (e.g., SSE endpoints)
+        return self._client.stream(*args, **kwargs)
+
+    def __getattr__(self, name):
+        # Delegate unknown methods to underlying client
+        return getattr(self._client, name)
+```
+
+**Key Learnings**:
+- **Wrapper pattern** reduces boilerplate across many tests
+- **`__getattr__` fallback** handles methods you don't need to override
+- **Explicit methods** for auth-injected calls (put, delete, post)
+- **Skip auth for specific cases** like streaming endpoints
+
+### 5. Obsolete Test File Detection
+
+**Problem**: Model refactoring left behind test files importing removed code:
+
+```python
+# test_error_handling.py (OBSOLETE)
+from src.api.content_routes import (
+    _ingestion_tasks,      # Removed during job queue refactor
+    _run_content_ingestion,
+    _summarization_tasks,
+)
+```
+
+**Symptoms**:
+- `ImportError` during test collection
+- Tests reference functions/models that no longer exist
+- Imports from modules that were deleted or restructured
+
+**Solution**: Delete obsolete test files after verifying their coverage is handled elsewhere:
+
+```bash
+# Verify what the tests covered
+grep -l "Newsletter" tests/  # Find Newsletter model usage
+grep -l "_ingestion_tasks" tests/  # Find internal function usage
+
+# Check if functionality is tested elsewhere
+pytest --collect-only tests/api/ | grep -i ingest
+
+# Delete if redundant
+rm tests/security/test_error_handling.py
+rm tests/test_agents/test_claude_agent_integration.py
+```
+
+**Key Learnings**:
+- **Regular test audits** after major refactors prevent import rot
+- **Internal functions** (`_prefixed`) shouldn't be tested directly
+- **Verify coverage exists elsewhere** before deleting test files
+- **Collection errors** often indicate obsolete tests, not just missing deps
+
+### 6. Diagnosis Strategy for Test Pollution
+
+**Approach used to identify pollution sources**:
+
+```bash
+# 1. Identify tests that pass alone but fail in suite
+pytest tests/test_config/test_settings.py -v  # PASS
+pytest tests/ -v  # FAIL - same tests fail
+
+# 2. Binary search for the polluting test
+pytest tests/api tests/test_config -v  # Does it fail?
+pytest tests/security tests/test_config -v  # Does it fail?
+
+# 3. Find direct os.environ modifications
+grep -r "os.environ\[" tests/ --include="*.py"
+
+# 4. Find module-level imports of settings
+grep -r "from src.config.settings import settings" tests/
+
+# 5. Check for sys.modules modifications
+grep -r "sys.modules\[" tests/ --include="*.py"
+```
+
+**Key pollution patterns to look for**:
+| Pattern | Symptom | Fix |
+|---------|---------|-----|
+| `os.environ["X"] = "..."` | Env leak between tests | Use `monkeypatch.setenv()` |
+| `sys.modules["x"] = Mock()` at module level | Collection corruption | Move to fixture with monkeypatch.setitem |
+| `from settings import settings` | Stale settings | Use `get_settings()` dynamically |
+| Missing `cache_clear()` | Settings persist | Add autouse fixture for cache clearing |
+
+### 7. Test Suite Bug Scrub Checklist
+
+Use this checklist when diagnosing failing test suites:
+
+```markdown
+## Collection Errors
+- [ ] Check for module-level sys.modules modifications
+- [ ] Verify all imported modules/classes still exist
+- [ ] Look for imports of internal `_prefixed` functions
+- [ ] Delete truly obsolete test files
+
+## Test Pollution (pass alone, fail in suite)
+- [ ] Search for direct os.environ modifications
+- [ ] Add isolate_environment autouse fixture
+- [ ] Check for settings singleton caching
+- [ ] Add settings cache clearing fixture
+
+## Module Import Issues
+- [ ] Replace module-level `settings` imports with `get_settings()` calls
+- [ ] Use fixtures for sys.modules mocking, not module-level code
+- [ ] Ensure fixtures use monkeypatch for automatic cleanup
+
+## Authentication Test Failures
+- [ ] Verify env vars are set BEFORE app import
+- [ ] Check that settings lookup is dynamic, not cached
+- [ ] Consider AuthenticatedTestClient wrapper for admin endpoints
+
+## Verification
+- [ ] Run individual test file: `pytest tests/path/test_file.py -v`
+- [ ] Run full suite: `pytest --tb=short`
+- [ ] Run specific pollution-prone tests together:
+      `pytest tests/test_config tests/api tests/security -v`
+- [ ] Check for 0 collection errors in output
+```
+
+---
+
 ## General Refactoring Best Practices
 
 From the above case studies and other refactorings:
@@ -1099,3 +1398,8 @@ From the above case studies and other refactorings:
 10. **Handle schema drift** - Don't assume DB matches model; check before FK operations
 11. **Use backwards-compatible aliases** - Enable gradual migration over big-bang changes
 12. **Isolate deprecated models** - Separate Base classes prevent unwanted auto-creation
+13. **Use dynamic settings lookup** - Replace `from settings import settings` with `get_settings()` calls for testability
+14. **Avoid module-level side effects** - Move sys.modules modifications and env var changes into fixtures
+15. **Use monkeypatch for env vars** - Never modify `os.environ` directly in tests; monkeypatch provides automatic cleanup
+16. **Add autouse fixtures for isolation** - Environment and cache cleanup fixtures prevent test pollution
+17. **Audit tests after major refactors** - Delete obsolete test files that import removed code
