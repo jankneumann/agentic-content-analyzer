@@ -108,12 +108,13 @@ class URLExtractor:
 
             return content
 
-        except Exception as e:
+        except Exception:
             # Mark as failed
             content.status = ContentStatus.FAILED
-            content.error_message = str(e)[:1000]  # Truncate long errors
+            # Secure error message to prevent information leakage
+            content.error_message = "Content extraction failed. Please try again later."
             self.db.commit()
-            logger.error(f"Failed to extract content from {content.source_url}: {e}")
+            logger.error(f"Failed to extract content from {content.source_url}", exc_info=True)
             raise
 
     async def _fetch_url(self, url: str) -> tuple[str, str]:
@@ -234,7 +235,7 @@ class URLExtractor:
                 "word_count": len(markdown_content.split()),
                 "source_url": url,
                 "parser_fallback": True,
-                "parser_error": str(e),
+                "parser_error": "Advanced parsing failed, used fallback",
             }
 
         return markdown_content, metadata
