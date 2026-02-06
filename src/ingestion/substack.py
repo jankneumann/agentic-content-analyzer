@@ -13,9 +13,9 @@ from typing import Any
 from urllib.parse import urljoin
 
 import httpx
-import substack_api
 import yaml
 from dateutil.parser import isoparse
+from substack_api import Newsletter, Post, SubstackAuth
 
 from src.config import settings
 from src.config.sources import SourceFileConfig, SubstackSource
@@ -42,46 +42,28 @@ class SubstackSubscription:
 
 
 class SubstackClient:
-    """Wrapper around the unofficial substack_api client with HTTP fallbacks."""
+    """Wrapper around the substack-api 1.1.3 client with HTTP fallbacks."""
 
     def __init__(self, session_cookie: str | None = None) -> None:
         self.session_cookie = session_cookie or settings.substack_session_cookie
-        self._api = self._build_api_client()
+        self._auth: SubstackAuth | None = None
         self._http = httpx.Client(timeout=30)
         if self.session_cookie:
             self._http.cookies.set("substack.sid", self.session_cookie)
 
-    def _build_api_client(self) -> Any:
-        api_class = (
-            getattr(substack_api, "SubstackApi", None)
-            or getattr(substack_api, "SubstackAPI", None)
-            or getattr(substack_api, "Substack", None)
-        )
-        if api_class is None:
-            raise RuntimeError("substack_api client class not found")
-
-        if self.session_cookie is None:
-            return api_class()
-
-        try:
-            return api_class(session_cookie=self.session_cookie)
-        except TypeError:
-            try:
-                return api_class(self.session_cookie)
-            except TypeError:
-                client = api_class()
-                if hasattr(client, "session_cookie"):
-                    client.session_cookie = self.session_cookie
-                return client
+    def _get_auth(self) -> SubstackAuth | None:
+        """Get or create SubstackAuth from cookies file if available."""
+        if self._auth is not None:
+            return self._auth
+        # SubstackAuth requires a cookies file path; session cookie is used via HTTP
+        return None
 
     def close(self) -> None:
         self._http.close()
 
     def fetch_subscriptions(self) -> list[SubstackSubscription]:
         """Return a list of subscriptions (name + url)."""
-        subscriptions = self._fetch_subscriptions_from_api()
-        if subscriptions is None:
-            subscriptions = self._fetch_subscriptions_from_http()
+        subscriptions = self._fetch_subscriptions_from_http()
 
         if not subscriptions:
             return []
@@ -109,26 +91,6 @@ class SubstackClient:
 
         return results
 
-    def _fetch_subscriptions_from_api(self) -> list[dict[str, Any]] | None:
-        for method_name in (
-            "get_subscriptions",
-            "get_user_subscriptions",
-            "list_subscriptions",
-        ):
-            method = getattr(self._api, method_name, None)
-            if method is None:
-                continue
-            try:
-                result = method()
-                if isinstance(result, dict) and "subscriptions" in result:
-                    return result["subscriptions"]
-                if isinstance(result, list):
-                    return result
-            except Exception as exc:
-                logger.warning(f"Substack API method {method_name} failed: {exc}")
-                return None
-        return None
-
     def _fetch_subscriptions_from_http(self) -> list[dict[str, Any]] | None:
         if not self.session_cookie:
             logger.warning("SUBSTACK_SESSION_COOKIE not set; subscription sync may be incomplete.")
@@ -155,7 +117,7 @@ class SubstackClient:
         return None
 
     def fetch_posts(self, publication_url: str, max_entries: int = 10) -> list[dict[str, Any]]:
-        """Fetch recent posts for a publication."""
+        """Fetch recent posts for a publication using substack-api 1.1.3."""
         posts = self._fetch_posts_from_api(publication_url, max_entries)
         if posts is None:
             posts = self._fetch_posts_from_http(publication_url, max_entries)
@@ -164,32 +126,43 @@ class SubstackClient:
     def _fetch_posts_from_api(
         self, publication_url: str, max_entries: int
     ) -> list[dict[str, Any]] | None:
-        for method_name in (
-            "get_posts",
-            "get_publication_posts",
-            "get_posts_for_publication",
-        ):
-            method = getattr(self._api, method_name, None)
-            if method is None:
-                continue
-            try:
-                result = method(publication_url, limit=max_entries)
-                if isinstance(result, dict) and "posts" in result:
-                    return result["posts"]
-                if isinstance(result, list):
-                    return result
-            except TypeError:
+        """Fetch posts using the Newsletter class from substack-api 1.1.3."""
+        try:
+            newsletter = Newsletter(url=publication_url, auth=self._get_auth())
+            posts: list[Post] = newsletter.get_posts(sorting="new", limit=max_entries)
+
+            results: list[dict[str, Any]] = []
+            for post in posts:
                 try:
-                    result = method(publication_url)
-                    if isinstance(result, list):
-                        return result[:max_entries]
-                except Exception as exc:
-                    logger.warning(f"Substack API method {method_name} failed: {exc}")
-                    return None
-            except Exception as exc:
-                logger.warning(f"Substack API method {method_name} failed: {exc}")
-                return None
-        return None
+                    metadata = post.get_metadata()
+                    # Try to get content (may fail for paywalled posts without auth)
+                    try:
+                        content = post.get_content()
+                    except Exception:
+                        content = None
+
+                    results.append(
+                        {
+                            "id": metadata.get("id"),
+                            "slug": metadata.get("slug"),
+                            "title": metadata.get("title"),
+                            "subtitle": metadata.get("subtitle"),
+                            "post_date": metadata.get("post_date"),
+                            "canonical_url": metadata.get("canonical_url"),
+                            "description": metadata.get("description"),
+                            "body_html": content,
+                            "is_paywalled": post.is_paywalled(),
+                            "metadata": metadata,
+                        }
+                    )
+                except Exception as post_exc:
+                    logger.warning(f"Failed to fetch post data: {post_exc}")
+                    continue
+
+            return results if results else None
+        except Exception as exc:
+            logger.warning(f"Newsletter.get_posts failed for {publication_url}: {exc}")
+            return None
 
     def _fetch_posts_from_http(
         self, publication_url: str, max_entries: int
