@@ -143,7 +143,7 @@
 
 **Depends on:** Sections 2-6 (implementation must be testable)
 
-- [ ] 7.1 Unit tests for job status helpers (`tests/test_queue/test_setup.py`)
+- [x] 7.1 Unit tests for job status helpers (`tests/test_queue/test_setup.py`)
   - Test `get_job_status()`, `update_job_progress()`
   - Mock database connection
 - [ ] 7.2 Integration tests for parallel ingestion (`tests/test_cli/test_pipeline.py`)
@@ -161,21 +161,21 @@
   - **Depends on:** 7.3, Section 5
   - Test stale job detection
   - Test frontend reconnection
-- [ ] 7.6 Unit test: job deduplication in enqueue logic
+- [x] 7.6 Unit test: job deduplication in enqueue logic
   - Test that same content_id is not enqueued twice
-- [ ] 7.7 Integration test: API pagination edge cases
+- [x] 7.7 Integration test: API pagination edge cases
   - Test page_size=0, negative, >100
 
 ## 8. Documentation
 
 **Depends on:** Sections 1-7 (document after implementation)
 
-- [ ] 8.1 Update `docs/ARCHITECTURE.md` with job queue architecture diagram
+- [x] 8.1 Update `docs/ARCHITECTURE.md` with job queue architecture diagram
   - Add section: "Job Queue Architecture"
   - Include flow diagram: Producer → Queue → Worker Pool
-- [ ] 8.2 Update `docs/DEVELOPMENT.md` with worker commands
+- [x] 8.2 Update `docs/DEVELOPMENT.md` with worker commands
   - Add `aca worker start` to key commands table
   - Add troubleshooting section for worker issues
-- [ ] 8.3 Update `CLAUDE.md` with new CLI commands
+- [x] 8.3 Update `CLAUDE.md` with new CLI commands
   - Add `aca worker` and `aca jobs` command groups
   - Add to "Key Commands" section

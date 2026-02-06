@@ -308,10 +308,98 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 **Output**: Email, web view
 **Technology**: SendGrid (email), FastAPI (web)
 
+## Job Queue Architecture
+
+The system uses a PostgreSQL-based job queue (PGQueuer) for reliable background processing with transactional guarantees.
+
+### Architecture Diagram
+
+```
+                              ┌─────────────────────────────────────────┐
+                              │           PostgreSQL Database           │
+                              │  ┌─────────────────────────────────┐   │
+                              │  │         pgqueuer_jobs           │   │
+                              │  │  • id, entrypoint, payload      │   │
+                              │  │  • status, priority, progress   │   │
+                              │  │  • created_at, started_at       │   │
+                              │  │  • retry_count, error           │   │
+                              │  └─────────────────────────────────┘   │
+                              └─────────────────┬───────────────────────┘
+                                                │
+                     ┌──────────────────────────┼──────────────────────────┐
+                     │                          │                          │
+              ┌──────┴──────┐           ┌───────┴───────┐          ┌───────┴───────┐
+              │  Producers  │           │  Job Queue    │          │    Workers    │
+              │             │           │  (PGQueuer)   │          │               │
+              │ • API calls │──enqueue──│               │──dequeue─│ • Concurrent  │
+              │ • CLI cmds  │           │ • SKIP LOCKED │          │   processing  │
+              │ • Scheduler │           │ • Priority    │          │ • Graceful    │
+              │             │           │ • Retries     │          │   shutdown    │
+              └─────────────┘           └───────────────┘          └───────────────┘
+                                                │
+                                    ┌───────────┴───────────┐
+                                    │    Task Handlers      │
+                                    │                       │
+                                    │ • summarize_content   │
+                                    │ • scan_newsletter     │
+                                    │ • extract_url_content │
+                                    └───────────────────────┘
+```
+
+### Key Components
+
+| Component | Description |
+|-----------|-------------|
+| **Producers** | API endpoints, CLI commands, and scheduled tasks that enqueue jobs |
+| **Job Queue** | PostgreSQL table with `SELECT FOR UPDATE SKIP LOCKED` for reliable dequeue |
+| **Workers** | Long-running processes that claim and execute jobs concurrently |
+| **Task Handlers** | Registered functions that process specific job types |
+
+### Job Lifecycle
+
+```
+QUEUED → IN_PROGRESS → COMPLETED
+              │
+              └──(error)──→ FAILED ──(retry)──→ QUEUED
+```
+
+### Worker Commands
+
+```bash
+# Start worker (default 5 concurrent tasks)
+aca worker start
+
+# Start with higher concurrency
+aca worker start --concurrency 10
+
+# Set via environment
+WORKER_CONCURRENCY=8 aca worker start
+```
+
+### Job Management
+
+```bash
+# List jobs with optional filters
+aca jobs list
+aca jobs list --status failed
+aca jobs list --entrypoint summarize_content
+
+# View job details
+aca jobs show 123
+
+# Retry failed jobs
+aca jobs retry 123
+aca jobs retry --failed  # Retry all failed
+
+# Cleanup old completed jobs
+aca jobs cleanup --older-than 30d
+```
+
 ## Scalability Considerations
 
 - **Database**: PostgreSQL with indexes on frequently queried fields (status, dates)
-- **Async Processing**: Celery for background tasks, Redis for task queue
+- **Job Queue**: PGQueuer with transactional guarantees and configurable concurrency
+- **Async Processing**: PostgreSQL-based queue replaces Redis for job management
 - **Knowledge Graph**: Neo4j optimized for temporal queries
 - **Caching**: Redis for frequently accessed data
 - **Provider Failover**: Automatic fallback across multiple LLM providers

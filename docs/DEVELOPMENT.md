@@ -135,16 +135,42 @@ curl "http://localhost:8000/api/v1/audio-digests/1/stream" -o digest.mp3
 
 See [Review System Documentation](REVIEW_SYSTEM.md#audio-digests) for full API reference.
 
-### Background Tasks (Celery)
+### Background Tasks (Job Queue)
+
+The system uses a PostgreSQL-based job queue (PGQueuer) for background processing.
 
 ```bash
-# Start Celery worker for async processing
+# Start job queue worker (default 5 concurrent tasks)
+aca worker start
+
+# Start with custom concurrency (max 20)
+aca worker start --concurrency 10
+
+# Set concurrency via environment
+WORKER_CONCURRENCY=8 aca worker start
+
+# List jobs in queue
+aca jobs list
+aca jobs list --status failed
+aca jobs list --entrypoint summarize_content
+
+# View job details
+aca jobs show 123
+
+# Retry failed jobs
+aca jobs retry 123           # Single job
+aca jobs retry --failed      # All failed jobs
+
+# Cleanup old completed jobs
+aca jobs cleanup --older-than 30d
+aca jobs cleanup --older-than 7d --dry-run  # Preview what would be deleted
+```
+
+**Legacy Celery (deprecated)**:
+```bash
+# These commands still work but are being phased out
 celery -A src.tasks worker --loglevel=info
-
-# Start Celery beat scheduler for periodic tasks
 celery -A src.tasks beat --loglevel=info
-
-# Monitor tasks
 celery -A src.tasks flower  # Web UI at localhost:5555
 ```
 
@@ -1047,6 +1073,37 @@ logging.getLogger("anthropic").setLevel(logging.WARNING)
 logging.getLogger("graphiti_core").setLevel(logging.WARNING)
 logging.getLogger("neo4j").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+```
+
+### Worker Troubleshooting
+
+Common issues when running job queue workers:
+
+| Issue | Solution |
+|-------|----------|
+| Worker won't start | Check `DATABASE_URL` is set and PostgreSQL is running |
+| Jobs stuck in `queued` | Ensure a worker is running: `aca worker start` |
+| Jobs stuck in `in_progress` | Worker crashed mid-job; jobs auto-recover on restart |
+| High memory usage | Reduce concurrency: `aca worker start --concurrency 3` |
+| Connection errors | Check PostgreSQL max connections; reduce worker concurrency |
+| Worker won't stop | Press Ctrl+C twice; graceful shutdown waits for in-progress jobs |
+
+**Diagnosing job failures**:
+```bash
+# List failed jobs
+aca jobs list --status failed
+
+# View error details for a specific job
+aca jobs show 123
+
+# Retry after fixing the issue
+aca jobs retry 123
+```
+
+**Environment variables for workers**:
+```bash
+WORKER_CONCURRENCY=5    # Default concurrent tasks (1-20)
+LOG_LEVEL=INFO          # Worker log verbosity
 ```
 
 ## Code Patterns
