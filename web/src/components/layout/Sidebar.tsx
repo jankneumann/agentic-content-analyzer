@@ -163,11 +163,11 @@ export function Sidebar({
         )}
       >
         {isCollapsed ? (
-          <span className="text-xl font-bold text-primary">NA</span>
+          <img src="/icons/icon-192.png" alt="ACA" className="h-8 w-8" />
         ) : (
           <div className="flex items-center gap-2">
-            <span className="text-xl font-bold text-primary">NA</span>
-            <span className="font-semibold">Newsletter Aggregator</span>
+            <img src="/icons/icon-192.png" alt="ACA" className="h-8 w-8" />
+            <span className="font-semibold">AI Content Analyzer</span>
           </div>
         )}
       </div>

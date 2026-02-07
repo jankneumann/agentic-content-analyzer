@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 /**
- * Vite Configuration for Newsletter Aggregator Web UI
+ * Vite Configuration for ACA (AI Content Analyzer) Web UI
  *
  * This configuration sets up:
  * - React with Fast Refresh for hot module replacement
@@ -30,9 +30,9 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'icons/*.png', 'icons/*.svg'],
       // Web app manifest configuration
       manifest: {
-        name: 'Newsletter Aggregator',
-        short_name: 'Newsletters',
-        description: 'AI-powered newsletter aggregation and digests',
+        name: 'ACA — AI Content Analyzer',
+        short_name: 'ACA',
+        description: 'AI-powered content analysis and digests',
         theme_color: '#1a1a1a',
         background_color: '#1a1a1a',
         display: 'standalone',

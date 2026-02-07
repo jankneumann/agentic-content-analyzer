@@ -1,5 +1,5 @@
 /**
- * ESLint Configuration for Newsletter Aggregator Web UI
+ * ESLint Configuration for ACA (AI Content Analyzer) Web UI
  *
  * This configuration sets up linting for TypeScript React code with:
  * - TypeScript-aware linting rules
