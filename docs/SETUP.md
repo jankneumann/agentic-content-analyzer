@@ -628,11 +628,11 @@ Railway's default PostgreSQL doesn't include extensions like pgvector. We provid
 
 ```bash
 # Pull from GitHub Container Registry
-docker pull ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
+docker pull ghcr.io/YOUR_ORG/newsletter-postgres:17-railway
 
 # In Railway Dashboard:
 # 1. Create new service > Docker Image
-# 2. Enter: ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
+# 2. Enter: ghcr.io/YOUR_ORG/newsletter-postgres:17-railway
 # 3. Set environment variables (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB)
 ```
 
@@ -641,11 +641,11 @@ docker pull ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
 ```bash
 # Build locally
 cd railway/postgres
-docker build -t newsletter-postgres:16-railway .
+docker build -t newsletter-postgres:17-railway .
 
 # Push to your registry
-docker tag newsletter-postgres:16-railway ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
-docker push ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
+docker tag newsletter-postgres:17-railway ghcr.io/YOUR_ORG/newsletter-postgres:17-railway
+docker push ghcr.io/YOUR_ORG/newsletter-postgres:17-railway
 ```
 
 ### Setup Guide
@@ -659,7 +659,7 @@ docker push ghcr.io/YOUR_ORG/newsletter-postgres:16-railway
 #### 2. Deploy Custom PostgreSQL
 
 1. Click **New Service > Docker Image**
-2. Enter your GHCR image: `ghcr.io/YOUR_ORG/newsletter-postgres:16-railway`
+2. Enter your GHCR image: `ghcr.io/YOUR_ORG/newsletter-postgres:17-railway`
 3. Add environment variables:
    ```
    POSTGRES_USER=postgres
@@ -1217,6 +1217,35 @@ aca ingest substack-sync
 # Enable any desired sources in sources.d/substack.yaml, then ingest
 aca ingest substack
 ```
+
+## Upgrading to PostgreSQL 17
+
+If upgrading from PG15/16 to PG17, PostgreSQL major versions are not binary-compatible. Existing data volumes must be recreated.
+
+### Local Development (docker-compose)
+
+```bash
+# Stop services and destroy existing volumes
+docker compose down -v
+
+# Pull updated images and start
+docker compose up -d
+
+# Re-run all migrations
+alembic upgrade head
+```
+
+### Railway Production
+
+1. Take a backup via `pg_dump` or the scheduled pg_cron backup job
+2. Push the new GHCR image (`newsletter-postgres:17-railway`)
+3. Update the Railway service to use the new image
+4. Recreate the volume and restore from backup
+5. Run `alembic upgrade head`
+
+### CI
+
+No migration needed — CI service containers are ephemeral.
 
 ## Troubleshooting
 

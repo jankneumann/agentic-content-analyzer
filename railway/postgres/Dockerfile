@@ -1,14 +1,14 @@
 #############################################
 # Stage 1: Builder - compile all extensions
 #############################################
-FROM postgres:16-bookworm AS builder
+FROM postgres:17-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
     curl \
-    postgresql-server-dev-16 \
+    postgresql-server-dev-17 \
     libssl-dev \
     libclang-dev \
     clang \
@@ -22,11 +22,11 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Install pgrx (PostgreSQL extension framework for pg_search)
 # Using pgrx 0.12.7 which matches pg_search v0.13.0's requirement
 RUN cargo install --locked cargo-pgrx@0.12.7 \
-    && cargo pgrx init --pg16 $(which pg_config)
+    && cargo pgrx init --pg17 $(which pg_config)
 
-# Install pgvector (C-based, simple compilation)
+# Install pgvector v0.8.0 (C-based, PG17-optimized)
 RUN cd /tmp \
-    && git clone --branch v0.7.4 https://github.com/pgvector/pgvector.git \
+    && git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git \
     && cd pgvector \
     && make OPTFLAGS="" \
     && make install \
@@ -49,22 +49,21 @@ RUN cd /tmp \
     && rm -rf /tmp/pgmq
 
 # Install pg_search (ParadeDB - Rust-based via pgrx)
-# v0.13.0 defaults to pg17; explicit --features pg16 needed for our base image
+# v0.13.0 defaults to pg17 — no feature flags needed
 RUN cd /tmp \
     && git clone --branch v0.13.0 https://github.com/paradedb/paradedb.git \
     && cd paradedb/pg_search \
-    && cargo pgrx install --release --no-default-features --features pg16 \
-       --pg-config $(which pg_config) \
+    && cargo pgrx install --release --pg-config $(which pg_config) \
     && rm -rf /tmp/paradedb
 
 #############################################
 # Stage 2: Runtime - minimal production image
 #############################################
-FROM postgres:16-bookworm
+FROM postgres:17-bookworm
 
 # Copy compiled extensions from builder
-COPY --from=builder /usr/share/postgresql/16/extension/ /usr/share/postgresql/16/extension/
-COPY --from=builder /usr/lib/postgresql/16/lib/ /usr/lib/postgresql/16/lib/
+COPY --from=builder /usr/share/postgresql/17/extension/ /usr/share/postgresql/17/extension/
+COPY --from=builder /usr/lib/postgresql/17/lib/ /usr/lib/postgresql/17/lib/
 
 # Copy optimized PostgreSQL configuration
 COPY postgresql.conf /etc/postgresql/postgresql.conf
