@@ -77,6 +77,8 @@ RUN apt-get update \
 COPY postgresql.conf /etc/postgresql/postgresql.conf
 
 # Initialization scripts (run in alphabetical order by filename)
+# 00-set-backup-gucs.sh sets PostgreSQL GUCs from env vars (must run first)
+COPY 00-set-backup-gucs.sh /docker-entrypoint-initdb.d/
 COPY init-extensions.sql /docker-entrypoint-initdb.d/
 COPY init-backup-job.sql /docker-entrypoint-initdb.d/
 

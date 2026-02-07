@@ -65,8 +65,8 @@ def _check_backup_recency() -> str:
             if last_run.tzinfo is None:
                 last_run = last_run.replace(tzinfo=UTC)
 
-            # Stale if last backup > 48 hours ago (2x daily default)
-            threshold = timedelta(hours=48)
+            # Stale if last backup exceeds configured threshold
+            threshold = timedelta(hours=settings.railway_backup_staleness_hours)
             if datetime.now(UTC) - last_run > threshold:
                 return "stale"
 

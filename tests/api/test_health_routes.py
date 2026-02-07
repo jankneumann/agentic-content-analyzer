@@ -209,9 +209,11 @@ class TestCheckBackupRecency:
 
         assert _check_backup_recency() == "no_history"
 
+    @patch("src.api.health_routes.settings")
     @patch("src.storage.database.get_engine")
-    def test_returns_ok_for_recent_backup(self, mock_get_engine):
+    def test_returns_ok_for_recent_backup(self, mock_get_engine, mock_settings):
         """Should return 'ok' when last backup was within threshold."""
+        mock_settings.railway_backup_staleness_hours = 48
         mock_conn = MagicMock()
 
         schema_result = MagicMock()
@@ -232,9 +234,11 @@ class TestCheckBackupRecency:
 
         assert _check_backup_recency() == "ok"
 
+    @patch("src.api.health_routes.settings")
     @patch("src.storage.database.get_engine")
-    def test_returns_stale_for_old_backup(self, mock_get_engine):
+    def test_returns_stale_for_old_backup(self, mock_get_engine, mock_settings):
         """Should return 'stale' when last backup exceeds threshold."""
+        mock_settings.railway_backup_staleness_hours = 48
         mock_conn = MagicMock()
 
         schema_result = MagicMock()
