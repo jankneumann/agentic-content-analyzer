@@ -17,6 +17,11 @@ import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { getBreadcrumbs } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 /**
  * Props for the Header component
@@ -68,7 +73,9 @@ function Breadcrumbs() {
             {/* Breadcrumb item */}
             {isLast ? (
               // Current page - not a link
-              <span className="text-lg font-semibold">{crumb.title}</span>
+              <span className="text-lg font-semibold" aria-current="page">
+                {crumb.title}
+              </span>
             ) : (
               // Parent page - link
               <a
@@ -93,40 +100,44 @@ function Breadcrumbs() {
  * Persists preference to localStorage.
  */
 function ThemeToggle() {
-  const [isDark, setIsDark] = useState(false)
-
-  // Initialize from localStorage or system preference
-  useEffect(() => {
+  // Initialize state lazily to avoid hydration mismatch and useEffect set state warning
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === "undefined") return false
     const stored = localStorage.getItem("theme")
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches
+    return stored === "dark" || (!stored && prefersDark)
+  })
 
-    if (stored === "dark" || (!stored && prefersDark)) {
-      setIsDark(true)
+  // Sync class with state
+  useEffect(() => {
+    if (isDark) {
       document.documentElement.classList.add("dark")
+    } else {
+      document.documentElement.classList.remove("dark")
     }
-  }, [])
+  }, [isDark])
 
   // Toggle theme
   const toggleTheme = () => {
-    setIsDark(!isDark)
-    if (isDark) {
-      document.documentElement.classList.remove("dark")
-      localStorage.setItem("theme", "light")
-    } else {
-      document.documentElement.classList.add("dark")
-      localStorage.setItem("theme", "dark")
-    }
+    const newIsDark = !isDark
+    setIsDark(newIsDark)
+    localStorage.setItem("theme", newIsDark ? "dark" : "light")
   }
 
+  const label = `Switch to ${isDark ? "light" : "dark"} mode`
+
   return (
-    <Button variant="ghost" size="icon" onClick={toggleTheme}>
-      {isDark ? (
-        <Sun className="h-5 w-5" />
-      ) : (
-        <Moon className="h-5 w-5" />
-      )}
-      <span className="sr-only">Toggle theme</span>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          <span className="sr-only">{label}</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -145,15 +156,20 @@ export function Header({ onMenuClick, className }: HeaderProps) {
     >
       {/* Mobile menu button - only visible on small screens */}
       {onMenuClick && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="md:hidden"
-          onClick={onMenuClick}
-        >
-          <Menu className="h-5 w-5" />
-          <span className="sr-only">Open menu</span>
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={onMenuClick}
+            >
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Open menu</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open menu</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Breadcrumbs */}

@@ -52,7 +52,9 @@ export class BasePage {
     // Header
     this.breadcrumb = page.locator('nav[aria-label="Breadcrumb"]')
     this.mobileMenuButton = page.getByRole("button", { name: "Open menu" })
-    this.themeToggleButton = page.getByRole("button", { name: "Toggle theme" })
+    this.themeToggleButton = page.getByRole("button", {
+      name: /Switch to (light|dark) mode/,
+    })
     this.notificationsButton = page.getByRole("button", {
       name: "Notifications",
     })

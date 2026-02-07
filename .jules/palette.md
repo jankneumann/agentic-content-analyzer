@@ -21,3 +21,11 @@
 ## 2025-02-26 - Hidden Labels on Mobile
 **Learning:** Buttons that hide their text label on mobile (e.g. `hidden sm:inline`) often become inaccessible icon-only buttons if they don't have an `aria-label`.
 **Action:** When hiding text labels responsively, ensure the button retains an accessible name via `aria-label` or `sr-only` text.
+
+## 2025-02-27 - Lazy State Initialization for Theme Toggles
+**Learning:** `useEffect` with `[]` dependency to set state (like theme) triggers a re-render and can cause visual flashing or hydration mismatches. Lazy state initialization is a better UX pattern for client-side persistence.
+**Action:** Use `useState(() => ...)` for reading from localStorage to avoid `useEffect` state updates on mount.
+
+## 2025-02-27 - Dynamic Labels for State Toggles
+**Learning:** Static `aria-label`s on toggle buttons (e.g., "Toggle theme") are less helpful than dynamic labels describing the *next* action (e.g., "Switch to dark mode").
+**Action:** Use dynamic labels that describe the outcome of the action, not just the current state.
