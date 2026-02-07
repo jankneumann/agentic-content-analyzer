@@ -15,6 +15,66 @@ logger = get_logger(__name__)
 router = APIRouter(tags=["system"])
 
 
+def _check_backup_recency() -> str:
+    """Check if the most recent pg_cron backup completed within expected window.
+
+    Queries the cron.job_run_details table for the 'railway-backup' job
+    and compares its last successful run against 2x the schedule interval.
+
+    Returns:
+        "ok" if backup ran recently, "stale" if overdue,
+        "no_history" if no runs found, "not_configured" if pg_cron unavailable
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import text
+
+    from src.storage.database import get_engine
+
+    try:
+        engine = get_engine()
+    except Exception:
+        return "not_configured"
+
+    try:
+        with engine.connect() as conn:
+            # Check if cron schema exists (pg_cron installed)
+            result = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = 'cron' AND table_name = 'job_run_details'"
+                )
+            )
+            if result.fetchone() is None:
+                return "not_configured"
+
+            # Get last successful run of the backup job
+            result = conn.execute(
+                text(
+                    "SELECT end_time FROM cron.job_run_details "
+                    "WHERE jobname = 'railway-backup' AND status = 'succeeded' "
+                    "ORDER BY end_time DESC LIMIT 1"
+                )
+            )
+            row = result.fetchone()
+
+            if row is None:
+                return "no_history"
+
+            last_run = row[0]
+            if last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=UTC)
+
+            # Stale if last backup exceeds configured threshold
+            threshold = timedelta(hours=settings.railway_backup_staleness_hours)
+            if datetime.now(UTC) - last_run > threshold:
+                return "stale"
+
+            return "ok"
+    except Exception:
+        return "not_configured"
+
+
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     """Liveness probe -- returns 200 if the process is alive."""
@@ -60,6 +120,20 @@ async def readiness_check() -> JSONResponse:
     except Exception as exc:
         logger.warning("Queue health check failed: %s", exc)
         checks["queue"] = "unavailable"
+
+    # Backup recency check (Railway provider with pg_cron only)
+    if settings.database_provider == "railway" and settings.railway_backup_enabled:
+        try:
+            backup_status = await asyncio.wait_for(
+                loop.run_in_executor(None, _check_backup_recency),
+                timeout=settings.health_check_timeout_seconds,
+            )
+            checks["backup"] = backup_status
+            if backup_status == "stale":
+                logger.warning("Backup is stale — last successful run exceeds 2x schedule interval")
+        except Exception as exc:
+            logger.warning("Backup health check failed: %s", exc)
+            checks["backup"] = "unknown"
 
     status_code = 200 if all_ok else 503
     return JSONResponse(

@@ -312,6 +312,15 @@ class Settings(BaseSettings):
     railway_pool_recycle: int = 300  # Connection recycle interval (seconds)
     railway_pool_timeout: int = 30  # Connection timeout (seconds)
 
+    # Railway Backup Configuration (pg_cron → MinIO)
+    railway_backup_enabled: bool = True  # Enable automated pg_dump backups
+    railway_backup_schedule: str = "0 3 * * *"  # Cron schedule (default: daily 3 AM UTC)
+    railway_backup_retention_days: int = 7  # Days to keep backups before cleanup
+    railway_backup_bucket: str = "backups"  # MinIO bucket for backup storage
+    railway_backup_staleness_hours: int = (
+        48  # Hours before backup is considered stale (2x daily default)
+    )
+
     # Railway MinIO Storage Configuration
     railway_minio_endpoint: str | None = None  # MinIO endpoint URL
     railway_minio_bucket: str | None = None  # MinIO bucket name

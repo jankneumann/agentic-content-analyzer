@@ -26,3 +26,6 @@ BEGIN
     RAISE NOTICE '  - pgmq: Message queue';
     RAISE NOTICE '  - pg_cron: Job scheduling';
 END $$;
+
+-- Set up automated backup jobs (pg_cron → MinIO)
+\i /docker-entrypoint-initdb.d/init-backup-job.sql

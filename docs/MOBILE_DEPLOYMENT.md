@@ -284,6 +284,11 @@ Set all variables directly in Railway's service settings (legacy approach).
 - Environment Variables: Same as web
 - Note: No public domain needed (internal only)
 
+**Automated Backups** (Railway custom image only):
+- Backups are handled automatically via pg_cron → MinIO when using the custom PostgreSQL image
+- Configure with `RAILWAY_BACKUP_ENABLED`, `RAILWAY_BACKUP_SCHEDULE`, `RAILWAY_BACKUP_RETENTION_DAYS`
+- See [Automated Backups](SETUP.md#automated-backups-pg_cron--minio) in SETUP.md for full configuration and restore procedures
+
 ### pg_cron Setup (Neon)
 
 ```sql
