@@ -224,7 +224,7 @@ class Settings(BaseSettings):
         )
 
     # Environment
-    environment: Literal["development", "production", "test"] = "development"
+    environment: Literal["development", "staging", "production", "test"] = "development"
     log_level: str = "INFO"
 
     # CORS Configuration
@@ -716,6 +716,11 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Check if running in development mode."""
         return self.environment == "development"
+
+    @property
+    def is_staging(self) -> bool:
+        """Check if running in staging mode."""
+        return self.environment == "staging"
 
     @property
     def is_production(self) -> bool:
