@@ -1218,6 +1218,35 @@ aca ingest substack-sync
 aca ingest substack
 ```
 
+## Upgrading to PostgreSQL 17
+
+If upgrading from PG15/16 to PG17, PostgreSQL major versions are not binary-compatible. Existing data volumes must be recreated.
+
+### Local Development (docker-compose)
+
+```bash
+# Stop services and destroy existing volumes
+docker compose down -v
+
+# Pull updated images and start
+docker compose up -d
+
+# Re-run all migrations
+alembic upgrade head
+```
+
+### Railway Production
+
+1. Take a backup via `pg_dump` or the scheduled pg_cron backup job
+2. Push the new GHCR image (`newsletter-postgres:17-railway`)
+3. Update the Railway service to use the new image
+4. Recreate the volume and restore from backup
+5. Run `alembic upgrade head`
+
+### CI
+
+No migration needed — CI service containers are ephemeral.
+
 ## Troubleshooting
 
 ### Database Connection Issues
