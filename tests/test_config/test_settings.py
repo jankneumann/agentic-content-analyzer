@@ -579,6 +579,73 @@ class TestAudioDigestSettings:
             os.environ.pop("AUDIO_DIGEST_DEFAULT_VOICE", None)
 
 
+class TestRailwayBackupSettings:
+    """Tests for Railway backup configuration settings."""
+
+    @pytest.fixture(autouse=True)
+    def setup_env(self):
+        """Set up required env vars and clear caches."""
+        from src.config.settings import get_settings
+
+        get_settings.cache_clear()
+
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
+        os.environ["DATABASE_PROVIDER"] = "railway"
+        os.environ["DATABASE_URL"] = "postgresql://user:pass@postgres.railway.internal/railway"
+
+        yield
+
+        # Clean up railway-specific env vars
+        for key in [
+            "RAILWAY_BACKUP_ENABLED",
+            "RAILWAY_BACKUP_SCHEDULE",
+            "RAILWAY_BACKUP_RETENTION_DAYS",
+            "RAILWAY_BACKUP_BUCKET",
+        ]:
+            os.environ.pop(key, None)
+        get_settings.cache_clear()
+
+    def test_default_backup_settings(self):
+        """Railway backup settings should have sensible defaults."""
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        assert settings.railway_backup_enabled is True
+        assert settings.railway_backup_schedule == "0 3 * * *"
+        assert settings.railway_backup_retention_days == 7
+        assert settings.railway_backup_bucket == "backups"
+
+    def test_backup_settings_from_env(self):
+        """Railway backup settings should be configurable via environment."""
+        os.environ["RAILWAY_BACKUP_ENABLED"] = "false"
+        os.environ["RAILWAY_BACKUP_SCHEDULE"] = "0 6 * * *"
+        os.environ["RAILWAY_BACKUP_RETENTION_DAYS"] = "14"
+        os.environ["RAILWAY_BACKUP_BUCKET"] = "db-backups"
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        assert settings.railway_backup_enabled is False
+        assert settings.railway_backup_schedule == "0 6 * * *"
+        assert settings.railway_backup_retention_days == 14
+        assert settings.railway_backup_bucket == "db-backups"
+
+    def test_backup_settings_exist_on_non_railway_provider(self):
+        """Backup settings should be present but inert on non-Railway providers."""
+        os.environ["DATABASE_PROVIDER"] = "local"
+        os.environ["DATABASE_URL"] = "postgresql://user:pass@localhost/db"
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+
+        # Settings exist with defaults but are meaningless for local provider
+        assert settings.railway_backup_enabled is True
+        assert settings.railway_backup_schedule == "0 3 * * *"
+
+
 class TestAudioDigestVoicePresets:
     """Tests for the AUDIO_DIGEST_VOICE_PRESETS constant."""
 

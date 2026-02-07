@@ -64,11 +64,21 @@ FROM postgres:16-bookworm
 COPY --from=builder /usr/share/postgresql/16/extension/ /usr/share/postgresql/16/extension/
 COPY --from=builder /usr/lib/postgresql/16/lib/ /usr/lib/postgresql/16/lib/
 
+# Install MinIO Client (mc) for backup jobs
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
+    && chmod +x /usr/local/bin/mc \
+    && apt-get purge -y curl \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy optimized PostgreSQL configuration
 COPY postgresql.conf /etc/postgresql/postgresql.conf
 
-# Initialization script to create extensions
+# Initialization scripts (run in alphabetical order by filename)
 COPY init-extensions.sql /docker-entrypoint-initdb.d/
+COPY init-backup-job.sql /docker-entrypoint-initdb.d/
 
 # Health check for Railway monitoring
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

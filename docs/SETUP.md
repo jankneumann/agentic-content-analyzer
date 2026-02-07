@@ -754,6 +754,61 @@ If your repository is private, configure GHCR access:
 
 For public repositories, no authentication is needed.
 
+### Automated Backups (pg_cron → MinIO)
+
+The custom PostgreSQL image includes automated backup jobs using pg_cron that dump the database to MinIO storage.
+
+#### Configuration
+
+```bash
+# .env backup settings (all have sensible defaults)
+RAILWAY_BACKUP_ENABLED=true         # Enable/disable backups (default: true)
+RAILWAY_BACKUP_SCHEDULE="0 3 * * *" # Cron schedule (default: daily 3 AM UTC)
+RAILWAY_BACKUP_RETENTION_DAYS=7     # Days to keep backups (default: 7)
+RAILWAY_BACKUP_BUCKET=backups       # MinIO bucket for backups (default: backups)
+```
+
+The backup job creates compressed `pg_dump` files (custom format, `-Fc`) and stores them in MinIO with timestamped filenames like `railway-2026-02-06-0300.dump`.
+
+A separate cleanup job runs one hour after the backup and removes files older than the retention period.
+
+#### Restoring from Backup
+
+```bash
+# 1. List available backups
+mc alias set railway $RAILWAY_MINIO_ENDPOINT $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+mc ls railway/backups/
+
+# 2. Download a specific backup
+mc cp railway/backups/railway-2026-02-06-0300.dump ./restore.dump
+
+# 3. Restore to a database
+pg_restore -d $DATABASE_URL --clean --if-exists ./restore.dump
+
+# 4. Verify restore
+psql $DATABASE_URL -c "SELECT count(*) FROM content_items;"
+```
+
+#### Verifying Backups
+
+```bash
+# Check backup job status in pg_cron
+psql $DATABASE_URL -c "
+  SELECT jobname, status, start_time, end_time
+  FROM cron.job_run_details
+  WHERE jobname = 'railway-backup'
+  ORDER BY start_time DESC LIMIT 5;
+"
+
+# The /ready health endpoint also reports backup status
+curl https://your-app.railway.app/ready | jq '.checks.backup'
+# Returns: "ok", "stale", "no_history", or "not_configured"
+```
+
+#### Disabling Backups
+
+Set `RAILWAY_BACKUP_ENABLED=false` in your environment to skip backup job creation. The pg_cron jobs will not be scheduled.
+
 ### Troubleshooting Railway
 
 **Extension not found**:
