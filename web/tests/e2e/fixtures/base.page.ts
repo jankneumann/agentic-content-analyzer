@@ -58,7 +58,7 @@ export class BasePage {
     })
 
     // Sidebar
-    this.sidebarBrand = page.locator("aside").getByText("NA").first()
+    this.sidebarBrand = page.locator("aside").getByAltText("ACA").first()
     this.collapseButton = page.getByRole("button", {
       name: "Collapse sidebar",
     })

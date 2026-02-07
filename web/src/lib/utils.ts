@@ -1,5 +1,5 @@
 /**
- * Utility functions for the Newsletter Aggregator Web UI
+ * Utility functions for the ACA (AI Content Analyzer) Web UI
  *
  * This module provides helper functions used throughout the application,
  * particularly for styling and class management with Tailwind CSS.

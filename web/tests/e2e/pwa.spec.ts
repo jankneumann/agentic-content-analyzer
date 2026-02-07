@@ -37,8 +37,8 @@ test.describe("PWA Features", () => {
       expect(manifest).toBeDefined()
 
       // Should have required PWA properties
-      expect(manifest.name).toBe("Newsletter Aggregator")
-      expect(manifest.short_name).toBe("Newsletters")
+      expect(manifest.name).toBe("ACA — AI Content Analyzer")
+      expect(manifest.short_name).toBe("ACA")
       expect(manifest.display).toBe("standalone")
       expect(manifest.start_url).toBe("/")
       expect(manifest.theme_color).toBe("#1a1a1a")
@@ -112,7 +112,7 @@ test.describe("PWA Features", () => {
       const description = page.locator('meta[name="description"]')
       await expect(description).toHaveAttribute(
         "content",
-        "AI-powered newsletter aggregation and digests"
+        "AI-powered content analysis and digests"
       )
 
       // iOS PWA tags
@@ -124,7 +124,7 @@ test.describe("PWA Features", () => {
       const appleTitle = page.locator(
         'meta[name="apple-mobile-web-app-title"]'
       )
-      await expect(appleTitle).toHaveAttribute("content", "Newsletters")
+      await expect(appleTitle).toHaveAttribute("content", "ACA")
 
       // Apple touch icon
       const appleTouchIcon = page.locator('link[rel="apple-touch-icon"]')
