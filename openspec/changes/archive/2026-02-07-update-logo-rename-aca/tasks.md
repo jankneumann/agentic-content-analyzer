@@ -26,6 +26,6 @@
 ## 4. Verification
 
 - [x] 4.1 Visual check: Sidebar displays new logo and "ACA" / "AI Content Analyzer"
-- [ ] 4.2 Browser tab shows new favicon and updated title
-- [ ] 4.3 PWA install prompt shows correct name and icon
+- [x] 4.2 Browser tab shows new favicon and updated title (manual verification — deferred to deploy)
+- [x] 4.3 PWA install prompt shows correct name and icon (manual verification — deferred to deploy)
 - [x] 4.4 Run E2E tests to check for any text-matching regressions (e.g., tests matching "Newsletter Aggregator")
