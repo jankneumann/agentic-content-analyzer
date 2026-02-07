@@ -61,7 +61,11 @@ class PromptUpdateResponse(BaseModel):
 # ============================================================================
 
 
-@router.get("/prompts", response_model=PromptListResponse)
+@router.get(
+    "/prompts",
+    response_model=PromptListResponse,
+    dependencies=[Depends(verify_admin_key)],
+)
 async def list_prompts() -> PromptListResponse:
     """Get all prompts with their current values and override status.
 
@@ -122,7 +126,11 @@ async def list_prompts() -> PromptListResponse:
         return PromptListResponse(prompts=prompts)
 
 
-@router.get("/prompts/{key:path}", response_model=PromptInfo)
+@router.get(
+    "/prompts/{key:path}",
+    response_model=PromptInfo,
+    dependencies=[Depends(verify_admin_key)],
+)
 async def get_prompt(key: str) -> PromptInfo:
     """Get a specific prompt by key.
 
