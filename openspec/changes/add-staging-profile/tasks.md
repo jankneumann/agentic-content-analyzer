@@ -3,4 +3,4 @@
 - [x] 1.2 Document staging profile usage and data seeding guidance
 - [x] 1.3 Update staging observability to use a dedicated Braintrust project
 - [x] 1.4 Update profile-configuration spec to include staging template requirements
-- [ ] 1.5 Validate OpenSpec change
+- [x] 1.5 Validate OpenSpec change
