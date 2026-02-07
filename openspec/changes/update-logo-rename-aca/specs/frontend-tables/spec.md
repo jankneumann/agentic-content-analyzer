@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Sidebar Branding
 
@@ -15,8 +15,6 @@ The sidebar component SHALL display the app identity using the ACA brand:
 #### Scenario: Sidebar expanded shows full brand name
 - **WHEN** the sidebar is in expanded mode
 - **THEN** the sidebar displays the "ACA" badge and the text "AI Content Analyzer"
-
-## ADDED Requirements
 
 ### Requirement: App Logo Assets
 
