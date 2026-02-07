@@ -52,7 +52,7 @@ settings:
 
   observability:
     braintrust_api_key: "${STAGING_BRAINTRUST_API_KEY:-${BRAINTRUST_API_KEY:-}}"
-    braintrust_project_name: "newsletter-aggregator-staging"
+    braintrust_project_name: "AI Content Analyzer Staging"
     otel_enabled: true
     otel_service_name: "newsletter-aggregator-staging"
     otel_exporter_otlp_endpoint: "https://api.braintrust.dev/otel/v1/traces"

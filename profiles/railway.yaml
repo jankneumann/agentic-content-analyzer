@@ -62,7 +62,7 @@ settings:
   observability:
     # Braintrust for LLM observability
     braintrust_api_key: "${BRAINTRUST_API_KEY}"
-    braintrust_project_name: newsletter-aggregator
+    braintrust_project_name: "AI Content Analyzer"
 
     # Enable OTel infrastructure tracing
     otel_enabled: true

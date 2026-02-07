@@ -62,6 +62,7 @@ make dev-stop      # Stop servers
 # Profile-based development
 make dev-local     # Start with PROFILE=local (no observability)
 make dev-opik      # Start with PROFILE=local-opik (requires: make opik-up)
+make dev-staging   # Start with PROFILE=staging (remote backends + Braintrust)
 
 # Opik observability stack
 make opik-up       # Start Opik stack (waits for health)
@@ -73,8 +74,9 @@ make full-up       # Start core services + Opik
 make full-down     # Stop all services
 
 # Verification
-make verify-profile # Verify API health and current profile
-make verify-opik    # Verify Opik receives traces
+make verify-profile  # Verify API health and current profile
+make verify-opik     # Verify Opik receives traces
+make verify-staging  # Verify staging profile connectivity
 
 # Content Ingestion (aca CLI)
 aca ingest gmail                       # Gmail newsletters
@@ -431,6 +433,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Profile validation errors | Run `aca profile validate <name>` to see all errors |
 | Secrets not interpolating | Check `.secrets.yaml` exists and key names match `${VAR}` references |
 | Profile inheritance cycles | Profiles cannot extend themselves or form circular `extends` chains |
+| Profile provider vs settings collision | `providers.*` must be authoritative; don't add `*_provider` keys in `settings.*` sections of child profiles |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
 
 ## Quick Links by Task

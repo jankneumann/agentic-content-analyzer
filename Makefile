@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs dev-local dev-opik full-up full-down verify-profile verify-opik
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs dev-local dev-opik dev-staging full-up full-down verify-profile verify-opik verify-staging
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -249,6 +249,29 @@ dev-opik:  ## Start dev servers with Opik tracing (requires: make opik-up)
 	@echo ""
 	@echo "LLM traces will appear at: http://localhost:5174"
 
+dev-staging:  ## Start dev servers with staging profile (remote backends + Braintrust)
+	@echo "Validating staging profile..."
+	@source .venv/bin/activate && python -m src.cli profile validate staging || { \
+		echo ""; \
+		echo "✗ Staging profile validation failed!"; \
+		echo ""; \
+		echo "Check:"; \
+		echo "  1. .secrets.yaml has BRAINTRUST_API_KEY"; \
+		echo "  2. STAGING_RAILWAY_DATABASE_URL or RAILWAY_DATABASE_URL is set"; \
+		echo "  3. NEO4J_AURADB_URI and NEO4J_AURADB_PASSWORD are set"; \
+		echo ""; \
+		exit 1; \
+	}
+	@echo "✓ Staging profile is valid"
+	@echo ""
+	@echo "⚠  WARNING: Staging uses REMOTE backends (Railway, AuraDB, Braintrust)"
+	@echo "   Braintrust project: AI Content Analyzer Staging"
+	@echo ""
+	@PROFILE=staging $(MAKE) dev-bg
+	@echo ""
+	@echo "Verify connectivity:"
+	@echo "  make verify-staging"
+
 full-up:  ## Start all services (core + Opik observability)
 	@echo "Starting core services..."
 	@docker compose up -d
@@ -319,3 +342,34 @@ verify-opik:  ## Verify Opik tracing works E2E (requires: PROFILE=local-opik, Op
 	@echo "✓ Opik verification complete!"
 	@echo ""
 	@echo "View traces at: http://localhost:5174"
+
+verify-staging:  ## Verify staging profile connectivity (health + readiness)
+	@echo "Verifying staging profile..."
+	@echo ""
+	@echo "1. Validating profile structure..."
+	@source .venv/bin/activate && python -m src.cli profile validate staging || { \
+		echo "✗ Staging profile validation failed"; \
+		exit 1; \
+	}
+	@echo "   ✓ Profile is valid"
+	@echo ""
+	@echo "2. Checking API health..."
+	@if ! curl -sf http://localhost:8000/health >/dev/null 2>&1; then \
+		echo "✗ API is not running at http://localhost:8000"; \
+		echo "  Start it with: make dev-staging"; \
+		exit 1; \
+	fi
+	@echo "   ✓ API is healthy"
+	@echo ""
+	@echo "3. Checking API readiness (database)..."
+	@if ! curl -sf http://localhost:8000/ready >/dev/null 2>&1; then \
+		echo "✗ API is not ready (database connection failed)"; \
+		echo "  Check RAILWAY_DATABASE_URL or STAGING_RAILWAY_DATABASE_URL"; \
+		exit 1; \
+	fi
+	@echo "   ✓ API is ready (database connected)"
+	@echo ""
+	@echo "4. Showing active profile..."
+	@source .venv/bin/activate && PROFILE=staging python -m src.cli profile inspect 2>/dev/null || true
+	@echo ""
+	@echo "✓ Staging verification passed!"

@@ -416,8 +416,10 @@ open http://localhost:5174    # Opik UI
 | `make opik-logs` | — | Tail Opik stack logs |
 | `make full-up` | — | Start core services + Opik |
 | `make full-down` | — | Stop all services |
+| `make dev-staging` | `staging` | Start dev servers with remote backends + Braintrust |
 | `make verify-profile` | (current) | Verify API health and profile |
 | `make verify-opik` | — | Verify Opik receives traces |
+| `make verify-staging` | `staging` | Verify staging profile connectivity |
 
 ### Opik Observability Stack
 
@@ -523,6 +525,45 @@ export PROFILE=staging
 - Seed staging with a **sanitized, curated subset** of dev data (no secrets/PII)
 - Use **separate staging buckets and databases** to avoid prod/data contamination
 - Prefer **repeatable snapshots** (e.g., scheduled dump/restore) so tests are deterministic
+
+### Staging Deployment Workflow
+
+The staging profile connects your local API to remote backends (Railway PostgreSQL + MinIO, AuraDB, Braintrust) for production-like validation without a full cloud deploy.
+
+**Required secrets** (in `.secrets.yaml` or environment):
+
+| Secret | Source |
+|--------|--------|
+| `BRAINTRUST_API_KEY` | [braintrust.dev/app/settings](https://www.braintrust.dev/app/settings) |
+| `NEO4J_AURADB_PASSWORD` | Neo4j AuraDB console |
+| `ANTHROPIC_API_KEY` | Anthropic dashboard |
+
+**Staging-specific env var overrides** — prefix any setting with `STAGING_` to isolate from production:
+
+```bash
+export STAGING_RAILWAY_DATABASE_URL=postgresql://...   # Staging Railway DB
+export STAGING_NEO4J_AURADB_URI=neo4j+s://...          # Staging AuraDB instance
+export STAGING_BRAINTRUST_API_KEY=sk-...               # Optional separate key
+```
+
+**Quick start**:
+
+```bash
+# 1. Ensure .secrets.yaml has your keys (especially BRAINTRUST_API_KEY)
+# 2. Set staging-specific backends (if different from production)
+export STAGING_RAILWAY_DATABASE_URL=postgresql://...
+
+# 3. Start local API against remote backends
+make dev-staging
+
+# 4. Verify connectivity
+make verify-staging
+```
+
+**Notes**:
+- Docker Compose is **not** started — staging uses remote services
+- Braintrust traces go to the `AI Content Analyzer Staging` project (isolated from production)
+- The `STAGING_*` prefix pattern is optional; without it, values fall back to the non-prefixed versions
 
 ### railway.yaml
 
