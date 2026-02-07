@@ -365,6 +365,30 @@ class TestProfileFlatteningLogic:
         assert result["storage_provider"] == "s3"
         assert result["observability_provider"] == "braintrust"
 
+    def test_flatten_providers_override_inherited_settings(self) -> None:
+        """Test that providers.* overrides settings.*.storage_provider from base."""
+        from src.config.settings import _flatten_profile_to_settings
+
+        # Simulates staging profile inheriting base's settings.storage.storage_provider
+        profile_data = {
+            "providers": {
+                "database": "railway",
+                "storage": "railway",
+            },
+            "settings": {
+                "storage": {
+                    "storage_provider": "local",  # inherited from base
+                    "railway_minio_bucket": "newsletter-files-staging",
+                },
+            },
+        }
+
+        result = _flatten_profile_to_settings(profile_data)
+
+        assert result["storage_provider"] == "railway"
+        assert result["database_provider"] == "railway"
+        assert result["railway_minio_bucket"] == "newsletter-files-staging"
+
     def test_flatten_nested_settings(self) -> None:
         """Test that nested settings are flattened to top level."""
         from src.config.settings import _flatten_profile_to_settings

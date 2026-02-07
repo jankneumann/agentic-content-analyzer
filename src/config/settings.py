@@ -54,18 +54,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
     """
     result: dict[str, Any] = {}
 
-    # Map providers to Settings provider fields
-    providers = profile_data.get("providers", {})
-    if "database" in providers:
-        result["database_provider"] = providers["database"]
-    if "neo4j" in providers:
-        result["neo4j_provider"] = providers["neo4j"]
-    if "storage" in providers:
-        result["storage_provider"] = providers["storage"]
-    if "observability" in providers:
-        result["observability_provider"] = providers["observability"]
-
-    # Flatten settings sections
+    # Flatten settings sections first
     settings = profile_data.get("settings", {})
 
     # Top-level settings (environment, log_level, etc.)
@@ -89,6 +78,19 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
             for key, value in section_data.items():
                 if value is not None:
                     result[key] = value
+
+    # Map providers to Settings provider fields AFTER settings flattening
+    # so providers.* is authoritative over inherited settings like
+    # settings.storage.storage_provider from base profiles
+    providers = profile_data.get("providers", {})
+    if "database" in providers:
+        result["database_provider"] = providers["database"]
+    if "neo4j" in providers:
+        result["neo4j_provider"] = providers["neo4j"]
+    if "storage" in providers:
+        result["storage_provider"] = providers["storage"]
+    if "observability" in providers:
+        result["observability_provider"] = providers["observability"]
 
     return result
 
