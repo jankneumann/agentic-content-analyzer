@@ -1,7 +1,7 @@
 ## 1. Logo Asset Replacement
 
-- [ ] 1.1 Save the new purple circuit-brain tree logo as the source image
-- [ ] 1.2 Generate `icon.svg` from the new logo (or create an SVG version)
+- [x] 1.1 Source logo uploaded as `web/public/icons/rotkohl-logo-source.png`
+- [ ] 1.2 Generate `icon.svg` from `rotkohl-logo-source.png` (or create an SVG version)
 - [ ] 1.3 Generate `icon-192.png` (192x192) from the new logo
 - [ ] 1.4 Generate `icon-512.png` (512x512) from the new logo
 - [ ] 1.5 Generate `icon-192-maskable.png` (192x192, with safe zone padding)
