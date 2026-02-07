@@ -505,6 +505,25 @@ make api             # Or: make dev-opik
 - Enables Opik observability provider
 - Exports traces to `http://localhost:5174/api/v1/private/otel`
 
+### staging.yaml
+
+Staging configuration for CI/CD and pre-production validation:
+
+```bash
+export PROFILE=staging
+```
+
+- Uses Railway PostgreSQL + MinIO and AuraDB like production
+- Sends observability to a **staging Braintrust project** (no production pollution)
+- Supports staging-specific environment variable overrides (e.g., `STAGING_RAILWAY_DATABASE_URL`)
+- Set `STAGING_BRAINTRUST_API_KEY` to keep traces isolated from production
+
+**Data seeding guidance (for true E2E):**
+
+- Seed staging with a **sanitized, curated subset** of dev data (no secrets/PII)
+- Use **separate staging buckets and databases** to avoid prod/data contamination
+- Prefer **repeatable snapshots** (e.g., scheduled dump/restore) so tests are deterministic
+
 ### railway.yaml
 
 Railway platform deployment:
