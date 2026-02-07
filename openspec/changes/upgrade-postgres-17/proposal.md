@@ -11,7 +11,7 @@ The project currently runs three different PG versions: docker-compose uses PG15
 - Railway Dockerfile: remove `--no-default-features --features pg16` from pg_search build (pg17 is default)
 - Railway Dockerfile: update pgrx init from `--pg16` to `--pg17`
 - Railway Dockerfile: update all extension paths from `postgresql/16/` to `postgresql/17/`
-- Railway postgresql.conf: remove `pg_search` from `shared_preload_libraries` (not required on PG17)
+- Railway postgresql.conf: keep `shared_preload_libraries = 'pg_cron,pg_search'` (both required on PG17)
 - Local docker-compose.yml: `postgres:15` → `postgres:17`
 - CI workflow: `postgres:16` → `postgres:17`
 - Railway README.md and docs/SETUP.md: update image tags from `16-railway` to `17-railway`

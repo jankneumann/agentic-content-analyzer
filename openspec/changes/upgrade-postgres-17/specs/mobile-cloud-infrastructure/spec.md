@@ -24,7 +24,7 @@ The system SHALL deploy to Railway as two services (web API and worker) with pro
 - **AND** the image SHALL include pgvector v0.8.0, pg_search v0.13.0, pgmq v1.4.4, and pg_cron v1.6.4
 - **AND** the image SHALL use an external postgresql.conf optimized for Railway Hobby plan (512 MB RAM)
 - **AND** extensions SHALL be initialized via init-extensions.sql on first container start
-- **AND** `shared_preload_libraries` SHALL only include `pg_cron` (pg_search does not require it on PG17)
+- **AND** `shared_preload_libraries` SHALL include both `pg_cron` and `pg_search`
 
 #### Scenario: Profile-based configuration in production
 - **GIVEN** `PROFILE=railway` is set on the API service

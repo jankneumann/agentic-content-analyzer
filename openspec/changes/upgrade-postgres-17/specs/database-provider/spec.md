@@ -45,5 +45,4 @@ The system SHALL support Railway as a PostgreSQL provider using a custom Docker 
 - **WHEN** the Railway PostgreSQL Docker image is built
 - **THEN** it SHALL use PostgreSQL 17 as the base image
 - **AND** it SHALL include pgvector v0.8.0, pg_cron v1.6.4, pgmq v1.4.4, and pg_search v0.13.0
-- **AND** pg_search SHALL NOT require `shared_preload_libraries` on PostgreSQL 17
-- **AND** only `pg_cron` SHALL be listed in `shared_preload_libraries`
+- **AND** both `pg_cron` and `pg_search` SHALL be listed in `shared_preload_libraries`

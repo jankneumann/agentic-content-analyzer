@@ -15,8 +15,8 @@ PostgreSQL 17 has been production-stable since September 2024, with v17.7 releas
 - **pgmq v1.4.4**: Keep as-is. Pure SQL extension, version-agnostic.
 - **pg_search v0.13.0**: Keep version but simplify build flags. v0.13.0 defaults to pg17, so remove `--no-default-features --features pg16`.
 
-### shared_preload_libraries simplification
-pg_search on PG17 does not require `shared_preload_libraries`. Only pg_cron still needs it. Revert `postgresql.conf` to `shared_preload_libraries = 'pg_cron'`.
+### shared_preload_libraries
+pg_search v0.13.0 still requires `shared_preload_libraries` on PG17 (the requirement is set by the extension, not the PostgreSQL version). Keep `shared_preload_libraries = 'pg_cron,pg_search'`.
 
 ### pgrx version alignment
 pg_search v0.13.0 uses `pgrx = "0.12.7"`. The Dockerfile already pins `cargo-pgrx@0.12.7`. For PG17, `cargo pgrx init --pg17` replaces `--pg16`.

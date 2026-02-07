@@ -10,8 +10,7 @@
   - pg_search: remove `--no-default-features --features pg16`
   - Extension paths: `postgresql/16/` → `postgresql/17/`
 - [ ] 1.2 Update `railway/postgres/postgresql.conf`:
-  - `shared_preload_libraries = 'pg_cron,pg_search'` → `shared_preload_libraries = 'pg_cron'`
-  - Update PG16 comment to PG17
+  - Keep `shared_preload_libraries = 'pg_cron,pg_search'` (both still required on PG17)
 - [ ] 1.3 Build and test Docker image locally:
   - Verify all 4 extensions load (`CREATE EXTENSION`)
   - Functional test: vector distance, cron listing, pgmq queue ops
