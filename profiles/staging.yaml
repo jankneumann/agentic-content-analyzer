@@ -45,7 +45,6 @@ settings:
     neo4j_auradb_password: "${STAGING_NEO4J_AURADB_PASSWORD:-${NEO4J_AURADB_PASSWORD}}"
 
   storage:
-    storage_provider: railway
     minio_root_user: "${STAGING_MINIO_ROOT_USER:-${MINIO_ROOT_USER}}"
     minio_root_password: "${STAGING_MINIO_ROOT_PASSWORD:-${MINIO_ROOT_PASSWORD}}"
     railway_minio_endpoint: "${STAGING_RAILWAY_MINIO_ENDPOINT:-${RAILWAY_MINIO_ENDPOINT:-}}"
