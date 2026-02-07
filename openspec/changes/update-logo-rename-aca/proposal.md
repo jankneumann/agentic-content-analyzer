@@ -4,6 +4,10 @@
 
 The app has evolved beyond newsletter aggregation into a broader AI content analysis platform covering newsletters, RSS feeds, YouTube, podcasts, and file uploads. The current branding ("Newsletter Aggregator" with an "N" icon) no longer reflects the full scope of the product. A rebrand to "ACA — AI Content Analyzer" with a new logo (purple circuit-brain tree) better communicates the platform's capabilities and identity.
 
+## Logo Design Rationale
+
+The new logo is inspired by the domain **rotkohl.ai** — "Rotkohl" (German for red cabbage) being the creator's nickname. The design captures the striking visual parallel between a red cabbage cross-section — with its layered structure and branching veins — and the architecture of a brain. The logo reinterprets this organic pattern in silicon terms: circuit traces and connection nodes replace biological veins, bridging the natural (brain/cabbage) with the artificial (AI/circuits). The USB connector at the base grounds the metaphor, symbolizing the interface between organic intelligence and digital systems. The purple palette nods to the red cabbage's natural coloring.
+
 ## What Changes
 
 - Replace the current "N" letter logo (icon.svg and all PNG variants) with a new purple circuit-brain tree logo
