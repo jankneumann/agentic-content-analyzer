@@ -171,7 +171,7 @@ Configure models per pipeline step using family-based IDs:
 - **Neo4j**: Knowledge graph backend for Graphiti
 
 ### Infrastructure (Docker Compose)
-- PostgreSQL 15
+- PostgreSQL 17
 - Redis 7
 - Neo4j 5
 

@@ -1,12 +1,12 @@
 # Railway PostgreSQL with Extensions
 
-Custom PostgreSQL 16 image with production-ready extensions for the Newsletter Aggregator.
+Custom PostgreSQL 17 image with production-ready extensions for the Newsletter Aggregator.
 
 ## Extensions Included
 
 | Extension | Version | Purpose |
 |-----------|---------|---------|
-| pgvector | 0.7.4 | Vector similarity search for AI embeddings |
+| pgvector | 0.8.0 | Vector similarity search for AI embeddings |
 | pg_search | 0.13.0 | Full-text search with BM25 ranking (ParadeDB) |
 | pgmq | 1.4.4 | Lightweight message queue in PostgreSQL |
 | pg_cron | 1.6.4 | Job scheduling within PostgreSQL |
@@ -18,13 +18,13 @@ Custom PostgreSQL 16 image with production-ready extensions for the Newsletter A
 Pull the pre-built image from GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/jankneumann/newsletter-postgres:16-railway
+docker pull ghcr.io/jankneumann/newsletter-postgres:17-railway
 ```
 
 In Railway dashboard:
 1. Create a new service
 2. Select "Docker Image"
-3. Enter: `ghcr.io/jankneumann/newsletter-postgres:16-railway`
+3. Enter: `ghcr.io/jankneumann/newsletter-postgres:17-railway`
 
 ### Option 2: Build Locally
 
@@ -118,7 +118,7 @@ $$);
 
 ## Build Time
 
-- First build: ~15 minutes (Rust compilation)
+- First build: ~10 minutes (Rust compilation for pg_search; pgmq is pure SQL)
 - Cached builds: ~5 minutes (with GitHub Actions cache)
 
 ## Image Size
