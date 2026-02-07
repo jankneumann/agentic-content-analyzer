@@ -15,13 +15,13 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust (required for pg_search and pgmq)
+# Install Rust (required for pg_search)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install pgrx (PostgreSQL extension framework)
-# Using pgrx 0.12.6 which is compatible with pg_search and pgmq
-RUN cargo install --locked cargo-pgrx@0.12.6 \
+# Install pgrx (PostgreSQL extension framework for pg_search)
+# Using pgrx 0.12.7 which matches pg_search v0.13.0's requirement
+RUN cargo install --locked cargo-pgrx@0.12.7 \
     && cargo pgrx init --pg16 $(which pg_config)
 
 # Install pgvector (C-based, simple compilation)
@@ -40,19 +40,21 @@ RUN cd /tmp \
     && make install \
     && rm -rf /tmp/pg_cron
 
-# Install pgmq (Rust-based via pgrx)
+# Install pgmq (pure SQL extension since v1.3.2, uses PGXS)
 RUN cd /tmp \
     && git clone --branch v1.4.4 https://github.com/tembo-io/pgmq.git \
     && cd pgmq/pgmq-extension \
-    && cargo pgrx install --release --pg-config $(which pg_config) \
+    && make \
+    && make install \
     && rm -rf /tmp/pgmq
 
 # Install pg_search (ParadeDB - Rust-based via pgrx)
-# Note: pg_search requires specific build flags
+# v0.13.0 defaults to pg17; explicit --features pg16 needed for our base image
 RUN cd /tmp \
     && git clone --branch v0.13.0 https://github.com/paradedb/paradedb.git \
     && cd paradedb/pg_search \
-    && cargo pgrx install --release --pg-config $(which pg_config) \
+    && cargo pgrx install --release --no-default-features --features pg16 \
+       --pg-config $(which pg_config) \
     && rm -rf /tmp/paradedb
 
 #############################################
