@@ -1,0 +1,47 @@
+defaults:
+  type: substack
+sources:
+- name: Hardcore Software by Steven Sinofsky
+  url: https://hardcoresoftware.learningbyshipping.com
+  enabled: true
+  tags: []
+- name: AI Newsletter
+  url: https://nlp.elvissaravia.com
+  enabled: true
+  tags: []
+- name: It Was Always... Liverpool
+  url: https://www.itwasalwaysliverpool.com
+  enabled: false
+  tags: []
+- name: TheSequence
+  url: https://thesequence.substack.com
+  enabled: true
+  tags: []
+- name: Scarlet Ink
+  url: https://www.scarletink.com
+  enabled: true
+  tags: []
+- name: Lenny's Newsletter
+  url: https://www.lennysnewsletter.com
+  enabled: true
+  tags: []
+- name: The Pragmatic Engineer
+  url: https://newsletter.pragmaticengineer.com
+  enabled: true
+  tags: []
+- name: The Product Compass
+  url: https://www.productcompass.pm
+  enabled: true
+  tags: []
+- name: Distance Covered
+  url: https://distancecovered.substack.com
+  enabled: false
+  tags: []
+- name: The Tomkins Times - Main Hub
+  url: https://tomkinstimes.substack.com
+  enabled: false
+  tags: []
+- name: Nate’s Substack
+  url: https://natesnewsletter.substack.com
+  enabled: true
+  tags: []

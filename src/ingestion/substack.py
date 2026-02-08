@@ -39,6 +39,18 @@ logger = get_logger(__name__)
 class SubstackSubscription:
     name: str
     url: str
+    is_paid: bool = False
+
+
+@dataclass
+class SyncResult:
+    """Result of a substack-sync operation."""
+
+    rss_added: int
+    rss_existing: int
+    rss_removed: int
+    substack_added: int
+    substack_existing: int
 
 
 class SubstackClient:
@@ -62,7 +74,7 @@ class SubstackClient:
         self._http.close()
 
     def fetch_subscriptions(self) -> list[SubstackSubscription]:
-        """Return a list of subscriptions (name + url)."""
+        """Return a list of subscriptions (name + url + paid status)."""
         subscriptions = self._fetch_subscriptions_from_http()
 
         if not subscriptions:
@@ -87,7 +99,8 @@ class SubstackClient:
                 url = f"https://{entry['subdomain']}.substack.com"
             if not url:
                 continue
-            results.append(SubstackSubscription(name=name, url=url))
+            is_paid = entry.get("membership_state") not in ("free_signup", None)
+            results.append(SubstackSubscription(name=name, url=url, is_paid=is_paid))
 
         return results
 
@@ -108,13 +121,37 @@ class SubstackClient:
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "subscriptions" in data:
-                    return data["subscriptions"]
+                    return self._join_subscriptions_with_publications(data)
                 if isinstance(data, list):
                     return data
             except Exception as exc:
                 logger.warning(f"Substack HTTP subscription fetch failed: {exc}")
                 continue
         return None
+
+    def _join_subscriptions_with_publications(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        """Join subscription records with publication metadata.
+
+        The API returns subscriptions (user-publication junction records) and
+        publications (metadata with name, subdomain, base_url) as separate arrays.
+        We merge them so each result has the fields fetch_subscriptions expects.
+        """
+        subs = data.get("subscriptions", [])
+        pubs = data.get("publications", [])
+        pub_by_id: dict[int, dict[str, Any]] = {p["id"]: p for p in pubs if "id" in p}
+
+        results: list[dict[str, Any]] = []
+        for sub in subs:
+            pub = pub_by_id.get(sub.get("publication_id", -1), {})
+            merged = {**sub, **pub}
+            # Ensure the fields that fetch_subscriptions looks for are present
+            if "url" not in merged and pub.get("base_url"):
+                merged["url"] = pub["base_url"]
+            if "name" not in merged and pub.get("subdomain"):
+                merged["name"] = pub["subdomain"]
+            results.append(merged)
+
+        return results
 
     def fetch_posts(self, publication_url: str, max_entries: int = 10) -> list[dict[str, Any]]:
         """Fetch recent posts for a publication using substack-api 1.1.3."""
@@ -471,20 +508,54 @@ class SubstackContentIngestionService:
 def sync_substack_sources(
     output_path: Path | None = None,
     session_cookie: str | None = None,
-) -> int:
-    """Sync Substack subscriptions into sources.d/substack.yaml."""
+) -> SyncResult:
+    """Sync Substack subscriptions: paid → substack.yaml, free → rss.yaml."""
     sources_dir = Path(settings.sources_config_dir)
-    output_path = output_path or sources_dir / "substack.yaml"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    substack_path = output_path or sources_dir / "substack.yaml"
+    rss_path = sources_dir / "rss.yaml"
+    substack_path.parent.mkdir(parents=True, exist_ok=True)
 
     client = SubstackClient(session_cookie=session_cookie)
     subscriptions = client.fetch_subscriptions()
     client.close()
 
+    paid = [s for s in subscriptions if s.is_paid]
+    free = [s for s in subscriptions if not s.is_paid]
+    logger.info(f"Found {len(subscriptions)} subscriptions: {len(paid)} paid, {len(free)} free")
+
+    substack_result = _sync_paid_to_substack(paid, substack_path)
+    paid_urls = {s.url for s in paid}
+    rss_result = _sync_free_to_rss(free, rss_path, exclude_urls=paid_urls)
+
+    result = SyncResult(
+        rss_added=rss_result[0],
+        rss_existing=rss_result[1],
+        rss_removed=rss_result[2],
+        substack_added=substack_result[0],
+        substack_existing=substack_result[1],
+    )
+    logger.info(
+        f"Sync complete: "
+        f"{result.substack_added} paid added to substack.yaml "
+        f"({result.substack_existing} existing), "
+        f"{result.rss_added} free added to rss.yaml "
+        f"({result.rss_existing} already present, "
+        f"{result.rss_removed} removed — now in substack.yaml)"
+    )
+    return result
+
+
+def _sync_paid_to_substack(
+    subscriptions: list[SubstackSubscription], path: Path
+) -> tuple[int, int]:
+    """Write paid subscriptions to substack.yaml, preserving existing entries.
+
+    Returns (added, existing) counts.
+    """
     existing_entries: dict[str, dict[str, Any]] = {}
-    if output_path.exists():
+    if path.exists():
         try:
-            raw_config = yaml.safe_load(output_path.read_text())
+            raw_config = yaml.safe_load(path.read_text())
             existing_config = (
                 SourceFileConfig.model_validate(raw_config) if raw_config else SourceFileConfig()
             )
@@ -495,27 +566,112 @@ def sync_substack_sources(
         except Exception as exc:
             logger.warning(f"Failed to read existing Substack sources: {exc}")
 
+    added = 0
+    existing = 0
     merged_sources: list[dict[str, Any]] = []
     for subscription in subscriptions:
         canonical_url = normalize_substack_url(subscription.url) or subscription.url
-        existing = existing_entries.get(canonical_url)
-        if existing:
-            merged_sources.append(existing)
-            continue
-        merged_sources.append(
-            {
-                "name": subscription.name,
-                "url": canonical_url,
-                "enabled": False,
-                "tags": [],
-            }
-        )
+        entry = existing_entries.get(canonical_url)
+        if entry:
+            merged_sources.append(entry)
+            existing += 1
+        else:
+            merged_sources.append(
+                {
+                    "name": subscription.name,
+                    "url": canonical_url,
+                    "enabled": True,
+                    "tags": [],
+                }
+            )
+            added += 1
 
     config = {
         "defaults": {"type": "substack"},
         "sources": merged_sources,
     }
-    output_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+    return added, existing
 
-    logger.info(f"Synced {len(merged_sources)} Substack sources to {output_path}")
-    return len(merged_sources)
+
+def _sync_free_to_rss(
+    subscriptions: list[SubstackSubscription],
+    rss_path: Path,
+    exclude_urls: set[str] | None = None,
+) -> tuple[int, int, int]:
+    """Append free Substack subscriptions to rss.yaml, deduplicating by URL.
+
+    Removes any existing RSS entries whose base URL matches exclude_urls
+    (paid subscriptions that moved to substack.yaml).
+
+    Returns (added, already_existing, removed) counts.
+    """
+    # Build normalized set of paid URLs to exclude
+    exclude_normalized: set[str] = set()
+    if exclude_urls:
+        for url in exclude_urls:
+            exclude_normalized.add(_normalize_feed_url(url))
+
+    # Load existing RSS entries and build a set of known feed URLs
+    existing_urls: set[str] = set()
+    existing_sources: list[dict[str, Any]] = []
+    rss_defaults: dict[str, Any] = {"type": "rss"}
+    removed = 0
+
+    if rss_path.exists():
+        try:
+            raw_config = yaml.safe_load(rss_path.read_text())
+            if raw_config:
+                existing_config = SourceFileConfig.model_validate(raw_config)
+                rss_defaults = raw_config.get("defaults", rss_defaults)
+                for entry in existing_config.sources:
+                    url = entry.get("url", "")
+                    normalized = _normalize_feed_url(url)
+                    if normalized in exclude_normalized:
+                        logger.info(
+                            f"Removing RSS entry (now in substack.yaml): {entry.get('name', url)}"
+                        )
+                        removed += 1
+                        continue
+                    existing_sources.append(entry)
+                    existing_urls.add(normalized)
+        except Exception as exc:
+            logger.warning(f"Failed to read existing RSS sources: {exc}")
+
+    added = 0
+    already_existing = 0
+    for sub in subscriptions:
+        feed_url = sub.url.rstrip("/") + "/feed"
+        normalized = _normalize_feed_url(feed_url)
+
+        if normalized in existing_urls:
+            already_existing += 1
+            continue
+
+        existing_sources.append({"name": sub.name, "url": feed_url})
+        existing_urls.add(normalized)
+        added += 1
+
+    config = {
+        "defaults": rss_defaults,
+        "sources": existing_sources,
+    }
+    rss_path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+    return added, already_existing, removed
+
+
+def _normalize_feed_url(url: str) -> str:
+    """Normalize a feed URL for dedup comparison.
+
+    Strips scheme, www., and trailing /feed to compare base domains + paths.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url.lower())
+    host = parsed.netloc
+    if host.startswith("www."):
+        host = host[4:]
+    path = parsed.path.rstrip("/")
+    if path.endswith("/feed"):
+        path = path[: -len("/feed")]
+    return f"{host}{path}"

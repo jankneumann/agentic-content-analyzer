@@ -83,6 +83,7 @@ settings:
     tavily_api_key: "${TAVILY_API_KEY:-}"
     elevenlabs_api_key: "${ELEVENLABS_API_KEY:-}"
     sendgrid_api_key: "${SENDGRID_API_KEY:-}"
+    substack_session_cookie: "${SUBSTACK_SESSION_COOKIE:-}"
 
   # ---------------------------------------------------------------------------
   # Digest Settings

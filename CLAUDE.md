@@ -81,6 +81,8 @@ make verify-staging  # Verify staging profile connectivity
 # Content Ingestion (aca CLI)
 aca ingest gmail                       # Gmail newsletters
 aca ingest rss                         # RSS feeds
+aca ingest substack                    # Substack paid subscriptions
+aca ingest substack-sync               # Sync subs: paid→substack.yaml, free→rss.yaml
 aca ingest youtube                     # YouTube playlists
 aca ingest podcast                     # Podcast feeds
 aca ingest files <path...>             # Local file ingestion
@@ -434,6 +436,9 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Secrets not interpolating | Check `.secrets.yaml` exists and key names match `${VAR}` references |
 | Profile inheritance cycles | Profiles cannot extend themselves or form circular `extends` chains |
 | Profile provider vs settings collision | `providers.*` must be authoritative; don't add `*_provider` keys in `settings.*` sections of child profiles |
+| `.secrets.yaml` uses YAML syntax | Must use `:` not `=`; `KEY=value` silently parses as a string instead of a key-value pair |
+| `.secrets.yaml` needs profile active | Without `PROFILE` env var, `.secrets.yaml` is never read; secrets only flow via `${VAR}` in profiles |
+| New secrets need `base.yaml` wiring | Add `${VAR:-}` reference in `profiles/base.yaml` under the appropriate settings section |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
 

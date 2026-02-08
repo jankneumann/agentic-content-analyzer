@@ -1247,9 +1247,9 @@ aca ingest gmail
 
 ## Substack API Setup
 
-Substack paid posts require an authenticated session cookie. Use the
-`SUBSTACK_SESSION_COOKIE` environment variable to store the `substack.sid`
-cookie value (never commit this to git).
+Substack paid posts require an authenticated session cookie. The
+`SUBSTACK_SESSION_COOKIE` stores the value of the `substack.sid` browser
+cookie (never commit this to git).
 
 ### 1. Capture the session cookie
 
@@ -1257,19 +1257,44 @@ cookie value (never commit this to git).
 2. Open DevTools → **Application** → **Cookies** → `https://substack.com`.
 3. Copy the value of the `substack.sid` cookie.
 
-### 2. Export the cookie for ingestion
+### 2. Store the cookie
+
+**Option A — Profile-based** (recommended, uses `.secrets.yaml`):
+
+```yaml
+# .secrets.yaml (gitignored)
+SUBSTACK_SESSION_COOKIE: your-cookie-value-here
+```
+
+Requires `PROFILE` env var to be set (e.g., `export PROFILE=local`).
+The cookie is referenced in `profiles/base.yaml` via `${SUBSTACK_SESSION_COOKIE:-}`.
+
+**Option B — Environment variable**:
 
 ```bash
-export SUBSTACK_SESSION_COOKIE="substack.sid cookie value here"
+export SUBSTACK_SESSION_COOKIE="your-cookie-value-here"
+```
+
+**Option C — CLI flag** (one-off use):
+
+```bash
+aca ingest substack-sync --session-cookie "your-cookie-value-here"
 ```
 
 ### 3. Sync subscriptions and ingest
 
+The `substack-sync` command fetches your subscriptions and routes them based
+on membership status:
+
+- **Paid** subscriptions (`subscribed`) → `sources.d/substack.yaml` with `enabled: true`
+- **Free** subscriptions (`free_signup`) → `sources.d/rss.yaml` (deduplicated, as `/feed` URLs)
+- Paid entries are **removed from `rss.yaml`** to prevent duplicate ingestion
+
 ```bash
-# Generate sources.d/substack.yaml with your subscriptions
+# Sync subscriptions (paid → substack.yaml, free → rss.yaml)
 aca ingest substack-sync
 
-# Enable any desired sources in sources.d/substack.yaml, then ingest
+# Disable any unwanted sources in sources.d/substack.yaml, then ingest
 aca ingest substack
 ```
 

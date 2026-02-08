@@ -1,10 +1,8 @@
 defaults:
   type: rss
 sources:
-- url: https://newsletter.pragmaticengineer.com/feed
 - name: Latent Space
   url: https://www.latent.space/feed
-- url: https://natesnewsletter.substack.com/feed
 - url: https://ruben.substack.com/feed
 - url: https://techtiff.substack.com/feed
 - url: https://addyo.substack.com/feed
@@ -24,7 +22,6 @@ sources:
 - url: https://thepipeandtheline.substack.com/feed
 - name: Ahead of AI
   url: https://magazine.sebastianraschka.com/feed
-- url: https://www.productcompass.pm/feed
 - url: https://www.decodingai.com/feed
 - url: https://www.exponentialview.co/feed
 - url: https://creatoreconomy.so/feed
@@ -34,10 +31,8 @@ sources:
 - url: https://www.ignorance.ai/feed
 - url: https://www.pracdata.io/feed
 - url: https://blog.bytebytego.com/feed
-- url: https://www.lennysnewsletter.com/feed
 - url: https://news.aiinvestinghq.com/feed
 - url: https://charitydotwtf.substack.com/feed
-- url: https://www.scarletink.com/feed
 - url: https://read.engineerscodex.com/feed
 - url: https://aws.amazon.com/blogs/machine-learning/feed/
 - url: https://www.thoughtworks.com/rss/insights.xml
@@ -163,6 +158,7 @@ sources:
   url: https://dev.to/feed
 - name: EE Times
   url: https://www.eetimes.com/feed
+  enabled: false
 - name: Engadget
   url: https://www.engadget.com/rss.xml
 - name: Eugene Yan
@@ -351,8 +347,6 @@ sources:
   url: https://www.theregister.com/software/ai_ml/headlines.atom
 - name: The Rundown AI
   url: https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml
-- name: TheSequence
-  url: https://thesequence.substack.com/feed
 - name: The Stack
   url: https://www.thestack.technology/latest/rss/
 - name: The TensorFlow Blog
@@ -385,3 +379,525 @@ sources:
   url: https://blog.wolfram.com/feed/
 - name: ΑΙhub
   url: https://aihub.org/feed?cat=-473
+- name: Young Leaders in Tech
+  url: https://www.youngleaders.tech/feed
+- name: The Founders Corner®
+  url: https://www.the-founders-corner.com/feed
+- name: Jolyn Driskell
+  url: https://jolyndriskell.substack.com/feed
+- name: Geoffrey's Substack
+  url: https://geoffreyfowler.substack.com/feed
+- name: Wes Kao's Newsletter
+  url: https://newsletter.weskao.com/feed
+- name: Escaping Flatland
+  url: https://www.henrikkarlsson.xyz/feed
+- name: Deep (Learning) Focus
+  url: https://cameronrwolfe.substack.com/feed
+- name: Davis Summarizes Papers
+  url: https://dblalock.substack.com/feed
+- name: Overture - an introduction to something more substantial
+  url: https://justinho.substack.com/feed
+- name: The Gradient
+  url: https://thegradientpub.substack.com/feed
+- name: The AI Corner
+  url: https://www.the-ai-corner.com/feed
+- name: JetMetrics Weekly
+  url: https://blog.jetmetrics.io/feed
+- name: Platformer
+  url: https://platformer.substack.com/feed
+- name: The Curiosity Chronicle
+  url: https://sahilbloom.substack.com/feed
+- name: Gibson Biddle's "Ask Gib" Product Newsletter
+  url: https://askgib.substack.com/feed
+- name: benn.substack
+  url: https://benn.substack.com/feed
+- name: AI as Normal Technology
+  url: https://www.normaltech.ai/feed
+- name: Craft Better Software
+  url: https://craftbettersoftware.com/feed
+- name: The Quantum Notebook
+  url: https://serenakrejcipapa.substack.com/feed
+- name: 💎DiamantAI
+  url: https://diamantai.substack.com/feed
+- name: The Palindrome
+  url: https://thepalindrome.org/feed
+- name: The Coder Cafe
+  url: https://read.thecoder.cafe/feed
+- name: Machine Learning Algorithms Unpacked
+  url: https://ameersaleem.substack.com/feed
+- name: Confessions of a Code Addict
+  url: https://blog.codingconfessions.com/feed
+- name: Chip Insights
+  url: https://chipinsights.net/feed
+- name: The VC Corner
+  url: https://www.thevccorner.com/feed
+- name: Tongyi Lab
+  url: https://tongyilab.substack.com/feed
+- name: Dr. John's Brain + Technology Health
+  url: https://docjohn.substack.com/feed
+- name: Altdeep.ai Newsletter
+  url: https://newsletter.altdeep.ai/feed
+- name: Deep Learning Weekly
+  url: https://www.deeplearningweekly.com/feed
+- name: Normcore Tech
+  url: https://vicki.substack.com/feed
+- name: Sriram Krishnan Substack
+  url: https://sriramk.substack.com/feed
+- name: SemiAnalysis-Old
+  url: https://semianalysisold.substack.com/feed
+- name: Clouded Judgement
+  url: https://cloudedjudgement.substack.com/feed
+- name: The Diff
+  url: https://diff.substack.com/feed
+- name: The Product-Minded Engineer
+  url: https://drewhoskins.substack.com/feed
+- name: Metatrends
+  url: https://metatrends.substack.com/feed
+- name: Implications, by Scott Belsky
+  url: https://www.implications.com/feed
+- name: Shishir’s Newsletter
+  url: https://shishir.substack.com/feed
+- name: Hamel’s Substack
+  url: https://hamelhusain.substack.com/feed
+- name: Granted
+  url: https://adamgrant.substack.com/feed
+- name: Mindful Modeler
+  url: https://mindfulmodeler.substack.com/feed
+- name: Greg's Letter
+  url: https://latecheckout.substack.com/feed
+- name: Chris Gambill
+  url: https://gambilldataengineering.substack.com/feed
+- name: Data Science Weekly Newsletter
+  url: https://datascienceweekly.substack.com/feed
+- name: Rohan's Bytes
+  url: https://www.rohan-paul.com/feed
+- name: Uncharted Territories
+  url: https://unchartedterritories.tomaspueyo.com/feed
+- name: SUP! Hubert’s Substack
+  url: https://hubertdulay.substack.com/feed
+- name: Language Models & Co.
+  url: https://newsletter.languagemodels.co/feed
+- name: Matt Rickard
+  url: https://blog.matt-rickard.com/feed
+- name: The Tech Buzz
+  url: https://thetechbuzz.substack.com/feed
+- name: 'AI: A Guide for Thinking Humans'
+  url: https://aiguide.substack.com/feed
+- name: TechTalks
+  url: https://bdtechtalks.substack.com/feed
+- name: Marcus on AI
+  url: https://garymarcus.substack.com/feed
+- name: Inside Data by Mikkel Dengsøe
+  url: https://mikkeldengsoe.substack.com/feed
+- name: Techlead Mentor
+  url: https://newsletter.techleadmentor.com/feed
+- name: The Guide to AI by Parcha
+  url: https://guidetoai.parcha.com/feed
+- name: Sparks in the Wind
+  url: https://fchollet.substack.com/feed
+- name: Inside My Head
+  url: https://insidemyhead.ai/feed
+- name: Gradient Flow
+  url: https://gradientflow.substack.com/feed
+- name: The A.I. Analyst by Ben Parr
+  url: https://benparr.substack.com/feed
+- name: Signature Block
+  url: https://signatureblock.substack.com/feed
+- name: Breaking Stagnation
+  url: https://marksaroufim.substack.com/feed
+- name: The EU AI Act Newsletter
+  url: https://artificialintelligenceact.substack.com/feed
+- name: Artificial Intelligence Learning 🤖🧠🦾
+  url: https://offthegridxp.substack.com/feed
+- name: Methexis
+  url: https://methexis.substack.com/feed
+- name: Axial
+  url: https://axial.substack.com/feed
+- name: Patterns in Humanity
+  url: https://inquisitivebird.xyz/feed
+- name: Femstreet
+  url: https://femstreet.substack.com/feed
+- name: Qingyun Wu
+  url: https://qingyunwu.substack.com/feed
+- name: Chip’s Substack
+  url: https://chiphuyen.substack.com/feed
+- name: ChinAI Newsletter
+  url: https://chinai.substack.com/feed
+- name: Chris Hutchins
+  url: https://chrishutchins.substack.com/feed
+- name: Daily AI Digest
+  url: https://mattprd.substack.com/feed
+- name: Karen Hao
+  url: https://empireofai.substack.com/feed
+- name: The Nerd Nook
+  url: https://www.thenerdnook.io/feed
+- name: Run the Business
+  url: https://runthebusiness.substack.com/feed
+- name: D2D Newsletter
+  url: https://d2d.substack.com/feed
+- name: 'The Platform Space '
+  url: https://theplatformspace.substack.com/feed
+- name: Fish Food for Thought
+  url: https://mikefisher.substack.com/feed
+- name: Engineering Enablement
+  url: https://newsletter.getdx.com/feed
+- name: Second Thoughts
+  url: https://secondthoughts.ai/feed
+- name: Hyperdimensional
+  url: https://www.hyperdimensional.co/feed
+- name: State of AI newsletter
+  url: https://nathanbenaich.substack.com/feed
+- name: Secure Trajectories
+  url: https://securetrajectories.substack.com/feed
+- name: NLP News
+  url: https://newsletter.ruder.io/feed
+- name: AI First Designer
+  url: https://adplist.substack.com/feed
+- name: eix
+  url: https://eix1eq0.substack.com/feed
+- name: In the Weeds
+  url: https://hannahstulberg.substack.com/feed
+- name: The AI Ethics Brief
+  url: https://brief.montrealethics.ai/feed
+- name: The Looking Glass
+  url: https://lg.substack.com/feed
+- name: Big Technology
+  url: https://www.bigtechnology.com/feed
+- name: AI Health Uncut
+  url: https://www.fixhealth.ai/feed
+- name: Leah’s ProducTea
+  url: https://www.leahtharin.com/feed
+- name: The Strategy Deck
+  url: https://alexsandu.substack.com/feed
+- name: WHERE MACHINES THINK
+  url: https://wheremachinesthink.substack.com/feed
+- name: Seed The Way
+  url: https://seedtheway.substack.com/feed
+- name: Strategic Wealth Briefing with Jake Claver, QFOP
+  url: https://jakeclaver.substack.com/feed
+- name: The AiEdge Newsletter
+  url: https://newsletter.theaiedge.io/feed
+- name: Impression
+  url: https://impressionsci.substack.com/feed
+- name: The Rogue Quant
+  url: https://roguequant.substack.com/feed
+- name: The AI-Augmented Engineer
+  url: https://www.augmentedswe.com/feed
+- name: AI Tidbits
+  url: https://www.aitidbits.ai/feed
+- name: Simon Willison’s Newsletter
+  url: https://simonw.substack.com/feed
+- name: Level Up Newsletter
+  url: https://levelupwithethanevans.substack.com/feed
+- name: High Growth Engineer
+  url: https://read.highgrowthengineer.com/feed
+- name: High ROI AI
+  url: https://vinvashishta.substack.com/feed
+- name: Curious Case of AI & Automations
+  url: https://automission.substack.com/feed
+- name: Newcomer
+  url: https://www.newcomer.co/feed
+- name: Nir Eyal's Substack
+  url: https://nir.substack.com/feed
+- name: The System Design Newsletter
+  url: https://newsletter.systemdesign.one/feed
+- name: Working Copy
+  url: https://attentionmarkets.substack.com/feed
+- name: Architecture Notes — System Design &  Software Development
+  url: https://architecturenotes.co/feed
+- name: Data Analysis Journal
+  url: https://dataanalysis.substack.com/feed
+- name: Pivotal
+  url: https://pivotal.substack.com/feed
+- name: Ben's Bites
+  url: https://www.bensbites.com/feed
+- name: Data People Etc.
+  url: https://stkbailey.substack.com/feed
+- name: Decision Intelligence
+  url: https://decision.substack.com/feed
+- name: Materialized View
+  url: https://materializedview.io/feed
+- name: 'AI Supremacy '
+  url: https://www.ai-supremacy.com/feed
+- name: Pau Labarta Bajo's Newsletter
+  url: https://paulabartabajo.substack.com/feed
+- name: Differ We Must
+  url: https://steveinskeep.substack.com/feed
+- name: AGI In Progress
+  url: https://agiinprogress.substack.com/feed
+- name: Marc Andreessen Substack
+  url: https://pmarca.substack.com/feed
+- name: Nader's Thoughts
+  url: https://nader.substack.com/feed
+- name: Rick Wilson’s Against All Enemies
+  url: https://www.againstallenemies.net/feed
+- name: Letters To My Self, Shared With You
+  url: https://berack.substack.com/feed
+- name: Better Brain by Dr. Julie
+  url: https://drjuliefratantoni.substack.com/feed
+- name: Only Dead Fish
+  url: https://onlydeadfish.substack.com/feed
+- name: The IT/OT Insider
+  url: https://itotinsider.substack.com/feed
+- name: a16z
+  url: https://www.a16z.news/feed
+- name: SemiAnalysis
+  url: https://newsletter.semianalysis.com/feed
+- name: Refactoring
+  url: https://refactoring.fm/feed
+- name: Rational in the Fullness of Time
+  url: https://alexw.substack.com/feed
+- name: 'The Performance Pulse '
+  url: https://seanlangan.substack.com/feed
+- name: Kognitivo | Science of Learning
+  url: https://www.kognitivo.net/feed
+- name: The Ageless Engine
+  url: https://matchniamh.substack.com/feed
+- name: The AI Evaluation Substack
+  url: https://aievaluation.substack.com/feed
+- name: The Substack Post
+  url: https://post.substack.com/feed
+- name: The Uncommon Executive
+  url: https://news.theuncommonexecutive.com/feed
+- name: The Shortcut
+  url: https://www.theshortcut.com/feed
+- name: Lessons in Engineering Leadership
+  url: https://lessonsinengineeringleadership.substack.com/feed
+- name: The Team Dynamic with Heidi Helfand
+  url: https://heidihelfand.substack.com/feed
+- name: UX Collective
+  url: https://newsletter.uxdesign.cc/feed
+- name: The Analytics Engineering Roundup
+  url: https://roundup.getdbt.com/feed
+- name: Useful Fictions
+  url: https://usefulfictions.substack.com/feed
+- name: The Future Normal
+  url: https://thefuturenormal.substack.com/feed
+- name: The AI Maker
+  url: https://aimaker.substack.com/feed
+- name: AI Echoes
+  url: https://aiechoes.substack.com/feed
+- name: Brian Balfour
+  url: https://blog.brianbalfour.com/feed
+- name: The AI Merge
+  url: https://read.theaimerge.com/feed
+- name: Irina Malkova
+  url: https://irinamalkova.substack.com/feed
+- name: 2nd Order Thinkers
+  url: https://www.2ndorderthinkers.com/feed
+- name: Backstage Weekly
+  url: https://roadie.substack.com/feed
+- name: Anfield Insights
+  url: https://anfieldinsights.substack.com/feed
+- name: Strategize Your Career
+  url: https://strategizeyourcareer.com/feed
+- name: AI MARKET FIT
+  url: https://www.theaiopportunities.com/feed
+- name: Maych Publishing
+  url: https://maychpublishing.substack.com/feed
+- name: Product Strategy Decoded
+  url: https://michaelgoitein.substack.com/feed
+- name: Inference by Sequoia Capital
+  url: https://inferencebysequoia.substack.com/feed
+- name: Vik's Newsletter
+  url: https://www.viksnewsletter.com/feed
+- name: User Mag
+  url: https://www.usermag.co/feed
+- name: Tech Investments
+  url: https://www.techinvestments.io/feed
+- name: Path to Staff Engineer
+  url: https://www.pathtostaff.com/feed
+- name: The Full Data Stack
+  url: https://thefulldatastack.substack.com/feed
+- name: Product Growth
+  url: https://www.news.aakashg.com/feed
+- name: SEMIVISION
+  url: https://tspasemiconductor.substack.com/feed
+- name: Computer, Enhance!
+  url: https://www.computerenhance.com/feed
+- name: Fabricated Knowledge
+  url: https://www.fabricatedknowledge.com/feed
+- name: AI Report
+  url: https://www.aireport.email/feed
+- name: The Aarthi and Sriram Show
+  url: https://www.aarthiandsriram.com/feed
+- name: Vanishing Gradients
+  url: https://hugobowne.substack.com/feed
+- name: ROBOTS ATE MY HOMEWORK
+  url: https://robotsatemyhomework.substack.com/feed
+- name: Jam with AI
+  url: https://jamwithai.substack.com/feed
+- name: The Generalist
+  url: https://www.generalist.com/feed
+- name: JLA
+  url: https://www.jameslawrenceallcott.com/feed
+- name: Gradient Ascent
+  url: https://newsletter.artofsaience.com/feed
+- name: Unreasonable
+  url: https://www.matt.sr/feed
+- name: The Learning Dispatch
+  url: https://carlhendrick.substack.com/feed
+- name: Forecasting Research Institute
+  url: https://forecastingresearch.substack.com/feed
+- name: Prof G Markets
+  url: https://profgmedia.substack.com/feed
+- name: A Mathematician Lurking in the TechUnderWorld
+  url: https://www.josecrespophd.org/feed
+- name: Michael’s Substack
+  url: https://mreidstats.substack.com/feed
+- name: Andrew Beasley Football
+  url: https://www.andrewbeasleyfootball.com/feed
+- name: aGPTaWeek
+  url: https://agptaweek.substack.com/feed
+- name: AI DailyPost
+  url: https://datagalore.substack.com/feed
+- name: The Tech Audience Accelerator
+  url: https://techaudienceaccelerator.substack.com/feed
+- name: Mary’s Substack
+  url: https://marymackenzienvc.substack.com/feed
+- name: The Operator's Handbook
+  url: https://www.operatorshandbook.com/feed
+- name: Getting Better
+  url: https://giacomofalcone.substack.com/feed
+- name: BI Bites 🍪
+  url: https://nastengraph.substack.com/feed
+- name: Future Proof Data Science
+  url: https://read.futureproofds.com/feed
+- name: Joe Reis
+  url: https://joereis.substack.com/feed
+- name: Organisational Coherence
+  url: https://synexia.substack.com/feed
+- name: The Chip Letter
+  url: https://thechipletter.substack.com/feed
+- name: Stacksweep
+  url: https://stacksweep.substack.com/feed
+- name: Cody's Substack
+  url: https://cod3star.substack.com/feed
+- name: Sam’s Newsletter
+  url: https://samgerstenzang.substack.com/feed
+- name: Dr. Fei-Fei Li
+  url: https://drfeifei.substack.com/feed
+- name: De La Soul
+  url: https://delasoul.substack.com/feed
+- name: '@jasmine’s substack'
+  url: https://jasmi.news/feed
+- name: ChinaTalk
+  url: https://www.chinatalk.media/feed
+- name: Interconnected
+  url: https://interconnect.substack.com/feed
+- name: Data Strategy in a Nutshell
+  url: https://peterbaumann.substack.com/feed
+- name: Alex Ewerlöf Notes
+  url: https://blog.alexewerlof.com/feed
+- name: Cassandra Unchained
+  url: https://michaeljburry.substack.com/feed
+- name: Top Information Retrieval Papers of the Week
+  url: https://recsys.substack.com/feed
+- name: Understanding AI
+  url: https://www.understandingai.org/feed
+- name: Derek Thompson
+  url: https://www.derekthompson.org/feed
+- name: Noahpinion
+  url: https://www.noahpinion.blog/feed
+- name: Cartoons Hate Her
+  url: https://www.cartoonshateher.com/feed
+- name: Quant Signals
+  url: https://henryzhang.substack.com/feed
+- name: 3Blue1Brown mailing list
+  url: https://3blue1brown.substack.com/feed
+- name: William’s Substack
+  url: https://williaminmon.substack.com/feed
+- name: 'JustAnotherPM '
+  url: https://japm.substack.com/feed
+- name: Modern Data 101
+  url: https://moderndata101.substack.com/feed
+- name: Intentional Arrangement
+  url: https://jessicatalisman.substack.com/feed
+- name: Kai Williams
+  url: https://chiwilliams.substack.com/feed
+- name: Martin Kleppmann’s Blog
+  url: https://martinkl.substack.com/feed
+- name: ' Design + AI'
+  url: https://designplusai.com/feed
+- name: Anecdotal Value
+  url: https://hollisrobbinsanecdotal.substack.com/feed
+- name: The Data Intelligence Platform
+  url: https://dataintelligenceplatform.substack.com/feed
+- name: Juan Sequeda
+  url: https://juansequeda.substack.com/feed
+- name: Pipeline To Insights
+  url: https://pipeline2insights.substack.com/feed
+- name: The Nvidia Patterns
+  url: https://futuresin.substack.com/feed
+- name: Into AI
+  url: https://www.intoai.pub/feed
+- name: Brain Bytes & Binary
+  url: https://sahilserver.substack.com/feed
+- name: DataExpert.io Newsletter
+  url: https://blog.dataexpert.io/feed
+- name: Agentic Coding with Discipline and Skill
+  url: https://agenticcoding.substack.com/feed
+- name: Build to Launch
+  url: https://buildtolaunch.substack.com/feed
+- name: Wondering About AI
+  url: https://wonderingaboutai.substack.com/feed
+- name: Matt Martin's Substack
+  url: https://performancede.substack.com/feed
+- name: Data Engineering Central
+  url: https://dataengineeringcentral.substack.com/feed
+- name: Weighty Thoughts
+  url: https://weightythoughts.com/feed
+- name: Digital Thoughts
+  url: https://thoughts.jock.pl/feed
+- name: Cash & Cache
+  url: https://cashandcache.substack.com/feed
+- name: AI for Software Engineers
+  url: https://www.aiforswes.com/feed
+- name: Consulting Intel
+  url: https://newsletter.consultingintel.com/feed
+- name: This Is Not Investment Advice
+  url: https://lesbarclays.substack.com/feed
+- name: FT Alphaville
+  url: https://ftav.substack.com/feed
+- name: State of AI
+  url: https://stateai.substack.com/feed
+- name: Byte-Sized Design
+  url: https://bytesizeddesign.substack.com/feed
+- name: Dr. Noc, PhD
+  url: https://drnoc.substack.com/feed
+- name: Prosper
+  url: https://prosperinai.substack.com/feed
+- name: Words That Matter
+  url: https://words.getmatter.com/feed
+- name: 'Software Design: Tidy First?'
+  url: https://tidyfirst.substack.com/feed
+- name: Thinking in Bets
+  url: https://annieduke.substack.com/feed
+- name: Apricitas Economics
+  url: https://www.apricitas.io/feed
+- name: Telling the Future
+  url: https://tellingthefuture.substack.com/feed
+- name: Range Widely
+  url: https://davidepstein.substack.com/feed
+- name: ToxSec AI - Artificial Intelligence Security
+  url: https://www.toxsec.com/feed
+- name: The Ankler.
+  url: https://theankler.com/feed
+- name: Claude Code Masterclass
+  url: https://newsletter.claudecodemasterclass.com/feed
+- name: NEW ECONOMIES
+  url: https://www.neweconomies.co/feed
+- name: HackerPulse Dispatch
+  url: https://hackerpulse.substack.com/feed
+- name: AI Disruption
+  url: https://aidisruption.ai/feed
+- name: Teaching computers how to talk
+  url: https://jurgengravestein.substack.com/feed
+- name: GAI Insights - Paul Baier
+  url: https://gaiinsights.substack.com/feed
+- name: Will Lockett's Newsletter
+  url: https://www.planetearthandbeyond.co/feed
+- name: Signal Over Noise — by Doneyli
+  url: https://doneyli.substack.com/feed
+- name: Metadata Weekly
+  url: https://metadataweekly.substack.com/feed

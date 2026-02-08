@@ -70,7 +70,7 @@ def find_existing_substack_content(db: Session, canonical_url: str | None) -> Co
         .filter(
             or_(
                 Content.source_url == canonical_url,
-                Content.metadata_json.contains({"substack_url": canonical_url}),
+                Content.metadata_json["substack_url"].as_string() == canonical_url,
             )
         )
         .first()

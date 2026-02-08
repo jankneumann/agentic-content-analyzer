@@ -235,7 +235,7 @@ def substack_sync(
         typer.Option("--session-cookie", help="Override SUBSTACK_SESSION_COOKIE value."),
     ] = None,
 ) -> None:
-    """Sync Substack subscriptions into sources.d/substack.yaml."""
+    """Sync Substack subscriptions: paid → substack.yaml, free → rss.yaml."""
     from rich.console import Console
 
     console = Console()
@@ -243,7 +243,7 @@ def substack_sync(
     try:
         from src.ingestion.substack import sync_substack_sources
 
-        count = sync_substack_sources(output_path=output, session_cookie=session_cookie)
+        result = sync_substack_sources(output_path=output, session_cookie=session_cookie)
     except Exception as exc:
         if is_json_mode():
             output_result({"error": str(exc), "source": "substack-sync"}, success=False)
@@ -252,9 +252,27 @@ def substack_sync(
         raise typer.Exit(1)
 
     if is_json_mode():
-        output_result({"source": "substack-sync", "updated": count})
+        output_result(
+            {
+                "source": "substack-sync",
+                "substack_added": result.substack_added,
+                "substack_existing": result.substack_existing,
+                "rss_added": result.rss_added,
+                "rss_existing": result.rss_existing,
+                "rss_removed": result.rss_removed,
+            }
+        )
     else:
-        console.print(f"[green]Substack sync complete.[/green] {count} source(s) updated.")
+        removed_msg = ""
+        if result.rss_removed:
+            removed_msg = f", {result.rss_removed} removed (now in substack.yaml)"
+        console.print(
+            f"[green]Substack sync complete.[/green]\n"
+            f"  Paid → substack.yaml: {result.substack_added} added, "
+            f"{result.substack_existing} existing\n"
+            f"  Free → rss.yaml: {result.rss_added} added, "
+            f"{result.rss_existing} already present{removed_msg}"
+        )
 
 
 # ---------------------------------------------------------------------------
