@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.config.sources import RSSSource
-from src.ingestion.rss import RSSClient, RSSContentIngestionService
+from src.ingestion.rss import RSSClient, RSSContentIngestionService, SourceFetchResult
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -77,7 +77,7 @@ class TestRSSClientSourceMetadata:
             mock_http.return_value.get.return_value = mock_response
 
             client = RSSClient()
-            contents = client.fetch_content(
+            contents, result = client.fetch_content(
                 feed_url="https://example.com/feed",
                 source_name="My RSS Feed",
                 source_tags=["ai", "news"],
@@ -86,6 +86,8 @@ class TestRSSClientSourceMetadata:
         assert len(contents) == 1
         assert contents[0].metadata_json["source_name"] == "My RSS Feed"
         assert contents[0].metadata_json["source_tags"] == ["ai", "news"]
+        assert result.success is True
+        assert result.name == "My RSS Feed"
 
     def test_fetch_content_without_source_metadata(self, mock_feed_response, mock_entry):
         """Without source metadata, metadata_json should not include those keys."""
@@ -101,7 +103,7 @@ class TestRSSClientSourceMetadata:
             mock_http.return_value.get.return_value = mock_response
 
             client = RSSClient()
-            contents = client.fetch_content(
+            contents, result = client.fetch_content(
                 feed_url="https://example.com/feed",
             )
 
@@ -109,6 +111,7 @@ class TestRSSClientSourceMetadata:
         assert "source_name" not in contents[0].metadata_json
         assert "source_tags" not in contents[0].metadata_json
         assert "feed_url" in contents[0].metadata_json
+        assert result.success is True
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +131,9 @@ class TestRSSSourceResolution:
             RSSSource(url="https://b.com/feed", name="Feed B"),
         ]
 
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content(sources=sources)
 
@@ -143,7 +148,9 @@ class TestRSSSourceResolution:
     @patch("src.ingestion.rss.settings")
     def test_uses_feed_urls_parameter_backward_compat(self, mock_settings, mock_db):
         """When feed_urls parameter is provided, convert to RSSSource objects."""
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content(feed_urls=["https://a.com/feed", "https://b.com/feed"])
 
@@ -162,7 +169,9 @@ class TestRSSSourceResolution:
         ]
         mock_settings.get_sources_config.return_value = mock_config
 
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content()
 
@@ -180,7 +189,9 @@ class TestRSSSourceResolution:
         mock_settings.get_sources_config.return_value = mock_config
         mock_settings.get_rss_feed_urls.return_value = ["https://legacy.com/feed"]
 
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content()
 
@@ -198,9 +209,9 @@ class TestRSSSourceResolution:
         mock_settings.get_rss_feed_urls.return_value = []
 
         service = RSSContentIngestionService()
-        count = service.ingest_content()
+        result = service.ingest_content()
 
-        assert count == 0
+        assert result.items_ingested == 0
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +231,9 @@ class TestRSSPerSourceSettings:
             RSSSource(url="https://b.com/feed", name="Disabled", enabled=False),
         ]
 
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content(sources=sources)
 
@@ -236,7 +249,9 @@ class TestRSSPerSourceSettings:
             RSSSource(url="https://b.com/feed"),  # Should use default
         ]
 
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content(sources=sources, max_entries_per_feed=20)
 
@@ -252,7 +267,9 @@ class TestRSSPerSourceSettings:
             RSSSource(url="https://a.com/feed", name="Tagged", tags=["ai", "ml"]),
         ]
 
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content(sources=sources)
 
@@ -266,7 +283,9 @@ class TestRSSPerSourceSettings:
             RSSSource(url="https://a.com/feed"),
         ]
 
-        with patch.object(RSSClient, "fetch_content", return_value=[]) as mock_fetch:
+        with patch.object(
+            RSSClient, "fetch_content", return_value=([], SourceFetchResult(url="mock"))
+        ) as mock_fetch:
             service = RSSContentIngestionService()
             service.ingest_content(sources=sources)
 

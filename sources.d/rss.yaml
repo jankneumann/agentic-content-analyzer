@@ -32,7 +32,6 @@ sources:
 - url: https://www.dwarkesh.com/feed
 - url: https://www.artificialintelligencemadesimple.com/feed
 - url: https://www.ignorance.ai/feed
-- url: https://www.thealgorithmicbridge.com/feed
 - url: https://www.pracdata.io/feed
 - url: https://blog.bytebytego.com/feed
 - url: https://www.lennysnewsletter.com/feed
@@ -333,7 +332,7 @@ sources:
 - name: TechTalks
   url: https://bdtechtalks.com/feed/
 - name: The Algorithmic Bridge
-  url: https://thealgorithmicbridge.substack.com/feed
+  url: https://www.thealgorithmicbridge.com/feed
 - name: The Berkeley Artificial Intelligence Research Blog
   url: https://bair.berkeley.edu/blog/feed.xml
 - name: THE DECODER

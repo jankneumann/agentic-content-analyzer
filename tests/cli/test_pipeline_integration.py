@@ -17,6 +17,7 @@ import pytest
 from typer.testing import CliRunner
 
 from src.cli.app import app
+from src.ingestion.rss import IngestionResult
 
 runner = CliRunner()
 
@@ -47,7 +48,7 @@ def _make_ingestion_patches(
         Dict of context-manager patches keyed by service name.
     """
 
-    def _mock_service(method_name: str, result: int | Exception):
+    def _mock_service(method_name: str, result: int | Exception | IngestionResult):
         mock = MagicMock()
         method = getattr(mock.return_value, method_name)
         if isinstance(result, Exception):
@@ -56,9 +57,16 @@ def _make_ingestion_patches(
             method.return_value = result
         return mock
 
+    # RSS ingest_content returns IngestionResult, not int
+    rss_mock_result: Exception | IngestionResult
+    if isinstance(rss_result, Exception):
+        rss_mock_result = rss_result
+    else:
+        rss_mock_result = IngestionResult(items_ingested=rss_result)
+
     return {
         "gmail": _mock_service("ingest_content", gmail_result),
-        "rss": _mock_service("ingest_content", rss_result),
+        "rss": _mock_service("ingest_content", rss_mock_result),
         "youtube": _mock_service("ingest_all_playlists", youtube_result),
         "podcast": _mock_service("ingest_all_feeds", podcast_result),
         "substack": _mock_service("ingest_content", substack_result),
@@ -259,7 +267,9 @@ class TestParallelExecution:
             ),
             patch(
                 "src.ingestion.rss.RSSContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(return_value=3)),
+                return_value=MagicMock(
+                    ingest_content=MagicMock(return_value=IngestionResult(items_ingested=3))
+                ),
             ),
             patch(
                 "src.ingestion.youtube.YouTubeContentIngestionService",
@@ -296,7 +306,9 @@ class TestParallelExecution:
             ),
             patch(
                 "src.ingestion.rss.RSSContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(return_value=3)),
+                return_value=MagicMock(
+                    ingest_content=MagicMock(return_value=IngestionResult(items_ingested=3))
+                ),
             ),
             patch(
                 "src.ingestion.youtube.YouTubeContentIngestionService",
@@ -379,7 +391,7 @@ class TestWaitFlag:
     ):
         """--wait flag enqueues summarization jobs instead of direct processing."""
         mock_gmail.return_value.ingest_content.return_value = 2
-        mock_rss.return_value.ingest_content.return_value = 3
+        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
         mock_youtube.return_value.ingest_all_playlists.return_value = 1
         mock_podcast.return_value.ingest_all_feeds.return_value = 1
 
@@ -418,7 +430,7 @@ class TestWaitFlag:
     ):
         """Without --wait, summarization runs directly (not queued)."""
         mock_gmail.return_value.ingest_content.return_value = 2
-        mock_rss.return_value.ingest_content.return_value = 3
+        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
         mock_youtube.return_value.ingest_all_playlists.return_value = 1
         mock_podcast.return_value.ingest_all_feeds.return_value = 1
         mock_summarizer.return_value.summarize_pending_contents.return_value = 5

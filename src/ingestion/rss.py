@@ -10,6 +10,7 @@ RSSSource objects from the unified source configuration system.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -37,6 +38,39 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+@dataclass
+class SourceFetchResult:
+    """Tracks the outcome of fetching a single RSS source."""
+
+    url: str
+    name: str | None = None
+    success: bool = True
+    items_fetched: int = 0
+    error: str | None = None
+    error_type: str | None = None
+    redirected_to: str | None = None
+
+    @property
+    def is_redirect(self) -> bool:
+        return self.redirected_to is not None
+
+
+@dataclass
+class IngestionResult:
+    """Aggregated result of an RSS ingestion run."""
+
+    items_ingested: int = 0
+    source_results: list[SourceFetchResult] = field(default_factory=list)
+
+    @property
+    def failed_sources(self) -> list[SourceFetchResult]:
+        return [r for r in self.source_results if not r.success]
+
+    @property
+    def redirected_sources(self) -> list[SourceFetchResult]:
+        return [r for r in self.source_results if r.is_redirect]
+
+
 class RSSClient:
     """Client for fetching newsletters from RSS feeds."""
 
@@ -48,7 +82,7 @@ class RSSClient:
             timeout: HTTP request timeout in seconds
         """
         self.timeout = timeout
-        self.client = httpx.Client(timeout=timeout)
+        self.client = httpx.Client(timeout=timeout, follow_redirects=True)
         logger.info("RSS client initialized")
 
     def close(self) -> None:
@@ -63,7 +97,7 @@ class RSSClient:
         after_date: datetime | None = None,
         source_name: str | None = None,
         source_tags: list[str] | None = None,
-    ) -> list[ContentData]:
+    ) -> tuple[list[ContentData], SourceFetchResult]:
         """
         Fetch content from an RSS feed as ContentData (unified Content model).
 
@@ -75,14 +109,24 @@ class RSSClient:
             source_tags: Optional source tags from config (included in metadata)
 
         Returns:
-            List of ContentData objects ready for Content table
+            Tuple of (list of ContentData objects, SourceFetchResult with fetch outcome)
         """
         logger.info(f"Fetching RSS content: {feed_url}")
+        result = SourceFetchResult(url=feed_url, name=source_name)
 
         try:
-            # Fetch feed with timeout
+            # Fetch feed with timeout (redirects are followed automatically)
             response = self.client.get(feed_url)
             response.raise_for_status()
+
+            # Detect redirects — warn user to update source config
+            if response.url != httpx.URL(feed_url):
+                final_url = str(response.url)
+                result.redirected_to = final_url
+                logger.warning(
+                    f"Feed redirected: {feed_url} -> {final_url} "
+                    f"— consider updating source config to use the new URL"
+                )
 
             # Parse RSS feed
             feed = feedparser.parse(response.content)
@@ -124,22 +168,29 @@ class RSSClient:
                     )
                     continue
 
+            result.items_fetched = len(contents)
             logger.info(f"Fetched {len(contents)} content items from {feed_url}")
-            return contents
+            return contents, result
 
         except httpx.HTTPError as e:
+            result.success = False
+            result.error = str(e)
+            result.error_type = type(e).__name__
             logger.error(f"HTTP error fetching feed {feed_url}: {e}", exc_info=True)
-            return []
+            return [], result
         except Exception as e:
+            result.success = False
+            result.error = str(e)
+            result.error_type = type(e).__name__
             logger.error(f"Unexpected error fetching feed {feed_url}: {e}", exc_info=True)
-            return []
+            return [], result
 
     def fetch_multiple_contents(
         self,
         feed_urls: list[str],
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
-    ) -> list[ContentData]:
+    ) -> tuple[list[ContentData], list[SourceFetchResult]]:
         """
         Fetch content from multiple RSS feeds as ContentData.
 
@@ -149,23 +200,25 @@ class RSSClient:
             after_date: Only fetch entries published after this date
 
         Returns:
-            Combined list of ContentData objects from all feeds
+            Tuple of (combined list of ContentData, list of SourceFetchResult)
         """
         logger.info(f"Fetching {len(feed_urls)} RSS feeds for Content model")
 
         all_contents = []
+        all_results = []
         for feed_url in feed_urls:
-            contents = self.fetch_content(
+            contents, result = self.fetch_content(
                 feed_url=feed_url,
                 max_entries=max_entries_per_feed,
                 after_date=after_date,
             )
             all_contents.extend(contents)
+            all_results.append(result)
 
         logger.info(
             f"Fetched total of {len(all_contents)} content items from {len(feed_urls)} feeds"
         )
-        return all_contents
+        return all_contents, all_results
 
     def _parse_entry_content(
         self,
@@ -425,7 +478,7 @@ class RSSContentIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> IngestionResult:
         """
         Ingest content from RSS feeds and store as Content records.
 
@@ -443,9 +496,10 @@ class RSSContentIngestionService:
             force_reprocess: If True, reprocess existing content
 
         Returns:
-            Number of content items ingested
+            IngestionResult with item count and per-source fetch outcomes
         """
         logger.info("Starting RSS content ingestion (unified Content model)...")
+        ingestion_result = IngestionResult()
 
         # Resolve sources with fallback chain
         if sources is None and feed_urls is None:
@@ -472,7 +526,7 @@ class RSSContentIngestionService:
                 "No RSS sources configured. Add sources to sources.d/rss.yaml, "
                 "set RSS_FEEDS, or create rss_feeds.txt"
             )
-            return 0
+            return ingestion_result
 
         enabled_sources = [s for s in sources if s.enabled]
         logger.info(
@@ -484,7 +538,7 @@ class RSSContentIngestionService:
         contents: list[ContentData] = []
         for source in enabled_sources:
             max_entries = source.max_entries or max_entries_per_feed
-            fetched = self.client.fetch_content(
+            fetched, fetch_result = self.client.fetch_content(
                 feed_url=source.url,
                 max_entries=max_entries,
                 after_date=after_date,
@@ -492,10 +546,11 @@ class RSSContentIngestionService:
                 source_tags=source.tags if source.tags else None,
             )
             contents.extend(fetched)
+            ingestion_result.source_results.append(fetch_result)
 
         if not contents:
             logger.info("No content found")
-            return 0
+            return ingestion_result
 
         # Store in database
         count = 0
@@ -639,8 +694,21 @@ class RSSContentIngestionService:
                     db.rollback()
                     continue
 
+        ingestion_result.items_ingested = count
         logger.info(f"Successfully ingested {count} content items")
-        return count
+
+        # Log summary of source health
+        if ingestion_result.failed_sources:
+            logger.warning(
+                f"{len(ingestion_result.failed_sources)} source(s) failed during ingestion"
+            )
+        if ingestion_result.redirected_sources:
+            logger.warning(
+                f"{len(ingestion_result.redirected_sources)} source(s) have redirected URLs "
+                f"— consider updating sources.d/rss.yaml"
+            )
+
+        return ingestion_result
 
     def close(self) -> None:
         """Close RSS client."""

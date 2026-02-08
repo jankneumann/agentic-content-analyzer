@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from src.cli.app import app
+from src.ingestion.rss import IngestionResult
 
 runner = CliRunner()
 
@@ -20,7 +21,9 @@ def _mock_ingestion_services():
         ),
         "rss": patch(
             "src.ingestion.rss.RSSContentIngestionService",
-            return_value=MagicMock(ingest_content=MagicMock(return_value=3)),
+            return_value=MagicMock(
+                ingest_content=MagicMock(return_value=IngestionResult(items_ingested=3))
+            ),
         ),
         "youtube": patch(
             "src.ingestion.youtube.YouTubeContentIngestionService",
@@ -44,7 +47,7 @@ class TestDailyPipeline:
         self, mock_gmail, mock_rss, mock_youtube, mock_podcast, mock_summarizer, mock_digest
     ):
         mock_gmail.return_value.ingest_content.return_value = 2
-        mock_rss.return_value.ingest_content.return_value = 3
+        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
         mock_youtube.return_value.ingest_all_playlists.return_value = 1
         mock_podcast.return_value.ingest_all_feeds.return_value = 1
         mock_summarizer.return_value.summarize_pending_contents.return_value = 5
@@ -95,7 +98,7 @@ class TestWeeklyPipeline:
         self, mock_gmail, mock_rss, mock_youtube, mock_podcast, mock_summarizer, mock_digest
     ):
         mock_gmail.return_value.ingest_content.return_value = 5
-        mock_rss.return_value.ingest_content.return_value = 10
+        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=10)
         mock_youtube.return_value.ingest_all_playlists.return_value = 3
         mock_podcast.return_value.ingest_all_feeds.return_value = 2
         mock_summarizer.return_value.summarize_pending_contents.return_value = 15

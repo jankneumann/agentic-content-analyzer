@@ -7,8 +7,14 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from src.cli.app import app
+from src.ingestion.rss import IngestionResult
 
 runner = CliRunner()
+
+
+def _make_rss_result(items_ingested: int = 0) -> IngestionResult:
+    """Create an IngestionResult for test mocking."""
+    return IngestionResult(items_ingested=items_ingested)
 
 
 class TestIngestGmail:
@@ -75,7 +81,7 @@ class TestIngestRss:
     @patch("src.ingestion.rss.RSSContentIngestionService")
     def test_rss_success(self, mock_cls):
         mock_service = MagicMock()
-        mock_service.ingest_content.return_value = 10
+        mock_service.ingest_content.return_value = _make_rss_result(10)
         mock_cls.return_value = mock_service
 
         result = runner.invoke(app, ["ingest", "rss"])

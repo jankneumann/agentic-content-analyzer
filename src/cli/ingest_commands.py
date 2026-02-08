@@ -113,7 +113,7 @@ def rss(
         from src.ingestion.rss import RSSContentIngestionService
 
         service = RSSContentIngestionService()
-        count = service.ingest_content(
+        result = service.ingest_content(
             max_entries_per_feed=max,
             after_date=after_date,
             force_reprocess=force,
@@ -126,9 +126,43 @@ def rss(
         raise typer.Exit(1)
 
     if is_json_mode():
-        output_result({"source": "rss", "ingested": count})
+        output_result(
+            {
+                "source": "rss",
+                "ingested": result.items_ingested,
+                "failed_sources": [
+                    {"url": r.url, "name": r.name, "error": r.error, "error_type": r.error_type}
+                    for r in result.failed_sources
+                ],
+                "redirected_sources": [
+                    {"url": r.url, "name": r.name, "redirected_to": r.redirected_to}
+                    for r in result.redirected_sources
+                ],
+            }
+        )
     else:
-        console.print(f"[green]RSS ingestion complete.[/green] {count} item(s) ingested.")
+        console.print(
+            f"[green]RSS ingestion complete.[/green] {result.items_ingested} item(s) ingested."
+        )
+
+        # Show redirected sources — user should update their config
+        if result.redirected_sources:
+            console.print(
+                f"\n[yellow]Warning:[/yellow] {len(result.redirected_sources)} source(s) "
+                f"redirected to new URLs:"
+            )
+            for r in result.redirected_sources:
+                label = r.name or r.url
+                console.print(f"  [yellow]{label}[/yellow]")
+                console.print(f"    {r.url} -> {r.redirected_to}")
+
+        # Show failed sources — user should investigate or disable
+        if result.failed_sources:
+            console.print(f"\n[red]Error:[/red] {len(result.failed_sources)} source(s) failed:")
+            for r in result.failed_sources:
+                label = r.name or r.url
+                console.print(f"  [red]{label}[/red] ({r.error_type})")
+                console.print(f"    {r.error}")
 
 
 # ---------------------------------------------------------------------------

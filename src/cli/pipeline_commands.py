@@ -205,7 +205,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     # Define ingestion tasks
     tasks = [
         _ingest_source("gmail", gmail_service.ingest_content),
-        _ingest_source("rss", rss_service.ingest_content),
+        _ingest_source("rss", lambda: rss_service.ingest_content().items_ingested),
         _ingest_source("youtube", youtube_service.ingest_all_playlists),
         _ingest_source("podcast", podcast_service.ingest_all_feeds),
         _ingest_source("substack", substack_service.ingest_content),

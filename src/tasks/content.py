@@ -266,13 +266,14 @@ def register_content_tasks(pgq: PgQueuer) -> None:
                 from src.ingestion.rss import RSSContentIngestionService
 
                 rss_service = RSSContentIngestionService()
-                count = await asyncio.to_thread(
+                rss_result = await asyncio.to_thread(
                     lambda: rss_service.ingest_content(
                         max_entries_per_feed=max_results,
                         after_date=after_date,
                         force_reprocess=force_reprocess,
                     )
                 )
+                count = rss_result.items_ingested
 
             elif source == "youtube":
                 from src.ingestion.youtube import YouTubeContentIngestionService
