@@ -58,6 +58,46 @@ The `_type` discriminator enables forward-compatible extensions (e.g., `_type: "
 ### Decision: Cypher export for Neo4j
 **Rationale**: Neo4j's APOC export to JSON/Cypher is the standard approach. Export nodes and relationships as JSON, import via `apoc.load.json()` or batch Cypher statements. This works across Neo4j versions and between Community/AuraDB.
 
+#### Neo4j JSONL File Format
+
+Neo4j exports use the same JSONL structure as PG exports but with different `_type` values:
+
+**Manifest (line 1)**:
+```json
+{"_type": "neo4j_manifest", "exported_at": "2026-02-07T12:00:00Z", "nodes": {"Episode": 50, "Entity": 200, "Relation": 300}, "relationships": {"HAS_ENTITY": 150, "RELATES_TO": 300}, "version": 1}
+```
+
+**Node records**:
+```json
+{"_type": "neo4j_node", "label": "Entity", "uuid": "abc-123", "properties": {"name": "GPT-4", "type": "technology", "summary": "...", "created_at": "..."}}
+```
+
+**Relationship records**:
+```json
+{"_type": "neo4j_relationship", "type": "RELATES_TO", "source_uuid": "abc-123", "target_uuid": "def-456", "properties": {"weight": 0.8, "created_at": "..."}}
+```
+
+**Excluded properties**: `embedding`, `*_embedding`, `*_vector` — vector embeddings are large, rebuilt by Graphiti, and not portable across Neo4j versions.
+
+### Decision: Independent database sessions for sync operations
+**Rationale**: The codebase uses global engine/session singletons (`_provider`, `_engine`, `_session_factory` in `database.py`) for the application's normal operation. Sync operations require either: (a) reading from source DB and writing to target DB simultaneously (for `push`), or (b) reading from a different DB than the application default (for `export`/`import` with `--from-profile`/`--to-profile`).
+
+Rather than refactoring the global session infrastructure, sync modules create **independent SQLAlchemy engines** using the `DATABASE_URL` from `resolve_profile_settings()`:
+
+```python
+from sqlalchemy import create_engine
+source_engine = create_engine(source_settings.database_url)
+target_engine = create_engine(target_settings.database_url)
+```
+
+These engines are short-lived (created per sync operation, disposed after completion) and do NOT interact with the global `_engine` singleton. The `pg_exporter` and `pg_importer` accept an engine parameter rather than using the global session factory. This keeps sync completely decoupled from the application's database layer.
+
+### Decision: Schema check runs before any data transaction
+**Rationale**: The Alembic revision check (Task 3.7) is a pre-flight gate that runs BEFORE opening any data import transaction. If the check fails, the import aborts immediately with zero data written. The per-table commit strategy (N18) only applies to the data import phase, which begins after the schema check passes. This means:
+1. Schema check → read `alembic_version` table (read-only query, no transaction needed)
+2. If check fails → abort, no data written
+3. If check passes → begin data import with per-table commits
+
 ### Decision: Two-phase sync (export → import) with intermediate files
 **Rationale**: Rather than a direct database-to-database connection (which would require both databases accessible simultaneously), the export/import approach:
 1. Decouples source and target — can sync to a file, transfer it, import later
@@ -167,6 +207,8 @@ File discovery queries the SOURCE database for non-NULL values in these columns.
 | audio_digests.status | AudioDigestStatus | pending, processing, completed, failed |
 
 During import, enum values from the export are validated against the target schema. Unknown enum values cause the record to be skipped with a warning (not a hard error) — the source may have newer enum values from a later schema version.
+
+**Implementation note**: The enum catalog in `constants.py` should be derived from the actual SQLAlchemy/Python enum classes (e.g., `ContentSource`, `DigestType`) via introspection, not hardcoded. This ensures the catalog stays synchronized as the schema evolves. Example: `ENUM_CATALOG = {col: set(enum_cls) for col, enum_cls in ENUM_COLUMNS.items()}`.
 
 ### Decision: Profile-based source/target resolution
 **Rationale**: Leveraging the existing profile system (`profiles/*.yaml`) for connection details. The `--from-profile` and `--to-profile` flags resolve database URLs, Neo4j URIs, etc. without requiring users to manage connection strings manually.
@@ -291,6 +333,9 @@ These findings were identified during plan review but deferred from critical/hig
 | N20 | MEDIUM | **`aca sync push` orchestration error recovery**: If PG import fails mid-way but file sync already completed, the state is partially synced. No rollback for file sync. | Task 7.4: File sync is idempotent (skip-existing), so partial state is safe — re-running push will skip already-copied files. Document: `push` is designed for re-runnability, not atomicity. Log which stages completed on failure. |
 | N21 | MEDIUM | **Neo4j JSONL format**: Neo4j export shares the same JSONL file format as PG export but uses different `_type` values. Define them. | Task 4.1: Use `_type: "neo4j_node"` for nodes and `_type: "neo4j_relationship"` for relationships. Include `label` (node type), `uuid`, `properties`. Manifest uses `_type: "neo4j_manifest"` with node/relationship counts per label. |
 | N22 | LOW | **Alembic revision comparison**: Design says "target older" and "target newer" but Alembic revisions are hash strings, not orderable. Need to walk the revision chain to determine relative ordering. | Task 3.7: Use `MigrationContext` to get current target revision. Compare against source revision from manifest. If they match → proceed. If target revision is NOT an ancestor of source → block (target is behind or diverged). Use `alembic.script.ScriptDirectory.walk_revisions()` to check ancestry. If ancestry can't be determined (diverged branches), warn and proceed. |
+| N23 | MEDIUM | **Dual DB session management**: Sync modules need independent SQLAlchemy engines (not the global `_engine` singleton). Export/import classes must accept an engine parameter. | Task 2.1, 3.1: Constructor signature: `PGExporter(engine: Engine)` and `PGImporter(engine: Engine)`. Create engines from `resolve_profile_settings().database_url`. Dispose engines after sync completes. |
+| N24 | MEDIUM | **Self-referential FK update timing**: The batch UPDATE for `contents.canonical_id` and `digests.parent_digest_id` must run AFTER all rows in the table are inserted but BEFORE moving to Level 1 tables. The `id_map` must be fully populated for Level 0 before self-ref updates. | Task 3.4: Sequence within Level 0: (1) insert all contents rows with `canonical_id=NULL` → (2) populate id_map → (3) batch UPDATE `canonical_id` using id_map → (4) proceed to Level 1. Same for digests. |
+| N25 | LOW | **File discovery pagination**: Querying all file paths at once may use excessive memory on large DBs. | Task 6.2: Use server-side cursor or `yield_per(1000)` for file path queries. Process in batches rather than loading all paths into a list. |
 
 ## Resolved Questions
 

@@ -19,12 +19,12 @@ Phase 6: [10.*] | [11.*] — Testing + Docs (parallel, after Phase 5)
 
 - [ ] 1.1 Create `src/sync/__init__.py` with module-level exports
 - [ ] 1.2 Create `src/sync/models.py` — Pydantic models: `SyncManifest` (alembic_rev, timestamp, table_counts), `TableExport` (table_name, rows), `SyncRecord` (table, data dict), `SyncState` (id_map, uuid_map, hash_map, stats, errors), `ImportStats` (inserted, skipped, updated, failed), `SyncError` (table, row_index, message)
-- [ ] 1.3 Create `src/sync/constants.py` — explicit table dependency DAG (see design.md), supported tables list, natural key definitions per table, enum catalog, file path column map. **This is the single source of truth for all downstream tasks.**
+- [ ] 1.3 Create `src/sync/constants.py` — explicit table dependency DAG (see design.md), supported tables list, natural key definitions per table, enum catalog (derived from model enum classes via introspection, not hardcoded), file path column map. **This is the single source of truth for all downstream tasks.**
 - [ ] 1.4 Create `src/sync/id_mapper.py` — `IDMapper` class that wraps `SyncState.id_map` with methods: `record_mapping(table, old_id, new_id)`, `remap_fk(table, old_id) → new_id | None`, `record_uuid(table, old_uuid, new_uuid)`, `remap_uuid(table, old_uuid) → new_uuid | None`. Handles self-referential FK deferred updates.
 
 ## 2. PostgreSQL Export (depends on: 1.3)
 
-- [ ] 2.1 Create `src/sync/pg_exporter.py` — SQLAlchemy-based exporter that reads rows from each table via streaming (yield per batch, not load-all-in-memory) and writes JSONL using the format defined in design.md (manifest line 1, `_type: "row"` data records). See N19 for pre-export row count estimation.
+- [ ] 2.1 Create `src/sync/pg_exporter.py` — SQLAlchemy-based exporter that accepts an `Engine` parameter (not the global singleton, see N23). Reads rows from each table via streaming (yield per batch, not load-all-in-memory) and writes JSONL using the format defined in design.md (manifest line 1, `_type: "row"` data records). See N19 for pre-export row count estimation.
 - [ ] 2.2 Implement topological table ordering using `TABLE_DEPENDENCIES` from constants.py (Level 0 → 1 → 2 → 3)
 - [ ] 2.3 Include Alembic revision and export timestamp in manifest (query `alembic_version` table via `MigrationContext`)
 - [ ] 2.4 Support `--tables` filter with transitive FK parent auto-inclusion (log auto-included tables)
@@ -32,10 +32,10 @@ Phase 6: [10.*] | [11.*] — Testing + Docs (parallel, after Phase 5)
 
 ## 3. PostgreSQL Import (depends on: 1.2, 1.3, 1.4)
 
-- [ ] 3.1 Create `src/sync/pg_importer.py` — reads JSONL, validates manifest on line 1 (abort if missing/invalid), processes data records. Transaction scope: commit per-table for memory safety (see N18). Malformed JSONL lines: skip with warning, continue (see N1).
+- [ ] 3.1 Create `src/sync/pg_importer.py` — accepts an `Engine` parameter (not the global singleton, see N23). Reads JSONL, validates manifest on line 1 (abort if missing/invalid). Schema check runs BEFORE any data transaction (see design.md decision). Data import uses per-table commits for memory safety (see N18). Malformed JSONL lines: skip with warning, continue (see N1).
 - [ ] 3.2 Implement per-record processing pipeline: (1) remap FK columns via `IDMapper.remap_fk()` → (2) validate enum values → (3) natural-key dedup lookup (using remapped FK values for composite keys) → (4) skip/update/insert based on mode → (5) record old→new ID mapping. **Critical**: FK remapping MUST precede natural key lookup — child table composite keys like `(content_id, created_at)` require remapped FK values. Log skipped records at INFO in merge mode.
 - [ ] 3.3 Populate `SyncState.id_map` as parent table records are inserted. Child tables depend on parent id_map being complete. (depends on: topological ordering from 2.2)
-- [ ] 3.4 Implement self-referential FK handling — two-pass for `contents.canonical_id` and `digests.parent_digest_id`: (1) insert with self-ref FK NULL, (2) batch UPDATE using id_map after all rows in table are inserted
+- [ ] 3.4 Implement self-referential FK handling — two-pass for `contents.canonical_id` and `digests.parent_digest_id`: (1) insert with self-ref FK NULL, (2) batch UPDATE using id_map after all rows in table are inserted but BEFORE moving to Level 1 tables (see N24)
 - [ ] 3.5 Handle enum validation — validate enum values against catalog from constants.py. Skip row with warning on unknown enum values.
 - [ ] 3.6 Support `--mode` flag: `merge` (skip existing), `replace` (upsert matching), `clean` (truncate in reverse dependency order + insert). Clean mode prompts for confirmation (skipped with `--yes`). See N2 for `--tables` + clean scope.
 - [ ] 3.7 Check Alembic revision compatibility: query target `alembic_version` table. Block if target is behind source (with `PROFILE={target_profile} alembic upgrade head` instructions). Warn if target is ahead. Proceed if same. If `alembic_version` table missing, error with instructions. Handle multiple heads (see N3). Use revision chain walking for comparison, not string comparison (see N22).
@@ -57,7 +57,7 @@ Phase 6: [10.*] | [11.*] — Testing + Docs (parallel, after Phase 5)
 ## 6. File Storage Sync (depends on: 1.3 for file path map)
 
 - [ ] 6.1 Create `src/sync/file_syncer.py` — copy files between storage providers using `FileStorageService`
-- [ ] 6.2 Discover files from **source** database by querying: `images.storage_path`, `audio_digests.audio_url`, `podcasts.audio_url` (non-NULL only). Map each path to its bucket.
+- [ ] 6.2 Discover files from **source** database by querying: `images.storage_path`, `audio_digests.audio_url`, `podcasts.audio_url` (non-NULL only). Map each path to its bucket. Use streaming/pagination for large DBs (see N25).
 - [ ] 6.3 Support `--buckets images,podcasts,audio-digests` filter for selective bucket sync
 - [ ] 6.4 Skip already-existing files on target (by path existence check via `FileStorageService.exists()`). See N10 for changed-file strategy.
 - [ ] 6.5 Add progress reporting (file name, size, bucket counts, skipped/missing counts)

@@ -58,6 +58,13 @@ The system SHALL provide a PostgreSQL import capability that deserializes JSONL 
 - **AND** all existing data in target tables SHALL be truncated (in reverse dependency order: Level 3 → 2 → 1 → 0)
 - **AND** all records from the export SHALL be inserted in dependency order (Level 0 → 1 → 2 → 3)
 
+#### Scenario: Import with clean mode and partial tables
+- **GIVEN** a JSONL export file with only `contents` and `summaries` tables
+- **WHEN** `aca sync import --input partial.jsonl --mode clean` is executed
+- **THEN** only `contents` and `summaries` tables SHALL be truncated (in reverse dependency order)
+- **AND** a warning SHALL be logged: `--mode clean with --tables may leave orphaned child records in: images, audio_digests`
+- **AND** other tables (digests, images, etc.) SHALL be untouched
+
 #### Scenario: Import with clean mode non-interactive
 - **GIVEN** a JSONL export file and a CI/CD or scripted environment
 - **WHEN** `aca sync import --input sync-data.jsonl --mode clean --yes` is executed
@@ -181,10 +188,19 @@ The system SHALL provide file storage sync capability that copies files between 
 #### Scenario: File sync with database sync
 - **GIVEN** a full sync operation (no `--pg-only`, `--neo4j-only`, or `--files-only` flag)
 - **WHEN** `aca sync push --from-profile local --to-profile railway` is executed
-- **THEN** file paths SHALL be discovered from the **source** database first
-- **AND** files SHALL be copied from source storage to target storage second
-- **AND** PostgreSQL data SHALL be imported into the target database third
-- **AND** Neo4j data SHALL be synced fourth
+- **THEN** PostgreSQL data SHALL be exported from the source database first
+- **AND** file paths SHALL be discovered from the **source** database second
+- **AND** files SHALL be copied from source storage to target storage third
+- **AND** PostgreSQL data SHALL be imported into the target database fourth
+- **AND** Neo4j data SHALL be exported and then imported fifth
+
+#### Scenario: Files-only sync requires database access
+- **GIVEN** profiles `local` and `railway` are configured
+- **WHEN** `aca sync push --from-profile local --to-profile railway --files-only` is executed
+- **THEN** file paths SHALL be discovered by querying the **source** database (read-only)
+- **AND** files SHALL be copied from source storage to target storage
+- **AND** no PostgreSQL data import or Neo4j sync SHALL occur
+- **AND** if the source database is unreachable, the command SHALL abort with an error: `File discovery requires database access. Check source profile database configuration.`
 
 #### Scenario: Missing source file during file sync
 - **GIVEN** a database record references a file path that does not exist in source storage
