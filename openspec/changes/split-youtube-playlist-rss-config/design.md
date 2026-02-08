@@ -13,16 +13,19 @@ The system already has two separate services (`YouTubeContentIngestionService` f
 - **Goals:**
   - Split source config so playlists and RSS feeds can be managed and scheduled independently
   - Prioritize playlist ingestion (curated, fewer videos) over RSS feeds (60+ channels, bulk)
-  - Add exponential backoff on 429 errors to handle transient rate limits gracefully
+  - Use Gemini native YouTube video summarization to bypass `youtube-transcript-api` rate limiting
+  - Differentiate model quality: stronger model for curated playlists, cheapest for bulk RSS
+  - Use lowest resolution (`media_resolution: LOW`) for RSS to minimize cost
+  - Add exponential backoff on 429 errors for transcript-based fallback flow
   - Support OAuth token deployment in headless cloud environments (Railway, Fly.io)
-  - Correct phonetic misspellings in auto-generated captions
+  - Correct phonetic misspellings in auto-generated captions (transcript-based flow)
   - Maintain backward compatibility — `aca ingest youtube` still works
 
 - **Non-Goals:**
   - YouTube Data API captions endpoint (requires video ownership for `captions.download`)
   - Async/parallel ingestion (covered by separate proposal `add-async-youtube-ingestion`)
   - Global rate limiter or token bucket for youtube-transcript-api
-  - YouTube Data API quota management dashboard or alerts
+  - Gemini processing of private/unlisted videos (public only; auto-fallback to transcript)
 
 ## Decisions
 
@@ -166,6 +169,73 @@ Note: OAuth is only needed for **private playlists**. Public playlists and all R
 - The existing `creds.refresh(Request())` call auto-refreshes using the refresh token
 - The refreshed token is saved back to the file (which is ephemeral in cloud, but that's fine — the env var provides the refresh token for the next deploy)
 
+### Decision 6: Gemini native YouTube video summarization
+
+Instead of fetching transcripts via `youtube-transcript-api` (which scrapes YouTube and triggers IP blocks), use Gemini's native YouTube URL support to generate structured summaries directly from the video. Gemini processes the video internally — audio + visual — via `Part.from_uri(file_uri="https://www.youtube.com/watch?v=...", mime_type="video/mp4")`.
+
+This is a **combined ingest+summarize step**: Gemini's output IS the structured summary. No transcript fetch, no separate summarization pass, no rate-limiting from scraping.
+
+**Two-tier model configuration:**
+
+| Path | Default Model | Resolution | Rationale |
+|------|--------------|------------|-----------|
+| Playlists | `gemini-2.5-flash` (`YOUTUBE_PROCESSING`) | default (258 tok/frame) | Curated, higher quality wanted |
+| RSS feeds | `gemini-2.5-flash-lite` (`YOUTUBE_RSS_PROCESSING`) | LOW (66 tok/frame, ~3x cheaper) | Bulk, cost-sensitive |
+
+**Resolution control via `media_resolution` parameter:**
+- `LOW`: 66 tokens/frame — 3x cheaper than default, sufficient for summary extraction
+- Default: 258 tokens/frame — better for detailed analysis of curated content
+- Configurable per-source via `gemini_resolution: low | medium | high | default`
+
+**LLM router extension:**
+- New `generate_with_video(model, system_prompt, user_prompt, video_url, media_resolution)` method on the Gemini backend
+- Uses `Part.from_uri(file_uri=url, mime_type="video/mp4")` alongside text prompt
+- Prompt requests structured summary matching the digest pipeline's expectations (key topics, insights, technical details, relevance scores)
+
+**Source configuration:**
+```yaml
+# youtube_playlist.yaml
+defaults:
+  gemini_summary: true          # Use Gemini native video summarization
+  gemini_resolution: default    # Higher quality for curated playlists
+
+sources:
+  - type: youtube_playlist
+    id: PLxxx
+    name: Curated AI Playlist
+    gemini_summary: true
+
+# youtube_rss.yaml
+defaults:
+  gemini_summary: true
+  gemini_resolution: low        # Lowest cost for bulk RSS
+
+sources:
+  - type: youtube_rss
+    url: https://...
+    gemini_summary: true
+```
+
+**Content storage:**
+- Stored as `ContentSource.YOUTUBE` (same as now)
+- Content field contains the Gemini-generated structured summary (not a raw transcript)
+- `metadata_json` includes `"processing_method": "gemini_native"`, model used, and resolution
+- Summarization step detects `processing_method: gemini_native` and skips re-summarization (content is already a summary)
+
+**Fallback to transcript-based flow:**
+- If `GOOGLE_API_KEY` is not set → fall back to `youtube-transcript-api`
+- If Gemini returns an error for a specific video (e.g., private/unlisted video) → fall back per-video
+- If `gemini_summary: false` per-source → use transcript-based flow
+- Private playlists: OAuth lists video IDs, then Gemini summarizes public videos within the playlist. Truly private videos fall back to transcript-based.
+
+**Public-only limitation:**
+Gemini native video processing only works for public YouTube videos. Videos within a private playlist are typically public (the playlist is private, not the videos). For truly private/unlisted videos that Gemini can't access, the system falls back to transcript-based processing automatically.
+
+**Alternatives considered:**
+- Use Gemini for transcript extraction only (not summarization) — rejected because the summarization step adds cost and latency for no benefit when Gemini can produce the summary directly.
+- Single model for both playlist and RSS — rejected because the user wants differentiated quality. Curated playlists deserve a stronger model; bulk RSS feeds prioritize cost.
+- Upload video via File API instead of URL — rejected because `Part.from_uri` with YouTube URLs avoids download/upload overhead and is the intended pattern for YouTube content.
+
 ## Risks / Trade-offs
 
 - **Backoff delays**: 4 retries with exponential backoff adds up to 30s per video worst-case. For 60+ RSS feeds, this could extend total ingestion time. → Mitigation: Backoff only triggers on 429s (not common for every video); per-video scope means other videos proceed normally.
@@ -177,6 +247,14 @@ Note: OAuth is only needed for **private playlists**. Public playlists and all R
 - **Proofread hallucinations**: LLM might over-correct or change non-misspelled text. → Mitigation: Prompt explicitly constrains corrections to proper nouns only; sparse-diff output format means unchanged segments are preserved exactly; hint terms guide the LLM toward expected corrections.
 
 - **Cloud token expiry**: If the refresh token is revoked in Google Cloud Console, cloud deployments lose OAuth until the operator re-generates the token locally. → Mitigation: Log a clear error message with instructions when refresh fails.
+
+- **Gemini native: public videos only**: Gemini can only access public YouTube videos via URL. Truly private/unlisted videos won't work. → Mitigation: Auto-fallback to transcript-based flow per-video; most videos in private playlists are publicly accessible (the playlist is private, not the videos).
+
+- **Gemini native: summary vs transcript fidelity**: Gemini produces a summary, not a verbatim transcript. Exact quotes and timestamps are not preserved. → Mitigation: Acceptable trade-off for the digest pipeline which summarizes content anyway. If exact quotes are needed, operator sets `gemini_summary: false` per-source to use transcript flow.
+
+- **Gemini native: cost at scale for RSS**: Even with `media_resolution: LOW` and flash-lite, processing 60+ RSS channels with many videos daily could accumulate cost. → Mitigation: `max_entries` per source limits video count; operator can set `gemini_summary: false` for low-priority RSS feeds; cost is still lower than IP blocks that prevent any ingestion.
+
+- **Gemini 2.0 Flash retirement**: Gemini 2.0 Flash and Flash-Lite retire March 31, 2026. → Mitigation: Default models use 2.5-series; model registry makes switching trivial via config.
 
 ## Migration Plan
 
