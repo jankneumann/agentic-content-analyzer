@@ -435,6 +435,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Profile inheritance cycles | Profiles cannot extend themselves or form circular `extends` chains |
 | Profile provider vs settings collision | `providers.*` must be authoritative; don't add `*_provider` keys in `settings.*` sections of child profiles |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
+| `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
 
 ## Quick Links by Task
 
