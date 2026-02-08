@@ -17,6 +17,16 @@ The system SHALL provide a PostgreSQL export capability that serializes all appl
 - **THEN** only the specified tables and their parent dependencies SHALL be exported
 - **AND** any FK-referenced parent tables not in the list SHALL be automatically included
 
+#### Scenario: Export file overwrite protection
+- **GIVEN** a file `sync-data.jsonl` already exists at the output path
+- **WHEN** `aca sync export --output sync-data.jsonl` is executed without `--force`
+- **THEN** the command SHALL abort with an error: `Output file already exists: sync-data.jsonl. Use --force to overwrite.`
+
+#### Scenario: Export file overwrite with --force
+- **GIVEN** a file `sync-data.jsonl` already exists at the output path
+- **WHEN** `aca sync export --output sync-data.jsonl --force` is executed
+- **THEN** the existing file SHALL be overwritten with the new export
+
 #### Scenario: Export progress reporting
 - **WHEN** an export operation is running
 - **THEN** the CLI SHALL display the current table name and row count as each table is exported
@@ -99,6 +109,19 @@ The system SHALL provide a PostgreSQL import capability that deserializes JSONL 
 - **WHEN** import attempts to insert this record
 - **THEN** the record SHALL be skipped with a warning: `Skipping contents row: invalid enum value 'unknown_source' for source_type`
 - **AND** import SHALL continue with remaining records
+
+#### Scenario: Import error — malformed JSONL
+- **GIVEN** a JSONL file with a corrupted line (invalid JSON or missing `_type` field)
+- **WHEN** import processes that line
+- **THEN** the line SHALL be skipped with a warning: `Skipping malformed JSONL at line {N}: {error}`
+- **AND** import SHALL continue with remaining lines
+- **AND** the error summary SHALL include total parse errors
+
+#### Scenario: Import error — missing manifest
+- **GIVEN** a JSONL file where line 1 is not a valid manifest record (missing `_type: "manifest"`)
+- **WHEN** import is attempted
+- **THEN** the import SHALL abort with an error: `Invalid sync file: missing manifest on line 1`
+- **AND** no data SHALL be written
 
 #### Scenario: Import error — schema version blocked
 - **GIVEN** an import that is blocked due to schema version mismatch
@@ -219,6 +242,48 @@ The system SHALL support resolving source and target database connections from n
 - **WHEN** `aca sync export --output data.jsonl` is executed without `--from-profile`
 - **THEN** the active profile (`local`) SHALL be used as the source
 
+#### Scenario: No profile active — export/import still works
+- **GIVEN** no `PROFILE` environment variable is set
+- **AND** a `.env` file with `DATABASE_URL` is present
+- **WHEN** `aca sync export --output data.jsonl` is executed
+- **THEN** the export SHALL use the default Settings resolution (env vars + `.env` file)
+- **AND** the operation SHALL succeed without requiring a named profile
+
+### Requirement: Full Sync Push (Orchestrated)
+
+The system SHALL provide an orchestrated push command that combines PG export, file sync, PG import, and Neo4j sync into a single operation with enforced ordering and error handling.
+
+#### Scenario: Full push between profiles
+- **GIVEN** profiles `local` and `railway` are configured with different databases and storage providers
+- **WHEN** `aca sync push --from-profile local --to-profile railway` is executed
+- **THEN** the system SHALL execute stages in this order:
+  1. Export PostgreSQL data from source profile to a temporary JSONL file
+  2. Discover file paths from the source database
+  3. Copy files from source storage to target storage
+  4. Import PostgreSQL data into target profile's database
+  5. Export Neo4j data from source profile
+  6. Import Neo4j data into target profile's database
+- **AND** if any stage fails, subsequent stages SHALL be skipped
+- **AND** a summary SHALL report which stages completed and which were skipped
+
+#### Scenario: Push with selective sync flags
+- **GIVEN** profiles `local` and `railway` are configured
+- **WHEN** `aca sync push --from-profile local --to-profile railway --pg-only` is executed
+- **THEN** only PostgreSQL export → file sync → PG import stages SHALL execute
+- **AND** Neo4j sync stages SHALL be skipped
+
+#### Scenario: Push requires both profile flags
+- **GIVEN** a user attempts to run `aca sync push` without specifying both profiles
+- **WHEN** `aca sync push --from-profile local` is executed without `--to-profile`
+- **THEN** the command SHALL abort with an error: `Both --from-profile and --to-profile are required for push`
+
+#### Scenario: Push re-runnability after partial failure
+- **GIVEN** a previous `aca sync push` failed during PG import (stage 4) but file sync (stage 3) completed
+- **WHEN** `aca sync push` is re-run with the same parameters
+- **THEN** file sync SHALL skip already-copied files (idempotent)
+- **AND** PG import SHALL use merge mode to skip already-imported records
+- **AND** the operation SHALL complete successfully
+
 ### Requirement: Incremental Sync
 
 The system SHALL support incremental sync based on timestamps, transferring only records created or modified since the last sync.
@@ -237,11 +302,28 @@ The system SHALL support incremental sync based on timestamps, transferring only
 
 ### Requirement: Sync Dry Run
 
-The system SHALL support a dry-run mode that previews sync operations without modifying any data.
+The system SHALL support a dry-run mode that previews ALL sync operations (PG, files, Neo4j) without modifying any data.
 
-#### Scenario: Dry run preview
+#### Scenario: Dry run for PG import
 - **GIVEN** a JSONL export file and a target database
 - **WHEN** `aca sync import --input data.jsonl --dry-run` is executed
 - **THEN** the system SHALL report how many records would be inserted, skipped, and updated per table
 - **AND** no database writes SHALL occur
 - **AND** FK remapping SHALL be simulated to detect potential issues
+
+#### Scenario: Dry run for push (all phases)
+- **GIVEN** configured source and target profiles
+- **WHEN** `aca sync push --from-profile local --to-profile railway --dry-run` is executed
+- **THEN** PG export SHALL run normally (read-only, no side effects)
+- **AND** file sync SHALL report: `Would copy {N} files ({size}) from {source} to {target}`
+- **AND** PG import SHALL simulate without writing
+- **AND** Neo4j sync SHALL report node/relationship counts without writing
+- **AND** clean mode confirmation prompt SHALL be skipped in dry-run
+
+#### Scenario: Dry run for file sync
+- **GIVEN** source database with file references and target storage
+- **WHEN** `aca sync push --from-profile local --to-profile railway --files-only --dry-run` is executed
+- **THEN** file discovery SHALL query the source database (read-only)
+- **AND** each file SHALL be checked for existence on target (read-only)
+- **AND** no files SHALL be copied
+- **AND** a summary SHALL list files that would be copied and files that would be skipped

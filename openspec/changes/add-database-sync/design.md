@@ -35,6 +35,26 @@ Each provider has different connection parameters, pool settings, and capabiliti
 - **SQLite**: Binary format, harder to inspect/debug, adds dependency
 - **CSV**: Doesn't handle nested JSON fields (tables_json, metadata_json, links_json) cleanly
 
+#### JSONL File Format
+
+The first line of the JSONL file is always a **manifest record**. Subsequent lines are **data records**, one per row, grouped by table in topological order.
+
+**Manifest (line 1)**:
+```json
+{"_type": "manifest", "alembic_rev": "abc123", "exported_at": "2026-02-07T12:00:00Z", "tables": {"contents": 150, "summaries": 120, "digests": 10}, "version": 1}
+```
+
+**Data records (line 2+)**:
+```json
+{"_type": "row", "table": "contents", "data": {"id": 42, "content_hash": "sha256:...", "source_type": "rss", ...}}
+{"_type": "row", "table": "contents", "data": {"id": 43, "content_hash": "sha256:...", "source_type": "gmail", ...}}
+{"_type": "row", "table": "summaries", "data": {"id": 1, "content_id": 42, ...}}
+```
+
+The `_type` discriminator enables forward-compatible extensions (e.g., `_type: "neo4j_node"` for combined exports). The `version` field in the manifest enables format evolution.
+
+**Validation on import**: The importer reads line 1, validates it as a manifest (required fields: `_type`, `alembic_rev`, `tables`), then processes data records. Malformed lines are skipped with an error logged (line number + raw content).
+
 ### Decision: Cypher export for Neo4j
 **Rationale**: Neo4j's APOC export to JSON/Cypher is the standard approach. Export nodes and relationships as JSON, import via `apoc.load.json()` or batch Cypher statements. This works across Neo4j versions and between Community/AuraDB.
 
@@ -59,8 +79,12 @@ class SyncState:
 
 The `id_map` is populated as parent tables are inserted (Level 0 first, then Level 1, etc.). Child table FK columns are remapped by looking up the old FK value in `id_map[parent_table]`. If a lookup fails, the record is skipped with an error logged (not a hard failure — allows partial imports).
 
+**Import processing order per record**: (1) Remap FK columns using `IDMapper` → (2) Validate enum values → (3) Look up natural key in target DB (using remapped FK values for composite keys like `(content_id, created_at)`) → (4) Based on mode: skip/update/insert → (5) Record old→new ID mapping in `SyncState.id_map`.
+
+This ordering is critical: natural key lookup for child tables (summaries, audio_digests, etc.) uses composite keys that include remapped FK values. The FK must be remapped BEFORE the natural key check, or the lookup will use source IDs that don't exist in the target.
+
 **Import modes**:
-- `merge`: Check natural key → if exists, skip. If not, insert and add to id_map.
+- `merge`: Check natural key → if exists, skip (log at INFO: `Skipping {table} row: natural key match found`). If not, insert and add to id_map.
 - `replace`: Check natural key → if exists, update in place (preserving target ID). If not, insert.
 - `clean`: Truncate all target tables (reverse dependency order), then insert all records (no dedup needed).
 
@@ -181,6 +205,16 @@ Examples:
 
 Max depth is 3 (podcasts → podcast_scripts → digests). Each auto-included table logs: `[INFO] Auto-including parent table: {table} (required by {child}.{fk_column})`.
 
+### Decision: CLI flag semantics — `--force` vs `--yes`
+**Rationale**: Two distinct confirmation-bypass flags serve different purposes:
+- **`--force`**: Overwrite an existing output file on `aca sync export`. Only applies to export. Does NOT skip destructive database prompts.
+- **`--yes`**: Skip the confirmation prompt for `--mode clean` truncation on `aca sync import`. Only applies to import. Does NOT force-overwrite files.
+
+These flags are scoped to their respective commands and are never combined. `aca sync push` inherits `--yes` (for clean mode on import) but not `--force` (push always writes to a temp export file internally, no overwrite scenario).
+
+### Decision: Profile resolution — active profile as default, explicit error without profile
+**Rationale**: When `--from-profile` or `--to-profile` is omitted, the active profile (from `PROFILE` env var) is used as the default. If no profile is active and no `--from-profile`/`--to-profile` is provided, the command uses the current `Settings()` resolution (env vars + `.env` file) without profile YAML. For `aca sync push` specifically, both `--from-profile` and `--to-profile` are required (no default — sync direction must be explicit).
+
 ### Decision: Schema compatibility gate — block import if target is behind, with migration instructions
 **Rationale**: Importing data into a database with an older Alembic revision will fail (missing columns, enum values, etc.). Rather than auto-running migrations (which mixes concerns and can be surprising), the import command checks revisions and blocks if the target is behind:
 - **Target same as source**: Proceed normally.
@@ -246,6 +280,17 @@ These findings were identified during plan review but deferred from critical/hig
 | N14 | LOW | **Dry-run for file sync preview**: The `--dry-run` flag is specified for PG import but not explicitly for file sync. Should file sync also support dry-run? | Task 7.7: Yes — `--dry-run` should apply to all sync phases. For file sync, report: `Would copy {N} files ({size} total) from {source_provider} to {target_provider}. Files: {list}`. No actual file I/O. |
 | N15 | LOW | **Incremental sync business rationale**: Proposal doesn't explain why incremental sync matters. | Context: Incremental sync enables repeated dev→cloud syncing during active development without retransferring unchanged data (e.g., sync local → Railway after adding 10 new articles, without re-syncing the existing 500). |
 | N16 | LOW | **Custom PostgreSQL types**: If the database uses custom types beyond standard enums (e.g., composite types, domains), sync may fail. | Out of scope for v1. All current types are standard SQL + enums. If custom types are added later, they'll need explicit handling in the serializer. Document this as a known limitation. |
+
+### Iteration 2 Findings
+
+| # | Severity | Finding | Implementation Guidance |
+|---|----------|---------|------------------------|
+| N17 | MEDIUM | **Multi-profile Settings isolation**: `Settings` loads from `PROFILE` env var globally. `resolve_profile_settings()` must construct a `Settings` instance from a named profile's YAML without mutating env or global state. Same for `FileStorageService` — needs a factory method accepting a `Settings` instance. | Task 8.1: Implement as a standalone function, NOT a Settings classmethod that touches `os.environ`. Read the profile YAML, merge with base, resolve `${VAR}` from `.secrets.yaml`, construct `Settings` kwargs dict, return `Settings(_env_file=None, **kwargs)`. |
+| N18 | MEDIUM | **Transaction scope for import**: Large imports touching 10k+ rows in a single transaction can hold locks for too long and OOM on Railway Hobby tier. | Task 3.1: Use a single transaction for correctness (FK consistency), but commit per-table rather than per-file. If per-table commit, process tables in dependency order so partial failures leave a consistent state (orphaned children are acceptable, orphaned parents are not). |
+| N19 | MEDIUM | **Export file size estimation**: No way to estimate file size before export begins. For large DBs, users may run out of disk space mid-export. | Task 2.5: Before export, query `SELECT COUNT(*) FROM {table}` for each table and log estimated row counts. After export, report actual file size. No pre-flight disk space check (too platform-dependent). |
+| N20 | MEDIUM | **`aca sync push` orchestration error recovery**: If PG import fails mid-way but file sync already completed, the state is partially synced. No rollback for file sync. | Task 7.4: File sync is idempotent (skip-existing), so partial state is safe — re-running push will skip already-copied files. Document: `push` is designed for re-runnability, not atomicity. Log which stages completed on failure. |
+| N21 | MEDIUM | **Neo4j JSONL format**: Neo4j export shares the same JSONL file format as PG export but uses different `_type` values. Define them. | Task 4.1: Use `_type: "neo4j_node"` for nodes and `_type: "neo4j_relationship"` for relationships. Include `label` (node type), `uuid`, `properties`. Manifest uses `_type: "neo4j_manifest"` with node/relationship counts per label. |
+| N22 | LOW | **Alembic revision comparison**: Design says "target older" and "target newer" but Alembic revisions are hash strings, not orderable. Need to walk the revision chain to determine relative ordering. | Task 3.7: Use `MigrationContext` to get current target revision. Compare against source revision from manifest. If they match → proceed. If target revision is NOT an ancestor of source → block (target is behind or diverged). Use `alembic.script.ScriptDirectory.walk_revisions()` to check ancestry. If ancestry can't be determined (diverged branches), warn and proceed. |
 
 ## Resolved Questions
 
