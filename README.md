@@ -6,7 +6,7 @@ Use an agentic AI solution to summarize AI newsletters into daily and weekly dig
 
 ### Prerequisites
 
-- Python 3.11 or higher
+- Python 3.12 or higher
 - Docker and Docker Compose
 - [uv](https://github.com/astral-sh/uv) package manager
 - API keys (Anthropic, optionally OpenAI/Google)
@@ -40,7 +40,7 @@ source .venv/bin/activate  # macOS/Linux
 
 3. **Install dependencies**:
 ```bash
-uv pip install -e ".[dev]"
+uv sync
 ```
 
 4. **Set up environment**:
@@ -70,6 +70,28 @@ docker compose ps
 
 # Should show postgres, redis, and neo4j as healthy
 ```
+
+### Using the CLI
+
+The `aca` CLI is installed as a Python entry point when you install the package (step 3). After activating your virtual environment, it's available as a command:
+
+```bash
+# Show all available commands
+aca --help
+
+# Verify services are connected
+aca manage verify-setup
+
+# Example: ingest content, summarize, and create a digest
+aca ingest gmail
+aca summarize pending
+aca create-digest daily
+
+# Or run the full pipeline in one command
+aca pipeline daily
+```
+
+See the [Workflow](#workflow) section below for detailed usage.
 
 ## Project Structure
 
@@ -113,56 +135,55 @@ scripts/
 
 ## Workflow
 
-### 1. Newsletter Ingestion
+### 1. Content Ingestion
 ```bash
-# Fetch from Gmail
-python -m scripts.ingest_gmail
+# Fetch from Gmail newsletters
+aca ingest gmail
 
-# Fetch from Substack RSS
-python -m scripts.ingest_substack
+# Fetch from RSS feeds (Substack, etc.)
+aca ingest rss
+
+# Fetch from YouTube playlists
+aca ingest youtube
+
+# Fetch from podcast feeds
+aca ingest podcast
+
+# Ingest local files
+aca ingest files <path...>
 ```
 
-### 2. Digest Generation
+### 2. Summarization & Digest Generation
 ```bash
-# Generate daily digest (goes to PENDING_REVIEW by default)
-python -m scripts.generate_daily_digest --save
+# Summarize all pending content
+aca summarize pending
+
+# Generate daily digest
+aca create-digest daily
 
 # Generate weekly digest
-python -m scripts.generate_weekly_digest --save
+aca create-digest weekly
 
-# Auto-approve digest (skip review)
-python -m scripts.generate_daily_digest --save --auto-approve
+# Or run the full pipeline (ingest → summarize → digest)
+aca pipeline daily
 ```
 
-### 3. Human Review (NEW)
+### 3. Review & Delivery
 ```bash
 # List all digests pending review
-python -m scripts.review_digest --list
+aca review list
 
 # View digest content
-python -m scripts.review_digest --id 42 --view
+aca review view <id>
 
-# Interactive AI-powered revision
-python -m scripts.review_digest --id 42 --revise-interactive
+# Analyze themes across content
+aca analyze themes
 
-# Quick approve
-python -m scripts.review_digest --id 42 --action approve
-
-# Quick reject with notes
-python -m scripts.review_digest --id 42 --action reject --notes "Too technical"
+# Generate podcast script from a digest
+aca podcast generate --digest-id <id>
 ```
 
-**Interactive Revision Features:**
-- Multi-turn conversational refinement with AI
-- On-demand newsletter content fetching via LLM tools
-- Token-efficient context loading (summaries + themes)
-- Complete audit trail of all revisions
-- Cost tracking for revision sessions
-
 See [docs/REVIEW_SYSTEM.md](docs/REVIEW_SYSTEM.md) for detailed documentation.
-
-### 4. Email Delivery (Coming Soon)
-Only digests with status `APPROVED` will be delivered.
 
 ## Development
 
