@@ -40,7 +40,8 @@ source .venv/bin/activate  # macOS/Linux
 
 3. **Install dependencies**:
 ```bash
-uv sync
+# Install all dependencies including dev tools (pytest, ruff, mypy, pre-commit)
+uv sync --all-extras
 ```
 
 4. **Set up environment**:

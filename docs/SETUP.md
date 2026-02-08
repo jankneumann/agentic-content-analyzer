@@ -39,7 +39,7 @@ docker ps
 ### 3. Install Dependencies
 
 ```bash
-uv pip install -r requirements.txt
+uv sync --all-extras
 ```
 
 ### 4. Configure Environment
@@ -1326,7 +1326,7 @@ alembic upgrade head
 source .venv/bin/activate
 
 # Reinstall dependencies
-uv pip install -r requirements.txt
+uv sync --all-extras
 ```
 
 ### API Key Issues

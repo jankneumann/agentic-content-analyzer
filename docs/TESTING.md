@@ -439,7 +439,7 @@ ModuleNotFoundError: No module named 'src'
 
 **Solution:** Install the package in development mode:
 ```bash
-uv pip install -e ".[dev]"
+uv sync --all-extras
 ```
 
 ---
