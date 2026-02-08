@@ -319,6 +319,7 @@ Templates:
 - `profiles/local.yaml`: Extends base, configured for Docker Compose
 - `profiles/railway.yaml`: Extends base, configured for Railway deployment
 - `profiles/supabase-cloud.yaml`: Extends base, configured for Supabase cloud
+- `profiles/staging.yaml`: Extends base, configured for production-like CI/CD validation
 
 #### Scenario: Base profile provides all defaults
 - **WHEN** `profiles/base.yaml` is loaded without any parent
@@ -331,6 +332,12 @@ Templates:
 - **AND** it SHALL contain `settings.storage.minio_root_user: ${MINIO_ROOT_USER}`
 - **AND** it SHALL contain `settings.storage.minio_root_password: ${MINIO_ROOT_PASSWORD}`
 - **AND** YAML comments SHALL explain that Railway auto-injects these variables
+
+#### Scenario: Staging profile targets production-like providers
+- **GIVEN** `profiles/staging.yaml` template
+- **THEN** it SHALL set providers for `database: railway`, `neo4j: auradb`, and `storage: railway`
+- **AND** it SHALL set observability to `braintrust` with a staging project name
+- **AND** it SHALL support staging-specific environment variable overrides for core connections
 
 #### Scenario: Template profiles are valid structurally
 - **WHEN** each template profile is validated for structure only (ignoring unresolved variables)
