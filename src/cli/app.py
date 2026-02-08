@@ -39,6 +39,7 @@ from src.cli.podcast_commands import app as podcast_app
 from src.cli.profile_commands import app as profile_app
 from src.cli.review_commands import app as review_app
 from src.cli.summarize_commands import app as summarize_app
+from src.cli.sync_commands import app as sync_app
 from src.cli.worker_commands import app as worker_app
 
 # Root Typer application
@@ -59,6 +60,7 @@ app.add_typer(graph_app, name="graph")
 app.add_typer(podcast_app, name="podcast")
 app.add_typer(manage_app, name="manage")
 app.add_typer(profile_app, name="profile")
+app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(job_app, name="jobs")
 
