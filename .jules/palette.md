@@ -21,3 +21,7 @@
 ## 2025-02-26 - Hidden Labels on Mobile
 **Learning:** Buttons that hide their text label on mobile (e.g. `hidden sm:inline`) often become inaccessible icon-only buttons if they don't have an `aria-label`.
 **Action:** When hiding text labels responsively, ensure the button retains an accessible name via `aria-label` or `sr-only` text.
+
+## 2025-05-30 - Tooltips on Disabled Buttons
+**Learning:** `radix-ui` Tooltip triggers do not work on disabled buttons because they don't emit pointer events. Wrapping the disabled button in a `span` with `tabIndex={0}` and ensuring the button has `pointer-events-none` is required for accessibility and functionality.
+**Action:** When adding tooltips to potentially disabled actions, always wrap the button in a focusable container.
