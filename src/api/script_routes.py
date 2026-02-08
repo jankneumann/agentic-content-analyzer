@@ -462,7 +462,9 @@ async def get_script_section(script_id: int, section_index: int) -> dict:
         return section
 
     except ValueError as e:
-        logger.error(f"Error retrieving section {section_index} for script {script_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error retrieving section {section_index} for script {script_id}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=404, detail="Section not found or unavailable")
 
 
@@ -477,7 +479,10 @@ async def get_section_dialogue(script_id: int, section_index: int) -> dict:
         return {"section_index": section_index, "dialogue_text": text}
 
     except ValueError as e:
-        logger.error(f"Error retrieving dialogue for section {section_index} of script {script_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error retrieving dialogue for section {section_index} of script {script_id}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(status_code=404, detail="Dialogue unavailable")
 
 
@@ -548,7 +553,9 @@ async def revise_section(
         }
 
     except ValueError as e:
-        logger.error(f"Error revising section {section_index} of script {script_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error revising section {section_index} of script {script_id}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=400, detail="Section revision failed")
 
 
