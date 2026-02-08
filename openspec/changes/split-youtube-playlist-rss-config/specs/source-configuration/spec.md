@@ -25,14 +25,16 @@ Both files SHALL be loaded by the existing `load_sources_directory` function and
 - **THEN** the system loads all entries from `youtube.yaml` as before
 - **AND** type filtering returns the correct sources for each service
 
-### Requirement: Gemini Native YouTube Video Summarization
-The system SHALL support using Gemini's native YouTube URL processing to generate structured summaries directly from video content, bypassing `youtube-transcript-api` entirely.
+### Requirement: Gemini Native YouTube Video Content Extraction
+The system SHALL support using Gemini's native YouTube URL processing to extract detailed content from videos, bypassing `youtube-transcript-api` entirely.
 
-The Gemini summarization SHALL:
+Ingestion and summarization remain **separate steps**. The Gemini ingestion step produces a detailed content extraction — a comprehensive account of the video's content (topics discussed, arguments made, examples given, technical details, speaker attributions). This is stored as the Content record's `content` field, analogous to a transcript. The existing summarization pipeline (`aca summarize pending`) then processes it with its own prompts and detail levels, just like any other content source.
+
+The Gemini content extraction SHALL:
 1. Use `Part.from_uri(file_uri=youtube_url, mime_type="video/mp4")` to pass the YouTube URL directly to Gemini
-2. Include a structured summarization prompt requesting key topics, insights, technical details, and relevance scores
+2. Include a content extraction prompt requesting comprehensive coverage: all topics discussed, technical details, speaker statements, examples, and arguments — without editorial filtering
 3. Store the result as `ContentSource.YOUTUBE` with `metadata_json` containing `"processing_method": "gemini_native"`
-4. Skip the separate summarization step (the Gemini output IS the structured summary)
+4. Allow the content to proceed through the normal summarization pipeline (no special handling in the summarizer)
 
 **Two-tier model configuration:**
 - Playlist ingestion: `YOUTUBE_PROCESSING` ModelStep (default: `gemini-2.5-flash`) — higher quality for curated content
@@ -45,23 +47,29 @@ The Gemini summarization SHALL:
 - Note: Resolution is controlled via the Gemini API `GenerateContentConfig.media_resolution` parameter, not via the YouTube URL
 
 **Source configuration fields:**
-- `gemini_summary: bool` (default: `true`) — enable/disable Gemini native summarization per-source
+- `gemini_summary: bool` (default: `true`) — enable/disable Gemini native content extraction per-source
 - `gemini_resolution: str` (default: varies by source type) — `low`, `medium`, `high`, or `default`
 
-#### Scenario: Gemini native summary for playlist video
+#### Scenario: Gemini content extraction for playlist video
 - **WHEN** a playlist source has `gemini_summary: true` (default)
 - **AND** `GOOGLE_API_KEY` is set
 - **THEN** the system sends the YouTube URL to Gemini via `Part.from_uri`
-- **AND** the Gemini response is stored as the content with `processing_method: gemini_native`
+- **AND** the Gemini response is stored as the Content record's `content` field with `processing_method: gemini_native` in metadata
 - **AND** the `YOUTUBE_PROCESSING` ModelStep model is used (default: `gemini-2.5-flash`)
-- **AND** the summarization step is skipped for this content
+- **AND** the content proceeds through the normal summarization pipeline
 
-#### Scenario: Gemini native summary for RSS feed video with low resolution
+#### Scenario: Gemini content extraction for RSS feed video with low resolution
 - **WHEN** an RSS feed source has `gemini_summary: true` and `gemini_resolution: low` (RSS default)
 - **AND** `GOOGLE_API_KEY` is set
 - **THEN** the system sends the YouTube URL to Gemini with `media_resolution=LOW`
 - **AND** the `YOUTUBE_RSS_PROCESSING` ModelStep model is used (default: `gemini-2.5-flash-lite`)
 - **AND** frame processing uses 66 tokens/frame instead of 258 (3x cost reduction)
+
+#### Scenario: Gemini-ingested content goes through normal summarization
+- **WHEN** `aca summarize pending` encounters content with `processing_method: gemini_native` in metadata
+- **THEN** the summarizer processes it using the standard summarization prompt and `SUMMARIZATION` ModelStep
+- **AND** the summary captures relevance, key insights, and theme tags for the digest
+- **AND** no special-casing is needed in the summarizer
 
 #### Scenario: Fallback to transcript when GOOGLE_API_KEY not set
 - **WHEN** `gemini_summary: true` but `GOOGLE_API_KEY` is not set
@@ -71,18 +79,13 @@ The Gemini summarization SHALL:
 #### Scenario: Fallback to transcript for private/unlisted video
 - **WHEN** Gemini returns an error for a specific video (e.g., video is private or unlisted)
 - **THEN** the system falls back to `youtube-transcript-api` for that video only
-- **AND** other videos in the same source continue with Gemini summarization
+- **AND** other videos in the same source continue with Gemini content extraction
 - **AND** the fallback is logged with the video ID and error reason
 
-#### Scenario: Gemini summary disabled per-source
+#### Scenario: Gemini content extraction disabled per-source
 - **WHEN** a source sets `gemini_summary: false`
 - **THEN** the system uses `youtube-transcript-api` for all videos from that source
-- **AND** the normal summarization pipeline is used
-
-#### Scenario: Summarizer skips re-summarization for Gemini content
-- **WHEN** `aca summarize pending` encounters content with `processing_method: gemini_native` in metadata
-- **THEN** the summarizer marks it as already summarized
-- **AND** does not make an additional LLM call
+- **AND** the content goes through the normal summarization pipeline
 
 ### Requirement: LLM-Based YouTube Caption Proofreading
 The system SHALL provide a post-processing proofread step that uses a fast LLM to contextually correct phonetic misspellings of proper nouns in auto-generated YouTube captions.

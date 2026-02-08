@@ -7,7 +7,7 @@
 - [ ] 1.5 Add `proofread` boolean field to `YouTubePlaylistSource` model (default: `true`)
 - [ ] 1.6 Verify `load_sources_directory` loads both new files correctly (existing behavior, no code changes expected)
 
-## 2. Gemini Native YouTube Video Summarization
+## 2. Gemini Native YouTube Video Content Extraction
 
 - [ ] 2.1 Add `YOUTUBE_RSS_PROCESSING` to `ModelStep` enum in `src/config/models.py`
 - [ ] 2.2 Add `youtube_rss_processing` default model (`gemini-2.5-flash-lite`) to `src/config/model_registry.yaml` and `ModelConfig.__init__`
@@ -16,18 +16,18 @@
   - Use `Part.from_uri(file_uri=video_url, mime_type="video/mp4")` alongside text prompt
   - Accept `media_resolution` parameter (`LOW`, `MEDIUM`, `HIGH`, or `None` for default)
   - Pass `media_resolution` via `GenerateContentConfig`
-- [ ] 2.5 Create structured summarization prompt for Gemini video processing (key topics, insights, technical details, relevance scores)
-- [ ] 2.6 Integrate Gemini summarization into `YouTubeContentIngestionService.ingest_playlist()`:
+- [ ] 2.5 Create content extraction prompt for Gemini video processing — comprehensive coverage of all topics discussed, technical details, speaker statements, examples, and arguments (no editorial filtering; the summarization step handles relevance)
+- [ ] 2.6 Integrate Gemini content extraction into `YouTubeContentIngestionService.ingest_playlist()`:
   - Check `gemini_summary` config and `GOOGLE_API_KEY` availability
   - Call `generate_with_video()` with `YOUTUBE_PROCESSING` model step and source's `gemini_resolution`
-  - Store result with `processing_method: gemini_native` in `metadata_json`
+  - Store Gemini output as Content `content` field (analogous to transcript) with `processing_method: gemini_native` in `metadata_json`
+  - Content proceeds through normal summarization pipeline — no special handling
   - Fall back to transcript-based flow on error
-- [ ] 2.7 Integrate Gemini summarization into `YouTubeRSSIngestionService.ingest_feed()`:
+- [ ] 2.7 Integrate Gemini content extraction into `YouTubeRSSIngestionService.ingest_feed()`:
   - Use `YOUTUBE_RSS_PROCESSING` model step (gemini-2.5-flash-lite)
   - Default `gemini_resolution: low` for cost savings (66 tokens/frame vs 258)
   - Same fallback logic as playlists
-- [ ] 2.8 Update `ContentSummarizer` in `src/processors/summarizer.py` to detect `processing_method: gemini_native` in content metadata and skip re-summarization
-- [ ] 2.9 Update `youtube_playlist.yaml` and `youtube_rss.yaml` templates with `gemini_summary` and `gemini_resolution` defaults
+- [ ] 2.8 Update `youtube_playlist.yaml` and `youtube_rss.yaml` templates with `gemini_summary` and `gemini_resolution` defaults
 
 ## 3. LLM-Based Caption Proofreading
 
@@ -74,9 +74,10 @@
 
 ## 8. Service Integration
 
-- [ ] 8.1 Wire Gemini summarization and proofreading from source config into `ingest_playlist()`
-- [ ] 8.2 Wire Gemini summarization into `YouTubeRSSIngestionService.ingest_feed()`
+- [ ] 8.1 Wire Gemini content extraction and proofreading from source config into `ingest_playlist()`
+- [ ] 8.2 Wire Gemini content extraction into `YouTubeRSSIngestionService.ingest_feed()`
 - [ ] 8.3 Ensure transcript-based fallback works correctly when Gemini is unavailable or disabled
+- [ ] 8.4 Verify Gemini-ingested content flows through normal `aca summarize pending` pipeline without special handling
 
 ## 9. Tests
 
@@ -85,18 +86,17 @@
   - `media_resolution` parameter forwarding (LOW, default)
   - `Part.from_uri` construction with YouTube URL
   - Error handling for unavailable videos
-- [ ] 9.2 Add Gemini summarization integration tests for playlist ingestion:
-  - Gemini summary stored with `processing_method: gemini_native`
+- [ ] 9.2 Add Gemini content extraction integration tests for playlist ingestion:
+  - Gemini output stored as Content `content` field with `processing_method: gemini_native` in metadata
+  - Content proceeds through normal summarization pipeline (no special handling)
   - Fallback to transcript when `GOOGLE_API_KEY` not set
   - Fallback when Gemini returns error for specific video
   - `gemini_summary: false` disables Gemini path
-- [ ] 9.3 Add Gemini summarization integration tests for RSS ingestion:
+- [ ] 9.3 Add Gemini content extraction integration tests for RSS ingestion:
   - Uses `YOUTUBE_RSS_PROCESSING` model step (flash-lite)
   - Uses `media_resolution: LOW` by default
   - Fallback to transcript-based flow
-- [ ] 9.4 Add summarizer skip test:
-  - Content with `processing_method: gemini_native` is not re-summarized
-- [ ] 9.5 Add `tests/test_ingestion/test_youtube_captions.py`:
+- [ ] 9.4 Add `tests/test_ingestion/test_youtube_captions.py`:
   - LLM proofread function (mocked LLM responses, batch splitting, sparse-diff parsing)
   - Hint terms merging (built-in defaults + per-playlist additions)
   - Skip manual captions

@@ -40,11 +40,11 @@ Splitting the configuration and CLI entry points lets operators:
 - Applied after transcript retrieval, before markdown conversion. Only for auto-generated captions.
 - Transcript segments sent in batches (~50 at a time) to minimize LLM calls. Estimated cost: ~$0.001-0.005 per video.
 
-### Gemini Native YouTube Video Summarization
-- Use Gemini's native YouTube URL support (`Part.from_uri`) to generate structured summaries directly from videos — bypasses `youtube-transcript-api` entirely.
+### Gemini Native YouTube Video Content Extraction
+- Use Gemini's native YouTube URL support (`Part.from_uri`) to extract detailed content from videos — bypasses `youtube-transcript-api` entirely.
+- **Ingestion and summarization are separate steps.** Gemini produces a detailed content extraction (comprehensive topics, arguments, examples, technical details) stored as the Content record. The existing summarization pipeline then processes it with its own prompts and detail levels, just like transcript-based content.
 - **Two-tier model configuration**: stronger model (`gemini-2.5-flash` via `YOUTUBE_PROCESSING` step) for curated playlists, cheapest model (`gemini-2.5-flash-lite` via new `YOUTUBE_RSS_PROCESSING` step) for bulk RSS feeds.
 - **Resolution control via Gemini API `media_resolution` parameter**: `LOW` (66 tokens/frame, ~3x cheaper) for RSS feeds; `default` (258 tokens/frame) for curated playlists. This is an API-level setting, not a URL parameter.
-- Combined ingest+summarize: Gemini's output IS the structured summary — skips the separate summarization step.
 - Configurable per-source via `gemini_summary: true/false` and `gemini_resolution: low | default`.
 - Fallback to transcript-based flow when: `GOOGLE_API_KEY` not set, video is private/unlisted, Gemini returns an error, or `gemini_summary: false`.
 - New `generate_with_video()` method on LLM router's Gemini backend.
@@ -80,8 +80,7 @@ Splitting the configuration and CLI entry points lets operators:
 - `src/config/settings.py` — new settings (`youtube_max_retries`, `youtube_backoff_base`, `youtube_oauth_token_json`)
 - `src/cli/ingest_commands.py` — new subcommands
 - `src/cli/pipeline_commands.py` — split YouTube into two parallel ingestion tasks, add RSS feeds to pipeline
-- `src/processors/summarizer.py` — detect `processing_method: gemini_native` and skip re-summarization
-- `tests/test_ingestion/test_youtube.py` — Gemini summarization tests, backoff tests
+- `tests/test_ingestion/test_youtube.py` — Gemini content extraction tests, backoff tests
 - `tests/test_ingestion/test_youtube_captions.py` — proofread tests
 - `tests/test_ingestion/test_youtube_rss.py` — config file path update, Gemini RSS tests
 - `tests/test_services/test_llm_router.py` — `generate_with_video()` tests

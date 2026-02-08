@@ -169,11 +169,14 @@ Note: OAuth is only needed for **private playlists**. Public playlists and all R
 - The existing `creds.refresh(Request())` call auto-refreshes using the refresh token
 - The refreshed token is saved back to the file (which is ephemeral in cloud, but that's fine — the env var provides the refresh token for the next deploy)
 
-### Decision 6: Gemini native YouTube video summarization
+### Decision 6: Gemini native YouTube video content extraction
 
-Instead of fetching transcripts via `youtube-transcript-api` (which scrapes YouTube and triggers IP blocks), use Gemini's native YouTube URL support to generate structured summaries directly from the video. Gemini processes the video internally — audio + visual — via `Part.from_uri(file_uri="https://www.youtube.com/watch?v=...", mime_type="video/mp4")`.
+Instead of fetching transcripts via `youtube-transcript-api` (which scrapes YouTube and triggers IP blocks), use Gemini's native YouTube URL support to extract detailed content from the video. Gemini processes the video internally — audio + visual — via `Part.from_uri(file_uri="https://www.youtube.com/watch?v=...", mime_type="video/mp4")`.
 
-This is a **combined ingest+summarize step**: Gemini's output IS the structured summary. No transcript fetch, no separate summarization pass, no rate-limiting from scraping.
+**Ingestion and summarization remain separate steps.** The Gemini ingestion step produces a detailed content extraction (comprehensive account of the video's content — topics discussed, arguments made, examples given, technical details, speaker attributions). This is stored as the Content record's `content` field, analogous to a transcript. The existing summarization pipeline then processes it with its own prompts and detail levels, just like any other content source. This separation is important because:
+- The ingestion prompt is **more detailed and general** — capture everything
+- The summarization prompt is **more focused** — extract relevance, key insights, theme tags for the digest
+- Different use cases (daily digest vs weekly rollup vs search) may need different summarization passes over the same ingested content
 
 **Two-tier model configuration:**
 
@@ -183,20 +186,20 @@ This is a **combined ingest+summarize step**: Gemini's output IS the structured 
 | RSS feeds | `gemini-2.5-flash-lite` (`YOUTUBE_RSS_PROCESSING`) | LOW (66 tok/frame, ~3x cheaper) | Bulk, cost-sensitive |
 
 **Resolution control via `media_resolution` parameter:**
-- `LOW`: 66 tokens/frame — 3x cheaper than default, sufficient for summary extraction
-- Default: 258 tokens/frame — better for detailed analysis of curated content
+- `LOW`: 66 tokens/frame — 3x cheaper than default, sufficient for content extraction from bulk feeds
+- Default: 258 tokens/frame — better for detailed extraction of curated content
 - Configurable per-source via `gemini_resolution: low | medium | high | default`
 
 **LLM router extension:**
 - New `generate_with_video(model, system_prompt, user_prompt, video_url, media_resolution)` method on the Gemini backend
 - Uses `Part.from_uri(file_uri=url, mime_type="video/mp4")` alongside text prompt
-- Prompt requests structured summary matching the digest pipeline's expectations (key topics, insights, technical details, relevance scores)
+- Ingestion prompt requests comprehensive content extraction: all topics discussed, technical details, speaker statements, examples, and arguments — without editorial filtering
 
 **Source configuration:**
 ```yaml
 # youtube_playlist.yaml
 defaults:
-  gemini_summary: true          # Use Gemini native video summarization
+  gemini_summary: true          # Use Gemini native video content extraction
   gemini_resolution: default    # Higher quality for curated playlists
 
 sources:
@@ -218,21 +221,21 @@ sources:
 
 **Content storage:**
 - Stored as `ContentSource.YOUTUBE` (same as now)
-- Content field contains the Gemini-generated structured summary (not a raw transcript)
+- Content field contains the Gemini-generated detailed content extraction (replaces transcript, not the final summary)
 - `metadata_json` includes `"processing_method": "gemini_native"`, model used, and resolution
-- Summarization step detects `processing_method: gemini_native` and skips re-summarization (content is already a summary)
+- Content proceeds through the normal `aca summarize pending` pipeline — no special handling in the summarizer
 
 **Fallback to transcript-based flow:**
 - If `GOOGLE_API_KEY` is not set → fall back to `youtube-transcript-api`
 - If Gemini returns an error for a specific video (e.g., private/unlisted video) → fall back per-video
 - If `gemini_summary: false` per-source → use transcript-based flow
-- Private playlists: OAuth lists video IDs, then Gemini summarizes public videos within the playlist. Truly private videos fall back to transcript-based.
+- Private playlists: OAuth lists video IDs, then Gemini extracts content from public videos within the playlist. Truly private videos fall back to transcript-based.
 
 **Public-only limitation:**
 Gemini native video processing only works for public YouTube videos. Videos within a private playlist are typically public (the playlist is private, not the videos). For truly private/unlisted videos that Gemini can't access, the system falls back to transcript-based processing automatically.
 
 **Alternatives considered:**
-- Use Gemini for transcript extraction only (not summarization) — rejected because the summarization step adds cost and latency for no benefit when Gemini can produce the summary directly.
+- Combined ingest+summarize in one Gemini call — rejected because ingestion and summarization use different prompts and levels of detail. The ingestion prompt captures everything; the summarization prompt filters for relevance and key insights. Combining them loses the ability to re-summarize content for different outputs (daily vs weekly digest).
 - Single model for both playlist and RSS — rejected because the user wants differentiated quality. Curated playlists deserve a stronger model; bulk RSS feeds prioritize cost.
 - Upload video via File API instead of URL — rejected because `Part.from_uri` with YouTube URLs avoids download/upload overhead and is the intended pattern for YouTube content.
 
@@ -250,7 +253,7 @@ Gemini native video processing only works for public YouTube videos. Videos with
 
 - **Gemini native: public videos only**: Gemini can only access public YouTube videos via URL. Truly private/unlisted videos won't work. → Mitigation: Auto-fallback to transcript-based flow per-video; most videos in private playlists are publicly accessible (the playlist is private, not the videos).
 
-- **Gemini native: summary vs transcript fidelity**: Gemini produces a summary, not a verbatim transcript. Exact quotes and timestamps are not preserved. → Mitigation: Acceptable trade-off for the digest pipeline which summarizes content anyway. If exact quotes are needed, operator sets `gemini_summary: false` per-source to use transcript flow.
+- **Gemini native: content extraction vs verbatim transcript**: Gemini produces a detailed content extraction, not a verbatim transcript. Exact quotes and timestamps are not preserved. → Mitigation: The content extraction is comprehensive enough for the summarization pipeline. If exact quotes are needed, operator sets `gemini_summary: false` per-source to use transcript flow.
 
 - **Gemini native: cost at scale for RSS**: Even with `media_resolution: LOW` and flash-lite, processing 60+ RSS channels with many videos daily could accumulate cost. → Mitigation: `max_entries` per source limits video count; operator can set `gemini_summary: false` for low-priority RSS feeds; cost is still lower than IP blocks that prevent any ingestion.
 
