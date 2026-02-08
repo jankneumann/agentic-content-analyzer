@@ -92,6 +92,14 @@ def main_callback(
             help="Output in JSON format (machine-readable).",
         ),
     ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option(
+            "--debug",
+            "-d",
+            help="Enable debug logging output.",
+        ),
+    ] = False,
 ) -> None:
     """Agentic Content Aggregator CLI.
 
@@ -100,3 +108,13 @@ def main_callback(
     """
     if json_output:
         _set_json_mode(True)
+
+    if debug:
+        from src.config import settings
+
+        settings.log_level = "DEBUG"
+        settings.log_format = "json" if json_output else "text"
+
+    from src.utils.logging import setup_logging
+
+    setup_logging()
