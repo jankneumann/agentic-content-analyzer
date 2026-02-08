@@ -791,20 +791,19 @@ async def trigger_content_summarization(
 
     # Get content to process
     with get_db() as db:
-        # Get all content IDs that already have summaries
-        existing_summary_ids = {
-            s.content_id
-            for s in db.query(Summary.content_id).filter(Summary.content_id.isnot(None)).all()
-        }
+        query = db.query(Content)
 
         if request.content_ids:
             # Filter specific content IDs
-            query = db.query(Content).filter(Content.id.in_(request.content_ids))
+            query = query.filter(Content.id.in_(request.content_ids))
+
             if not request.force:
                 # Exclude content that already has summaries or is completed
+                # OPTIMIZATION: Use LEFT JOIN ... WHERE IS NULL instead of fetching all summary IDs
+                query = query.outerjoin(Summary, Content.id == Summary.content_id)
                 query = query.filter(
                     Content.status != ContentStatus.COMPLETED,
-                    ~Content.id.in_(existing_summary_ids) if existing_summary_ids else True,
+                    Summary.id.is_(None),
                 )
             contents = query.all()
         else:
@@ -814,9 +813,12 @@ async def trigger_content_summarization(
                 statuses_to_include.append(ContentStatus.FAILED)
 
             # Get content in eligible statuses that doesn't have a summary
-            query = db.query(Content).filter(Content.status.in_(statuses_to_include))
-            if existing_summary_ids:
-                query = query.filter(~Content.id.in_(existing_summary_ids))
+            query = query.filter(Content.status.in_(statuses_to_include))
+
+            # OPTIMIZATION: Use LEFT JOIN ... WHERE IS NULL instead of fetching all summary IDs
+            query = query.outerjoin(Summary, Content.id == Summary.content_id)
+            query = query.filter(Summary.id.is_(None))
+
             contents = query.all()
 
             # Reset failed content to PARSED so it can be retried

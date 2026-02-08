@@ -9,3 +9,7 @@
 ## 2026-01-26 - Missing Foreign Key Index on Self-Referential Relationship
 **Learning:** The `canonical_id` self-referential foreign key in `Content` model was missing an index, causing potential performance issues during deduplication checks and deletion (cascading updates).
 **Action:** Ensure all Foreign Keys, especially those used in filtering or joins (like self-referential ones), have `index=True` or an explicit index defined.
+
+## 2026-02-04 - Inefficient `NOT IN` Set Lookup in Summarization Trigger
+**Learning:** The summarization trigger was fetching ALL existing summary IDs into memory to filter out content that already has summaries. This scales poorly as the number of summaries grows.
+**Action:** Replaced with a `LEFT JOIN` on `Summary` where `Summary.id IS NULL` to handle the filtering at the database level efficiently.
