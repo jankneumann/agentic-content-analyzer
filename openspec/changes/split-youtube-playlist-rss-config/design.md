@@ -77,19 +77,54 @@ tasks = [
 
 **Why not keep a single "youtube" task:** The whole point is independent execution. If `youtube-rss` hits rate limits, `youtube-playlist` completes independently. The pipeline already handles per-source failures via the `_ingest_source` wrapper.
 
-### Decision 3: Caption proofreading with static dictionary
+### Decision 3: LLM-based caption proofreading
 
-Auto-generated YouTube captions frequently misspell proper nouns phonetically (e.g., "clawd" or "cloud" instead of "Claude"). A proofread step corrects these after transcript retrieval, before markdown conversion.
+Auto-generated YouTube captions frequently misspell proper nouns phonetically (e.g., "clawd" or "cloud" instead of "Claude"). A static dictionary can't handle these reliably because many misspellings are also real words ("cloud" is legitimate in cloud computing context, "lama" is a real animal). Contextual understanding is required.
 
-**Static dictionary approach:**
-- Case-insensitive whole-word replacement using a corrections map
-- Built-in defaults for common AI terms (`{"clawd": "Claude", "open eye": "OpenAI", "lama": "LLaMA", "chet gpt": "ChatGPT"}`)
-- Per-playlist overrides in YAML config
-- Only applied to auto-generated captions (manual captions are assumed correct)
+**LLM-based approach:**
+- Use a fast, cheap model (default: `gemini-2.5-flash-lite` or `claude-haiku-4-5`) to proofread transcript segments
+- Add `CAPTION_PROOFREADING` as a new `ModelStep` in `src/config/models.py` with env var `MODEL_CAPTION_PROOFREADING`
+- Send transcript text in batches (e.g., 50 segments at a time) with a system prompt containing:
+  - A hint list of commonly misspelled terms specific to AI/tech domain (configurable per-playlist via YAML `hint_terms`)
+  - Instructions to only correct proper noun misspellings, preserving all other text exactly
+  - The domain context (AI/ML newsletter content) to disambiguate
+- Return corrected text in the same segment structure (preserving timestamps)
+- Only applied to auto-generated captions (manual captions skipped)
+- Gated by `proofread: true` (default) per playlist source — can be disabled
+
+**Batching strategy:**
+- Group segments into batches of ~50 to stay well within context limits
+- Each batch is a single LLM call with all segments numbered for alignment
+- The prompt asks the LLM to return only changed segments (sparse diff) to minimize output tokens
+- Estimated cost: ~$0.001-0.005 per video transcript with flash-lite models
+
+**Hint terms (configurable):**
+```yaml
+# youtube_playlist.yaml
+defaults:
+  hint_terms:
+    - Claude
+    - Anthropic
+    - OpenAI
+    - LLaMA
+    - ChatGPT
+    - Gemini
+    - Mistral
+
+sources:
+  - type: youtube_playlist
+    id: PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6
+    name: Nate's Newsletter Playlist
+    proofread: true
+    hint_terms:  # Per-playlist additions merged with defaults
+      - Comcast
+      - Xfinity
+```
 
 **Alternatives considered:**
-- LLM-based proofread for every transcript — rejected for initial implementation due to cost and latency. Can be added as a future enhancement for ambiguous cases (e.g., "cloud" could be correct in a cloud computing context).
-- Regex-based corrections — rejected because whole-word replacement is simpler and covers the common cases without regex complexity.
+- Static dictionary only — rejected because context-dependent corrections (e.g., "cloud" vs "Claude") require understanding the surrounding text. A dictionary would either miss real misspellings or create false positives.
+- Full LLM rewrite of transcripts — rejected because we want minimal changes (only proper noun corrections), not paraphrasing. The prompt explicitly constrains the LLM to only fix misspellings.
+- Heavier model (Sonnet) — rejected because proofreading is a simple classification/correction task. Flash-lite models handle it well at 10-50x lower cost.
 
 ### Decision 4: Exponential backoff on 429 rate limiting
 
@@ -135,7 +170,11 @@ Note: OAuth is only needed for **private playlists**. Public playlists and all R
 
 - **Backoff delays**: 4 retries with exponential backoff adds up to 30s per video worst-case. For 60+ RSS feeds, this could extend total ingestion time. → Mitigation: Backoff only triggers on 429s (not common for every video); per-video scope means other videos proceed normally.
 
-- **Proofread false positives**: Static dictionary may incorrectly replace legitimate words (e.g., "cloud" in a cloud computing context). → Mitigation: Only apply to auto-generated captions; per-playlist overrides allow disabling or customizing corrections; `proofread: false` opt-out.
+- **Proofread cost**: LLM calls add cost per video (~$0.001-0.005 with flash-lite). For 40+ videos/day this is negligible ($0.04-0.20/day). → Mitigation: Use cheapest model (gemini-2.5-flash-lite); configurable via `MODEL_CAPTION_PROOFREADING`; `proofread: false` opt-out per playlist.
+
+- **Proofread latency**: LLM batching adds ~1-3 seconds per video. → Mitigation: Batch 50 segments per call to minimize round-trips; runs after transcript fetch which is already the slow path.
+
+- **Proofread hallucinations**: LLM might over-correct or change non-misspelled text. → Mitigation: Prompt explicitly constrains corrections to proper nouns only; sparse-diff output format means unchanged segments are preserved exactly; hint terms guide the LLM toward expected corrections.
 
 - **Cloud token expiry**: If the refresh token is revoked in Google Cloud Console, cloud deployments lose OAuth until the operator re-generates the token locally. → Mitigation: Log a clear error message with instructions when refresh fails.
 

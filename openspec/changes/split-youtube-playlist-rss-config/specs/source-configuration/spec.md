@@ -25,32 +25,42 @@ Both files SHALL be loaded by the existing `load_sources_directory` function and
 - **THEN** the system loads all entries from `youtube.yaml` as before
 - **AND** type filtering returns the correct sources for each service
 
-### Requirement: YouTube Caption Proofreading
-The system SHALL provide a post-processing proofread step for YouTube captions that corrects phonetic misspellings of proper nouns commonly introduced by auto-generated captions.
+### Requirement: LLM-Based YouTube Caption Proofreading
+The system SHALL provide a post-processing proofread step that uses a fast LLM to contextually correct phonetic misspellings of proper nouns in auto-generated YouTube captions.
 
 The proofread function SHALL:
-1. Accept a list of `TranscriptSegment` objects and a corrections dictionary
-2. Apply case-insensitive whole-word replacements from the corrections dictionary
-3. Return corrected `TranscriptSegment` objects with an `is_proofread` flag set to `true`
+1. Accept a list of `TranscriptSegment` objects and a list of hint terms (proper nouns likely to appear)
+2. Batch segments (~50 per LLM call) and send them with a proofreading prompt that includes hint terms and domain context
+3. Use the LLM to identify and correct only proper noun misspellings, preserving all other text exactly
+4. Return corrected `TranscriptSegment` objects with an `is_proofread` flag set to `true`
 
-The corrections dictionary SHALL be configurable via:
-- A `corrections` map in the YouTube playlist source entry (per-playlist overrides)
-- A top-level `corrections` map in `youtube_playlist.yaml` (shared defaults)
-- Built-in defaults for common AI terminology misspellings (e.g., "clawd"/"cloud" → "Claude", "open eye" → "OpenAI", "lama" → "LLaMA")
+The model SHALL be configurable via a new `CAPTION_PROOFREADING` pipeline step:
+- Default model: `gemini-2.5-flash-lite` (fastest, cheapest option)
+- Configurable via `MODEL_CAPTION_PROOFREADING` env var (e.g., `claude-haiku-4-5`)
 
-Proofreading SHALL be applied after transcript retrieval and before markdown conversion, for both playlist and RSS transcript ingestion.
+Hint terms SHALL be configurable via:
+- A `hint_terms` list in the YouTube playlist source entry (per-playlist additions)
+- A top-level `hint_terms` list under `defaults` in `youtube_playlist.yaml` (shared baseline)
+- Built-in defaults for common AI terminology (e.g., "Claude", "Anthropic", "OpenAI", "LLaMA", "ChatGPT", "Gemini", "Mistral")
 
-#### Scenario: Auto-generated captions with phonetic misspellings corrected
-- **WHEN** a video transcript contains "clawd" or "cloud" in an AI context
-- **AND** the corrections dictionary maps these to "Claude"
-- **THEN** the proofread step replaces the misspellings with "Claude"
+Proofreading SHALL be applied after transcript retrieval and before markdown conversion, only for auto-generated captions.
+
+#### Scenario: Auto-generated captions with contextual misspelling correction
+- **WHEN** a video transcript contains "cloud" in a sentence like "cloud is an AI model made by anthropic"
+- **AND** the hint terms include "Claude" and "Anthropic"
+- **THEN** the LLM corrects "cloud" to "Claude" and "anthropic" to "Anthropic" based on context
 - **AND** the corrected transcript is used for markdown conversion
 - **AND** the Content record's `metadata_json` includes `"is_proofread": true`
 
-#### Scenario: Per-playlist correction overrides
-- **WHEN** a playlist source in `youtube_playlist.yaml` defines a `corrections` map
-- **THEN** those corrections are merged with (and override) the shared defaults
-- **AND** only apply to videos from that specific playlist
+#### Scenario: Legitimate words preserved in correct context
+- **WHEN** a video transcript contains "cloud" in a sentence like "deploying to the cloud using AWS"
+- **THEN** the LLM preserves "cloud" as-is because it is correct in this context
+- **AND** no false-positive correction occurs
+
+#### Scenario: Per-playlist hint terms
+- **WHEN** a playlist source in `youtube_playlist.yaml` defines a `hint_terms` list
+- **THEN** those terms are merged with the shared defaults
+- **AND** the combined list is passed to the LLM prompt for that playlist's videos
 
 #### Scenario: Manual captions skip proofreading
 - **WHEN** a video has manually created captions (not auto-generated)
@@ -59,7 +69,12 @@ Proofreading SHALL be applied after transcript retrieval and before markdown con
 
 #### Scenario: Proofreading disabled
 - **WHEN** a playlist source sets `proofread: false`
-- **THEN** no corrections are applied to transcripts from that playlist
+- **THEN** no LLM proofreading is applied to transcripts from that playlist
+
+#### Scenario: Proofreading model configurable
+- **WHEN** `MODEL_CAPTION_PROOFREADING=claude-haiku-4-5` is set in the environment
+- **THEN** the proofreading step uses Claude Haiku instead of the default Gemini Flash Lite
+- **AND** the model is resolved via the existing `ModelConfig.get_model_for_step()` mechanism
 
 ### Requirement: YouTube Transcript Retry with Exponential Backoff
 The system SHALL retry transcript fetch operations that fail with HTTP 429 (Too Many Requests) using exponential backoff.

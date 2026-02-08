@@ -30,11 +30,13 @@ Splitting the configuration and CLI entry points lets operators:
 - Both tasks run concurrently alongside Gmail, RSS, Podcast, and Substack sources.
 - Report counts separately: `youtube-playlist: N items`, `youtube-rss: M items`.
 
-### Caption Proofreading
-- Add a post-processing proofread step for YouTube captions that corrects phonetic misspellings of proper nouns (e.g., "cloud"/"clawd" → "Claude", "open eye" → "OpenAI").
-- Configurable via a corrections dictionary in `sources.d/youtube_playlist.yaml` or a dedicated `youtube_corrections.yaml` file.
-- Applied after transcript retrieval, before markdown conversion.
-- Supports both static dictionary replacements and optional LLM-based proofread for ambiguous cases.
+### LLM-Based Caption Proofreading
+- Add a post-processing proofread step using a fast LLM (default: `gemini-2.5-flash-lite` or `claude-haiku-4-5`) to contextually correct phonetic misspellings of proper nouns in auto-generated captions.
+- A static dictionary cannot reliably handle words like "cloud" (legitimate in cloud computing) vs "Claude" (misspelling). The LLM uses surrounding context to disambiguate.
+- Add `CAPTION_PROOFREADING` as a new `ModelStep` configurable via `MODEL_CAPTION_PROOFREADING` env var.
+- Configurable `hint_terms` list per playlist in `youtube_playlist.yaml` to guide the LLM (e.g., "Claude", "Anthropic", "OpenAI").
+- Applied after transcript retrieval, before markdown conversion. Only for auto-generated captions.
+- Transcript segments sent in batches (~50 at a time) to minimize LLM calls. Estimated cost: ~$0.001-0.005 per video.
 
 ### Exponential Backoff on 429 Rate Limiting
 - Add retry-with-backoff logic to `YouTubeClient.get_transcript()` for `youtube-transcript-api` 429 errors.
@@ -58,8 +60,10 @@ Splitting the configuration and CLI entry points lets operators:
 ### Affected Code
 - `sources.d/youtube.yaml` — split into two files
 - `src/ingestion/youtube.py` — 429 backoff, cloud OAuth hydration, caption proofreading integration
-- `src/ingestion/youtube_captions.py` — new module: proofread function, corrections loader
-- `src/config/sources.py` — `corrections` and `proofread` fields on `YouTubePlaylistSource`
+- `src/ingestion/youtube_captions.py` — new module: LLM-based proofread function, hint terms loader, batch processing
+- `src/config/sources.py` — `hint_terms` and `proofread` fields on `YouTubePlaylistSource`
+- `src/config/models.py` — new `CAPTION_PROOFREADING` ModelStep
+- `src/config/model_registry.yaml` — default model for caption proofreading
 - `src/config/settings.py` — new settings (`youtube_max_retries`, `youtube_backoff_base`, `youtube_oauth_token_json`)
 - `src/cli/ingest_commands.py` — new subcommands
 - `src/cli/pipeline_commands.py` — split YouTube into two parallel ingestion tasks, add RSS feeds to pipeline

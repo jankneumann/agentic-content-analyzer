@@ -3,18 +3,24 @@
 - [ ] 1.1 Create `sources.d/youtube_playlist.yaml` with `youtube_playlist` and `youtube_channel` entries from `youtube.yaml`
 - [ ] 1.2 Create `sources.d/youtube_rss.yaml` with `youtube_rss` entries from `youtube.yaml`
 - [ ] 1.3 Remove `sources.d/youtube.yaml`
-- [ ] 1.4 Add `corrections` field support to `YouTubePlaylistSource` model in `src/config/sources.py`
+- [ ] 1.4 Add `hint_terms` list field to `YouTubePlaylistSource` model in `src/config/sources.py`
 - [ ] 1.5 Add `proofread` boolean field to `YouTubePlaylistSource` model (default: `true`)
 - [ ] 1.6 Verify `load_sources_directory` loads both new files correctly (existing behavior, no code changes expected)
 
-## 2. Caption Proofreading
+## 2. LLM-Based Caption Proofreading
 
-- [ ] 2.1 Create `src/ingestion/youtube_captions.py` module with `proofread_transcript(segments, corrections, is_auto_generated) -> list[TranscriptSegment]`
-- [ ] 2.2 Define built-in corrections dictionary for common AI terminology misspellings
-- [ ] 2.3 Add corrections loading from YAML config (per-playlist overrides merged with defaults)
-- [ ] 2.4 Integrate proofreading into `YouTubeContentIngestionService.ingest_playlist()` after transcript retrieval
-- [ ] 2.5 Add `is_proofread` flag to Content `metadata_json`
-- [ ] 2.6 Skip proofreading for manual (non-auto-generated) captions
+- [ ] 2.1 Add `CAPTION_PROOFREADING` to `ModelStep` enum in `src/config/models.py`
+- [ ] 2.2 Add `caption_proofreading` default model (`gemini-2.5-flash-lite`) to `src/config/model_registry.yaml` and `ModelConfig.__init__`
+- [ ] 2.3 Create `src/ingestion/youtube_captions.py` module with:
+  - `proofread_transcript(segments, hint_terms, is_auto_generated, model_step) -> list[TranscriptSegment]`
+  - Batching logic (~50 segments per LLM call)
+  - System prompt with hint terms, domain context, and sparse-diff output format
+  - Response parser to apply corrections back to segments
+- [ ] 2.4 Define built-in default hint terms list for common AI terminology
+- [ ] 2.5 Add hint terms loading from YAML config (per-playlist additions merged with defaults)
+- [ ] 2.6 Integrate proofreading into `YouTubeContentIngestionService.ingest_playlist()` after transcript retrieval
+- [ ] 2.7 Add `is_proofread` flag to Content `metadata_json`
+- [ ] 2.8 Skip proofreading for manual (non-auto-generated) captions
 
 ## 3. Exponential Backoff on 429
 
@@ -52,8 +58,10 @@
 ## 8. Tests
 
 - [ ] 8.1 Add `tests/test_ingestion/test_youtube_captions.py`:
-  - Proofread function (basic replacements, case-insensitive, whole-word, skip manual captions)
-  - Corrections loading and merging (built-in + per-playlist overrides)
+  - LLM proofread function (mocked LLM responses, batch splitting, sparse-diff parsing)
+  - Hint terms merging (built-in defaults + per-playlist additions)
+  - Skip manual captions
+  - Proofread disabled via `proofread: false`
 - [ ] 8.2 Update `tests/test_ingestion/test_youtube_sources.py` for split YAML files
 - [ ] 8.3 Add CLI tests for `youtube-playlist` and `youtube-rss` subcommands
 - [ ] 8.4 Add tests for 429 exponential backoff (mock 429 responses, verify retry count and delays)
