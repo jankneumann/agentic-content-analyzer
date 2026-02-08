@@ -6,9 +6,8 @@ The system SHALL provide `aca ingest youtube-playlist` as a dedicated subcommand
 #### Scenario: Ingest YouTube playlists only
 - **WHEN** `aca ingest youtube-playlist --max <count> --days <days> --force --public-only` is executed
 - **THEN** the system ingests videos from playlist and channel sources in `youtube_playlist.yaml`
-- **AND** uses Data API captions for transcripts when OAuth is available
 - **AND** does not process RSS feed sources from `youtube_rss.yaml`
-- **AND** displays a summary of ingested items including Data API vs fallback counts
+- **AND** displays a summary of ingested items
 
 #### Scenario: YouTube playlist ingest with no playlists configured
 - **WHEN** `aca ingest youtube-playlist` is executed
@@ -22,7 +21,6 @@ The system SHALL provide `aca ingest youtube-rss` as a dedicated subcommand for 
 #### Scenario: Ingest YouTube RSS feeds only
 - **WHEN** `aca ingest youtube-rss --max <count> --days <days> --force` is executed
 - **THEN** the system ingests videos from RSS feed sources in `youtube_rss.yaml`
-- **AND** uses `youtube-transcript-api` for transcripts
 - **AND** does not process playlist or channel sources from `youtube_playlist.yaml`
 - **AND** displays a summary of ingested items
 
@@ -49,7 +47,7 @@ The system SHALL provide `aca ingest` subcommands for all supported ingestion so
 
 #### Scenario: Ingest YouTube (combined)
 - **WHEN** `aca ingest youtube --max <count> --force` is executed
-- **THEN** YouTube ingestion SHALL run playlists from `sources.d/youtube_playlist.yaml` and RSS feeds from `sources.d/youtube_rss.yaml`
+- **THEN** YouTube ingestion SHALL run playlists from `sources.d/youtube_playlist.yaml` first, then RSS feeds from `sources.d/youtube_rss.yaml`
 - **AND** a summary of ingested items SHALL be displayed with playlists, channels, and feeds counts
 
 #### Scenario: Ingest YouTube Playlist
