@@ -404,7 +404,8 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Railway Hobby plan connection limits | Use `pool_size=3`, `max_overflow=2`; exceeding causes connection errors |
 | Braintrust extra in Dockerfile | Must add `--extra braintrust` to `uv sync` in Dockerfile; without it `import braintrust` fails silently |
 | Cloud DB has no tables | Supabase/Neon start empty; run `alembic upgrade head` against production |
-| Alembic multiple heads after relinearize | Run `alembic heads`; fix orphan `down_revision` to rejoin main chain |
+| Alembic multiple heads block `upgrade head` | Run `alembic heads` to detect; fix with `alembic merge heads -m "..."` or use `alembic upgrade heads` (plural) |
+| PG enum + Python StrEnum mismatch | Adding to Python `StrEnum` requires `ALTER TYPE ... ADD VALUE` migration; without it PG throws `InvalidTextRepresentation` |
 | VITE_API_URL trailing slash | Causes double-slash (`//api/v1/`); strip with `.replace(/\/$/, "")` |
 | CORS blocks cross-origin frontend | Set `ALLOWED_ORIGINS` env var on backend with frontend URL |
 | Migrations create existing tables | Make idempotent: check `information_schema.tables` before `create_table` |
