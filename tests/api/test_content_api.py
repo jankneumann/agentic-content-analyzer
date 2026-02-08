@@ -321,8 +321,10 @@ class TestContentStats:
         response = client.get("/api/v1/contents/stats")
         assert response.status_code == 200
         data = response.json()
-        # All 3 items need summarization (no summaries created yet)
-        assert data["needs_summarization_count"] == 3
+        # Only PENDING and PARSED items need summarization
+        # sample_contents has 2 PARSED and 1 COMPLETED (without summary)
+        # The COMPLETED item is excluded as it's considered fully processed
+        assert data["needs_summarization_count"] == 2
 
 
 class TestTriggerIngestion:
