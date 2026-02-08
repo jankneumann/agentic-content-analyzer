@@ -102,5 +102,6 @@ Templates:
 #### Scenario: Template profiles list required secrets
 - **GIVEN** a template profile references `${SECRET_VAR}` without defaults
 - **WHEN** the profile is validated with secrets checking enabled
-- **THEN** validation SHALL list missing secrets as warnings (not errors)
-- **AND** the warning SHALL indicate which secrets need to be provided
+- **THEN** validation SHALL report the first missing secret as a warning (not an error)
+- **AND** the warning SHALL indicate the secret name that needs to be provided
+- **NOTE**: Current implementation reports one missing secret at a time (interpolation fails fast). Collecting all missing secrets in a single pass is deferred to a future improvement
