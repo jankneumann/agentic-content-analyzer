@@ -178,8 +178,9 @@ async def _ingest_source(
 async def _run_ingestion_stage_async() -> dict[str, int]:
     """Run all ingestion sources in parallel and return counts per source.
 
-    Uses asyncio.gather() to run all 5 sources concurrently.
-    Total ingestion time equals the slowest source (not sum of all).
+    Uses asyncio.gather() to run all 5 sources concurrently via the
+    shared orchestrator layer. Total ingestion time equals the slowest
+    source, not the sum of all sources.
 
     Returns:
         Dictionary mapping source name to number of items ingested.
@@ -187,36 +188,24 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     Raises:
         RuntimeError: If all ingestion sources fail.
     """
-    from src.ingestion.gmail import GmailContentIngestionService
-    from src.ingestion.podcast import PodcastContentIngestionService
-    from src.ingestion.rss import RSSContentIngestionService
-    from src.ingestion.substack import SubstackContentIngestionService
-    from src.ingestion.youtube import YouTubeContentIngestionService, YouTubeRSSIngestionService
+    from src.ingestion.orchestrator import (
+        ingest_gmail,
+        ingest_podcast,
+        ingest_rss,
+        ingest_substack,
+        ingest_youtube,
+    )
 
     typer.echo("  Running parallel ingestion (5 sources)...")
 
-    # Create service instances
-    gmail_service = GmailContentIngestionService()
-    rss_service = RSSContentIngestionService()
-    youtube_service = YouTubeContentIngestionService()
-    youtube_rss_service = YouTubeRSSIngestionService()
-    podcast_service = PodcastContentIngestionService()
-    substack_service = SubstackContentIngestionService()
-
-    def _youtube_ingest_all() -> int:
-        """Ingest from all YouTube source types (playlists, channels, RSS feeds)."""
-        playlists = youtube_service.ingest_all_playlists()
-        channels = youtube_service.ingest_channels()
-        feeds = youtube_rss_service.ingest_all_feeds()
-        return playlists + channels + feeds
-
-    # Define ingestion tasks
+    # Define ingestion tasks — each orchestrator function is a plain
+    # synchronous function, wrapped in asyncio.to_thread by _ingest_source
     tasks = [
-        _ingest_source("gmail", gmail_service.ingest_content),
-        _ingest_source("rss", lambda: rss_service.ingest_content().items_ingested),
-        _ingest_source("youtube", _youtube_ingest_all),
-        _ingest_source("podcast", podcast_service.ingest_all_feeds),
-        _ingest_source("substack", substack_service.ingest_content),
+        _ingest_source("gmail", ingest_gmail),
+        _ingest_source("rss", ingest_rss),
+        _ingest_source("youtube", ingest_youtube),
+        _ingest_source("podcast", ingest_podcast),
+        _ingest_source("substack", ingest_substack),
     ]
 
     # Run all sources in parallel

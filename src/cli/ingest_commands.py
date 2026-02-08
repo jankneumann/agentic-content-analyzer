@@ -61,10 +61,9 @@ def gmail(
     after_date = _days_to_after_date(days)
 
     try:
-        from src.ingestion.gmail import GmailContentIngestionService
+        from src.ingestion.orchestrator import ingest_gmail
 
-        service = GmailContentIngestionService()
-        count = service.ingest_content(
+        count = ingest_gmail(
             query=query,
             max_results=max,
             after_date=after_date,
@@ -106,17 +105,27 @@ def rss(
     """Ingest articles from configured RSS feeds."""
     from rich.console import Console
 
+    from src.ingestion.rss import IngestionResult
+
     console = Console()
     after_date = _days_to_after_date(days)
 
-    try:
-        from src.ingestion.rss import RSSContentIngestionService
+    # Capture the full IngestionResult via on_result callback
+    # so the CLI can display redirect/failure details.
+    captured_result: IngestionResult | None = None
 
-        service = RSSContentIngestionService()
-        result = service.ingest_content(
+    def _capture_result(r: IngestionResult) -> None:
+        nonlocal captured_result
+        captured_result = r
+
+    try:
+        from src.ingestion.orchestrator import ingest_rss
+
+        count = ingest_rss(
             max_entries_per_feed=max,
             after_date=after_date,
             force_reprocess=force,
+            on_result=_capture_result,
         )
     except Exception as exc:
         if is_json_mode():
@@ -126,43 +135,41 @@ def rss(
         raise typer.Exit(1)
 
     if is_json_mode():
-        output_result(
-            {
-                "source": "rss",
-                "ingested": result.items_ingested,
-                "failed_sources": [
-                    {"url": r.url, "name": r.name, "error": r.error, "error_type": r.error_type}
-                    for r in result.failed_sources
-                ],
-                "redirected_sources": [
-                    {"url": r.url, "name": r.name, "redirected_to": r.redirected_to}
-                    for r in result.redirected_sources
-                ],
-            }
-        )
+        result_data: dict = {"source": "rss", "ingested": count}
+        if captured_result:
+            result_data["failed_sources"] = [
+                {"url": r.url, "name": r.name, "error": r.error, "error_type": r.error_type}
+                for r in captured_result.failed_sources
+            ]
+            result_data["redirected_sources"] = [
+                {"url": r.url, "name": r.name, "redirected_to": r.redirected_to}
+                for r in captured_result.redirected_sources
+            ]
+        output_result(result_data)
     else:
-        console.print(
-            f"[green]RSS ingestion complete.[/green] {result.items_ingested} item(s) ingested."
-        )
+        console.print(f"[green]RSS ingestion complete.[/green] {count} item(s) ingested.")
 
-        # Show redirected sources — user should update their config
-        if result.redirected_sources:
-            console.print(
-                f"\n[yellow]Warning:[/yellow] {len(result.redirected_sources)} source(s) "
-                f"redirected to new URLs:"
-            )
-            for r in result.redirected_sources:
-                label = r.name or r.url
-                console.print(f"  [yellow]{label}[/yellow]")
-                console.print(f"    {r.url} -> {r.redirected_to}")
+        if captured_result:
+            # Show redirected sources — user should update their config
+            if captured_result.redirected_sources:
+                console.print(
+                    f"\n[yellow]Warning:[/yellow] {len(captured_result.redirected_sources)} "
+                    f"source(s) redirected to new URLs:"
+                )
+                for r in captured_result.redirected_sources:
+                    label = r.name or r.url
+                    console.print(f"  [yellow]{label}[/yellow]")
+                    console.print(f"    {r.url} -> {r.redirected_to}")
 
-        # Show failed sources — user should investigate or disable
-        if result.failed_sources:
-            console.print(f"\n[red]Error:[/red] {len(result.failed_sources)} source(s) failed:")
-            for r in result.failed_sources:
-                label = r.name or r.url
-                console.print(f"  [red]{label}[/red] ({r.error_type})")
-                console.print(f"    {r.error}")
+            # Show failed sources — user should investigate or disable
+            if captured_result.failed_sources:
+                console.print(
+                    f"\n[red]Error:[/red] {len(captured_result.failed_sources)} source(s) failed:"
+                )
+                for r in captured_result.failed_sources:
+                    label = r.name or r.url
+                    console.print(f"  [red]{label}[/red] ({r.error_type})")
+                    console.print(f"    {r.error}")
 
 
 # ---------------------------------------------------------------------------
@@ -196,17 +203,14 @@ def substack(
     after_date = _days_to_after_date(days)
 
     try:
-        from src.ingestion.substack import SubstackContentIngestionService
+        from src.ingestion.orchestrator import ingest_substack
 
-        service = SubstackContentIngestionService(session_cookie=session_cookie)
-        try:
-            count = service.ingest_content(
-                max_entries_per_source=max,
-                after_date=after_date,
-                force_reprocess=force,
-            )
-        finally:
-            service.close()
+        count = ingest_substack(
+            max_entries_per_source=max,
+            after_date=after_date,
+            force_reprocess=force,
+            session_cookie=session_cookie,
+        )
     except Exception as exc:
         if is_json_mode():
             output_result({"error": str(exc), "source": "substack"}, success=False)
@@ -307,31 +311,14 @@ def youtube(
     use_oauth = not public_only
 
     try:
-        from src.ingestion.youtube import (
-            YouTubeContentIngestionService,
-            YouTubeRSSIngestionService,
-        )
+        from src.ingestion.orchestrator import ingest_youtube
 
-        service = YouTubeContentIngestionService(use_oauth=use_oauth)
-
-        playlist_count = service.ingest_all_playlists(
-            max_videos_per_playlist=max,
+        total = ingest_youtube(
+            max_videos=max,
             after_date=after_date,
             force_reprocess=force,
+            use_oauth=use_oauth,
         )
-        channel_count = service.ingest_channels(
-            max_videos_per_channel=max,
-            after_date=after_date,
-            force_reprocess=force,
-        )
-
-        rss_service = YouTubeRSSIngestionService()
-        feed_count = rss_service.ingest_all_feeds(
-            max_entries_per_feed=max,
-            after_date=after_date,
-            force_reprocess=force,
-        )
-        total = playlist_count + channel_count + feed_count
     except Exception as exc:
         if is_json_mode():
             output_result({"error": str(exc), "source": "youtube"}, success=False)
@@ -340,20 +327,9 @@ def youtube(
         raise typer.Exit(1)
 
     if is_json_mode():
-        output_result(
-            {
-                "source": "youtube",
-                "ingested": total,
-                "playlists": playlist_count,
-                "channels": channel_count,
-                "feeds": feed_count,
-            }
-        )
+        output_result({"source": "youtube", "ingested": total})
     else:
-        console.print(
-            f"[green]YouTube ingestion complete.[/green] {total} item(s) ingested "
-            f"(playlists: {playlist_count}, channels: {channel_count}, feeds: {feed_count})."
-        )
+        console.print(f"[green]YouTube ingestion complete.[/green] {total} item(s) ingested.")
 
 
 # ---------------------------------------------------------------------------
@@ -389,15 +365,15 @@ def podcast(
     after_date = _days_to_after_date(days)
 
     try:
-        from src.ingestion.podcast import PodcastContentIngestionService
-
-        service = PodcastContentIngestionService()
-
         # When --no-transcribe is passed, override per-source transcribe setting
         # by providing explicit sources with transcribe toggled off.
+        # This requires calling the service directly (orchestrator doesn't
+        # handle custom source overrides).
         if not transcribe:
             from src.config import settings
+            from src.ingestion.podcast import PodcastContentIngestionService
 
+            service = PodcastContentIngestionService()
             sources_config = settings.get_sources_config()
             sources = sources_config.get_podcast_sources()
             for source in sources:
@@ -409,7 +385,9 @@ def podcast(
                 force_reprocess=force,
             )
         else:
-            count = service.ingest_all_feeds(
+            from src.ingestion.orchestrator import ingest_podcast
+
+            count = ingest_podcast(
                 max_entries_per_feed=max,
                 after_date=after_date,
                 force_reprocess=force,

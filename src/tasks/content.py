@@ -227,16 +227,24 @@ def register_content_tasks(pgq: PgQueuer) -> None:
         """Ingest content from a source.
 
         This task handles content ingestion from various sources
-        (Gmail, RSS, YouTube, Podcast) via the job queue.
+        (Gmail, RSS, YouTube, Podcast, Substack) via the job queue.
+        Delegates to the shared orchestrator layer for service wiring.
 
         Payload:
-            source: str - Content source type (gmail, rss, youtube, podcast)
+            source: str - Content source type (gmail, rss, youtube, podcast, substack)
             max_results: int - Maximum items to fetch
             days_back: int - Days back to search
             force_reprocess: bool - Force reprocess existing content
         """
         from datetime import UTC, datetime, timedelta
 
+        from src.ingestion.orchestrator import (
+            ingest_gmail,
+            ingest_podcast,
+            ingest_rss,
+            ingest_substack,
+            ingest_youtube,
+        )
         from src.queue.setup import update_job_progress
 
         payload = _decode_payload(job)
@@ -250,76 +258,29 @@ def register_content_tasks(pgq: PgQueuer) -> None:
 
         after_date = datetime.now(UTC) - timedelta(days=days_back)
 
+        # Map source names to orchestrator functions with appropriate kwargs
+        source_map: dict[str, tuple] = {
+            "gmail": (ingest_gmail, {"max_results": max_results}),
+            "rss": (ingest_rss, {"max_entries_per_feed": max_results}),
+            "youtube": (ingest_youtube, {"max_videos": max_results}),
+            "podcast": (ingest_podcast, {"max_entries_per_feed": max_results}),
+            "substack": (ingest_substack, {"max_entries_per_source": max_results}),
+        }
+
+        if source not in source_map:
+            logger.error(f"Unsupported source for ingestion: {source}")
+            await update_job_progress(job.id, 0, f"Error: Unsupported source '{source}'")
+            raise ValueError(f"Unsupported source: {source}")
+
         try:
-            if source == "gmail":
-                from src.ingestion.gmail import GmailContentIngestionService
-
-                gmail_service = GmailContentIngestionService()
-                count = await asyncio.to_thread(
-                    gmail_service.ingest_content,
-                    max_results=max_results,
+            ingest_func, kwargs = source_map[source]
+            count = await asyncio.to_thread(
+                lambda: ingest_func(
                     after_date=after_date,
                     force_reprocess=force_reprocess,
+                    **kwargs,
                 )
-
-            elif source == "rss":
-                from src.ingestion.rss import RSSContentIngestionService
-
-                rss_service = RSSContentIngestionService()
-                rss_result = await asyncio.to_thread(
-                    lambda: rss_service.ingest_content(
-                        max_entries_per_feed=max_results,
-                        after_date=after_date,
-                        force_reprocess=force_reprocess,
-                    )
-                )
-                count = rss_result.items_ingested
-
-            elif source == "youtube":
-                from src.ingestion.youtube import (
-                    YouTubeContentIngestionService,
-                    YouTubeRSSIngestionService,
-                )
-
-                youtube_service = YouTubeContentIngestionService(use_oauth=True)
-                playlist_count = await asyncio.to_thread(
-                    youtube_service.ingest_all_playlists,
-                    max_videos_per_playlist=max_results,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                )
-                channel_count = await asyncio.to_thread(
-                    youtube_service.ingest_channels,
-                    max_videos_per_channel=max_results,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                )
-                youtube_rss_service = YouTubeRSSIngestionService()
-                feed_count = await asyncio.to_thread(
-                    lambda: youtube_rss_service.ingest_all_feeds(
-                        max_entries_per_feed=max_results,
-                        after_date=after_date,
-                        force_reprocess=force_reprocess,
-                    )
-                )
-                count = playlist_count + channel_count + feed_count
-
-            elif source == "podcast":
-                from src.ingestion.podcast import PodcastContentIngestionService
-
-                podcast_service = PodcastContentIngestionService()
-                count = await asyncio.to_thread(
-                    lambda: podcast_service.ingest_all_feeds(
-                        max_entries_per_feed=max_results,
-                        after_date=after_date,
-                        force_reprocess=force_reprocess,
-                    )
-                )
-
-            else:
-                logger.error(f"Unsupported source for ingestion: {source}")
-                await update_job_progress(job.id, 0, f"Error: Unsupported source '{source}'")
-                raise ValueError(f"Unsupported source: {source}")
+            )
 
             await update_job_progress(job.id, 100, f"Ingested {count} items from {source}")
             logger.info(f"Ingestion completed for source={source}: {count} items")

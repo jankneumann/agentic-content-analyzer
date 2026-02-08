@@ -1,23 +1,24 @@
 """Integration tests for parallel ingestion pipeline.
 
+After the orchestrator refactor, the pipeline delegates to orchestrator functions.
+Tests mock at `src.ingestion.orchestrator.<func>` instead of individual service classes.
+
 Tests cover:
 - Partial failure handling (some sources fail, others succeed)
 - All sources fail → RuntimeError raised
 - CLI --wait flag (queue-based summarization)
 - Progress output formatting (per-source status, summary line)
-
-Task 7.2 from add-parallel-job-queue proposal.
 """
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from src.cli.app import app
-from src.ingestion.rss import IngestionResult
 
 runner = CliRunner()
 
@@ -25,6 +26,15 @@ runner = CliRunner()
 # =============================================================================
 # Helpers
 # =============================================================================
+
+# Orchestrator function names mapped to their patch targets
+_ORCHESTRATOR_FUNCTIONS = {
+    "gmail": "src.ingestion.orchestrator.ingest_gmail",
+    "rss": "src.ingestion.orchestrator.ingest_rss",
+    "youtube": "src.ingestion.orchestrator.ingest_youtube",
+    "podcast": "src.ingestion.orchestrator.ingest_podcast",
+    "substack": "src.ingestion.orchestrator.ingest_substack",
+}
 
 
 def _make_ingestion_patches(
@@ -34,8 +44,8 @@ def _make_ingestion_patches(
     youtube_result: int | Exception = 1,
     podcast_result: int | Exception = 1,
     substack_result: int | Exception = 0,
-):
-    """Build mock patches for all 5 ingestion services.
+) -> dict[str, patch]:
+    """Build mock patches for all 5 orchestrator functions.
 
     Args:
         gmail_result: Return value or exception for Gmail ingestion.
@@ -45,66 +55,31 @@ def _make_ingestion_patches(
         substack_result: Return value or exception for Substack ingestion.
 
     Returns:
-        Dict of context-manager patches keyed by service name.
+        Dict of context-manager patches keyed by source name.
     """
-
-    def _mock_service(method_name: str, result: int | Exception | IngestionResult):
-        mock = MagicMock()
-        method = getattr(mock.return_value, method_name)
-        if isinstance(result, Exception):
-            method.side_effect = result
-        else:
-            method.return_value = result
-        return mock
-
-    # RSS ingest_content returns IngestionResult, not int
-    rss_mock_result: Exception | IngestionResult
-    if isinstance(rss_result, Exception):
-        rss_mock_result = rss_result
-    else:
-        rss_mock_result = IngestionResult(items_ingested=rss_result)
-
-    # YouTube uses two service classes: YouTubeContentIngestionService
-    # (playlists + channels) and YouTubeRSSIngestionService (RSS feeds)
-    youtube_mock = MagicMock()
-    if isinstance(youtube_result, Exception):
-        youtube_mock.return_value.ingest_all_playlists.side_effect = youtube_result
-        youtube_mock.return_value.ingest_channels.side_effect = youtube_result
-    else:
-        youtube_mock.return_value.ingest_all_playlists.return_value = youtube_result
-        youtube_mock.return_value.ingest_channels.return_value = 0
-
-    youtube_rss_mock = MagicMock()
-    if isinstance(youtube_result, Exception):
-        youtube_rss_mock.return_value.ingest_all_feeds.side_effect = youtube_result
-    else:
-        youtube_rss_mock.return_value.ingest_all_feeds.return_value = 0
-
-    return {
-        "gmail": _mock_service("ingest_content", gmail_result),
-        "rss": _mock_service("ingest_content", rss_mock_result),
-        "youtube": youtube_mock,
-        "youtube_rss": youtube_rss_mock,
-        "podcast": _mock_service("ingest_all_feeds", podcast_result),
-        "substack": _mock_service("ingest_content", substack_result),
+    results = {
+        "gmail": gmail_result,
+        "rss": rss_result,
+        "youtube": youtube_result,
+        "podcast": podcast_result,
+        "substack": substack_result,
     }
 
+    patches = {}
+    for name, result in results.items():
+        target = _ORCHESTRATOR_FUNCTIONS[name]
+        if isinstance(result, Exception):
+            patches[name] = patch(target, side_effect=result)
+        else:
+            patches[name] = patch(target, return_value=result)
+    return patches
 
-def _apply_ingestion_patches(mocks: dict):
-    """Return a combined context manager that patches all ingestion services."""
-    from contextlib import ExitStack
 
+def _apply_ingestion_patches(patches: dict) -> ExitStack:
+    """Return a combined context manager that applies all orchestrator patches."""
     stack = ExitStack()
-    for name, mock_cls in mocks.items():
-        module_map = {
-            "gmail": "src.ingestion.gmail.GmailContentIngestionService",
-            "rss": "src.ingestion.rss.RSSContentIngestionService",
-            "youtube": "src.ingestion.youtube.YouTubeContentIngestionService",
-            "youtube_rss": "src.ingestion.youtube.YouTubeRSSIngestionService",
-            "podcast": "src.ingestion.podcast.PodcastContentIngestionService",
-            "substack": "src.ingestion.substack.SubstackContentIngestionService",
-        }
-        stack.enter_context(patch(module_map[name], mock_cls))
+    for p in patches.values():
+        stack.enter_context(p)
     return stack
 
 
@@ -119,15 +94,15 @@ class TestParallelIngestionPartialFailure:
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
     def test_pipeline_succeeds_when_one_source_fails(self, mock_summarizer, mock_digest):
-        """Pipeline continues when 1 of 4 ingestion sources fails."""
+        """Pipeline continues when 1 of 5 ingestion sources fails."""
         mock_summarizer.return_value.summarize_pending_contents.return_value = 5
         mock_result = MagicMock()
         mock_result.title = "Daily Digest"
         mock_result.newsletter_count = 6
         mock_digest.return_value = mock_result
 
-        mocks = _make_ingestion_patches(gmail_result=RuntimeError("Gmail auth failed"))
-        with _apply_ingestion_patches(mocks):
+        patches = _make_ingestion_patches(gmail_result=RuntimeError("Gmail auth failed"))
+        with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
@@ -146,11 +121,11 @@ class TestParallelIngestionPartialFailure:
         mock_result.newsletter_count = 4
         mock_digest.return_value = mock_result
 
-        mocks = _make_ingestion_patches(
+        patches = _make_ingestion_patches(
             gmail_result=RuntimeError("Gmail auth failed"),
             youtube_result=RuntimeError("YouTube quota exceeded"),
         )
-        with _apply_ingestion_patches(mocks):
+        with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
@@ -168,14 +143,14 @@ class TestParallelIngestionPartialFailure:
         mock_result.newsletter_count = 1
         mock_digest.return_value = mock_result
 
-        mocks = _make_ingestion_patches(
+        patches = _make_ingestion_patches(
             gmail_result=RuntimeError("fail"),
             rss_result=RuntimeError("fail"),
             youtube_result=RuntimeError("fail"),
             podcast_result=1,
             # substack succeeds with 0 items
         )
-        with _apply_ingestion_patches(mocks):
+        with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
@@ -188,14 +163,14 @@ class TestParallelIngestionAllFail:
 
     def test_pipeline_fails_when_all_sources_fail(self):
         """Pipeline reports failure and exits with code 1 when all sources fail."""
-        mocks = _make_ingestion_patches(
+        patches = _make_ingestion_patches(
             gmail_result=RuntimeError("Gmail auth failed"),
             rss_result=RuntimeError("RSS timeout"),
             youtube_result=RuntimeError("YouTube quota"),
             podcast_result=RuntimeError("Podcast DNS"),
             substack_result=RuntimeError("Substack error"),
         )
-        with _apply_ingestion_patches(mocks):
+        with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 1
@@ -203,14 +178,14 @@ class TestParallelIngestionAllFail:
 
     def test_pipeline_reports_all_source_errors(self):
         """Error output includes details about which sources failed."""
-        mocks = _make_ingestion_patches(
+        patches = _make_ingestion_patches(
             gmail_result=RuntimeError("Gmail auth failed"),
             rss_result=RuntimeError("RSS timeout"),
             youtube_result=RuntimeError("YouTube quota"),
             podcast_result=RuntimeError("Podcast DNS"),
             substack_result=RuntimeError("Substack error"),
         )
-        with _apply_ingestion_patches(mocks):
+        with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 1
@@ -236,8 +211,8 @@ class TestIngestionProgressOutput:
         mock_result.newsletter_count = 7
         mock_digest.return_value = mock_result
 
-        mocks = _make_ingestion_patches(gmail_result=2, rss_result=3)
-        with _apply_ingestion_patches(mocks):
+        patches = _make_ingestion_patches(gmail_result=2, rss_result=3)
+        with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
@@ -254,8 +229,8 @@ class TestIngestionProgressOutput:
         mock_result.newsletter_count = 7
         mock_digest.return_value = mock_result
 
-        mocks = _make_ingestion_patches()
-        with _apply_ingestion_patches(mocks):
+        patches = _make_ingestion_patches()
+        with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
@@ -270,44 +245,19 @@ class TestIngestionProgressOutput:
 
 
 class TestParallelExecution:
-    """Verify that ingestion sources actually run concurrently."""
+    """Verify that ingestion sources actually run concurrently via orchestrator."""
 
     @pytest.mark.asyncio
     async def test_ingestion_uses_asyncio_gather(self):
         """Verify _run_ingestion_stage_async uses asyncio.gather for parallel execution."""
-        # We test the async function directly and verify all 5 sources run
         from src.cli.pipeline_commands import _run_ingestion_stage_async
 
         with (
-            patch(
-                "src.ingestion.gmail.GmailContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(return_value=2)),
-            ),
-            patch(
-                "src.ingestion.rss.RSSContentIngestionService",
-                return_value=MagicMock(
-                    ingest_content=MagicMock(return_value=IngestionResult(items_ingested=3))
-                ),
-            ),
-            patch(
-                "src.ingestion.youtube.YouTubeContentIngestionService",
-                return_value=MagicMock(
-                    ingest_all_playlists=MagicMock(return_value=1),
-                    ingest_channels=MagicMock(return_value=0),
-                ),
-            ),
-            patch(
-                "src.ingestion.youtube.YouTubeRSSIngestionService",
-                return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=0)),
-            ),
-            patch(
-                "src.ingestion.podcast.PodcastContentIngestionService",
-                return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=1)),
-            ),
-            patch(
-                "src.ingestion.substack.SubstackContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(return_value=0)),
-            ),
+            patch("src.ingestion.orchestrator.ingest_gmail", return_value=2),
+            patch("src.ingestion.orchestrator.ingest_rss", return_value=3),
+            patch("src.ingestion.orchestrator.ingest_youtube", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_podcast", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_substack", return_value=0),
         ):
             results = await _run_ingestion_stage_async()
 
@@ -325,35 +275,11 @@ class TestParallelExecution:
         from src.cli.pipeline_commands import _run_ingestion_stage_async
 
         with (
-            patch(
-                "src.ingestion.gmail.GmailContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(side_effect=RuntimeError("fail"))),
-            ),
-            patch(
-                "src.ingestion.rss.RSSContentIngestionService",
-                return_value=MagicMock(
-                    ingest_content=MagicMock(return_value=IngestionResult(items_ingested=3))
-                ),
-            ),
-            patch(
-                "src.ingestion.youtube.YouTubeContentIngestionService",
-                return_value=MagicMock(
-                    ingest_all_playlists=MagicMock(return_value=1),
-                    ingest_channels=MagicMock(return_value=0),
-                ),
-            ),
-            patch(
-                "src.ingestion.youtube.YouTubeRSSIngestionService",
-                return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=0)),
-            ),
-            patch(
-                "src.ingestion.podcast.PodcastContentIngestionService",
-                return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=1)),
-            ),
-            patch(
-                "src.ingestion.substack.SubstackContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(return_value=0)),
-            ),
+            patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail")),
+            patch("src.ingestion.orchestrator.ingest_rss", return_value=3),
+            patch("src.ingestion.orchestrator.ingest_youtube", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_podcast", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_substack", return_value=0),
         ):
             results = await _run_ingestion_stage_async()
 
@@ -367,37 +293,11 @@ class TestParallelExecution:
         from src.cli.pipeline_commands import _run_ingestion_stage_async
 
         with (
-            patch(
-                "src.ingestion.gmail.GmailContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(side_effect=RuntimeError("fail"))),
-            ),
-            patch(
-                "src.ingestion.rss.RSSContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(side_effect=RuntimeError("fail"))),
-            ),
-            patch(
-                "src.ingestion.youtube.YouTubeContentIngestionService",
-                return_value=MagicMock(
-                    ingest_all_playlists=MagicMock(side_effect=RuntimeError("fail")),
-                    ingest_channels=MagicMock(side_effect=RuntimeError("fail")),
-                ),
-            ),
-            patch(
-                "src.ingestion.youtube.YouTubeRSSIngestionService",
-                return_value=MagicMock(
-                    ingest_all_feeds=MagicMock(side_effect=RuntimeError("fail"))
-                ),
-            ),
-            patch(
-                "src.ingestion.podcast.PodcastContentIngestionService",
-                return_value=MagicMock(
-                    ingest_all_feeds=MagicMock(side_effect=RuntimeError("fail"))
-                ),
-            ),
-            patch(
-                "src.ingestion.substack.SubstackContentIngestionService",
-                return_value=MagicMock(ingest_content=MagicMock(side_effect=RuntimeError("fail"))),
-            ),
+            patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail")),
+            patch("src.ingestion.orchestrator.ingest_rss", side_effect=RuntimeError("fail")),
+            patch("src.ingestion.orchestrator.ingest_youtube", side_effect=RuntimeError("fail")),
+            patch("src.ingestion.orchestrator.ingest_podcast", side_effect=RuntimeError("fail")),
+            patch("src.ingestion.orchestrator.ingest_substack", side_effect=RuntimeError("fail")),
         ):
             with pytest.raises(RuntimeError, match="All ingestion sources failed"):
                 await _run_ingestion_stage_async()
@@ -413,12 +313,11 @@ class TestWaitFlag:
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.substack.SubstackContentIngestionService")
-    @patch("src.ingestion.podcast.PodcastContentIngestionService")
-    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
-    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    @patch("src.ingestion.rss.RSSContentIngestionService")
-    @patch("src.ingestion.gmail.GmailContentIngestionService")
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
     @patch("src.cli.pipeline_commands._wait_for_jobs")
     def test_daily_wait_flag_enqueues_and_waits(
         self,
@@ -426,21 +325,12 @@ class TestWaitFlag:
         mock_gmail,
         mock_rss,
         mock_youtube,
-        mock_youtube_rss,
         mock_podcast,
         mock_substack,
         mock_summarizer,
         mock_digest,
     ):
         """--wait flag enqueues summarization jobs instead of direct processing."""
-        mock_gmail.return_value.ingest_content.return_value = 2
-        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
-        mock_youtube.return_value.ingest_all_playlists.return_value = 1
-        mock_youtube.return_value.ingest_channels.return_value = 0
-        mock_youtube_rss.return_value.ingest_all_feeds.return_value = 0
-        mock_podcast.return_value.ingest_all_feeds.return_value = 1
-        mock_substack.return_value.ingest_content.return_value = 0
-
         # Mock enqueue_pending_contents async method
         mock_summarizer.return_value.enqueue_pending_contents = AsyncMock(
             return_value={"enqueued_count": 5, "skipped_count": 0, "job_ids": [1, 2, 3, 4, 5]}
@@ -461,31 +351,22 @@ class TestWaitFlag:
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.substack.SubstackContentIngestionService")
-    @patch("src.ingestion.podcast.PodcastContentIngestionService")
-    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
-    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    @patch("src.ingestion.rss.RSSContentIngestionService")
-    @patch("src.ingestion.gmail.GmailContentIngestionService")
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
     def test_daily_without_wait_uses_direct_processing(
         self,
         mock_gmail,
         mock_rss,
         mock_youtube,
-        mock_youtube_rss,
         mock_podcast,
         mock_substack,
         mock_summarizer,
         mock_digest,
     ):
         """Without --wait, summarization runs directly (not queued)."""
-        mock_gmail.return_value.ingest_content.return_value = 2
-        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
-        mock_youtube.return_value.ingest_all_playlists.return_value = 1
-        mock_youtube.return_value.ingest_channels.return_value = 0
-        mock_youtube_rss.return_value.ingest_all_feeds.return_value = 0
-        mock_podcast.return_value.ingest_all_feeds.return_value = 1
-        mock_substack.return_value.ingest_content.return_value = 0
         mock_summarizer.return_value.summarize_pending_contents.return_value = 5
 
         mock_result = MagicMock()

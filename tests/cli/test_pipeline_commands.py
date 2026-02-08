@@ -1,4 +1,8 @@
-"""Tests for pipeline CLI commands."""
+"""Tests for pipeline CLI commands.
+
+After the orchestrator refactor, the pipeline delegates to orchestrator functions.
+Tests mock at `src.ingestion.orchestrator.<func>` instead of individual service classes.
+"""
 
 from __future__ import annotations
 
@@ -7,73 +11,52 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from src.cli.app import app
-from src.ingestion.rss import IngestionResult
 
 runner = CliRunner()
 
 
-def _mock_ingestion_services():
-    """Create mock patches for all ingestion services used in pipeline."""
-    return {
-        "gmail": patch(
-            "src.ingestion.gmail.GmailContentIngestionService",
-            return_value=MagicMock(ingest_content=MagicMock(return_value=2)),
-        ),
-        "rss": patch(
-            "src.ingestion.rss.RSSContentIngestionService",
-            return_value=MagicMock(
-                ingest_content=MagicMock(return_value=IngestionResult(items_ingested=3))
-            ),
-        ),
-        "youtube": patch(
-            "src.ingestion.youtube.YouTubeContentIngestionService",
-            return_value=MagicMock(
-                ingest_all_playlists=MagicMock(return_value=1),
-                ingest_channels=MagicMock(return_value=0),
-            ),
-        ),
-        "youtube_rss": patch(
-            "src.ingestion.youtube.YouTubeRSSIngestionService",
-            return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=0)),
-        ),
-        "podcast": patch(
-            "src.ingestion.podcast.PodcastContentIngestionService",
-            return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=1)),
-        ),
-        "substack": patch(
-            "src.ingestion.substack.SubstackContentIngestionService",
-            return_value=MagicMock(ingest_content=MagicMock(return_value=0)),
-        ),
-    }
+def _mock_all_orchestrator_functions(
+    *,
+    gmail: int | Exception = 2,
+    rss: int | Exception = 3,
+    youtube: int | Exception = 1,
+    podcast: int | Exception = 1,
+    substack: int | Exception = 0,
+):
+    """Create mock patches for all orchestrator functions used in pipeline."""
+    patches = {}
+    for name, result in [
+        ("ingest_gmail", gmail),
+        ("ingest_rss", rss),
+        ("ingest_youtube", youtube),
+        ("ingest_podcast", podcast),
+        ("ingest_substack", substack),
+    ]:
+        if isinstance(result, Exception):
+            patches[name] = patch(f"src.ingestion.orchestrator.{name}", side_effect=result)
+        else:
+            patches[name] = patch(f"src.ingestion.orchestrator.{name}", return_value=result)
+    return patches
 
 
 class TestDailyPipeline:
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.substack.SubstackContentIngestionService")
-    @patch("src.ingestion.podcast.PodcastContentIngestionService")
-    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
-    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    @patch("src.ingestion.rss.RSSContentIngestionService")
-    @patch("src.ingestion.gmail.GmailContentIngestionService")
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
     def test_daily_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
         mock_youtube,
-        mock_youtube_rss,
         mock_podcast,
         mock_substack,
         mock_summarizer,
         mock_digest,
     ):
-        mock_gmail.return_value.ingest_content.return_value = 2
-        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
-        mock_youtube.return_value.ingest_all_playlists.return_value = 1
-        mock_youtube.return_value.ingest_channels.return_value = 0
-        mock_youtube_rss.return_value.ingest_all_feeds.return_value = 0
-        mock_podcast.return_value.ingest_all_feeds.return_value = 1
-        mock_substack.return_value.ingest_content.return_value = 0
         mock_summarizer.return_value.summarize_pending_contents.return_value = 5
 
         mock_result = MagicMock()
@@ -85,22 +68,14 @@ class TestDailyPipeline:
         assert result.exit_code == 0
         assert "completed successfully" in result.output
 
-    @patch("src.ingestion.substack.SubstackContentIngestionService")
-    @patch("src.ingestion.gmail.GmailContentIngestionService")
-    @patch("src.ingestion.rss.RSSContentIngestionService")
-    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
-    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    @patch("src.ingestion.podcast.PodcastContentIngestionService")
+    @patch("src.ingestion.orchestrator.ingest_substack", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_podcast", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_youtube", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_rss", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail"))
     def test_daily_pipeline_all_ingestion_fails(
-        self, mock_podcast, mock_youtube, mock_youtube_rss, mock_rss, mock_gmail, mock_substack
+        self, mock_gmail, mock_rss, mock_youtube, mock_podcast, mock_substack
     ):
-        mock_gmail.side_effect = RuntimeError("fail")
-        mock_rss.side_effect = RuntimeError("fail")
-        mock_youtube.side_effect = RuntimeError("fail")
-        mock_youtube_rss.side_effect = RuntimeError("fail")
-        mock_podcast.side_effect = RuntimeError("fail")
-        mock_substack.side_effect = RuntimeError("fail")
-
         result = runner.invoke(app, ["pipeline", "daily"])
         assert result.exit_code == 1
         assert "failed" in result.output.lower()
@@ -118,30 +93,21 @@ class TestDailyPipeline:
 class TestWeeklyPipeline:
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.substack.SubstackContentIngestionService")
-    @patch("src.ingestion.podcast.PodcastContentIngestionService")
-    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
-    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    @patch("src.ingestion.rss.RSSContentIngestionService")
-    @patch("src.ingestion.gmail.GmailContentIngestionService")
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=2)
+    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=3)
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=10)
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=5)
     def test_weekly_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
         mock_youtube,
-        mock_youtube_rss,
         mock_podcast,
         mock_substack,
         mock_summarizer,
         mock_digest,
     ):
-        mock_gmail.return_value.ingest_content.return_value = 5
-        mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=10)
-        mock_youtube.return_value.ingest_all_playlists.return_value = 3
-        mock_youtube.return_value.ingest_channels.return_value = 0
-        mock_youtube_rss.return_value.ingest_all_feeds.return_value = 0
-        mock_podcast.return_value.ingest_all_feeds.return_value = 2
-        mock_substack.return_value.ingest_content.return_value = 0
         mock_summarizer.return_value.summarize_pending_contents.return_value = 15
 
         mock_result = MagicMock()
