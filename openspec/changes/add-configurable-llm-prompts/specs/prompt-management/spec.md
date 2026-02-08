@@ -94,9 +94,36 @@ The system SHALL provide REST API endpoints for managing prompt overrides via th
 - **THEN** the database override SHALL be removed
 - **AND** the response SHALL show the YAML default as current_value
 
+### Requirement: Prompt Test API
+
+The system SHALL provide an endpoint to test a prompt against sample content without persisting results.
+
+#### Scenario: Test prompt with default sample content
+- **WHEN** `POST /api/v1/settings/prompts/{key}/test` is called without a `content_id`
+- **THEN** the system SHALL select the most recently completed content item as sample input
+- **AND** the prompt SHALL be rendered with the sample content's variables
+- **AND** the rendered prompt SHALL be sent to the LLM configured for the corresponding pipeline step
+- **AND** the response SHALL include the LLM output text, token usage, and the rendered prompt
+- **AND** the LLM call SHALL use a reduced `max_tokens` cap (500) to limit cost
+
+#### Scenario: Test prompt with specific content
+- **WHEN** `POST /api/v1/settings/prompts/{key}/test` is called with `content_id: 42`
+- **THEN** the system SHALL use content item 42 as sample input
+- **AND** the response SHALL include the LLM output text for that content
+
+#### Scenario: Test prompt with unsaved draft
+- **WHEN** `POST /api/v1/settings/prompts/{key}/test` is called with a `draft_value` field
+- **THEN** the system SHALL use the provided draft text instead of the stored prompt value
+- **AND** the draft SHALL NOT be persisted to the database
+
+#### Scenario: Test result is not persisted
+- **WHEN** a prompt test is executed
+- **THEN** no summary, digest, or other pipeline artifact SHALL be created or modified
+- **AND** the test SHALL be a read-only dry run
+
 ### Requirement: Frontend Prompt Editor
 
-The Settings page SHALL include a prompt configuration section for viewing and editing prompts.
+The Settings page SHALL include a prompt configuration section for viewing and editing prompts. The editor SHALL use a raw text textarea without Markdown rendering, so users control exactly what the LLM receives.
 
 #### Scenario: Display prompt list
 - **WHEN** the Settings page is loaded
@@ -105,9 +132,15 @@ The Settings page SHALL include a prompt configuration section for viewing and e
 
 #### Scenario: Edit a prompt
 - **WHEN** a user clicks on a prompt in the list
-- **THEN** a textarea editor SHALL expand showing the current prompt value
+- **THEN** a raw text textarea editor SHALL expand showing the current prompt value
 - **AND** a "Show diff" toggle SHALL compare the current value against the default
-- **AND** "Save" and "Reset to default" buttons SHALL be available
+- **AND** "Save", "Test", and "Reset to default" buttons SHALL be available
+
+#### Scenario: Test prompt from editor
+- **WHEN** a user clicks "Test" in the prompt editor
+- **THEN** the current editor content (possibly unsaved) SHALL be sent to the test endpoint as a draft
+- **AND** a panel SHALL display the rendered prompt, LLM response text, and token usage
+- **AND** the test result SHALL NOT persist any changes
 
 #### Scenario: Save prompt override
 - **WHEN** a user edits a prompt and clicks "Save"

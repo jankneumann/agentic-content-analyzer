@@ -33,30 +33,40 @@
 - [ ] 3.9 Remove old hardcoded prompt constants from all processor files
 - [ ] 3.10 Write integration tests verifying processors use PromptService and respect DB overrides
 
-## 4. CLI Prompt Management Commands
+## 4. Prompt Test Feature (API)
 
-- [ ] 4.1 Create `src/cli/prompts.py` with `aca prompts` command group
-- [ ] 4.2 Implement `aca prompts list` with category filter and override indicators
-- [ ] 4.3 Implement `aca prompts show <key>` with full prompt display and version info
-- [ ] 4.4 Implement `aca prompts set <key> --value/--file` for setting overrides
-- [ ] 4.5 Implement `aca prompts reset <key>` for clearing overrides
-- [ ] 4.6 Implement `aca prompts export --output <file>` for YAML export
-- [ ] 4.7 Implement `aca prompts import --file <file>` for YAML import
-- [ ] 4.8 Register commands in CLI entrypoint
-- [ ] 4.9 Write tests for CLI prompt commands
+- [ ] 4.1 Add `POST /api/v1/settings/prompts/{key}/test` endpoint in `src/api/settings_routes.py`
+- [ ] 4.2 Implement test logic: resolve sample content (most recent or by `content_id`), render prompt template, call LLM with `max_tokens=500`
+- [ ] 4.3 Support `draft_value` field so unsaved editor content can be tested without persisting
+- [ ] 4.4 Return response payload: rendered prompt, LLM output text, token usage, model used
+- [ ] 4.5 Write tests for prompt test endpoint (mock LLM call)
 
-## 5. Frontend Prompt Editor
+## 5. CLI Prompt Management Commands
 
-- [ ] 5.1 Create API client functions for prompt endpoints in `web/src/lib/api/`
-- [ ] 5.2 Create TanStack Query hooks for prompt CRUD operations
-- [ ] 5.3 Build `PromptEditor` component with textarea, diff view toggle, save/reset buttons
-- [ ] 5.4 Build `PromptList` component with category grouping and override badges
-- [ ] 5.5 Add "Prompt Configuration" section to Settings page (`web/src/routes/settings.tsx`)
-- [ ] 5.6 Write E2E tests for prompt management UI (mock API responses)
+- [ ] 5.1 Create `src/cli/prompts.py` with `aca prompts` command group
+- [ ] 5.2 Implement `aca prompts list` with category filter and override indicators
+- [ ] 5.3 Implement `aca prompts show <key>` with full prompt display and version info
+- [ ] 5.4 Implement `aca prompts set <key> --value/--file` for setting overrides
+- [ ] 5.5 Implement `aca prompts reset <key>` for clearing overrides
+- [ ] 5.6 Implement `aca prompts export --output <file>` for YAML export
+- [ ] 5.7 Implement `aca prompts import --file <file>` for YAML import
+- [ ] 5.8 Implement `aca prompts test <key> [--content-id N]` for testing prompts from CLI
+- [ ] 5.9 Register commands in CLI entrypoint
+- [ ] 5.10 Write tests for CLI prompt commands
 
-## 6. Documentation & Verification
+## 6. Frontend Prompt Editor
 
-- [ ] 6.1 Update `CLAUDE.md` with prompt management commands and configuration
-- [ ] 6.2 Run full test suite (`pytest`) and fix any failures
-- [ ] 6.3 Run frontend tests (`cd web && pnpm test:e2e`) and fix any failures
-- [ ] 6.4 Verify all processors produce identical output with prompts loaded from YAML vs. old hardcoded strings
+- [ ] 6.1 Create API client functions for prompt endpoints in `web/src/lib/api/`
+- [ ] 6.2 Create TanStack Query hooks for prompt CRUD operations
+- [ ] 6.3 Build `PromptEditor` component with raw text textarea, diff view toggle, save/test/reset buttons
+- [ ] 6.4 Build `PromptList` component with category grouping and override badges
+- [ ] 6.5 Add "Prompt Configuration" section to Settings page (`web/src/routes/settings.tsx`)
+- [ ] 6.6 Build test result panel (rendered prompt, LLM response, token usage) triggered by "Test" button
+- [ ] 6.7 Write E2E tests for prompt management UI (mock API responses)
+
+## 7. Documentation & Verification
+
+- [ ] 7.1 Update `CLAUDE.md` with prompt management commands and configuration
+- [ ] 7.2 Run full test suite (`pytest`) and fix any failures
+- [ ] 7.3 Run frontend tests (`cd web && pnpm test:e2e`) and fix any failures
+- [ ] 7.4 Verify all processors produce identical output with prompts loaded from YAML vs. old hardcoded strings

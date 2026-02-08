@@ -24,12 +24,20 @@ This means:
 
 ### Phase 3: Frontend settings page
 - **Build Prompt Configuration section** on the existing Settings page (`web/src/routes/settings.tsx`)
-- Provide a prompt editor with diff view (current vs. default), save, and reset-to-default functionality
+- Provide a raw text prompt editor with diff view (current vs. default), save, test, and reset-to-default functionality
+- No Markdown rendering in the editor — raw text so users control exactly what the LLM receives
 - List prompts by category (chat, pipeline) with override indicators
 
-### Phase 4: Seed & sync mechanism
+### Phase 4: Prompt test feature
+- **Test endpoint**: `POST /api/v1/settings/prompts/{key}/test` — render a prompt against sample content, call the LLM with a reduced max_tokens cap (500), return the response without persisting any artifacts
+- **CLI**: `aca prompts test <key> [--content-id N]`
+- **Frontend**: "Test" button in the prompt editor that shows rendered prompt, LLM response, and token usage
+- Support testing unsaved draft content from the editor without persisting
+
+### Phase 5: Seed & sync mechanism
 - **Automatic seeding**: On application startup, if a prompt key from `prompts.yaml` has no database row, seed it as the default (lazy, on first access)
-- **Export/import**: CLI commands to export current prompts to YAML and import from YAML (for environment migration)
+- **Export/import**: CLI commands to export current prompts to YAML and import from YAML (for backup/restore)
+- **Cross-environment sync**: Out of scope — prompts are expected to be consistent between staging and production; environment migration should be addressed in a separate database sync proposal
 
 ## Impact
 

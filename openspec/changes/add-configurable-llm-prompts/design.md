@@ -145,8 +145,22 @@ class PodcastScriptGenerator:
 6. **Build frontend** prompt editor on Settings page
 7. **Rollback**: If issues arise, processors fall back to YAML defaults automatically (no DB override = YAML value)
 
-## Open Questions
+## Resolved Questions
 
-1. Should prompts support Markdown formatting in the editor (preview mode)?
-2. Should there be a "test prompt" feature that runs a prompt against sample content before saving?
-3. Should prompt export/import support migrating overrides between environments (e.g., staging → production)?
+1. **Markdown rendering in the editor?** — No. Raw text editor only. Users need to control exactly what the LLM receives, and Markdown rendering would obscure whitespace, escapes, and template variables.
+
+2. **Test prompt feature?** — Yes. Add a "Test" button that runs the prompt against a sample content item (user-selected or most recent) and displays the LLM response. This lets users verify prompt changes before committing them to production. Implemented as a dedicated API endpoint (`POST /api/v1/settings/prompts/{key}/test`) and surfaced in both the CLI (`aca prompts test <key>`) and the frontend editor.
+
+3. **Cross-environment prompt sync (staging → production)?** — Out of scope. Prompts are expected to be consistent between staging and production for now. If environment-specific prompt sync is needed, it should be addressed in a separate database synchronization proposal.
+
+### Decision 7: Test prompt feature — Dry-run against sample content
+
+**What**: Add a test endpoint and UI that renders a prompt with sample variables, sends it to the configured LLM, and returns the response without persisting any results.
+
+**Why**: Users editing prompts need a feedback loop. Without testing, a bad prompt is only discovered when a real pipeline run fails or produces poor output.
+
+**Implementation**:
+- Backend: `POST /api/v1/settings/prompts/{key}/test` accepts optional `content_id` (defaults to most recent completed content). Renders the prompt template, calls the LLM with a low `max_tokens` cap (e.g., 500), returns the response text and token usage.
+- CLI: `aca prompts test <key> [--content-id N]` — runs the test and displays the result.
+- Frontend: "Test" button in the prompt editor. Opens a panel showing the rendered prompt, the LLM response, and token usage.
+- Safety: Test calls use the same model as the pipeline step but with truncated output to limit cost. Results are not saved to the database.

@@ -47,6 +47,17 @@ The system SHALL provide `aca prompts` subcommands for managing LLM prompt confi
 - **AND** a confirmation SHALL show how many prompts were imported
 - **AND** existing overrides SHALL be updated, not duplicated
 
+#### Scenario: Test a prompt
+- **WHEN** `aca prompts test pipeline.summarization.system` is executed
+- **THEN** the prompt SHALL be rendered with sample content (most recent or specified via `--content-id`)
+- **AND** the rendered prompt SHALL be sent to the LLM
+- **AND** the LLM response text and token usage SHALL be displayed
+- **AND** no pipeline artifacts SHALL be persisted
+
+#### Scenario: Test a prompt with specific content
+- **WHEN** `aca prompts test pipeline.summarization.system --content-id 42` is executed
+- **THEN** content item 42 SHALL be used as sample input for the test
+
 #### Scenario: Invalid prompt key
 - **WHEN** `aca prompts show nonexistent.key` is executed
 - **THEN** an error message SHALL indicate the prompt key is not recognized
