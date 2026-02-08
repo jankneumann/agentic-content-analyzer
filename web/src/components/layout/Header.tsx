@@ -118,19 +118,26 @@ function ThemeToggle() {
     return initialDark
   })
 
-  // Sync theme changes
+  // Track whether the user has explicitly toggled the theme
+  const [hasUserChoice, setHasUserChoice] = useState(
+    () => typeof window !== "undefined" && localStorage.getItem("theme") !== null
+  )
+
+  // Sync theme changes — only persist when the user has made an explicit choice
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add("dark")
-      localStorage.setItem("theme", "dark")
     } else {
       document.documentElement.classList.remove("dark")
-      localStorage.setItem("theme", "light")
     }
-  }, [isDark])
+    if (hasUserChoice) {
+      localStorage.setItem("theme", isDark ? "dark" : "light")
+    }
+  }, [isDark, hasUserChoice])
 
-  // Toggle theme
+  // Toggle theme — marks as explicit user choice
   const toggleTheme = () => {
+    setHasUserChoice(true)
     setIsDark(!isDark)
   }
 
@@ -202,7 +209,7 @@ export function Header({ onMenuClick, className }: HeaderProps) {
               Radix UI Tooltip trigger on disabled button requires wrapping in a span/div usually.
               Let's try wrapping in a span to ensure tooltip works.
             */}
-            <span tabIndex={0} className="inline-block cursor-not-allowed rounded-md">
+            <span tabIndex={0} role="button" aria-label="Notifications (Coming soon)" aria-disabled="true" className="inline-block cursor-not-allowed rounded-md">
               <Button variant="ghost" size="icon" disabled className="pointer-events-none">
                 <Bell className="h-5 w-5" />
                 <span className="sr-only">Notifications</span>
