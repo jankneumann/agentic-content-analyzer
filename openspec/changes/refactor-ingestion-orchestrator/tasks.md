@@ -43,4 +43,4 @@
 - [x] 6.1 Run full test suite (`pytest`)
 - [x] 6.2 Run `ruff check` and `mypy` — no new warnings
 - [x] 6.3 Verify no direct service imports remain in pipeline_commands.py or tasks/content.py (except for non-ingestion uses)
-- [ ] 6.4 Manual smoke test: `aca ingest rss --max 1 --days 1`
+- [x] 6.4 Manual smoke test: `aca ingest rss --max 1 --days 1`
