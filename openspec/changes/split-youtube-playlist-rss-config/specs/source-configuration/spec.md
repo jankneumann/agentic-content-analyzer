@@ -226,7 +226,7 @@ When the YouTube OAuth token is expired or unavailable, the system SHALL:
 1. Log a warning about the OAuth token status
 2. Skip all sources with `visibility: private`
 3. Fall back to the API key (`GOOGLE_API_KEY` / `YOUTUBE_API_KEY`) for `visibility: public` sources
-4. Use `youtube-transcript-api` for all transcripts
+4. Use Gemini native extraction for transcripts when `gemini_summary: true` (default) and `GOOGLE_API_KEY` is set; fall back to `youtube-transcript-api` only when Gemini is disabled or unavailable
 5. Continue ingestion without crashing
 
 #### Scenario: OAuth available — all sources ingested
