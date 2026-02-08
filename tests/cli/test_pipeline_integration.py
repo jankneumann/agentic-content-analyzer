@@ -64,17 +64,34 @@ def _make_ingestion_patches(
     else:
         rss_mock_result = IngestionResult(items_ingested=rss_result)
 
+    # YouTube uses two service classes: YouTubeContentIngestionService
+    # (playlists + channels) and YouTubeRSSIngestionService (RSS feeds)
+    youtube_mock = MagicMock()
+    if isinstance(youtube_result, Exception):
+        youtube_mock.return_value.ingest_all_playlists.side_effect = youtube_result
+        youtube_mock.return_value.ingest_channels.side_effect = youtube_result
+    else:
+        youtube_mock.return_value.ingest_all_playlists.return_value = youtube_result
+        youtube_mock.return_value.ingest_channels.return_value = 0
+
+    youtube_rss_mock = MagicMock()
+    if isinstance(youtube_result, Exception):
+        youtube_rss_mock.return_value.ingest_all_feeds.side_effect = youtube_result
+    else:
+        youtube_rss_mock.return_value.ingest_all_feeds.return_value = 0
+
     return {
         "gmail": _mock_service("ingest_content", gmail_result),
         "rss": _mock_service("ingest_content", rss_mock_result),
-        "youtube": _mock_service("ingest_all_playlists", youtube_result),
+        "youtube": youtube_mock,
+        "youtube_rss": youtube_rss_mock,
         "podcast": _mock_service("ingest_all_feeds", podcast_result),
         "substack": _mock_service("ingest_content", substack_result),
     }
 
 
 def _apply_ingestion_patches(mocks: dict):
-    """Return a combined context manager that patches all 5 ingestion services."""
+    """Return a combined context manager that patches all ingestion services."""
     from contextlib import ExitStack
 
     stack = ExitStack()
@@ -83,6 +100,7 @@ def _apply_ingestion_patches(mocks: dict):
             "gmail": "src.ingestion.gmail.GmailContentIngestionService",
             "rss": "src.ingestion.rss.RSSContentIngestionService",
             "youtube": "src.ingestion.youtube.YouTubeContentIngestionService",
+            "youtube_rss": "src.ingestion.youtube.YouTubeRSSIngestionService",
             "podcast": "src.ingestion.podcast.PodcastContentIngestionService",
             "substack": "src.ingestion.substack.SubstackContentIngestionService",
         }
@@ -273,7 +291,14 @@ class TestParallelExecution:
             ),
             patch(
                 "src.ingestion.youtube.YouTubeContentIngestionService",
-                return_value=MagicMock(ingest_all_playlists=MagicMock(return_value=1)),
+                return_value=MagicMock(
+                    ingest_all_playlists=MagicMock(return_value=1),
+                    ingest_channels=MagicMock(return_value=0),
+                ),
+            ),
+            patch(
+                "src.ingestion.youtube.YouTubeRSSIngestionService",
+                return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=0)),
             ),
             patch(
                 "src.ingestion.podcast.PodcastContentIngestionService",
@@ -312,7 +337,14 @@ class TestParallelExecution:
             ),
             patch(
                 "src.ingestion.youtube.YouTubeContentIngestionService",
-                return_value=MagicMock(ingest_all_playlists=MagicMock(return_value=1)),
+                return_value=MagicMock(
+                    ingest_all_playlists=MagicMock(return_value=1),
+                    ingest_channels=MagicMock(return_value=0),
+                ),
+            ),
+            patch(
+                "src.ingestion.youtube.YouTubeRSSIngestionService",
+                return_value=MagicMock(ingest_all_feeds=MagicMock(return_value=0)),
             ),
             patch(
                 "src.ingestion.podcast.PodcastContentIngestionService",
@@ -346,7 +378,14 @@ class TestParallelExecution:
             patch(
                 "src.ingestion.youtube.YouTubeContentIngestionService",
                 return_value=MagicMock(
-                    ingest_all_playlists=MagicMock(side_effect=RuntimeError("fail"))
+                    ingest_all_playlists=MagicMock(side_effect=RuntimeError("fail")),
+                    ingest_channels=MagicMock(side_effect=RuntimeError("fail")),
+                ),
+            ),
+            patch(
+                "src.ingestion.youtube.YouTubeRSSIngestionService",
+                return_value=MagicMock(
+                    ingest_all_feeds=MagicMock(side_effect=RuntimeError("fail"))
                 ),
             ),
             patch(
@@ -374,7 +413,9 @@ class TestWaitFlag:
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
+    @patch("src.ingestion.substack.SubstackContentIngestionService")
     @patch("src.ingestion.podcast.PodcastContentIngestionService")
+    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     @patch("src.ingestion.rss.RSSContentIngestionService")
     @patch("src.ingestion.gmail.GmailContentIngestionService")
@@ -385,7 +426,9 @@ class TestWaitFlag:
         mock_gmail,
         mock_rss,
         mock_youtube,
+        mock_youtube_rss,
         mock_podcast,
+        mock_substack,
         mock_summarizer,
         mock_digest,
     ):
@@ -393,7 +436,10 @@ class TestWaitFlag:
         mock_gmail.return_value.ingest_content.return_value = 2
         mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
         mock_youtube.return_value.ingest_all_playlists.return_value = 1
+        mock_youtube.return_value.ingest_channels.return_value = 0
+        mock_youtube_rss.return_value.ingest_all_feeds.return_value = 0
         mock_podcast.return_value.ingest_all_feeds.return_value = 1
+        mock_substack.return_value.ingest_content.return_value = 0
 
         # Mock enqueue_pending_contents async method
         mock_summarizer.return_value.enqueue_pending_contents = AsyncMock(
@@ -415,7 +461,9 @@ class TestWaitFlag:
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
+    @patch("src.ingestion.substack.SubstackContentIngestionService")
     @patch("src.ingestion.podcast.PodcastContentIngestionService")
+    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     @patch("src.ingestion.rss.RSSContentIngestionService")
     @patch("src.ingestion.gmail.GmailContentIngestionService")
@@ -424,7 +472,9 @@ class TestWaitFlag:
         mock_gmail,
         mock_rss,
         mock_youtube,
+        mock_youtube_rss,
         mock_podcast,
+        mock_substack,
         mock_summarizer,
         mock_digest,
     ):
@@ -432,7 +482,10 @@ class TestWaitFlag:
         mock_gmail.return_value.ingest_content.return_value = 2
         mock_rss.return_value.ingest_content.return_value = IngestionResult(items_ingested=3)
         mock_youtube.return_value.ingest_all_playlists.return_value = 1
+        mock_youtube.return_value.ingest_channels.return_value = 0
+        mock_youtube_rss.return_value.ingest_all_feeds.return_value = 0
         mock_podcast.return_value.ingest_all_feeds.return_value = 1
+        mock_substack.return_value.ingest_content.return_value = 0
         mock_summarizer.return_value.summarize_pending_contents.return_value = 5
 
         mock_result = MagicMock()

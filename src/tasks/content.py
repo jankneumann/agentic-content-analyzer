@@ -276,15 +276,33 @@ def register_content_tasks(pgq: PgQueuer) -> None:
                 count = rss_result.items_ingested
 
             elif source == "youtube":
-                from src.ingestion.youtube import YouTubeContentIngestionService
+                from src.ingestion.youtube import (
+                    YouTubeContentIngestionService,
+                    YouTubeRSSIngestionService,
+                )
 
                 youtube_service = YouTubeContentIngestionService(use_oauth=True)
-                count = await asyncio.to_thread(
+                playlist_count = await asyncio.to_thread(
                     youtube_service.ingest_all_playlists,
                     max_videos_per_playlist=max_results,
                     after_date=after_date,
                     force_reprocess=force_reprocess,
                 )
+                channel_count = await asyncio.to_thread(
+                    youtube_service.ingest_channels,
+                    max_videos_per_channel=max_results,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
+                youtube_rss_service = YouTubeRSSIngestionService()
+                feed_count = await asyncio.to_thread(
+                    lambda: youtube_rss_service.ingest_all_feeds(
+                        max_entries_per_feed=max_results,
+                        after_date=after_date,
+                        force_reprocess=force_reprocess,
+                    )
+                )
+                count = playlist_count + channel_count + feed_count
 
             elif source == "podcast":
                 from src.ingestion.podcast import PodcastContentIngestionService

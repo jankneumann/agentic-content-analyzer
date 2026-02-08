@@ -1026,8 +1026,12 @@ class YouTubeRSSIngestionService:
             logger.info("No YouTube RSS feeds configured")
             return 0
 
+        logger.info(f"Processing {len(resolved_sources)} YouTube RSS feed(s)")
+
         total = 0
-        for source in resolved_sources:
+        for i, source in enumerate(resolved_sources, 1):
+            feed_label = source.name or source.url
+            logger.debug(f"[{i}/{len(resolved_sources)}] Fetching RSS feed: {feed_label}")
             try:
                 max_entries = source.max_entries or max_entries_per_feed
                 count = self.ingest_feed(
@@ -1040,9 +1044,12 @@ class YouTubeRSSIngestionService:
                 )
                 total += count
             except Exception as e:
-                logger.error(f"Error ingesting YouTube RSS feed {source.name or source.url}: {e}")
+                logger.error(f"Error ingesting YouTube RSS feed {feed_label}: {e}")
                 continue
 
+        logger.info(
+            f"YouTube RSS feed ingestion complete: {total} item(s) from {len(resolved_sources)} feed(s)"
+        )
         return total
 
 

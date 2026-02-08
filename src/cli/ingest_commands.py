@@ -307,7 +307,10 @@ def youtube(
     use_oauth = not public_only
 
     try:
-        from src.ingestion.youtube import YouTubeContentIngestionService
+        from src.ingestion.youtube import (
+            YouTubeContentIngestionService,
+            YouTubeRSSIngestionService,
+        )
 
         service = YouTubeContentIngestionService(use_oauth=use_oauth)
 
@@ -321,7 +324,9 @@ def youtube(
             after_date=after_date,
             force_reprocess=force,
         )
-        feed_count = service.ingest_all_feeds(  # type: ignore[attr-defined]
+
+        rss_service = YouTubeRSSIngestionService()
+        feed_count = rss_service.ingest_all_feeds(
             max_entries_per_feed=max,
             after_date=after_date,
             force_reprocess=force,

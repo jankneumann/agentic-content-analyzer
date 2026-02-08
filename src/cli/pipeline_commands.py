@@ -191,7 +191,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     from src.ingestion.podcast import PodcastContentIngestionService
     from src.ingestion.rss import RSSContentIngestionService
     from src.ingestion.substack import SubstackContentIngestionService
-    from src.ingestion.youtube import YouTubeContentIngestionService
+    from src.ingestion.youtube import YouTubeContentIngestionService, YouTubeRSSIngestionService
 
     typer.echo("  Running parallel ingestion (5 sources)...")
 
@@ -199,14 +199,22 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     gmail_service = GmailContentIngestionService()
     rss_service = RSSContentIngestionService()
     youtube_service = YouTubeContentIngestionService()
+    youtube_rss_service = YouTubeRSSIngestionService()
     podcast_service = PodcastContentIngestionService()
     substack_service = SubstackContentIngestionService()
+
+    def _youtube_ingest_all() -> int:
+        """Ingest from all YouTube source types (playlists, channels, RSS feeds)."""
+        playlists = youtube_service.ingest_all_playlists()
+        channels = youtube_service.ingest_channels()
+        feeds = youtube_rss_service.ingest_all_feeds()
+        return playlists + channels + feeds
 
     # Define ingestion tasks
     tasks = [
         _ingest_source("gmail", gmail_service.ingest_content),
         _ingest_source("rss", lambda: rss_service.ingest_content().items_ingested),
-        _ingest_source("youtube", youtube_service.ingest_all_playlists),
+        _ingest_source("youtube", _youtube_ingest_all),
         _ingest_source("podcast", podcast_service.ingest_all_feeds),
         _ingest_source("substack", substack_service.ingest_content),
     ]

@@ -99,26 +99,34 @@ class TestIngestRss:
 
 
 class TestIngestYoutube:
+    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    def test_youtube_success(self, mock_cls):
+    def test_youtube_success(self, mock_cls, mock_rss_cls):
         mock_service = MagicMock()
         mock_service.ingest_all_playlists.return_value = 3
         mock_service.ingest_channels.return_value = 2
-        mock_service.ingest_all_feeds.return_value = 1
         mock_cls.return_value = mock_service
+
+        mock_rss_service = MagicMock()
+        mock_rss_service.ingest_all_feeds.return_value = 1
+        mock_rss_cls.return_value = mock_rss_service
 
         result = runner.invoke(app, ["ingest", "youtube"])
         assert result.exit_code == 0
         assert "6" in result.output  # total = 3 + 2 + 1
         assert "YouTube ingestion complete" in result.output
 
+    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    def test_youtube_public_only(self, mock_cls):
+    def test_youtube_public_only(self, mock_cls, mock_rss_cls):
         mock_service = MagicMock()
         mock_service.ingest_all_playlists.return_value = 1
         mock_service.ingest_channels.return_value = 0
-        mock_service.ingest_all_feeds.return_value = 0
         mock_cls.return_value = mock_service
+
+        mock_rss_service = MagicMock()
+        mock_rss_service.ingest_all_feeds.return_value = 0
+        mock_rss_cls.return_value = mock_rss_service
 
         result = runner.invoke(app, ["ingest", "youtube", "--public-only"])
         assert result.exit_code == 0
