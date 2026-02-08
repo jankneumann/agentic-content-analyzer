@@ -438,7 +438,8 @@ async def get_script(script_id: int) -> dict:
     try:
         return review_service.get_script_for_review(script_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.error(f"Error retrieving script {script_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=404, detail="Script not found or unavailable")
 
 
 @router.get("/{script_id}/sections/{section_index}")
@@ -461,7 +462,10 @@ async def get_script_section(script_id: int, section_index: int) -> dict:
         return section
 
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.error(
+            f"Error retrieving section {section_index} for script {script_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=404, detail="Section not found or unavailable")
 
 
 @router.get("/{script_id}/sections/{section_index}/dialogue")
@@ -475,7 +479,11 @@ async def get_section_dialogue(script_id: int, section_index: int) -> dict:
         return {"section_index": section_index, "dialogue_text": text}
 
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.error(
+            f"Error retrieving dialogue for section {section_index} of script {script_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=404, detail="Dialogue unavailable")
 
 
 @router.post("/{script_id}/review")
@@ -510,7 +518,8 @@ async def submit_review(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error submitting review for script {script_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Review submission failed")
 
 
 @router.post("/{script_id}/sections/{section_index}/revise")
@@ -544,7 +553,10 @@ async def revise_section(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(
+            f"Error revising section {section_index} of script {script_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=400, detail="Section revision failed")
 
 
 @router.post("/{script_id}/approve")
@@ -567,7 +579,8 @@ async def quick_approve(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error approving script {script_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Approval failed")
 
 
 @router.post("/{script_id}/reject")
@@ -589,7 +602,8 @@ async def quick_reject(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error rejecting script {script_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Rejection failed")
 
 
 @router.get("/{script_id}/navigation")
