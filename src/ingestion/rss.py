@@ -639,6 +639,7 @@ class RSSContentIngestionService:
                             status=ContentStatus.COMPLETED,
                         )
                         db.add(content)
+                        db.flush()
                         count += 1
                         logger.info(
                             f"Linked Substack duplicate to canonical ID {substack_duplicate.id}"
@@ -670,6 +671,7 @@ class RSSContentIngestionService:
                             status=ContentStatus.COMPLETED,
                         )
                         db.add(content)
+                        db.flush()
                         count += 1
                         logger.info(f"Linked duplicate to canonical ID {content_duplicate.id}")
                         continue
@@ -694,6 +696,7 @@ class RSSContentIngestionService:
                     )
 
                     db.add(content)
+                    db.flush()
                     count += 1
                     logger.info(f"Ingested: {content_data.title}")
 
