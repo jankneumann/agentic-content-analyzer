@@ -116,13 +116,75 @@ The system SHALL log YouTube Data API quota usage for captions operations to hel
 - **AND** includes the count of videos that used Data API vs youtube-transcript-api fallback
 
 ### Requirement: YouTube Data API Captions Settings
-The system SHALL provide the following setting for controlling Data API captions behavior:
+The system SHALL provide the following settings for controlling Data API captions and retry behavior:
 - `YOUTUBE_PREFER_DATA_API_CAPTIONS` — boolean, default `true`. When `true` and OAuth is available, playlist ingestion prefers the Data API `captions` endpoint over `youtube-transcript-api`.
+- `YOUTUBE_MAX_RETRIES` — integer, default `4`. Maximum number of retry attempts on 429 rate-limit errors.
+- `YOUTUBE_BACKOFF_BASE` — float, default `2.0`. Base delay in seconds for exponential backoff.
+- `YOUTUBE_OAUTH_TOKEN_JSON` — string, optional. JSON content of the OAuth token for headless cloud deployments.
 
 #### Scenario: Setting controls transcript strategy
 - **WHEN** `YOUTUBE_PREFER_DATA_API_CAPTIONS=false` is set in the environment
 - **THEN** all YouTube ingestion uses `youtube-transcript-api` regardless of OAuth availability
 - **AND** the Data API is only used for playlist video discovery (not transcripts)
+
+### Requirement: YouTube Transcript Retry with Exponential Backoff
+The system SHALL retry transcript fetch operations that fail with HTTP 429 (Too Many Requests) using exponential backoff.
+
+The retry logic SHALL:
+1. Catch 429 errors from both `youtube-transcript-api` and YouTube Data API `HttpError` responses
+2. Wait for `base * 2^attempt` seconds (with ±20% jitter) before retrying
+3. Retry up to `YOUTUBE_MAX_RETRIES` times (default: 4, giving delays of 2s, 4s, 8s, 16s)
+4. After exhausting retries, skip the video and continue with the next one
+5. Log each retry attempt with the delay and attempt number
+
+#### Scenario: youtube-transcript-api returns 429
+- **WHEN** `youtube-transcript-api` raises an error indicating HTTP 429
+- **THEN** the system waits for the backoff delay (2s on first retry)
+- **AND** retries the transcript fetch
+- **AND** doubles the delay on each subsequent 429 (2s → 4s → 8s → 16s)
+- **AND** after `YOUTUBE_MAX_RETRIES` failures, logs a warning and skips the video
+
+#### Scenario: YouTube Data API returns HttpError 429
+- **WHEN** the YouTube Data API `captions.list` or `captions.download` returns `HttpError 429`
+- **THEN** the same exponential backoff logic applies
+- **AND** retries the API call up to `YOUTUBE_MAX_RETRIES` times
+- **AND** after exhausting retries, falls back to `youtube-transcript-api` (for Data API captions path)
+
+#### Scenario: Non-429 errors are not retried
+- **WHEN** a transcript fetch fails with an error other than 429 (e.g., 403, 404, transcripts disabled)
+- **THEN** the system does not retry
+- **AND** proceeds with normal error handling (skip video or fallback)
+
+#### Scenario: Backoff jitter prevents thundering herd
+- **WHEN** multiple transcript fetches trigger retries simultaneously
+- **THEN** each retry delay includes ±20% random jitter
+- **AND** the actual delay varies (e.g., 2s ± 0.4s for the first retry)
+
+### Requirement: Cloud OAuth Token Hydration
+The system SHALL support loading YouTube OAuth credentials from the `YOUTUBE_OAUTH_TOKEN_JSON` environment variable for headless cloud deployments where browser-based OAuth flows are unavailable.
+
+#### Scenario: Token hydrated from environment variable on cloud startup
+- **WHEN** the `YOUTUBE_OAUTH_TOKEN_JSON` environment variable is set
+- **AND** the `youtube_token.json` file does not exist on disk
+- **THEN** the system writes the env var content to the token file path before loading credentials
+- **AND** proceeds with normal OAuth authentication (refresh token → access token)
+
+#### Scenario: Token file takes precedence over environment variable
+- **WHEN** both `youtube_token.json` exists on disk and `YOUTUBE_OAUTH_TOKEN_JSON` is set
+- **THEN** the system uses the on-disk token file
+- **AND** does not overwrite it with the env var content
+
+#### Scenario: Refresh token renewal in cloud
+- **WHEN** the access token in the hydrated credentials has expired
+- **THEN** the system refreshes the access token using the refresh token via `creds.refresh(Request())`
+- **AND** saves the refreshed token to the file (ephemeral in cloud, but valid for the current run)
+- **AND** does not require user interaction
+
+#### Scenario: Revoked refresh token in cloud
+- **WHEN** the refresh token in `YOUTUBE_OAUTH_TOKEN_JSON` has been revoked in Google Cloud Console
+- **THEN** the system logs an error with instructions to re-generate the token locally
+- **AND** falls back to API key authentication (if available)
+- **AND** private playlists are skipped
 
 ## MODIFIED Requirements
 

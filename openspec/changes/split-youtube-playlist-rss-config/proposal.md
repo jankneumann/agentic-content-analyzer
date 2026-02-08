@@ -39,6 +39,19 @@ Splitting the configuration and CLI entry points lets operators:
 - Applied after transcript retrieval, before markdown conversion.
 - Supports both static dictionary replacements and optional LLM-based proofread for ambiguous cases.
 
+### Exponential Backoff on 429 Rate Limiting
+- Add retry-with-backoff logic to `YouTubeClient.get_transcript()` for `youtube-transcript-api` 429 errors.
+- Exponential backoff: 2s, 4s, 8s, 16s (4 retries max) before giving up on a video.
+- Applies to both playlist fallback and RSS transcript fetching.
+- Also add backoff to YouTube Data API calls for `HttpError 429` responses.
+- Configurable via `YOUTUBE_MAX_RETRIES` (default: 4) and `YOUTUBE_BACKOFF_BASE` (default: 2 seconds).
+
+### Cloud OAuth Support
+- Add `YOUTUBE_OAUTH_TOKEN_JSON` environment variable support for headless cloud deployments (Railway, Fly.io, etc.).
+- On startup, if the token file doesn't exist but the env var is set, the token JSON is written to disk.
+- The existing refresh logic handles token renewal without user interaction — refresh tokens are long-lived.
+- Eliminates the need for volume mounts or interactive browser flows in cloud environments.
+
 ### Quota Awareness
 - Log Data API quota usage per run (captions.list = 50 units, captions.download = 200 units per video).
 - Add `YOUTUBE_PREFER_DATA_API_CAPTIONS` setting (default: `true`) to control whether playlist ingestion prefers the Data API captions path.
@@ -46,16 +59,16 @@ Splitting the configuration and CLI entry points lets operators:
 ## Impact
 
 ### Affected Specs
-- `source-configuration` — new file-split convention, Data API captions transcript strategy
+- `source-configuration` — new file-split convention, Data API captions transcript strategy, backoff, cloud OAuth
 - `cli-interface` — new subcommands for split ingestion
 
 ### Affected Code
 - `sources.d/youtube.yaml` — split into two files
-- `src/ingestion/youtube.py` — `YouTubeClient.get_transcript_via_api()`, transcript method routing, caption proofreading
+- `src/ingestion/youtube.py` — `YouTubeClient.get_transcript_via_api()`, transcript method routing, caption proofreading, 429 backoff, cloud OAuth hydration
 - `src/ingestion/youtube_captions.py` — new module: SRT parser, proofread function, corrections loader
-- `src/config/settings.py` — new `youtube_prefer_data_api_captions` setting
+- `src/config/settings.py` — new settings (`youtube_prefer_data_api_captions`, `youtube_max_retries`, `youtube_backoff_base`, `youtube_oauth_token_json`)
 - `src/cli/ingest_commands.py` — new subcommands
-- `tests/test_ingestion/test_youtube.py` — Data API captions tests
+- `tests/test_ingestion/test_youtube.py` — Data API captions tests, backoff tests
 - `tests/test_ingestion/test_youtube_captions.py` — SRT parsing, proofread tests
 - `tests/test_ingestion/test_youtube_rss.py` — config file path update
 
