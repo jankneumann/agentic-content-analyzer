@@ -17,6 +17,11 @@ import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { getBreadcrumbs } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 /**
  * Props for the Header component
@@ -47,7 +52,7 @@ function Breadcrumbs() {
   // Don't render if only one item (we're at root)
   if (breadcrumbs.length <= 1) {
     return (
-      <h1 className="text-lg font-semibold">
+      <h1 className="text-lg font-semibold" aria-current="page">
         {breadcrumbs[0]?.title || "Dashboard"}
       </h1>
     )
@@ -68,7 +73,9 @@ function Breadcrumbs() {
             {/* Breadcrumb item */}
             {isLast ? (
               // Current page - not a link
-              <span className="text-lg font-semibold">{crumb.title}</span>
+              <span className="text-lg font-semibold" aria-current="page">
+                {crumb.title}
+              </span>
             ) : (
               // Parent page - link
               <a
@@ -93,40 +100,56 @@ function Breadcrumbs() {
  * Persists preference to localStorage.
  */
 function ThemeToggle() {
-  const [isDark, setIsDark] = useState(false)
-
-  // Initialize from localStorage or system preference
-  useEffect(() => {
+  // Initialize from localStorage or system preference lazily to prevent flash
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === "undefined") return false
     const stored = localStorage.getItem("theme")
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches
 
-    if (stored === "dark" || (!stored && prefersDark)) {
-      setIsDark(true)
+    const initialDark = stored === "dark" || (!stored && prefersDark)
+
+    // Apply class immediately if possible to reduce flash
+    if (initialDark) {
       document.documentElement.classList.add("dark")
     }
-  }, [])
+
+    return initialDark
+  })
+
+  // Sync theme changes
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add("dark")
+      localStorage.setItem("theme", "dark")
+    } else {
+      document.documentElement.classList.remove("dark")
+      localStorage.setItem("theme", "light")
+    }
+  }, [isDark])
 
   // Toggle theme
   const toggleTheme = () => {
     setIsDark(!isDark)
-    if (isDark) {
-      document.documentElement.classList.remove("dark")
-      localStorage.setItem("theme", "light")
-    } else {
-      document.documentElement.classList.add("dark")
-      localStorage.setItem("theme", "dark")
-    }
   }
 
+  const label = isDark ? "Switch to light mode" : "Switch to dark mode"
+
   return (
-    <Button variant="ghost" size="icon" onClick={toggleTheme}>
-      {isDark ? (
-        <Sun className="h-5 w-5" />
-      ) : (
-        <Moon className="h-5 w-5" />
-      )}
-      <span className="sr-only">Toggle theme</span>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          {isDark ? (
+            <Sun className="h-5 w-5" />
+          ) : (
+            <Moon className="h-5 w-5" />
+          )}
+          <span className="sr-only">{label}</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -145,15 +168,20 @@ export function Header({ onMenuClick, className }: HeaderProps) {
     >
       {/* Mobile menu button - only visible on small screens */}
       {onMenuClick && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="md:hidden"
-          onClick={onMenuClick}
-        >
-          <Menu className="h-5 w-5" />
-          <span className="sr-only">Open menu</span>
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={onMenuClick}
+            >
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Open menu</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open menu</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Breadcrumbs */}
@@ -164,10 +192,25 @@ export function Header({ onMenuClick, className }: HeaderProps) {
       {/* Right side actions */}
       <div className="flex items-center gap-2">
         {/* Notifications - placeholder for future */}
-        <Button variant="ghost" size="icon" disabled>
-          <Bell className="h-5 w-5" />
-          <span className="sr-only">Notifications</span>
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/*
+              Note: TooltipTrigger normally forwards props to the child.
+              Since Button is disabled, it might not emit events properly for tooltips.
+              However, radix-ui tooltip usually works if we wrap it, but pointer-events: none on disabled button blocks hover.
+              We keep the button disabled but maybe wrap in span if needed?
+              Radix UI Tooltip trigger on disabled button requires wrapping in a span/div usually.
+              Let's try wrapping in a span to ensure tooltip works.
+            */}
+            <span tabIndex={0} className="inline-block cursor-not-allowed rounded-md">
+              <Button variant="ghost" size="icon" disabled className="pointer-events-none">
+                <Bell className="h-5 w-5" />
+                <span className="sr-only">Notifications</span>
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Notifications (Coming soon)</TooltipContent>
+        </Tooltip>
 
         {/* Theme toggle */}
         <ThemeToggle />
