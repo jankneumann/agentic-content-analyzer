@@ -10,7 +10,7 @@ When switching between database providers (local Docker ↔ Railway/Supabase/Neo
 - **New `src/sync/` module** implementing profile-aware export/import with format conversion
 - **PostgreSQL sync**: Export all tables (contents, summaries, digests, images, themes, audio_digests, podcasts, jobs) to a portable JSONL format, import into target database preserving relationships and deduplication
 - **Neo4j sync**: Export knowledge graph entries (episodes, entities, relationships) via Cypher queries, import into target Neo4j instance; indexes/constraints rebuilt separately via Graphiti
-- **File storage sync**: Copy files (images, podcasts, audio-digests) between storage providers (local ↔ S3/Supabase Storage/Railway MinIO) using the unified `FileStorageService` interface, keyed by database file references
+- **File storage sync**: Copy files (images, podcasts, audio-digests) between storage providers (local ↔ S3/Supabase Storage/Railway MinIO) using the unified `FileStorageProvider` interface, keyed by database file references
 - **Partial table sync**: Support `--tables contents,summaries` for syncing only the most critical tables; auto-includes FK parent dependencies
 - **Profile-aware source/target resolution**: Sync commands resolve connection details from profile configuration, supporting `--from-profile` and `--to-profile` flags
 - **Incremental sync support**: Track sync timestamps to only transfer new/modified records on subsequent syncs

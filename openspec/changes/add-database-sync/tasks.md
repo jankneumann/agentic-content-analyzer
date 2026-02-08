@@ -13,7 +13,7 @@ Phase 6: [10.*] | [11.*] — Testing + Docs (parallel, after Phase 5)
 ## 0. Profile Isolation Prerequisite (depends on: nothing; blocks: 6.6, 8.*)
 
 - [ ] 0.1 Implement `resolve_profile_settings(profile_name)` in `src/config/settings.py` — reads `profiles/{name}.yaml`, merges with base, resolves `${VAR}` from `.secrets.yaml`, returns a `Settings` instance via `Settings(_env_file=None, **kwargs)`. Must NOT mutate `os.environ` or global state. (see N17, N13)
-- [ ] 0.2 Add `FileStorageService.from_settings(settings)` factory method in `src/services/file_storage.py` — constructs a `FileStorageService` from a `Settings` instance (not from env). Required for multi-profile file sync. (see N11, N17)
+- [ ] 0.2 Add `get_storage_for_settings(settings, bucket)` factory function in `src/services/file_storage.py` — constructs a `FileStorageProvider` from a `Settings` instance (not from global settings). Required for multi-profile file sync. (see N11, N17)
 
 ## 1. Core Sync Infrastructure
 
@@ -56,12 +56,12 @@ Phase 6: [10.*] | [11.*] — Testing + Docs (parallel, after Phase 5)
 
 ## 6. File Storage Sync (depends on: 1.3 for file path map)
 
-- [ ] 6.1 Create `src/sync/file_syncer.py` — copy files between storage providers using `FileStorageService`
+- [ ] 6.1 Create `src/sync/file_syncer.py` — copy files between storage providers using `FileStorageProvider`
 - [ ] 6.2 Discover files from **source** database by querying: `images.storage_path`, `audio_digests.audio_url`, `podcasts.audio_url` (non-NULL only). Map each path to its bucket. Use streaming/pagination for large DBs (see N25).
 - [ ] 6.3 Support `--buckets images,podcasts,audio-digests` filter for selective bucket sync
-- [ ] 6.4 Skip already-existing files on target (by path existence check via `FileStorageService.exists()`). See N10 for changed-file strategy.
+- [ ] 6.4 Skip already-existing files on target (by path existence check via `FileStorageProvider.exists()`). See N10 for changed-file strategy.
 - [ ] 6.5 Add progress reporting (file name, size, bucket counts, skipped/missing counts)
-- [ ] 6.6 Handle source/target storage provider resolution from `--from-profile` / `--to-profile`. Use `FileStorageService.from_settings()` from Phase 0 to instantiate separate services per profile (see N17). Detect same-storage edge case (see N12).
+- [ ] 6.6 Handle source/target storage provider resolution from `--from-profile` / `--to-profile`. Use `get_storage_for_settings()` from Phase 0 to instantiate separate providers per profile (see N17). Detect same-storage edge case (see N12).
 
 ## 7. CLI Commands (depends on: 2.*, 3.*, 4.*, 5.*, 6.*)
 
@@ -83,7 +83,7 @@ Phase 6: [10.*] | [11.*] — Testing + Docs (parallel, after Phase 5)
 ## 9. Incremental Sync (depends on: 7.*, 8.*)
 
 - [ ] 9.1 Create Alembic migration for `sync_metadata` table: `id` (PK), `source_profile` (String), `target_profile` (String), `last_sync_timestamp` (DateTime), `tables_synced` (JSON), `record_count` (Integer), `status` (String). Unique constraint on `(source_profile, target_profile)`.
-- [ ] 9.2 Implement `--since` flag for time-based filtering on export. Filter by `ingested_at` (contents), `created_at` (other tables). Include FK parents of filtered children regardless of date.
+- [ ] 9.2 Implement `--since` flag for time-based filtering on export. Filter by `ingested_at` (contents), `created_at` (other tables). **Critical**: FK parents of filtered children MUST be included regardless of their date (e.g., if Summary created today references Content from last week, both are exported). Query children first, collect FK parent IDs, then include those parents unconditionally.
 - [ ] 9.3 Auto-detect last sync timestamp: query `sync_metadata WHERE source_profile = ? AND target_profile = ? ORDER BY last_sync_timestamp DESC LIMIT 1`. Use as `--since` value.
 - [ ] 9.4 Update `sync_metadata` on successful sync completion with new timestamp and record count.
 
@@ -94,7 +94,7 @@ Unit tests (can run in parallel):
 - [ ] 10.2 Unit tests for pg_importer — mock session, verify: natural-key dedup per table, FK remapping via IDMapper, self-referential FK two-pass, enum validation, merge/replace/clean modes, error accumulation (depends on: 3.*)
 - [ ] 10.3 Unit tests for neo4j_exporter — mock Neo4j driver, verify node/relationship serialization (depends on: 4.*)
 - [ ] 10.4 Unit tests for neo4j_importer — mock Neo4j driver, verify: MERGE idempotency (re-import = zero new nodes), clean mode (depends on: 5.*)
-- [ ] 10.5 Unit tests for file_syncer — mock FileStorageService, verify: file discovery from DB, skip-existing logic, missing file warnings, bucket filtering (depends on: 6.*)
+- [ ] 10.5 Unit tests for file_syncer — mock FileStorageProvider, verify: file discovery from DB, skip-existing logic, missing file warnings, bucket filtering (depends on: 6.*)
 - [ ] 10.6 Unit tests for id_mapper — edge cases: self-referential FK deferred update, missing parent lookup, UUID mapping (depends on: 1.4)
 
 Integration tests (sequential, after unit tests):

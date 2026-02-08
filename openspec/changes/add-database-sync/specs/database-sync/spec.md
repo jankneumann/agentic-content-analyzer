@@ -163,7 +163,7 @@ The system SHALL provide Neo4j export/import capability for the Graphiti knowled
 
 ### Requirement: File Storage Sync
 
-The system SHALL provide file storage sync capability that copies files between storage providers (local, S3, Supabase Storage, Railway MinIO) using the unified `FileStorageService` interface, keyed by database file references.
+The system SHALL provide file storage sync capability that copies files between storage providers (local, S3, Supabase Storage, Railway MinIO) using the unified `FileStorageProvider` interface, keyed by database file references.
 
 #### Scenario: Full file sync between profiles
 - **GIVEN** profiles `local` and `railway` are configured with different storage providers
