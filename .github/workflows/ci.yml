@@ -32,6 +32,9 @@ jobs:
       - name: Run Ruff formatter check
         run: ruff format --check src/
 
+      - name: Check Alembic single head
+        run: python scripts/check_alembic_heads.py
+
   test:
     runs-on: ubuntu-latest
     services:
