@@ -35,7 +35,7 @@ This means:
 - Support testing unsaved draft content from the editor without persisting
 
 ### Phase 5: Seed & sync mechanism
-- **Automatic seeding**: On application startup, if a prompt key from `prompts.yaml` has no database row, seed it as the default (lazy, on first access)
+- **YAML as default source**: `prompts.yaml` serves as the default for all prompt keys. The database only stores explicit user overrides — no rows are written on startup or first access. When a prompt is requested, PromptService checks the DB for an override first; if absent, the YAML value is used directly. This ensures that YAML updates (via code deploys) take effect automatically without requiring DB cleanup
 - **Export/import**: CLI commands to export current prompts to YAML and import from YAML (for backup/restore)
 - **Cross-environment sync**: Out of scope — prompts are expected to be consistent between staging and production; environment migration should be addressed in a separate database sync proposal
 
