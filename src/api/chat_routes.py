@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -49,8 +49,7 @@ class MessageMetadata(BaseModel):
     web_search_queries: list[str] | None = Field(None, alias="webSearchQueries")
     processing_time_ms: int | None = Field(None, alias="processingTimeMs")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SuggestedAction(BaseModel):
@@ -63,8 +62,7 @@ class SuggestedAction(BaseModel):
     suggested_content: str = Field(..., alias="suggestedContent")
     explanation: str
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ChatMessageResponse(BaseModel):
@@ -77,9 +75,7 @@ class ChatMessageResponse(BaseModel):
     metadata: MessageMetadata | None = None
     suggested_actions: list[SuggestedAction] | None = Field(None, alias="suggestedActions")
 
-    class Config:
-        populate_by_name = True
-        from_attributes = True
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class ConversationResponse(BaseModel):
@@ -94,9 +90,7 @@ class ConversationResponse(BaseModel):
     updated_at: str = Field(..., alias="updatedAt")
     is_active: bool = Field(..., alias="isActive")
 
-    class Config:
-        populate_by_name = True
-        from_attributes = True
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class ConversationListItem(BaseModel):
@@ -111,8 +105,7 @@ class ConversationListItem(BaseModel):
     created_at: str = Field(..., alias="createdAt")
     updated_at: str = Field(..., alias="updatedAt")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class PaginatedConversationsResponse(BaseModel):
@@ -133,8 +126,7 @@ class CreateConversationRequest(BaseModel):
     initial_message: str | None = Field(None, alias="initial_message")
     title: str | None = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SendMessageRequest(BaseModel):
@@ -144,8 +136,7 @@ class SendMessageRequest(BaseModel):
     enable_web_search: bool = Field(False, alias="enable_web_search")
     model: str | None = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ApplyActionRequest(BaseModel):
@@ -154,8 +145,7 @@ class ApplyActionRequest(BaseModel):
     message_id: str = Field(..., alias="message_id")
     action_index: int = Field(0, alias="action_index")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ChatConfigResponse(BaseModel):

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from src.config.settings import settings
 from src.ingestion.files import FileContentIngestionService
@@ -44,8 +44,7 @@ class DocumentUploadResponse(BaseModel):
     canonical_id: int | None = None
     processing_time_ms: int | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentStatusResponse(BaseModel):
@@ -64,8 +63,7 @@ class DocumentStatusResponse(BaseModel):
     processed_at: datetime | None
     error_message: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SupportedFormatsResponse(BaseModel):

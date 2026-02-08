@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import defer, joinedload
 
@@ -54,8 +54,7 @@ class SummaryListItem(BaseModel):
     created_at: datetime
     processing_time_seconds: float | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SummaryDetail(BaseModel):
@@ -83,8 +82,7 @@ class SummaryDetail(BaseModel):
     # Optional parsed sections (when include_parsed_sections=True)
     parsed_sections: dict | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedSummaryResponse(BaseModel):
