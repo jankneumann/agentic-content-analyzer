@@ -19,7 +19,8 @@ def _mock_all_orchestrator_functions(
     *,
     gmail: int | Exception = 2,
     rss: int | Exception = 3,
-    youtube: int | Exception = 1,
+    youtube_playlist: int | Exception = 1,
+    youtube_rss: int | Exception = 0,
     podcast: int | Exception = 1,
     substack: int | Exception = 0,
 ):
@@ -28,7 +29,8 @@ def _mock_all_orchestrator_functions(
     for name, result in [
         ("ingest_gmail", gmail),
         ("ingest_rss", rss),
-        ("ingest_youtube", youtube),
+        ("ingest_youtube_playlist", youtube_playlist),
+        ("ingest_youtube_rss", youtube_rss),
         ("ingest_podcast", podcast),
         ("ingest_substack", substack),
     ]:
@@ -44,14 +46,16 @@ class TestDailyPipeline:
     @patch("src.processors.summarizer.ContentSummarizer")
     @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
     @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=0)
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=1)
     @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
     @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
     def test_daily_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
-        mock_youtube,
+        mock_youtube_playlist,
+        mock_youtube_rss,
         mock_podcast,
         mock_substack,
         mock_summarizer,
@@ -70,11 +74,12 @@ class TestDailyPipeline:
 
     @patch("src.ingestion.orchestrator.ingest_substack", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_podcast", side_effect=RuntimeError("fail"))
-    @patch("src.ingestion.orchestrator.ingest_youtube", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_rss", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail"))
     def test_daily_pipeline_all_ingestion_fails(
-        self, mock_gmail, mock_rss, mock_youtube, mock_podcast, mock_substack
+        self, mock_gmail, mock_rss, mock_yt_playlist, mock_yt_rss, mock_podcast, mock_substack
     ):
         result = runner.invoke(app, ["pipeline", "daily"])
         assert result.exit_code == 1
@@ -95,14 +100,16 @@ class TestWeeklyPipeline:
     @patch("src.processors.summarizer.ContentSummarizer")
     @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
     @patch("src.ingestion.orchestrator.ingest_podcast", return_value=2)
-    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=3)
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=1)
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=2)
     @patch("src.ingestion.orchestrator.ingest_rss", return_value=10)
     @patch("src.ingestion.orchestrator.ingest_gmail", return_value=5)
     def test_weekly_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
-        mock_youtube,
+        mock_youtube_playlist,
+        mock_youtube_rss,
         mock_podcast,
         mock_substack,
         mock_summarizer,

@@ -85,33 +85,29 @@ def ingest_rss(
     return result.items_ingested
 
 
-def ingest_youtube(
+def ingest_youtube_playlist(
     *,
     max_videos: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     use_oauth: bool = True,
 ) -> int:
-    """Ingest transcripts from YouTube playlists, channels, and RSS feeds.
+    """Ingest content from YouTube playlists and channels.
 
-    Encapsulates the 3-call pattern across 2 service classes:
-    1. YouTubeContentIngestionService.ingest_all_playlists()
-    2. YouTubeContentIngestionService.ingest_channels()
-    3. YouTubeRSSIngestionService.ingest_all_feeds()
+    Uses YouTubeContentIngestionService to process playlists (via YouTube
+    Data API) and channels. Supports both Gemini native video extraction
+    and transcript-based fallback.
 
     Args:
-        max_videos: Maximum videos per playlist/channel/feed.
+        max_videos: Maximum videos per playlist/channel.
         after_date: Only fetch videos after this date.
         force_reprocess: Force reprocess existing content.
         use_oauth: Use OAuth for private content (False = API key only).
 
     Returns:
-        Total number of items ingested across all YouTube source types.
+        Number of items ingested from playlists and channels.
     """
-    from src.ingestion.youtube import (
-        YouTubeContentIngestionService,
-        YouTubeRSSIngestionService,
-    )
+    from src.ingestion.youtube import YouTubeContentIngestionService
 
     service = YouTubeContentIngestionService(use_oauth=use_oauth)
     playlist_count = service.ingest_all_playlists(
@@ -125,14 +121,73 @@ def ingest_youtube(
         force_reprocess=force_reprocess,
     )
 
-    rss_service = YouTubeRSSIngestionService()
-    feed_count = rss_service.ingest_all_feeds(
+    return playlist_count + channel_count
+
+
+def ingest_youtube_rss(
+    *,
+    max_videos: int = 10,
+    after_date: datetime | None = None,
+    force_reprocess: bool = False,
+) -> int:
+    """Ingest content from YouTube RSS feeds.
+
+    Uses YouTubeRSSIngestionService to process channel RSS feeds.
+    Supports Gemini native video extraction (with low resolution by default)
+    and transcript-based fallback.
+
+    Args:
+        max_videos: Maximum videos per feed.
+        after_date: Only fetch videos after this date.
+        force_reprocess: Force reprocess existing content.
+
+    Returns:
+        Number of items ingested from RSS feeds.
+    """
+    from src.ingestion.youtube import YouTubeRSSIngestionService
+
+    service = YouTubeRSSIngestionService()
+    return service.ingest_all_feeds(
         max_entries_per_feed=max_videos,
         after_date=after_date,
         force_reprocess=force_reprocess,
     )
 
-    return playlist_count + channel_count + feed_count
+
+def ingest_youtube(
+    *,
+    max_videos: int = 10,
+    after_date: datetime | None = None,
+    force_reprocess: bool = False,
+    use_oauth: bool = True,
+) -> int:
+    """Ingest from all YouTube sources (playlists, channels, and RSS feeds).
+
+    Backward-compatible combined function that runs playlists first,
+    then RSS feeds. Playlists run first because they are higher priority
+    (curated content) and have fewer videos.
+
+    Args:
+        max_videos: Maximum videos per playlist/channel/feed.
+        after_date: Only fetch videos after this date.
+        force_reprocess: Force reprocess existing content.
+        use_oauth: Use OAuth for private content (False = API key only).
+
+    Returns:
+        Total number of items ingested across all YouTube source types.
+    """
+    playlist_count = ingest_youtube_playlist(
+        max_videos=max_videos,
+        after_date=after_date,
+        force_reprocess=force_reprocess,
+        use_oauth=use_oauth,
+    )
+    rss_count = ingest_youtube_rss(
+        max_videos=max_videos,
+        after_date=after_date,
+        force_reprocess=force_reprocess,
+    )
+    return playlist_count + rss_count
 
 
 def ingest_podcast(

@@ -360,6 +360,81 @@ class LLMRouter:
 
         return response
 
+    async def generate_with_video(
+        self,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        video_url: str,
+        media_resolution: str | None = None,
+        provider: Provider | None = None,
+        max_tokens: int = 8192,
+        temperature: float = 0.3,
+    ) -> LLMResponse:
+        """Generate a response using a YouTube video URL as input.
+
+        Only supported with Gemini models. Uses Part.from_uri() to send
+        the video reference alongside the text prompt. Gemini processes the
+        video natively (audio + visual).
+
+        Args:
+            model: Model ID (must be a Gemini model)
+            system_prompt: System instructions
+            user_prompt: User message
+            video_url: YouTube video URL (e.g., https://www.youtube.com/watch?v=...)
+            media_resolution: Resolution for video processing (low, medium, high, or None for default)
+            provider: Optional explicit provider. If None, uses family default.
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+
+        Returns:
+            LLMResponse with generated text
+
+        Raises:
+            ValueError: If model is not a Gemini model
+        """
+        import time
+
+        resolved_provider = self.resolve_provider(model, provider)
+
+        if resolved_provider != Provider.GOOGLE_AI:
+            raise ValueError(
+                f"generate_with_video() only supports Gemini models (GOOGLE_AI provider), "
+                f"got provider={resolved_provider.value} for model={model}"
+            )
+
+        logger.info(
+            f"Generating with video: model={model}, video_url={video_url}, "
+            f"resolution={media_resolution}"
+        )
+
+        start_time = time.monotonic()
+
+        response = await self._generate_gemini_with_video(
+            model,
+            resolved_provider,
+            system_prompt,
+            user_prompt,
+            video_url,
+            media_resolution,
+            max_tokens,
+            temperature,
+        )
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        self._trace_llm_call(
+            model=model,
+            provider=resolved_provider.value,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response=response,
+            duration_ms=duration_ms,
+            max_tokens=max_tokens,
+            metadata={"video_url": video_url, "media_resolution": media_resolution},
+        )
+
+        return response
+
     # =========================================================================
     # Telemetry
     # =========================================================================
@@ -607,6 +682,91 @@ class LLMRouter:
         response = client.models.generate_content(
             model=provider_model_id,
             contents=user_prompt,
+            config=config,
+        )
+
+        text = ""
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text") and part.text:
+                    text = part.text
+                    break
+
+        input_tokens = response.usage_metadata.prompt_token_count if response.usage_metadata else 0
+        output_tokens = (
+            response.usage_metadata.candidates_token_count if response.usage_metadata else 0
+        )
+
+        return LLMResponse(
+            text=text,
+            input_tokens=input_tokens or 0,
+            output_tokens=output_tokens or 0,
+            provider=provider,
+            model_version=self.model_config.get_model_version(model, provider),
+            raw_response=response,
+        )
+
+    async def _generate_gemini_with_video(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        video_url: str,
+        media_resolution: str | None,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        """Generate with Google Gemini API using a YouTube video URL.
+
+        Uses Part.from_uri() to send the video URL alongside the text prompt.
+        Gemini processes the video natively (audio + visual).
+
+        Args:
+            model: Model ID
+            provider: Resolved provider
+            system_prompt: System instructions
+            user_prompt: User message
+            video_url: YouTube video URL
+            media_resolution: Resolution for video processing (low, medium, high, or None for default)
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+        """
+        from google import genai
+        from google.genai import types
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+
+        client = genai.Client(api_key=api_key)
+        provider_model_id = self.get_provider_model_id(model, provider)
+
+        # Map string resolution to Gemini enum
+        resolution_map: dict[str, types.MediaResolution] = {
+            "low": types.MediaResolution.MEDIA_RESOLUTION_LOW,
+            "medium": types.MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+            "high": types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+        }
+        resolved_resolution = resolution_map.get((media_resolution or "").lower())
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+            media_resolution=resolved_resolution,
+        )
+
+        # Build content parts: video URI + text prompt
+        video_part = types.Part.from_uri(
+            file_uri=video_url,
+            mime_type="video/mp4",
+        )
+        contents = [video_part, user_prompt]
+
+        response = client.models.generate_content(
+            model=provider_model_id,
+            contents=contents,
             config=config,
         )
 

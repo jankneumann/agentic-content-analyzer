@@ -310,6 +310,8 @@ default_models:
   digest_revision: claude-sonnet-4-5  # Quality-critical for conversational refinement
   historical_context: claude-sonnet-4-5  # Good at temporal reasoning
   youtube_processing: gemini-2.5-flash  # Native YouTube support, very cheap
+  youtube_rss_processing: gemini-2.5-flash-lite  # Lightweight processing for RSS-sourced YouTube content
+  caption_proofreading: gemini-2.5-flash-lite  # Fast, cheap for caption cleanup
   entity_extraction: claude-haiku-4-5  # Structured extraction, cost-effective
   reranking: gpt-5-nano  # Fast, cheap for simple ranking
   podcast_script: gemini-2.5-flash  # Conversational dialogue, tool use, high rate limits

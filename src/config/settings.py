@@ -386,6 +386,11 @@ class Settings(BaseSettings):
     youtube_token_file: str = "youtube_token.json"
     youtube_playlists_file: str = "youtube_playlists.txt"  # Legacy — use sources.d/ instead
     youtube_api_key: str | None = None  # For public playlists (falls back to google_api_key)
+    youtube_max_retries: int = 4  # Maximum retry attempts for 429 errors
+    youtube_backoff_base: float = 2.0  # Base delay in seconds for exponential backoff
+    youtube_oauth_token_json: str | None = (
+        None  # JSON string of OAuth token for headless cloud deployments
+    )
 
     # Podcast Ingestion Configuration
     podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"

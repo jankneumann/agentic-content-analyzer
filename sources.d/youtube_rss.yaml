@@ -1,190 +1,127 @@
+defaults:
+  type: youtube_rss
+  gemini_summary: true
+  gemini_resolution: low
 sources:
-- type: youtube_playlist
-  id: PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6
-  name: Nate's Newsletter Playlist
-- type: youtube_playlist
-  id: PLgmaR0EXVZsLXQ30zPCMobz0p02XrNBJq
-  name: Jan's AI Playlist
-- type: youtube_rss
-  name: 1littlecoder
+- name: 1littlecoder
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCpV_X0VrL8-jg3t6wYGS-1g
-- type: youtube_rss
-  name: Abhishek Thakur
+- name: Abhishek Thakur
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCBPRJjIWfyNG4X-CRbnv78A
-- type: youtube_rss
-  name: AI Coffee Break with Letitia
+- name: AI Coffee Break with Letitia
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCobqgqE4i5Kf7wrxRxhToQA
-- type: youtube_rss
-  name: AI Explained
+- name: AI Explained
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCNJ1Ymd5yFuUPtn21xtRbbw
-- type: youtube_rss
-  name: AI Jason
+- name: AI Jason
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCrXSVX9a1mj8l0CMLwKgMVw
-- type: youtube_rss
-  name: Aitrepreneur
+- name: Aitrepreneur
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCEAbqW0HFB_UxZoUDO0kJBw
-- type: youtube_rss
-  name: Aleksa Gordić - The AI Epiphany
+- name: Aleksa Gordić - The AI Epiphany
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCj8shE7aIn4Yawwbo2FceCQ
-- type: youtube_rss
-  name: Alex The Analyst
+- name: Alex The Analyst
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UC7cs8q-gJRlGwj4A8OmCmXg
-- type: youtube_rss
-  name: All About AI
+- name: All About AI
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCR9j1jqqB5Rse69wjUnbYwA
-- type: youtube_rss
-  name: Allen Institute for AI
+- name: Allen Institute for AI
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCEqgmyWChwvt6MFGGlmUQCQ
-- type: youtube_rss
-  name: Analytics India Magazine
+- name: Analytics India Magazine
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCAlwrsgeJavG1vw9qSFOUmA
-- type: youtube_rss
-  name: Anastasi In Tech
+- name: Anastasi In Tech
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCORX3Cl7ByidjEgzSCgv9Yw
-- type: youtube_rss
-  name: Andrej Baranovskij
+- name: Andrej Baranovskij
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCqSX0Z20QCEE7tZKaQ4pS3Q
-- type: youtube_rss
-  name: AssemblyAI
+- name: AssemblyAI
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCtatfZMf-8EkIwASXM4ts0A
-- type: youtube_rss
-  name: Avra
+- name: Avra
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCDMP6ATYKNXMvn2ok1gfM7Q
-- type: youtube_rss
-  name: code_your_own_AI
+- name: code_your_own_AI
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCfOvNb3xj28SNqPQ_JIbumg
-- type: youtube_rss
-  name: Data Independent
+- name: Data Independent
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCyR2Ct3pDOeZSRyZH5hPO-Q
-- type: youtube_rss
-  name: David Shapiro ~ AI
+- name: David Shapiro ~ AI
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCvKRFNawVcuz4b9ihUTApCg
-- type: youtube_rss
-  name: DeepMind
+- name: DeepMind
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCP7jMXSY2xbc3KCAE0MHQ-A
-- type: youtube_rss
-  name: Edan Meyer
+- name: Edan Meyer
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UC66Ggxy8MHX9DCDohdRYDTA
-- type: youtube_rss
-  name: Full Stack Deep Learning
+- name: Full Stack Deep Learning
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCVchfoB65aVtQiDITbGq2LQ
-- type: youtube_rss
-  name: H2O.ai
+- name: H2O.ai
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCk6ONJlPzjw3DohAeMSgsng
-- type: youtube_rss
-  name: IBM Research
+- name: IBM Research
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCwx7Y3W30N8aS_tiCy2x-2g
-- type: youtube_rss
-  name: James Briggs
+- name: James Briggs
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCv83tO5cePwHMt1952IVVHw
-- type: youtube_rss
-  name: Jeremy Howard
+- name: Jeremy Howard
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCX7Y2qWriXpqocG97SFW2OQ
-- type: youtube_rss
-  name: Joma Tech
+- name: Joma Tech
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCV0qA-eDDICsRR9rPcnG7tw
-- type: youtube_rss
-  name: Jordan Harrod
+- name: Jordan Harrod
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UC1H1NWNTG2Xi3pt85ykVSHA
-- type: youtube_rss
-  name: Kaggle
+- name: Kaggle
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCSNeZleDn9c74yQc-EKnVTA
-- type: youtube_rss
-  name: Keith Galli
+- name: Keith Galli
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCq6XkhO5SZ66N04IcPbqNcw
-- type: youtube_rss
-  name: Ken Jee
+- name: Ken Jee
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCiT9RITQ9PW6BhXK0y2jaeg
-- type: youtube_rss
-  name: LlamaIndex
+- name: LlamaIndex
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCeRjipR4_SsCddq9VZ2AeKg
-- type: youtube_rss
-  name: Machine Learning Street Talk
+- name: Machine Learning Street Talk
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCMLtBahI5DMrt0NPvDSoIRQ
-- type: youtube_rss
-  name: Manning Publications
+- name: Manning Publications
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCDia_lkNYKLJVLRLQl_-pFw
-- type: youtube_rss
-  name: Martin Thissen
+- name: Martin Thissen
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCXx0JWOKERPZdzczPfY-huA
-- type: youtube_rss
-  name: Matt Wolfe
+- name: Matt Wolfe
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UChpleBmo18P08aKCIgti38g
-- type: youtube_rss
-  name: MLOps.community
+- name: MLOps.community
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCG6qpjVnBTTT8wLGBygANOQ
-- type: youtube_rss
-  name: News, Tutorials, AI Research
+- name: News, Tutorials, AI Research
   url: https://www.assemblyai.com/blog/rss/
-- type: youtube_rss
-  name: Nicholas Renotte
+- name: Nicholas Renotte
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCHXa4OpASJEwrHrLeIzw7Yg
-- type: youtube_rss
-  name: NVIDIA
+- name: NVIDIA
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCHuiy8bXnmK5nisYHUd1J5g
-- type: youtube_rss
-  name: Olivio Sarikas
+- name: Olivio Sarikas
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCCKx8mAHiFus-XYQLy_WnaA
-- type: youtube_rss
-  name: Patrick Loeber
+- name: Patrick Loeber
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCbXgNpp0jedKWcQiULLbDTA
-- type: youtube_rss
-  name: Playground AI
+- name: Playground AI
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCUbLzJ30GLE1F5OSWNoYs9g
-- type: youtube_rss
-  name: Prompt Engineering
+- name: Prompt Engineering
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCDq7SjbgRKty5TgGafW8Clg
-- type: youtube_rss
-  name: Rabbitmetrics
+- name: Rabbitmetrics
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCNszHNG0PlhWJdtNqFvwMWw
-- type: youtube_rss
-  name: Reuven Lerner
+- name: Reuven Lerner
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCBqMxo5ch1NN0hZsM58gf6Q
-- type: youtube_rss
-  name: Sam Witteveen
+- name: Sam Witteveen
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UC55ODQSvARtgSyc8ThfiepQ
-- type: youtube_rss
-  name: sentdex
+- name: sentdex
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCfzlCWGWYyIQ0aLC5w48gBQ
-- type: youtube_rss
-  name: Super Data Science Podcast with Jon Krohn
+- name: Super Data Science Podcast with Jon Krohn
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCMbtqTGdSsxYYhhTpV4lSTQ
-- type: youtube_rss
-  name: TensorFlow
+- name: TensorFlow
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UC0rqucBdTuFTjJiefW5t-IQ
-- type: youtube_rss
-  name: The AI Advantage
+- name: The AI Advantage
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCHhYXsLBEVVnbvsq57n1MTQ
-- type: youtube_rss
-  name: The Data Scientist Show - Daliana Liu
+- name: The Data Scientist Show - Daliana Liu
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCa0RTSXWyZdh7IciV9r-3ow
-- type: youtube_rss
-  name: Thu Vu data analytics
+- name: Thu Vu data analytics
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCJQJAI7IjbLcpsjWdSzYz0Q
-- type: youtube_rss
-  name: Towards Data Science
+- name: Towards Data Science
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCuHZ1UYfHRqk3-5N5oc97Kw
-- type: youtube_rss
-  name: Two Minute Papers
+- name: Two Minute Papers
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg
-- type: youtube_rss
-  name: Unconventional Coding
+- name: Unconventional Coding
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCqp4QHWfVYd65onoyraiYvg
-- type: youtube_rss
-  name: Venelin Valkov
+- name: Venelin Valkov
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCoW_WzQNJVAjxo4osNAxd_g
-- type: youtube_rss
-  name: Weights &amp; Biases
+- name: Weights &amp; Biases
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCBp3w4DCEC64FZr4k9ROxig
-- type: youtube_rss
-  name: What&#x27;s AI by Louis Bouchard
+- name: What&#x27;s AI by Louis Bouchard
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCUzGQrN-lyyc0BWTYoJM_Sg
-- type: youtube_rss
-  name: Wolfram
+- name: Wolfram
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCJekgf6k62CQHdENWf2NgAQ
-- type: youtube_rss
-  name: WorldofAI
+- name: WorldofAI
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UC2WmuBuFq6gL08QYG-JjXKw
-- type: youtube_rss
-  name: Yannic Kilcher
+- name: Yannic Kilcher
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCZHmQk67mSJgfCCTn7xBfew

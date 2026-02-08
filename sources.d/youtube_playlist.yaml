@@ -1,0 +1,31 @@
+defaults:
+  type: youtube_playlist
+  gemini_summary: true
+  gemini_resolution: default
+  proofread: true
+  hint_terms:
+    - Claude
+    - Anthropic
+    - OpenAI
+    - LLaMA
+    - ChatGPT
+    - Gemini
+    - Mistral
+    - GPT-4
+    - GPT-4o
+    - DeepSeek
+    - Llama
+    - Hugging Face
+    - LangChain
+    - LlamaIndex
+    - Midjourney
+    - Stable Diffusion
+    - DALL-E
+    - Sora
+    - Whisper
+    - Copilot
+sources:
+- id: PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6
+  name: "Nate's Newsletter Playlist"
+- id: PLgmaR0EXVZsLXQ30zPCMobz0p02XrNBJq
+  name: "Jan's AI Playlist"

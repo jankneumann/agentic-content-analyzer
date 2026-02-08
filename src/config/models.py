@@ -79,6 +79,8 @@ class ModelStep(StrEnum):
     DIGEST_REVISION = "digest_revision"  # Interactive digest revision
     HISTORICAL_CONTEXT = "historical_context"  # Historical context analysis
     YOUTUBE_PROCESSING = "youtube_processing"  # YouTube video summarization
+    YOUTUBE_RSS_PROCESSING = "youtube_rss_processing"  # YouTube RSS feed processing
+    CAPTION_PROOFREADING = "caption_proofreading"  # Caption/transcript proofreading
     ENTITY_EXTRACTION = "entity_extraction"  # Entity extraction for knowledge graph
     RERANKING = "reranking"  # Search result reranking (Graphiti)
     PODCAST_SCRIPT = "podcast_script"  # Podcast script generation from digest
@@ -222,6 +224,8 @@ class ModelConfig:
         digest_revision: str | None = None,
         historical_context: str | None = None,
         youtube_processing: str | None = None,
+        youtube_rss_processing: str | None = None,
+        caption_proofreading: str | None = None,
         entity_extraction: str | None = None,
         reranking: str | None = None,
         podcast_script: str | None = None,
@@ -237,6 +241,8 @@ class ModelConfig:
             digest_revision: Model for interactive digest revision (default from YAML)
             historical_context: Model for historical context (default from YAML)
             youtube_processing: Model for YouTube processing (default from YAML)
+            youtube_rss_processing: Model for YouTube RSS feed processing (default from YAML)
+            caption_proofreading: Model for caption/transcript proofreading (default from YAML)
             entity_extraction: Model for entity extraction (default from YAML)
             reranking: Model for search reranking (default from YAML)
             podcast_script: Model for podcast script generation (default from YAML)
@@ -252,6 +258,10 @@ class ModelConfig:
             or DEFAULT_MODELS["historical_context"],
             ModelStep.YOUTUBE_PROCESSING: youtube_processing
             or DEFAULT_MODELS["youtube_processing"],
+            ModelStep.YOUTUBE_RSS_PROCESSING: youtube_rss_processing
+            or DEFAULT_MODELS["youtube_rss_processing"],
+            ModelStep.CAPTION_PROOFREADING: caption_proofreading
+            or DEFAULT_MODELS["caption_proofreading"],
             ModelStep.ENTITY_EXTRACTION: entity_extraction or DEFAULT_MODELS["entity_extraction"],
             ModelStep.RERANKING: reranking or DEFAULT_MODELS["reranking"],
             ModelStep.PODCAST_SCRIPT: podcast_script
