@@ -444,8 +444,10 @@ async def get_content_stats() -> ContentStats:
 
         # Count content items that don't have summaries yet
         # Use LEFT JOIN to find content without summaries (more efficient than NOT IN subquery)
+        # OPTIMIZATION: Filter by status first to use index and reduce join set size
         needs_summarization_count = (
             db.query(func.count(Content.id))
+            .filter(Content.status.in_([ContentStatus.PENDING, ContentStatus.PARSED]))
             .outerjoin(Summary, Content.id == Summary.content_id)
             .filter(Summary.id.is_(None))
             .scalar()
