@@ -172,11 +172,19 @@ class RSSClient:
             logger.info(f"Fetched {len(contents)} content items from {feed_url}")
             return contents, result
 
+        except httpx.HTTPStatusError as e:
+            result.success = False
+            result.error = str(e)
+            result.error_type = f"HTTP {e.response.status_code}"
+            logger.warning(
+                f"Feed unavailable {feed_url}: {e.response.status_code} {e.response.reason_phrase}"
+            )
+            return [], result
         except httpx.HTTPError as e:
             result.success = False
             result.error = str(e)
             result.error_type = type(e).__name__
-            logger.error(f"HTTP error fetching feed {feed_url}: {e}", exc_info=True)
+            logger.warning(f"HTTP error fetching feed {feed_url}: {e}")
             return [], result
         except Exception as e:
             result.success = False
