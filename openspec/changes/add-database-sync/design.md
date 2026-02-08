@@ -207,6 +207,46 @@ This keeps `aca sync import` a pure data operation and `alembic upgrade head` a 
 3. Alembic revision stored in export metadata for compatibility checking
 4. Rollback: drop `sync_metadata` table and remove the sync module — no other database state is modified by the feature itself (only the target database is modified during import)
 
+## Implementation Notes (Medium/Low Severity Findings)
+
+These findings were identified during plan review but deferred from critical/high fixes. They should be addressed during implementation of the relevant tasks.
+
+### PG Import (Tasks 3.x)
+
+| # | Severity | Finding | Implementation Guidance |
+|---|----------|---------|------------------------|
+| N1 | MEDIUM | **JSONL format validation**: No validation of JSONL integrity before import. Malformed JSON lines, missing table name fields, or type mismatches could crash the importer. | Task 3.1: Add a validation pass before import. Read JSONL manifest first, verify structure. On malformed line, log line number + error, skip that record, continue. Report total parse errors in summary. |
+| N2 | MEDIUM | **`--tables` + `--mode clean` scope**: If user specifies `--tables contents --mode clean`, should only `contents` be truncated, or also its dependents (summaries, images, etc.)? Truncating only `contents` leaves orphaned FK references. | Task 3.6: Truncate only specified tables (plus auto-included parents). Log warning: `--mode clean with --tables may leave orphaned child records in: summaries, images, digests`. Consider adding `--cascade` flag in future. |
+| N3 | MEDIUM | **Multiple Alembic heads**: If target DB has multiple Alembic heads (branched migrations), `alembic_version` may contain multiple rows. Schema check should detect this. | Task 3.7: After querying `alembic_version`, if multiple rows found, error: `Target DB has multiple Alembic heads — run 'alembic merge heads' to linearize migrations before importing.` |
+| N4 | MEDIUM | **Dry-run + clean mode interaction**: When `--dry-run --mode clean` is used, should the confirmation prompt still appear? Dry-run shouldn't write anything, but the prompt gives false sense of action. | Task 7.7: In dry-run mode, skip the clean confirmation prompt. Instead log: `[DRY RUN] Would truncate tables: {list}. No data modified.` |
+| N5 | MEDIUM | **Empty target database**: No scenario covers importing into a completely fresh database (no existing rows). The dedup lookup should handle empty tables gracefully (no-op, not error). | Task 3.2: Natural key lookup on empty table returns no match → all records inserted. This should be the default behavior. Add a test case for round-trip into empty DB. |
+| N6 | LOW | **Deprecated enum values**: If source export contains an enum value that was valid in the source schema but deprecated/removed in the target schema, import should handle gracefully. | Task 3.5: Enum validation already skips unknown values. For deprecated values specifically, they'll still be in the target schema enum (PG ALTER TYPE ADD VALUE is permanent). No additional handling needed unless a value was truly removed, which requires a new migration. |
+
+### Neo4j Sync (Tasks 4.x, 5.x)
+
+| # | Severity | Finding | Implementation Guidance |
+|---|----------|---------|------------------------|
+| N7 | MEDIUM | **Neo4j property filtering**: Graphiti stores vector embeddings and internal index metadata on nodes. These should NOT be exported (large, rebuild-able). | Task 4.2: Explicitly exclude properties matching patterns: `embedding`, `*_embedding`, `*_vector`. Export all other properties including `name`, `type`, `created_at`, `summary`, `metadata`. Document excluded property patterns in constants.py. |
+| N8 | MEDIUM | **Neo4j export/import sequencing**: Neo4j import must not run concurrently with Graphiti operations. Export uses read-only queries (safe). Import modifies graph state. | Task 5.1: Document that Neo4j import is a blocking operation. If Graphiti is running (e.g., entity extraction), import should warn or fail. In practice, sync is a CLI operation run manually — concurrent Graphiti usage is unlikely. |
+
+### File Storage Sync (Tasks 6.x)
+
+| # | Severity | Finding | Implementation Guidance |
+|---|----------|---------|------------------------|
+| N9 | MEDIUM | **`--files-only` requires PG connection**: File discovery queries the source database for file path references. Using `--files-only` still needs a source DB connection, which may surprise users who expect `--files-only` to bypass PG entirely. | Task 7.5: Document in CLI help: `--files-only: Sync only file storage (requires database connection for file path discovery)`. Error if DB connection fails with: `File discovery requires database access. Check source profile database configuration.` |
+| N10 | MEDIUM | **File skip strategy for changed files**: Current design skips files that exist on target (by path). But if a source file has been updated (newer/different content), the target copy becomes stale. | Task 6.4: Default: skip if path exists (simple, fast). Future enhancement: add `--force-files` flag to re-upload all files regardless of existence. Content-hash comparison is too expensive for large audio files (50-100MB). |
+| N11 | MEDIUM | **Profile-based FileStorageService instantiation**: `resolve_profile_settings()` must return enough context to construct a `FileStorageService` for each profile without activating as global PROFILE. Need to verify the storage factory supports this. | Task 8.1: Audit `src/services/file_storage.py` factory. If `FileStorageService.from_settings(settings)` doesn't exist, create it. The factory must accept a Settings instance (not read from env) to support multi-profile usage. |
+| N12 | LOW | **Same-storage provider edge case**: If source and target profiles use the same storage provider pointing to the same bucket/path, file sync would copy files onto themselves (no-op but wasteful). | Task 6.1: After resolving source and target storage configs, compare provider type + bucket config. If identical, log: `Source and target storage are the same — skipping file sync.` Skip the file sync phase entirely. |
+
+### CLI / Integration (Tasks 7.x, 8.x)
+
+| # | Severity | Finding | Implementation Guidance |
+|---|----------|---------|------------------------|
+| N13 | MEDIUM | **Profile loading API audit**: Task 8.1 assumes `Settings.from_profile(name)` or equivalent exists. The current profile system loads via `PROFILE` env var in Settings.__init__. Need to verify or create a method that loads a profile without side effects. | Task 8.1: Read `src/config/settings.py` carefully. If no `from_profile()` exists, implement `resolve_profile_settings(name)` that: reads `profiles/{name}.yaml`, resolves `${VAR}` from `.secrets.yaml`, returns a `Settings` instance. Do NOT set env vars. |
+| N14 | LOW | **Dry-run for file sync preview**: The `--dry-run` flag is specified for PG import but not explicitly for file sync. Should file sync also support dry-run? | Task 7.7: Yes — `--dry-run` should apply to all sync phases. For file sync, report: `Would copy {N} files ({size} total) from {source_provider} to {target_provider}. Files: {list}`. No actual file I/O. |
+| N15 | LOW | **Incremental sync business rationale**: Proposal doesn't explain why incremental sync matters. | Context: Incremental sync enables repeated dev→cloud syncing during active development without retransferring unchanged data (e.g., sync local → Railway after adding 10 new articles, without re-syncing the existing 500). |
+| N16 | LOW | **Custom PostgreSQL types**: If the database uses custom types beyond standard enums (e.g., composite types, domains), sync may fail. | Out of scope for v1. All current types are standard SQL + enums. If custom types are added later, they'll need explicit handling in the serializer. Document this as a known limitation. |
+
 ## Resolved Questions
 
 1. **File storage sync — included.** Images, podcasts, and audio-digests are synced between storage providers using the `FileStorageService` interface. Files are discovered via database references (not blind enumeration).
