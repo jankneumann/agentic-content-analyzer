@@ -12,8 +12,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.config.models import Provider
 from src.models.theme import ThemeAnalysisRequest
 from src.processors.theme_analyzer import ThemeAnalyzer
+from src.services.llm_router import LLMResponse, LLMRouter
 
 
 @pytest.fixture
@@ -89,21 +91,19 @@ async def test_analyze_themes_success_integration(
         relevance_threshold=0.5,
     )
 
-    # Mock Anthropic client with proper token usage
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=mock_theme_llm_response)]
-    # Add token usage for cost calculation
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 2000
-    mock_usage.output_tokens = 800
-    mock_response.usage = mock_usage
-    mock_client.messages.create.return_value = mock_response
+    # Create LLMResponse wrapping the theme analysis JSON
+    theme_llm_response = LLMResponse(
+        text=mock_theme_llm_response,
+        input_tokens=2000,
+        output_tokens=800,
+        provider=Provider.ANTHROPIC,
+        model_version="claude-haiku-4-5-20250929",
+    )
 
     # Run theme analysis
-    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
-        mock_anthropic_class.return_value = mock_client
-
+    with patch.object(
+        LLMRouter, "generate", new_callable=AsyncMock, return_value=theme_llm_response
+    ):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 
@@ -152,16 +152,14 @@ async def test_analyze_themes_with_historical_context(
         end_date=datetime(2025, 1, 31),
     )
 
-    # Mock Anthropic client with proper token usage
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=mock_theme_llm_response)]
-    # Add token usage for cost calculation
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 2000
-    mock_usage.output_tokens = 800
-    mock_response.usage = mock_usage
-    mock_client.messages.create.return_value = mock_response
+    # Create LLMResponse wrapping the theme analysis JSON
+    theme_llm_response = LLMResponse(
+        text=mock_theme_llm_response,
+        input_tokens=2000,
+        output_tokens=800,
+        provider=Provider.ANTHROPIC,
+        model_version="claude-haiku-4-5-20250929",
+    )
 
     # Mock HistoricalContextAnalyzer
     mock_historical = AsyncMock()
@@ -169,9 +167,9 @@ async def test_analyze_themes_with_historical_context(
         side_effect=lambda themes, **kwargs: themes  # Return themes unchanged
     )
 
-    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
-        mock_anthropic_class.return_value = mock_client
-
+    with patch.object(
+        LLMRouter, "generate", new_callable=AsyncMock, return_value=theme_llm_response
+    ):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 
@@ -210,15 +208,14 @@ async def test_analyze_themes_insufficient_newsletters(
         min_newsletters=10,
     )
 
-    with patch("src.processors.theme_analyzer.Anthropic"):
-        with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti_client
+    with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
+        mock_graphiti_class.return_value = mock_graphiti_client
 
-            with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-                analyzer = ThemeAnalyzer()
-                # Mock calculate_cost to return a numeric value
-                analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
-                result = await analyzer.analyze_themes(request, include_historical_context=False)
+        with patch("src.processors.theme_analyzer.get_db", mock_get_db):
+            analyzer = ThemeAnalyzer()
+            # Mock calculate_cost to return a numeric value
+            analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
+            result = await analyzer.analyze_themes(request, include_historical_context=False)
 
     # Should return empty result
     assert result.newsletter_count == 0
@@ -268,15 +265,14 @@ async def test_analyze_themes_relevance_filtering(
   }
 ]"""
 
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=mock_response_low_relevance)]
-    # Add token usage for cost calculation
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 2000
-    mock_usage.output_tokens = 800
-    mock_response.usage = mock_usage
-    mock_client.messages.create.return_value = mock_response
+    # Create LLMResponse wrapping the low-relevance theme analysis JSON
+    theme_llm_response = LLMResponse(
+        text=mock_response_low_relevance,
+        input_tokens=2000,
+        output_tokens=800,
+        provider=Provider.ANTHROPIC,
+        model_version="claude-haiku-4-5-20250929",
+    )
 
     # Request with 0.5 threshold
     request = ThemeAnalysisRequest(
@@ -285,9 +281,9 @@ async def test_analyze_themes_relevance_filtering(
         relevance_threshold=0.5,
     )
 
-    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
-        mock_anthropic_class.return_value = mock_client
-
+    with patch.object(
+        LLMRouter, "generate", new_callable=AsyncMock, return_value=theme_llm_response
+    ):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 
@@ -316,20 +312,18 @@ async def test_analyze_themes_no_summaries(
 
     # Note: sample_summaries fixture not included, so no summaries exist
 
-    # Mock Anthropic client with proper token usage (needed for cost calculation)
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="[]")]  # Empty themes response
-    # Add token usage for cost calculation
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 1000
-    mock_usage.output_tokens = 100
-    mock_response.usage = mock_usage
-    mock_client.messages.create.return_value = mock_response
+    # Create LLMResponse with empty themes
+    empty_theme_response = LLMResponse(
+        text="[]",
+        input_tokens=1000,
+        output_tokens=100,
+        provider=Provider.ANTHROPIC,
+        model_version="claude-haiku-4-5-20250929",
+    )
 
-    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
-        mock_anthropic_class.return_value = mock_client
-
+    with patch.object(
+        LLMRouter, "generate", new_callable=AsyncMock, return_value=empty_theme_response
+    ):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 

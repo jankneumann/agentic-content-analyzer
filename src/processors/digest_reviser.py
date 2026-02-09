@@ -196,11 +196,15 @@ class DigestReviser:
                 while iteration < max_iterations:
                     iteration += 1
 
+                    # Get system prompt for digest revision
+                    system_prompt = self.prompt_service.get_pipeline_prompt("digest_revision")
+
                     # Call Claude API with tool use enabled
                     response = client.messages.create(
                         model=provider_model_id,
                         max_tokens=8000,
                         temperature=0.0,  # Deterministic for consistent revisions
+                        system=system_prompt,
                         tools=tools,
                         messages=messages,
                     )
@@ -428,8 +432,9 @@ class DigestReviser:
         context_text = context.to_llm_context()
 
         # Build user message from configurable template
+        # (render() auto-escapes braces in variable values)
         user_message = self.prompt_service.render(
-            "pipeline.digest_revision.system",
+            "pipeline.digest_revision.user_template",
             context_text=context_text,
             user_request=user_request,
         )

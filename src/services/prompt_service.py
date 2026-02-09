@@ -109,6 +109,9 @@ class PromptService:
         Uses str.format_map() with SafeDict so that missing variables are
         left as {placeholder} in the output instead of raising KeyError.
 
+        Variable values that contain literal braces (e.g., JSON content)
+        are automatically escaped so they don't interfere with format_map().
+
         Args:
             key: Full dot-separated key (e.g., "pipeline.podcast_script.length_brief")
             **variables: Template variables to substitute
@@ -120,10 +123,19 @@ class PromptService:
         template = self._get_prompt(key, path)
         if not variables:
             return template
-        return template.format_map(SafeDict(variables))
+        # Escape literal braces in variable values to prevent format_map
+        # from treating JSON content like {"key": "value"} as placeholders
+        safe_variables = {
+            k: str(v).replace("{", "{{").replace("}", "}}") for k, v in variables.items()
+        }
+        return template.format_map(SafeDict(safe_variables))
 
     def _get_prompt(self, key: str, path: list[str]) -> str:
         """Get a prompt, checking DB override first.
+
+        If no db session was provided at init time, a short-lived session
+        is opened automatically so that DB overrides are always respected
+        regardless of how the caller instantiated PromptService.
 
         Args:
             key: Full dot-separated key for DB lookup
@@ -132,14 +144,38 @@ class PromptService:
         Returns:
             Prompt value (override if exists, otherwise default)
         """
-        # Check for DB override
+        # Check for DB override using provided session
         if self.db:
             override = self.db.query(PromptOverride).filter_by(key=key).first()
             if override:
                 return str(override.value)
+        else:
+            # Auto-acquire a short-lived session for override lookup
+            auto_override = self._check_override_auto(key)
+            if auto_override is not None:
+                return auto_override
 
         # Return default
         return self._get_nested(self._defaults, path, "")
+
+    def _check_override_auto(self, key: str) -> str | None:
+        """Check for a DB override using a short-lived session.
+
+        Opens and closes its own session so callers that didn't provide
+        a db session still get override support. Returns None if no
+        override exists or if the database is unavailable.
+        """
+        try:
+            from src.storage.database import get_db
+
+            with get_db() as db:
+                override = db.query(PromptOverride).filter_by(key=key).first()
+                if override:
+                    return str(override.value)
+        except Exception:
+            # DB unavailable (e.g., tests without DB, CLI without DB)
+            pass
+        return None
 
     def _get_nested(self, data: dict[str, Any], path: list[str], default: str) -> str:
         """Get a nested value from a dictionary.
@@ -185,10 +221,13 @@ class PromptService:
             description: Optional description of the change
 
         Raises:
-            ValueError: If no database session is available
+            ValueError: If no database session is available or value is empty
         """
         if not self.db:
             raise ValueError("Database session required for setting overrides")
+
+        if not value or not value.strip():
+            raise ValueError("Prompt override value cannot be empty")
 
         existing = self.db.query(PromptOverride).filter_by(key=key).first()
         if existing:

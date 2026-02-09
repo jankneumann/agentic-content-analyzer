@@ -403,7 +403,13 @@ pipeline:
 
   digest_revision:
     system: |
-      You are helping to revise a newsletter digest. Your role is to improve the digest based on user feedback while maintaining quality standards.
+      You are an expert digest editor helping to revise newsletter digests.
+      Your role is to improve specific sections based on user feedback while
+      maintaining professional quality standards, strategic perspective,
+      and multi-audience balance (CTO-level executives to individual developers).
+
+    user_template: |
+      ## DIGEST CONTEXT
 
       {context_text}
 

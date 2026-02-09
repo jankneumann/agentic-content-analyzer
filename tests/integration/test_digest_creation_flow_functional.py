@@ -14,13 +14,15 @@ We only care that the flow works, not that digests are meaningful.
 
 import logging
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.config.models import Provider
 from src.models.digest import Digest, DigestRequest, DigestType
 from src.models.summary import Summary
 from src.processors.digest_creator import DigestCreator
+from src.services.llm_router import LLMResponse, LLMRouter
 from tests.helpers.simple_mocks import (
     create_simple_digest_response,
     create_simple_embedding_response,
@@ -30,6 +32,18 @@ from tests.helpers.test_data import create_test_contents_batch
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def _make_theme_llm_response(theme_count: int = 3) -> LLMResponse:
+    """Create an LLMResponse containing valid theme analysis JSON."""
+    mock_response = create_simple_theme_analysis_response(theme_count)
+    return LLMResponse(
+        text=mock_response.content[0].text,
+        input_tokens=300,
+        output_tokens=250,
+        provider=Provider.ANTHROPIC,
+        model_version="claude-haiku-4-5-20250929",
+    )
 
 
 @pytest.mark.asyncio
@@ -84,19 +98,19 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
     # 2. MOCK: Theme analysis and digest creation APIs
     # ============================================================
     logger.info("Setting up API mocks...")
-    mock_theme_response = create_simple_theme_analysis_response(theme_count=3)
     mock_digest_response = create_simple_digest_response()
 
     # Patch get_db and Anthropic
     with patch("src.processors.digest_creator.get_db", mock_get_db):
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-                with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
+                with patch.object(
+                    LLMRouter,
+                    "generate",
+                    new_callable=AsyncMock,
+                    return_value=_make_theme_llm_response(),
+                ):
                     with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
-                        mock_analyzer_client = MagicMock()
-                        mock_analyzer_client.messages.create.return_value = mock_theme_response
-                        mock_anthropic_analyzer.return_value = mock_analyzer_client
-
                         mock_digest_client = MagicMock()
                         mock_digest_client.messages.create.return_value = mock_digest_response
                         mock_anthropic_digest.return_value = mock_digest_client
@@ -199,18 +213,18 @@ async def test_create_weekly_digest(db_session, mock_get_db):
     # 2. MOCK: APIs
     # ============================================================
     logger.info("Setting up API mocks...")
-    mock_theme_response = create_simple_theme_analysis_response(theme_count=3)
     mock_digest_response = create_simple_digest_response()
 
     with patch("src.processors.digest_creator.get_db", mock_get_db):
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-                with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
+                with patch.object(
+                    LLMRouter,
+                    "generate",
+                    new_callable=AsyncMock,
+                    return_value=_make_theme_llm_response(),
+                ):
                     with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
-                        mock_analyzer_client = MagicMock()
-                        mock_analyzer_client.messages.create.return_value = mock_theme_response
-                        mock_anthropic_analyzer.return_value = mock_analyzer_client
-
                         mock_digest_client = MagicMock()
                         mock_digest_client.messages.create.return_value = mock_digest_response
                         mock_anthropic_digest.return_value = mock_digest_client
@@ -353,18 +367,18 @@ async def test_digest_includes_all_newsletter_sources(db_session, mock_get_db):
     # ============================================================
     # 2. MOCK: APIs
     # ============================================================
-    mock_theme_response = create_simple_theme_analysis_response(theme_count=3)
     mock_digest_response = create_simple_digest_response()
 
     with patch("src.processors.digest_creator.get_db", mock_get_db):
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-                with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
+                with patch.object(
+                    LLMRouter,
+                    "generate",
+                    new_callable=AsyncMock,
+                    return_value=_make_theme_llm_response(),
+                ):
                     with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
-                        mock_analyzer_client = MagicMock()
-                        mock_analyzer_client.messages.create.return_value = mock_theme_response
-                        mock_anthropic_analyzer.return_value = mock_analyzer_client
-
                         mock_digest_client = MagicMock()
                         mock_digest_client.messages.create.return_value = mock_digest_response
                         mock_anthropic_digest.return_value = mock_digest_client
@@ -458,18 +472,18 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
     # ============================================================
     # 2. MOCK: APIs
     # ============================================================
-    mock_theme_response = create_simple_theme_analysis_response(theme_count=3)
     mock_digest_response = create_simple_digest_response()
 
     with patch("src.processors.digest_creator.get_db", mock_get_db):
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-                with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
+                with patch.object(
+                    LLMRouter,
+                    "generate",
+                    new_callable=AsyncMock,
+                    return_value=_make_theme_llm_response(),
+                ):
                     with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
-                        mock_analyzer_client = MagicMock()
-                        mock_analyzer_client.messages.create.return_value = mock_theme_response
-                        mock_anthropic_analyzer.return_value = mock_analyzer_client
-
                         mock_digest_client = MagicMock()
                         mock_digest_client.messages.create.return_value = mock_digest_response
                         mock_anthropic_digest.return_value = mock_digest_client
@@ -548,18 +562,18 @@ async def test_digest_with_custom_limits(db_session, mock_get_db):
     # ============================================================
     # 2. MOCK: APIs
     # ============================================================
-    mock_theme_response = create_simple_theme_analysis_response(theme_count=3)
     mock_digest_response = create_simple_digest_response()
 
     with patch("src.processors.digest_creator.get_db", mock_get_db):
         with patch("src.processors.summarizer.get_db", mock_get_db):
             with patch("src.processors.theme_analyzer.get_db", mock_get_db):
-                with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_analyzer:
+                with patch.object(
+                    LLMRouter,
+                    "generate",
+                    new_callable=AsyncMock,
+                    return_value=_make_theme_llm_response(),
+                ):
                     with patch("src.processors.digest_creator.Anthropic") as mock_anthropic_digest:
-                        mock_analyzer_client = MagicMock()
-                        mock_analyzer_client.messages.create.return_value = mock_theme_response
-                        mock_anthropic_analyzer.return_value = mock_analyzer_client
-
                         mock_digest_client = MagicMock()
                         mock_digest_client.messages.create.return_value = mock_digest_response
                         mock_anthropic_digest.return_value = mock_digest_client
