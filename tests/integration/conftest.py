@@ -34,7 +34,6 @@ ensure test cleanup never affects production knowledge graph data.
 
 import os
 from collections.abc import Generator
-from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -42,19 +41,19 @@ from neo4j import GraphDatabase
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.config.models import MODEL_REGISTRY
-
 # Import Base and all models that use it to ensure they're registered with metadata
 # All models share the same Base from base.py
 from src.models.base import Base
-from src.models.content import Content, ContentSource, ContentStatus
+from src.models.content import Content, ContentSource, ContentStatus  # noqa: F401
 from src.models.digest import Digest  # noqa: F401 - registers with Base.metadata
 from src.models.podcast import (  # noqa: F401 - registers with Base.metadata
     Podcast,
     PodcastScriptRecord,
 )
-from src.models.summary import Summary
+from src.models.summary import Summary  # noqa: F401
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
+from tests.factories.content import ContentFactory
+from tests.factories.summary import SummaryFactory
 
 # Test database configuration
 TEST_DATABASE_URL = os.getenv(
@@ -106,12 +105,17 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
 
     Each test gets a fresh session. Changes are rolled back after test completes.
     This ensures tests don't interfere with each other.
+    Also configures Factory Boy to use this session for model creation.
     """
     connection = test_db_engine.connect()
     transaction = connection.begin()
 
     SessionLocal = sessionmaker(bind=connection)
     session = SessionLocal()
+
+    # Configure factories to use this session
+    ContentFactory._meta.sqlalchemy_session = session
+    SummaryFactory._meta.sqlalchemy_session = session
 
     yield session
 
@@ -196,67 +200,51 @@ def clean_neo4j(neo4j_driver):
 
 
 @pytest.fixture
-def sample_contents(db_session) -> list[Content]:
+def sample_contents(db_session):
     """Create sample contents in the test database."""
-    contents = [
-        Content(
-            source_type=ContentSource.GMAIL,
+    return [
+        ContentFactory(
+            gmail=True,
+            parsed=True,
             source_id="msg-001",
             source_url="https://example.com/newsletter1",
             title="Latest LLM Advances",
             author="ai-weekly@example.com",
             publication="AI Weekly",
-            published_date=datetime(2025, 1, 15, 10, 0, 0),
             markdown_content="Newsletter content about LLM advances and new models. Context windows are expanding to 1M tokens. Costs are decreasing by 40%. Multimodal capabilities are becoming standard.",
             content_hash="hash001",
-            status=ContentStatus.PARSED,
         ),
-        Content(
-            source_type=ContentSource.GMAIL,
+        ContentFactory(
+            gmail=True,
+            parsed=True,
             source_id="msg-002",
             source_url="https://example.com/newsletter2",
             title="Vector Database Performance",
             author="data-eng@example.com",
             publication="Data Engineering Weekly",
-            published_date=datetime(2025, 1, 14, 10, 0, 0),
             markdown_content="Newsletter about vector database optimizations and benchmarks. Hybrid search combining vector and keyword search is critical. Performance matters at scale.",
             content_hash="hash002",
-            status=ContentStatus.PARSED,
         ),
-        Content(
-            source_type=ContentSource.RSS,
+        ContentFactory(
+            rss=True,
+            parsed=True,
             source_id="rss-003",
             source_url="https://example.com/newsletter3",
             title="AI Agent Frameworks",
             author="tech-trends@substack.com",
             publication="Tech Trends",
-            published_date=datetime(2025, 1, 13, 10, 0, 0),
             markdown_content="Comparison of AI agent frameworks including Claude SDK and OpenAI. Framework choice impacts development velocity. Tool use patterns vary significantly.",
             content_hash="hash003",
-            status=ContentStatus.PARSED,
         ),
     ]
 
-    for content in contents:
-        db_session.add(content)
-
-    db_session.commit()
-
-    # Refresh to get IDs
-    for content in contents:
-        db_session.refresh(content)
-
-    return contents
-
 
 @pytest.fixture
-def sample_summaries(db_session, sample_contents) -> list[Summary]:
+def sample_summaries(db_session, sample_contents):
     """Create sample summaries for the contents."""
-    # Use any valid model from the registry for test data
-    test_model = list(MODEL_REGISTRY.keys())[0]
-
-    summaries = [
-        Summary(
+    return [
+        SummaryFactory(
+            content=sample_contents[0],
             content_id=sample_contents[0].id,
             executive_summary="Major LLM advances including cost reduction and performance improvements.",
             key_themes=["LLM Performance", "Cost Optimization", "Multimodal AI"],
@@ -270,12 +258,12 @@ def sample_summaries(db_session, sample_contents) -> list[Summary]:
                 "individual_developers": 0.7,
             },
             agent_framework="claude",
-            model_used=test_model,
-            model_version="20250929",  # Test version
+            model_version="20250929",
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
-        Summary(
+        SummaryFactory(
+            content=sample_contents[1],
             content_id=sample_contents[1].id,
             executive_summary="Vector database performance benchmarks and optimization techniques.",
             key_themes=["Vector Search", "Performance", "Hybrid Search"],
@@ -289,12 +277,12 @@ def sample_summaries(db_session, sample_contents) -> list[Summary]:
                 "individual_developers": 0.85,
             },
             agent_framework="claude",
-            model_used=test_model,
-            model_version="20250929",  # Test version
+            model_version="20250929",
             token_usage=2200,
             processing_time_seconds=3.2,
         ),
-        Summary(
+        SummaryFactory(
+            content=sample_contents[2],
             content_id=sample_contents[2].id,
             executive_summary="Comparison of major AI agent frameworks and their capabilities.",
             key_themes=["AI Agents", "Framework Comparison", "Tool Use"],
@@ -308,23 +296,11 @@ def sample_summaries(db_session, sample_contents) -> list[Summary]:
                 "individual_developers": 0.95,
             },
             agent_framework="claude",
-            model_used=test_model,
-            model_version="20250929",  # Test version
+            model_version="20250929",
             token_usage=2400,
             processing_time_seconds=3.4,
         ),
     ]
-
-    for summary in summaries:
-        db_session.add(summary)
-
-    db_session.commit()
-
-    # Refresh to get IDs
-    for summary in summaries:
-        db_session.refresh(summary)
-
-    return summaries
 
 
 @pytest.fixture

@@ -12,10 +12,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.models.content import Content, ContentSource, ContentStatus
-from src.models.digest import Digest, DigestStatus, DigestType
+from src.models.content import ContentStatus
 from src.models.podcast import Podcast, PodcastScriptRecord, PodcastStatus
-from src.models.summary import Summary
+from tests.factories.content import ContentFactory
+from tests.factories.digest import DigestFactory
+from tests.factories.summary import SummaryFactory
 
 # ==============================================================================
 # Content Sorting Tests
@@ -26,49 +27,40 @@ class TestContentSorting:
     """Tests for GET /api/v1/contents sorting functionality."""
 
     @pytest.fixture
-    def sortable_contents(self, db_session) -> list[Content]:
+    def sortable_contents(self, db_session):
         """Create contents with different values for sorting tests."""
-        contents = [
-            Content(
-                source_type=ContentSource.GMAIL,
+        return [
+            ContentFactory(
+                gmail=True,
+                parsed=True,
                 source_id="sort-test-001",
                 title="Alpha Newsletter",
                 publication="Alpha Pub",
                 published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
-                markdown_content="# Alpha content",
                 content_hash="hash-alpha",
-                status=ContentStatus.PARSED,
                 ingested_at=datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC),
             ),
-            Content(
-                source_type=ContentSource.RSS,
+            ContentFactory(
+                rss=True,
                 source_id="sort-test-002",
                 title="Beta Newsletter",
                 publication="Beta Pub",
                 published_date=datetime(2025, 1, 14, 10, 0, 0, tzinfo=UTC),
-                markdown_content="# Beta content",
                 content_hash="hash-beta",
                 status=ContentStatus.COMPLETED,
                 ingested_at=datetime(2025, 1, 14, 12, 0, 0, tzinfo=UTC),
             ),
-            Content(
-                source_type=ContentSource.YOUTUBE,
+            ContentFactory(
+                youtube=True,
+                pending=True,
                 source_id="sort-test-003",
                 title="Charlie Newsletter",
                 publication="Charlie Pub",
                 published_date=datetime(2025, 1, 13, 10, 0, 0, tzinfo=UTC),
-                markdown_content="# Charlie content",
                 content_hash="hash-charlie",
-                status=ContentStatus.PENDING,
                 ingested_at=datetime(2025, 1, 13, 12, 0, 0, tzinfo=UTC),
             ),
         ]
-        for content in contents:
-            db_session.add(content)
-        db_session.commit()
-        for content in contents:
-            db_session.refresh(content)
-        return contents
 
     def test_sort_by_title_ascending(self, client, sortable_contents):
         """Test sorting contents by title in ascending order."""
@@ -170,32 +162,49 @@ class TestSummarySorting:
     """Tests for GET /api/v1/summaries sorting functionality."""
 
     @pytest.fixture
-    def sortable_summaries(self, db_session, sortable_contents) -> list[Summary]:
+    def sortable_contents(self, db_session):
+        """Create contents for summary sorting tests."""
+        return [
+            ContentFactory(
+                gmail=True,
+                source_id="summary-sort-001",
+                title="Alpha for Summary",
+                publication="Alpha Pub",
+                content_hash="hash-s-alpha",
+                status=ContentStatus.COMPLETED,
+                ingested_at=datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC),
+            ),
+            ContentFactory(
+                rss=True,
+                source_id="summary-sort-002",
+                title="Beta for Summary",
+                publication="Beta Pub",
+                content_hash="hash-s-beta",
+                status=ContentStatus.COMPLETED,
+                ingested_at=datetime(2025, 1, 14, 12, 0, 0, tzinfo=UTC),
+            ),
+        ]
+
+    @pytest.fixture
+    def sortable_summaries(self, db_session, sortable_contents):
         """Create summaries with different values for sorting tests."""
-        # Need to use the sortable_contents fixture
-        summaries = [
-            Summary(
+        return [
+            SummaryFactory(
+                content=sortable_contents[0],
                 content_id=sortable_contents[0].id,
                 executive_summary="Alpha summary",
                 key_themes=["Theme A"],
-                strategic_insights=["Insight A"],
-                technical_details=["Detail A"],
-                actionable_items=["Action A"],
-                notable_quotes=["Quote A"],
                 relevance_scores={"cto_leadership": 0.9},
                 agent_framework="claude",
                 model_used="claude-haiku-4-5",
                 token_usage=1000,
                 processing_time_seconds=2.0,
             ),
-            Summary(
+            SummaryFactory(
+                content=sortable_contents[1],
                 content_id=sortable_contents[1].id,
                 executive_summary="Beta summary",
                 key_themes=["Theme B"],
-                strategic_insights=["Insight B"],
-                technical_details=["Detail B"],
-                actionable_items=["Action B"],
-                notable_quotes=["Quote B"],
                 relevance_scores={"cto_leadership": 0.8},
                 agent_framework="claude",
                 model_used="claude-sonnet-4-5",
@@ -203,44 +212,6 @@ class TestSummarySorting:
                 processing_time_seconds=3.0,
             ),
         ]
-        for summary in summaries:
-            db_session.add(summary)
-        db_session.commit()
-        for summary in summaries:
-            db_session.refresh(summary)
-        return summaries
-
-    @pytest.fixture
-    def sortable_contents(self, db_session) -> list[Content]:
-        """Create contents for summary sorting tests."""
-        contents = [
-            Content(
-                source_type=ContentSource.GMAIL,
-                source_id="summary-sort-001",
-                title="Alpha for Summary",
-                publication="Alpha Pub",
-                markdown_content="# Alpha",
-                content_hash="hash-s-alpha",
-                status=ContentStatus.COMPLETED,
-                ingested_at=datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC),
-            ),
-            Content(
-                source_type=ContentSource.RSS,
-                source_id="summary-sort-002",
-                title="Beta for Summary",
-                publication="Beta Pub",
-                markdown_content="# Beta",
-                content_hash="hash-s-beta",
-                status=ContentStatus.COMPLETED,
-                ingested_at=datetime(2025, 1, 14, 12, 0, 0, tzinfo=UTC),
-            ),
-        ]
-        for content in contents:
-            db_session.add(content)
-        db_session.commit()
-        for content in contents:
-            db_session.refresh(content)
-        return contents
 
     def test_sort_by_model_used_ascending(self, client, sortable_summaries):
         """Test sorting summaries by model_used in ascending order."""
@@ -288,11 +259,12 @@ class TestDigestSorting:
     """Tests for GET /api/v1/digests/ sorting functionality."""
 
     @pytest.fixture
-    def sortable_digests(self, db_session) -> list[Digest]:
+    def sortable_digests(self, db_session):
         """Create digests with different values for sorting tests."""
-        digests = [
-            Digest(
-                digest_type=DigestType.DAILY,
+        return [
+            DigestFactory(
+                daily=True,
+                approved=True,
                 period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
                 period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
                 title="Alpha Digest",
@@ -303,12 +275,12 @@ class TestDigestSorting:
                 actionable_recommendations={},
                 sources=[],
                 newsletter_count=3,
-                status=DigestStatus.APPROVED,
                 agent_framework="claude",
                 model_used="claude-sonnet-4-5",
             ),
-            Digest(
-                digest_type=DigestType.WEEKLY,
+            DigestFactory(
+                weekly=True,
+                pending_review=True,
                 period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
                 period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
                 title="Beta Digest",
@@ -319,17 +291,10 @@ class TestDigestSorting:
                 actionable_recommendations={},
                 sources=[],
                 newsletter_count=10,
-                status=DigestStatus.PENDING_REVIEW,
                 agent_framework="claude",
                 model_used="claude-sonnet-4-5",
             ),
         ]
-        for digest in digests:
-            db_session.add(digest)
-        db_session.commit()
-        for digest in digests:
-            db_session.refresh(digest)
-        return digests
 
     def test_sort_by_digest_type_ascending(self, client, sortable_digests):
         """Test sorting digests by digest_type in ascending order."""
@@ -392,7 +357,45 @@ class TestScriptSorting:
     """Tests for GET /api/v1/scripts/ sorting functionality."""
 
     @pytest.fixture
-    def sortable_scripts(self, db_session, sortable_digests) -> list[PodcastScriptRecord]:
+    def sortable_digests(self, db_session):
+        """Create digests for script sorting tests."""
+        return [
+            DigestFactory(
+                daily=True,
+                approved=True,
+                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest for Script 1",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=3,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+            DigestFactory(
+                weekly=True,
+                approved=True,
+                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest for Script 2",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=10,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+
+    @pytest.fixture
+    def sortable_scripts(self, db_session, sortable_digests):
         """Create scripts with different values for sorting tests."""
         scripts = [
             PodcastScriptRecord(
@@ -422,50 +425,6 @@ class TestScriptSorting:
         for script in scripts:
             db_session.refresh(script)
         return scripts
-
-    @pytest.fixture
-    def sortable_digests(self, db_session) -> list[Digest]:
-        """Create digests for script sorting tests."""
-        digests = [
-            Digest(
-                digest_type=DigestType.DAILY,
-                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
-                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
-                title="Digest for Script 1",
-                executive_overview="Overview",
-                strategic_insights=[],
-                technical_developments=[],
-                emerging_trends=[],
-                actionable_recommendations={},
-                sources=[],
-                newsletter_count=3,
-                status=DigestStatus.APPROVED,
-                agent_framework="claude",
-                model_used="claude-sonnet-4-5",
-            ),
-            Digest(
-                digest_type=DigestType.WEEKLY,
-                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
-                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
-                title="Digest for Script 2",
-                executive_overview="Overview",
-                strategic_insights=[],
-                technical_developments=[],
-                emerging_trends=[],
-                actionable_recommendations={},
-                sources=[],
-                newsletter_count=10,
-                status=DigestStatus.APPROVED,
-                agent_framework="claude",
-                model_used="claude-sonnet-4-5",
-            ),
-        ]
-        for digest in digests:
-            db_session.add(digest)
-        db_session.commit()
-        for digest in digests:
-            db_session.refresh(digest)
-        return digests
 
     def test_sort_by_status_ascending(self, client, sortable_scripts):
         """Test sorting scripts by status in ascending order."""
@@ -513,7 +472,75 @@ class TestPodcastSorting:
     """Tests for GET /api/v1/podcasts/ sorting functionality."""
 
     @pytest.fixture
-    def sortable_podcasts(self, db_session, sortable_scripts) -> list[Podcast]:
+    def sortable_scripts(self, db_session):
+        """Create scripts for podcast sorting tests."""
+        # First create digests using factory
+        digests = [
+            DigestFactory(
+                daily=True,
+                approved=True,
+                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest 1",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=3,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+            DigestFactory(
+                weekly=True,
+                approved=True,
+                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
+                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                title="Digest 2",
+                executive_overview="Overview",
+                strategic_insights=[],
+                technical_developments=[],
+                emerging_trends=[],
+                actionable_recommendations={},
+                sources=[],
+                newsletter_count=10,
+                agent_framework="claude",
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+
+        scripts = [
+            PodcastScriptRecord(
+                digest_id=digests[0].id,
+                title="Script 1",
+                length="standard",
+                word_count=1000,
+                estimated_duration_seconds=400,
+                status=PodcastStatus.SCRIPT_APPROVED.value,
+                script_json={"title": "Script 1", "sections": []},
+                model_used="claude-sonnet-4-5",
+            ),
+            PodcastScriptRecord(
+                digest_id=digests[1].id,
+                title="Script 2",
+                length="extended",
+                word_count=2000,
+                estimated_duration_seconds=800,
+                status=PodcastStatus.SCRIPT_APPROVED.value,
+                script_json={"title": "Script 2", "sections": []},
+                model_used="claude-sonnet-4-5",
+            ),
+        ]
+        for script in scripts:
+            db_session.add(script)
+        db_session.commit()
+        for script in scripts:
+            db_session.refresh(script)
+        return scripts
+
+    @pytest.fixture
+    def sortable_podcasts(self, db_session, sortable_scripts):
         """Create podcasts with different values for sorting tests."""
         # First approve the scripts
         for script in sortable_scripts:
@@ -551,77 +578,6 @@ class TestPodcastSorting:
         for podcast in podcasts:
             db_session.refresh(podcast)
         return podcasts
-
-    @pytest.fixture
-    def sortable_scripts(self, db_session) -> list[PodcastScriptRecord]:
-        """Create scripts for podcast sorting tests."""
-        # First create digests
-        digests = [
-            Digest(
-                digest_type=DigestType.DAILY,
-                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
-                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
-                title="Digest 1",
-                executive_overview="Overview",
-                strategic_insights=[],
-                technical_developments=[],
-                emerging_trends=[],
-                actionable_recommendations={},
-                sources=[],
-                newsletter_count=3,
-                status=DigestStatus.APPROVED,
-                agent_framework="claude",
-                model_used="claude-sonnet-4-5",
-            ),
-            Digest(
-                digest_type=DigestType.WEEKLY,
-                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
-                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
-                title="Digest 2",
-                executive_overview="Overview",
-                strategic_insights=[],
-                technical_developments=[],
-                emerging_trends=[],
-                actionable_recommendations={},
-                sources=[],
-                newsletter_count=10,
-                status=DigestStatus.APPROVED,
-                agent_framework="claude",
-                model_used="claude-sonnet-4-5",
-            ),
-        ]
-        for digest in digests:
-            db_session.add(digest)
-        db_session.commit()
-
-        scripts = [
-            PodcastScriptRecord(
-                digest_id=digests[0].id,
-                title="Script 1",
-                length="standard",
-                word_count=1000,
-                estimated_duration_seconds=400,
-                status=PodcastStatus.SCRIPT_APPROVED.value,
-                script_json={"title": "Script 1", "sections": []},
-                model_used="claude-sonnet-4-5",
-            ),
-            PodcastScriptRecord(
-                digest_id=digests[1].id,
-                title="Script 2",
-                length="extended",
-                word_count=2000,
-                estimated_duration_seconds=800,
-                status=PodcastStatus.SCRIPT_APPROVED.value,
-                script_json={"title": "Script 2", "sections": []},
-                model_used="claude-sonnet-4-5",
-            ),
-        ]
-        for script in scripts:
-            db_session.add(script)
-        db_session.commit()
-        for script in scripts:
-            db_session.refresh(script)
-        return scripts
 
     def test_sort_by_duration_ascending(self, client, sortable_podcasts):
         """Test sorting podcasts by duration_seconds in ascending order."""
