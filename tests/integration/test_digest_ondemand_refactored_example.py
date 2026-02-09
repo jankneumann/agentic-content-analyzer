@@ -17,7 +17,7 @@ from src.models.digest import DigestRequest, DigestType
 from src.models.summary import Summary
 from src.processors.digest_creator import DigestCreator
 from tests.helpers.api_mocks import create_anthropic_summarization_responses
-from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
+from tests.helpers.test_data import create_test_contents_batch
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -39,9 +39,7 @@ async def test_digest_creates_missing_summaries_refactored(db_session, mock_get_
     # 1. SETUP: Load real newsletter data into database
     # ============================================================
     logger.info("Loading test newsletters into database...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
     logger.info(f"Loaded {len(newsletters)} newsletters: {[nl.id for nl in newsletters]}")
 
     # Verify no summaries exist yet

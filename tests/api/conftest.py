@@ -32,6 +32,7 @@ from src.models.settings import PromptOverride  # noqa: F401 - registers with Ba
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
+from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
 from tests.factories.summary import SummaryFactory
 
 # Test database configuration
@@ -106,6 +107,8 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
     ContentFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
     SummaryFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
     DigestFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    PodcastScriptRecordFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    PodcastFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
 
     yield session
 
@@ -113,6 +116,8 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
     ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     DigestFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    PodcastScriptRecordFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    PodcastFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     session.close()
     transaction.rollback()
     connection.close()

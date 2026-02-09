@@ -8,7 +8,14 @@ import pytest
 
 from src.models.content import ContentSource, ContentStatus
 from src.models.digest import DigestStatus, DigestType
-from tests.factories import ContentFactory, DigestFactory, SummaryFactory
+from src.models.podcast import PodcastStatus
+from tests.factories import (
+    ContentFactory,
+    DigestFactory,
+    PodcastFactory,
+    PodcastScriptRecordFactory,
+    SummaryFactory,
+)
 
 
 class TestContentFactory:
@@ -203,6 +210,84 @@ class TestDigestFactory:
         assert digest.is_combined is True
         assert digest.child_digest_ids is not None
         assert digest.source_digest_count == 3
+
+
+class TestPodcastScriptRecordFactory:
+    """Tests for PodcastScriptRecordFactory."""
+
+    def test_build_creates_script(self):
+        """Factory build() creates PodcastScriptRecord without database."""
+        script = PodcastScriptRecordFactory.build()
+
+        assert script.title is not None
+        assert script.length == "standard"
+        assert script.word_count == 2500
+        assert script.estimated_duration_seconds == 900
+        assert script.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value
+        assert script.model_used == "claude-sonnet-4-5"
+        assert script.script_json is not None
+
+    def test_build_with_approved_trait(self):
+        """Approved trait sets reviewer info and timestamps."""
+        script = PodcastScriptRecordFactory.build(approved=True)
+
+        assert script.status == PodcastStatus.SCRIPT_APPROVED.value
+        assert script.reviewed_by is not None
+        assert script.reviewed_at is not None
+        assert script.approved_at is not None
+
+    def test_build_with_failed_trait(self):
+        """Failed trait sets error message."""
+        script = PodcastScriptRecordFactory.build(failed=True)
+
+        assert script.status == PodcastStatus.FAILED.value
+        assert script.error_message is not None
+        assert "failed" in script.error_message.lower()
+
+    def test_build_with_extended_trait(self):
+        """Extended trait sets longer duration and word count."""
+        script = PodcastScriptRecordFactory.build(extended=True)
+
+        assert script.length == "extended"
+        assert script.word_count == 5000
+        assert script.estimated_duration_seconds == 1800
+
+    def test_build_with_pending_trait(self):
+        """Pending trait sets correct status."""
+        script = PodcastScriptRecordFactory.build(pending=True)
+
+        assert script.status == PodcastStatus.PENDING.value
+
+
+class TestPodcastFactory:
+    """Tests for PodcastFactory."""
+
+    def test_build_creates_podcast(self):
+        """Factory build() creates Podcast without database."""
+        podcast = PodcastFactory.build()
+
+        assert podcast.audio_format == "mp3"
+        assert podcast.voice_provider == "openai_tts"
+        assert podcast.status == "completed"
+        assert podcast.audio_url is not None
+
+    def test_build_with_generating_trait(self):
+        """Generating trait clears audio fields."""
+        podcast = PodcastFactory.build(generating=True)
+
+        assert podcast.status == "generating"
+        assert podcast.audio_url is None
+        assert podcast.duration_seconds is None
+        assert podcast.completed_at is None
+
+    def test_build_with_failed_trait(self):
+        """Failed trait sets error message and clears audio fields."""
+        podcast = PodcastFactory.build(failed=True)
+
+        assert podcast.status == "failed"
+        assert podcast.error_message is not None
+        assert podcast.audio_url is None
+        assert podcast.completed_at is None
 
 
 class TestFactoryIntegration:

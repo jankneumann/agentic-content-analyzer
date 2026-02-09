@@ -36,15 +36,15 @@ Each newsletter JSON file contains:
 Use the test data helpers in `tests/helpers/test_data.py`:
 
 ```python
-from tests.helpers.test_data import create_test_newsletters_batch
+from tests.helpers.test_data import create_test_contents_batch
 
-# Load all test newsletters into database
-newsletters = create_test_newsletters_batch(db_session)
+# Load all test content into database
+contents = create_test_contents_batch(db_session)
 
-# Load specific newsletters
-newsletters = create_test_newsletters_batch(
+# Load specific content
+contents = create_test_contents_batch(
     db_session,
-    filenames=["newsletter_1_llm_advances.json"]
+    titles=["Latest LLM Advances"]
 )
 ```
 

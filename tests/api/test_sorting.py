@@ -13,9 +13,10 @@ from datetime import UTC, datetime
 import pytest
 
 from src.models.content import ContentStatus
-from src.models.podcast import Podcast, PodcastScriptRecord, PodcastStatus
+from src.models.podcast import PodcastStatus
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
+from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
 from tests.factories.summary import SummaryFactory
 
 # ==============================================================================
@@ -395,34 +396,26 @@ class TestScriptSorting:
     @pytest.fixture
     def sortable_scripts(self, db_session, sortable_digests):
         """Create scripts with different values for sorting tests."""
-        scripts = [
-            PodcastScriptRecord(
-                digest_id=sortable_digests[0].id,
+        return [
+            PodcastScriptRecordFactory(
+                digest=sortable_digests[0],
                 title="Alpha Script",
                 length="standard",
                 word_count=1000,
                 estimated_duration_seconds=400,
                 status=PodcastStatus.SCRIPT_PENDING_REVIEW.value,
-                script_json={"title": "Alpha", "sections": []},
                 model_used="claude-sonnet-4-5",
             ),
-            PodcastScriptRecord(
-                digest_id=sortable_digests[1].id,
+            PodcastScriptRecordFactory(
+                digest=sortable_digests[1],
                 title="Beta Script",
-                length="extended",
+                extended=True,
                 word_count=2000,
                 estimated_duration_seconds=800,
                 status=PodcastStatus.SCRIPT_APPROVED.value,
-                script_json={"title": "Beta", "sections": []},
                 model_used="claude-sonnet-4-5",
             ),
         ]
-        for script in scripts:
-            db_session.add(script)
-        db_session.commit()
-        for script in scripts:
-            db_session.refresh(script)
-        return scripts
 
     def test_sort_by_status_ascending(self, client, sortable_scripts):
         """Test sorting scripts by status in ascending order."""
@@ -472,110 +465,74 @@ class TestPodcastSorting:
     @pytest.fixture
     def sortable_scripts(self, db_session):
         """Create scripts for podcast sorting tests."""
-        # First create digests using factory
-        digests = [
-            DigestFactory(
-                daily=True,
+        return [
+            PodcastScriptRecordFactory(
                 approved=True,
-                period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
-                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
-                title="Digest 1",
-                executive_overview="Overview",
-                strategic_insights=[],
-                technical_developments=[],
-                emerging_trends=[],
-                actionable_recommendations={},
-                sources=[],
-                newsletter_count=3,
-                agent_framework="claude",
-                model_used="claude-sonnet-4-5",
-            ),
-            DigestFactory(
-                weekly=True,
-                approved=True,
-                period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
-                period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
-                title="Digest 2",
-                executive_overview="Overview",
-                strategic_insights=[],
-                technical_developments=[],
-                emerging_trends=[],
-                actionable_recommendations={},
-                sources=[],
-                newsletter_count=10,
-                agent_framework="claude",
-                model_used="claude-sonnet-4-5",
-            ),
-        ]
-
-        scripts = [
-            PodcastScriptRecord(
-                digest_id=digests[0].id,
+                digest=DigestFactory(
+                    daily=True,
+                    approved=True,
+                    period_start=datetime(2025, 1, 15, 0, 0, 0, tzinfo=UTC),
+                    period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                    title="Digest 1",
+                    executive_overview="Overview",
+                    strategic_insights=[],
+                    technical_developments=[],
+                    emerging_trends=[],
+                    actionable_recommendations={},
+                    sources=[],
+                    newsletter_count=3,
+                    agent_framework="claude",
+                    model_used="claude-sonnet-4-5",
+                ),
                 title="Script 1",
                 length="standard",
                 word_count=1000,
                 estimated_duration_seconds=400,
-                status=PodcastStatus.SCRIPT_APPROVED.value,
-                script_json={"title": "Script 1", "sections": []},
                 model_used="claude-sonnet-4-5",
             ),
-            PodcastScriptRecord(
-                digest_id=digests[1].id,
+            PodcastScriptRecordFactory(
+                approved=True,
+                extended=True,
+                digest=DigestFactory(
+                    weekly=True,
+                    approved=True,
+                    period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
+                    period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
+                    title="Digest 2",
+                    executive_overview="Overview",
+                    strategic_insights=[],
+                    technical_developments=[],
+                    emerging_trends=[],
+                    actionable_recommendations={},
+                    sources=[],
+                    newsletter_count=10,
+                    agent_framework="claude",
+                    model_used="claude-sonnet-4-5",
+                ),
                 title="Script 2",
-                length="extended",
                 word_count=2000,
                 estimated_duration_seconds=800,
-                status=PodcastStatus.SCRIPT_APPROVED.value,
-                script_json={"title": "Script 2", "sections": []},
                 model_used="claude-sonnet-4-5",
             ),
         ]
-        for script in scripts:
-            db_session.add(script)
-        db_session.commit()
-        for script in scripts:
-            db_session.refresh(script)
-        return scripts
 
     @pytest.fixture
     def sortable_podcasts(self, db_session, sortable_scripts):
         """Create podcasts with different values for sorting tests."""
-        # First approve the scripts
-        for script in sortable_scripts:
-            script.status = PodcastStatus.SCRIPT_APPROVED.value
-            script.approved_at = datetime.now(UTC)
-        db_session.commit()
-
-        podcasts = [
-            Podcast(
-                script_id=sortable_scripts[0].id,
-                audio_format="mp3",
+        return [
+            PodcastFactory(
+                script=sortable_scripts[0],
                 voice_provider="openai_tts",
-                alex_voice="alex",
-                sam_voice="sam",
-                status="completed",
                 duration_seconds=400,
                 file_size_bytes=500000,
-                audio_url="/tmp/podcast1.mp3",  # noqa: S108
             ),
-            Podcast(
-                script_id=sortable_scripts[1].id,
-                audio_format="mp3",
+            PodcastFactory(
+                script=sortable_scripts[1],
                 voice_provider="elevenlabs",
-                alex_voice="alex",
-                sam_voice="sam",
-                status="completed",
                 duration_seconds=800,
                 file_size_bytes=1000000,
-                audio_url="/tmp/podcast2.mp3",  # noqa: S108
             ),
         ]
-        for podcast in podcasts:
-            db_session.add(podcast)
-        db_session.commit()
-        for podcast in podcasts:
-            db_session.refresh(podcast)
-        return podcasts
 
     def test_sort_by_duration_ascending(self, client, sortable_podcasts):
         """Test sorting podcasts by duration_seconds in ascending order."""

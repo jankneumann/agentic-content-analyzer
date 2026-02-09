@@ -66,30 +66,3 @@ def create_test_contents_batch(
         contents.append(content)
 
     return contents  # type: ignore[return-value]
-
-
-# Backwards compatibility aliases (deprecated - use Content-based functions)
-def get_default_test_newsletters() -> list[str]:
-    """Alias for get_default_test_contents().
-
-    Deprecated: Use get_default_test_contents() instead.
-    """
-    return get_default_test_contents()
-
-
-def create_test_newsletters_batch(
-    db_session: Session,
-    filenames: list[str] | None = None,
-) -> list[Content]:
-    """Create a batch of test Content records (backwards compatibility alias).
-
-    Deprecated: Use create_test_contents_batch() instead.
-
-    Args:
-        db_session: Database session for creating records
-        filenames: List of content titles (parameter name kept for backwards compatibility)
-
-    Returns:
-        List of created Content records with IDs assigned
-    """
-    return create_test_contents_batch(db_session, titles=filenames)
