@@ -33,7 +33,7 @@ All CLI commands SHALL use Rich console output by default for human-readable dis
 - **AND** progress messages SHALL be suppressed or sent to stderr
 
 ### Requirement: Ingest subcommands
-The system SHALL provide `aca ingest` subcommands for all supported ingestion sources: gmail, rss, youtube, podcast, and files.
+The system SHALL provide `aca ingest` subcommands for all supported ingestion sources: gmail, rss, youtube, youtube-playlist, youtube-rss, podcast, and files.
 
 #### Scenario: Ingest Gmail
 - **WHEN** `aca ingest gmail --query <query> --max <count> --days <days> --force` is executed
@@ -45,9 +45,19 @@ The system SHALL provide `aca ingest` subcommands for all supported ingestion so
 - **THEN** RSS ingestion SHALL run using feeds from `sources.d/rss.yaml`
 - **AND** a summary of ingested items SHALL be displayed
 
-#### Scenario: Ingest YouTube
+#### Scenario: Ingest YouTube (combined)
 - **WHEN** `aca ingest youtube --max <count> --force` is executed
-- **THEN** YouTube ingestion SHALL run using playlists from `sources.d/youtube.yaml`
+- **THEN** YouTube ingestion SHALL run playlists from `sources.d/youtube_playlist.yaml` first, then RSS feeds from `sources.d/youtube_rss.yaml`
+- **AND** a summary of ingested items SHALL be displayed with playlists, channels, and feeds counts
+
+#### Scenario: Ingest YouTube Playlist
+- **WHEN** `aca ingest youtube-playlist --max <count> --force` is executed
+- **THEN** YouTube playlist ingestion SHALL run using sources from `sources.d/youtube_playlist.yaml`
+- **AND** a summary of ingested items SHALL be displayed
+
+#### Scenario: Ingest YouTube RSS
+- **WHEN** `aca ingest youtube-rss --max <count> --force` is executed
+- **THEN** YouTube RSS ingestion SHALL run using feeds from `sources.d/youtube_rss.yaml`
 - **AND** a summary of ingested items SHALL be displayed
 
 #### Scenario: Ingest Podcast
@@ -269,3 +279,33 @@ The system SHALL provide orchestrator functions in `src/ingestion/orchestrator.p
 - **WHEN** `ingest_rss(on_result=callback)` is called
 - **THEN** the callback SHALL receive the full `IngestionResult` object (including `failed_sources` and `redirected_sources`)
 - **AND** the function SHALL still return `int` (items ingested)
+
+### Requirement: YouTube Playlist Ingest Subcommand
+The system SHALL provide `aca ingest youtube-playlist` as a dedicated subcommand for ingesting YouTube playlist and channel sources from `sources.d/youtube_playlist.yaml`.
+
+#### Scenario: Ingest YouTube playlists only
+- **WHEN** `aca ingest youtube-playlist --max <count> --days <days> --force --public-only` is executed
+- **THEN** the system ingests videos from playlist and channel sources in `youtube_playlist.yaml`
+- **AND** does not process RSS feed sources from `youtube_rss.yaml`
+- **AND** displays a summary of ingested items
+
+#### Scenario: YouTube playlist ingest with no playlists configured
+- **WHEN** `aca ingest youtube-playlist` is executed
+- **AND** no playlist or channel sources exist in `youtube_playlist.yaml`
+- **THEN** a message SHALL indicate "No YouTube playlists configured"
+- **AND** exit code SHALL be 0
+
+### Requirement: YouTube RSS Ingest Subcommand
+The system SHALL provide `aca ingest youtube-rss` as a dedicated subcommand for ingesting YouTube RSS feed sources from `sources.d/youtube_rss.yaml`.
+
+#### Scenario: Ingest YouTube RSS feeds only
+- **WHEN** `aca ingest youtube-rss --max <count> --days <days> --force` is executed
+- **THEN** the system ingests videos from RSS feed sources in `youtube_rss.yaml`
+- **AND** does not process playlist or channel sources from `youtube_playlist.yaml`
+- **AND** displays a summary of ingested items
+
+#### Scenario: YouTube RSS ingest with no feeds configured
+- **WHEN** `aca ingest youtube-rss` is executed
+- **AND** no RSS feed sources exist in `youtube_rss.yaml`
+- **THEN** a message SHALL indicate "No YouTube RSS feeds configured"
+- **AND** exit code SHALL be 0
