@@ -77,6 +77,10 @@ class YouTubeChannelSource(SourceBase):
     channel_id: str
     visibility: Literal["public", "private"] = "public"
     languages: list[str] = ["en"]
+    hint_terms: list[str] = []
+    proofread: bool = True
+    gemini_summary: bool = True
+    gemini_resolution: str = "default"
 
 
 class YouTubeRSSSource(SourceBase):

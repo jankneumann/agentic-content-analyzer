@@ -554,7 +554,7 @@ def _extract_video_content_with_gemini(
 
         resolution = gemini_resolution if gemini_resolution != "default" else None
 
-        response = asyncio.get_event_loop().run_until_complete(
+        response = asyncio.run(
             router.generate_with_video(
                 model=model,
                 system_prompt="You are a video content analyst. Extract detailed content from YouTube videos.",
@@ -719,7 +719,7 @@ class YouTubeContentIngestionService:
                                     proofread_transcript,
                                 )
 
-                                result = asyncio.get_event_loop().run_until_complete(
+                                result = asyncio.run(
                                     proofread_transcript(
                                         segments=transcript.segments,
                                         hint_terms=hint_terms,
@@ -790,7 +790,7 @@ class YouTubeContentIngestionService:
                         existing.source_url = video_url
                         existing.markdown_content = markdown_content
                         existing.raw_content = raw_content
-                        existing.raw_format = raw_format or "transcript_json"
+                        existing.raw_format = raw_format
                         existing.metadata_json = metadata_json
                         existing.content_hash = content_hash
                         existing.parser_used = parser_used
@@ -811,7 +811,7 @@ class YouTubeContentIngestionService:
                             published_date=video["published_date"],
                             markdown_content=markdown_content,
                             raw_content=raw_content,
-                            raw_format=raw_format or "transcript_json",
+                            raw_format=raw_format,
                             metadata_json=metadata_json,
                             parser_used=parser_used,
                             content_hash=content_hash,
@@ -834,7 +834,7 @@ class YouTubeContentIngestionService:
                             published_date=video["published_date"],
                             markdown_content=markdown_content,
                             raw_content=raw_content,
-                            raw_format=raw_format or "transcript_json",
+                            raw_format=raw_format,
                             metadata_json=metadata_json,
                             parser_used=parser_used,
                             content_hash=content_hash,
@@ -992,6 +992,10 @@ class YouTubeContentIngestionService:
                     after_date=after_date,
                     force_reprocess=force_reprocess,
                     languages=source.languages,
+                    gemini_summary=source.gemini_summary,
+                    gemini_resolution=source.gemini_resolution,
+                    proofread=source.proofread,
+                    hint_terms=source.hint_terms if source.hint_terms else None,
                 )
                 total += count
             except Exception as e:
@@ -1194,6 +1198,7 @@ class YouTubeRSSIngestionService:
                 raw_content = None
                 raw_format = None
                 markdown_content = None
+                transcript_meta: dict[str, Any] | None = None
 
                 # --- Path 1: Gemini native video extraction ---
                 if gemini_summary:
@@ -1225,6 +1230,13 @@ class YouTubeRSSIngestionService:
                     markdown_content = transcript_to_markdown(transcript)
                     raw_content = json.dumps(transcript.to_storage_dict())
                     raw_format = "transcript_json"
+                    transcript_meta = {
+                        "language": transcript.language,
+                        "is_auto_generated": transcript.is_auto_generated,
+                        "segment_count": len(transcript.segments),
+                        "duration_seconds": transcript.duration_seconds,
+                        "thumbnail_url": transcript.thumbnail_url,
+                    }
 
                 content_hash = generate_markdown_hash(markdown_content)
 
@@ -1237,17 +1249,8 @@ class YouTubeRSSIngestionService:
                 }
                 if processing_method == "gemini_native":
                     metadata["gemini_resolution"] = gemini_resolution
-                elif markdown_content is not None and raw_content is not None:
-                    # transcript-based metadata
-                    metadata.update(
-                        {
-                            "language": transcript.language,  # type: ignore[possibly-undefined]
-                            "is_auto_generated": transcript.is_auto_generated,  # type: ignore[possibly-undefined]
-                            "segment_count": len(transcript.segments),  # type: ignore[possibly-undefined]
-                            "duration_seconds": transcript.duration_seconds,  # type: ignore[possibly-undefined]
-                            "thumbnail_url": transcript.thumbnail_url,  # type: ignore[possibly-undefined]
-                        }
-                    )
+                elif transcript_meta is not None:
+                    metadata.update(transcript_meta)
                 if source_name:
                     metadata["source_name"] = source_name
                 if source_tags:
@@ -1258,9 +1261,11 @@ class YouTubeRSSIngestionService:
                         source_type=ContentSource.YOUTUBE,
                         source_id=source_id,
                         title=video.get("title", f"Video {video_id}"),
+                        author=video.get("channel_title"),
+                        publication=video.get("channel_title"),
                         source_url=video_url,
                         raw_content=raw_content,
-                        raw_format=raw_format or "transcript_json",
+                        raw_format=raw_format,
                         markdown_content=markdown_content,
                         content_hash=content_hash,
                         parser_used=parser_used,
