@@ -47,7 +47,7 @@ def create_test_contents_batch(
         titles = get_default_test_contents()
 
     # Ensure factory uses the provided session
-    ContentFactory._meta.sqlalchemy_session = db_session
+    ContentFactory._meta.sqlalchemy_session = db_session  # type: ignore[attr-defined]
 
     contents = []
     for i, title in enumerate(titles, 1):
@@ -65,7 +65,7 @@ def create_test_contents_batch(
         )
         contents.append(content)
 
-    return contents
+    return contents  # type: ignore[return-value]
 
 
 # Backwards compatibility aliases (deprecated - use Content-based functions)

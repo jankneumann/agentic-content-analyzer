@@ -114,8 +114,8 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
     session = SessionLocal()
 
     # Configure factories to use this session
-    ContentFactory._meta.sqlalchemy_session = session
-    SummaryFactory._meta.sqlalchemy_session = session
+    ContentFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    SummaryFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
 
     yield session
 
