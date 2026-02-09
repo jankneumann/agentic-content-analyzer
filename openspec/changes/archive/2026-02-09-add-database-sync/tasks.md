@@ -106,3 +106,10 @@ Integration tests (sequential, after unit tests):
 - [ ] 11.1 Add sync commands to CLAUDE.md command reference
 - [ ] 11.2 Update docs/SETUP.md with sync usage examples
 - [ ] 11.3 Add sync section to docs/PROFILES.md (profile-based sync workflow)
+
+## Migration Notes
+
+Open tasks migrated to beads issues on 2026-02-08:
+- Phase 9 (Incremental sync, 9.1–9.4) → `aca-1y3`
+- Phase 10 (Tests, 10.3–10.5, 10.7–10.8) → `aca-ib2`
+- Phase 11 (Documentation, 11.1–11.3) → `aca-fwj`
