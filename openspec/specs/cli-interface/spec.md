@@ -33,7 +33,7 @@ All CLI commands SHALL use Rich console output by default for human-readable dis
 - **AND** progress messages SHALL be suppressed or sent to stderr
 
 ### Requirement: Ingest subcommands
-The system SHALL provide `aca ingest` subcommands for all supported ingestion sources: gmail, rss, youtube, youtube-playlist, youtube-rss, podcast, and files.
+The system SHALL provide `aca ingest` subcommands for all supported ingestion sources: gmail, rss, youtube, podcast, files, and direct URLs.
 
 #### Scenario: Ingest Gmail
 - **WHEN** `aca ingest gmail --query <query> --max <count> --days <days> --force` is executed
@@ -45,19 +45,9 @@ The system SHALL provide `aca ingest` subcommands for all supported ingestion so
 - **THEN** RSS ingestion SHALL run using feeds from `sources.d/rss.yaml`
 - **AND** a summary of ingested items SHALL be displayed
 
-#### Scenario: Ingest YouTube (combined)
+#### Scenario: Ingest YouTube
 - **WHEN** `aca ingest youtube --max <count> --force` is executed
-- **THEN** YouTube ingestion SHALL run playlists from `sources.d/youtube_playlist.yaml` first, then RSS feeds from `sources.d/youtube_rss.yaml`
-- **AND** a summary of ingested items SHALL be displayed with playlists, channels, and feeds counts
-
-#### Scenario: Ingest YouTube Playlist
-- **WHEN** `aca ingest youtube-playlist --max <count> --force` is executed
-- **THEN** YouTube playlist ingestion SHALL run using sources from `sources.d/youtube_playlist.yaml`
-- **AND** a summary of ingested items SHALL be displayed
-
-#### Scenario: Ingest YouTube RSS
-- **WHEN** `aca ingest youtube-rss --max <count> --force` is executed
-- **THEN** YouTube RSS ingestion SHALL run using feeds from `sources.d/youtube_rss.yaml`
+- **THEN** YouTube ingestion SHALL run using playlists from `sources.d/youtube.yaml`
 - **AND** a summary of ingested items SHALL be displayed
 
 #### Scenario: Ingest Podcast
@@ -70,6 +60,11 @@ The system SHALL provide `aca ingest` subcommands for all supported ingestion so
 - **WHEN** `aca ingest files <path...>` is executed
 - **THEN** the specified files SHALL be ingested via the file ingestion service
 - **AND** supported formats (PDF, markdown, HTML) SHALL be parsed
+
+#### Scenario: Ingest URL
+- **WHEN** `aca ingest url <url>` is executed
+- **THEN** the URL SHALL be submitted to the save-url workflow
+- **AND** the returned content ID and status SHALL be displayed
 
 #### Scenario: Ingestion with missing credentials
 - **GIVEN** required credentials (e.g., Gmail OAuth, YouTube API key) are not configured
