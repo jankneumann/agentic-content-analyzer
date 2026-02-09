@@ -165,7 +165,7 @@ export function PromptManager() {
           />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-          <span>{filteredPrompts.length} prompts</span>
+          <span>{filteredPrompts.length} {filteredPrompts.length === 1 ? "prompt" : "prompts"}</span>
           {overrideCount > 0 && (
             <Badge variant="secondary" className="text-[10px]">
               {overrideCount} override{overrideCount !== 1 ? "s" : ""}
@@ -233,7 +233,7 @@ export function PromptManager() {
                               Override
                             </Badge>
                           )}
-                          {prompt.version && (
+                          {prompt.version != null && (
                             <Badge
                               variant="outline"
                               className="text-[10px] px-1.5 py-0 shrink-0"

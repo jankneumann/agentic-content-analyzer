@@ -147,7 +147,9 @@ class ThemeAnalyzer:
             if include_historical_context and themes:
                 logger.info("Enriching themes with historical context...")
                 context_analyzer = HistoricalContextAnalyzer(
-                    model_config=self.model_config, model=self.model
+                    model_config=self.model_config,
+                    model=self.model,
+                    prompt_service=self.prompt_service,
                 )
                 themes = await context_analyzer.enrich_themes_with_history(
                     themes=themes,
@@ -285,10 +287,9 @@ class ThemeAnalyzer:
             relevance_threshold=relevance_threshold,
         )
 
-        # Split prompt into system and user parts (simple split)
-        lines = prompt.split("\n", 1)
-        system_prompt = lines[0]
-        user_prompt = lines[1] if len(lines) > 1 else ""
+        # Get system prompt from configuration
+        system_prompt = self.prompt_service.get_pipeline_prompt("theme_analysis")
+        user_prompt = prompt
 
         # Call LLM for analysis with provider failover
         start_time = time.time()

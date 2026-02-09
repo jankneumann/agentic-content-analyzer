@@ -103,7 +103,7 @@ class DigestCreator:
             relevance_threshold=0.3,
         )
 
-        analyzer = ThemeAnalyzer(model_config=self.model_config)
+        analyzer = ThemeAnalyzer(model_config=self.model_config, prompt_service=self.prompt_service)
         theme_result = await analyzer.analyze_themes(
             theme_request,
             include_historical_context=request.include_historical_context,
@@ -562,10 +562,14 @@ class DigestCreator:
                     self.model, provider_config.provider
                 )
 
+                # Get system prompt for digest creation
+                system_prompt = self.prompt_service.get_pipeline_prompt("digest_creation")
+
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=12000,
                     temperature=0.4,
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 
@@ -819,10 +823,14 @@ Output only the JSON object, no additional text.
                     self.model, provider_config.provider
                 )
 
+                # Get system prompt for digest creation
+                system_prompt = self.prompt_service.get_pipeline_prompt("digest_creation")
+
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=12000,  # Longer for full digest
                     temperature=0.4,  # Slightly higher for narrative flow
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 

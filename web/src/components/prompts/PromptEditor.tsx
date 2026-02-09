@@ -78,7 +78,9 @@ export function PromptEditor({ promptKey, promptInfo, onClose }: PromptEditorPro
   const [showTest, setShowTest] = useState(false)
   const [testVariables, setTestVariables] = useState<Record<string, string>>({})
 
-  // Reset editor state when prompt changes
+  // Reset editor state when a different prompt is selected (key changes).
+  // Using promptKey instead of activePrompt avoids losing unsaved edits
+  // when TanStack Query background-refetches create a new object reference.
   useEffect(() => {
     if (activePrompt) {
       setEditValue(activePrompt.current_value)
@@ -86,7 +88,8 @@ export function PromptEditor({ promptKey, promptInfo, onClose }: PromptEditorPro
       setShowTest(false)
       setTestVariables({})
     }
-  }, [activePrompt])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promptKey])
 
   // Track whether the value has been modified
   const isDirty = activePrompt ? editValue !== activePrompt.current_value : false
@@ -114,6 +117,9 @@ export function PromptEditor({ promptKey, promptInfo, onClose }: PromptEditorPro
 
   const handleReset = () => {
     if (!promptKey) return
+    if (!window.confirm("Reset this prompt to its default value? Your override will be deleted.")) {
+      return
+    }
     resetMutation.mutate(promptKey, {
       onSuccess: () => {
         toast.success("Prompt reset to default", {

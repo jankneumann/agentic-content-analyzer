@@ -158,7 +158,21 @@ class PromptService:
                 return default
             current = current[key]
 
-        return str(current) if current else default
+        return str(current) if current is not None else default
+
+    def get_prompt(self, key: str) -> str:
+        """Get a prompt value by its full dot-separated key.
+
+        Checks DB override first, then falls back to YAML default.
+
+        Args:
+            key: Full dot-separated key (e.g., "pipeline.summarization.system")
+
+        Returns:
+            Prompt value (override if exists, otherwise default)
+        """
+        path = key.split(".")
+        return self._get_prompt(key, path)
 
     def set_override(self, key: str, value: str, description: str | None = None) -> None:
         """Set a prompt override in database.
@@ -260,7 +274,7 @@ class PromptService:
                             "category": category,
                             "step": step,
                             "name": prompt_name,
-                            "default": str(prompt_value) if prompt_value else "",
+                            "default": str(prompt_value) if prompt_value is not None else "",
                             "override": override.value if override else None,
                             "has_override": override is not None,
                             "version": override.version if override else None,

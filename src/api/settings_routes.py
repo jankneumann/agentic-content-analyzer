@@ -278,7 +278,7 @@ async def test_prompt(key: str, request: PromptTestRequest) -> PromptTestRespons
         if request.draft_value is not None:
             template = request.draft_value
         else:
-            template = prompt_service._get_prompt(key, key.split("."))
+            template = prompt_service.get_prompt(key)
             if not template:
                 raise HTTPException(status_code=404, detail=f"Prompt not found: {key}")
 

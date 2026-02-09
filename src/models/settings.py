@@ -1,6 +1,6 @@
 """Settings data models for user configurations."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
 
@@ -24,8 +24,13 @@ class PromptOverride(Base):
     description = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
     def __repr__(self) -> str:
         return f"<PromptOverride(key={self.key!r}, version={self.version})>"

@@ -146,11 +146,15 @@ class ClaudeAgent(SummarizationAgent):
                 # Create prompt using Content model
                 prompt = self._create_content_prompt(content)
 
+                # Get system prompt
+                system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
+
                 # Call Claude API with provider-specific model ID
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=4096,
                     temperature=0.0,  # Deterministic for consistent summaries
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 
@@ -305,11 +309,15 @@ class ClaudeAgent(SummarizationAgent):
                 # Create prompt with feedback
                 prompt = self._create_content_feedback_prompt(content, feedback_context)
 
+                # Get system prompt
+                system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
+
                 # Call Claude API with provider-specific model ID
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=4096,
                     temperature=0.0,  # Deterministic for consistent summaries
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 

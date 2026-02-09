@@ -421,7 +421,7 @@ async def generate_ai_response_streaming(
     messages.append({"role": "user", "content": user_message})
 
     # Get base system prompt from PromptService
-    prompt_service = PromptService()
+    prompt_service = PromptService(db)
     base_prompt = prompt_service.get_chat_prompt(conversation.artifact_type)
 
     # Fetch and inject artifact content if db session is available
@@ -1309,7 +1309,7 @@ async def get_conversation_context(conversation_id: str) -> DebugContextResponse
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         # Get base system prompt
-        prompt_service = PromptService()
+        prompt_service = PromptService(db)
         base_prompt = prompt_service.get_chat_prompt(conversation.artifact_type)
 
         # Get artifact content

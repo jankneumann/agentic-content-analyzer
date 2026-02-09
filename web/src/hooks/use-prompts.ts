@@ -49,7 +49,7 @@ export function useUpdatePrompt() {
     mutationFn: ({ key, data }: { key: string; data: PromptUpdateRequest }) =>
       updatePrompt(key, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.prompts.lists() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all })
     },
   })
 }
@@ -63,7 +63,7 @@ export function useResetPrompt() {
   return useMutation({
     mutationFn: (key: string) => resetPrompt(key),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.prompts.lists() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all })
     },
   })
 }

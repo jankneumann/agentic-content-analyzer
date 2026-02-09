@@ -355,10 +355,26 @@ def import_prompts(
 
             # Only save as override if different from default
             if value != default:
-                service.set_override(key, value, description="Imported from file")
+                existing = service.get_override(key)
+                if existing:
+                    existing.value = value
+                    existing.version = (existing.version or 1) + 1
+                    existing.description = "Imported from file"
+                else:
+                    from src.models.settings import PromptOverride
+
+                    db.add(
+                        PromptOverride(
+                            key=key, value=value, version=1, description="Imported from file"
+                        )
+                    )
                 imported += 1
             else:
                 skipped += 1
+
+        # Commit all overrides in a single transaction
+        if imported > 0:
+            db.commit()
 
     if is_json_mode():
         output_result({"imported": imported, "skipped": skipped})
@@ -401,7 +417,7 @@ def test_prompt(
 
     with get_db() as db:
         service = PromptService(db)
-        template = service._get_prompt(key, key.split("."))
+        template = service.get_prompt(key)
 
     if not template:
         typer.echo(typer.style(f"Prompt not found: {key}", fg=typer.colors.RED))

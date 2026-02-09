@@ -270,10 +270,14 @@ class HistoricalContextAnalyzer:
                 logger.debug(f"Trying provider: {provider_config.provider.value}")
                 client = Anthropic(api_key=provider_config.api_key)
 
+                # Get system prompt for historical context
+                system_prompt = self.prompt_service.get_pipeline_prompt("historical_context")
+
                 response = client.messages.create(
                     model=self.model,
                     max_tokens=1500,
                     temperature=0.3,
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 

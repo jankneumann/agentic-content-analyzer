@@ -39,6 +39,7 @@ export class ApiMocks {
       this.mockJobHistory(),
       this.mockChatConfig(),
       this.mockSystemHealth(),
+      this.mockPrompts(),
     ])
   }
 
@@ -61,6 +62,7 @@ export class ApiMocks {
       this.mockJobHistoryEmpty(),
       this.mockChatConfig(),
       this.mockSystemHealth(),
+      this.mockPromptsEmpty(),
     ])
   }
 
