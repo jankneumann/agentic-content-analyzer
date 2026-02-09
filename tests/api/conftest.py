@@ -20,19 +20,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.api.app import app
-from src.config.models import MODEL_REGISTRY
 from src.models.audio_digest import AudioDigest  # noqa: F401 - registers with Base.metadata
 from src.models.base import Base
-from src.models.content import Content, ContentSource, ContentStatus
-from src.models.digest import Digest, DigestStatus, DigestType
+from src.models.content import ContentStatus
 from src.models.podcast import (
     Podcast,
     PodcastScriptRecord,
     PodcastStatus,
 )
 from src.models.settings import PromptOverride  # noqa: F401 - registers with Base.metadata
-from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
+from tests.factories.content import ContentFactory
+from tests.factories.digest import DigestFactory
+from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
+from tests.factories.summary import SummaryFactory
 
 # Test database configuration
 TEST_DATABASE_URL = os.getenv(
@@ -94,6 +95,7 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
     """Create a new database session for a test with transaction rollback.
 
     Each test gets a fresh session. Changes are rolled back after test completes.
+    Also configures Factory Boy to use this session for model creation.
     """
     connection = test_db_engine.connect()
     transaction = connection.begin()
@@ -101,9 +103,21 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
     SessionLocal = sessionmaker(bind=connection)
     session = SessionLocal()
 
+    # Configure factories to use this session
+    ContentFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    SummaryFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    DigestFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    PodcastScriptRecordFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    PodcastFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+
     yield session
 
-    # Cleanup: Rollback transaction and close connection
+    # Cleanup: Reset factory sessions, rollback transaction, close connection
+    ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    DigestFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    PodcastScriptRecordFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    PodcastFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     session.close()
     transaction.rollback()
     connection.close()
@@ -189,17 +203,15 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
 
 
 # ==============================================================================
-# Sample Data Fixtures
+# Sample Data Fixtures (using Factory Boy)
 # ==============================================================================
 
 
 @pytest.fixture
-def sample_summary(db_session, sample_content) -> Summary:
+def sample_summary(db_session, sample_content):
     """Create a single sample summary linked to content."""
-    test_model = list(MODEL_REGISTRY.keys())[0]
-
-    summary = Summary(
-        content_id=sample_content.id,
+    summary = SummaryFactory(
+        content=sample_content,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
         strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -212,7 +224,6 @@ def sample_summary(db_session, sample_content) -> Summary:
             "individual_developers": 0.7,
         },
         agent_framework="claude",
-        model_used=test_model,
         model_version="20250929",
         token_usage=2500,
         processing_time_seconds=3.5,
@@ -220,20 +231,17 @@ def sample_summary(db_session, sample_content) -> Summary:
 
     # Update content status to reflect it has been summarized
     sample_content.status = ContentStatus.COMPLETED
-    db_session.add(summary)
     db_session.commit()
     db_session.refresh(summary)
     return summary
 
 
 @pytest.fixture
-def sample_summaries(db_session, sample_contents) -> list[Summary]:
+def sample_summaries(db_session, sample_contents):
     """Create multiple sample summaries linked to contents."""
-    test_model = list(MODEL_REGISTRY.keys())[0]
-
     summaries = [
-        Summary(
-            content_id=sample_contents[0].id,
+        SummaryFactory(
+            content=sample_contents[0],
             executive_summary="Major LLM advances summary.",
             key_themes=["LLM Performance", "Cost Optimization"],
             strategic_insights=["LLM costs decreasing"],
@@ -242,12 +250,11 @@ def sample_summaries(db_session, sample_contents) -> list[Summary]:
             notable_quotes=["Context is king"],
             relevance_scores={"cto_leadership": 0.9, "technical_teams": 0.85},
             agent_framework="claude",
-            model_used=test_model,
             token_usage=2500,
             processing_time_seconds=3.5,
         ),
-        Summary(
-            content_id=sample_contents[1].id,
+        SummaryFactory(
+            content=sample_contents[1],
             executive_summary="Vector database performance summary.",
             key_themes=["Vector Search", "Performance"],
             strategic_insights=["Database selection critical"],
@@ -256,28 +263,20 @@ def sample_summaries(db_session, sample_contents) -> list[Summary]:
             notable_quotes=["Performance matters"],
             relevance_scores={"cto_leadership": 0.6, "technical_teams": 0.95},
             agent_framework="claude",
-            model_used=test_model,
             token_usage=2200,
             processing_time_seconds=3.2,
         ),
     ]
 
-    for summary in summaries:
-        db_session.add(summary)
-
-    db_session.commit()
-
-    for summary in summaries:
-        db_session.refresh(summary)
-
     return summaries
 
 
 @pytest.fixture
-def sample_digest(db_session) -> Digest:
+def sample_digest(db_session):
     """Create a single sample digest in the test database."""
-    digest = Digest(
-        digest_type=DigestType.DAILY,
+    return DigestFactory(
+        daily=True,
+        pending_review=True,
         period_start=datetime(2025, 1, 14, 0, 0, 0, tzinfo=UTC),
         period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
         title="Test Daily Digest",
@@ -312,22 +311,18 @@ def sample_digest(db_session) -> Digest:
         },
         sources=[{"content_id": 1, "title": "AI Weekly"}],
         newsletter_count=3,
-        status=DigestStatus.PENDING_REVIEW,
         agent_framework="claude",
         model_used="claude-sonnet-4-5",
     )
-    db_session.add(digest)
-    db_session.commit()
-    db_session.refresh(digest)
-    return digest
 
 
 @pytest.fixture
-def sample_digests(db_session) -> list[Digest]:
+def sample_digests(db_session):
     """Create multiple sample digests in the test database."""
-    digests = [
-        Digest(
-            digest_type=DigestType.DAILY,
+    return [
+        DigestFactory(
+            daily=True,
+            pending_review=True,
             period_start=datetime(2025, 1, 14, 0, 0, 0, tzinfo=UTC),
             period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
             title="Daily Digest 1",
@@ -338,12 +333,12 @@ def sample_digests(db_session) -> list[Digest]:
             actionable_recommendations={},
             sources=[],
             newsletter_count=3,
-            status=DigestStatus.PENDING_REVIEW,
             agent_framework="claude",
             model_used="claude-sonnet-4-5",
         ),
-        Digest(
-            digest_type=DigestType.WEEKLY,
+        DigestFactory(
+            weekly=True,
+            approved=True,
             period_start=datetime(2025, 1, 8, 0, 0, 0, tzinfo=UTC),
             period_end=datetime(2025, 1, 15, 23, 59, 59, tzinfo=UTC),
             title="Weekly Digest 1",
@@ -354,21 +349,10 @@ def sample_digests(db_session) -> list[Digest]:
             actionable_recommendations={},
             sources=[],
             newsletter_count=10,
-            status=DigestStatus.APPROVED,
             agent_framework="claude",
             model_used="claude-sonnet-4-5",
         ),
     ]
-
-    for digest in digests:
-        db_session.add(digest)
-
-    db_session.commit()
-
-    for digest in digests:
-        db_session.refresh(digest)
-
-    return digests
 
 
 @pytest.fixture
@@ -442,15 +426,16 @@ def sample_podcast(db_session, sample_script) -> Podcast:
 
 
 # ==============================================================================
-# Content Model Fixtures (Unified Content Model)
+# Content Model Fixtures (using Factory Boy)
 # ==============================================================================
 
 
 @pytest.fixture
-def sample_content(db_session) -> Content:
+def sample_content(db_session):
     """Create a single sample content in the test database."""
-    content = Content(
-        source_type=ContentSource.GMAIL,
+    return ContentFactory(
+        gmail=True,
+        parsed=True,
         source_id="test-content-001",
         source_url="https://example.com/content1",
         title="LLM Advances Newsletter",
@@ -459,24 +444,17 @@ def sample_content(db_session) -> Content:
         published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
         markdown_content="# LLM Advances\n\nContent about LLM advances and new models.",
         raw_content="<html><body>Newsletter about LLM advances...</body></html>",
-        raw_format="html",
         content_hash="abc123hash",
-        status=ContentStatus.PARSED,
-        ingested_at=datetime.now(UTC),
-        parsed_at=datetime.now(UTC),
     )
-    db_session.add(content)
-    db_session.commit()
-    db_session.refresh(content)
-    return content
 
 
 @pytest.fixture
-def sample_contents(db_session) -> list[Content]:
+def sample_contents(db_session):
     """Create multiple sample contents in the test database."""
-    contents = [
-        Content(
-            source_type=ContentSource.GMAIL,
+    return [
+        ContentFactory(
+            gmail=True,
+            parsed=True,
             source_id="test-content-001",
             source_url="https://example.com/content1",
             title="LLM Advances Newsletter",
@@ -485,11 +463,9 @@ def sample_contents(db_session) -> list[Content]:
             published_date=datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
             markdown_content="# LLM Advances\n\nContent about LLM advances.",
             content_hash="hash001",
-            status=ContentStatus.PARSED,
-            ingested_at=datetime.now(UTC),
         ),
-        Content(
-            source_type=ContentSource.RSS,
+        ContentFactory(
+            rss=True,
             source_id="test-content-002",
             source_url="https://example.com/content2",
             title="Vector Database Guide",
@@ -499,11 +475,10 @@ def sample_contents(db_session) -> list[Content]:
             markdown_content="# Vector Databases\n\nGuide to vector databases.",
             content_hash="hash002",
             status=ContentStatus.COMPLETED,
-            ingested_at=datetime.now(UTC),
-            processed_at=datetime.now(UTC),
         ),
-        Content(
-            source_type=ContentSource.YOUTUBE,
+        ContentFactory(
+            youtube=True,
+            parsed=True,
             source_id="test-video-003",
             source_url="https://youtube.com/watch?v=test123",
             title="AI Agents Tutorial",
@@ -513,29 +488,15 @@ def sample_contents(db_session) -> list[Content]:
             markdown_content="# AI Agents Tutorial\n\n[00:00](https://youtube.com/watch?v=test123&t=0) Introduction",
             metadata_json={"video_id": "test123", "channel": "Tech Channel"},
             content_hash="hash003",
-            status=ContentStatus.PARSED,
-            ingested_at=datetime.now(UTC),
         ),
     ]
 
-    for content in contents:
-        db_session.add(content)
-
-    db_session.commit()
-
-    for content in contents:
-        db_session.refresh(content)
-
-    return contents
-
 
 @pytest.fixture
-def sample_content_with_summary(db_session, sample_content) -> tuple[Content, Summary]:
+def sample_content_with_summary(db_session, sample_content):
     """Create a content with an associated summary."""
-    test_model = list(MODEL_REGISTRY.keys())[0]
-
-    summary = Summary(
-        content_id=sample_content.id,
+    summary = SummaryFactory(
+        content=sample_content,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
         strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -550,7 +511,6 @@ def sample_content_with_summary(db_session, sample_content) -> tuple[Content, Su
         markdown_content="# Newsletter Summary\n\n## Executive Summary\nMajor LLM advances.",
         theme_tags=["llm", "cost-optimization", "performance"],
         agent_framework="claude",
-        model_used=test_model,
         model_version="20250929",
         token_usage=2500,
         processing_time_seconds=3.5,
@@ -558,8 +518,6 @@ def sample_content_with_summary(db_session, sample_content) -> tuple[Content, Su
 
     sample_content.status = ContentStatus.COMPLETED
     sample_content.processed_at = datetime.now(UTC)
-
-    db_session.add(summary)
     db_session.commit()
     db_session.refresh(summary)
     db_session.refresh(sample_content)

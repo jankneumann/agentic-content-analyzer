@@ -26,7 +26,7 @@ from tests.helpers.simple_mocks import (
     create_simple_summary_response,
     create_simple_theme_analysis_response,
 )
-from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
+from tests.helpers.test_data import create_test_contents_batch
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -49,9 +49,7 @@ async def test_ondemand_summarization_triggers_for_missing_summaries(db_session,
     # 1. SETUP: Load real newsletters without summaries
     # ============================================================
     logger.info("Loading test newsletters into database...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
     logger.info(f"Loaded {len(newsletters)} newsletters: {[nl.id for nl in newsletters]}")
 
     # Verify no summaries exist
@@ -176,9 +174,7 @@ async def test_ondemand_summarization_with_some_existing_summaries(db_session, m
     # 1. SETUP: Load newsletters and create 1 summary manually
     # ============================================================
     logger.info("Loading test newsletters...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
 
     # Create summary for first newsletter manually
     logger.info(f"Creating manual summary for newsletter {newsletters[0].id}...")
@@ -296,9 +292,7 @@ async def test_ondemand_summarization_handles_partial_failures(db_session, mock_
     # 1. SETUP: Load newsletters
     # ============================================================
     logger.info("Loading test newsletters...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
 
     assert db_session.query(Summary).count() == 0
     logger.info("✓ 0 summaries initially")
@@ -424,9 +418,7 @@ async def test_ondemand_summarization_no_newsletters_in_period(db_session):
     # 1. SETUP: Load newsletters outside target date range
     # ============================================================
     logger.info("Loading test newsletters...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
     logger.info(f"Loaded {len(newsletters)} newsletters")
 
     # ============================================================

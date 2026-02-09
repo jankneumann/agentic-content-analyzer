@@ -26,7 +26,7 @@ from tests.helpers.simple_mocks import (
     create_simple_embedding_response,
     create_simple_theme_analysis_response,
 )
-from tests.helpers.test_data import create_test_newsletters_batch, get_default_test_newsletters
+from tests.helpers.test_data import create_test_contents_batch
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -50,9 +50,7 @@ async def test_create_daily_digest_with_summaries(db_session, mock_get_db):
     # 1. SETUP: Load newsletters and create summaries
     # ============================================================
     logger.info("Loading test newsletters and creating summaries...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
 
     # Create summaries for all newsletters
     for i, newsletter in enumerate(newsletters, 1):
@@ -171,9 +169,7 @@ async def test_create_weekly_digest(db_session, mock_get_db):
     # 1. SETUP: Load newsletters and create summaries
     # ============================================================
     logger.info("Loading test newsletters and creating summaries...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
 
     # Create summaries
     for i, newsletter in enumerate(newsletters, 1):
@@ -272,9 +268,7 @@ async def test_create_digest_with_empty_period(db_session, mock_get_db):
     # 1. SETUP: Load newsletters (but request different period)
     # ============================================================
     logger.info("Loading test newsletters...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
     logger.info(f"Loaded {len(newsletters)} newsletters (dated 2025-01-13 to 2025-01-15)")
 
     # ============================================================
@@ -330,9 +324,7 @@ async def test_digest_includes_all_newsletter_sources(db_session, mock_get_db):
     # 1. SETUP: Load newsletters and create summaries
     # ============================================================
     logger.info("Loading test newsletters...")
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
 
     # Create summaries
     for i, newsletter in enumerate(newsletters, 1):
@@ -440,9 +432,7 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
     # ============================================================
     # 1. SETUP: Load newsletters and create summaries
     # ============================================================
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
 
     for i, newsletter in enumerate(newsletters, 1):
         summary = Summary(
@@ -510,9 +500,9 @@ async def test_digest_processing_time_tracked(db_session, mock_get_db):
 
     assert digest.processing_time_seconds is not None, "Processing time should be tracked"
     assert digest.processing_time_seconds > 0, "Processing time should be positive"
-    assert (
-        digest.processing_time_seconds < 60
-    ), "Processing time should be reasonable (< 60s for test)"
+    assert digest.processing_time_seconds < 60, (
+        "Processing time should be reasonable (< 60s for test)"
+    )
 
     logger.info(f"✓ Processing time tracked: {digest.processing_time_seconds:.2f}s")
     logger.info("=== TEST PASSED ===\n")
@@ -532,9 +522,7 @@ async def test_digest_with_custom_limits(db_session, mock_get_db):
     # ============================================================
     # 1. SETUP: Load newsletters and create summaries
     # ============================================================
-    newsletters = create_test_newsletters_batch(
-        db_session, filenames=get_default_test_newsletters()
-    )
+    newsletters = create_test_contents_batch(db_session)
 
     for i, newsletter in enumerate(newsletters, 1):
         summary = Summary(

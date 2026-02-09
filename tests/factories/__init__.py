@@ -23,10 +23,13 @@ Usage:
 
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
+from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
 from tests.factories.summary import SummaryFactory
 
 __all__ = [
     "ContentFactory",
     "SummaryFactory",
     "DigestFactory",
+    "PodcastScriptRecordFactory",
+    "PodcastFactory",
 ]

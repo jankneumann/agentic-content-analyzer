@@ -1,6 +1,6 @@
 """Test data helpers for integration tests.
 
-Provides helper functions to create Content test records.
+Provides helper functions to create Content test records using Factory Boy.
 """
 
 from datetime import UTC, datetime
@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from src.models.content import Content, ContentSource, ContentStatus
+from tests.factories.content import ContentFactory
 
 
 def get_default_test_contents() -> list[str]:
@@ -31,6 +32,8 @@ def create_test_contents_batch(
 ) -> list[Content]:
     """Create a batch of test Content records in the database.
 
+    Uses ContentFactory for consistent test data generation.
+
     Args:
         db_session: Database session for creating records
         titles: List of content titles (defaults to get_default_test_contents())
@@ -43,9 +46,12 @@ def create_test_contents_batch(
     if titles is None:
         titles = get_default_test_contents()
 
+    # Ensure factory uses the provided session
+    ContentFactory._meta.sqlalchemy_session = db_session  # type: ignore[attr-defined]
+
     contents = []
     for i, title in enumerate(titles, 1):
-        content = Content(
+        content = ContentFactory(
             source_type=source_type,
             source_id=f"test-content-{i:03d}",
             source_url=f"https://example.com/content-{i}",
@@ -56,42 +62,7 @@ def create_test_contents_batch(
             markdown_content=f"# {title}\n\nTest content about {title.lower()}.",
             content_hash=f"hash{i:03d}",
             status=status,
-            ingested_at=datetime.now(UTC),
         )
-        db_session.add(content)
         contents.append(content)
 
-    db_session.commit()
-
-    # Refresh to get IDs
-    for content in contents:
-        db_session.refresh(content)
-
-    return contents
-
-
-# Backwards compatibility aliases (deprecated - use Content-based functions)
-def get_default_test_newsletters() -> list[str]:
-    """Alias for get_default_test_contents().
-
-    Deprecated: Use get_default_test_contents() instead.
-    """
-    return get_default_test_contents()
-
-
-def create_test_newsletters_batch(
-    db_session: Session,
-    filenames: list[str] | None = None,
-) -> list[Content]:
-    """Create a batch of test Content records (backwards compatibility alias).
-
-    Deprecated: Use create_test_contents_batch() instead.
-
-    Args:
-        db_session: Database session for creating records
-        filenames: List of content titles (parameter name kept for backwards compatibility)
-
-    Returns:
-        List of created Content records with IDs assigned
-    """
-    return create_test_contents_batch(db_session, titles=filenames)
+    return contents  # type: ignore[return-value]

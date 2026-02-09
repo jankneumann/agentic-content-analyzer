@@ -37,6 +37,7 @@ from sqlalchemy.orm import sessionmaker
 
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
+from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
 from tests.factories.summary import SummaryFactory
 
 # =============================================================================
@@ -105,6 +106,8 @@ def clear_settings_cache():
 register(ContentFactory)
 register(SummaryFactory)
 register(DigestFactory)
+register(PodcastScriptRecordFactory)
+register(PodcastFactory)
 
 
 # Test database URL (same as api/conftest.py for consistency)
@@ -169,13 +172,20 @@ def db_session(test_engine):
     session = SessionLocal()
 
     # Configure factories to use this session
-    ContentFactory._meta.sqlalchemy_session = session
-    SummaryFactory._meta.sqlalchemy_session = session
-    DigestFactory._meta.sqlalchemy_session = session
+    ContentFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    SummaryFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    DigestFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    PodcastScriptRecordFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
+    PodcastFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
 
     yield session
 
-    # Cleanup: rollback transaction and close
+    # Cleanup: Reset factory sessions, rollback transaction, close connection
+    ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    DigestFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    PodcastScriptRecordFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    PodcastFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     session.close()
     transaction.rollback()
     connection.close()

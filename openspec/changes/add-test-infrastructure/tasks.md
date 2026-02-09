@@ -98,8 +98,8 @@
 
 - [x] 9.1 Audit existing tests for categories (structure already in place)
 - [x] 9.2 Add markers to existing tests (markers defined, can be added incrementally)
-- [x] 9.3 Refactor tests to use factories where appropriate (incremental adoption)
-- [x] 9.4 Remove redundant fixture definitions (as factories are adopted)
+- [x] 9.3 Refactor tests to use factories where appropriate (API conftest, integration conftest, test_sorting, test_content_summarization_logic, test_data helpers)
+- [x] 9.4 Remove redundant fixture definitions (conftest fixtures now delegate to factories, unused model imports removed)
 - [x] 9.5 Verify all tests pass after migration (existing tests unchanged)
 
 ## 10. Documentation ✅
