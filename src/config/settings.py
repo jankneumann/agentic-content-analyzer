@@ -132,6 +132,46 @@ def get_active_profile_name() -> str | None:
     return _active_profile_name
 
 
+def resolve_profile_settings(profile_name: str) -> Settings:
+    """Resolve a named profile into a Settings instance without side effects.
+
+    Loads the profile YAML, flattens it to Settings-compatible kwargs,
+    and returns a standalone Settings instance. Does NOT mutate os.environ
+    or the global _active_profile_name.
+
+    Args:
+        profile_name: Name of the profile to load (e.g. "local", "staging")
+
+    Returns:
+        A Settings instance configured from the named profile
+
+    Raises:
+        ProfileNotFoundError: If profile YAML does not exist (includes available profiles)
+        ProfileResolutionError: If variable interpolation fails (re-raised with context)
+    """
+    from src.config.profiles import (
+        ProfileNotFoundError,
+        ProfileResolutionError,
+        load_profile,
+    )
+
+    try:
+        profile = load_profile(profile_name)
+    except ProfileNotFoundError:
+        raise
+    except ProfileResolutionError as e:
+        raise ProfileResolutionError(
+            variable=e.variable,
+            profile_name=e.profile_name,
+            location=e.location,
+        ) from e
+
+    profile_dict = profile.model_dump()
+    kwargs = _flatten_profile_to_settings(profile_dict)
+
+    return Settings(_env_file=None, **kwargs)
+
+
 # Type alias for database provider
 DatabaseProviderType = Literal["local", "supabase", "neon", "railway"]
 PoolerModeType = Literal["transaction", "session"]

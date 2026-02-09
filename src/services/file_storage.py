@@ -26,7 +26,10 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
+
+if TYPE_CHECKING:
+    from src.config.settings import Settings
 
 from src.config import settings
 from src.utils.logging import get_logger
@@ -887,6 +890,82 @@ def get_image_storage(provider: str | None = None) -> FileStorageProvider:
     if provider is None:
         provider = getattr(settings, "image_storage_provider", "local")
     return get_storage(bucket="images", provider=provider)
+
+
+def get_storage_for_settings(
+    settings_instance: "Settings",
+    bucket: str = "images",
+) -> FileStorageProvider:
+    """Get configured file storage provider using an explicit Settings instance.
+
+    Unlike get_storage() which reads from the global settings singleton,
+    this factory accepts a Settings instance directly. This is useful for
+    constructing storage providers bound to a specific profile without
+    mutating global state.
+
+    Args:
+        settings_instance: A Settings object to read configuration from
+        bucket: Logical bucket name (e.g. 'images', 'podcasts', 'audio-digests')
+
+    Returns:
+        FileStorageProvider instance configured from settings_instance
+    """
+    # Determine provider for this bucket
+    bucket_providers = settings_instance.storage_bucket_providers or {}
+    if bucket in bucket_providers:
+        provider = bucket_providers[bucket]
+    else:
+        provider = settings_instance.storage_provider
+
+    match provider:
+        case "s3":
+            # Resolve S3 bucket name
+            s3_buckets = settings_instance.storage_s3_buckets or {}
+            s3_bucket = s3_buckets.get(bucket, settings_instance.image_storage_bucket)
+
+            return S3FileStorage(
+                bucket=s3_bucket,
+                storage_bucket=bucket,
+                endpoint_url=settings_instance.s3_endpoint_url,
+                region=settings_instance.aws_region,
+                access_key_id=settings_instance.aws_access_key_id,
+                secret_access_key=settings_instance.aws_secret_access_key,
+            )
+        case "supabase":
+            # Resolve Supabase bucket name
+            supabase_buckets = settings_instance.storage_supabase_buckets or {}
+            supabase_bucket = supabase_buckets.get(
+                bucket, settings_instance.supabase_storage_bucket
+            )
+
+            return SupabaseFileStorage(
+                bucket=supabase_bucket,
+                storage_bucket=bucket,
+                project_ref=settings_instance.supabase_project_ref,
+                access_key_id=settings_instance.supabase_access_key_id,
+                secret_access_key=settings_instance.supabase_secret_access_key,
+                region=settings_instance.supabase_region,
+                public=settings_instance.supabase_storage_public,
+                local=settings_instance.supabase_local,
+            )
+        case "railway":
+            return RailwayFileStorage(
+                bucket=settings_instance.railway_minio_bucket,
+                storage_bucket=bucket,
+                endpoint_url=settings_instance.railway_minio_endpoint,
+                access_key_id=settings_instance.minio_root_user,
+                secret_access_key=settings_instance.minio_root_password,
+            )
+        case _:  # "local" or any other value
+            # Resolve local path
+            local_paths = settings_instance.storage_local_paths or {}
+            default_path = DEFAULT_BUCKET_PATHS.get(bucket, f"data/{bucket}")
+            base_path = local_paths.get(bucket, default_path)
+
+            return LocalFileStorage(
+                base_path=base_path,
+                bucket=bucket,
+            )
 
 
 def compute_file_hash(data: bytes) -> str:
