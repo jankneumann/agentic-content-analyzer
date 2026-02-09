@@ -9,6 +9,7 @@ Tests the unified Content model API including:
 """
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 from src.models.content import Content, ContentSource, ContentStatus
 
@@ -338,12 +339,15 @@ class TestTriggerIngestion:
             "max_results": 10,
             "days_back": 7,
         }
-        response = client.post("/api/v1/contents/ingest", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert "task_id" in data
-        assert data["message"] == "Content ingestion queued"
-        assert data["source"] == "gmail"
+        with patch("src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock) as mock_enqueue:
+            mock_enqueue.return_value = 123
+            response = client.post("/api/v1/contents/ingest", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert "task_id" in data
+            assert data["message"] == "Content ingestion queued"
+            assert data["source"] == "gmail"
+            mock_enqueue.assert_called_once()
 
     def test_trigger_ingestion_rss(self, client):
         """Triggers RSS ingestion and returns task_id."""
@@ -352,11 +356,14 @@ class TestTriggerIngestion:
             "max_results": 50,
             "days_back": 3,
         }
-        response = client.post("/api/v1/contents/ingest", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert "task_id" in data
-        assert data["source"] == "rss"
+        with patch("src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock) as mock_enqueue:
+            mock_enqueue.return_value = 123
+            response = client.post("/api/v1/contents/ingest", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert "task_id" in data
+            assert data["source"] == "rss"
+            mock_enqueue.assert_called_once()
 
     def test_trigger_ingestion_invalid_source(self, client):
         """Returns 422 for invalid source type."""
@@ -375,21 +382,27 @@ class TestTriggerSummarization:
         """Triggers summarization for all pending content."""
         # The endpoint starts a background task and returns immediately
         payload = {}  # Empty = all pending
-        response = client.post("/api/v1/contents/summarize", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert "task_id" in data
-        assert "queued_count" in data
+        with patch("src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock) as mock_enqueue:
+            mock_enqueue.return_value = 123
+            response = client.post("/api/v1/contents/summarize", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert "task_id" in data
+            assert "queued_count" in data
+            mock_enqueue.assert_called_once()
 
     def test_trigger_summarization_specific_ids(self, client, sample_contents):
         """Triggers summarization for specific content IDs."""
         payload = {
             "content_ids": [sample_contents[0].id, sample_contents[2].id],
         }
-        response = client.post("/api/v1/contents/summarize", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert "task_id" in data
+        with patch("src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock) as mock_enqueue:
+            mock_enqueue.return_value = 123
+            response = client.post("/api/v1/contents/summarize", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert "task_id" in data
+            mock_enqueue.assert_called_once()
 
 
 class TestContentWithSummary:

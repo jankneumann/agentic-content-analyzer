@@ -819,6 +819,18 @@ async def trigger_content_summarization(
             query = query.outerjoin(Summary, Content.id == Summary.content_id)
             query = query.filter(Summary.id.is_(None))
 
+            # OPTIMIZATION: Defer heavy columns when checking for summarization candidates
+            # We only need ID and status (and error_message for updates), so we avoid
+            # loading the full markdown content and JSON fields.
+            query = query.options(
+                defer(Content.markdown_content),
+                defer(Content.tables_json),
+                defer(Content.links_json),
+                defer(Content.metadata_json),
+                defer(Content.raw_content),
+                defer(Content.error_message),
+            )
+
             contents = query.all()
 
             # Reset failed content to PARSED so it can be retried
