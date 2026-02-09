@@ -238,7 +238,7 @@ class PGImporter:
 
         if target_rev == source_rev:
             logger.info("Schema versions match: %s", source_rev)
-        elif target_rev != source_rev:
+        else:
             # We can't easily determine ordering without walking the revision chain.
             # Log a warning and proceed — the import may still work if schemas are
             # compatible (new columns are typically nullable with defaults).

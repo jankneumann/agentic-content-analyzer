@@ -10,11 +10,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from src.services.file_storage import FileStorageProvider
+from src.services.file_storage import FileStorageProvider, LocalFileStorage, S3FileStorage
 from src.sync.constants import FILE_PATH_COLUMNS
 
 logger = logging.getLogger(__name__)
@@ -251,15 +252,13 @@ class FileSyncer:
                     stats.per_bucket[bucket]["missing"] += 1
                     continue
 
-                # Copy: read from source, write to target
+                # Copy: read from source, write to target at the EXACT
+                # original path.  save() must NOT be used here because it
+                # generates a new UUID-prefixed, date-organized path — the
+                # file would end up at a different location than the one
+                # the database references.
                 data = await source.get(path)
-                # Use save() with the original path's filename
-                filename = path.rsplit("/", 1)[-1] if "/" in path else path
-                await target.save(
-                    data=data,
-                    filename=filename,
-                    content_type="application/octet-stream",
-                )
+                await _put_at_path(target, path, data)
                 stats.copied += 1
                 stats.bytes_copied += len(data)
                 stats.per_bucket[bucket]["copied"] += 1
@@ -320,6 +319,71 @@ class FileSyncer:
             if source.bucket != target.bucket:
                 return False
         return True
+
+
+async def _put_at_path(
+    provider: FileStorageProvider,
+    path: str,
+    data: bytes,
+) -> None:
+    """Write *data* to *provider* at the exact *path*.
+
+    Unlike ``provider.save()`` — which generates a new UUID-prefixed,
+    date-organized path — this function preserves the original storage
+    path so that the database references remain valid after a sync.
+
+    Strategy per provider type:
+
+    * **LocalFileStorage** — resolve the full filesystem path via
+      ``get_local_path()`` and write the bytes directly.
+    * **S3FileStorage** (and subclasses like Supabase, Railway) — call
+      ``put_object`` on the underlying boto3 client with the original
+      key.
+    * **Other / unknown** — fall back to ``save()`` and log a warning
+      that the resulting path will differ from the database reference.
+    """
+    if isinstance(provider, LocalFileStorage):
+        local_path: Path | None = provider.get_local_path(path)
+        if local_path is None:
+            raise ValueError(f"Cannot resolve local path for: {path}")
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def _write_local() -> None:
+            with open(local_path, "wb") as f:
+                f.write(data)
+
+        await asyncio.to_thread(_write_local)
+        return
+
+    if isinstance(provider, S3FileStorage):
+        # S3FileStorage (and its subclasses: Supabase, Railway) expose a
+        # boto3 client and the real S3 bucket name via ``s3_bucket``.
+        def _put_s3() -> None:
+            provider.client.put_object(
+                Bucket=provider.s3_bucket,
+                Key=path,
+                Body=data,
+                ContentType="application/octet-stream",
+            )
+
+        await asyncio.to_thread(_put_s3)
+        return
+
+    # Unknown provider — fall back to save(), which will generate a
+    # different path.  Log a warning so operators know the DB reference
+    # won't match.
+    logger.warning(
+        "Unknown storage provider %s for path %s; falling back to "
+        "save() which will generate a new path (DB reference mismatch)",
+        provider.provider_name,
+        path,
+    )
+    filename = path.rsplit("/", 1)[-1] if "/" in path else path
+    await provider.save(
+        data=data,
+        filename=filename,
+        content_type="application/octet-stream",
+    )
 
 
 def _format_size(size_bytes: int) -> str:

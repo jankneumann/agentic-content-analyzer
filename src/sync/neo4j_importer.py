@@ -33,10 +33,8 @@ class Neo4jImporter:
         self._driver = driver
         self._mode = mode
         self._stats = {
-            "nodes_created": 0,
-            "nodes_merged": 0,
-            "relationships_created": 0,
-            "relationships_merged": 0,
+            "nodes_imported": 0,
+            "relationships_imported": 0,
             "errors": 0,
         }
 
@@ -84,24 +82,21 @@ class Neo4jImporter:
         # Import nodes first (relationships reference them by UUID)
         for node in nodes:
             if dry_run:
-                self._stats["nodes_created"] += 1
+                self._stats["nodes_imported"] += 1
                 continue
             self._import_node(node)
 
         # Import relationships
         for rel in relationships:
             if dry_run:
-                self._stats["relationships_created"] += 1
+                self._stats["relationships_imported"] += 1
                 continue
             self._import_relationship(rel)
 
         logger.info(
-            "Neo4j import complete: nodes_created=%d, nodes_merged=%d, "
-            "relationships_created=%d, relationships_merged=%d, errors=%d",
-            self._stats["nodes_created"],
-            self._stats["nodes_merged"],
-            self._stats["relationships_created"],
-            self._stats["relationships_merged"],
+            "Neo4j import complete: nodes_imported=%d, relationships_imported=%d, errors=%d",
+            self._stats["nodes_imported"],
+            self._stats["relationships_imported"],
             self._stats["errors"],
         )
 
@@ -179,20 +174,14 @@ class Neo4jImporter:
                     f"MERGE (n:{node.label} {{uuid: $uuid}}) "
                     "ON CREATE SET n += $props "
                     "ON MATCH SET n += $props "
-                    "RETURN n.uuid AS uuid, "
-                    "CASE WHEN n.uuid = $uuid THEN true ELSE false END AS existed"
+                    "RETURN n.uuid AS uuid"
                 )
-                result = session.run(
+                session.run(
                     cypher,
                     uuid=node.uuid,
                     props=node.properties,
                 )
-                record = result.single()
-                if record:
-                    # In merge mode, count created vs merged
-                    self._stats["nodes_created"] += 1
-                else:
-                    self._stats["nodes_merged"] += 1
+                self._stats["nodes_imported"] += 1
 
         except Exception as e:
             logger.warning(
@@ -223,7 +212,7 @@ class Neo4jImporter:
                 )
                 record = result.single()
                 if record:
-                    self._stats["relationships_created"] += 1
+                    self._stats["relationships_imported"] += 1
                 else:
                     logger.warning(
                         "Could not create %s relationship: source=%s or target=%s not found",

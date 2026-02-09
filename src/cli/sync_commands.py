@@ -107,6 +107,10 @@ def export_cmd(
     export_pg = not neo4j_only
     export_neo4j = not pg_only
 
+    if pg_only and neo4j_only:
+        typer.echo("Error: Cannot specify both --pg-only and --neo4j-only.", err=True)
+        raise typer.Exit(1)
+
     if export_pg:
         from src.sync.pg_exporter import PGExporter
 
@@ -216,6 +220,10 @@ def import_cmd(
 
     import_pg = not neo4j_only
     import_neo4j = not pg_only
+
+    if pg_only and neo4j_only:
+        typer.echo("Error: Cannot specify both --pg-only and --neo4j-only.", err=True)
+        raise typer.Exit(1)
 
     if import_pg:
         from src.sync.pg_importer import PGImporter
@@ -347,6 +355,16 @@ def push_cmd(
     source_settings = _resolve_settings(from_profile)
     target_settings = _resolve_settings(to_profile)
 
+    source_url = source_settings.get_effective_database_url()
+    target_url = target_settings.get_effective_database_url()
+    if source_url == target_url:
+        typer.echo(
+            "Error: Source and target profiles resolve to the same database URL. "
+            "Sync requires different source and target databases.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     table_list = [t.strip() for t in tables.split(",")] if tables else None
     bucket_list = [b.strip() for b in buckets.split(",")] if buckets else None
 
@@ -355,12 +373,21 @@ def push_cmd(
     do_files = not pg_only and not neo4j_only
     do_neo4j = not pg_only and not files_only
 
+    only_flags = [pg_only, neo4j_only, files_only]
+    if sum(only_flags) > 1:
+        typer.echo(
+            "Error: Cannot specify more than one of --pg-only, --neo4j-only, --files-only.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     stages_completed: list[str] = []
+    temp_files: list[Path] = []
 
     try:
         # Stage 1: PG Export
         if do_pg:
-            typer.echo(f"\n[1/6] Exporting PostgreSQL from '{from_profile}'...")
+            typer.echo(f"\n[PG Export] Exporting PostgreSQL from '{from_profile}'...")
             from src.sync.pg_exporter import PGExporter
 
             source_engine = _create_pg_engine(source_settings)
@@ -368,6 +395,7 @@ def push_cmd(
                 fd, tmp = tempfile.mkstemp(suffix=".jsonl", prefix="sync_pg_")
                 os.close(fd)
                 pg_export_path = Path(tmp)
+                temp_files.append(pg_export_path)
                 exporter = PGExporter(source_engine)
                 counts = exporter.export(pg_export_path, tables=table_list, force=True)
                 total = sum(counts.values())
@@ -378,7 +406,7 @@ def push_cmd(
 
         # Stage 2: File Discovery
         if do_files:
-            typer.echo(f"\n[2/6] Discovering files from '{from_profile}'...")
+            typer.echo(f"\n[File Discovery] Discovering files from '{from_profile}'...")
             from src.sync.file_syncer import FileSyncer
 
             source_engine = _create_pg_engine(source_settings)
@@ -397,7 +425,7 @@ def push_cmd(
 
         # Stage 3: File Sync
         if do_files and file_refs:  # type: ignore[possibly-undefined]
-            typer.echo(f"\n[3/6] Syncing files to '{to_profile}'...")
+            typer.echo(f"\n[File Sync] Syncing files to '{to_profile}'...")
             file_stats = syncer.sync_files(file_refs, dry_run=dry_run)  # type: ignore[possibly-undefined]
             typer.echo(f"  {file_stats.summary()}")
             stages_completed.append("file_sync")
@@ -405,7 +433,7 @@ def push_cmd(
 
         # Stage 4: PG Import
         if do_pg:
-            typer.echo(f"\n[4/6] Importing PostgreSQL into '{to_profile}'...")
+            typer.echo(f"\n[PG Import] Importing PostgreSQL into '{to_profile}'...")
             from src.sync.pg_importer import PGImporter
 
             target_engine = _create_pg_engine(target_settings)
@@ -423,12 +451,11 @@ def push_cmd(
             finally:
                 target_engine.dispose()
 
-            # Cleanup temp file
-            pg_export_path.unlink(missing_ok=True)  # type: ignore[possibly-undefined]
+            # Temp file tracked in temp_files list for cleanup in finally block
 
         # Stage 5: Neo4j Export
         if do_neo4j:
-            typer.echo(f"\n[5/6] Exporting Neo4j from '{from_profile}'...")
+            typer.echo(f"\n[Neo4j Export] Exporting Neo4j from '{from_profile}'...")
             try:
                 source_driver = _create_neo4j_driver(source_settings)
             except Exception as e:
@@ -442,6 +469,7 @@ def push_cmd(
                     fd, tmp = tempfile.mkstemp(suffix=".neo4j.jsonl", prefix="sync_")
                     os.close(fd)
                     neo4j_path = Path(tmp)
+                    temp_files.append(neo4j_path)
                     neo4j_exporter = Neo4jExporter(source_driver)  # type: ignore[possibly-undefined]
                     result = neo4j_exporter.export(neo4j_path, force=True)
                     typer.echo(
@@ -454,7 +482,7 @@ def push_cmd(
 
         # Stage 6: Neo4j Import
         if do_neo4j:
-            typer.echo(f"\n[6/6] Importing Neo4j into '{to_profile}'...")
+            typer.echo(f"\n[Neo4j Import] Importing Neo4j into '{to_profile}'...")
             try:
                 target_driver = _create_neo4j_driver(target_settings)
             except Exception as e:
@@ -471,12 +499,17 @@ def push_cmd(
                 finally:
                     target_driver.close()  # type: ignore[possibly-undefined]
 
-                # Cleanup
-                neo4j_path.unlink(missing_ok=True)  # type: ignore[possibly-undefined]
+                # Temp file tracked in temp_files list for cleanup in finally block
 
     except Exception as e:
         typer.echo(f"\nSync failed at stage: {e}", err=True)
         typer.echo(f"Completed stages: {', '.join(stages_completed) or 'none'}", err=True)
         raise typer.Exit(1)
+    finally:
+        for tf in temp_files:
+            try:
+                tf.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Failed to clean up temp file: %s", tf)
 
     typer.echo(f"\nSync complete! Stages: {', '.join(stages_completed)}")

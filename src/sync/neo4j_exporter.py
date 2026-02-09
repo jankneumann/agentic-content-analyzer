@@ -209,12 +209,20 @@ class Neo4jExporter:
 
 
 def _filter_properties(props: dict[str, Any]) -> dict[str, Any]:
-    """Remove excluded properties (embeddings, vectors, internal metadata)."""
-    return {
-        k: v
-        for k, v in props.items()
-        if not any(k.endswith(pattern) for pattern in EXCLUDED_PROPERTY_PATTERNS)
-    }
+    """Remove excluded properties (embeddings, vectors, internal metadata).
+
+    Uses exact match or suffix match with underscore prefix to avoid
+    excluding unrelated properties (e.g., 'embedding_model' is kept,
+    but 'name_embedding' and 'embedding' are excluded).
+    """
+
+    def _is_excluded(key: str) -> bool:
+        for pattern in EXCLUDED_PROPERTY_PATTERNS:
+            if key == pattern or key.endswith(f"_{pattern}"):
+                return True
+        return False
+
+    return {k: v for k, v in props.items() if not _is_excluded(k)}
 
 
 def _serialize_properties(props: dict[str, Any]) -> dict[str, Any]:
