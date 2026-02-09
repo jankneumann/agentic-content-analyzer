@@ -677,6 +677,8 @@ sources:
   url: https://aimaker.substack.com/feed
 - name: AI Echoes
   url: https://aiechoes.substack.com/feed
+- name: Release Bot
+  url: https://releasebot.io/feed/77af8f56-37da-4f9c-a728-0f3222237ec2.rss
 - name: Brian Balfour
   url: https://blog.brianbalfour.com/feed
 - name: The AI Merge
