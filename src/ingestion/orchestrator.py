@@ -7,12 +7,13 @@ importing, instantiating, and calling service classes.
 Each function:
 - Lazy-imports its service classes (avoids circular imports, defers heavy deps)
 - Accepts the same parameters the service expects
-- Returns int (number of items ingested)
+- Returns int (number of items ingested) or a result dataclass
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,15 @@ if TYPE_CHECKING:
     from src.ingestion.rss import IngestionResult
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class URLIngestResult:
+    """Result of a direct URL ingestion."""
+
+    content_id: int
+    status: str  # "queued" or "exists"
+    duplicate: bool
 
 
 def ingest_gmail(
@@ -247,3 +257,83 @@ def ingest_substack(
         )
     finally:
         service.close()
+
+
+def ingest_url(
+    *,
+    url: str,
+    title: str | None = None,
+    tags: list[str] | None = None,
+    notes: str | None = None,
+) -> URLIngestResult:
+    """Ingest a single URL using the save-url workflow.
+
+    Creates a Content record (source_type=WEBPAGE) and enqueues background
+    extraction via URLExtractor. Deduplicates by source_url.
+
+    Args:
+        url: The URL to ingest.
+        title: Optional title override (URL used as fallback).
+        tags: Optional tags for the content.
+        notes: Optional user notes.
+
+    Returns:
+        URLIngestResult with content_id, status, and duplicate flag.
+    """
+    from datetime import UTC, datetime
+
+    from src.models.content import Content, ContentSource, ContentStatus
+    from src.storage.database import get_db
+    from src.utils.content_hash import generate_markdown_hash
+
+    with get_db() as db:
+        # Check for duplicate
+        existing = db.query(Content).filter(Content.source_url == url).first()
+        if existing:
+            logger.info(f"URL already exists: content_id={existing.id}, url={url}")
+            return URLIngestResult(
+                content_id=existing.id,
+                status="exists",
+                duplicate=True,
+            )
+
+        # Build metadata
+        metadata: dict = {"capture_source": "cli"}
+        if tags:
+            metadata["tags"] = tags
+        if notes:
+            metadata["notes"] = notes
+
+        content = Content(
+            source_type=ContentSource.WEBPAGE,
+            source_id=f"webpage:{url}",
+            source_url=url,
+            title=title or url,
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
+            status=ContentStatus.PENDING,
+            metadata_json=metadata,
+            ingested_at=datetime.now(UTC),
+        )
+
+        db.add(content)
+        db.commit()
+        db.refresh(content)
+
+        content_id = content.id
+        logger.info(f"Created content record: id={content_id}, url={url}")
+
+    # Trigger extraction synchronously (CLI context — no event loop running)
+    from src.services.url_extractor import URLExtractor
+
+    with get_db() as db:
+        extractor = URLExtractor(db)
+        import asyncio
+
+        asyncio.run(extractor.extract_content(content_id))
+
+    return URLIngestResult(
+        content_id=content_id,
+        status="queued",
+        duplicate=False,
+    )

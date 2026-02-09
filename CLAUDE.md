@@ -45,7 +45,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 An agentic AI solution for aggregating and summarizing AI newsletters into daily and weekly digests.
 
 - **Purpose**: Help technical leaders and developers stay informed on AI/Data trends
-- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, file uploads
+- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, file uploads, direct URLs
 - **Output**: Structured digests with knowledge graph-powered historical context
 
 ## Key Commands
@@ -88,6 +88,7 @@ aca ingest youtube-playlist            # YouTube playlists only (OAuth)
 aca ingest youtube-rss                 # YouTube RSS feeds only
 aca ingest podcast                     # Podcast feeds
 aca ingest files <path...>             # Local file ingestion
+aca ingest url <url>                   # Direct URL ingestion
 
 # Processing
 aca summarize pending                  # Summarize pending content

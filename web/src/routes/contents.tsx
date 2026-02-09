@@ -72,11 +72,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Toggle } from "@/components/ui/toggle"
-import { useContents, useContent, useContentStats, useIngestContents } from "@/hooks/use-contents"
+import { useContents, useContent, useContentStats, useIngestContents, useSaveUrl } from "@/hooks/use-contents"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
 import {
   IngestContentsDialog,
   type IngestContentParams,
+  type SaveUrlParams,
 } from "@/components/generation"
 import type { ContentStatus, ContentSource, ContentFilters } from "@/types"
 
@@ -185,6 +186,7 @@ function ContentsPage() {
   const { data, isLoading, isError, error, refetch } = useContents(filters)
   const { data: stats } = useContentStats()
   const ingestMutation = useIngestContents()
+  const saveUrlMutation = useSaveUrl()
   const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
 
   // Fetch selected content details
@@ -311,6 +313,32 @@ function ContentsPage() {
 
     // Update progress indicator
     updateTask(taskId, { progress: 10, message: "Queuing ingestion..." })
+  }
+
+  const handleSaveUrl = (params: SaveUrlParams) => {
+    setIngestDialogOpen(false)
+
+    saveUrlMutation.mutate(
+      { url: params.url },
+      {
+        onSuccess: (data) => {
+          if (data.duplicate) {
+            toast.info("URL already saved", {
+              description: `Content ID: ${data.content_id}`,
+            })
+          } else {
+            toast.success("URL saved for extraction", {
+              description: `Content ID: ${data.content_id}`,
+            })
+          }
+          refetch()
+        },
+        onError: (err) => {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error"
+          toast.error(`Failed to save URL: ${errorMsg}`)
+        },
+      }
+    )
   }
 
   return (
@@ -788,7 +816,9 @@ function ContentsPage() {
         open={ingestDialogOpen}
         onOpenChange={setIngestDialogOpen}
         onIngest={handleIngest}
+        onSaveUrl={handleSaveUrl}
         isIngesting={ingestMutation.isPending}
+        isSavingUrl={saveUrlMutation.isPending}
       />
     </PageContainer>
   )
