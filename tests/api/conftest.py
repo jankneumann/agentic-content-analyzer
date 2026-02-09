@@ -129,6 +129,7 @@ class AuthenticatedTestClient:
         return self._client.get(*args, **kwargs)
 
     def post(self, *args, **kwargs):
+        kwargs = self._add_auth_headers(kwargs)
         return self._client.post(*args, **kwargs)
 
     def put(self, *args, **kwargs):

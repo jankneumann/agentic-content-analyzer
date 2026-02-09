@@ -42,3 +42,8 @@
 **Vulnerability:** Background tasks for podcast script generation (`generate_script_task`) and audio generation (`generate_audio_task`) caught generic `Exception` and saved `str(e)` to the `error_message` database field. This exposed internal error details (including potential secrets or connection strings) to API consumers, despite previous efforts to fix this pattern elsewhere.
 **Learning:** Security fixes are often incomplete if they rely on manual discovery. The "leak `str(e)`" pattern appeared in modules (`script_routes.py`, `podcast_routes.py`) that were missed in previous remediation waves.
 **Prevention:** Use automated code scanning (SAST) or `grep` across the *entire* codebase to identify all instances of `error_message = str(e)` or similar patterns. Establish a strict rule: never assign raw exception strings to user-visible data models.
+
+## 2025-06-01 - [Unauthenticated Admin Router]
+**Vulnerability:** The `/api/v1/scripts` router was exposed without any authentication, allowing unauthorized users to generate scripts (incurring LLM costs) and approve/reject them.
+**Learning:** When defining multiple routers, it's easy to miss applying global dependencies or per-router dependencies if there isn't a centralized security policy or linter check.
+**Prevention:** Enforce a "secure by default" policy where all routers require authentication unless explicitly exempted. Use linters or tests to verify that every `APIRouter` has `dependencies` configured or is listed in a "public routers" allowlist. Also, `TestClient` helpers should verify that requests *without* auth headers fail, not just that requests *with* headers succeed.
