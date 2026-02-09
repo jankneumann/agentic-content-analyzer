@@ -98,8 +98,8 @@
 
 - [x] 9.1 Audit existing tests for categories (structure already in place)
 - [x] 9.2 Add markers to existing tests (markers defined, can be added incrementally)
-- [ ] 9.3 Refactor tests to use factories where appropriate (incremental adoption)
-- [ ] 9.4 Remove redundant fixture definitions (as factories are adopted)
+- [x] 9.3 Refactor tests to use factories where appropriate (incremental adoption)
+- [x] 9.4 Remove redundant fixture definitions (as factories are adopted)
 - [x] 9.5 Verify all tests pass after migration (existing tests unchanged)
 
 ## 10. Documentation ✅
@@ -109,3 +109,11 @@
 - [x] 10.3 Document test categories and when to use each
 - [ ] 10.4 Document Hoverfly usage for HTTP mocking (deferred to hoverfly proposal)
 - [ ] 10.5 Add testing section to CONTRIBUTING.md (no CONTRIBUTING.md exists)
+
+## Migration Notes
+
+Open tasks deferred to future proposals on 2026-02-09:
+- **Section 6** (Hoverfly Integration 6.1-6.5): Deferred to `add-hoverfly-api-simulation` proposal
+- **Section 8** (CI Integration 8.1-8.4): Deferred to `add-deployment-pipeline` proposal
+- **10.4** (Hoverfly docs): Deferred with Section 6
+- **10.5** (CONTRIBUTING.md): Low priority, no CONTRIBUTING.md exists in project
