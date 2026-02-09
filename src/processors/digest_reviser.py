@@ -12,6 +12,7 @@ from src.models.digest import Digest
 from src.models.revision import RevisionContext, RevisionResult
 from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis
+from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -29,6 +30,7 @@ class DigestReviser:
         self,
         model_config: ModelConfig | None = None,
         model: str | None = None,
+        prompt_service: PromptService | None = None,
     ) -> None:
         """
         Initialize digest reviser.
@@ -36,6 +38,7 @@ class DigestReviser:
         Args:
             model_config: Model configuration (defaults to global config)
             model: Optional model override (uses DIGEST_REVISION step by default)
+            prompt_service: Optional PromptService for configurable prompts
         """
         from src.config import settings
 
@@ -47,6 +50,7 @@ class DigestReviser:
 
         # Use configured model for digest revision, or override
         self.model = model or self.model_config.get_model_for_step(ModelStep.DIGEST_REVISION)
+        self.prompt_service = prompt_service or PromptService()
 
         # Provider tracking (for cost calculation)
         self.provider_used: Provider | None = None
@@ -423,42 +427,12 @@ class DigestReviser:
         # Build context prompt
         context_text = context.to_llm_context()
 
-        # Build user message with context and request
-        user_message = f"""You are helping to revise a newsletter digest. Your role is to improve the digest based on user feedback while maintaining quality standards.
-
-{context_text}
-
----
-
-## REVISION REQUEST
-
-{user_request}
-
-## INSTRUCTIONS
-
-1. Analyze the user's request carefully
-2. Use tools to fetch additional details if needed (fetch_newsletter_content, search_newsletters)
-3. Make the requested revision while maintaining:
-   - Professional but accessible tone
-   - Strategic perspective with tactical grounding
-   - Multi-audience balance (CTO-level + developer tactics)
-   - Data-driven insights with specific metrics
-4. Respond with a JSON object containing:
-   - "section_modified": Which section you changed (e.g., "executive_overview", "strategic_insights")
-   - "revised_content": The new content for that section
-   - "explanation": Brief explanation of what you changed and why
-   - "confidence_score": How confident you are in this revision (0.0-1.0)
-
-Example response format:
-```json
-{{
-  "section_modified": "executive_overview",
-  "revised_content": "New executive overview text...",
-  "explanation": "Made the summary more concise by focusing on the top 3 themes...",
-  "confidence_score": 0.95
-}}
-```
-"""
+        # Build user message from configurable template
+        user_message = self.prompt_service.render(
+            "pipeline.digest_revision.system",
+            context_text=context_text,
+            user_request=user_request,
+        )
 
         messages.append({"role": "user", "content": user_message})
 

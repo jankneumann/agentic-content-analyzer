@@ -9,6 +9,7 @@ from anthropic import Anthropic
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.theme import HistoricalMention, ThemeData, ThemeEvolution
+from src.services.prompt_service import PromptService
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger
 
@@ -26,6 +27,7 @@ class HistoricalContextAnalyzer:
         self,
         model_config: ModelConfig | None = None,
         model: str | None = None,
+        prompt_service: PromptService | None = None,
     ):
         """
         Initialize historical context analyzer.
@@ -33,6 +35,7 @@ class HistoricalContextAnalyzer:
         Args:
             model_config: Model configuration (defaults to settings.get_model_config())
             model: Optional model override (defaults to HISTORICAL_CONTEXT step model)
+            prompt_service: Optional PromptService for configurable prompts
         """
         # Get model config from settings if not provided
         if model_config is None:
@@ -42,6 +45,7 @@ class HistoricalContextAnalyzer:
 
         # Get model for historical context step (or use override)
         self.model = model or model_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT)
+        self.prompt_service = prompt_service or PromptService()
 
         self.graphiti_client: GraphitiClient | None = None
 
@@ -238,42 +242,12 @@ class HistoricalContextAnalyzer:
         # Build context from timeline
         timeline_context = self._build_timeline_context(timeline)
 
-        # Build prompt
-        prompt = f"""Analyze how the theme "{theme_name}" has evolved based on historical content mentions.
-
-# Historical Timeline
-
-{timeline_context}
-
-# Your Task
-
-Provide a JSON response with:
-1. **evolution_summary**: 1-2 sentence summary of how this theme has evolved
-2. **previous_discussions**: List of 2-4 key points from previous discussions (specific insights, not just "discussed")
-3. **stance_change**: How the stance/sentiment has changed over time (or null if consistent)
-
-# Output Format
-
-```json
-{{
-  "evolution_summary": "Brief summary of evolution",
-  "previous_discussions": [
-    "Specific insight 1",
-    "Specific insight 2",
-    "Specific insight 3"
-  ],
-  "stance_change": "How sentiment/stance changed, or null"
-}}
-```
-
-# Guidelines
-
-- Focus on how the discussion has changed, not just that it occurred
-- Identify shifts in perspective, new developments, or changing priorities
-- Be specific about what changed and when
-- If stance has been consistent, set stance_change to null
-
-Provide ONLY the JSON, no other text."""
+        # Build prompt from configurable template
+        prompt = self.prompt_service.render(
+            "pipeline.historical_context.evolution_template",
+            theme_name=theme_name,
+            timeline_context=timeline_context,
+        )
 
         # Call LLM with provider failover
         try:

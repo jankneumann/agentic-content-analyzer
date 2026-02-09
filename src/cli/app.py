@@ -37,6 +37,7 @@ from src.cli.output import _set_json_mode, is_json_mode, output_result  # noqa: 
 from src.cli.pipeline_commands import app as pipeline_app
 from src.cli.podcast_commands import app as podcast_app
 from src.cli.profile_commands import app as profile_app
+from src.cli.prompt_commands import app as prompts_app
 from src.cli.review_commands import app as review_app
 from src.cli.summarize_commands import app as summarize_app
 from src.cli.sync_commands import app as sync_app
@@ -60,6 +61,7 @@ app.add_typer(graph_app, name="graph")
 app.add_typer(podcast_app, name="podcast")
 app.add_typer(manage_app, name="manage")
 app.add_typer(profile_app, name="profile")
+app.add_typer(prompts_app, name="prompts")
 app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(job_app, name="jobs")

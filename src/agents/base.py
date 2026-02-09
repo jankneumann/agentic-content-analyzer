@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.summary import SummaryData
+from src.services.prompt_service import PromptService
 
 if TYPE_CHECKING:
     from src.models.content import Content
@@ -30,6 +31,7 @@ class SummarizationAgent(ABC):
         step: ModelStep = ModelStep.SUMMARIZATION,
         model: str | None = None,
         api_key: str | None = None,
+        prompt_service: PromptService | None = None,
     ) -> None:
         """
         Initialize the agent.
@@ -39,6 +41,7 @@ class SummarizationAgent(ABC):
             step: Pipeline step this agent is used for (default: SUMMARIZATION)
             model: Optional model override (for backward compatibility)
             api_key: Optional API key override (for backward compatibility)
+            prompt_service: Optional PromptService for configurable prompts
         """
         self.model_config = model_config
         self.step = step
@@ -49,6 +52,9 @@ class SummarizationAgent(ABC):
 
         # Backward compatibility: store api_key if provided
         self.api_key = api_key
+
+        # Prompt service for configurable prompts
+        self.prompt_service = prompt_service or PromptService()
 
         # Track provider used (set by subclass during API call)
         self.provider_used: Provider | None = None
@@ -121,6 +127,7 @@ class SummarizationAgent(ABC):
         Create the summarization prompt for Content model.
 
         Uses Content's markdown_content which is already in optimal format for LLMs.
+        Loads the prompt template from PromptService for customizability.
 
         Args:
             content: Content to summarize
@@ -136,49 +143,12 @@ class SummarizationAgent(ABC):
         if len(markdown_content) > max_chars:
             markdown_content = markdown_content[:max_chars] + "\n\n[Content truncated...]"
 
-        prompt = f"""You are an expert at summarizing AI and technology content for technical leaders and developers at Comcast.
-
-Your audience ranges from CTOs needing strategic insights to individual developers seeking actionable best practices.
-
-Please analyze this content and provide a structured summary:
-
-**Content Details:**
-- Title: {content.title}
-- Publication: {content.publication or "Unknown"}
-- Author: {content.author or "Unknown"}
-- Date: {content.published_date}
-- Source: {content.source_type.value if content.source_type else "Unknown"}
-
-**Content:**
-{markdown_content}
-
-**Required Output (JSON format):**
-{{
-    "executive_summary": "2-3 sentence summary capturing the essence and why it matters",
-    "key_themes": ["theme1", "theme2", "theme3"],  # 3-5 main topics/themes
-    "strategic_insights": ["insight1", "insight2"],  # CTO-level implications
-    "technical_details": ["detail1", "detail2"],  # Developer-focused specifics
-    "actionable_items": ["action1", "action2"],  # What readers should do
-    "notable_quotes": ["quote1", "quote2"],  # Important quotes or data points
-    "relevant_links": [  # Links to referenced resources for deeper reading
-        {{"title": "Resource Title", "url": "https://..."}},
-        {{"title": "Another Resource", "url": "https://..."}}
-    ],
-    "relevance_scores": {{
-        "cto_leadership": 0.0-1.0,  # How relevant for C-level
-        "technical_teams": 0.0-1.0,  # How relevant for dev teams
-        "individual_developers": 0.0-1.0  # How relevant for individuals
-    }}
-}}
-
-Focus on:
-- Strategic implications for AI/Data leadership
-- Actionable technical insights
-- Trends and patterns in the AI/tech landscape
-- Practical applications for enterprise settings
-- Best practices and recommendations
-- Extract links to referenced papers, articles, or resources
-
-Provide ONLY the JSON output, no additional commentary."""
-
-        return prompt
+        return self.prompt_service.render(
+            "pipeline.summarization.user_template",
+            title=content.title,
+            publication=content.publication or "Unknown",
+            author=content.author or "Unknown",
+            published_date=str(content.published_date),
+            source_type=content.source_type.value if content.source_type else "Unknown",
+            markdown_content=markdown_content,
+        )

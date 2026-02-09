@@ -3,14 +3,13 @@ Settings API Routes
 
 Endpoints for managing application settings including:
 - Prompt overrides for chat and pipeline steps
-- Future: model preferences, feature flags, etc.
+- Prompt testing with template rendering
 """
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
-from src.models.settings import PromptOverride
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 
@@ -31,6 +30,8 @@ class PromptInfo(BaseModel):
     default_value: str
     current_value: str
     has_override: bool
+    version: int | None = None
+    description: str | None = None
 
 
 class PromptListResponse(BaseModel):
@@ -46,6 +47,10 @@ class PromptUpdateRequest(BaseModel):
         None,
         description="New prompt value. Set to null to clear override and revert to default.",
     )
+    description: str | None = Field(
+        None,
+        description="Optional description of the change.",
+    )
 
 
 class PromptUpdateResponse(BaseModel):
@@ -54,6 +59,28 @@ class PromptUpdateResponse(BaseModel):
     key: str
     current_value: str
     has_override: bool
+    version: int | None = None
+
+
+class PromptTestRequest(BaseModel):
+    """Request to test a prompt template."""
+
+    draft_value: str | None = Field(
+        None,
+        description="Draft prompt value to test (without saving). "
+        "If omitted, uses current value (override or default).",
+    )
+    variables: dict[str, str] = Field(
+        default_factory=dict,
+        description="Template variables to substitute.",
+    )
+
+
+class PromptTestResponse(BaseModel):
+    """Response from testing a prompt template."""
+
+    rendered_prompt: str
+    variable_names: list[str]
 
 
 # ============================================================================
@@ -69,57 +96,28 @@ class PromptUpdateResponse(BaseModel):
 async def list_prompts() -> PromptListResponse:
     """Get all prompts with their current values and override status.
 
-    Returns prompts organized by category (chat, pipeline) with:
-    - default_value: The value from prompts.yaml
-    - current_value: The effective value (override if exists, else default)
-    - has_override: Whether this prompt has a user override
+    Walks the full YAML tree to enumerate all leaf-node prompts, including
+    template variants like length_brief, user_template, etc.
     """
     with get_db() as db:
         prompt_service = PromptService(db)
-        defaults = prompt_service._defaults
+        all_prompts = prompt_service.list_all_prompts()
 
         prompts = []
-
-        # Chat prompts
-        chat_prompts = defaults.get("chat", {})
-        for artifact_type, prompt_data in chat_prompts.items():
-            key = f"chat.{artifact_type}.system"
-            default_value = prompt_data.get("system", "")
-
-            # Check for override
-            override = db.query(PromptOverride).filter_by(key=key).first()
+        for p in all_prompts:
+            display_name = p["step"].replace("_", " ").title()
+            prompt_name = p["name"].replace("_", " ").title()
 
             prompts.append(
                 PromptInfo(
-                    key=key,
-                    category="chat",
-                    name=f"{artifact_type.title()} Chat System Prompt",
-                    default_value=default_value,
-                    current_value=override.value if override else default_value,
-                    has_override=override is not None,
-                )
-            )
-
-        # Pipeline prompts
-        pipeline_prompts = defaults.get("pipeline", {})
-        for step_name, prompt_data in pipeline_prompts.items():
-            key = f"pipeline.{step_name}.system"
-            default_value = prompt_data.get("system", "")
-
-            # Check for override
-            override = db.query(PromptOverride).filter_by(key=key).first()
-
-            # Format step name for display
-            display_name = step_name.replace("_", " ").title()
-
-            prompts.append(
-                PromptInfo(
-                    key=key,
-                    category="pipeline",
-                    name=f"{display_name} System Prompt",
-                    default_value=default_value,
-                    current_value=override.value if override else default_value,
-                    has_override=override is not None,
+                    key=p["key"],
+                    category=p["category"],
+                    name=f"{display_name} {prompt_name} Prompt",
+                    default_value=p["default"],
+                    current_value=p["override"] if p["has_override"] else p["default"],
+                    has_override=p["has_override"],
+                    version=p["version"],
+                    description=p["description"],
                 )
             )
 
@@ -134,12 +132,12 @@ async def list_prompts() -> PromptListResponse:
 async def get_prompt(key: str) -> PromptInfo:
     """Get a specific prompt by key.
 
-    Key format: category.name.prompt_type (e.g., "chat.summary.system")
+    Key format: category.step.prompt_name (e.g., "chat.summary.system")
     """
     with get_db() as db:
         prompt_service = PromptService(db)
 
-        # Parse key to get default value
+        # Parse key
         parts = key.split(".")
         if len(parts) < 3:
             raise HTTPException(
@@ -147,30 +145,29 @@ async def get_prompt(key: str) -> PromptInfo:
                 detail=f"Invalid prompt key format: {key}. Expected: category.name.prompt_type",
             )
 
-        category, name, prompt_type = parts[0], parts[1], ".".join(parts[2:])
+        category, step, prompt_name = parts[0], parts[1], ".".join(parts[2:])
 
         # Get default from config
-        defaults = prompt_service._defaults
-        category_defaults = defaults.get(category, {})
-        name_defaults = category_defaults.get(name, {})
-        default_value = name_defaults.get(prompt_type, "")
+        default_value = prompt_service.get_default(key)
 
-        if not default_value and category_defaults:
+        if not default_value:
             raise HTTPException(status_code=404, detail=f"Prompt not found: {key}")
 
         # Check for override
-        override = db.query(PromptOverride).filter_by(key=key).first()
+        override = prompt_service.get_override(key)
 
         # Format display name
-        display_name = name.replace("_", " ").title()
+        display_name = step.replace("_", " ").title()
 
         return PromptInfo(
             key=key,
             category=category,
-            name=f"{display_name} {prompt_type.title()} Prompt",
+            name=f"{display_name} {prompt_name.replace('_', ' ').title()} Prompt",
             default_value=default_value,
             current_value=override.value if override else default_value,
             has_override=override is not None,
+            version=override.version if override else None,
+            description=override.description if override else None,
         )
 
 
@@ -188,7 +185,7 @@ async def update_prompt(key: str, request: PromptUpdateRequest) -> PromptUpdateR
     with get_db() as db:
         prompt_service = PromptService(db)
 
-        # Validate key exists in defaults
+        # Validate key format
         parts = key.split(".")
         if len(parts) < 3:
             raise HTTPException(
@@ -196,14 +193,8 @@ async def update_prompt(key: str, request: PromptUpdateRequest) -> PromptUpdateR
                 detail=f"Invalid prompt key format: {key}. Expected: category.name.prompt_type",
             )
 
-        category, name, prompt_type = parts[0], parts[1], ".".join(parts[2:])
-
-        defaults = prompt_service._defaults
-        category_defaults = defaults.get(category, {})
-        name_defaults = category_defaults.get(name, {})
-        default_value = name_defaults.get(prompt_type, "")
-
         # Validate the prompt exists in defaults
+        default_value = prompt_service.get_default(key)
         if not default_value:
             raise HTTPException(status_code=404, detail=f"Prompt not found: {key}")
 
@@ -217,11 +208,13 @@ async def update_prompt(key: str, request: PromptUpdateRequest) -> PromptUpdateR
             )
         else:
             # Set override
-            prompt_service.set_override(key, request.value)
+            prompt_service.set_override(key, request.value, description=request.description)
+            override = prompt_service.get_override(key)
             return PromptUpdateResponse(
                 key=key,
                 current_value=request.value,
                 has_override=True,
+                version=override.version if override else 1,
             )
 
 
@@ -238,7 +231,7 @@ async def reset_prompt(key: str) -> PromptUpdateResponse:
     with get_db() as db:
         prompt_service = PromptService(db)
 
-        # Parse key to get default value
+        # Validate key format
         parts = key.split(".")
         if len(parts) < 3:
             raise HTTPException(
@@ -246,18 +239,75 @@ async def reset_prompt(key: str) -> PromptUpdateResponse:
                 detail=f"Invalid prompt key format: {key}. Expected: category.name.prompt_type",
             )
 
-        category, name, prompt_type = parts[0], parts[1], ".".join(parts[2:])
-
-        defaults = prompt_service._defaults
-        category_defaults = defaults.get(category, {})
-        name_defaults = category_defaults.get(name, {})
-        default_value = name_defaults.get(prompt_type, "")
+        default_value = prompt_service.get_default(key)
 
         # Clear override
         prompt_service.clear_override(key)
 
         return PromptUpdateResponse(
             key=key,
-            current_value=default_value,
+            current_value=default_value or "",
             has_override=False,
         )
+
+
+@router.post(
+    "/prompts/{key:path}/test",
+    response_model=PromptTestResponse,
+    dependencies=[Depends(verify_admin_key)],
+)
+async def test_prompt(key: str, request: PromptTestRequest) -> PromptTestResponse:
+    """Test a prompt template by rendering it with variables.
+
+    Renders the prompt template (or a draft value) with the provided
+    variables, returning the rendered result. Variables not provided
+    are left as {placeholder} in the output.
+    """
+    with get_db() as db:
+        prompt_service = PromptService(db)
+
+        # Validate key format
+        parts = key.split(".")
+        if len(parts) < 3:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid prompt key format: {key}. Expected: category.name.prompt_type",
+            )
+
+        # Get the template to render
+        if request.draft_value is not None:
+            template = request.draft_value
+        else:
+            template = prompt_service._get_prompt(key, key.split("."))
+            if not template:
+                raise HTTPException(status_code=404, detail=f"Prompt not found: {key}")
+
+        # Extract variable names from template
+        variable_names = _extract_variable_names(template)
+
+        # Render with provided variables
+        from src.services.prompt_service import SafeDict
+
+        rendered = template.format_map(SafeDict(request.variables))
+
+        return PromptTestResponse(
+            rendered_prompt=rendered,
+            variable_names=variable_names,
+        )
+
+
+def _extract_variable_names(template: str) -> list[str]:
+    """Extract {variable} names from a template string.
+
+    Handles doubled braces ({{ }}) by skipping them.
+    """
+    import re
+
+    # Find all {name} patterns, excluding {{ (escaped braces)
+    # This regex matches single braces only
+    names: list[str] = []
+    for match in re.finditer(r"(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})", template):
+        name = match.group(1)
+        if name not in names:
+            names.append(name)
+    return names

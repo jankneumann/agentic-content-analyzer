@@ -18,35 +18,11 @@ from src.models.podcast import (
     PodcastSection,
     PodcastStatus,
 )
+from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-SECTION_REVISION_SYSTEM_PROMPT = """
-You are revising a section of a podcast script based on reviewer feedback.
-
-PERSONAS (maintain their voices):
-
-**Alex Chen** (VP of Engineering):
-- Confident, strategic speaking style
-- Focuses on business implications and organizational impact
-- Uses business metaphors occasionally
-
-**Dr. Sam Rodriguez** (Distinguished Engineer):
-- Thoughtful, precise speaking style
-- Focuses on technical details and implementation
-- Enthusiastic about elegant solutions
-
-REVISION GUIDELINES:
-- Address the specific feedback provided
-- Maintain the conversational flow and natural dialogue
-- Keep the same speakers (Alex and Sam)
-- Preserve any source citations [newsletter_id] format
-- Keep the section focused on its original topic
-- Ensure dialogue feels natural with appropriate pauses and emphasis
-"""
 
 
 class PodcastScriptReviser:
@@ -62,18 +38,21 @@ class PodcastScriptReviser:
         self,
         model_config: ModelConfig | None = None,
         model: str | None = None,
+        prompt_service: PromptService | None = None,
     ):
         """Initialize script reviser.
 
         Args:
             model_config: Model configuration (defaults to settings.get_model_config())
             model: Optional model override (defaults to PODCAST_SCRIPT step model)
+            prompt_service: Optional PromptService for configurable prompts
         """
         if model_config is None:
             model_config = settings.get_model_config()
 
         self.model_config = model_config
         self.model = model or model_config.get_model_for_step(ModelStep.PODCAST_SCRIPT)
+        self.prompt_service = prompt_service or PromptService()
 
         # Track usage
         self.provider_used: Provider | None = None
@@ -395,7 +374,7 @@ Respond with ONLY the JSON object, no additional text.
         try:
             response = client.messages.create(
                 model=provider_model_id,
-                system=SECTION_REVISION_SYSTEM_PROMPT,
+                system=self.prompt_service.get_pipeline_prompt("script_revision"),
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=4000,
                 temperature=0.6,  # Moderate creativity for revisions

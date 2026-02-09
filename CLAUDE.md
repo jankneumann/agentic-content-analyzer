@@ -109,6 +109,18 @@ aca review view <id>                   # View digest content
 aca analyze themes                     # Analyze themes across content
 aca podcast generate --digest-id <id>  # Generate podcast script
 
+# Prompt Management
+aca prompts list                       # List all prompts grouped by category
+aca prompts list --category pipeline   # Filter by category
+aca prompts list --overrides-only      # Show only overridden prompts
+aca prompts show <key>                 # View prompt value and metadata
+aca prompts set <key> --value "..."    # Set prompt override
+aca prompts set <key> --file path.txt  # Set from file
+aca prompts reset <key>                # Reset to default
+aca prompts test <key> --var k=v       # Test template rendering
+aca prompts export --output prompts.yaml  # Export all prompts
+aca prompts import --file prompts.yaml    # Import overrides
+
 # Management
 aca manage verify-setup                # Check service connectivity
 aca manage check-profile-secrets       # Find unresolved secrets

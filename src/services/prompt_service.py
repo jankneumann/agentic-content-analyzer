@@ -3,6 +3,7 @@
 This service provides centralized prompt management with:
 - Default prompts loaded from YAML configuration
 - Database overrides for user customizations
+- Template variable interpolation via render()
 - Support for chat prompts and pipeline step prompts
 
 Usage:
@@ -14,16 +15,31 @@ Usage:
 
     # With DB for overrides
     service = PromptService(db_session)
-    prompt = service.get_chat_prompt("summary")  # Returns override if exists
+    prompt = service.get_chat_prompt("summary")
+
+    # With template variables
+    rendered = service.render("pipeline.podcast_script.length_brief", period="daily")
 """
 
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 from sqlalchemy.orm import Session
 
 from src.models.settings import PromptOverride
+
+
+class SafeDict(dict):
+    """Dict subclass that returns the placeholder unchanged for missing keys.
+
+    Used with str.format_map() to allow partial template rendering —
+    unknown variables are left as {variable} in the output instead of
+    raising KeyError.
+    """
+
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
 
 
 class PromptService:
@@ -39,6 +55,11 @@ class PromptService:
         """
         self.db = db
         self._defaults: dict[str, Any] = self._load_defaults()
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear the cached defaults. Useful for testing."""
+        cls._CACHED_DEFAULTS = None
 
     def _load_defaults(self) -> dict[str, Any]:
         """Load default prompts from YAML configuration."""
@@ -82,6 +103,25 @@ class PromptService:
         key = f"pipeline.{step}.{prompt_name}"
         return self._get_prompt(key, ["pipeline", step, prompt_name])
 
+    def render(self, key: str, **variables: Any) -> str:
+        """Get a prompt and render template variables.
+
+        Uses str.format_map() with SafeDict so that missing variables are
+        left as {placeholder} in the output instead of raising KeyError.
+
+        Args:
+            key: Full dot-separated key (e.g., "pipeline.podcast_script.length_brief")
+            **variables: Template variables to substitute
+
+        Returns:
+            Rendered prompt string
+        """
+        path = key.split(".")
+        template = self._get_prompt(key, path)
+        if not variables:
+            return template
+        return template.format_map(SafeDict(variables))
+
     def _get_prompt(self, key: str, path: list[str]) -> str:
         """Get a prompt, checking DB override first.
 
@@ -120,12 +160,15 @@ class PromptService:
 
         return str(current) if current else default
 
-    def set_override(self, key: str, value: str) -> None:
+    def set_override(self, key: str, value: str, description: str | None = None) -> None:
         """Set a prompt override in database.
+
+        Auto-increments version on update.
 
         Args:
             key: Full dot-separated key (e.g., "chat.summary.system")
             value: The override prompt value
+            description: Optional description of the change
 
         Raises:
             ValueError: If no database session is available
@@ -136,8 +179,11 @@ class PromptService:
         existing = self.db.query(PromptOverride).filter_by(key=key).first()
         if existing:
             existing.value = value
+            existing.version = (existing.version or 1) + 1
+            if description is not None:
+                existing.description = description
         else:
-            self.db.add(PromptOverride(key=key, value=value))
+            self.db.add(PromptOverride(key=key, value=value, version=1, description=description))
         self.db.commit()
 
     def clear_override(self, key: str) -> None:
@@ -150,68 +196,77 @@ class PromptService:
             self.db.query(PromptOverride).filter_by(key=key).delete()
             self.db.commit()
 
-    def get_override(self, key: str) -> str | None:
-        """Get an override value without falling back to default.
+    def get_override(self, key: str) -> PromptOverride | None:
+        """Get an override record without falling back to default.
 
         Args:
             key: Full dot-separated key
 
         Returns:
-            Override value if exists, None otherwise
+            PromptOverride record if exists, None otherwise
         """
         if not self.db:
             return None
 
-        override = self.db.query(PromptOverride).filter_by(key=key).first()
-        return override.value if override else None
+        return self.db.query(PromptOverride).filter_by(key=key).first()
+
+    def get_default(self, key: str) -> str:
+        """Get the default value from YAML for a key, ignoring DB overrides.
+
+        Args:
+            key: Full dot-separated key
+
+        Returns:
+            Default value from YAML, or empty string if not found
+        """
+        path = key.split(".")
+        return self._get_nested(self._defaults, path, "")
 
     def list_all_prompts(self) -> list[dict[str, Any]]:
         """List all prompts with their defaults and overrides.
+
+        Walks the full YAML tree to find all leaf-node prompts, not just
+        those with a 'system' key. This captures prompt variants like
+        pipeline.podcast_script.length_brief, etc.
 
         Returns:
             List of prompt info dictionaries with keys:
             - key: Full dot-separated key
             - category: chat or pipeline
             - step: artifact type or pipeline step
+            - name: prompt name (e.g., "system", "length_brief")
             - default: Default value from YAML
             - override: Override value from DB (or None)
             - has_override: Boolean flag
+            - version: Override version (or None)
+            - description: Override description (or None)
         """
-        prompts = []
+        prompts: list[dict[str, Any]] = []
 
-        # Chat prompts
-        chat_config = self._defaults.get("chat", {})
-        for artifact_type, prompt_data in chat_config.items():
-            if isinstance(prompt_data, dict) and "system" in prompt_data:
-                key = f"chat.{artifact_type}.system"
-                override = self.get_override(key)
-                prompts.append(
-                    {
-                        "key": key,
-                        "category": "chat",
-                        "step": artifact_type,
-                        "default": prompt_data["system"],
-                        "override": override,
-                        "has_override": override is not None,
-                    }
-                )
-
-        # Pipeline prompts
-        pipeline_config = self._defaults.get("pipeline", {})
-        for step, prompt_data in pipeline_config.items():
-            if isinstance(prompt_data, dict) and "system" in prompt_data:
-                key = f"pipeline.{step}.system"
-                override = self.get_override(key)
-                prompts.append(
-                    {
-                        "key": key,
-                        "category": "pipeline",
-                        "step": step,
-                        "default": prompt_data["system"],
-                        "override": override,
-                        "has_override": override is not None,
-                    }
-                )
+        for category in ("chat", "pipeline"):
+            category_config = self._defaults.get(category, {})
+            for step, step_data in category_config.items():
+                if not isinstance(step_data, dict):
+                    continue
+                for prompt_name, prompt_value in step_data.items():
+                    if isinstance(prompt_value, dict):
+                        # Skip nested dicts (shouldn't happen in current schema)
+                        continue
+                    key = f"{category}.{step}.{prompt_name}"
+                    override = self.get_override(key)
+                    prompts.append(
+                        {
+                            "key": key,
+                            "category": category,
+                            "step": step,
+                            "name": prompt_name,
+                            "default": str(prompt_value) if prompt_value else "",
+                            "override": override.value if override else None,
+                            "has_override": override is not None,
+                            "version": override.version if override else None,
+                            "description": override.description if override else None,
+                        }
+                    )
 
         return prompts
 

@@ -256,6 +256,21 @@ export const systemKeys = {
 }
 
 /**
+ * Query keys for prompts (settings)
+ */
+export const promptKeys = {
+  /** Base key for all prompt queries */
+  all: ["prompts"] as const,
+
+  /** Key for prompt list */
+  lists: () => [...promptKeys.all, "list"] as const,
+
+  /** Key for single prompt detail */
+  details: () => [...promptKeys.all, "detail"] as const,
+  detail: (key: string) => [...promptKeys.details(), key] as const,
+}
+
+/**
  * Combined query keys export
  *
  * Use this for easy access to all query key factories.
@@ -270,4 +285,5 @@ export const queryKeys = {
   audioDigests: audioDigestKeys,
   chat: chatKeys,
   system: systemKeys,
+  prompts: promptKeys,
 }

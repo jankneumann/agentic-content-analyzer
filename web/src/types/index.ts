@@ -114,6 +114,16 @@ export type {
   ChatConfig,
 } from "./chat"
 
+// Prompt types
+export type {
+  PromptInfo,
+  PromptListResponse,
+  PromptUpdateRequest,
+  PromptUpdateResponse,
+  PromptTestRequest,
+  PromptTestResponse,
+} from "./prompt"
+
 // Audio Digest types
 export type {
   AudioDigestStatus,

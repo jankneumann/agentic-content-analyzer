@@ -20,10 +20,12 @@ class PromptOverride(Base):
     id = Column(Integer, primary_key=True)
     key = Column(String(100), unique=True, nullable=False, index=True)
     value = Column(Text, nullable=False)
+    version = Column(Integer, nullable=False, default=1)
+    description = Column(Text, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self) -> str:
-        return f"<PromptOverride(key={self.key!r})>"
+        return f"<PromptOverride(key={self.key!r}, version={self.version})>"

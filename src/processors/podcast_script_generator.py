@@ -33,6 +33,7 @@ from src.models.podcast import (
 )
 from src.models.summary import Summary
 from src.services.llm_router import ToolDefinition
+from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -47,120 +48,11 @@ WORD_COUNT_TARGETS = {
 }
 
 
-PODCAST_SCRIPT_SYSTEM_PROMPT = """
-You are a podcast script writer creating an engaging dialogue between two technology experts
-discussing AI, Data, and Software development news relevant to a large media/tech company.
-
-PERSONAS:
-
-**Alex Chen** (VP of Engineering):
-- 20+ years in technology leadership at Fortune 500 companies
-- Focuses on: strategic implications, organizational impact, competitive dynamics
-- Speaking style: Confident, strategic, occasionally uses business metaphors
-- Often asks: "What does this mean for our technology roadmap?"
-- Provides perspective on: investment priorities, team structure, vendor relationships
-
-**Dr. Sam Rodriguez** (Distinguished Engineer):
-- PhD in Computer Science, 15+ years building large-scale systems
-- Focuses on: implementation details, architectural patterns, developer experience
-- Speaking style: Thoughtful, precise, enthusiastic about elegant solutions
-- Often asks: "How would we actually implement this?"
-- Provides perspective on: technical feasibility, engineering trade-offs, adoption challenges
-
-CONVERSATION DYNAMICS:
-- Natural back-and-forth with interruptions, agreements, and friendly debates
-- Alex often opens topics with business context, Sam adds technical depth
-- They reference each other's points ("Building on what Sam said...")
-- Include moments of genuine curiosity and discovery
-- Occasional humor and real-world analogies
-- Reference industry context where relevant
-
-OUTPUT FORMAT:
-Generate a structured JSON podcast script with dialogue turns.
-Each turn should include:
-- speaker: "alex" or "sam"
-- text: The spoken content (natural, conversational)
-- emphasis: Optional emotional tone ("excited", "thoughtful", "concerned", "amused")
-- pause_after: Seconds of pause (0.3-2.0)
-
-CONTENT REQUIREMENTS:
-- Always cite sources using newsletter titles or publications
-- Include specific details, numbers, and examples from the source material
-- Connect news to practical implications for engineering organizations
-- Highlight connections between topics when they exist
-- End with clear takeaways or actions
-
-AVAILABLE TOOLS:
-You have access to the following tools to enrich your script:
-
-1. **get_content(content_id: int) -> str**
-   Retrieves the full original text of a content item by ID.
-   Use this when you want to:
-   - Quote directly from a source for impact
-   - Get more context on a specific story
-   - Verify details before making claims
-   - Find compelling examples or data points
-
-2. **web_search(query: str) -> list[SearchResult]**
-   Searches the web for recent information.
-   Use this when you want to:
-   - Get the latest updates on breaking stories
-   - Find competitor reactions or announcements
-   - Verify claims with external sources
-   - Add context about companies or technologies mentioned
-
-Use tools judiciously based on podcast length:
-- Brief (5 min): Use sparingly, only for key quotes
-- Standard (15 min): Use for 2-3 deep-dive moments
-- Extended (30 min): Use freely to enrich content
-"""
-
-
-PODCAST_SCRIPT_LENGTH_PROMPTS = {
-    PodcastLength.BRIEF: """
-Generate a 5-minute podcast script (~750-1000 words).
-
-Structure:
-1. INTRO (30 seconds): Hook with the most important news
-2. TOP STORIES (3.5 minutes): 2-3 key insights with brief discussion
-3. OUTRO (1 minute): Quick takeaways and sign-off
-
-Focus on: Executive-level insights, "what matters most this {period}"
-Skip: Deep technical details, extensive background
-""",
-    PodcastLength.STANDARD: """
-Generate a 15-minute podcast script (~2250-3000 words).
-
-Structure:
-1. INTRO (1 minute): Welcome, overview of key themes
-2. STRATEGIC SECTION (4 minutes): 3-4 strategic insights with discussion
-3. TECHNICAL SECTION (5 minutes): 2-3 technical developments with depth
-4. EMERGING TRENDS (3 minutes): 1-2 new developments
-5. TAKEAWAYS (1.5 minutes): Action items for leaders and practitioners
-6. OUTRO (0.5 minutes): Sign-off
-
-Balance: Equal strategic and technical depth
-Include: Relevant links and further reading mentions
-""",
-    PodcastLength.EXTENDED: """
-Generate a 30-minute podcast script (~4500-6000 words).
-
-Structure:
-1. INTRO (2 minutes): Comprehensive overview of the {period}
-2. DEEP DIVE 1 (6 minutes): Most significant development with full context
-3. STRATEGIC ROUNDUP (6 minutes): All strategic insights
-4. TECHNICAL ROUNDUP (8 minutes): All technical developments with implementation discussion
-5. EMERGING TRENDS (4 minutes): New developments with historical context
-6. ACTIONABLE INSIGHTS (3 minutes): Role-specific recommendations
-7. OUTRO (1 minute): Summary and sign-off
-
-Include:
-- Excerpts from original newsletters where compelling
-- Web search context for recent developments
-- Full historical theme evolution
-- All relevant links with context
-- Competitor and industry analysis
-""",
+# Map PodcastLength enum to YAML prompt key suffix
+_LENGTH_KEY_MAP = {
+    PodcastLength.BRIEF: "length_brief",
+    PodcastLength.STANDARD: "length_standard",
+    PodcastLength.EXTENDED: "length_extended",
 }
 
 
@@ -220,18 +112,21 @@ class PodcastScriptGenerator:
         self,
         model_config: ModelConfig | None = None,
         model: str | None = None,
+        prompt_service: PromptService | None = None,
     ):
         """Initialize podcast script generator.
 
         Args:
             model_config: Model configuration (defaults to settings.get_model_config())
             model: Optional model override (defaults to PODCAST_SCRIPT step model)
+            prompt_service: Optional PromptService for configurable prompts
         """
         if model_config is None:
             model_config = settings.get_model_config()
 
         self.model_config = model_config
         self.model = model or model_config.get_model_for_step(ModelStep.PODCAST_SCRIPT)
+        self.prompt_service = prompt_service or PromptService()
 
         # Track usage for cost calculation
         self.provider_used: Provider | None = None
@@ -464,7 +359,7 @@ class PodcastScriptGenerator:
 
             response = client.messages.create(
                 model=provider_model_id,
-                system=PODCAST_SCRIPT_SYSTEM_PROMPT,
+                system=self.prompt_service.get_pipeline_prompt("podcast_script"),
                 messages=messages,
                 tools=tools if tools else None,
                 max_tokens=12000,
@@ -595,7 +490,7 @@ class PodcastScriptGenerator:
 
         # Configure generation
         config = types.GenerateContentConfig(
-            system_instruction=PODCAST_SCRIPT_SYSTEM_PROMPT,
+            system_instruction=self.prompt_service.get_pipeline_prompt("podcast_script"),
             tools=[gemini_tools],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             max_output_tokens=12000,
@@ -865,7 +760,10 @@ Source: {content.source_type.value if content.source_type else "unknown"}
         summaries_text = self._format_summaries(context["summaries"])
 
         # Get length-specific instructions
-        length_prompt = PODCAST_SCRIPT_LENGTH_PROMPTS[length].format(period=digest["digest_type"])
+        length_key = _LENGTH_KEY_MAP[length]
+        length_prompt = self.prompt_service.render(
+            f"pipeline.podcast_script.{length_key}", period=digest["digest_type"]
+        )
 
         # Format custom focus topics if any
         focus_topics_text = ""
