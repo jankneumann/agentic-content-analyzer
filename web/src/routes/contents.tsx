@@ -9,7 +9,7 @@
  */
 
 import { useState } from "react"
-import { createRoute, Link } from "@tanstack/react-router"
+import { createRoute, Link, useNavigate } from "@tanstack/react-router"
 import {
   FileText,
   RefreshCw,
@@ -35,9 +35,10 @@ import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"
 import { toast } from "sonner"
 
+import { cn } from "@/lib/utils"
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -69,6 +70,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Toggle } from "@/components/ui/toggle"
@@ -186,6 +192,7 @@ function ContentsPage() {
   const { data: stats } = useContentStats()
   const ingestMutation = useIngestContents()
   const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+  const navigate = useNavigate()
 
   // Fetch selected content details
   const { data: selectedContent, isLoading: isLoadingContent } = useContent(
@@ -510,33 +517,41 @@ function ContentsPage() {
                         <div className="flex items-start gap-2">
                           {/* Action buttons on the left */}
                           <div className="flex items-center gap-1 shrink-0 pt-0.5">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => setSelectedContentId(content.id)}
-                              title="View content"
-                              aria-label="View content"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {content.status === "completed" && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                asChild
-                              >
-                                <Link
-                                  to="/review/summary/$id"
-                                  params={{ id: String(content.id) }}
-                                  search={{ source: "content" }}
-                                  title="Review summary"
-                                  aria-label="Review summary"
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => setSelectedContentId(content.id)}
+                                  aria-label="View content"
                                 >
-                                  <FileSearch className="h-4 w-4" />
-                                </Link>
-                              </Button>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View content</TooltipContent>
+                            </Tooltip>
+                            {content.status === "completed" && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() =>
+                                      navigate({
+                                        to: "/review/summary/$id",
+                                        params: { id: String(content.id) },
+                                        search: { source: "content" },
+                                      })
+                                    }
+                                    aria-label="Review summary"
+                                  >
+                                    <FileSearch className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Review summary</TooltipContent>
+                              </Tooltip>
                             )}
                           </div>
                           {/* Title - clickable to view content */}
