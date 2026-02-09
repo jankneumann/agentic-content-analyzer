@@ -19,7 +19,7 @@ export { IngestNewslettersDialog } from "./IngestNewslettersDialog"
 export type { IngestParams } from "./IngestNewslettersDialog"
 
 export { IngestContentsDialog } from "./IngestContentsDialog"
-export type { IngestContentParams } from "./IngestContentsDialog"
+export type { IngestContentParams, SaveUrlParams } from "./IngestContentsDialog"
 
 export { GenerateAudioDialog } from "./GenerateAudioDialog"
 export type { AudioGenerationParams } from "./GenerateAudioDialog"

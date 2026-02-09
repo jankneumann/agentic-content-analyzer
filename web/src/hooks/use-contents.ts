@@ -33,9 +33,11 @@ import {
   fetchContentDuplicates,
   mergeContentDuplicate,
   ingestContents,
+  saveUrl,
   summarizeContents,
   trackContentSummarization,
   type IngestContentParams,
+  type SaveURLParams,
   type SummarizeContentParams,
   type ContentSummarizationProgressEvent,
 } from "@/lib/api/contents"
@@ -189,6 +191,43 @@ export function useIngestContents() {
     // The actual ingestion happens in the background,
     // so we don't invalidate immediately - the UI will poll for updates
     // Caller can provide onSuccess callback that triggers polling
+  })
+}
+
+/**
+ * Hook to save a URL for content extraction
+ *
+ * Calls the save-url API which creates a Content record and queues
+ * background extraction. Invalidates content list on success.
+ *
+ * @returns Mutation object with mutate function
+ *
+ * @example
+ * const { mutate: save, isPending } = useSaveUrl()
+ *
+ * save({ url: 'https://example.com/article' }, {
+ *   onSuccess: (data) => {
+ *     if (data.duplicate) {
+ *       toast.info('URL already saved')
+ *     } else {
+ *       toast.success(`Saved! Content ID: ${data.content_id}`)
+ *     }
+ *   },
+ * })
+ */
+export function useSaveUrl() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (params: SaveURLParams) => saveUrl(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contents.lists(),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contents.stats(),
+      })
+    },
   })
 }
 

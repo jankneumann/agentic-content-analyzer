@@ -298,3 +298,97 @@ class TestIngestFiles:
         result = runner.invoke(app, ["ingest", "files", "--help"])
         assert result.exit_code == 0
         assert "Ingest one or more local files" in result.output
+
+
+class TestIngestUrl:
+    @patch("src.ingestion.orchestrator.ingest_url")
+    def test_url_success(self, mock_ingest):
+        from src.ingestion.orchestrator import URLIngestResult
+
+        mock_ingest.return_value = URLIngestResult(content_id=42, status="queued", duplicate=False)
+
+        result = runner.invoke(app, ["ingest", "url", "https://example.com/article"])
+        assert result.exit_code == 0
+        assert "URL ingested" in result.output
+        assert "42" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_url")
+    def test_url_duplicate(self, mock_ingest):
+        from src.ingestion.orchestrator import URLIngestResult
+
+        mock_ingest.return_value = URLIngestResult(content_id=99, status="exists", duplicate=True)
+
+        result = runner.invoke(app, ["ingest", "url", "https://example.com/article"])
+        assert result.exit_code == 0
+        assert "already exists" in result.output
+        assert "99" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_url")
+    def test_url_with_options(self, mock_ingest):
+        from src.ingestion.orchestrator import URLIngestResult
+
+        mock_ingest.return_value = URLIngestResult(content_id=1, status="queued", duplicate=False)
+
+        result = runner.invoke(
+            app,
+            [
+                "ingest",
+                "url",
+                "https://example.com",
+                "--title",
+                "My Article",
+                "--tag",
+                "ai",
+                "--tag",
+                "news",
+                "--notes",
+                "Important",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_ingest.assert_called_once()
+        call_kwargs = mock_ingest.call_args[1]
+        assert call_kwargs["url"] == "https://example.com"
+        assert call_kwargs["title"] == "My Article"
+        assert call_kwargs["tags"] == ["ai", "news"]
+        assert call_kwargs["notes"] == "Important"
+
+    @patch("src.ingestion.orchestrator.ingest_url")
+    def test_url_failure(self, mock_ingest):
+        mock_ingest.side_effect = RuntimeError("Connection refused")
+
+        result = runner.invoke(app, ["ingest", "url", "https://example.com"])
+        assert result.exit_code == 1
+        assert "URL ingestion failed" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_url")
+    def test_url_json_mode(self, mock_ingest):
+        from src.ingestion.orchestrator import URLIngestResult
+
+        mock_ingest.return_value = URLIngestResult(content_id=7, status="queued", duplicate=False)
+
+        result = runner.invoke(app, ["--json", "ingest", "url", "https://example.com"])
+        assert result.exit_code == 0
+        assert '"source": "url"' in result.output
+        assert '"content_id": 7' in result.output
+        assert '"duplicate": false' in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_url")
+    def test_url_json_mode_duplicate(self, mock_ingest):
+        from src.ingestion.orchestrator import URLIngestResult
+
+        mock_ingest.return_value = URLIngestResult(content_id=99, status="exists", duplicate=True)
+
+        result = runner.invoke(app, ["--json", "ingest", "url", "https://example.com"])
+        assert result.exit_code == 0
+        assert '"duplicate": true' in result.output
+        assert '"status": "exists"' in result.output
+
+    def test_url_no_argument(self):
+        result = runner.invoke(app, ["ingest", "url"])
+        assert result.exit_code != 0
+
+    def test_url_help(self):
+        result = runner.invoke(app, ["ingest", "url", "--help"])
+        assert result.exit_code == 0
+        assert "Ingest a single URL" in result.output

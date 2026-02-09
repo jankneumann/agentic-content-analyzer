@@ -177,6 +177,45 @@ export async function ingestContents(
 }
 
 // ============================================================================
+// Save URL API (direct URL ingestion)
+// ============================================================================
+
+/**
+ * Parameters for saving a URL
+ */
+export interface SaveURLParams {
+  url: string
+  title?: string
+  tags?: string[]
+  notes?: string
+}
+
+/**
+ * Response from save URL operation
+ */
+export interface SaveURLResponse {
+  content_id: number
+  status: string // "queued" or "exists"
+  message: string
+  duplicate: boolean
+}
+
+/**
+ * Save a URL for content extraction
+ *
+ * Calls the existing save-url API which creates a Content record
+ * and enqueues background extraction.
+ *
+ * @param params - URL and optional metadata
+ * @returns Save result with content_id and status
+ */
+export async function saveUrl(
+  params: SaveURLParams
+): Promise<SaveURLResponse> {
+  return apiClient.post<SaveURLResponse>("/content/save-url", params)
+}
+
+// ============================================================================
 // Content Summarization API
 // ============================================================================
 

@@ -8,6 +8,7 @@ Usage:
     aca ingest youtube
     aca ingest podcast
     aca ingest files <path...>
+    aca ingest url <url>
 """
 
 from __future__ import annotations
@@ -587,3 +588,61 @@ def files(
 
     if errors and not results:
         raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest url
+# ---------------------------------------------------------------------------
+
+
+@app.command("url")
+def url(
+    target_url: Annotated[
+        str,
+        typer.Argument(help="URL to ingest."),
+    ],
+    title: Annotated[
+        str | None,
+        typer.Option("--title", "-t", help="Title override for the content."),
+    ] = None,
+    tags: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="Tag(s) to attach (repeatable)."),
+    ] = None,
+    notes: Annotated[
+        str | None,
+        typer.Option("--notes", "-n", help="Notes to attach to the content."),
+    ] = None,
+) -> None:
+    """Ingest a single URL into the content pipeline."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from src.ingestion.orchestrator import ingest_url
+
+        result = ingest_url(url=target_url, title=title, tags=tags, notes=notes)
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "url"}, success=False)
+        else:
+            console.print(f"[red]URL ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result(
+            {
+                "source": "url",
+                "content_id": result.content_id,
+                "status": result.status,
+                "duplicate": result.duplicate,
+            }
+        )
+    else:
+        if result.duplicate:
+            console.print(f"[yellow]URL already exists.[/yellow] Content ID: {result.content_id}")
+        else:
+            console.print(
+                f"[green]URL ingested.[/green] Content ID: {result.content_id} (extraction queued)"
+            )
