@@ -119,7 +119,9 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
 
     yield session
 
-    # Cleanup: Rollback transaction and close connection
+    # Cleanup: Reset factory sessions, rollback transaction, close connection
+    ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     session.close()
     transaction.rollback()
     connection.close()
@@ -245,7 +247,6 @@ def sample_summaries(db_session, sample_contents):
     return [
         SummaryFactory(
             content=sample_contents[0],
-            content_id=sample_contents[0].id,
             executive_summary="Major LLM advances including cost reduction and performance improvements.",
             key_themes=["LLM Performance", "Cost Optimization", "Multimodal AI"],
             strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -264,7 +265,6 @@ def sample_summaries(db_session, sample_contents):
         ),
         SummaryFactory(
             content=sample_contents[1],
-            content_id=sample_contents[1].id,
             executive_summary="Vector database performance benchmarks and optimization techniques.",
             key_themes=["Vector Search", "Performance", "Hybrid Search"],
             strategic_insights=["Database selection critical for production"],
@@ -283,7 +283,6 @@ def sample_summaries(db_session, sample_contents):
         ),
         SummaryFactory(
             content=sample_contents[2],
-            content_id=sample_contents[2].id,
             executive_summary="Comparison of major AI agent frameworks and their capabilities.",
             key_themes=["AI Agents", "Framework Comparison", "Tool Use"],
             strategic_insights=["Framework choice impacts development velocity"],

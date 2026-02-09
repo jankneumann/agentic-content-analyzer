@@ -42,7 +42,6 @@ class TestTriggerSummarizationLogic:
         )
         SummaryFactory(
             content=c2,
-            content_id=c2.id,
             executive_summary="sum",
             key_themes=[],
             strategic_insights=[],
@@ -64,7 +63,6 @@ class TestTriggerSummarizationLogic:
         )
         SummaryFactory(
             content=c3,
-            content_id=c3.id,
             executive_summary="sum",
             key_themes=[],
             strategic_insights=[],
@@ -138,7 +136,6 @@ class TestTriggerSummarizationLogic:
         )
         SummaryFactory(
             content=c2,
-            content_id=c2.id,
             executive_summary="sum",
             key_themes=[],
             strategic_insights=[],

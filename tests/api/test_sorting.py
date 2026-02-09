@@ -191,7 +191,6 @@ class TestSummarySorting:
         return [
             SummaryFactory(
                 content=sortable_contents[0],
-                content_id=sortable_contents[0].id,
                 executive_summary="Alpha summary",
                 key_themes=["Theme A"],
                 relevance_scores={"cto_leadership": 0.9},
@@ -202,7 +201,6 @@ class TestSummarySorting:
             ),
             SummaryFactory(
                 content=sortable_contents[1],
-                content_id=sortable_contents[1].id,
                 executive_summary="Beta summary",
                 key_themes=["Theme B"],
                 relevance_scores={"cto_leadership": 0.8},

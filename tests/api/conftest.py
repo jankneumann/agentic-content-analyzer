@@ -109,7 +109,10 @@ def db_session(test_db_engine) -> Generator[Session, None, None]:
 
     yield session
 
-    # Cleanup: Rollback transaction and close connection
+    # Cleanup: Reset factory sessions, rollback transaction, close connection
+    ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    DigestFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     session.close()
     transaction.rollback()
     connection.close()
@@ -204,7 +207,6 @@ def sample_summary(db_session, sample_content):
     """Create a single sample summary linked to content."""
     summary = SummaryFactory(
         content=sample_content,
-        content_id=sample_content.id,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
         strategic_insights=["LLM costs decreasing enables broader adoption"],
@@ -235,7 +237,6 @@ def sample_summaries(db_session, sample_contents):
     summaries = [
         SummaryFactory(
             content=sample_contents[0],
-            content_id=sample_contents[0].id,
             executive_summary="Major LLM advances summary.",
             key_themes=["LLM Performance", "Cost Optimization"],
             strategic_insights=["LLM costs decreasing"],
@@ -249,7 +250,6 @@ def sample_summaries(db_session, sample_contents):
         ),
         SummaryFactory(
             content=sample_contents[1],
-            content_id=sample_contents[1].id,
             executive_summary="Vector database performance summary.",
             key_themes=["Vector Search", "Performance"],
             strategic_insights=["Database selection critical"],
@@ -492,7 +492,6 @@ def sample_content_with_summary(db_session, sample_content):
     """Create a content with an associated summary."""
     summary = SummaryFactory(
         content=sample_content,
-        content_id=sample_content.id,
         executive_summary="Major LLM advances including cost reduction.",
         key_themes=["LLM Performance", "Cost Optimization"],
         strategic_insights=["LLM costs decreasing enables broader adoption"],
