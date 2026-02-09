@@ -193,17 +193,22 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         ingest_podcast,
         ingest_rss,
         ingest_substack,
-        ingest_youtube,
+        ingest_youtube_playlist,
+        ingest_youtube_rss,
     )
 
-    typer.echo("  Running parallel ingestion (5 sources)...")
+    source_count = 6
+    typer.echo(f"  Running parallel ingestion ({source_count} sources)...")
 
     # Define ingestion tasks — each orchestrator function is a plain
-    # synchronous function, wrapped in asyncio.to_thread by _ingest_source
+    # synchronous function, wrapped in asyncio.to_thread by _ingest_source.
+    # YouTube playlists and RSS are separate tasks so rate limits on RSS
+    # don't block higher-priority playlist ingestion.
     tasks = [
         _ingest_source("gmail", ingest_gmail),
         _ingest_source("rss", ingest_rss),
-        _ingest_source("youtube", ingest_youtube),
+        _ingest_source("youtube-playlist", ingest_youtube_playlist),
+        _ingest_source("youtube-rss", ingest_youtube_rss),
         _ingest_source("podcast", ingest_podcast),
         _ingest_source("substack", ingest_substack),
     ]
@@ -236,10 +241,10 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
                 typer.echo(f"    ✓ {source_name}: {count} items ingested")
 
     # Summary
-    typer.echo(f"  [{completed}/5 complete, {failed} failed]")
+    typer.echo(f"  [{completed}/{source_count} complete, {failed} failed]")
 
     # If every source failed, raise so the pipeline reports stage failure
-    if len(errors) == 5 and len(results) == 0:
+    if len(errors) == source_count and len(results) == 0:
         raise RuntimeError(
             "All ingestion sources failed: " + "; ".join(f"{k}: {v}" for k, v in errors.items())
         )

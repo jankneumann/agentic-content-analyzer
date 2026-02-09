@@ -83,7 +83,9 @@ aca ingest gmail                       # Gmail newsletters
 aca ingest rss                         # RSS feeds
 aca ingest substack                    # Substack paid subscriptions
 aca ingest substack-sync               # Sync subs: paid→substack.yaml, free→rss.yaml
-aca ingest youtube                     # YouTube playlists
+aca ingest youtube                     # YouTube (all: playlists + RSS)
+aca ingest youtube-playlist            # YouTube playlists only (OAuth)
+aca ingest youtube-rss                 # YouTube RSS feeds only
 aca ingest podcast                     # Podcast feeds
 aca ingest files <path...>             # Local file ingestion
 
@@ -134,16 +136,26 @@ Configure ingestion sources via YAML files in `sources.d/` directory:
 ```bash
 # sources.d/ structure
 sources.d/
-  _defaults.yaml    # Global defaults (max_entries, enabled)
-  rss.yaml          # RSS feed sources
-  youtube.yaml      # YouTube playlists, channels, RSS feeds
-  podcasts.yaml     # Podcast feeds (with transcript settings)
-  gmail.yaml        # Gmail query sources
+  _defaults.yaml         # Global defaults (max_entries, enabled)
+  rss.yaml               # RSS feed sources
+  youtube_playlist.yaml  # YouTube playlists (OAuth, Gemini video extraction)
+  youtube_rss.yaml       # YouTube RSS feeds (public, no OAuth)
+  podcasts.yaml          # Podcast feeds (with transcript settings)
+  gmail.yaml             # Gmail query sources
 ```
 
 Each source supports: `name`, `url`/`id`, `tags`, `enabled`, `max_entries`.
 
-**YouTube sources** support `visibility: public|private` — private sources require OAuth and are skipped if OAuth fails.
+**YouTube playlist sources** support:
+- `visibility: public|private` — private sources require OAuth and are skipped if OAuth fails
+- `gemini_summary: true` — enable Gemini native video content extraction (default: true)
+- `gemini_resolution: default` — video frame resolution (`low`=66 tok/frame, `default`=258, `medium`, `high`)
+- `proofread: true` — LLM-based caption proofreading for auto-generated transcripts (transcript fallback path)
+- `hint_terms: [...]` — per-source proper nouns merged with built-in AI terminology defaults
+
+**YouTube RSS sources** support:
+- `gemini_summary: true` — enable Gemini native video content extraction
+- `gemini_resolution: low` — defaults to low resolution for cost savings
 
 **Podcast sources** use a 3-tier transcript strategy:
 1. Feed-embedded text (>=500 chars)
@@ -214,9 +226,12 @@ See [docs/PROFILES.md](docs/PROFILES.md) for complete guide.
 
 ```bash
 # .env - Configure per pipeline step
-MODEL_SUMMARIZATION=claude-haiku-4-5       # Fast, cost-effective
-MODEL_THEME_ANALYSIS=claude-sonnet-4-5     # Quality reasoning
-MODEL_DIGEST_CREATION=claude-sonnet-4-5    # Customer-facing
+MODEL_SUMMARIZATION=claude-haiku-4-5              # Fast, cost-effective
+MODEL_THEME_ANALYSIS=claude-sonnet-4-5            # Quality reasoning
+MODEL_DIGEST_CREATION=claude-sonnet-4-5           # Customer-facing
+MODEL_YOUTUBE_PROCESSING=gemini-2.5-flash         # Playlist video extraction (Gemini)
+MODEL_YOUTUBE_RSS_PROCESSING=gemini-2.5-flash-lite # RSS video extraction (cost-optimized)
+MODEL_CAPTION_PROOFREADING=gemini-2.5-flash-lite  # Auto-caption proofreading
 ```
 
 ## Database Providers

@@ -227,11 +227,12 @@ def register_content_tasks(pgq: PgQueuer) -> None:
         """Ingest content from a source.
 
         This task handles content ingestion from various sources
-        (Gmail, RSS, YouTube, Podcast, Substack) via the job queue.
-        Delegates to the shared orchestrator layer for service wiring.
+        (Gmail, RSS, YouTube playlists, YouTube RSS, Podcast, Substack)
+        via the job queue. Delegates to the shared orchestrator layer.
 
         Payload:
-            source: str - Content source type (gmail, rss, youtube, podcast, substack)
+            source: str - Content source type (gmail, rss, youtube,
+                youtube-playlist, youtube-rss, podcast, substack)
             max_results: int - Maximum items to fetch
             days_back: int - Days back to search
             force_reprocess: bool - Force reprocess existing content
@@ -244,6 +245,8 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             ingest_rss,
             ingest_substack,
             ingest_youtube,
+            ingest_youtube_playlist,
+            ingest_youtube_rss,
         )
         from src.queue.setup import update_job_progress
 
@@ -258,11 +261,15 @@ def register_content_tasks(pgq: PgQueuer) -> None:
 
         after_date = datetime.now(UTC) - timedelta(days=days_back)
 
-        # Map source names to orchestrator functions with appropriate kwargs
+        # Map source names to orchestrator functions with appropriate kwargs.
+        # "youtube" runs both playlists and RSS (backward compatible).
+        # "youtube-playlist" and "youtube-rss" run independently.
         source_map: dict[str, tuple] = {
             "gmail": (ingest_gmail, {"max_results": max_results}),
             "rss": (ingest_rss, {"max_entries_per_feed": max_results}),
             "youtube": (ingest_youtube, {"max_videos": max_results}),
+            "youtube-playlist": (ingest_youtube_playlist, {"max_videos": max_results}),
+            "youtube-rss": (ingest_youtube_rss, {"max_videos": max_results}),
             "podcast": (ingest_podcast, {"max_entries_per_feed": max_results}),
             "substack": (ingest_substack, {"max_entries_per_source": max_results}),
         }

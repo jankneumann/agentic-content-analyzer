@@ -14,6 +14,12 @@ Splitting the configuration and CLI entry points lets operators:
 - Add exponential backoff so transient 429 errors are retried instead of immediately failing.
 - Monitor and tune each path independently.
 
+## Prerequisites
+
+Depends on **`refactor-ingestion-orchestrator`** which must be implemented first. That proposal extracts ingestion service wiring into `src/ingestion/orchestrator.py`, so this proposal's CLI, pipeline, and task worker changes reduce to adding/splitting orchestrator functions rather than modifying 3 files independently.
+
+**Order:** `refactor-ingestion-orchestrator` → `split-youtube-playlist-rss-config`
+
 ## What Changes
 
 ### Source Configuration Split
@@ -27,8 +33,10 @@ Splitting the configuration and CLI entry points lets operators:
 - Add `aca ingest youtube-rss` — ingests only RSS feed sources from `youtube_rss.yaml`.
 - Keep `aca ingest youtube` as a combined command that runs both (backward compatible).
 
-### Pipeline Ingestion Split
-- Update `_run_ingestion_stage_async()` in `src/cli/pipeline_commands.py` to run `youtube-playlist` and `youtube-rss` as separate parallel ingestion tasks (currently only `ingest_all_playlists()` runs — RSS feeds are missing from the pipeline entirely).
+### Pipeline and Task Worker Ingestion Split
+- Split the single `ingest_youtube()` orchestrator function into `ingest_youtube_playlist()` and `ingest_youtube_rss()` in `src/ingestion/orchestrator.py`.
+- Pipeline's `_run_ingestion_stage_async()` calls both as separate parallel tasks — no direct service imports needed (orchestrator handles wiring).
+- Task worker's `ingest_content` entrypoint routes `youtube-playlist` and `youtube-rss` to the respective orchestrator functions.
 - Both tasks run concurrently alongside Gmail, RSS, Podcast, and Substack sources.
 - Report counts separately: `youtube-playlist: N items`, `youtube-rss: M items`.
 

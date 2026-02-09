@@ -128,6 +128,107 @@ class TestIngestYoutube:
         assert "YouTube ingestion failed" in result.output
 
 
+class TestIngestYoutubePlaylist:
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
+    def test_youtube_playlist_success(self, mock_ingest):
+        mock_ingest.return_value = 3
+
+        result = runner.invoke(app, ["ingest", "youtube-playlist"])
+        assert result.exit_code == 0
+        assert "3" in result.output
+        assert "YouTube playlist ingestion complete" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
+    def test_youtube_playlist_with_options(self, mock_ingest):
+        mock_ingest.return_value = 2
+
+        result = runner.invoke(
+            app,
+            ["ingest", "youtube-playlist", "--max", "5", "--days", "3", "--force"],
+        )
+        assert result.exit_code == 0
+        call_kwargs = mock_ingest.call_args[1]
+        assert call_kwargs["max_videos"] == 5
+        assert call_kwargs["after_date"] is not None
+        assert call_kwargs["force_reprocess"] is True
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
+    def test_youtube_playlist_public_only(self, mock_ingest):
+        mock_ingest.return_value = 1
+
+        result = runner.invoke(app, ["ingest", "youtube-playlist", "--public-only"])
+        assert result.exit_code == 0
+        call_kwargs = mock_ingest.call_args[1]
+        assert call_kwargs["use_oauth"] is False
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
+    def test_youtube_playlist_failure(self, mock_ingest):
+        mock_ingest.side_effect = RuntimeError("API error")
+
+        result = runner.invoke(app, ["ingest", "youtube-playlist"])
+        assert result.exit_code == 1
+        assert "YouTube playlist ingestion failed" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
+    def test_youtube_playlist_json_mode(self, mock_ingest):
+        mock_ingest.return_value = 4
+
+        result = runner.invoke(app, ["--json", "ingest", "youtube-playlist"])
+        assert result.exit_code == 0
+        assert '"source": "youtube-playlist"' in result.output
+        assert '"ingested": 4' in result.output
+
+
+class TestIngestYoutubeRss:
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss")
+    def test_youtube_rss_success(self, mock_ingest):
+        mock_ingest.return_value = 15
+
+        result = runner.invoke(app, ["ingest", "youtube-rss"])
+        assert result.exit_code == 0
+        assert "15" in result.output
+        assert "YouTube RSS ingestion complete" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss")
+    def test_youtube_rss_with_options(self, mock_ingest):
+        mock_ingest.return_value = 8
+
+        result = runner.invoke(
+            app,
+            ["ingest", "youtube-rss", "--max", "20", "--days", "14", "--force"],
+        )
+        assert result.exit_code == 0
+        call_kwargs = mock_ingest.call_args[1]
+        assert call_kwargs["max_videos"] == 20
+        assert call_kwargs["force_reprocess"] is True
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss")
+    def test_youtube_rss_failure(self, mock_ingest):
+        mock_ingest.side_effect = RuntimeError("Rate limited")
+
+        result = runner.invoke(app, ["ingest", "youtube-rss"])
+        assert result.exit_code == 1
+        assert "YouTube RSS ingestion failed" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss")
+    def test_youtube_rss_json_mode(self, mock_ingest):
+        mock_ingest.return_value = 7
+
+        result = runner.invoke(app, ["--json", "ingest", "youtube-rss"])
+        assert result.exit_code == 0
+        assert '"source": "youtube-rss"' in result.output
+        assert '"ingested": 7' in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss")
+    def test_youtube_rss_no_public_only_flag(self, mock_ingest):
+        """youtube-rss should NOT have a --public-only flag (RSS doesn't use OAuth)."""
+        mock_ingest.return_value = 0
+
+        result = runner.invoke(app, ["ingest", "youtube-rss", "--public-only"])
+        # Should fail because --public-only is not a valid option for youtube-rss
+        assert result.exit_code != 0
+
+
 class TestIngestPodcast:
     @patch("src.ingestion.orchestrator.ingest_podcast")
     def test_podcast_success(self, mock_ingest):

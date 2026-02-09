@@ -51,34 +51,36 @@ The combined command creates both services and runs them sequentially (playlists
 - Replace `aca ingest youtube` with the two new commands — rejected for backward compatibility.
 - Add `--source-type playlist|rss` flag — rejected because separate commands are clearer for cron scheduling.
 
-### Decision 2b: Pipeline ingestion stage split
+### Decision 2b: Pipeline and task worker ingestion split (via orchestrator)
 
-The `aca pipeline daily/weekly` commands run ingestion via `_run_ingestion_stage_async()` which uses `asyncio.gather()` to run sources in parallel. Currently YouTube is a single task that only calls `ingest_all_playlists()` — **YouTube RSS feeds are not included in the pipeline at all**.
+**Prerequisite:** `refactor-ingestion-orchestrator` centralizes ingestion wiring into `src/ingestion/orchestrator.py`. Pipeline and task worker call orchestrator functions instead of importing services directly.
 
-Update to run `youtube-playlist` and `youtube-rss` as two separate parallel tasks alongside the other sources (Gmail, RSS, Podcast, Substack). This changes the parallel task count from 5 to 6.
+This proposal splits the single `ingest_youtube()` orchestrator function into `ingest_youtube_playlist()` and `ingest_youtube_rss()`. Pipeline and task worker call these as separate tasks — no service-level wiring changes needed in those files.
 
 ```python
-# Before (5 tasks, RSS feeds missing)
+# Before (5 orchestrator calls, combined YouTube)
 tasks = [
-    _ingest_source("gmail", ...),
-    _ingest_source("rss", ...),
-    _ingest_source("youtube", youtube_service.ingest_all_playlists),
-    _ingest_source("podcast", ...),
-    _ingest_source("substack", ...),
+    _ingest_source("gmail", orchestrator.ingest_gmail),
+    _ingest_source("rss", orchestrator.ingest_rss),
+    _ingest_source("youtube", orchestrator.ingest_youtube),
+    _ingest_source("podcast", orchestrator.ingest_podcast),
+    _ingest_source("substack", orchestrator.ingest_substack),
 ]
 
-# After (6 tasks, RSS feeds included)
+# After (6 orchestrator calls, split YouTube)
 tasks = [
-    _ingest_source("gmail", ...),
-    _ingest_source("rss", ...),
-    _ingest_source("youtube-playlist", youtube_service.ingest_all_playlists),
-    _ingest_source("youtube-rss", rss_service.ingest_all_feeds),
-    _ingest_source("podcast", ...),
-    _ingest_source("substack", ...),
+    _ingest_source("gmail", orchestrator.ingest_gmail),
+    _ingest_source("rss", orchestrator.ingest_rss),
+    _ingest_source("youtube-playlist", orchestrator.ingest_youtube_playlist),
+    _ingest_source("youtube-rss", orchestrator.ingest_youtube_rss),
+    _ingest_source("podcast", orchestrator.ingest_podcast),
+    _ingest_source("substack", orchestrator.ingest_substack),
 ]
 ```
 
 **Why not keep a single "youtube" task:** The whole point is independent execution. If `youtube-rss` hits rate limits, `youtube-playlist` completes independently. The pipeline already handles per-source failures via the `_ingest_source` wrapper.
+
+**Task worker:** Add `youtube-playlist` and `youtube-rss` as valid `source` values in the `ingest_content` entrypoint, routing to the respective orchestrator functions. The combined `youtube` source value continues to call `ingest_youtube()` (which runs both sequentially).
 
 ### Decision 3: LLM-based caption proofreading
 

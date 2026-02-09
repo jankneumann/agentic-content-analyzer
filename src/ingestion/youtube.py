@@ -9,8 +9,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
@@ -32,6 +35,8 @@ if TYPE_CHECKING:
     from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource, YouTubeRSSSource
 
 logger = get_logger(__name__)
+
+T = TypeVar("T")
 
 # YouTube API scopes (for private playlists)
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
@@ -100,8 +105,21 @@ class YouTubeClient:
         self._authenticate_api_key()
 
     def _authenticate_oauth(self) -> None:
-        """Authenticate using OAuth2 (for private playlists)."""
+        """Authenticate using OAuth2 (for private playlists).
+
+        Token hydration: If ``youtube_oauth_token_json`` is set in settings
+        (typically via the ``YOUTUBE_OAUTH_TOKEN_JSON`` env var) and the token
+        file does not already exist on disk, the JSON is written to the token
+        file. This allows headless cloud deployments to inject OAuth tokens
+        without mounting files.
+        """
         creds = None
+
+        # Hydrate token file from env/settings when running in cloud
+        if settings.youtube_oauth_token_json and not os.path.exists(settings.youtube_token_file):
+            logger.info("Hydrating YouTube OAuth token file from YOUTUBE_OAUTH_TOKEN_JSON setting")
+            with open(settings.youtube_token_file, "w") as token:
+                token.write(settings.youtube_oauth_token_json)
 
         # Load existing credentials
         if os.path.exists(settings.youtube_token_file):
@@ -111,7 +129,16 @@ class YouTubeClient:
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 logger.info("Refreshing YouTube credentials...")
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except RefreshError as e:
+                    logger.error(
+                        f"YouTube OAuth refresh token is invalid or revoked: {e}. "
+                        "To fix this, re-run the OAuth flow locally to generate a "
+                        "new token, then update the YOUTUBE_OAUTH_TOKEN_JSON env var "
+                        "or replace the token file."
+                    )
+                    raise
             else:
                 if not os.path.exists(settings.youtube_credentials_file):
                     raise FileNotFoundError(
@@ -141,6 +168,45 @@ class YouTubeClient:
 
         self._service = build("youtube", "v3", developerKey=api_key)
         logger.info("YouTube API client initialized (API key)")
+
+    def _retry_with_backoff(self, fn: Callable[[], T], context: str = "") -> T:
+        """Execute a callable with exponential backoff on HTTP 429 errors.
+
+        Retries the given callable when an HTTP 429 (Too Many Requests) error
+        is encountered. Uses exponential backoff with +-20% random jitter to
+        avoid thundering-herd effects.
+
+        Args:
+            fn: Zero-argument callable to execute.
+            context: Human-readable label for log messages (e.g. video ID).
+
+        Returns:
+            The return value of *fn* on success.
+
+        Raises:
+            HttpError: Re-raised after all retries are exhausted, or for
+                non-429 HTTP errors.
+        """
+        max_retries = settings.youtube_max_retries
+        base_delay = settings.youtube_backoff_base
+
+        for attempt in range(max_retries + 1):
+            try:
+                return fn()
+            except HttpError as e:
+                if e.resp.status != 429 or attempt >= max_retries:
+                    raise
+                delay = base_delay * (2**attempt)
+                jittered_delay = delay * random.uniform(0.8, 1.2)  # noqa: S311
+                ctx = f" for {context}" if context else ""
+                logger.warning(
+                    f"HTTP 429 rate limit{ctx}, attempt {attempt + 1}/{max_retries}. "
+                    f"Retrying in {jittered_delay:.1f}s..."
+                )
+                time.sleep(jittered_delay)
+
+        # Unreachable, but satisfies type checker
+        raise RuntimeError("Retry loop exited unexpectedly")  # pragma: no cover
 
     # In-memory cache for channel_id → uploads playlist ID
     _channel_playlist_cache: ClassVar[dict[str, str]] = {}
@@ -264,6 +330,11 @@ class YouTubeClient:
         """
         Get transcript for a YouTube video.
 
+        Wraps the transcript fetch with exponential backoff retry logic to
+        handle HTTP 429 (rate limit) errors from the YouTube Transcript API.
+        If all retries are exhausted for a video, it is skipped without
+        aborting the rest of the playlist/feed.
+
         Args:
             video_id: YouTube video ID
             languages: Preferred languages (in order)
@@ -278,8 +349,11 @@ class YouTubeClient:
             # Create API instance (v1.2+ API)
             ytt_api = YouTubeTranscriptApi()
 
-            # Try to get transcript in preferred languages
-            transcript_list = ytt_api.list(video_id)
+            # Try to get transcript in preferred languages (with retry)
+            transcript_list = self._retry_with_backoff(
+                lambda: ytt_api.list(video_id),
+                context=f"video {video_id}",
+            )
 
             # Try manual transcripts first, then auto-generated
             transcript = None
@@ -303,8 +377,11 @@ class YouTubeClient:
                 logger.warning(f"No transcript found for video {video_id}")
                 return None
 
-            # Fetch the transcript (returns FetchedTranscript in v1.2+)
-            fetched = transcript.fetch()
+            # Fetch the transcript with retry (returns FetchedTranscript in v1.2+)
+            fetched = self._retry_with_backoff(
+                lambda: transcript.fetch(),  # type: ignore[union-attr]
+                context=f"video {video_id}",
+            )
             language = transcript.language_code
 
             # Convert to our segment model (v1.2+ returns snippet objects)
@@ -333,6 +410,9 @@ class YouTubeClient:
 
         except TranscriptsDisabled:
             logger.warning(f"Transcripts disabled for video {video_id}")
+            return None
+        except HttpError as e:
+            logger.error(f"HTTP error getting transcript for {video_id} after retries: {e}")
             return None
         except Exception as e:
             logger.error(f"Error getting transcript for {video_id}: {e}")
@@ -424,6 +504,83 @@ def _format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 
+# Gemini content extraction prompt — comprehensive coverage, no editorial filtering
+GEMINI_VIDEO_EXTRACTION_PROMPT = """Provide a comprehensive, detailed account of this YouTube video's content.
+
+Cover ALL of the following:
+- Every topic discussed, in the order presented
+- Technical details, terminology, and concepts explained
+- Specific examples, demos, or code shown
+- Arguments made and conclusions drawn
+- Speaker attributions (who said what, if multiple speakers)
+- Any products, tools, companies, or research papers mentioned
+- Numbers, statistics, benchmarks, or comparisons given
+
+Be thorough and detailed — capture everything discussed. Do NOT editorialize, filter for relevance, or summarize. A separate summarization step will handle that.
+
+Format as clean markdown with headers for major topic transitions."""
+
+
+def _extract_video_content_with_gemini(
+    video_url: str,
+    model_step: str,
+    gemini_resolution: str = "default",
+) -> str | None:
+    """Extract video content using Gemini native YouTube video processing.
+
+    Args:
+        video_url: YouTube video URL.
+        model_step: ModelStep value to use for model selection.
+        gemini_resolution: Resolution setting (low, medium, high, default).
+
+    Returns:
+        Extracted content as markdown text, or None on failure.
+    """
+    import asyncio
+
+    from src.config.models import ModelStep, get_model_config
+    from src.services.llm_router import LLMRouter
+
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        logger.debug("GOOGLE_API_KEY not set, skipping Gemini video extraction")
+        return None
+
+    try:
+        model_config = get_model_config()
+        step = ModelStep(model_step)
+        model = model_config.get_model_for_step(step)
+        router = LLMRouter(model_config)
+
+        resolution = gemini_resolution if gemini_resolution != "default" else None
+
+        response = asyncio.run(
+            router.generate_with_video(
+                model=model,
+                system_prompt="You are a video content analyst. Extract detailed content from YouTube videos.",
+                user_prompt=GEMINI_VIDEO_EXTRACTION_PROMPT,
+                video_url=video_url,
+                media_resolution=resolution,
+                max_tokens=8192,
+                temperature=0.3,
+            )
+        )
+
+        if response.text and len(response.text) > 100:
+            logger.info(
+                f"Gemini extracted {len(response.text)} chars from {video_url} "
+                f"(model={model}, resolution={gemini_resolution})"
+            )
+            return response.text
+
+        logger.warning(f"Gemini returned insufficient content for {video_url}")
+        return None
+
+    except Exception as e:
+        logger.warning(f"Gemini video extraction failed for {video_url}: {e}")
+        return None
+
+
 class YouTubeContentIngestionService:
     """Service for ingesting YouTube transcripts into the unified Content model.
 
@@ -443,9 +600,20 @@ class YouTubeContentIngestionService:
         after_date: datetime | None = None,
         force_reprocess: bool = False,
         languages: list[str] | None = None,
+        *,
+        gemini_summary: bool = True,
+        gemini_resolution: str = "default",
+        proofread: bool = True,
+        hint_terms: list[str] | None = None,
     ) -> int:
-        """
-        Ingest transcripts from a YouTube playlist as Content records.
+        """Ingest content from a YouTube playlist as Content records.
+
+        Supports two content extraction paths:
+        1. Gemini native video extraction (if gemini_summary=True and GOOGLE_API_KEY set)
+        2. Transcript-based extraction via youtube-transcript-api (fallback)
+
+        When using transcript path, auto-generated captions can be proofread
+        via LLM to correct proper noun misspellings.
 
         Args:
             playlist_id: YouTube playlist ID
@@ -453,6 +621,10 @@ class YouTubeContentIngestionService:
             after_date: Only process videos after this date
             force_reprocess: Reprocess existing videos
             languages: Preferred transcript languages
+            gemini_summary: Try Gemini native video extraction first.
+            gemini_resolution: Resolution for Gemini (low, medium, high, default).
+            proofread: Run LLM proofreading on auto-generated captions.
+            hint_terms: Per-playlist hint terms for proofreading.
 
         Returns:
             Number of content items ingested
@@ -495,25 +667,81 @@ class YouTubeContentIngestionService:
                         logger.debug(f"Video already exists: {video['title']}")
                         continue
 
-                    # Get transcript
-                    transcript = self.client.get_transcript(video["video_id"], languages)
+                    video_url = f"https://www.youtube.com/watch?v={video['video_id']}"
+                    processing_method = "transcript"
+                    parser_used = "youtube_transcript_api"
+                    raw_content = None
+                    raw_format = None
+                    markdown_content = None
+                    transcript_language = None
+                    is_auto_generated = False
+                    segment_count = 0
+                    duration_seconds = 0.0
 
-                    if not transcript:
-                        logger.warning(f"No transcript for: {video['title']}")
-                        continue
+                    # --- Path 1: Gemini native video extraction ---
+                    if gemini_summary:
+                        gemini_content = _extract_video_content_with_gemini(
+                            video_url=video_url,
+                            model_step="youtube_processing",
+                            gemini_resolution=gemini_resolution,
+                        )
+                        if gemini_content:
+                            markdown_content = gemini_content
+                            processing_method = "gemini_native"
+                            parser_used = "gemini"
 
-                    # Update transcript with video metadata
-                    transcript.title = video["title"]
-                    transcript.channel_title = video["channel_title"]
-                    transcript.published_date = video["published_date"]
-                    transcript.thumbnail_url = video.get("thumbnail_url")
-                    transcript.playlist_id = video.get("playlist_id")
+                    # --- Path 2: Transcript-based extraction (fallback) ---
+                    if markdown_content is None:
+                        transcript = self.client.get_transcript(video["video_id"], languages)
 
-                    # Convert to markdown
-                    markdown_content = transcript_to_markdown(transcript)
+                        if not transcript:
+                            logger.warning(f"No transcript for: {video['title']}")
+                            continue
 
-                    # Store raw transcript as JSON for re-parsing
-                    raw_content = json.dumps(transcript.to_storage_dict())
+                        # Update transcript with video metadata
+                        transcript.title = video["title"]
+                        transcript.channel_title = video["channel_title"]
+                        transcript.published_date = video["published_date"]
+                        transcript.thumbnail_url = video.get("thumbnail_url")
+                        transcript.playlist_id = video.get("playlist_id")
+
+                        transcript_language = transcript.language
+                        is_auto_generated = transcript.is_auto_generated
+                        segment_count = len(transcript.segments)
+                        duration_seconds = sum(s.duration for s in transcript.segments)
+
+                        # Proofread auto-generated captions
+                        if proofread and transcript.is_auto_generated:
+                            try:
+                                import asyncio
+
+                                from src.ingestion.youtube_captions import (
+                                    proofread_transcript,
+                                )
+
+                                result = asyncio.run(
+                                    proofread_transcript(
+                                        segments=transcript.segments,
+                                        hint_terms=hint_terms,
+                                        is_auto_generated=True,
+                                    )
+                                )
+                                transcript.segments = result.segments
+                                is_auto_generated = True
+                                processing_method = "transcript_proofread"
+                                logger.info(
+                                    f"Proofread {result.corrections_count} corrections "
+                                    f"for {video['title']}"
+                                )
+                            except Exception as e:
+                                logger.warning(f"Proofreading failed for {video['title']}: {e}")
+
+                        # Convert to markdown
+                        markdown_content = transcript_to_markdown(transcript)
+
+                        # Store raw transcript as JSON for re-parsing
+                        raw_content = json.dumps(transcript.to_storage_dict())
+                        raw_format = "transcript_json"
 
                     # Generate content hash from markdown
                     content_hash = generate_markdown_hash(markdown_content)
@@ -525,24 +753,31 @@ class YouTubeContentIngestionService:
                             db.query(Content).filter(Content.content_hash == content_hash).first()
                         )
 
-                    video_url = transcript.video_url
-
                     # Build metadata
-                    metadata_json = {
+                    metadata_json: dict[str, Any] = {
                         "video_id": video["video_id"],
                         "playlist_id": playlist_id,
-                        "language": transcript.language,
-                        "is_auto_generated": transcript.is_auto_generated,
-                        "segment_count": len(transcript.segments),
-                        "duration_seconds": sum(s.duration for s in transcript.segments),
+                        "processing_method": processing_method,
                         "thumbnail_url": video.get("thumbnail_url"),
                     }
+                    if processing_method == "gemini_native":
+                        metadata_json["gemini_resolution"] = gemini_resolution
+                    else:
+                        metadata_json.update(
+                            {
+                                "language": transcript_language,
+                                "is_auto_generated": is_auto_generated,
+                                "segment_count": segment_count,
+                                "duration_seconds": duration_seconds,
+                                "is_proofread": processing_method == "transcript_proofread",
+                            }
+                        )
 
                     # Optional: Extract keyframes
                     if settings.youtube_keyframe_extraction:
                         metadata_json = self._extract_keyframes(
                             video_id=video["video_id"],
-                            transcript=transcript,
+                            transcript=None,  # type: ignore[arg-type]
                             metadata_json=metadata_json,
                         )
 
@@ -555,10 +790,10 @@ class YouTubeContentIngestionService:
                         existing.source_url = video_url
                         existing.markdown_content = markdown_content
                         existing.raw_content = raw_content
-                        existing.raw_format = "transcript_json"
+                        existing.raw_format = raw_format
                         existing.metadata_json = metadata_json
                         existing.content_hash = content_hash
-                        existing.parser_used = "youtube_transcript_api"
+                        existing.parser_used = parser_used
                         existing.status = ContentStatus.PARSED
                         existing.error_message = None
                         count += 1
@@ -576,9 +811,9 @@ class YouTubeContentIngestionService:
                             published_date=video["published_date"],
                             markdown_content=markdown_content,
                             raw_content=raw_content,
-                            raw_format="transcript_json",
+                            raw_format=raw_format,
                             metadata_json=metadata_json,
-                            parser_used="youtube_transcript_api",
+                            parser_used=parser_used,
                             content_hash=content_hash,
                             canonical_id=content_duplicate.id,
                             status=ContentStatus.COMPLETED,
@@ -599,9 +834,9 @@ class YouTubeContentIngestionService:
                             published_date=video["published_date"],
                             markdown_content=markdown_content,
                             raw_content=raw_content,
-                            raw_format="transcript_json",
+                            raw_format=raw_format,
                             metadata_json=metadata_json,
-                            parser_used="youtube_transcript_api",
+                            parser_used=parser_used,
                             content_hash=content_hash,
                             status=ContentStatus.PARSED,
                         )
@@ -682,6 +917,10 @@ class YouTubeContentIngestionService:
                     max_videos=max_videos,
                     after_date=after_date,
                     force_reprocess=force_reprocess,
+                    gemini_summary=source.gemini_summary,
+                    gemini_resolution=source.gemini_resolution,
+                    proofread=source.proofread,
+                    hint_terms=source.hint_terms if source.hint_terms else None,
                 )
                 total += count
             except Exception as e:
@@ -753,6 +992,10 @@ class YouTubeContentIngestionService:
                     after_date=after_date,
                     force_reprocess=force_reprocess,
                     languages=source.languages,
+                    gemini_summary=source.gemini_summary,
+                    gemini_resolution=source.gemini_resolution,
+                    proofread=source.proofread,
+                    hint_terms=source.hint_terms if source.hint_terms else None,
                 )
                 total += count
             except Exception as e:
@@ -900,8 +1143,14 @@ class YouTubeRSSIngestionService:
         force_reprocess: bool = False,
         source_name: str | None = None,
         source_tags: list[str] | None = None,
+        *,
+        gemini_summary: bool = True,
+        gemini_resolution: str = "low",
     ) -> int:
         """Ingest videos from a single YouTube RSS feed.
+
+        Supports Gemini native video extraction (with low resolution by default
+        for cost savings) and transcript-based fallback.
 
         Args:
             feed_url: YouTube RSS feed URL
@@ -910,6 +1159,8 @@ class YouTubeRSSIngestionService:
             force_reprocess: Re-fetch already existing videos
             source_name: Optional name for metadata
             source_tags: Optional tags for metadata
+            gemini_summary: Try Gemini native video extraction first.
+            gemini_resolution: Resolution for Gemini (default: low for RSS).
 
         Returns:
             Number of content items ingested
@@ -941,35 +1192,65 @@ class YouTubeRSSIngestionService:
                         logger.debug(f"Skipping existing video: {video_id}")
                         continue
 
-                # Fetch transcript
-                transcript = self.client.get_transcript(video_id)
-                if not transcript:
-                    logger.info(f"No transcript available for {video_id}: {video['title']}")
-                    continue
+                video_url = f"https://www.youtube.com/watch?v={video_id}"
+                processing_method = "transcript"
+                parser_used = "youtube_transcript_api"
+                raw_content = None
+                raw_format = None
+                markdown_content = None
+                transcript_meta: dict[str, Any] | None = None
 
-                # Enrich transcript with feed metadata
-                if not transcript.title and video.get("title"):
-                    transcript.title = video["title"]
-                if not transcript.channel_title and video.get("channel_title"):
-                    transcript.channel_title = video["channel_title"]
-                if not transcript.published_date and video.get("published_date"):
-                    transcript.published_date = video["published_date"]
+                # --- Path 1: Gemini native video extraction ---
+                if gemini_summary:
+                    gemini_content = _extract_video_content_with_gemini(
+                        video_url=video_url,
+                        model_step="youtube_rss_processing",
+                        gemini_resolution=gemini_resolution,
+                    )
+                    if gemini_content:
+                        markdown_content = gemini_content
+                        processing_method = "gemini_native"
+                        parser_used = "gemini"
 
-                # Convert to markdown
-                markdown_content = transcript_to_markdown(transcript)
+                # --- Path 2: Transcript-based extraction (fallback) ---
+                if markdown_content is None:
+                    transcript = self.client.get_transcript(video_id)
+                    if not transcript:
+                        logger.info(f"No transcript available for {video_id}: {video['title']}")
+                        continue
+
+                    # Enrich transcript with feed metadata
+                    if not transcript.title and video.get("title"):
+                        transcript.title = video["title"]
+                    if not transcript.channel_title and video.get("channel_title"):
+                        transcript.channel_title = video["channel_title"]
+                    if not transcript.published_date and video.get("published_date"):
+                        transcript.published_date = video["published_date"]
+
+                    markdown_content = transcript_to_markdown(transcript)
+                    raw_content = json.dumps(transcript.to_storage_dict())
+                    raw_format = "transcript_json"
+                    transcript_meta = {
+                        "language": transcript.language,
+                        "is_auto_generated": transcript.is_auto_generated,
+                        "segment_count": len(transcript.segments),
+                        "duration_seconds": transcript.duration_seconds,
+                        "thumbnail_url": transcript.thumbnail_url,
+                    }
+
                 content_hash = generate_markdown_hash(markdown_content)
 
                 # Build metadata
                 metadata: dict[str, Any] = {
                     "video_id": video_id,
-                    "language": transcript.language,
-                    "is_auto_generated": transcript.is_auto_generated,
-                    "segment_count": len(transcript.segments),
-                    "duration_seconds": transcript.duration_seconds,
-                    "thumbnail_url": transcript.thumbnail_url,
+                    "processing_method": processing_method,
                     "feed_url": feed_url,
                     "discovery_method": "rss",
                 }
+                if processing_method == "gemini_native":
+                    metadata["gemini_resolution"] = gemini_resolution
+                elif transcript_meta is not None:
+                    metadata.update(transcript_meta)
                 if source_name:
                     metadata["source_name"] = source_name
                 if source_tags:
@@ -979,13 +1260,15 @@ class YouTubeRSSIngestionService:
                     content = Content(
                         source_type=ContentSource.YOUTUBE,
                         source_id=source_id,
-                        title=transcript.title or video.get("title", f"Video {video_id}"),
-                        source_url=f"https://www.youtube.com/watch?v={video_id}",
-                        raw_content=json.dumps(transcript.to_storage_dict()),
-                        raw_format="transcript_json",
+                        title=video.get("title", f"Video {video_id}"),
+                        author=video.get("channel_title"),
+                        publication=video.get("channel_title"),
+                        source_url=video_url,
+                        raw_content=raw_content,
+                        raw_format=raw_format,
                         markdown_content=markdown_content,
                         content_hash=content_hash,
-                        parser_used="youtube_transcript_api",
+                        parser_used=parser_used,
                         status=ContentStatus.PARSED,
                         published_date=video.get("published_date"),
                         metadata_json=metadata,
@@ -1041,6 +1324,8 @@ class YouTubeRSSIngestionService:
                     force_reprocess=force_reprocess,
                     source_name=source.name,
                     source_tags=source.tags if source.tags else None,
+                    gemini_summary=source.gemini_summary,
+                    gemini_resolution=source.gemini_resolution,
                 )
                 total += count
             except Exception as e:

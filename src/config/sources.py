@@ -35,6 +35,10 @@ class SourceDefaults(BaseModel):
     # YouTube-specific defaults
     visibility: Literal["public", "private"] = "public"
     languages: list[str] = ["en"]
+    gemini_summary: bool = True
+    gemini_resolution: str = "default"
+    proofread: bool = True
+    hint_terms: list[str] = []
     # Podcast-specific defaults
     transcribe: bool = True
     stt_provider: Literal["openai", "local_whisper"] = "openai"
@@ -62,6 +66,10 @@ class YouTubePlaylistSource(SourceBase):
     type: Literal["youtube_playlist"] = "youtube_playlist"
     id: str
     visibility: Literal["public", "private"] = "public"
+    hint_terms: list[str] = []
+    proofread: bool = True
+    gemini_summary: bool = True
+    gemini_resolution: str = "default"
 
 
 class YouTubeChannelSource(SourceBase):
@@ -69,11 +77,17 @@ class YouTubeChannelSource(SourceBase):
     channel_id: str
     visibility: Literal["public", "private"] = "public"
     languages: list[str] = ["en"]
+    hint_terms: list[str] = []
+    proofread: bool = True
+    gemini_summary: bool = True
+    gemini_resolution: str = "default"
 
 
 class YouTubeRSSSource(SourceBase):
     type: Literal["youtube_rss"] = "youtube_rss"
     url: str
+    gemini_summary: bool = True
+    gemini_resolution: str = "low"
 
 
 class PodcastSource(SourceBase):

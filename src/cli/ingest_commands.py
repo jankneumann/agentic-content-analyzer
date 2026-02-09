@@ -284,6 +284,98 @@ def substack_sync(
 # ---------------------------------------------------------------------------
 
 
+@app.command("youtube-playlist")
+def youtube_playlist(
+    max: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum videos per playlist/channel."),
+    ] = 10,
+    days: Annotated[
+        int | None,
+        typer.Option("--days", "-d", help="Only fetch videos from the last N days."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+    public_only: Annotated[
+        bool,
+        typer.Option("--public-only", help="Skip OAuth, use API key only (public content)."),
+    ] = False,
+) -> None:
+    """Ingest content from YouTube playlists and channels."""
+    from rich.console import Console
+
+    console = Console()
+    after_date = _days_to_after_date(days)
+    use_oauth = not public_only
+
+    try:
+        from src.ingestion.orchestrator import ingest_youtube_playlist
+
+        total = ingest_youtube_playlist(
+            max_videos=max,
+            after_date=after_date,
+            force_reprocess=force,
+            use_oauth=use_oauth,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "youtube-playlist"}, success=False)
+        else:
+            console.print(f"[red]YouTube playlist ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "youtube-playlist", "ingested": total})
+    else:
+        console.print(
+            f"[green]YouTube playlist ingestion complete.[/green] {total} item(s) ingested."
+        )
+
+
+@app.command("youtube-rss")
+def youtube_rss(
+    max: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum videos per RSS feed."),
+    ] = 10,
+    days: Annotated[
+        int | None,
+        typer.Option("--days", "-d", help="Only fetch videos from the last N days."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+) -> None:
+    """Ingest content from YouTube RSS feeds."""
+    from rich.console import Console
+
+    console = Console()
+    after_date = _days_to_after_date(days)
+
+    try:
+        from src.ingestion.orchestrator import ingest_youtube_rss
+
+        total = ingest_youtube_rss(
+            max_videos=max,
+            after_date=after_date,
+            force_reprocess=force,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "youtube-rss"}, success=False)
+        else:
+            console.print(f"[red]YouTube RSS ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "youtube-rss", "ingested": total})
+    else:
+        console.print(f"[green]YouTube RSS ingestion complete.[/green] {total} item(s) ingested.")
+
+
 @app.command("youtube")
 def youtube(
     max: Annotated[
@@ -303,7 +395,7 @@ def youtube(
         typer.Option("--public-only", help="Skip OAuth, use API key only (public content)."),
     ] = False,
 ) -> None:
-    """Ingest transcripts from YouTube playlists, channels, and RSS feeds."""
+    """Ingest from all YouTube sources (playlists, channels, and RSS feeds)."""
     from rich.console import Console
 
     console = Console()
