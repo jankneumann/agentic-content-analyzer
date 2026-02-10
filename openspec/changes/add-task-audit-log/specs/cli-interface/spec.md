@@ -9,7 +9,7 @@ The system SHALL provide `aca jobs history` as a CLI command for viewing histori
 #### Scenario: List recent job history
 - **WHEN** `aca jobs history` is executed without flags
 - **THEN** the 20 most recent jobs are displayed in a Rich table
-- **AND** the table columns are: Date/Time, Task, Content ID, Job ID, Content Title, Status
+- **AND** the table columns are: Date/Time, Task, Content ID, Job ID, Description, Status
 - **AND** the Task column shows human-readable labels (e.g., "Summarize" instead of "summarize_content")
 
 #### Scenario: Filter by time range
@@ -24,7 +24,7 @@ The system SHALL provide `aca jobs history` as a CLI command for viewing histori
 #### Scenario: Filter by task type
 - **WHEN** `aca jobs history --type summarize` is executed
 - **THEN** only jobs matching the `summarize_content` entrypoint are shown
-- **AND** `--type` accepts human-readable aliases: `summarize`, `batch`, `extract`, `scan`, `process`, `ingest`
+- **AND** `--type` accepts human-readable aliases: `summarize`, `batch`, `extract`, `process`, `ingest`
 - **AND** aliases are mapped to entrypoints via `TYPE_ALIASES` in `src/models/jobs.py`
 
 #### Scenario: Filter by status
@@ -38,7 +38,7 @@ The system SHALL provide `aca jobs history` as a CLI command for viewing histori
 #### Scenario: JSON output mode
 - **WHEN** `aca --json jobs history` is executed (global `--json` flag)
 - **THEN** output is valid JSON with `jobs`, `total`, `offset`, `limit` fields
-- **AND** each job includes `id`, `entrypoint`, `task_label`, `status`, `content_id`, `content_title`, `created_at`
+- **AND** each job includes `id`, `entrypoint`, `task_label`, `status`, `content_id`, `description`, `created_at`
 
 #### Scenario: Invalid type alias
 - **WHEN** `aca jobs history --type bogus` is executed

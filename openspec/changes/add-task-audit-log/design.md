@@ -12,11 +12,31 @@ content table ──┘                        └──→ aca jobs history (CL
 
 ## Key Design Decisions
 
-### 1. Enrichment via LEFT JOIN (not separate queries)
+### 1. Description Column: Context-Aware Text
+
+The table uses a **Description** column instead of a narrow "Content Title" column. This provides meaningful context for every job type, not just those with a `content_id`:
+
+| Entrypoint | Description source | Example |
+|---|---|---|
+| `summarize_content` | Content title from DB (via LEFT JOIN) | "AI Newsletter #15 - GPT-5 Launch" |
+| `summarize_batch` | Count from `payload.content_ids` array | "Batch of 12 items" |
+| `extract_url_content` | Content title from DB (via LEFT JOIN) | "How to Fine-Tune LLMs" |
+| `process_content` | Content title + task_type from payload | "Summarize: AI Weekly Recap" |
+| `ingest_content` | Source name from `payload.source` | "Gmail ingestion" / "RSS ingestion" |
+| (unknown) | Progress message from `payload.message` | "Starting summarization" |
+
+**Resolution strategy** (applied in `list_job_history()`):
+1. If `content_id` exists in payload → LEFT JOIN to get content title
+2. Else if `source` exists in payload → format as "{source} ingestion"
+3. Else if `content_ids` exists in payload → format as "Batch of {N} items"
+4. Else use `payload.message` as fallback → last progress message
+5. Else `null`
+
+### 2. Enrichment via LEFT JOIN (not separate queries)
 
 The `pgqueuer_jobs.payload` contains `content_id` for most task types. We enrich job records by LEFT JOIN-ing with the `content` table to fetch titles. This is a single query — no N+1 problem.
 
-**Why LEFT JOIN**: Not all jobs have a `content_id` (e.g., `scan_newsletters`, `summarize_batch`). LEFT JOIN ensures these jobs still appear in the audit log with `null` title.
+**Why LEFT JOIN**: Not all jobs have a `content_id` (e.g., `ingest_content`, `summarize_batch`). LEFT JOIN ensures these jobs still appear in the audit log with `null` title — the description is then built from other payload fields.
 
 **SQL pattern**:
 ```sql
@@ -32,16 +52,18 @@ ORDER BY j.created_at DESC
 LIMIT $2 OFFSET $3
 ```
 
-**Null-safety**: The `j.payload ? 'content_id'` guard prevents cast errors when `content_id` is absent from the payload (e.g., `ingest_content` and `scan_newsletters` jobs). The LEFT JOIN still includes these rows with `content_id = NULL` and `content_title = NULL`.
+**Null-safety**: The `j.payload ? 'content_id'` guard prevents cast errors when `content_id` is absent from the payload (e.g., `ingest_content` jobs). The LEFT JOIN still includes these rows — the Python layer builds the description from other payload fields.
 
-### 2. New function, not modifying existing `list_jobs()`
+**Description assembly**: The SQL returns raw `content_title` and `payload`. The Python `list_job_history()` function builds the `description` field using the resolution strategy above. This keeps the SQL simple and moves the conditional logic to Python where it's easier to test.
+
+### 3. New function, not modifying existing `list_jobs()`
 
 We add `list_job_history()` alongside the existing `list_jobs()` function in `src/queue/setup.py`. Reasons:
 - `list_jobs()` is used by background task monitoring and SSE — changing its return type would break callers
-- The history function has different filtering needs (time-based) and return shape (includes content title)
+- The history function has different filtering needs (time-based) and return shape (includes description)
 - Keeps the existing `JobListItem` model untouched
 
-### 3. Task Type Mapping
+### 4. Task Type Mapping
 
 The `entrypoint` field stores internal names like `summarize_content`, `extract_url_content`. We map these to human-readable labels for display:
 
@@ -50,21 +72,20 @@ The `entrypoint` field stores internal names like `summarize_content`, `extract_
 | `summarize_content` | Summarize | `summarize` |
 | `summarize_batch` | Summarize (Batch) | `batch` |
 | `extract_url_content` | URL Extraction | `extract` |
-| `scan_newsletters` | Gmail Scan | `scan` |
 | `process_content` | Process Content | `process` |
 | `ingest_content` | Ingest | `ingest` |
 
+**Note**: `scan_newsletters` is a legacy entrypoint that is registered but never enqueued by any current code path. The `ingest_content` entrypoint with `source=gmail` superseded it via the orchestrator pattern. If encountered in historical data, it falls back to its raw entrypoint name as the label.
+
 This mapping lives in a shared constant (`ENTRYPOINT_LABELS`) used by both the API response serialization and the CLI formatter. A reverse mapping (`TYPE_ALIASES`) maps CLI `--type` friendly names back to entrypoint strings.
 
-**Note on `ingest_content`**: Ingest jobs store `source` (e.g., "gmail", "rss") in the payload instead of `content_id`. The task label for ingest jobs may optionally be enriched to "Ingest (gmail)" by extracting `payload.source`. These jobs will always have `content_id: null` and `content_title: null`.
-
-### 4. Time-Based Filtering
+### 5. Time-Based Filtering
 
 The API accepts an optional `since` parameter (ISO 8601 datetime or shorthand like `1d`, `7d`, `30d`). The backend converts shorthands to `datetime.now(UTC) - timedelta(days=N)` before querying.
 
 The CLI maps `--since 1d` / `--since 7d` to the same parameter. The `--last N` flag sets `limit=N` without time filtering.
 
-### 5. Frontend Table Design
+### 6. Frontend Table Design
 
 The web UI table follows the existing pattern from `contents.tsx`:
 - shadcn `<Table>` with `<SortableTableHead>` for sortable columns
@@ -72,9 +93,9 @@ The web UI table follows the existing pattern from `contents.tsx`:
 - `useQuery` hook for data fetching with `keepPreviousData` for smooth pagination
 - Responsive: collapses less-important columns on mobile
 
-Columns: Date/Time | Task | Content ID | Job ID | Content Title | Status
+Columns: Date/Time | Task | Content ID | Job ID | Description | Status
 
-### 6. New Pydantic Model
+### 7. New Pydantic Model
 
 ```python
 class JobHistoryItem(BaseModel):
@@ -83,14 +104,14 @@ class JobHistoryItem(BaseModel):
     task_label: str                  # human-readable label
     status: JobStatus
     content_id: int | None
-    content_title: str | None
+    description: str | None          # context-aware text (see resolution strategy)
     error: str | None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
 ```
 
-This is separate from `JobListItem` because it includes `content_title` and `task_label` — fields that don't belong in the existing model used for real-time monitoring.
+This is separate from `JobListItem` because it includes `description` and `task_label` — fields that don't belong in the existing model used for real-time monitoring.
 
 ## File Changes
 

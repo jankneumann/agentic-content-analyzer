@@ -16,17 +16,17 @@
 ## Phase 1: Backend Data Layer
 
 - [ ] 1. Add `JobHistoryItem`, `JobHistoryResponse`, `ENTRYPOINT_LABELS`, and `TYPE_ALIASES` to `src/models/jobs.py`
-  - `JobHistoryItem`: id, entrypoint, task_label, status, content_id, content_title, error, created_at, started_at, completed_at
+  - `JobHistoryItem`: id, entrypoint, task_label, status, content_id, description, error, created_at, started_at, completed_at
   - `JobHistoryResponse`: data list + pagination dict
-  - `ENTRYPOINT_LABELS`: dict mapping entrypoint strings to display labels (6 entries: summarize_content, summarize_batch, extract_url_content, scan_newsletters, process_content, ingest_content)
-  - `TYPE_ALIASES`: reverse dict mapping CLI `--type` aliases to entrypoint strings (summarize→summarize_content, batch→summarize_batch, extract→extract_url_content, scan→scan_newsletters, process→process_content, ingest→ingest_content)
+  - `ENTRYPOINT_LABELS`: dict mapping entrypoint strings to display labels (5 entries: summarize_content, summarize_batch, extract_url_content, process_content, ingest_content)
+  - `TYPE_ALIASES`: reverse dict mapping CLI `--type` aliases to entrypoint strings (summarize→summarize_content, batch→summarize_batch, extract→extract_url_content, process→process_content, ingest→ingest_content)
   - **Verify**: Import and instantiate models in a Python REPL
   - **Files**: `src/models/jobs.py`
 
 - [ ] 2. Add `list_job_history()` function to `src/queue/setup.py`
   - **Depends on**: Task 1
   - LEFT JOIN `pgqueuer_jobs` with `content` table on `payload->>'content_id'`
-  - Use `j.payload ? 'content_id'` guard to prevent cast errors for jobs without content_id (ingest_content, scan_newsletters)
+  - Use `j.payload ? 'content_id'` guard to prevent cast errors for jobs without content_id (e.g., ingest_content)
   - Accept filters: `since` (datetime), `status` (JobStatus), `entrypoint` (str), `limit`, `offset`
   - Return `tuple[list[JobHistoryItem], int]`
   - Map entrypoint to `task_label` using `ENTRYPOINT_LABELS` (fallback: raw entrypoint)
@@ -47,7 +47,7 @@
 - [ ] 4. Add `aca jobs history` command to `src/cli/job_commands.py`
   - **Depends on**: Task 2
   - Flags: `--since` (1d/7d/30d/custom), `--last N`, `--type` (alias mapped via `TYPE_ALIASES`), `--status`
-  - Rich table output: Date/Time, Task, Content ID, Job ID, Content Title, Status
+  - Rich table output: Date/Time, Task, Content ID, Job ID, Description, Status
   - JSON output mode support (global `--json` flag via `is_json_mode()`)
   - Map `--type` friendly names to entrypoint values using `TYPE_ALIASES`
   - **Verify**: `pytest tests/cli/test_job_commands.py` passes
@@ -72,7 +72,7 @@
 - [ ] 7. Create `web/src/routes/task-history.tsx` — table and data display
   - **Depends on**: Tasks 5, 6
   - Route definition with `createRoute()`
-  - Table with columns: Date/Time, Task, Content ID, Job ID, Content Title, Status
+  - Table with columns: Date/Time, Task, Content ID, Job ID, Description, Status
   - Status badges with color coding (matching existing patterns)
   - Loading skeleton and empty state ("No task history found")
   - Pagination controls

@@ -6,7 +6,7 @@
 
 The system SHALL provide an API endpoint for querying historical job records enriched with content metadata for audit purposes.
 
-#### Scenario: List job history with content titles
+#### Scenario: List job history with descriptions
 - **WHEN** `GET /api/v1/jobs/history` is called
 - **THEN** a 200 OK response is returned with JSON:
 ```json
@@ -18,7 +18,7 @@ The system SHALL provide an API endpoint for querying historical job records enr
       "task_label": "Summarize",
       "status": "completed",
       "content_id": 42,
-      "content_title": "AI Newsletter #15 - GPT-5 Launch",
+      "description": "AI Newsletter #15 - GPT-5 Launch",
       "error": null,
       "created_at": "ISO8601",
       "started_at": "ISO8601",
@@ -29,8 +29,8 @@ The system SHALL provide an API endpoint for querying historical job records enr
 }
 ```
 - **AND** `task_label` is a human-readable name derived from `entrypoint`
-- **AND** `content_title` is resolved by joining with the content table via `payload.content_id`
-- **AND** jobs without a `content_id` in their payload have `content_id: null` and `content_title: null`
+- **AND** `description` is a context-aware text resolved from job payload: content title (via LEFT JOIN) for content-linked jobs, source name for ingestion jobs, batch count for batch jobs, or `null` if no context available
+- **AND** jobs without a `content_id` in their payload have `content_id: null` and `description` derived from other payload fields (e.g., "Gmail ingestion" for ingest jobs)
 
 #### Scenario: Filter history by time range shorthand
 - **WHEN** `GET /api/v1/jobs/history?since=1d` is called
@@ -70,9 +70,10 @@ The system SHALL provide an API endpoint for querying historical job records enr
 - **THEN** a 200 OK response is returned with `"data": []` and `"pagination": {"total": 0}`
 
 #### Scenario: Jobs without content_id in payload
-- **WHEN** the history includes jobs with entrypoint `ingest_content` or `scan_newsletters`
+- **WHEN** the history includes jobs with entrypoint `ingest_content`
 - **AND** these jobs do not have `content_id` in their payload
-- **THEN** the response includes these jobs with `content_id: null` and `content_title: null`
+- **THEN** the response includes these jobs with `content_id: null`
+- **AND** `description` is derived from the payload `source` field (e.g., "Gmail ingestion", "RSS ingestion")
 
 ### Requirement: Entrypoint Label Mapping
 
@@ -92,7 +93,7 @@ The system SHALL provide a web page at `/task-history` under the Management navi
 
 #### Scenario: Table displays job history
 - **WHEN** a user navigates to `/task-history`
-- **THEN** a table is displayed with columns: Date/Time, Task, Content ID, Job ID, Content Title, Status
+- **THEN** a table is displayed with columns: Date/Time, Task, Content ID, Job ID, Description, Status
 - **AND** rows are ordered by date/time descending (newest first)
 
 #### Scenario: Filter by task type
