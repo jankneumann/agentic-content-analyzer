@@ -1,8 +1,8 @@
-"""Add summary model_used index
+"""add summary model used index
 
-Revision ID: f2a3b4c5d6e7
-Revises: f9a8b7c6d5e5, e1f2a3b4c5d6
-Create Date: 2026-02-17 10:00:00.000000
+Revision ID: 1a4ad3270eb7
+Revises: 8f6faaa1bce9, f9a8b7c6d5e5
+Create Date: 2026-02-10 18:43:40.352432
 
 """
 from collections.abc import Sequence
@@ -10,12 +10,11 @@ from typing import Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.engine.reflection import Inspector
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'f2a3b4c5d6e7'
-down_revision: Union[str, Sequence[str], None] = ('f9a8b7c6d5e5', 'e1f2a3b4c5d6')
+revision: str = '1a4ad3270eb7'
+down_revision: Union[str, Sequence[str], None] = ('8f6faaa1bce9', 'f9a8b7c6d5e5')
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -23,8 +22,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Add index to Summary.model_used (if not exists)
     conn = op.get_bind()
-    inspector = Inspector.from_engine(conn)
     # Check if table exists first (for safety in some test envs)
+    inspector = sa.inspect(conn)
     if not inspector.has_table('summaries'):
         return
 
@@ -43,7 +42,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Drop index from Summary.model_used (if exists)
     conn = op.get_bind()
-    inspector = Inspector.from_engine(conn)
+    inspector = sa.inspect(conn)
     if not inspector.has_table('summaries'):
         return
 
