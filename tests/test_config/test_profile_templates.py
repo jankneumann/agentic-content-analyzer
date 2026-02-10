@@ -57,6 +57,11 @@ class TestProfileTemplatesExist:
         supabase_path = profiles_dir / "supabase-cloud.yaml"
         assert supabase_path.exists(), "supabase-cloud.yaml profile not found"
 
+    def test_local_supabase_profile_exists(self, profiles_dir: Path) -> None:
+        """Test that local-supabase.yaml exists."""
+        path = profiles_dir / "local-supabase.yaml"
+        assert path.exists(), "local-supabase.yaml profile not found"
+
 
 # =============================================================================
 # Structural Validity Tests
@@ -95,6 +100,13 @@ class TestProfileTemplatesStructure:
 
         assert data["name"] == "supabase-cloud"
         assert data.get("extends") == "base"
+
+    def test_local_supabase_profile_loads(self, profiles_dir: Path) -> None:
+        """Test that local-supabase profile loads and extends local."""
+        data = load_profile_raw("local-supabase", profiles_dir)
+
+        assert data["name"] == "local-supabase"
+        assert data.get("extends") == "local"
 
 
 class TestProfileTemplatesValidation:
@@ -141,6 +153,19 @@ class TestProfileTemplatesValidation:
         assert profile.providers.neo4j == "auradb"
         assert profile.providers.storage == "supabase"
 
+    def test_local_supabase_profile_valid_structure(self, profiles_dir: Path) -> None:
+        """Test that local-supabase profile has valid structure after inheritance."""
+        profile = load_profile("local-supabase", profiles_dir=profiles_dir, skip_interpolation=True)
+
+        assert isinstance(profile, Profile)
+        assert profile.name == "local-supabase"
+        # Should override providers to supabase
+        assert profile.providers.database == "supabase"
+        assert profile.providers.storage == "supabase"
+        # Should inherit neo4j and observability from local/base
+        assert profile.providers.neo4j == "local"
+        assert profile.providers.observability == "noop"
+
 
 class TestProfileTemplatesHaveRequiredFields:
     """Tests that profiles have required fields for their providers."""
@@ -172,6 +197,15 @@ class TestProfileTemplatesHaveRequiredFields:
         assert "railway_database_url" in db_settings
         assert "neo4j_auradb_uri" in neo4j_settings
         assert "neo4j_auradb_password" in neo4j_settings
+
+    def test_local_supabase_profile_has_supabase_local(self, profiles_dir: Path) -> None:
+        """Test that local-supabase profile sets supabase_local: true."""
+        data = load_profile_raw("local-supabase", profiles_dir)
+
+        settings = data.get("settings", {})
+        db_settings = settings.get("database", {})
+
+        assert db_settings.get("supabase_local") is True
 
     def test_supabase_cloud_profile_has_required_placeholders(self, profiles_dir: Path) -> None:
         """Test that supabase-cloud profile has placeholders for required settings."""

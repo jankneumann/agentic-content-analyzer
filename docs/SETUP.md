@@ -126,14 +126,13 @@ For full Supabase dev/prod parity without cloud dependencies, you can run Supaba
 
 ```bash
 # Start local Supabase services
-docker compose --profile supabase up -d
+make supabase-up
 
 # Configure environment for local Supabase
-export SUPABASE_LOCAL=true
-export DATABASE_PROVIDER=supabase
+export PROFILE=local-supabase
 
-# Run your application
-python -m src.main
+# Run your application (or use: make dev-supabase)
+make api
 ```
 
 ### Using Supabase CLI (Recommended)
@@ -167,8 +166,9 @@ supabase status
 For simpler setups without the CLI:
 
 ```bash
-# Start local Supabase via Docker Compose
-docker compose --profile supabase up -d
+# Start local Supabase via Docker Compose (separate compose file)
+make supabase-up
+# Or manually: docker compose -f docker-compose.supabase.yml -p supabase up -d
 
 # Verify services are running
 docker ps | grep supabase
@@ -237,14 +237,17 @@ python -m src.main
 lsof -i :54322
 
 # Stop existing containers
-docker compose --profile supabase down
+make supabase-down
+# Or: docker compose -f docker-compose.supabase.yml -p supabase down
 ```
 
 **Services not starting**:
 ```bash
 # Check container logs
-docker compose --profile supabase logs supabase-db
-docker compose --profile supabase logs supabase-storage
+make supabase-logs
+# Or check individual services:
+docker compose -f docker-compose.supabase.yml -p supabase logs supabase-db
+docker compose -f docker-compose.supabase.yml -p supabase logs supabase-storage
 ```
 
 **Storage not working**:

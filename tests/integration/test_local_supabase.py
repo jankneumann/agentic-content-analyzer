@@ -8,11 +8,11 @@ These tests verify:
 Tests are automatically skipped if local Supabase is not running.
 
 To run these tests:
-    1. Start local Supabase: docker compose --profile supabase up -d
+    1. Start local Supabase: make supabase-up
     2. Run tests: pytest tests/integration/test_local_supabase.py -v
 
 Requirements:
-    - Docker Compose with supabase profile running
+    - Local Supabase stack running (docker-compose.supabase.yml)
     - Ports 54321 (API), 54322 (DB) available
 """
 
@@ -33,7 +33,7 @@ try:
 except Exception:
     pass
 
-SKIP_REASON = "Local Supabase not running. Start with: docker compose --profile supabase up -d"
+SKIP_REASON = "Local Supabase not running. Start with: make supabase-up"
 
 # Marker for tests that require local Supabase
 requires_local_supabase = pytest.mark.skipif(not LOCAL_SUPABASE_AVAILABLE, reason=SKIP_REASON)

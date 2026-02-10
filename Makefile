@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs dev-local dev-opik dev-staging full-up full-down verify-profile verify-opik verify-staging
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -225,6 +225,45 @@ opik-logs:  ## Tail Opik stack logs
 	@docker compose -f docker-compose.opik.yml -p opik logs -f
 
 # =============================================================================
+# Local Supabase Stack
+# =============================================================================
+
+supabase-up:  ## Start local Supabase stack (database + storage)
+	@echo "Starting Supabase stack..."
+	@docker compose -f docker-compose.supabase.yml -p supabase up -d
+	@echo "Waiting for Supabase DB to be healthy..."
+	@timeout=60; \
+	elapsed=0; \
+	while ! docker exec newsletter-supabase-db pg_isready -U postgres -d postgres >/dev/null 2>&1; do \
+		if [ $$elapsed -ge $$timeout ]; then \
+			echo "✗ Timeout waiting for Supabase DB"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
+		printf "."; \
+	done
+	@echo ""
+	@echo "✓ Supabase stack is ready!"
+	@echo "  Supabase API:     http://localhost:54321"
+	@echo "  Supabase DB:      localhost:54322"
+	@echo "  Supabase Storage: http://localhost:54323"
+	@echo ""
+	@echo "To use Supabase as your database/storage provider:"
+	@echo "  export PROFILE=local-supabase"
+	@echo "  make api"
+	@echo ""
+	@echo "Or use: make dev-supabase"
+
+supabase-down:  ## Stop local Supabase stack
+	@echo "Stopping Supabase stack..."
+	@docker compose -f docker-compose.supabase.yml -p supabase down
+	@echo "✓ Supabase stack stopped"
+
+supabase-logs:  ## Tail Supabase stack logs
+	@docker compose -f docker-compose.supabase.yml -p supabase logs -f
+
+# =============================================================================
 # Profile-Based Development
 # =============================================================================
 
@@ -248,6 +287,23 @@ dev-opik:  ## Start dev servers with Opik tracing (requires: make opik-up)
 	@PROFILE=local-opik $(MAKE) dev-bg
 	@echo ""
 	@echo "LLM traces will appear at: http://localhost:5174"
+
+dev-supabase:  ## Start dev servers with local Supabase (requires: make supabase-up)
+	@echo "Checking if Supabase DB is running..."
+	@if ! docker exec newsletter-supabase-db pg_isready -U postgres -d postgres >/dev/null 2>&1; then \
+		echo ""; \
+		echo "✗ Supabase is not running!"; \
+		echo ""; \
+		echo "Start Supabase first:"; \
+		echo "  make supabase-up"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "✓ Supabase DB is healthy"
+	@echo "Starting development with PROFILE=local-supabase..."
+	@PROFILE=local-supabase $(MAKE) dev-bg
+	@echo ""
+	@echo "Using Supabase at: http://localhost:54321"
 
 dev-staging:  ## Start dev servers with staging profile (remote backends + Braintrust)
 	@echo "Validating staging profile..."
@@ -278,7 +334,9 @@ full-up:  ## Start all services (core + Opik observability)
 	@echo "Starting Opik stack..."
 	@$(MAKE) opik-up
 
-full-down:  ## Stop all services (Opik + core)
+full-down:  ## Stop all services (Supabase + Opik + core)
+	@echo "Stopping Supabase stack..."
+	@docker compose -f docker-compose.supabase.yml -p supabase down 2>/dev/null || true
 	@echo "Stopping Opik stack..."
 	@docker compose -f docker-compose.opik.yml -p opik down 2>/dev/null || true
 	@echo "Stopping core services..."

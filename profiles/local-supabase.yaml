@@ -1,0 +1,40 @@
+# Local Development Profile with Supabase
+# =========================================
+# Extends local profile with local Supabase as database and storage provider.
+# Requires Supabase stack running via `make supabase-up`.
+#
+# Usage:
+#   make supabase-up          # Start local Supabase stack (waits for health)
+#   export PROFILE=local-supabase
+#   make api                  # or: make dev-supabase
+#
+# Services:
+#   Supabase API:     http://localhost:54321
+#   Supabase DB:      localhost:54322
+#   Supabase Storage: http://localhost:54323
+#   App API:          http://localhost:8000
+#   Vite:             http://localhost:5173
+
+name: local-supabase
+extends: local
+description: Local development with Supabase (database + storage)
+
+# Override database and storage providers to supabase
+providers:
+  database: supabase
+  storage: supabase
+
+# Supabase-specific settings
+settings:
+  database:
+    supabase_local: true
+    # Auto-configured by settings.configure_local_supabase():
+    #   database_url -> postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    #   supabase_url -> http://127.0.0.1:54321
+    #   supabase_anon_key -> local dev key
+    #   supabase_service_role_key -> local dev key
+
+  storage:
+    storage_provider: supabase
+    supabase_storage_bucket: images
+    supabase_storage_public: false

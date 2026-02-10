@@ -62,6 +62,7 @@ make dev-stop      # Stop servers
 # Profile-based development
 make dev-local     # Start with PROFILE=local (no observability)
 make dev-opik      # Start with PROFILE=local-opik (requires: make opik-up)
+make dev-supabase  # Start with PROFILE=local-supabase (requires: make supabase-up)
 make dev-staging   # Start with PROFILE=staging (remote backends + Braintrust)
 
 # Opik observability stack
@@ -69,9 +70,15 @@ make opik-up       # Start Opik stack (waits for health)
 make opik-down     # Stop Opik stack
 make opik-logs     # Tail Opik logs
 
+# Local Supabase stack (alternative to core postgres)
+make supabase-up   # Start Supabase stack (DB + storage)
+make supabase-down # Stop Supabase stack
+make supabase-logs # Tail Supabase logs
+make dev-supabase  # Start with PROFILE=local-supabase (requires: make supabase-up)
+
 # Full stack management
 make full-up       # Start core services + Opik
-make full-down     # Stop all services
+make full-down     # Stop all services (including Supabase if running)
 
 # Verification
 make verify-profile  # Verify API health and current profile
