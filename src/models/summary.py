@@ -43,7 +43,9 @@ class Summary(Base):
 
     # Metadata
     agent_framework = Column(String(100), nullable=False)  # claude, openai, google, microsoft
-    model_used = Column(String(100), nullable=False)  # General model ID (e.g., "claude-sonnet-4-5")
+    model_used = Column(
+        String(100), nullable=False, index=True
+    )  # General model ID (e.g., "claude-sonnet-4-5")
     model_version = Column(String(20), nullable=True)  # Version (e.g., "20250929")
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True)
     token_usage = Column(Integer, nullable=True)
