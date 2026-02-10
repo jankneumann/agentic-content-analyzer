@@ -161,7 +161,12 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 - [ ] I.2 Implement `CohereRerankProvider` using Cohere Rerank API
 - [ ] I.3 Implement `JinaRerankProvider` using Jina Rerank API
 - [ ] I.4 Implement `LocalCrossEncoderProvider` using sentence-transformers `CrossEncoder` (asyncio.to_thread)
-- [ ] I.5 Implement `LLMRerankProvider` using existing LLM router (`src/services/llm_router.py`); model configurable via `SEARCH_RERANK_MODEL` (e.g., `gemini-2.5-flash`, `claude-haiku-4-5`); structured prompt scoring relevance 0-10
+- [ ] I.5 Implement `LLMRerankProvider`:
+  - Uses existing LLM router (`src/services/llm_router.py`); model from `SEARCH_RERANK_MODEL` setting
+  - Structured prompt: "Rate the relevance of this document excerpt to the query on a scale of 0-10. Respond with only the number.\n\nQuery: {query}\n\nDocument: {chunk_text}"
+  - Parse integer score from LLM response; default to 5 on parse failure
+  - Score all top-K candidates with concurrent LLM calls (asyncio.gather with concurrency limit of 10)
+  - Return sorted (index, score) tuples
 - [ ] I.6 Create `get_rerank_provider()` factory function (returns None if disabled)
 - [ ] I.7 Add optional dependencies to `pyproject.toml` (jina)
 - [ ] I.8 Write unit tests for each provider (mocked API calls)
@@ -175,8 +180,17 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 - [ ] G.3 Implement RRF fusion logic with configurable weights and k-parameter
 - [ ] G.4 Implement optional cross-encoder reranking step (after RRF, before final results)
 - [ ] G.5 Implement document aggregation from chunk results (group by content_id, best chunk score)
-- [ ] G.6 Add search filtering (source, date range, publication, status, chunk_type)
-- [ ] G.7 Add result highlighting with chunk context
+- [ ] G.6 Add search filtering with SQL joins to `contents` table:
+  - G.6a: Implement source_type filter (JOIN contents, WHERE source_type IN ...)
+  - G.6b: Implement date range filter (WHERE published_date BETWEEN ...)
+  - G.6c: Implement publication and status filters
+  - G.6d: Implement chunk_type filter (applied directly on document_chunks)
+  - G.6e: Combine all filters with AND logic; filters applied BEFORE search ranking
+  - G.6f: Write unit tests for each filter type individually and combined
+- [ ] G.7 Add result highlighting:
+  - G.7a: For BM25 and hybrid results: extract query terms, wrap literal matches in `<mark>` tags in chunk_text (HTML-escape chunk_text first)
+  - G.7b: For vector-only results where no query terms match literally: set `highlight` to first 200 chars of chunk_text (no `<mark>` tags)
+  - G.7c: Write unit tests for highlight extraction (overlapping terms, HTML escaping, no-match fallback)
 - [ ] G.8 Add pagination support (offset, limit)
 - [ ] G.9 Add deep-link generation for YouTube chunk results
 - [ ] G.10 Build `SearchMeta` response object with strategy/provider/timing info
@@ -205,11 +219,11 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
   - Catches all exceptions: logs error with content_id, does not re-raise
   - On chunking failure: content preserved, no chunks created
   - On embedding failure: chunks created without embeddings (BM25-searchable, not vector-searchable)
-- [ ] J.2 Integrate `index_content()` into file ingestion (`src/ingestion/files.py`) — call after content commit
-- [ ] J.3 Integrate into YouTube ingestion (`src/ingestion/youtube.py`) — call after content commit
-- [ ] J.4 Integrate into Gmail ingestion (`src/ingestion/gmail.py`) — call after content commit
-- [ ] J.5 Integrate into RSS ingestion (`src/ingestion/rss.py`) — call after content commit
-- [ ] J.6 Integrate into Substack ingestion (`src/ingestion/substack.py`) — call after content commit
+- [ ] J.2 Integrate `index_content()` into file ingestion (`src/ingestion/files.py`) — call after content commit. Depends on: J.1
+- [ ] J.3 Integrate into YouTube ingestion (`src/ingestion/youtube.py`) — call after content commit. Depends on: J.2
+- [ ] J.4 Integrate into Gmail ingestion (`src/ingestion/gmail.py`) — call after content commit. Depends on: J.3
+- [ ] J.5 Integrate into RSS ingestion (`src/ingestion/rss.py`) — call after content commit. Depends on: J.4
+- [ ] J.6 Integrate into Substack ingestion (`src/ingestion/substack.py`) — call after content commit. Depends on: J.5
 - [ ] J.7 Write integration tests verifying:
   - Chunks are created on successful ingest
   - Content is preserved when chunking fails (mock ChunkingService to raise)
@@ -220,7 +234,12 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 > Depends on: D (chunking), E (embedding). Files: `src/scripts/backfill_chunks.py`
 
 - [ ] L.1 Create `src/scripts/backfill_chunks.py` management command
-- [ ] L.2 Implement batch processing: fetch content without chunks, chunk and embed
+- [ ] L.2 Implement batch processing:
+  - Fetch content records that have NO associated chunks (LEFT JOIN document_chunks WHERE chunks.id IS NULL)
+  - Also identify chunks with NULL embeddings (for retry after previous embedding failures)
+  - Chunk from existing `Content.markdown_content` (do NOT re-fetch raw source or re-run parsers)
+  - Embed in configurable batch sizes (default: 100 chunks per batch)
+  - On per-chunk embedding failure: log error, store chunk without embedding (BM25-searchable), continue batch
 - [ ] L.3 Add rate limiting for embedding API calls (configurable delay between batches)
 - [ ] L.4 Add resume capability (track last processed content_id, skip already-chunked content)
 - [ ] L.5 Add progress reporting (processed/total, chunks created, ETA)
@@ -229,12 +248,18 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 - [ ] L.8 Write unit tests for backfill logic
 
 ## M. Chunk Lifecycle Management
-> Depends on: A (CASCADE FK), J (ingestion integration). Files: `src/services/indexing.py`, `src/ingestion/`
+> Depends on: A (CASCADE FK), J.6 (all ingestion integrations complete, `index_content()` stable). Files: `src/services/indexing.py`, `src/models/chunk.py`
 
 - [ ] M.1 Verify `ON DELETE CASCADE` works: deleting a Content record deletes all its chunks
-- [ ] M.2 Implement rechunking on content update: when `Content.markdown_content` changes, delete old chunks and re-index via `index_content()`
-- [ ] M.3 Ensure non-content field updates (status, tags) do NOT trigger rechunking
-- [ ] M.4 Write tests for cascade delete, rechunking on update, and no-op on status change
+- [ ] M.2 Implement rechunking on content update:
+  - M.2a: Add SQLAlchemy `@event.listens_for(Content, "after_update")` listener that detects changes to `markdown_content` (compare `inspect(instance).attrs.markdown_content.history`)
+  - M.2b: When `markdown_content` changes and `ENABLE_SEARCH_INDEXING=true`: delete existing chunks for that content_id, then call `index_content()`
+  - M.2c: When non-content fields change (status, tags): no-op (listener checks attribute history)
+- [ ] M.3 Write tests:
+  - M.3a: Cascade delete: delete Content → verify all chunks deleted
+  - M.3b: Rechunking: update markdown_content → verify old chunks deleted + new chunks created
+  - M.3c: No-op: update status → verify chunks unchanged
+  - M.3d: Rechunking disabled: update markdown_content with ENABLE_SEARCH_INDEXING=false → verify chunks unchanged
 
 ## K. Documentation
 > Depends on: all above. Files: `docs/`, `CLAUDE.md`

@@ -417,7 +417,7 @@ The system SHALL return results with:
 - `metadata`: source, published_date, publication
 - `matching_chunks`: list of up to 3 relevant chunks per document with chunk_id, content, section, score, highlight, deep_link, chunk_type
 
-The system SHALL highlight matching terms in chunk content using `<mark>` HTML tags in the `highlight` field.
+The system SHALL highlight matching query terms in chunk content using `<mark>` HTML tags in the `highlight` field. For vector-only results where no query terms appear literally, the `highlight` field SHALL contain the first 200 characters of `chunk_text` without `<mark>` tags.
 
 The system SHALL include a `meta` object in the response (see Search Response Metadata requirement).
 
@@ -589,7 +589,7 @@ The system SHALL support configuration of search parameters via environment vari
 
 The system SHALL provide a mechanism to chunk and generate embeddings for existing documents.
 
-The system SHALL re-parse documents using the appropriate parser to extract structure.
+The system SHALL chunk from existing `Content.markdown_content` (parsers already ran at ingest time; backfill does NOT re-fetch raw sources or re-run parsers).
 
 The system SHALL support batch processing with configurable batch size.
 
@@ -600,9 +600,9 @@ The system SHALL respect API rate limits during embedding generation.
 #### Scenario: Backfill existing content
 
 - **WHEN** the backfill command is executed
-- **THEN** the system identifies content without chunks
-- **AND** re-parses each document with the appropriate parser
-- **AND** chunks the content using parser-appropriate strategy
+- **THEN** the system identifies content without chunks (and chunks with NULL embeddings)
+- **AND** chunks each content record's `markdown_content` using parser-appropriate strategy
+- **AND** skips content records that already have chunks with non-NULL embeddings
 - **AND** generates and stores embeddings for each chunk
 - **AND** reports progress periodically
 

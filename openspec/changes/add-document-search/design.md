@@ -517,9 +517,14 @@ class LLMRerankProvider:
 2. **YouTube chunk at TranscriptSegment or paragraph level?** — 30-second timestamp windows (natural speech units), matching existing YouTubeParser output.
 3. **Cohere `search_query` input_type for query embeddings?** — Yes, handled internally by `CohereEmbeddingProvider`.
 4. **Expose BM25 strategy name in response metadata?** — Yes, in `meta.bm25_strategy`.
+5. **Vector search highlighting strategy?** — Highlight based on original query *terms* (keyword matching) in all chunk results, regardless of whether the chunk was found via BM25 or vector search. For vector-only results where no query terms appear literally, the `highlight` field is set to the first 200 characters of `chunk_text` (no `<mark>` tags). This is the standard approach used by hybrid search systems (Vespa, Weaviate).
+6. **Backfill: re-parse from raw source or markdown_content?** — Re-chunk from existing `Content.markdown_content` only. The unified model already stores parsed markdown; parsers already ran at ingest time. Backfill does NOT re-fetch raw source or re-run parsers — it only runs the chunking + embedding pipeline on existing markdown.
+7. **Do we chunk original Content or Digest summaries? Or both?** — Both. `document_chunks.content_id` references `contents.id`. Digests and summaries that are stored as Content records get chunked like any other content. The `_chunk_section_markdown()` strategy handles their `## Section` structure.
+8. **Boolean query syntax across backends?** — Normalize to simple terms. Both strategies receive the raw query string; `PostgresNativeFTSStrategy` uses `plainto_tsquery()` which strips operators, `ParadeDBBM25Strategy` passes the query directly to `@@@`. This means Neon users lose Boolean operators (AND/OR/NOT) — this is a documented quality tradeoff, not a bug.
+9. **Protocol mockability for testing?** — Use `typing.Protocol` (not ABC). Protocols are structurally typed — any class matching the method signatures satisfies the protocol. Tests use concrete mock classes (not `unittest.mock.Mock`) to ensure type safety. Mark protocols with `@runtime_checkable` for isinstance checks in factories.
 
 ## Open Questions
 
-1. How do we handle re-chunking when parser logic changes? (version chunks vs. full regeneration)
-2. Should we cache frequent query embeddings to reduce API costs?
-3. Should we support query-time embedding provider override (e.g., for A/B testing)?
+1. How do we handle re-chunking when parser logic changes? (version chunks vs. full regeneration — deferred to future proposal)
+2. Should we cache frequent query embeddings to reduce API costs? (deferred — measure actual costs first)
+3. Should we support query-time embedding provider override for A/B testing? (deferred — not needed for MVP)
