@@ -105,40 +105,52 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 ## D. Chunking Service
 > Depends on: C (DocumentChunk model). Files: `src/services/chunking.py`
 
-- [ ] D.1 Create `src/services/chunking.py` with `ChunkingService` class
-- [ ] D.2 Implement `chunk_content(content: Content, source_config: SourceEntry | None = None) -> list[DocumentChunk]` router method:
-  - If `source_config.chunking_strategy` is set: use that strategy (structured, youtube, markdown, section)
-  - Otherwise: dispatch based on `content.parser_used` (falls back to default markdown chunking for NULL or unrecognized parser)
-  - If `source_config.chunk_size_tokens` / `chunk_overlap_tokens` is set: use those values; otherwise use global `Settings` defaults
+- [ ] D.1 Create `src/services/chunking.py` with `ChunkingStrategy` protocol:
+  - `name: str` property
+  - `chunk(content: str, metadata: dict, chunk_size: int, chunk_overlap: int) -> list[DocumentChunk]`
+- [ ] D.2 Create `STRATEGY_REGISTRY` dict and `PARSER_TO_STRATEGY` mapping for auto-detection
+- [ ] D.3 Create `get_chunking_strategy(parser_used, strategy_override) -> ChunkingStrategy` factory:
+  - Resolution: explicit `strategy_override` → `PARSER_TO_STRATEGY[parser_used]` → default `MarkdownChunkingStrategy`
+- [ ] D.4 Create `ChunkingService` with `chunk_content(content: Content, source_config: SourceEntry | None = None) -> list[DocumentChunk]`:
+  - Resolves strategy via factory (using `source_config.chunking_strategy` or `content.parser_used`)
+  - Resolves chunk_size/overlap from `source_config` → global `Settings` defaults
   - Returns empty list with warning for empty/NULL `markdown_content`
-- [ ] D.3 Implement `_chunk_structured_document()` for DoclingParser output:
+- [ ] D.5 Implement `StructuredChunkingStrategy` for DoclingParser output:
   - Parse markdown heading hierarchy
   - Split on H1-H6 boundaries
   - Extract tables as separate chunks with caption context
   - Track page numbers from metadata
   - Handle oversized sections by paragraph splitting
-- [ ] D.4 Implement `_chunk_youtube_transcript()` for YouTubeParser output:
-  - Parse timestamped paragraphs from markdown
+- [ ] D.6 Implement `YouTubeTranscriptChunkingStrategy` for transcript output (`parser_used="youtube_transcript_api"`):
+  - Parse timestamped paragraphs from markdown (format: `[MM:SS](url&t=N)`)
   - Preserve 30-second window groupings
   - Extract timestamp metadata (start, end)
   - Generate deep-link URLs with timestamp parameter
-- [ ] D.5 Implement `_chunk_markdown()` for MarkItDownParser and default content:
+- [ ] D.7 Implement `GeminiSummaryChunkingStrategy` for Gemini-processed YouTube content (`parser_used="gemini"`):
+  - Split on topic section headers (`## Topic N: ...`)
+  - No timestamp handling (Gemini output has no timestamps)
+  - Each section becomes a chunk with `heading_text` = section title
+- [ ] D.8 Implement `MarkdownChunkingStrategy` for MarkItDownParser and default content:
   - Split on heading boundaries (H1/H2/H3)
   - Track section path (e.g., "# Intro > ## Setup")
   - Keep code blocks together
   - Handle list structures
-- [ ] D.6 Implement `_chunk_section_markdown()` for summaries and digests:
+- [ ] D.9 Implement `SectionChunkingStrategy` for summaries and digests:
   - Split on `## Section` headers
   - Preserve section type as chunk metadata
-- [ ] D.7 Add chunk size validation and splitting for oversized chunks (>512 tokens)
-- [ ] D.8 Add chunk overlap logic for context continuity (~64 tokens)
-- [ ] D.9 Write unit tests for each chunking strategy with fixture markdown (include: empty content, single-line content, content with only headings, content exceeding max chunk size)
-- [ ] D.10 Write unit tests for per-source chunking overrides:
+- [ ] D.10 Add chunk size validation and splitting for oversized chunks (>512 tokens) — shared across all strategies
+- [ ] D.11 Add chunk overlap logic for context continuity (~64 tokens) — shared across all strategies
+- [ ] D.12 Write unit tests for each chunking strategy with fixture markdown (include: empty content, single-line content, content with only headings, content exceeding max chunk size)
+- [ ] D.13 Write unit tests for per-source chunking overrides:
   - Source with `chunk_size_tokens: 256` produces smaller chunks than default
-  - Source with `chunking_strategy: youtube` forces YouTube chunking regardless of parser_used
+  - Source with `chunking_strategy: youtube_transcript` forces YouTube transcript chunking regardless of parser_used
   - Source without overrides uses global Settings defaults
   - Cascading: per-entry > per-file defaults > global Settings
-- [ ] D.11 Write integration tests with realistic markdown fixtures matching parser output formats (DoclingParser heading/table structure, YouTubeParser timestamped paragraphs, MarkItDownParser heading/code structure)
+- [ ] D.14 Write unit tests for strategy registry and factory:
+  - Registering a new strategy makes it available via `get_chunking_strategy(strategy_override="new_name")`
+  - Unknown strategy name falls back to `MarkdownChunkingStrategy`
+  - Auto-detection from `parser_used` works for all built-in parsers
+- [ ] D.15 Write integration tests with realistic markdown fixtures matching parser output formats (DoclingParser heading/table structure, YouTubeParser timestamped paragraphs, Gemini topic sections, MarkItDownParser heading/code structure)
 
 ## E. Embedding Provider Abstraction
 > Depends on: B (settings), C (model for dimensions). Files: `src/services/embedding.py`

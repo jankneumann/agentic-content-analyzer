@@ -43,16 +43,16 @@ The system SHALL expose the active strategy name in search response metadata.
 - **THEN** the appropriate index is automatically updated (BM25 or TSVECTOR trigger)
 - **AND** the content is searchable immediately
 
-#### Scenario: Native FTS fallback on Neon
+#### Scenario: Native FTS fallback on backends without pg_search
 
-- **WHEN** the database backend is Neon (pg_search unavailable)
+- **WHEN** the database backend does not have pg_search installed (e.g., bare PostgreSQL without extensions)
 - **THEN** the system uses PostgreSQL Native FTS strategy
 - **AND** search results are ranked using `ts_rank_cd`
 - **AND** the response metadata indicates "postgres_native_fts" strategy
 
 #### Scenario: ParadeDB BM25 on supported backends
 
-- **WHEN** the database backend has pg_search available (local PostgreSQL or Supabase)
+- **WHEN** the database backend has pg_search available (local PostgreSQL, Supabase, or Neon AWS)
 - **THEN** the system uses ParadeDB BM25 strategy
 - **AND** search results are ranked using true BM25 scoring
 - **AND** the response metadata indicates "paradedb_bm25" strategy
@@ -69,16 +69,20 @@ The system SHALL expose the active strategy name in search response metadata.
 
 The system SHALL split documents into semantically meaningful chunks before generating embeddings.
 
+The system SHALL define a `ChunkingStrategy` protocol enabling pluggable chunking implementations that can be added and tested without modifying the core chunking service.
+
+The system SHALL provide a strategy registry and factory that resolves the chunking strategy by: explicit per-source override → auto-detection from `Content.parser_used` → default markdown strategy.
+
 The system SHALL leverage the structured output from advanced document parsers (DoclingParser, YouTubeParser, MarkItDownParser) to determine chunk boundaries.
 
 The system SHALL store chunks in a `document_chunks` table with metadata linking back to the source content.
 
-The system SHALL use different chunking strategies based on `Content.parser_used`:
-- **DoclingParser output**: Split on heading boundaries (H1-H6), extract tables as separate chunks, respect page boundaries
-- **YouTubeParser output**: Use existing 30-second timestamp window groupings with sentence boundaries
-- **MarkItDownParser output**: Split on markdown heading structure, keep code blocks together
-- **Default** (Gmail, RSS): Split on heading boundaries, fall back to paragraph splitting
-- **Summaries/Digests**: Split on `## Section` headers (Executive Summary, Key Themes, etc.)
+The system SHALL provide the following built-in chunking strategies:
+- **StructuredChunkingStrategy** (`structured`): For DoclingParser output — split on heading boundaries (H1-H6), extract tables as separate chunks, respect page boundaries
+- **YouTubeTranscriptChunkingStrategy** (`youtube_transcript`): For raw transcript output (`parser_used="youtube_transcript_api"`) — use existing 30-second timestamp window groupings with sentence boundaries, preserve deep-link URLs
+- **GeminiSummaryChunkingStrategy** (`gemini_summary`): For Gemini-processed YouTube content (`parser_used="gemini"`) — split on topic section headers from Gemini structured output, no timestamps
+- **MarkdownChunkingStrategy** (`markdown`): For MarkItDownParser output and default (Gmail, RSS) — split on markdown heading structure, keep code blocks together
+- **SectionChunkingStrategy** (`section`): For summaries/digests — split on `## Section` headers (Executive Summary, Key Themes, etc.)
 
 The system SHALL support per-source chunking configuration via `sources.d/` YAML files, allowing override of chunk size, overlap, and chunking strategy at the global, per-type, or per-entry level.
 
@@ -101,10 +105,26 @@ The system SHALL keep tables as whole chunks even if they exceed the target size
 
 #### Scenario: YouTube transcript chunked by timestamp
 
-- **WHEN** a YouTube transcript is parsed
-- **THEN** the system creates chunks using 30-second timestamp windows
+- **WHEN** a YouTube video is ingested via transcript (`parser_used="youtube_transcript_api"`)
+- **THEN** the system uses `YouTubeTranscriptChunkingStrategy`
+- **AND** creates chunks using 30-second timestamp windows
 - **AND** each chunk includes `timestamp_start` and `timestamp_end` metadata
 - **AND** each chunk includes a `deep_link_url` for direct video navigation
+
+#### Scenario: YouTube Gemini summary chunked by topic section
+
+- **WHEN** a YouTube video is ingested via Gemini summarization (`parser_used="gemini"`)
+- **THEN** the system uses `GeminiSummaryChunkingStrategy`
+- **AND** creates chunks at topic section boundaries (e.g., `## Topic 1: ...`)
+- **AND** each chunk includes the section title as `heading_text`
+- **AND** chunks do NOT include timestamps (Gemini output has no timestamps)
+
+#### Scenario: YouTube Gemini and transcript configured independently
+
+- **WHEN** a YouTube source in `sources.d/` has `gemini_summary: true` and `chunk_size_tokens: 1024`
+- **AND** another YouTube source has `gemini_summary: false` and `chunk_size_tokens: 512`
+- **THEN** Gemini-processed content uses 1024-token chunks with `gemini_summary` strategy
+- **AND** transcript-processed content uses 512-token chunks with `youtube_transcript` strategy
 
 #### Scenario: Markdown document chunked by headings
 
@@ -140,8 +160,8 @@ The system SHALL keep tables as whole chunks even if they exceed the target size
 
 #### Scenario: Per-source chunking strategy override
 
-- **WHEN** a source entry specifies `chunking_strategy: youtube`
-- **THEN** content from that source uses the YouTube transcript chunking strategy regardless of `parser_used`
+- **WHEN** a source entry specifies `chunking_strategy: youtube_transcript`
+- **THEN** content from that source uses the `YouTubeTranscriptChunkingStrategy` regardless of `parser_used`
 - **AND** other sources without a `chunking_strategy` override continue to auto-detect from `parser_used`
 
 #### Scenario: Per-type chunking defaults
@@ -173,7 +193,14 @@ The system SHALL keep tables as whole chunks even if they exceed the target size
 #### Scenario: Unknown parser uses default chunking
 
 - **WHEN** a Content record has `parser_used` set to NULL or an unrecognized value
-- **THEN** the system uses the default markdown chunking strategy (heading-based + paragraph splitting)
+- **AND** no `chunking_strategy` override is configured for the source
+- **THEN** the system uses the default `MarkdownChunkingStrategy` (heading-based + paragraph splitting)
+
+#### Scenario: New chunking strategy added via registry
+
+- **WHEN** a new `ChunkingStrategy` implementation is registered in the strategy registry
+- **THEN** it can be selected via `chunking_strategy` in `sources.d/` configuration
+- **AND** existing strategies are not affected
 
 #### Scenario: YouTube deep-link URL format
 
@@ -591,8 +618,8 @@ The system SHALL detect backend capabilities at startup and select appropriate s
 
 #### Scenario: Search works on Neon
 
-- **WHEN** the database backend is Neon (pg_search unavailable)
-- **THEN** hybrid search uses PostgreSQL Native FTS and pgvector
+- **WHEN** the database backend is Neon (AWS region, pg_search available)
+- **THEN** hybrid search uses ParadeDB BM25 and pgvector
 - **AND** the API response structure is identical to other backends
 
 #### Scenario: Backend compatibility documented
@@ -628,7 +655,7 @@ The system SHALL support configuration of search parameters via environment vari
 **Per-Source Chunking Overrides** (via `sources.d/` YAML):
 - `chunk_size_tokens`: override target chunk size for this source/source type
 - `chunk_overlap_tokens`: override chunk overlap for this source/source type
-- `chunking_strategy`: force a specific chunking strategy (structured, youtube, markdown, section; default: auto-detect from parser_used)
+- `chunking_strategy`: force a specific chunking strategy (structured, youtube_transcript, gemini_summary, markdown, section; default: auto-detect from parser_used). Must match a key in the strategy registry.
 
 **Search Behavior:**
 - `SEARCH_BM25_WEIGHT`: BM25 weight for hybrid search (default: 0.5)
@@ -677,7 +704,7 @@ The system SHALL support configuration of search parameters via environment vari
 
 #### Scenario: BM25 strategy override with unavailable extension
 
-- **WHEN** `SEARCH_BM25_STRATEGY` is set to "paradedb" but pg_search is not installed (e.g., Neon)
+- **WHEN** `SEARCH_BM25_STRATEGY` is set to "paradedb" but pg_search is not installed (e.g., bare PostgreSQL without extensions)
 - **THEN** the system raises a configuration error at startup
 - **AND** the error message indicates pg_search is required for the "paradedb" strategy
 

@@ -14,7 +14,7 @@ The current search implementation is limited to simple ILIKE pattern matching on
 
 Users need to efficiently discover relevant content across thousands of ingested newsletters, uploaded documents, and YouTube transcripts using natural language queries.
 
-Additionally, the system supports multiple PostgreSQL backends (local, Supabase, Neon) with different extension availability — pg_search (ParadeDB) is unavailable on Neon, requiring a portable BM25 abstraction. Embedding model selection should also be configurable to support cost optimization, privacy requirements, and quality tuning across deployment environments.
+Additionally, while all three supported PostgreSQL backends (local, Supabase, Neon) support pg_search (ParadeDB), a portable BM25 abstraction using PostgreSQL Native FTS provides a zero-extension fallback for bare PostgreSQL installations. Embedding model selection should also be configurable to support cost optimization, privacy requirements, and quality tuning across deployment environments.
 
 Search endpoints are designed to be consumed by both human-facing UIs (CLI and web) and programmatic agents. Response schemas include metadata sufficient for agent reasoning about result quality and strategy selection.
 
@@ -27,7 +27,8 @@ Search endpoints are designed to be consumed by both human-facing UIs (CLI and w
 - **Implement hybrid search** combining BM25 document search with chunk-level vector similarity search
 - **Add Reciprocal Rank Fusion (RRF)** to combine and rerank results from multiple search methods
 - **Add optional cross-encoder reranking** using SLM/fast-LLM or dedicated cross-encoder models after RRF for improved final result quality
-- **Create chunking service** with parser-aware strategies for PDFs, YouTube transcripts, markdown, and HTML
+- **Create pluggable chunking service** with `ChunkingStrategy` protocol and built-in strategies for PDFs, YouTube transcripts, Gemini summaries, markdown, and digests — new strategies (e.g., hierarchical chunking) can be registered without modifying the core service
+- **Distinguish YouTube Gemini vs transcript content** — Gemini-processed videos (`parser_used="gemini"`) use section-based chunking while raw transcripts (`parser_used="youtube_transcript_api"`) use timestamp-based chunking, configurable independently per source
 - **Support per-source chunking configuration** via `sources.d/` YAML files (chunk size, overlap, and strategy overrides cascading through existing defaults hierarchy)
 - **Define chunk lifecycle rules** (rechunk/re-embed on content updates; delete chunks on content removal)
 - **Add search API endpoints** for unified search with chunk-level highlighting and navigation
@@ -74,7 +75,7 @@ Search endpoints are designed to be consumed by both human-facing UIs (CLI and w
   - `src/scripts/backfill_chunks.py` — Backfill management command
 - **Dependencies**:
   - pgvector extension (available on all backends)
-  - pg_search extension (optional, ParadeDB — local + Supabase only)
+  - pg_search extension (optional, ParadeDB — available on local, Supabase, and Neon AWS)
   - OpenAI API (default embedding provider)
   - `sentence-transformers` (optional, for local embeddings and local cross-encoder)
   - `voyageai` (optional, for Voyage AI embeddings)

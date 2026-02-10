@@ -16,8 +16,10 @@ The system supports three PostgreSQL backends with different extension availabil
 | Extension | Local PostgreSQL | Supabase | Neon |
 |-----------|------------------|----------|------|
 | **pgvector** | Install manually | Built-in | Built-in |
-| **pg_search (ParadeDB)** | Install manually | Available | **Not available** |
+| **pg_search (ParadeDB)** | Install manually | Available | Available (AWS regions) |
 | **PostgreSQL Native FTS** | Built-in | Built-in | Built-in |
+
+All three supported backends support pg_search, making ParadeDB BM25 the default strategy. PostgreSQL Native FTS serves as a zero-extension fallback for bare PostgreSQL installations or non-AWS Neon deployments.
 
 This design integrates cross-backend compatibility from day one via abstraction protocols, rather than hardcoding a single backend and abstracting later.
 
@@ -49,16 +51,16 @@ This design integrates cross-backend compatibility from day one via abstraction 
 - Federated search across Neo4j knowledge graph (separate capability)
 - Query suggestions/autocomplete (future enhancement)
 - Multi-language search (English-only initially)
-- Identical search quality across backends (native FTS < BM25, documented)
+- Identical search quality when using Native FTS fallback vs ParadeDB BM25 (documented tradeoff)
 
 ## Decisions
 
 ### Decision 1: BM25 Strategy Abstraction
 
-**What**: Define a `BM25SearchStrategy` protocol with two implementations — ParadeDB BM25 (higher quality) and PostgreSQL Native FTS (universal fallback) — selected at runtime based on database backend.
+**What**: Define a `BM25SearchStrategy` protocol with two implementations — ParadeDB BM25 (default, available on all supported backends) and PostgreSQL Native FTS (zero-extension fallback) — selected at runtime based on database capabilities.
 
 **Why**:
-- pg_search is unavailable on Neon, so we cannot hardcode it
+- All three backends (local, Supabase, Neon) support pg_search, but bare PostgreSQL installations may not have it — Native FTS provides a universal fallback
 - Follows existing provider pattern established by `DatabaseProvider`
 - Enables testing with mock strategies
 - Allows future strategies (e.g., pg_trgm for fuzzy matching)
@@ -209,31 +211,110 @@ def get_embedding_provider() -> EmbeddingProvider:
 
 **Trade-off**: Changing embedding provider with different dimensions requires re-creating the vector column and re-indexing all content.
 
-### Decision 4: Semantic Chunking with Parser Integration
+### Decision 4: Pluggable Chunking Strategy Protocol
 
-**What**: Chunk documents into semantically meaningful units that leverage existing parser infrastructure. Strategy is determined by `Content.parser_used` since all content is markdown under the unified model.
+**What**: Define a `ChunkingStrategy` protocol with pluggable implementations, enabling new strategies (e.g., hierarchical chunking based on document structure) to be added and tested without modifying the core service. Strategy is resolved by: explicit per-source override → auto-detection from `Content.parser_used` → default markdown strategy.
 
 **Why**:
 - Embedding entire documents loses semantic precision for long content
 - Parsers already extract rich structural information we should leverage
 - Chunk-level search enables precise snippet highlighting and navigation
-- YouTube timestamps enable deep-linking to exact video moments
+- New chunking approaches (hierarchical, sliding-window, agentic) should be testable per-source without changing the core service
+- YouTube Gemini summarization and raw transcript produce fundamentally different markdown structures requiring separate strategies
 
-**Chunking strategies by parser**:
+**Protocol**:
 
-| Parser | Approach | Boundaries | Metadata |
-|--------|----------|------------|----------|
-| DoclingParser | Section + paragraph | H1-H6, page breaks, table boundaries | Page number, section title |
-| YouTubeParser | Timestamp segments | 30-second windows with sentence boundaries | Video timestamp, deep-link URL |
-| MarkItDownParser | Markdown structure | Headings, list boundaries, code blocks | Section path |
-| Default (Gmail/RSS) | Heading-based | H1/H2/H3, paragraphs | Publication, author |
-| Summaries/Digests | Section headers | `## Section` boundaries | Section type, theme tags |
+```python
+# src/services/chunking.py
+class ChunkingStrategy(Protocol):
+    """Protocol for pluggable document chunking implementations."""
+
+    @property
+    def name(self) -> str: ...
+
+    def chunk(
+        self,
+        content: str,
+        metadata: dict,
+        chunk_size: int = 512,
+        chunk_overlap: int = 64,
+    ) -> list[DocumentChunk]: ...
+```
+
+**Built-in strategies**:
+
+| Strategy | Name | Auto-detected from | Approach | Metadata |
+|----------|------|--------------------|----------|----------|
+| `StructuredChunkingStrategy` | `structured` | DoclingParser | H1-H6, page breaks, table boundaries | Page number, section title |
+| `YouTubeTranscriptChunkingStrategy` | `youtube_transcript` | `youtube_transcript_api` | 30-second timestamp windows with sentence boundaries | Video timestamp, deep-link URL |
+| `GeminiSummaryChunkingStrategy` | `gemini_summary` | `gemini` parser_used | Section headers from Gemini structured output, no timestamps | Section title, topic |
+| `MarkdownChunkingStrategy` | `markdown` | MarkItDownParser, default | Headings, list boundaries, code blocks | Section path |
+| `SectionChunkingStrategy` | `section` | Summaries/Digests | `## Section` boundaries | Section type, theme tags |
+
+**YouTube Gemini vs Transcript distinction**:
+
+The YouTube ingestion pipeline produces two fundamentally different output formats:
+- **`parser_used="gemini"`**: Structured markdown with topic sections (e.g., `## Topic 1: Technical details`). No timestamps. Best chunked by section headers like a document. Uses `GeminiSummaryChunkingStrategy`.
+- **`parser_used="youtube_transcript_api"`**: Timestamped segments with deep-link URLs (e.g., `[00:30](https://youtube.com/...&t=30)`). Best chunked by timestamp windows. Uses `YouTubeTranscriptChunkingStrategy`.
+
+These are configured independently in `sources.d/`:
+```yaml
+# sources.d/youtube_playlist.yaml
+sources:
+- id: PLxxxxxx
+  name: "Gemini-processed"
+  gemini_summary: true
+  chunk_size_tokens: 1024       # Gemini output is well-structured, larger chunks ok
+  chunking_strategy: gemini_summary  # Auto-detected, but can be explicit
+
+- id: PLyyyyyy
+  name: "Transcript-only"
+  gemini_summary: false
+  chunk_size_tokens: 512
+  chunking_strategy: youtube_transcript  # Auto-detected from parser_used
+```
+
+**Strategy factory and registry**:
+
+```python
+# src/services/chunking.py
+STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = {
+    "structured": StructuredChunkingStrategy,
+    "youtube_transcript": YouTubeTranscriptChunkingStrategy,
+    "gemini_summary": GeminiSummaryChunkingStrategy,
+    "markdown": MarkdownChunkingStrategy,
+    "section": SectionChunkingStrategy,
+}
+
+PARSER_TO_STRATEGY: dict[str, str] = {
+    "DoclingParser": "structured",
+    "youtube_transcript_api": "youtube_transcript",
+    "gemini": "gemini_summary",
+    "MarkItDownParser": "markdown",
+}
+
+def get_chunking_strategy(
+    parser_used: str | None = None,
+    strategy_override: str | None = None,
+) -> ChunkingStrategy:
+    """Resolve: explicit override → parser_used mapping → default markdown."""
+    name = strategy_override or PARSER_TO_STRATEGY.get(parser_used or "", "markdown")
+    cls = STRATEGY_REGISTRY.get(name, MarkdownChunkingStrategy)
+    return cls()
+```
+
+**Extensibility**: To add a new strategy (e.g., hierarchical chunking):
+1. Implement `ChunkingStrategy` protocol in a new class
+2. Register it in `STRATEGY_REGISTRY`
+3. Optionally map it to a parser in `PARSER_TO_STRATEGY`
+4. Configure per-source via `chunking_strategy: hierarchical` in `sources.d/`
 
 **Chunk size targets** (global defaults, overridable per-source):
 - Target: ~512 tokens per chunk
 - Overlap: ~64 tokens between consecutive chunks (context continuity)
 - Tables: Kept whole even if exceeding target (up to 2048 tokens)
-- YouTube segments: Grouped to ~30 seconds (natural speech units)
+- YouTube transcript segments: Grouped to ~30 seconds (natural speech units)
+- Gemini summaries: Chunked by topic section (typically 200-800 tokens each)
 
 These defaults can be overridden at the source level — see Decision 10.
 
@@ -337,15 +418,27 @@ class HybridSearchService:
         ...
 ```
 
-### Decision 7: Cross-Encoder Reranking
+### Decision 7: Pluggable Reranking Provider (Symmetric with Embedding)
 
-**What**: An optional reranking step after RRF fusion that uses a cross-encoder or fast LLM to score (query, chunk_text) pairs for improved result quality. Disabled by default.
+**What**: An optional reranking step after RRF fusion using a pluggable `RerankProvider` protocol — architecturally symmetric with the `EmbeddingProvider` pattern (protocol → implementations → factory → config). Disabled by default.
 
 **Why**:
 - Bi-encoder embeddings (used in vector search) encode query and document independently — cross-encoders jointly encode (query, document) for much higher relevance accuracy
 - RRF produces good results but a cross-encoder can significantly improve the top-10 ranking quality
 - SLMs and fast LLMs (Gemini Flash, Claude Haiku) are now fast enough for practical reranking
 - Making it optional means zero latency impact when not needed
+- Using the same protocol → factory → config pattern as embedding ensures consistent extensibility
+
+**Provider pattern** (mirrors `EmbeddingProvider`):
+
+| Aspect | Embedding | Reranking |
+|--------|-----------|-----------|
+| Protocol | `EmbeddingProvider` | `RerankProvider` |
+| Factory | `get_embedding_provider()` | `get_rerank_provider()` |
+| Config: provider | `EMBEDDING_PROVIDER` | `SEARCH_RERANK_PROVIDER` |
+| Config: model | `EMBEDDING_MODEL` | `SEARCH_RERANK_MODEL` |
+| Config: enabled | Always on | `SEARCH_RERANK_ENABLED` (default: false) |
+| Returns | `list[float]` (embedding vector) | `list[tuple[int, float]]` (index, score) |
 
 **Supported providers**:
 
@@ -516,7 +609,7 @@ sources:
 4. Otherwise → fall back to global `Settings.chunk_size_tokens` / `Settings.chunk_overlap_tokens`
 5. Strategy auto-detection from `parser_used` remains the default when no override is specified
 
-**Valid `chunking_strategy` values**: `structured` (DoclingParser-style), `youtube` (timestamp-based), `markdown` (heading-based), `section` (summary/digest-style)
+**Valid `chunking_strategy` values**: `structured` (DoclingParser-style), `youtube_transcript` (timestamp-based), `gemini_summary` (Gemini structured output), `markdown` (heading-based), `section` (summary/digest-style) — must match keys in `STRATEGY_REGISTRY` (see Decision 4)
 
 **Alternatives considered**:
 - Store chunking config in the database per-content: More complex, harder to audit, no cascading defaults
@@ -527,7 +620,7 @@ sources:
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| pg_search unavailable on Neon | Lower search quality | Native FTS fallback, document quality difference |
+| pg_search unavailable on bare PostgreSQL | Lower search quality | Native FTS fallback, document quality difference |
 | Embedding cost at scale | Higher ingestion costs | Batch embedding, local model option, feature flag |
 | Index size growth | Disk usage, slower backups | Monitor size, partial indexes, chunk limits |
 | Native FTS quality < BM25 | Lower relevance on Neon | Document clearly, recommend pg_search for production |
@@ -569,7 +662,7 @@ sources:
 5. **Vector search highlighting strategy?** — Highlight based on original query *terms* (keyword matching) in all chunk results, regardless of whether the chunk was found via BM25 or vector search. For vector-only results where no query terms appear literally, the `highlight` field is set to the first 200 characters of `chunk_text` (no `<mark>` tags). This is the standard approach used by hybrid search systems (Vespa, Weaviate).
 6. **Backfill: re-parse from raw source or markdown_content?** — Re-chunk from existing `Content.markdown_content` only. The unified model already stores parsed markdown; parsers already ran at ingest time. Backfill does NOT re-fetch raw source or re-run parsers — it only runs the chunking + embedding pipeline on existing markdown.
 7. **Do we chunk original Content or Digest summaries? Or both?** — Both. `document_chunks.content_id` references `contents.id`. Digests and summaries that are stored as Content records get chunked like any other content. The `_chunk_section_markdown()` strategy handles their `## Section` structure.
-8. **Boolean query syntax across backends?** — Normalize to simple terms. Both strategies receive the raw query string; `PostgresNativeFTSStrategy` uses `plainto_tsquery()` which strips operators, `ParadeDBBM25Strategy` passes the query directly to `@@@`. This means Neon users lose Boolean operators (AND/OR/NOT) — this is a documented quality tradeoff, not a bug.
+8. **Boolean query syntax across backends?** — Normalize to simple terms. Both strategies receive the raw query string; `PostgresNativeFTSStrategy` uses `plainto_tsquery()` which strips operators, `ParadeDBBM25Strategy` passes the query directly to `@@@`. Users on the Native FTS fallback lose Boolean operators (AND/OR/NOT) — this is a documented quality tradeoff, not a bug. Since all three supported backends (local, Supabase, Neon) support pg_search, this mainly affects bare PostgreSQL installations.
 9. **Protocol mockability for testing?** — Use `typing.Protocol` (not ABC). Protocols are structurally typed — any class matching the method signatures satisfies the protocol. Tests use concrete mock classes (not `unittest.mock.Mock`) to ensure type safety. Mark protocols with `@runtime_checkable` for isinstance checks in factories.
 
 ## Open Questions
