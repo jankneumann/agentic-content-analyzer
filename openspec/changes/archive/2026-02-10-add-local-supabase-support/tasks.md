@@ -61,3 +61,6 @@
 - [x] 7.3 Add troubleshooting section for common issues
 - [x] 7.4 Update CLAUDE.md with local Supabase guidance
 - [x] 7.5 Add schema migration workflow guide
+
+## Migration Notes
+Open tasks migrated to beads issue `aca-7eq` (Add CI workflow for local Supabase integration tests) on 2026-02-09.
