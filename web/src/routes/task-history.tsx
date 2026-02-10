@@ -81,10 +81,16 @@ function getStatusBadge(status: string) {
 function TaskHistoryPage() {
   const [filters, setFilters] = useState<JobHistoryFilters>({
     page: 1,
-    page_size: 50,
+    page_size: 20,
   })
 
   const { data, isLoading } = useJobHistory(filters)
+
+  const hasActiveFilters = !!(filters.since || filters.entrypoint || filters.status)
+
+  const clearFilters = () => {
+    setFilters({ page: 1, page_size: 20 })
+  }
 
   const updateFilter = (key: keyof JobHistoryFilters, value: string | undefined) => {
     setFilters((prev) => ({
@@ -162,10 +168,15 @@ function TaskHistoryPage() {
           ))}
         </div>
       ) : !data || data.data.length === 0 ? (
-        <div className="flex h-64 items-center justify-center rounded-lg border border-dashed">
+        <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-lg border border-dashed">
           <p className="text-sm text-muted-foreground">
             No task history found
           </p>
+          {hasActiveFilters && (
+            <Button variant="link" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          )}
         </div>
       ) : (
         <>

@@ -78,7 +78,7 @@ test.describe("Task History Page", () => {
     await apiMocks.mockJobHistory(
       createJobHistoryResponse({
         data: manyItems,
-        pagination: { page: 1, page_size: 50, total: 150 },
+        pagination: { page: 1, page_size: 20, total: 60 },
       })
     )
 

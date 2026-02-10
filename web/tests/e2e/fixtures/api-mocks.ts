@@ -686,7 +686,7 @@ export class ApiMocks {
     await this.mockJobHistory(
       mockData.createJobHistoryResponse({
         data: [],
-        pagination: { page: 1, page_size: 50, total: 0 },
+        pagination: { page: 1, page_size: 20, total: 0 },
       })
     )
   }

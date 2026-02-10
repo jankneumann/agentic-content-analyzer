@@ -349,7 +349,7 @@ def history(
             typer.echo(f"Error: Invalid status '{status}'. Valid options: {valid}")
             raise typer.Exit(1)
 
-    limit = last if last else 50
+    limit = last if last else 20
 
     try:
         items, total = run_async(
@@ -367,16 +367,18 @@ def history(
 
     if not items:
         if is_json_mode():
-            output_result({"history": [], "total": 0})
+            output_result({"jobs": [], "total": 0, "offset": 0, "limit": limit})
         else:
-            typer.echo("No task history found matching the criteria.")
+            typer.echo("No jobs found matching the criteria.")
         return
 
     if is_json_mode():
         output_result(
             {
-                "history": [_format_history_item(i) for i in items],
+                "jobs": [_format_history_item(i) for i in items],
                 "total": total,
+                "offset": 0,
+                "limit": limit,
             }
         )
         return

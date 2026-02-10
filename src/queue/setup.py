@@ -832,7 +832,7 @@ async def list_job_history(
                    j.created_at, j.started_at, j.completed_at,
                    c.id AS content_id, c.title AS content_title
             FROM pgqueuer_jobs j
-            LEFT JOIN content c
+            LEFT JOIN contents c
               ON j.payload ? 'content_id'
               AND (j.payload->>'content_id')::int = c.id
             WHERE {where_clause}

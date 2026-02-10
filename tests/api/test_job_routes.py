@@ -586,7 +586,7 @@ class TestJobHistoryEndpoint:
         assert call_kwargs["offset"] == 1  # (2-1) * 1
 
     def test_history_default_page_size(self, sample_history):
-        """Test history default page_size is 50."""
+        """Test history default page_size is 20."""
         with patch(
             "src.api.job_routes.list_job_history",
             new_callable=AsyncMock,
@@ -597,4 +597,4 @@ class TestJobHistoryEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["pagination"]["page_size"] == 50
+        assert data["pagination"]["page_size"] == 20

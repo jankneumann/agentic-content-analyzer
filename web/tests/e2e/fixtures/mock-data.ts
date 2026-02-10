@@ -747,7 +747,7 @@ export function createJobHistoryResponse(
       createJobHistoryItem({ id: 2, entrypoint: "ingest_content", task_label: "Ingest", status: "completed", content_id: null, description: "Gmail ingestion" }),
       createJobHistoryItem({ id: 3, entrypoint: "summarize_content", task_label: "Summarize", status: "failed", content_id: 42, description: "ML Ops Digest", error: "Connection timeout" }),
     ],
-    pagination: overrides.pagination ?? { page: 1, page_size: 50, total: 3 },
+    pagination: overrides.pagination ?? { page: 1, page_size: 20, total: 3 },
   }
 }
 

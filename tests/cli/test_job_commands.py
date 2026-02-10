@@ -75,10 +75,10 @@ class TestJobsHistoryCommand:
         import json
 
         data = json.loads(result.output)
-        assert "history" in data
-        assert len(data["history"]) == 2
+        assert "jobs" in data
+        assert len(data["jobs"]) == 2
         assert data["total"] == 2
-        assert data["history"][0]["task_label"] == "Summarize"
+        assert data["jobs"][0]["task_label"] == "Summarize"
 
     def test_history_empty_results(self):
         """Test empty results display."""
@@ -90,7 +90,7 @@ class TestJobsHistoryCommand:
             result = runner.invoke(app, ["jobs", "history"])
 
         assert result.exit_code == 0
-        assert "No task history found" in result.output
+        assert "No jobs found" in result.output
 
     def test_history_empty_results_json(self):
         """Test empty results in JSON mode."""
@@ -105,7 +105,7 @@ class TestJobsHistoryCommand:
         import json
 
         data = json.loads(result.output)
-        assert data["history"] == []
+        assert data["jobs"] == []
         assert data["total"] == 0
 
     def test_history_since_shorthand(self):

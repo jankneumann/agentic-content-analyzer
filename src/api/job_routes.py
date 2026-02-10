@@ -74,7 +74,7 @@ async def get_job_history(
     status: JobStatus | None = Query(None, description="Filter by job status"),
     entrypoint: str | None = Query(None, description="Filter by task entrypoint"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
 ) -> JobHistoryResponse:
     """
     Get enriched job history for the audit view.
