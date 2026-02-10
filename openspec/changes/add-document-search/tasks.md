@@ -56,16 +56,16 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 - [ ] A.6 Test migration on local PostgreSQL (with and without pg_search)
 
 ## B. Configuration
-> No dependencies. Files: `src/config/settings.py`, `src/config/sources.py`
+> No dependencies. Files: `src/config/settings.py`, `src/config/sources.py`, `profiles/*.yaml`
 
-- [ ] B.1 Add search configuration fields to `Settings`:
-  - `embedding_provider: str = "openai"`
-  - `embedding_model: str | None = None`
-  - `embedding_dimensions: int = 1536`
-  - `search_bm25_strategy: str | None = None` (auto-detect)
+- [ ] B.1 Add search configuration fields to `Settings` class in `src/config/settings.py`:
+  - `embedding_provider: str = "local"` (dev-friendly default; production profiles override to "openai")
+  - `embedding_model: str = "all-MiniLM-L6-v2"` (dev default; production overrides)
+  - `embedding_dimensions: int = 384` (matches dev default model; production overrides to 1536)
+  - `search_bm25_strategy: str = "auto"` (auto-detect pg_search availability)
   - `search_rerank_enabled: bool = False`
   - `search_rerank_provider: str = "cohere"`
-  - `search_rerank_model: str | None = None`
+  - `search_rerank_model: str | None = None` (None = provider default)
   - `search_rerank_top_k: int = 50`
   - `chunk_size_tokens: int = 512`
   - `chunk_overlap_tokens: int = 64`
@@ -75,17 +75,30 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
   - `search_default_limit: int = 20`
   - `search_max_limit: int = 100`
   - `enable_search_indexing: bool = True`
-- [ ] B.2 Add optional API key fields:
+- [ ] B.2 Add optional API key fields to `Settings`:
   - `voyage_api_key: str | None = None`
   - `cohere_api_key: str | None = None`
   - `jina_api_key: str | None = None`
-- [ ] B.3 Add per-source chunking fields to `SourceDefaults` in `src/config/sources.py`:
-  - `chunk_size_tokens: int | None = None` — override global default
-  - `chunk_overlap_tokens: int | None = None` — override global default
-  - `chunking_strategy: str | None = None` — force strategy (structured, youtube, markdown, section)
+- [ ] B.3 Add `settings.search` section to `profiles/base.yaml` with development defaults:
+  - `embedding_provider: local` (no API costs for local dev)
+  - `embedding_model: all-MiniLM-L6-v2`
+  - `embedding_dimensions: 384`
+  - `search_bm25_strategy: auto`
+  - `search_rerank_enabled: false`
+  - All chunking and search behavior defaults (512 tokens, 64 overlap, etc.)
+  - Add `voyage_api_key`, `cohere_api_key`, `jina_api_key` to `api_keys` section with `${VAR:-}` interpolation
+- [ ] B.4 Add search overrides to `profiles/staging.yaml`:
+  - `embedding_provider: openai`, `embedding_model: text-embedding-3-small`, `embedding_dimensions: 1536`
+  - `search_rerank_enabled: true`, `search_rerank_provider: cohere`
+- [ ] B.5 Add search overrides to `profiles/railway.yaml`:
+  - Same as staging but with `search_rerank_model: rerank-english-v3.0` (explicit model for production)
+- [ ] B.6 Add per-source chunking fields to `SourceDefaults` in `src/config/sources.py`:
+  - `chunk_size_tokens: int | None = None` — override profile/global default
+  - `chunk_overlap_tokens: int | None = None` — override profile/global default
+  - `chunking_strategy: str | None = None` — force strategy (structured, youtube_transcript, gemini_summary, markdown, section)
   - These cascade via existing SourceDefaults → per-file defaults → per-entry pattern
-- [ ] B.4 Wire new settings into `profiles/base.yaml` with `${VAR:-}` interpolation
-- [ ] B.5 Update `.env.example` with all new configuration options
+- [ ] B.7 Update `.env.example` with all new configuration options (for non-profile users)
+- [ ] B.8 Write unit tests for Settings field defaults and profile override behavior
 
 ## C. Data Models
 > Depends on: A (table structure). Files: `src/models/chunk.py`, `src/models/search.py`

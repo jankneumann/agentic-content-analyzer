@@ -665,13 +665,28 @@ The system SHALL support configuration of search parameters via environment vari
 - `SEARCH_MAX_LIMIT`: maximum allowed result limit (default: 100)
 - `ENABLE_SEARCH_INDEXING`: feature flag to enable/disable chunking and embedding (default: true)
 
-#### Scenario: Default configuration
+#### Scenario: Default configuration with base profile
 
-- **WHEN** no search configuration is specified
-- **THEN** the system uses OpenAI text-embedding-3-small for embeddings
+- **WHEN** the `base` profile is active (or no profile overrides search settings)
+- **THEN** the system uses local sentence-transformers (`all-MiniLM-L6-v2`, 384 dims) for embeddings
 - **AND** auto-detects the best available BM25 strategy
 - **AND** disables cross-encoder reranking
 - **AND** uses default values for all other parameters
+
+#### Scenario: Production profile enables cloud providers
+
+- **WHEN** the `railway` or `staging` profile is active
+- **THEN** the system uses OpenAI `text-embedding-3-small` (1536 dims) for embeddings
+- **AND** enables Cohere reranking
+- **AND** all other settings inherit from base profile unless explicitly overridden
+
+#### Scenario: Profile precedence for search settings
+
+- **WHEN** `profiles/base.yaml` sets `embedding_provider: local`
+- **AND** `profiles/railway.yaml` sets `embedding_provider: openai`
+- **AND** `PROFILE=railway` is active
+- **THEN** the system uses OpenAI (profile override wins over base default)
+- **AND** if `EMBEDDING_PROVIDER=voyage` environment variable is also set, Voyage wins (env vars always take precedence)
 
 #### Scenario: Custom embedding provider
 

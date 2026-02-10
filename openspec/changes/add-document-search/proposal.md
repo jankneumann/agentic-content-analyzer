@@ -53,7 +53,7 @@ Search endpoints are designed to be consumed by both human-facing UIs (CLI and w
 
 - **Integrate chunking/embedding into ingestion pipeline** (non-blocking, feature-flagged)
 - **Add backfill command** for existing documents with batch processing, rate limiting, and resume
-- **Add search configuration** for model selection, chunk sizing, weighting, and filtering
+- **Add search configuration via profile system** — defaults in `profiles/base.yaml` (local embedding for dev), overrides in `profiles/staging.yaml` and `profiles/railway.yaml` (cloud embedding + reranking for production)
 
 ## Impact
 

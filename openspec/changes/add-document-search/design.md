@@ -316,7 +316,7 @@ def get_chunking_strategy(
 - YouTube transcript segments: Grouped to ~30 seconds (natural speech units)
 - Gemini summaries: Chunked by topic section (typically 200-800 tokens each)
 
-These defaults can be overridden at the source level — see Decision 10.
+These defaults can be overridden at the source level — see Decision 11.
 
 **Table handling**: Tables from DoclingParser are their own chunks (`chunk_type="table"`) with caption and headers prepended as context.
 
@@ -542,7 +542,93 @@ class LLMRerankProvider:
 
 **Design rationale for `meta` object**: The metadata enables programmatic agents to reason about search quality (e.g., a Deep Research Agent can note that results came from native FTS and adjust its confidence accordingly). It also helps debug search quality issues in production.
 
-### Decision 9: Ingestion Integration and Backfill
+### Decision 9: Profile-Based Search Configuration
+
+**What**: Define all search, embedding, chunking, and reranking settings in the profile system (`profiles/base.yaml`), with child profiles overriding for different deployment environments.
+
+**Why**:
+- Follows the established pattern used by database, neo4j, storage, and observability settings
+- `base.yaml` provides sensible development defaults (e.g., local embedding to avoid API costs)
+- Production profiles (`railway.yaml`, `staging.yaml`) can enable reranking and use cloud embedding providers
+- Secrets (API keys) use existing `${VAR:-}` interpolation from `.secrets.yaml`
+- Environment variables still win over profile values (established precedence order)
+
+**base.yaml search section** (defaults for all profiles):
+
+```yaml
+# profiles/base.yaml
+settings:
+  # ---------------------------------------------------------------------------
+  # Search Settings
+  # ---------------------------------------------------------------------------
+  search:
+    # Embedding
+    embedding_provider: local              # Cost-free for development
+    embedding_model: all-MiniLM-L6-v2
+    embedding_dimensions: 384
+
+    # BM25
+    search_bm25_strategy: auto             # auto-detect pg_search availability
+
+    # Reranking (disabled for development)
+    search_rerank_enabled: false
+    search_rerank_provider: cohere
+    search_rerank_model: ""                # empty = provider default
+    search_rerank_top_k: 50
+
+    # Chunking
+    chunk_size_tokens: 512
+    chunk_overlap_tokens: 64
+
+    # Search behavior
+    search_bm25_weight: 0.5
+    search_vector_weight: 0.5
+    search_rrf_k: 60
+    search_default_limit: 20
+    search_max_limit: 100
+    enable_search_indexing: true
+
+  api_keys:
+    # ... existing keys ...
+    voyage_api_key: "${VOYAGE_API_KEY:-}"
+    cohere_api_key: "${COHERE_API_KEY:-}"
+    jina_api_key: "${JINA_API_KEY:-}"
+```
+
+**Child profile overrides**:
+
+```yaml
+# profiles/local.yaml — inherits base defaults (local embedding, no reranking)
+# No search section needed — base defaults are suitable for local dev
+
+# profiles/staging.yaml — production-like with cloud providers
+settings:
+  search:
+    embedding_provider: openai
+    embedding_model: text-embedding-3-small
+    embedding_dimensions: 1536
+    search_rerank_enabled: true
+    search_rerank_provider: cohere
+
+# profiles/railway.yaml — production with full search stack
+settings:
+  search:
+    embedding_provider: openai
+    embedding_model: text-embedding-3-small
+    embedding_dimensions: 1536
+    search_rerank_enabled: true
+    search_rerank_provider: cohere
+    search_rerank_model: rerank-english-v3.0
+```
+
+**Precedence order** (highest to lowest, matching existing system):
+1. Environment variables (always win)
+2. Profile settings (from active profile YAML)
+3. Secrets file (`.secrets.yaml` via `${VAR}` interpolation)
+4. `.env` file (fallback when no profile active)
+5. Settings class defaults
+
+### Decision 10: Ingestion Integration and Backfill
 
 **What**: Integrate chunking and embedding at ingest time (non-blocking, feature-flagged), with a backfill command for existing documents.
 
@@ -569,7 +655,7 @@ class LLMRerankProvider:
 - Reports progress (processed/total, chunks created, ETA)
 - Supports dry-run mode
 
-### Decision 10: Source-Configurable Chunking Strategy
+### Decision 11: Source-Configurable Chunking Strategy
 
 **What**: Allow per-source override of chunking parameters (chunk size, overlap, and strategy) via the existing `sources.d/` YAML configuration, using the established cascading defaults pattern.
 
