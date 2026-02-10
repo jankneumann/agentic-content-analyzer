@@ -229,11 +229,13 @@ def get_embedding_provider() -> EmbeddingProvider:
 | Default (Gmail/RSS) | Heading-based | H1/H2/H3, paragraphs | Publication, author |
 | Summaries/Digests | Section headers | `## Section` boundaries | Section type, theme tags |
 
-**Chunk size targets**:
+**Chunk size targets** (global defaults, overridable per-source):
 - Target: ~512 tokens per chunk
 - Overlap: ~64 tokens between consecutive chunks (context continuity)
 - Tables: Kept whole even if exceeding target (up to 2048 tokens)
 - YouTube segments: Grouped to ~30 seconds (natural speech units)
+
+These defaults can be overridden at the source level — see Decision 10.
 
 **Table handling**: Tables from DoclingParser are their own chunks (`chunk_type="table"`) with caption and headers prepended as context.
 
@@ -473,6 +475,53 @@ class LLMRerankProvider:
 - Rate-limits embedding API calls
 - Reports progress (processed/total, chunks created, ETA)
 - Supports dry-run mode
+
+### Decision 10: Source-Configurable Chunking Strategy
+
+**What**: Allow per-source override of chunking parameters (chunk size, overlap, and strategy) via the existing `sources.d/` YAML configuration, using the established cascading defaults pattern.
+
+**Why**:
+- Different content sources have different characteristics — a long-form podcast transcript benefits from larger chunks (1024 tokens) while a short RSS newsletter may do better with smaller chunks (256 tokens)
+- YouTube transcripts have natural 30-second windows that may be too short for some channels and too long for others
+- The `sources.d/` cascading defaults already support per-type and per-entry overrides — extending to chunking is zero new infrastructure
+- Enables experimentation with chunking parameters per source without affecting the global default
+
+**Implementation**:
+
+```python
+# src/config/sources.py — Add to SourceDefaults
+class SourceDefaults(BaseModel):
+    # ... existing fields ...
+    chunk_size_tokens: int | None = None       # Override CHUNK_SIZE_TOKENS
+    chunk_overlap_tokens: int | None = None    # Override CHUNK_OVERLAP_TOKENS
+    chunking_strategy: str | None = None       # Force: structured, youtube, markdown, section
+```
+
+```yaml
+# sources.d/podcasts.yaml — Example: larger chunks for podcasts
+defaults:
+  type: podcast
+  chunk_size_tokens: 1024
+  chunk_overlap_tokens: 128
+sources:
+- name: Lex Fridman
+  url: https://lexfridman.com/feed/podcast
+  chunk_size_tokens: 2048    # Even larger for very long episodes
+```
+
+**Resolution flow in ChunkingService**:
+1. Look up the source config entry for the content being chunked (via `Content.source_url` or `Content.source_type`)
+2. If source entry has `chunking_strategy` override → use that strategy instead of auto-detecting from `parser_used`
+3. If source entry has `chunk_size_tokens` / `chunk_overlap_tokens` → use those values
+4. Otherwise → fall back to global `Settings.chunk_size_tokens` / `Settings.chunk_overlap_tokens`
+5. Strategy auto-detection from `parser_used` remains the default when no override is specified
+
+**Valid `chunking_strategy` values**: `structured` (DoclingParser-style), `youtube` (timestamp-based), `markdown` (heading-based), `section` (summary/digest-style)
+
+**Alternatives considered**:
+- Store chunking config in the database per-content: More complex, harder to audit, no cascading defaults
+- Separate chunking config file: Fragments configuration; sources.d already has the right abstraction
+- Per-parser config only: Doesn't allow per-feed tuning within the same parser type
 
 ## Risks / Trade-offs
 

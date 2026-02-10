@@ -56,7 +56,7 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 - [ ] A.6 Test migration on local PostgreSQL (with and without pg_search)
 
 ## B. Configuration
-> No dependencies. Files: `src/config/settings.py`
+> No dependencies. Files: `src/config/settings.py`, `src/config/sources.py`
 
 - [ ] B.1 Add search configuration fields to `Settings`:
   - `embedding_provider: str = "openai"`
@@ -79,8 +79,13 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
   - `voyage_api_key: str | None = None`
   - `cohere_api_key: str | None = None`
   - `jina_api_key: str | None = None`
-- [ ] B.3 Wire new settings into `profiles/base.yaml` with `${VAR:-}` interpolation
-- [ ] B.4 Update `.env.example` with all new configuration options
+- [ ] B.3 Add per-source chunking fields to `SourceDefaults` in `src/config/sources.py`:
+  - `chunk_size_tokens: int | None = None` — override global default
+  - `chunk_overlap_tokens: int | None = None` — override global default
+  - `chunking_strategy: str | None = None` — force strategy (structured, youtube, markdown, section)
+  - These cascade via existing SourceDefaults → per-file defaults → per-entry pattern
+- [ ] B.4 Wire new settings into `profiles/base.yaml` with `${VAR:-}` interpolation
+- [ ] B.5 Update `.env.example` with all new configuration options
 
 ## C. Data Models
 > Depends on: A (table structure). Files: `src/models/chunk.py`, `src/models/search.py`
@@ -101,7 +106,11 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 > Depends on: C (DocumentChunk model). Files: `src/services/chunking.py`
 
 - [ ] D.1 Create `src/services/chunking.py` with `ChunkingService` class
-- [ ] D.2 Implement `chunk_content(content: Content) -> list[DocumentChunk]` router method that dispatches based on `content.parser_used` (falls back to default markdown chunking for NULL or unrecognized parser; returns empty list with warning for empty/NULL markdown_content)
+- [ ] D.2 Implement `chunk_content(content: Content, source_config: SourceEntry | None = None) -> list[DocumentChunk]` router method:
+  - If `source_config.chunking_strategy` is set: use that strategy (structured, youtube, markdown, section)
+  - Otherwise: dispatch based on `content.parser_used` (falls back to default markdown chunking for NULL or unrecognized parser)
+  - If `source_config.chunk_size_tokens` / `chunk_overlap_tokens` is set: use those values; otherwise use global `Settings` defaults
+  - Returns empty list with warning for empty/NULL `markdown_content`
 - [ ] D.3 Implement `_chunk_structured_document()` for DoclingParser output:
   - Parse markdown heading hierarchy
   - Split on H1-H6 boundaries
@@ -124,7 +133,12 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 - [ ] D.7 Add chunk size validation and splitting for oversized chunks (>512 tokens)
 - [ ] D.8 Add chunk overlap logic for context continuity (~64 tokens)
 - [ ] D.9 Write unit tests for each chunking strategy with fixture markdown (include: empty content, single-line content, content with only headings, content exceeding max chunk size)
-- [ ] D.10 Write integration tests with real parser output samples (DoclingParser PDF, YouTubeParser transcript, MarkItDownParser DOCX)
+- [ ] D.10 Write unit tests for per-source chunking overrides:
+  - Source with `chunk_size_tokens: 256` produces smaller chunks than default
+  - Source with `chunking_strategy: youtube` forces YouTube chunking regardless of parser_used
+  - Source without overrides uses global Settings defaults
+  - Cascading: per-entry > per-file defaults > global Settings
+- [ ] D.11 Write integration tests with real parser output samples (DoclingParser PDF, YouTubeParser transcript, MarkItDownParser DOCX)
 
 ## E. Embedding Provider Abstraction
 > Depends on: B (settings), C (model for dimensions). Files: `src/services/embedding.py`
@@ -213,7 +227,9 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
 > Depends on: D (chunking), E (embedding), G (search service must be stable). Files: `src/ingestion/`, `src/services/indexing.py`
 > **IMPORTANT**: J.2-J.6 MUST run sequentially (one agent) to avoid merge conflicts across ingestion files.
 
-- [ ] J.1 Create `src/services/indexing.py` with shared `index_content(content: Content, db: Session)` helper:
+- [ ] J.1 Create `src/services/indexing.py` with shared `index_content(content: Content, db: Session, source_config: SourceEntry | None = None)` helper:
+  - Passes `source_config` to `ChunkingService.chunk_content()` for per-source chunking overrides
+  - Looks up source config from `settings.get_sources_config()` by matching `content.source_url` if `source_config` is not provided
   - Runs chunking + embedding in a separate transaction from content ingestion
   - Gated behind `ENABLE_SEARCH_INDEXING` setting
   - Catches all exceptions: logs error with content_id, does not re-raise

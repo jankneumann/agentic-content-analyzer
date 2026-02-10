@@ -80,11 +80,15 @@ The system SHALL use different chunking strategies based on `Content.parser_used
 - **Default** (Gmail, RSS): Split on heading boundaries, fall back to paragraph splitting
 - **Summaries/Digests**: Split on `## Section` headers (Executive Summary, Key Themes, etc.)
 
-The system SHALL use the default markdown chunking strategy when `Content.parser_used` is NULL or unrecognized.
+The system SHALL support per-source chunking configuration via `sources.d/` YAML files, allowing override of chunk size, overlap, and chunking strategy at the global, per-type, or per-entry level.
+
+The system SHALL resolve chunking parameters using the existing cascading defaults: global `Settings` → `sources.d/_defaults.yaml` → per-file defaults → per-entry fields (most specific wins).
+
+The system SHALL use the default markdown chunking strategy when `Content.parser_used` is NULL or unrecognized and no `chunking_strategy` override is configured for the source.
 
 The system SHALL produce zero chunks (and log a warning) when `Content.markdown_content` is empty or NULL.
 
-The system SHALL target ~512 tokens per chunk with ~64 tokens overlap between consecutive chunks.
+The system SHALL target ~512 tokens per chunk with ~64 tokens overlap between consecutive chunks, unless overridden by per-source configuration.
 
 The system SHALL keep tables as whole chunks even if they exceed the target size (up to 2048 tokens).
 
@@ -127,6 +131,31 @@ The system SHALL keep tables as whole chunks even if they exceed the target size
 - **THEN** the table is stored as a single chunk with `chunk_type="table"`
 - **AND** the table caption and headers are prepended as context
 - **AND** the chunk is not split even if it exceeds 512 tokens (up to 2048 tokens)
+
+#### Scenario: Per-source chunk size override
+
+- **WHEN** a source entry in `sources.d/rss.yaml` specifies `chunk_size_tokens: 256` and `chunk_overlap_tokens: 32`
+- **THEN** content ingested from that source is chunked with 256-token targets and 32-token overlap
+- **AND** the global `CHUNK_SIZE_TOKENS` setting is not affected
+
+#### Scenario: Per-source chunking strategy override
+
+- **WHEN** a source entry specifies `chunking_strategy: youtube`
+- **THEN** content from that source uses the YouTube transcript chunking strategy regardless of `parser_used`
+- **AND** other sources without a `chunking_strategy` override continue to auto-detect from `parser_used`
+
+#### Scenario: Per-type chunking defaults
+
+- **WHEN** `sources.d/podcasts.yaml` specifies `defaults.chunk_size_tokens: 1024`
+- **THEN** all podcast sources in that file inherit the 1024-token chunk size
+- **AND** individual podcast entries can further override with their own `chunk_size_tokens`
+
+#### Scenario: Cascading chunking defaults resolution
+
+- **WHEN** `Settings.chunk_size_tokens` is 512, `sources.d/rss.yaml` defaults specify 384, and one RSS entry specifies 256
+- **THEN** most RSS sources use 384-token chunks
+- **AND** the specific entry uses 256-token chunks
+- **AND** sources in other files without overrides use the global 512-token default
 
 #### Scenario: Empty content produces no chunks
 
@@ -258,6 +287,19 @@ The system SHALL return results with matching chunks highlighted.
 - **THEN** chunks with `chunk_type="table"` are searchable
 - **AND** table chunks include caption and header context
 
+#### Scenario: Query embedding generation fails
+
+- **WHEN** the embedding provider fails to generate a query embedding (API error, timeout)
+- **THEN** the system falls back to BM25-only search
+- **AND** the response metadata indicates `embedding_provider: null`
+- **AND** vector scores are omitted from the `scores` object
+
+#### Scenario: No chunks have embeddings
+
+- **WHEN** a vector or hybrid search is executed but no chunks in the database have embeddings
+- **THEN** the vector component returns an empty result set
+- **AND** hybrid search returns BM25-only results (if BM25 component has matches)
+
 ---
 
 ### Requirement: Hybrid Search with RRF Reranking
@@ -359,6 +401,13 @@ The system SHALL expose the reranking provider in search response metadata when 
 - **THEN** the search response metadata includes `rerank_provider` and `rerank_model`
 - **AND** includes `rerank_top_k` indicating how many candidates were reranked
 
+#### Scenario: Reranking provider API failure
+
+- **WHEN** the reranking provider returns an error (timeout, rate limit, API failure)
+- **THEN** the system logs the error
+- **AND** falls back to returning the RRF-ranked results without reranking
+- **AND** the response metadata omits `rerank_provider` (indicating reranking did not complete)
+
 ---
 
 ### Requirement: Search Filtering
@@ -396,6 +445,12 @@ Filters SHALL be applied before search ranking.
 - **WHEN** a user applies multiple filters
 - **THEN** all filters are combined with AND logic
 - **AND** only documents matching all filters are returned
+
+#### Scenario: Filters produce empty result set
+
+- **WHEN** a user applies filters that match no content
+- **THEN** the system returns an empty result set with `total: 0`
+- **AND** the response includes the `meta` object with strategy information
 
 ---
 
@@ -544,6 +599,11 @@ The system SHALL support configuration of search parameters via environment vari
 - `CHUNK_SIZE_TOKENS`: target chunk size in tokens (default: 512)
 - `CHUNK_OVERLAP_TOKENS`: overlap between chunks in tokens (default: 64)
 
+**Per-Source Chunking Overrides** (via `sources.d/` YAML):
+- `chunk_size_tokens`: override target chunk size for this source/source type
+- `chunk_overlap_tokens`: override chunk overlap for this source/source type
+- `chunking_strategy`: force a specific chunking strategy (structured, youtube, markdown, section; default: auto-detect from parser_used)
+
 **Search Behavior:**
 - `SEARCH_BM25_WEIGHT`: BM25 weight for hybrid search (default: 0.5)
 - `SEARCH_VECTOR_WEIGHT`: vector weight for hybrid search (default: 0.5)
@@ -582,6 +642,12 @@ The system SHALL support configuration of search parameters via environment vari
 
 - **WHEN** `EMBEDDING_PROVIDER` is set to "local"
 - **THEN** the system does not require external API connectivity for embeddings
+
+#### Scenario: Per-source chunking in source configuration
+
+- **WHEN** a source entry in `sources.d/` specifies `chunk_size_tokens`, `chunk_overlap_tokens`, or `chunking_strategy`
+- **THEN** those values take precedence over global `Settings` defaults for content from that source
+- **AND** the cascading order is: global Settings → _defaults.yaml → per-file defaults → per-entry fields
 
 ---
 
@@ -646,7 +712,14 @@ The system SHALL not update chunks when non-content fields are modified (e.g., s
 - **THEN** the system deletes all existing chunks for that content_id
 - **AND** re-chunks the updated markdown content
 - **AND** generates new embeddings for the new chunks
-- **AND** if rechunking or re-embedding fails, the old chunks are already deleted and the content is eligible for backfill
+
+#### Scenario: Rechunking failure after content update
+
+- **WHEN** `Content.markdown_content` is updated
+- **AND** rechunking or re-embedding fails during the update
+- **THEN** the old chunks are already deleted
+- **AND** the system logs the error with content_id
+- **AND** the content is eligible for the next backfill run to regenerate chunks
 
 #### Scenario: Non-content update does not trigger rechunking
 
@@ -670,3 +743,10 @@ The system SHALL execute cross-encoder reranking of 50 candidates in under 500ms
 
 - **WHEN** reranking is enabled with a managed API provider (Cohere or Jina)
 - **THEN** the reranking step adds less than 500ms to the total query time
+
+#### Scenario: Search performance degrades beyond SLA
+
+- **WHEN** a hybrid search query exceeds the 1000ms SLA (e.g., due to large dataset or slow backend)
+- **THEN** the `meta.query_time_ms` value accurately reflects the actual duration
+- **AND** the system still returns results (no timeout abort)
+- **AND** the SLA violation is detectable by monitoring systems via the response metadata

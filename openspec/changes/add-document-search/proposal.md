@@ -28,6 +28,7 @@ Search endpoints are designed to be consumed by both human-facing UIs (CLI and w
 - **Add Reciprocal Rank Fusion (RRF)** to combine and rerank results from multiple search methods
 - **Add optional cross-encoder reranking** using SLM/fast-LLM or dedicated cross-encoder models after RRF for improved final result quality
 - **Create chunking service** with parser-aware strategies for PDFs, YouTube transcripts, markdown, and HTML
+- **Support per-source chunking configuration** via `sources.d/` YAML files (chunk size, overlap, and strategy overrides cascading through existing defaults hierarchy)
 - **Define chunk lifecycle rules** (rechunk/re-embed on content updates; delete chunks on content removal)
 - **Add search API endpoints** for unified search with chunk-level highlighting and navigation
 
@@ -67,6 +68,7 @@ Search endpoints are designed to be consumed by both human-facing UIs (CLI and w
   - `src/models/search.py` — Search request/response Pydantic models
   - `src/api/search_routes.py` — New search endpoints
   - `src/config/settings.py` — Search, chunking, and embedding configuration
+  - `src/config/sources.py` — Per-source chunking override fields in SourceDefaults
   - `alembic/versions/` — Migration for document_chunks, pgvector extension, TSVECTOR trigger
   - `src/ingestion/` — Integration of chunking/embedding at ingest time
   - `src/scripts/backfill_chunks.py` — Backfill management command
