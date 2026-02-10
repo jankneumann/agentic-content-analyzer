@@ -1,10 +1,8 @@
 """Tests for job queue API endpoints.
 
-Integration tests for GET /api/v1/jobs with pagination edge cases.
-Tests that FastAPI Query validation properly handles:
-- page_size=0 (below minimum)
-- page_size=-1 (negative values)
-- page_size>100 (above maximum)
+Integration tests for:
+- GET /api/v1/jobs with pagination edge cases
+- GET /api/v1/jobs/history with filters, time parsing, and empty results
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from src.api.app import app
-from src.models.jobs import JobListItem, JobStatus
+from src.models.jobs import JobHistoryItem, JobListItem, JobStatus
 
 
 class TestJobListPaginationEdgeCases:
@@ -425,3 +423,178 @@ class TestJobListEmptyResults:
         data = response.json()
         assert data["data"] == []
         assert data["pagination"]["total"] == 0
+
+
+# ============================================================================
+# Job History Endpoint Tests (GET /api/v1/jobs/history)
+# ============================================================================
+
+
+class TestJobHistoryEndpoint:
+    """Tests for GET /api/v1/jobs/history."""
+
+    @pytest.fixture
+    def sample_history(self):
+        """Create sample job history items."""
+        return [
+            JobHistoryItem(
+                id=1,
+                entrypoint="summarize_content",
+                task_label="Summarize",
+                status=JobStatus.COMPLETED,
+                content_id=42,
+                description="AI Weekly: GPT-5 Announced",
+                error=None,
+                created_at=datetime.now(UTC),
+                started_at=datetime.now(UTC),
+                completed_at=datetime.now(UTC),
+            ),
+            JobHistoryItem(
+                id=2,
+                entrypoint="ingest_content",
+                task_label="Ingest",
+                status=JobStatus.COMPLETED,
+                content_id=None,
+                description="Gmail ingestion",
+                error=None,
+                created_at=datetime.now(UTC),
+                started_at=datetime.now(UTC),
+                completed_at=datetime.now(UTC),
+            ),
+        ]
+
+    def test_history_default(self, sample_history):
+        """Test history endpoint returns enriched data."""
+        with patch(
+            "src.api.job_routes.list_job_history",
+            new_callable=AsyncMock,
+            return_value=(sample_history, 2),
+        ):
+            client = TestClient(app)
+            response = client.get("/api/v1/jobs/history")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "data" in data
+        assert "pagination" in data
+        assert len(data["data"]) == 2
+        assert data["data"][0]["task_label"] == "Summarize"
+        assert data["data"][0]["description"] == "AI Weekly: GPT-5 Announced"
+        assert data["data"][1]["content_id"] is None
+
+    def test_history_with_since_shorthand(self, sample_history):
+        """Test history with since=7d shorthand."""
+        with patch(
+            "src.api.job_routes.list_job_history",
+            new_callable=AsyncMock,
+            return_value=(sample_history, 2),
+        ) as mock_fn:
+            client = TestClient(app)
+            response = client.get("/api/v1/jobs/history", params={"since": "7d"})
+
+        assert response.status_code == 200
+        # Verify since was parsed and passed
+        mock_fn.assert_called_once()
+        call_kwargs = mock_fn.call_args.kwargs
+        assert call_kwargs["since"] is not None
+
+    def test_history_with_since_iso(self, sample_history):
+        """Test history with ISO datetime since parameter."""
+        with patch(
+            "src.api.job_routes.list_job_history",
+            new_callable=AsyncMock,
+            return_value=(sample_history, 2),
+        ) as mock_fn:
+            client = TestClient(app)
+            response = client.get(
+                "/api/v1/jobs/history",
+                params={"since": "2025-01-15T00:00:00+00:00"},
+            )
+
+        assert response.status_code == 200
+        mock_fn.assert_called_once()
+        call_kwargs = mock_fn.call_args.kwargs
+        assert call_kwargs["since"] is not None
+
+    def test_history_invalid_since_returns_400(self):
+        """Test that invalid since format returns 400."""
+        client = TestClient(app)
+        response = client.get("/api/v1/jobs/history", params={"since": "invalid"})
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "since" in data["detail"].lower()
+
+    def test_history_with_filters(self, sample_history):
+        """Test history with status and entrypoint filters."""
+        filtered = [sample_history[0]]
+        with patch(
+            "src.api.job_routes.list_job_history",
+            new_callable=AsyncMock,
+            return_value=(filtered, 1),
+        ) as mock_fn:
+            client = TestClient(app)
+            response = client.get(
+                "/api/v1/jobs/history",
+                params={"status": "completed", "entrypoint": "summarize_content"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 1
+        mock_fn.assert_called_once()
+        call_kwargs = mock_fn.call_args.kwargs
+        assert call_kwargs["status"] == JobStatus.COMPLETED
+        assert call_kwargs["entrypoint"] == "summarize_content"
+
+    def test_history_empty_results(self):
+        """Test history with no results."""
+        with patch(
+            "src.api.job_routes.list_job_history",
+            new_callable=AsyncMock,
+            return_value=([], 0),
+        ):
+            client = TestClient(app)
+            response = client.get("/api/v1/jobs/history")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == []
+        assert data["pagination"]["total"] == 0
+
+    def test_history_pagination(self, sample_history):
+        """Test history pagination parameters."""
+        with patch(
+            "src.api.job_routes.list_job_history",
+            new_callable=AsyncMock,
+            return_value=(sample_history[:1], 10),
+        ) as mock_fn:
+            client = TestClient(app)
+            response = client.get(
+                "/api/v1/jobs/history",
+                params={"page": 2, "page_size": 1},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pagination"]["page"] == 2
+        assert data["pagination"]["page_size"] == 1
+        assert data["pagination"]["total"] == 10
+        # Verify offset calculation
+        mock_fn.assert_called_once()
+        call_kwargs = mock_fn.call_args.kwargs
+        assert call_kwargs["offset"] == 1  # (2-1) * 1
+
+    def test_history_default_page_size(self, sample_history):
+        """Test history default page_size is 50."""
+        with patch(
+            "src.api.job_routes.list_job_history",
+            new_callable=AsyncMock,
+            return_value=(sample_history, 2),
+        ):
+            client = TestClient(app)
+            response = client.get("/api/v1/jobs/history")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pagination"]["page_size"] == 50

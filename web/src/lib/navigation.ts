@@ -21,6 +21,7 @@ import {
   LayoutDashboard,
   Settings,
   CheckSquare,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react"
 
@@ -125,6 +126,12 @@ export const navigation: NavGroup[] = [
         href: "/review",
         icon: CheckSquare,
         description: "Items pending review and approval",
+      },
+      {
+        title: "Task History",
+        href: "/task-history",
+        icon: ClipboardList,
+        description: "Historical job execution audit log",
       },
     ],
   },

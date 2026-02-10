@@ -130,6 +130,9 @@ export type {
   ProviderOption,
 } from "./audio-digest"
 
+// Job History types (Task Audit Log)
+export type { JobHistoryItem, JobHistoryResponse, JobHistoryFilters } from "./job-history"
+
 /**
  * Common API response wrapper
  *

@@ -27,6 +27,7 @@ import { AudioDigestsPage } from "./pages/audio-digests.page"
 import { ThemesPage } from "./pages/themes.page"
 import { ReviewPage } from "./pages/review.page"
 import { SettingsPage } from "./pages/settings.page"
+import { TaskHistoryPage } from "./pages/task-history.page"
 
 /** All custom fixtures available in tests */
 interface Fixtures {
@@ -41,6 +42,7 @@ interface Fixtures {
   themesPage: ThemesPage
   reviewPage: ReviewPage
   settingsPage: SettingsPage
+  taskHistoryPage: TaskHistoryPage
   apiMocks: ApiMocks
 }
 
@@ -83,6 +85,9 @@ export const test = base.extend<Fixtures>({
   },
   settingsPage: async ({ page }, use) => {
     await use(new SettingsPage(page))
+  },
+  taskHistoryPage: async ({ page }, use) => {
+    await use(new TaskHistoryPage(page))
   },
   apiMocks: async ({ page }, use) => {
     await use(new ApiMocks(page))
