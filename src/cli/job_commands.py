@@ -272,7 +272,7 @@ def history(
         str | None,
         typer.Option(
             "--since",
-            "-s",
+            "-S",
             help="Time filter: 1d, 7d, 30d, or ISO datetime",
         ),
     ] = None,

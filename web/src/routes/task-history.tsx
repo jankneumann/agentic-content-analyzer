@@ -9,7 +9,6 @@
 
 import { useState } from "react"
 import { createRoute } from "@tanstack/react-router"
-import { Loader2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
 import { Route as rootRoute } from "./__root"
