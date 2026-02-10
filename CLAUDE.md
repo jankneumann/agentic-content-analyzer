@@ -481,6 +481,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | New secrets need `base.yaml` wiring | Add `${VAR:-}` reference in `profiles/base.yaml` under the appropriate settings section |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
+| Prompt/settings API returns 500 | Must set `ADMIN_API_KEY` env var (or in `.secrets.yaml` with profile); fail-secure design blocks access when unconfigured |
 
 ## Quick Links by Task
 
@@ -539,6 +540,7 @@ DATABASE_URL=postgresql://localhost/newsletters
 REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
 ANTHROPIC_API_KEY=sk-ant-...
+ADMIN_API_KEY=your-admin-key      # Protects settings/prompt management endpoints
 ENVIRONMENT=development
 ```
 

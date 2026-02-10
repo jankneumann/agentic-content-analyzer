@@ -84,6 +84,7 @@ settings:
     elevenlabs_api_key: "${ELEVENLABS_API_KEY:-}"
     sendgrid_api_key: "${SENDGRID_API_KEY:-}"
     substack_session_cookie: "${SUBSTACK_SESSION_COOKIE:-}"
+    admin_api_key: "${ADMIN_API_KEY:-}"
 
   # ---------------------------------------------------------------------------
   # Digest Settings

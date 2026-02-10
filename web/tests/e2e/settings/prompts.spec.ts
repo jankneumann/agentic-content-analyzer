@@ -123,7 +123,7 @@ test.describe("Settings > Prompts", () => {
       await settingsPage.page.getByPlaceholder("Search prompts...").fill("digest")
 
       // Should show filtered count
-      await expect(settingsPage.page.getByText("1 prompts")).toBeVisible()
+      await expect(settingsPage.page.getByText("1 prompt")).toBeVisible()
 
       // Only pipeline category should remain (with digest prompt)
       await expect(
