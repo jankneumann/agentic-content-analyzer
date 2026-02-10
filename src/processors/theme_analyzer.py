@@ -16,6 +16,7 @@ from src.models.theme import (
 )
 from src.processors.historical_context import HistoricalContextAnalyzer
 from src.services.llm_router import LLMRouter
+from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger
@@ -35,6 +36,7 @@ class ThemeAnalyzer:
         model_config: ModelConfig | None = None,
         use_large_context: bool = False,
         model_override: str | None = None,
+        prompt_service: PromptService | None = None,
     ) -> None:
         """
         Initialize theme analyzer.
@@ -43,6 +45,7 @@ class ThemeAnalyzer:
             model_config: Model configuration (defaults to settings.get_model_config())
             use_large_context: If True, use large context model (Gemini Flash)
             model_override: Optional model name override
+            prompt_service: Optional PromptService for configurable prompts
         """
         self.use_large_context = use_large_context
 
@@ -57,6 +60,7 @@ class ThemeAnalyzer:
 
         # Initialize LLM router
         self.llm_router = LLMRouter(model_config)
+        self.prompt_service = prompt_service or PromptService()
 
         # Determine framework based on model family
         model_family = model_config.get_family(self.model)
@@ -143,7 +147,9 @@ class ThemeAnalyzer:
             if include_historical_context and themes:
                 logger.info("Enriching themes with historical context...")
                 context_analyzer = HistoricalContextAnalyzer(
-                    model_config=self.model_config, model=self.model
+                    model_config=self.model_config,
+                    model=self.model,
+                    prompt_service=self.prompt_service,
                 )
                 themes = await context_analyzer.enrich_themes_with_history(
                     themes=themes,
@@ -281,10 +287,9 @@ class ThemeAnalyzer:
             relevance_threshold=relevance_threshold,
         )
 
-        # Split prompt into system and user parts (simple split)
-        lines = prompt.split("\n", 1)
-        system_prompt = lines[0]
-        user_prompt = lines[1] if len(lines) > 1 else ""
+        # Get system prompt from configuration
+        system_prompt = self.prompt_service.get_pipeline_prompt("theme_analysis")
+        user_prompt = prompt
 
         # Call LLM for analysis with provider failover
         start_time = time.time()
@@ -458,71 +463,14 @@ class ThemeAnalyzer:
         max_themes: int,
         relevance_threshold: float,
     ) -> str:
-        """Build prompt for LLM theme extraction."""
-        return f"""You are an AI analyst specializing in technology trends for enterprise technical leaders at Comcast.
-
-Analyze the following content summaries and knowledge graph insights to identify the most important themes, trends, and topics.
-
-# Content Summaries
-
-{summary_context}
-
-# {graphiti_context}
-
-# Your Task
-
-Extract up to {max_themes} distinct themes from this content. For each theme:
-
-1. **Identify the theme** - What is the core topic or trend?
-2. **Categorize it** - Choose from: ml_ai, devops_infra, data_engineering, business_strategy, tools_products, research_academia, security, other
-3. **Assess the trend** - Is it: emerging (new, recent), growing (increasing mentions), established (consistent), declining, or one_off?
-4. **Score its relevance** (0-1 scale):
-   - Overall relevance to Comcast technical audience
-   - Strategic relevance (CTO-level decisions)
-   - Tactical relevance (developer/practitioner)
-   - Novelty (how new vs. established)
-   - Cross-functional impact (affects multiple teams)
-5. **Find related themes** - What other themes connect to this one?
-6. **Extract key points** - 2-4 bullet points about what the content says about this theme
-
-# Output Format
-
-Respond with a JSON array of themes. Each theme should have this structure:
-
-```json
-[
-  {{
-    "name": "Theme Name",
-    "description": "Brief 1-2 sentence description",
-    "category": "ml_ai",
-    "mention_count": 3,
-    "trend": "emerging",
-    "relevance_score": 0.85,
-    "strategic_relevance": 0.9,
-    "tactical_relevance": 0.7,
-    "novelty_score": 0.8,
-    "cross_functional_impact": 0.75,
-    "related_themes": ["Related Theme 1", "Related Theme 2"],
-    "key_points": [
-      "Key insight 1",
-      "Key insight 2",
-      "Key insight 3"
-    ]
-  }}
-]
-```
-
-# Guidelines
-
-- Focus on themes relevant to enterprise AI/data/engineering teams
-- Prioritize strategic significance over tactical details
-- Look for cross-cutting themes that appear in multiple content items
-- Identify emerging trends that leaders should know about
-- Only include themes with relevance_score >= {relevance_threshold}
-- Be specific - "RAG Architecture Evolution" not just "AI"
-- Limit to {max_themes} most important themes
-
-Provide ONLY the JSON array, no other text."""
+        """Build prompt for LLM theme extraction from configurable template."""
+        return self.prompt_service.render(
+            "pipeline.theme_analysis.user_template",
+            summary_context=summary_context,
+            graphiti_context=graphiti_context,
+            max_themes=str(max_themes),
+            relevance_threshold=str(relevance_threshold),
+        )
 
     def _parse_theme_response(
         self,

@@ -30,6 +30,10 @@ import type {
   ThemeData,
   PaginatedResponse,
   PodcastDetail,
+  PromptInfo,
+  PromptListResponse,
+  PromptTestResponse,
+  PromptUpdateResponse,
 } from "../../../src/types"
 
 import type { ScriptDetail, ScriptSection } from "../../../src/types/review"
@@ -759,5 +763,108 @@ export function createChatConfig() {
     max_messages_per_conversation: 50,
     max_message_length: 4000,
     web_search_enabled: true,
+  }
+}
+
+// ─── Prompts ──────────────────────────────────────────────
+
+/** Create a single prompt info object */
+export function createPromptInfo(
+  overrides: Partial<PromptInfo> = {}
+): PromptInfo {
+  return {
+    key: "pipeline.summarization.system",
+    category: "pipeline",
+    name: "system",
+    default_value:
+      "You are a professional content analyst. Summarize the following article for a technical audience.",
+    current_value:
+      "You are a professional content analyst. Summarize the following article for a technical audience.",
+    has_override: false,
+    version: null,
+    description: null,
+    ...overrides,
+  }
+}
+
+/** Create a prompt list response with multiple prompts across categories */
+export function createPromptListResponse(
+  overrides: Partial<PromptListResponse> = {}
+): PromptListResponse {
+  return {
+    prompts: [
+      createPromptInfo({
+        key: "pipeline.summarization.system",
+        category: "pipeline",
+        name: "system",
+        default_value:
+          "You are a professional content analyst. Summarize the following article.",
+        current_value:
+          "You are a professional content analyst. Summarize the following article.",
+        has_override: false,
+      }),
+      createPromptInfo({
+        key: "pipeline.summarization.user_template",
+        category: "pipeline",
+        name: "user_template",
+        default_value: "Title: {title}\n\nContent:\n{content}",
+        current_value: "Title: {title}\n\nContent:\n{content}",
+        has_override: false,
+      }),
+      createPromptInfo({
+        key: "pipeline.digest_creation.system",
+        category: "pipeline",
+        name: "system",
+        default_value:
+          "You are an AI newsletter curator creating a {period} digest.",
+        current_value:
+          "You are an expert AI newsletter curator creating a {period} digest for senior engineers.",
+        has_override: true,
+        version: 2,
+        description: "Updated for senior engineer audience",
+      }),
+      createPromptInfo({
+        key: "chat.content.system",
+        category: "chat",
+        name: "system",
+        default_value:
+          "You are a helpful assistant that answers questions about AI newsletter content.",
+        current_value:
+          "You are a helpful assistant that answers questions about AI newsletter content.",
+        has_override: false,
+      }),
+    ],
+    ...overrides,
+  }
+}
+
+/** Create an empty prompt list response */
+export function createEmptyPromptListResponse(): PromptListResponse {
+  return { prompts: [] }
+}
+
+/** Create a prompt update response */
+export function createPromptUpdateResponse(
+  overrides: Partial<PromptUpdateResponse> = {}
+): PromptUpdateResponse {
+  return {
+    key: "pipeline.digest_creation.system",
+    current_value:
+      "You are an expert AI newsletter curator creating a {period} digest for senior engineers.",
+    has_override: true,
+    version: 3,
+    ...overrides,
+  }
+}
+
+/** Create a prompt test response */
+export function createPromptTestResponse(
+  overrides: Partial<PromptTestResponse> = {}
+): PromptTestResponse {
+  return {
+    rendered_prompt:
+      "You are an expert AI newsletter curator creating a daily digest for senior engineers.",
+    variable_names: ["period"],
+    ...overrides,
   }
 }

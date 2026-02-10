@@ -109,6 +109,18 @@ aca review view <id>                   # View digest content
 aca analyze themes                     # Analyze themes across content
 aca podcast generate --digest-id <id>  # Generate podcast script
 
+# Prompt Management
+aca prompts list                       # List all prompts grouped by category
+aca prompts list --category pipeline   # Filter by category
+aca prompts list --overrides-only      # Show only overridden prompts
+aca prompts show <key>                 # View prompt value and metadata
+aca prompts set <key> --value "..."    # Set prompt override
+aca prompts set <key> --file path.txt  # Set from file
+aca prompts reset <key>                # Reset to default
+aca prompts test <key> --var k=v       # Test template rendering
+aca prompts export --output prompts.yaml  # Export all prompts
+aca prompts import --file prompts.yaml    # Import overrides
+
 # Management
 aca manage verify-setup                # Check service connectivity
 aca manage check-profile-secrets       # Find unresolved secrets
@@ -469,6 +481,8 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | New secrets need `base.yaml` wiring | Add `${VAR:-}` reference in `profiles/base.yaml` under the appropriate settings section |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
+| Prompt/settings API returns 500 | Must set `ADMIN_API_KEY` env var (or in `.secrets.yaml` with profile); fail-secure design blocks access when unconfigured |
+| Prompt API auth header is `X-Admin-Key` | NOT `X-Admin-API-Key` or `Authorization` — defined in `src/api/dependencies.py:9` as `APIKeyHeader(name="X-Admin-Key")` |
 
 ## Quick Links by Task
 
@@ -527,6 +541,7 @@ DATABASE_URL=postgresql://localhost/newsletters
 REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
 ANTHROPIC_API_KEY=sk-ant-...
+ADMIN_API_KEY=your-admin-key      # Protects settings/prompt management endpoints
 ENVIRONMENT=development
 ```
 

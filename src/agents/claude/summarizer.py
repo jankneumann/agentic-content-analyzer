@@ -9,6 +9,7 @@ from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex
 from src.agents.base import AgentResponse, SummarizationAgent
 from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.content import Content
+from src.services.prompt_service import PromptService
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -23,6 +24,7 @@ class ClaudeAgent(SummarizationAgent):
         step: ModelStep = ModelStep.SUMMARIZATION,
         model: str | None = None,
         api_key: str | None = None,
+        prompt_service: PromptService | None = None,
     ) -> None:
         """
         Initialize Claude agent.
@@ -32,6 +34,7 @@ class ClaudeAgent(SummarizationAgent):
             step: Pipeline step (default: SUMMARIZATION)
             model: Optional model override (for backward compatibility)
             api_key: Optional API key override (for backward compatibility)
+            prompt_service: Optional PromptService for configurable prompts
         """
         # Backward compatibility: create minimal ModelConfig if api_key provided
         if model_config is None and api_key:
@@ -41,7 +44,13 @@ class ClaudeAgent(SummarizationAgent):
         if model_config is None:
             raise ValueError("Either model_config or api_key must be provided")
 
-        super().__init__(model_config=model_config, step=step, model=model, api_key=api_key)
+        super().__init__(
+            model_config=model_config,
+            step=step,
+            model=model,
+            api_key=api_key,
+            prompt_service=prompt_service,
+        )
         logger.info(f"Initialized Claude agent with model: {self.model}")
 
     def _get_client(self, provider_config: ProviderConfig) -> Any:
@@ -137,11 +146,15 @@ class ClaudeAgent(SummarizationAgent):
                 # Create prompt using Content model
                 prompt = self._create_content_prompt(content)
 
+                # Get system prompt
+                system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
+
                 # Call Claude API with provider-specific model ID
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=4096,
                     temperature=0.0,  # Deterministic for consistent summaries
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 
@@ -296,11 +309,15 @@ class ClaudeAgent(SummarizationAgent):
                 # Create prompt with feedback
                 prompt = self._create_content_feedback_prompt(content, feedback_context)
 
+                # Get system prompt
+                system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
+
                 # Call Claude API with provider-specific model ID
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=4096,
                     temperature=0.0,  # Deterministic for consistent summaries
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 
@@ -375,6 +392,8 @@ class ClaudeAgent(SummarizationAgent):
         """
         Create the summarization prompt with user feedback incorporated for Content.
 
+        Loads the prompt template from PromptService for customizability.
+
         Args:
             content: Content to summarize
             feedback_context: Formatted feedback and context from user
@@ -396,45 +415,11 @@ A previous summary was generated for this content. The user has provided feedbac
 Please regenerate the summary incorporating this feedback.
 """
 
-        prompt = f"""You are an expert at summarizing AI and technology content for technical leaders and developers at Comcast.
-
-Your audience ranges from CTOs needing strategic insights to individual developers seeking actionable best practices.
-{feedback_section}
-**Content Details:**
-- Title: {content.title}
-- Publication: {content.publication or "Unknown"}
-- Source: {content.source_type.value if content.source_type else "Unknown"}
-
-**Content:**
-{text_content[:15000]}
-
-**Required Output (JSON format):**
-{{
-    "executive_summary": "2-3 sentence summary capturing the essence and why it matters",
-    "key_themes": ["theme1", "theme2", "theme3"],
-    "strategic_insights": ["insight1", "insight2"],
-    "technical_details": ["detail1", "detail2"],
-    "actionable_items": ["action1", "action2"],
-    "notable_quotes": ["quote1", "quote2"],
-    "relevant_links": [
-        {{"title": "Resource Title", "url": "https://..."}},
-        {{"title": "Another Resource", "url": "https://..."}}
-    ],
-    "relevance_scores": {{
-        "cto_leadership": 0.0-1.0,
-        "technical_teams": 0.0-1.0,
-        "individual_developers": 0.0-1.0
-    }}
-}}
-
-Focus on:
-- Strategic implications for AI/Data leadership
-- Actionable technical insights
-- Trends and patterns in the AI/tech landscape
-- Practical applications for enterprise settings
-- Best practices and recommendations
-- Extract links to referenced papers, articles, or resources
-
-Provide ONLY the JSON output, no additional commentary."""
-
-        return prompt
+        return self.prompt_service.render(
+            "pipeline.summarization.feedback_template",
+            feedback_section=feedback_section,
+            title=content.title,
+            publication=content.publication or "Unknown",
+            source_type=content.source_type.value if content.source_type else "Unknown",
+            text_content=text_content[:15000],
+        )

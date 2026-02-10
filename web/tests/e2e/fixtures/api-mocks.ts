@@ -39,6 +39,7 @@ export class ApiMocks {
       this.mockJobHistory(),
       this.mockChatConfig(),
       this.mockSystemHealth(),
+      this.mockPrompts(),
     ])
   }
 
@@ -61,6 +62,7 @@ export class ApiMocks {
       this.mockJobHistoryEmpty(),
       this.mockChatConfig(),
       this.mockSystemHealth(),
+      this.mockPromptsEmpty(),
     ])
   }
 
@@ -711,6 +713,75 @@ export class ApiMocks {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ status: "healthy", version: "1.0.0" }),
+      })
+    )
+  }
+
+  // ─── Prompt Endpoints ───────────────────────────────────
+
+  async mockPrompts(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/settings/prompts", (route) => {
+      if (route.request().url().includes("/prompts/")) return route.fallback()
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createPromptListResponse()),
+      })
+    })
+  }
+
+  async mockPromptsEmpty(): Promise<void> {
+    await this.mockPrompts(mockData.createEmptyPromptListResponse())
+  }
+
+  async mockPromptDetail(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/settings/prompts/*", (route) => {
+      const url = route.request().url()
+      if (url.includes("/test")) return route.fallback()
+      const method = route.request().method()
+      if (method === "GET") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(data ?? mockData.createPromptInfo()),
+        })
+      }
+      return route.fallback()
+    })
+  }
+
+  async mockPromptUpdate(): Promise<void> {
+    await this.page.route("**/api/v1/settings/prompts/*", (route) => {
+      const method = route.request().method()
+      if (method === "PUT") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(mockData.createPromptUpdateResponse()),
+        })
+      }
+      if (method === "DELETE") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            mockData.createPromptUpdateResponse({
+              has_override: false,
+              version: null,
+            })
+          ),
+        })
+      }
+      return route.fallback()
+    })
+  }
+
+  async mockPromptTest(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/settings/prompts/*/test", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createPromptTestResponse()),
       })
     )
   }

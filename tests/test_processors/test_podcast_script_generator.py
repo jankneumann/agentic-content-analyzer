@@ -17,12 +17,11 @@ from src.models.podcast import (
     VoiceProvider,
 )
 from src.processors.podcast_script_generator import (
-    PODCAST_SCRIPT_LENGTH_PROMPTS,
-    PODCAST_SCRIPT_SYSTEM_PROMPT,
     PODCAST_TOOLS,
     WORD_COUNT_TARGETS,
     PodcastScriptGenerator,
 )
+from src.services.prompt_service import PromptService
 
 
 @pytest.fixture
@@ -233,17 +232,20 @@ class TestPodcastScriptGenerator:
         )
 
     def test_length_prompts_defined(self):
-        """Test length-specific prompts are defined."""
-        for length in PodcastLength:
-            assert length in PODCAST_SCRIPT_LENGTH_PROMPTS
-            assert len(PODCAST_SCRIPT_LENGTH_PROMPTS[length]) > 100
+        """Test length-specific prompts are available via PromptService."""
+        service = PromptService()
+        for key in ("length_brief", "length_standard", "length_extended"):
+            prompt = service.get_pipeline_prompt("podcast_script", key)
+            assert len(prompt) > 100
 
     def test_system_prompt_contains_personas(self):
         """Test system prompt includes both personas."""
-        assert "Alex Chen" in PODCAST_SCRIPT_SYSTEM_PROMPT
-        assert "Dr. Sam Rodriguez" in PODCAST_SCRIPT_SYSTEM_PROMPT
-        assert "VP of Engineering" in PODCAST_SCRIPT_SYSTEM_PROMPT
-        assert "Distinguished Engineer" in PODCAST_SCRIPT_SYSTEM_PROMPT
+        service = PromptService()
+        system_prompt = service.get_pipeline_prompt("podcast_script")
+        assert "Alex Chen" in system_prompt
+        assert "Dr. Sam Rodriguez" in system_prompt
+        assert "VP of Engineering" in system_prompt
+        assert "Distinguished Engineer" in system_prompt
 
     def test_tools_definition(self):
         """Test tools are properly defined using ToolDefinition dataclass."""

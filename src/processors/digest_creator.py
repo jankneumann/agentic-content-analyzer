@@ -20,6 +20,7 @@ from src.models.digest import (
 from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisRequest, ThemeData
 from src.processors.theme_analyzer import ThemeAnalyzer
+from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.digest_markdown import (
     extract_digest_theme_tags,
@@ -43,6 +44,7 @@ class DigestCreator:
         self,
         model_config: ModelConfig | None = None,
         model: str | None = None,
+        prompt_service: PromptService | None = None,
     ):
         """
         Initialize digest creator.
@@ -50,6 +52,7 @@ class DigestCreator:
         Args:
             model_config: Model configuration (defaults to settings.get_model_config())
             model: Optional model override (defaults to DIGEST_CREATION step model)
+            prompt_service: Optional PromptService for configurable prompts
         """
         # Get model config from settings if not provided
         if model_config is None:
@@ -59,6 +62,7 @@ class DigestCreator:
 
         # Get model for digest creation step (or use override)
         self.model = model or model_config.get_model_for_step(ModelStep.DIGEST_CREATION)
+        self.prompt_service = prompt_service or PromptService()
 
         # Determine framework based on model family
         model_family = model_config.get_family(self.model)
@@ -99,7 +103,7 @@ class DigestCreator:
             relevance_threshold=0.3,
         )
 
-        analyzer = ThemeAnalyzer(model_config=self.model_config)
+        analyzer = ThemeAnalyzer(model_config=self.model_config, prompt_service=self.prompt_service)
         theme_result = await analyzer.analyze_themes(
             theme_request,
             include_historical_context=request.include_historical_context,
@@ -558,10 +562,14 @@ class DigestCreator:
                     self.model, provider_config.provider
                 )
 
+                # Get system prompt for digest creation
+                system_prompt = self.prompt_service.get_pipeline_prompt("digest_creation")
+
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=12000,
                     temperature=0.4,
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 
@@ -815,10 +823,14 @@ Output only the JSON object, no additional text.
                     self.model, provider_config.provider
                 )
 
+                # Get system prompt for digest creation
+                system_prompt = self.prompt_service.get_pipeline_prompt("digest_creation")
+
                 response = client.messages.create(
                     model=provider_model_id,
                     max_tokens=12000,  # Longer for full digest
                     temperature=0.4,  # Slightly higher for narrative flow
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
 
@@ -967,13 +979,13 @@ Output only the JSON object, no additional text.
         contents_context: str,
         theme_count: int,
     ) -> str:
-        """Build prompt for digest generation."""
+        """Build prompt for digest generation from configurable template."""
         period_desc = (
             f"{request.period_start.strftime('%Y-%m-%d')} to "
             f"{request.period_end.strftime('%Y-%m-%d')}"
         )
 
-        digest_type_guidance = {
+        digest_type_guidance_map = {
             DigestType.DAILY: (
                 "Focus on immediate insights and actionable items. "
                 "Be concise but comprehensive. Highlight what's most important today."
@@ -984,139 +996,18 @@ Output only the JSON object, no additional text.
             ),
         }
 
-        return f"""You are creating an AI/technology content digest for technical leaders at Comcast.
-
-# Time Period
-{request.digest_type.value.title()} digest covering: {period_desc}
-
-# Analyzed Themes ({theme_count} total)
-
-{themes_context}
-
-# Content Analyzed
-
-{contents_context}
-
-# Your Task
-
-Create a structured digest with multi-audience formatting. The audience ranges from CTO-level executives to individual developers.
-
-{digest_type_guidance[request.digest_type]}
-
-# Output Format
-
-Provide a JSON response with:
-
-```json
-{{
-  "title": "Concise digest title with date",
-  "executive_overview": "2-3 paragraph overview for senior leadership. What matters most and why. What decisions need attention. Written for busy executives.",
-
-  "strategic_insights": [
-    {{
-      "title": "Strategic Insight Title",
-      "summary": "2-3 sentence summary of the insight [18][23]",
-      "details": [
-        "Specific point about business impact [18]",
-        "Decision implications for leadership [23]",
-        "Strategic considerations [18][24]"
-      ],
-      "themes": ["Related Theme 1", "Related Theme 2"],
-      "continuity": "Historical context if available (from theme continuity)"
-    }}
-  ],
-
-  "technical_developments": [
-    {{
-      "title": "Technical Development Title",
-      "summary": "2-3 sentence summary for developers/practitioners [23][25]",
-      "details": [
-        "Technical details and implementation insights [23]",
-        "How-to guidance or best practices [25]",
-        "Tools, frameworks, or approaches mentioned [23][25]"
-      ],
-      "themes": ["Related Theme 1"],
-      "continuity": "Historical context if available"
-    }}
-  ],
-
-  "emerging_trends": [
-    {{
-      "title": "Emerging Trend Title",
-      "summary": "2-3 sentence summary of what's new [24][26]",
-      "details": [
-        "Why this is emerging now [24]",
-        "Potential impact or implications [26]",
-        "What to watch for [24][26]"
-      ],
-      "themes": ["Related Theme 1"],
-      "continuity": "Historical context showing how this evolved"
-    }}
-  ],
-
-  "actionable_recommendations": {{
-    "for_leadership": [
-      "Specific strategic action",
-      "Decision or investment to consider",
-      "Risk to monitor"
-    ],
-    "for_teams": [
-      "Tactical implementation",
-      "Process or practice to adopt",
-      "Capability to build"
-    ],
-    "for_individuals": [
-      "Skill to develop",
-      "Technology to learn",
-      "Resource to explore"
-    ]
-  }}
-}}
-```
-
-# Guidelines
-
-- **Source Citations**: Use database ID references [18], [23], etc. throughout all content
-  - IDs are the actual content database IDs shown in brackets above (e.g., [18] = content ID 18)
-  - Add citations to summaries and detail points showing which content items support each claim
-  - Use multiple citations [18][23] when a point draws from multiple sources
-  - These IDs enable cross-digest traceability and interactive revision tool use
-  - This provides transparency and traceability for all insights
-
-- **Relevant Links**: When content items include research papers, documentation, or other resources:
-  - Include the actual URL in your detail points where relevant (e.g., "See research paper: https://arxiv.org/...")
-  - Reference the link title and source content ID for context
-  - Make it easy for readers to access the original sources directly
-  - Example: "BGE-M3 embeddings paper (https://arxiv.org/abs/2402.03216) from [42] demonstrates 15% improvement"
-
-- **Executive Overview**: Focus on "what matters and why" for decision-makers
-- **Strategic Insights**: Limit to {request.max_strategic_insights} most important
-  - CTO-level business impact and implications
-  - Connect to Comcast's enterprise AI/data initiatives
-  - Include continuity from historical context where relevant
-  - Add source citations [18][23] to summary and each detail point
-- **Technical Developments**: Limit to {request.max_technical_developments} most significant
-  - Practitioner-level details and implementation guidance
-  - Concrete tools, frameworks, techniques mentioned
-  - Best practices and lessons learned
-  - Add source citations [23][25] to summary and each detail point
-- **Emerging Trends**: Limit to {request.max_emerging_trends} most noteworthy
-  - New or rapidly evolving topics
-  - MUST include historical continuity showing how they emerged
-  - Future implications
-  - Add source citations [24][26] to summary and each detail point
-- **Actionable Recommendations**: Specific, role-based actions
-  - Leadership: Strategic decisions, investments, risks
-  - Teams: Implementations, processes, capabilities
-  - Individuals: Skills, learning, tools
-
-- Use professional but accessible tone
-- Be specific - avoid generic statements
-- Include continuity text from themes to show evolution
-- Cross-reference themes where relevant
-- Focus on what's actionable and decision-worthy
-
-Provide ONLY the JSON, no other text."""
+        return self.prompt_service.render(
+            "pipeline.digest_creation.user_template",
+            digest_type=request.digest_type.value.title(),
+            period_desc=period_desc,
+            theme_count=str(theme_count),
+            themes_context=themes_context,
+            contents_context=contents_context,
+            digest_type_guidance=digest_type_guidance_map.get(request.digest_type, ""),
+            max_strategic_insights=str(request.max_strategic_insights),
+            max_technical_developments=str(request.max_technical_developments),
+            max_emerging_trends=str(request.max_emerging_trends),
+        )
 
     async def _fetch_contents(
         self,

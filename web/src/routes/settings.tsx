@@ -10,7 +10,7 @@
  */
 
 import { createRoute } from "@tanstack/react-router"
-import { Cpu, Volume2, Database } from "lucide-react"
+import { Cpu, Volume2, Database, MessageSquareCode } from "lucide-react"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer, PageSection } from "@/components/layout"
@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { PromptManager } from "@/components/prompts/PromptManager"
 
 export const SettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -34,6 +35,27 @@ function SettingsPage() {
       title="Settings"
       description="Configure application behavior and integrations"
     >
+      <PageSection
+        title="LLM Prompts"
+        description="View and customize prompts used across all pipeline steps. Overrides are stored in the database and persist across deploys."
+      >
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <MessageSquareCode className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base">Prompt Configuration</CardTitle>
+            </div>
+            <CardDescription>
+              Edit prompt templates, test with sample variables, and reset to
+              defaults. Changes take effect on the next pipeline run.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PromptManager />
+          </CardContent>
+        </Card>
+      </PageSection>
+
       <PageSection title="Model Configuration">
         <Card>
           <CardHeader>

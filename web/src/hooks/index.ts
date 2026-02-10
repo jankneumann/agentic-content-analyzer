@@ -84,6 +84,15 @@ export {
   useChatSession,
 } from "./use-chat"
 
+// Prompt hooks (settings)
+export {
+  usePrompts,
+  usePrompt,
+  useUpdatePrompt,
+  useResetPrompt,
+  useTestPrompt,
+} from "./use-prompts"
+
 // Content hooks (unified content model)
 export {
   useContents,

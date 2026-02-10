@@ -8,7 +8,7 @@ Tests the full workflow with various model configurations:
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -16,6 +16,18 @@ from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.theme import ThemeAnalysisRequest
 from src.processors.summarizer import NewsletterSummarizer
 from src.processors.theme_analyzer import ThemeAnalyzer
+from src.services.llm_router import LLMResponse, LLMRouter
+
+
+def _make_empty_theme_llm_response() -> LLMResponse:
+    """Create an LLMResponse containing an empty themes JSON array."""
+    return LLMResponse(
+        text="[]",
+        input_tokens=1000,
+        output_tokens=200,
+        provider=Provider.ANTHROPIC,
+        model_version="claude-haiku-4-5-20250929",
+    )
 
 
 @pytest.fixture
@@ -111,19 +123,9 @@ async def test_theme_analysis_with_haiku(
         end_date=datetime(2025, 1, 31),
     )
 
-    # Mock Anthropic client with proper token usage
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="[]")]
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 1000
-    mock_usage.output_tokens = 200
-    mock_response.usage = mock_usage
-    mock_client.messages.create.return_value = mock_response
-
-    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
-        mock_anthropic_class.return_value = mock_client
-
+    with patch.object(
+        LLMRouter, "generate", new_callable=AsyncMock, return_value=_make_empty_theme_llm_response()
+    ):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 
@@ -152,19 +154,9 @@ async def test_theme_analysis_with_sonnet(
         end_date=datetime(2025, 1, 31),
     )
 
-    # Mock Anthropic client with proper token usage
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="[]")]
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 2000
-    mock_usage.output_tokens = 500
-    mock_response.usage = mock_usage
-    mock_client.messages.create.return_value = mock_response
-
-    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
-        mock_anthropic_class.return_value = mock_client
-
+    with patch.object(
+        LLMRouter, "generate", new_callable=AsyncMock, return_value=_make_empty_theme_llm_response()
+    ):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 
@@ -212,19 +204,9 @@ async def test_full_pipeline_with_mixed_models(
         end_date=datetime(2025, 1, 31),
     )
 
-    # Mock for theme analysis
-    mock_theme_client = MagicMock()
-    mock_theme_response = MagicMock()
-    mock_theme_response.content = [MagicMock(text="[]")]
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 2000
-    mock_usage.output_tokens = 800
-    mock_theme_response.usage = mock_usage
-    mock_theme_client.messages.create.return_value = mock_theme_response
-
-    with patch("src.processors.theme_analyzer.Anthropic") as mock_anthropic_class:
-        mock_anthropic_class.return_value = mock_theme_client
-
+    with patch.object(
+        LLMRouter, "generate", new_callable=AsyncMock, return_value=_make_empty_theme_llm_response()
+    ):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti_class:
             mock_graphiti_class.return_value = mock_graphiti_client
 
