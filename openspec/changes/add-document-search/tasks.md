@@ -138,7 +138,7 @@ B (Config) ──┘                  ├──► E (Embedding) ──┤      
   - Source with `chunking_strategy: youtube` forces YouTube chunking regardless of parser_used
   - Source without overrides uses global Settings defaults
   - Cascading: per-entry > per-file defaults > global Settings
-- [ ] D.11 Write integration tests with real parser output samples (DoclingParser PDF, YouTubeParser transcript, MarkItDownParser DOCX)
+- [ ] D.11 Write integration tests with realistic markdown fixtures matching parser output formats (DoclingParser heading/table structure, YouTubeParser timestamped paragraphs, MarkItDownParser heading/code structure)
 
 ## E. Embedding Provider Abstraction
 > Depends on: B (settings), C (model for dimensions). Files: `src/services/embedding.py`

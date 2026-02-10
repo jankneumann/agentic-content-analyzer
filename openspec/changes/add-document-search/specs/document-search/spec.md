@@ -157,6 +157,12 @@ The system SHALL keep tables as whole chunks even if they exceed the target size
 - **AND** the specific entry uses 256-token chunks
 - **AND** sources in other files without overrides use the global 512-token default
 
+#### Scenario: Source config not found for content
+
+- **WHEN** content is ingested from a source that has no matching entry in `sources.d/` (e.g., direct URL ingestion, file upload)
+- **THEN** the system uses global `Settings` defaults for chunk size and overlap
+- **AND** auto-detects the chunking strategy from `Content.parser_used`
+
 #### Scenario: Empty content produces no chunks
 
 - **WHEN** a Content record has empty or NULL `markdown_content`
@@ -232,6 +238,13 @@ The system SHALL handle different vector dimensions based on the configured prov
 - **WHEN** the embedding provider or model is changed to one with different vector dimensions
 - **THEN** the system requires re-indexing of all chunks
 - **AND** logs a warning about dimension mismatch if existing embeddings exist
+
+#### Scenario: Chunk exceeds provider max token limit
+
+- **WHEN** a chunk exceeds the embedding provider's `max_tokens` limit (e.g., a large table chunk)
+- **THEN** the system truncates the chunk text to `max_tokens` before embedding
+- **AND** logs a warning with the chunk_id and original token count
+- **AND** the stored `chunk_text` retains the full untruncated content (only the embedding input is truncated)
 
 #### Scenario: Embedding API failure during ingestion
 
@@ -407,6 +420,19 @@ The system SHALL expose the reranking provider in search response metadata when 
 - **THEN** the system logs the error
 - **AND** falls back to returning the RRF-ranked results without reranking
 - **AND** the response metadata omits `rerank_provider` (indicating reranking did not complete)
+
+#### Scenario: LLM reranking with unparseable response
+
+- **WHEN** `SEARCH_RERANK_PROVIDER` is "llm"
+- **AND** the LLM returns a response that cannot be parsed as an integer score
+- **THEN** the system assigns a default score of 5 to that document
+- **AND** continues reranking the remaining documents normally
+
+#### Scenario: Reranking top_k exceeds available results
+
+- **WHEN** `SEARCH_RERANK_TOP_K` is 50 but RRF produces only 15 candidate chunks
+- **THEN** the system reranks all 15 candidates (does not pad or error)
+- **AND** the response metadata reflects the actual number reranked
 
 ---
 
@@ -648,6 +674,18 @@ The system SHALL support configuration of search parameters via environment vari
 - **WHEN** a source entry in `sources.d/` specifies `chunk_size_tokens`, `chunk_overlap_tokens`, or `chunking_strategy`
 - **THEN** those values take precedence over global `Settings` defaults for content from that source
 - **AND** the cascading order is: global Settings → _defaults.yaml → per-file defaults → per-entry fields
+
+#### Scenario: BM25 strategy override with unavailable extension
+
+- **WHEN** `SEARCH_BM25_STRATEGY` is set to "paradedb" but pg_search is not installed (e.g., Neon)
+- **THEN** the system raises a configuration error at startup
+- **AND** the error message indicates pg_search is required for the "paradedb" strategy
+
+#### Scenario: Embedding dimension mismatch with existing data
+
+- **WHEN** `EMBEDDING_DIMENSIONS` is changed to a value different from existing chunk embeddings
+- **THEN** the system logs a warning at startup about dimension mismatch
+- **AND** existing embeddings are not usable for vector search until re-indexed via backfill
 
 ---
 
