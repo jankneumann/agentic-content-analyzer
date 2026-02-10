@@ -6,19 +6,20 @@ Usage:
     aca jobs retry <job-id>
     aca jobs retry --failed
     aca jobs cleanup --older-than 30d
+    aca jobs history [--since 1d] [--type summarize] [--status completed]
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 import typer
 
 from src.cli.adapters import run_async
 from src.cli.output import is_json_mode, output_result
-from src.models.jobs import JobListItem, JobRecord, JobStatus
+from src.models.jobs import TYPE_ALIASES, JobHistoryItem, JobListItem, JobRecord, JobStatus
 
 app = typer.Typer(help="Manage background jobs in the queue.")
 
@@ -243,6 +244,176 @@ def list_jobs(
     console.print(f"\nShowing {offset + 1}-{showing_end} of {total} jobs.")
     if total > offset + limit:
         console.print(f"[dim]Use --offset {offset + limit} to see more.[/dim]")
+
+
+def _format_history_item(item: JobHistoryItem) -> dict[str, Any]:
+    """Format a history item for JSON output."""
+    result: dict[str, Any] = {
+        "id": item.id,
+        "entrypoint": item.entrypoint,
+        "task_label": item.task_label,
+        "status": item.status.value,
+        "content_id": item.content_id,
+        "description": item.description,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+    if item.error:
+        result["error"] = item.error
+    if item.started_at:
+        result["started_at"] = item.started_at.isoformat()
+    if item.completed_at:
+        result["completed_at"] = item.completed_at.isoformat()
+    return result
+
+
+@app.command("history")
+def history(
+    since: Annotated[
+        str | None,
+        typer.Option(
+            "--since",
+            "-S",
+            help="Time filter: 1d, 7d, 30d, or ISO datetime",
+        ),
+    ] = None,
+    last: Annotated[
+        int | None,
+        typer.Option(
+            "--last",
+            "-n",
+            help="Show last N entries (overrides --since)",
+        ),
+    ] = None,
+    task_type: Annotated[
+        str | None,
+        typer.Option(
+            "--type",
+            "-t",
+            help="Filter by task type: summarize, batch, extract, process, ingest",
+        ),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            help="Filter by status: queued, in_progress, completed, failed",
+        ),
+    ] = None,
+) -> None:
+    """Show task execution history with human-readable context.
+
+    Displays an enriched view of job history including task labels,
+    content descriptions, and timing information.
+
+    Examples:
+        aca jobs history
+        aca jobs history --since 1d
+        aca jobs history --last 10
+        aca jobs history --type summarize --status completed
+        aca jobs history --since 7d --type ingest
+    """
+    from src.queue.setup import list_job_history
+
+    # Parse time filter
+    since_dt: datetime | None = None
+    if since:
+        match = re.match(r"^(\d+)d$", since.strip().lower())
+        if match:
+            since_dt = datetime.now(UTC) - timedelta(days=int(match.group(1)))
+        else:
+            try:
+                since_dt = datetime.fromisoformat(since)
+            except ValueError:
+                typer.echo(
+                    f"Error: Invalid --since format: '{since}'. "
+                    "Use shorthand (1d, 7d, 30d) or ISO datetime."
+                )
+                raise typer.Exit(1)
+
+    # Resolve task type alias
+    entrypoint: str | None = None
+    if task_type:
+        entrypoint = TYPE_ALIASES.get(task_type.lower())
+        if not entrypoint:
+            valid = ", ".join(TYPE_ALIASES.keys())
+            typer.echo(f"Error: Unknown --type '{task_type}'. Valid options: {valid}")
+            raise typer.Exit(1)
+
+    # Parse status
+    status_filter: JobStatus | None = None
+    if status:
+        try:
+            status_filter = JobStatus(status.lower())
+        except ValueError:
+            valid = ", ".join(s.value for s in JobStatus)
+            typer.echo(f"Error: Invalid status '{status}'. Valid options: {valid}")
+            raise typer.Exit(1)
+
+    limit = last if last else 20
+
+    try:
+        items, total = run_async(
+            list_job_history(
+                since=since_dt,
+                status=status_filter,
+                entrypoint=entrypoint,
+                limit=limit,
+                offset=0,
+            )
+        )
+    except Exception as e:
+        typer.echo(f"Error fetching job history: {e}")
+        raise typer.Exit(1)
+
+    if not items:
+        if is_json_mode():
+            output_result({"jobs": [], "total": 0, "offset": 0, "limit": limit})
+        else:
+            typer.echo("No jobs found matching the criteria.")
+        return
+
+    if is_json_mode():
+        output_result(
+            {
+                "jobs": [_format_history_item(i) for i in items],
+                "total": total,
+                "offset": 0,
+                "limit": limit,
+            }
+        )
+        return
+
+    # Rich table display
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+    table = Table(title=f"Task History ({len(items)} of {total} shown)")
+
+    table.add_column("Date/Time", style="dim", no_wrap=True)
+    table.add_column("Task", style="white", max_width=20)
+    table.add_column("Content ID", justify="right", style="cyan")
+    table.add_column("Job ID", justify="right", style="cyan")
+    table.add_column("Description", max_width=40)
+    table.add_column("Status", style="bold")
+
+    for item in items:
+        status_color = _get_status_color(item.status)
+        status_display = f"[{status_color}]{item.status.value}[/{status_color}]"
+
+        table.add_row(
+            _format_datetime(item.created_at),
+            item.task_label,
+            str(item.content_id) if item.content_id else "-",
+            str(item.id),
+            _truncate(item.description, 40),
+            status_display,
+        )
+
+    console.print(table)
+
+    if total > len(items):
+        console.print(f"\n[dim]Showing {len(items)} of {total} total entries.[/dim]")
 
 
 @app.command("show")

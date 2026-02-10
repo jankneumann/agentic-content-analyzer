@@ -30,7 +30,7 @@ from pgqueuer import PgQueuer
 from pgqueuer.db import AsyncpgDriver
 from pgqueuer.queries import Queries
 
-from src.models.jobs import JobListItem, JobRecord, JobStatus
+from src.models.jobs import ENTRYPOINT_LABELS, JobHistoryItem, JobListItem, JobRecord, JobStatus
 from src.storage.database import get_queue_connection_string
 from src.utils.logging import get_logger
 
@@ -719,6 +719,152 @@ async def reconcile_batch_job_status(
                 logger.info(
                     f"Batch job {batch_id} completed: {completed} succeeded, {failed} failed"
                 )
+
+    finally:
+        if should_close:
+            await conn.close()
+
+
+def _build_description(
+    entrypoint: str,
+    payload: dict[str, Any],
+    content_title: str | None,
+) -> str | None:
+    """Build a context-aware description from job data.
+
+    Resolution strategy:
+    1. content_id present → content title from DB
+    2. source present → "{source} ingestion"
+    3. content_ids present → "Batch of {N} items"
+    4. message present → last progress message
+    5. else None
+    """
+    if content_title:
+        task_type = payload.get("task_type")
+        if task_type and entrypoint == "process_content":
+            return f"{task_type.capitalize()}: {content_title}"
+        return content_title
+
+    source = payload.get("source")
+    if source:
+        return f"{source.capitalize()} ingestion"
+
+    content_ids = payload.get("content_ids")
+    if content_ids and isinstance(content_ids, list):
+        return f"Batch of {len(content_ids)} items"
+
+    message = payload.get("message")
+    if message and message != "Queued":
+        return str(message)
+
+    return None
+
+
+async def list_job_history(
+    *,
+    since: datetime | None = None,
+    status: JobStatus | None = None,
+    entrypoint: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[JobHistoryItem], int]:
+    """List job history with enriched descriptions.
+
+    Joins pgqueuer_jobs with the content table to provide human-readable
+    context for each job. Uses LEFT JOIN so jobs without content_id
+    still appear.
+
+    Args:
+        since: Only include jobs created after this time
+        status: Filter by job status
+        entrypoint: Filter by task entrypoint
+        limit: Maximum jobs to return (default 50, max 100)
+        offset: Pagination offset
+
+    Returns:
+        Tuple of (history items, total count)
+    """
+    global _connection
+
+    if _connection is None:
+        queue_url = get_queue_connection_string()
+        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+        conn = await asyncpg.connect(asyncpg_url)
+        should_close = True
+    else:
+        conn = _connection
+        should_close = False
+
+    limit = min(limit, 100)
+
+    try:
+        conditions = []
+        params: list[Any] = []
+        param_idx = 1
+
+        if since:
+            conditions.append(f"j.created_at >= ${param_idx}")
+            params.append(since)
+            param_idx += 1
+
+        if status:
+            conditions.append(f"j.status = ${param_idx}")
+            params.append(status.value)
+            param_idx += 1
+
+        if entrypoint:
+            conditions.append(f"j.entrypoint = ${param_idx}")
+            params.append(entrypoint)
+            param_idx += 1
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        # Note: where_clause is built from controlled inputs, not user input
+        count_query = f"""
+            SELECT COUNT(*) FROM pgqueuer_jobs j WHERE {where_clause}
+        """  # noqa: S608
+        total = await conn.fetchval(count_query, *params)
+
+        params.extend([limit, offset])
+        # Note: where_clause is built from controlled inputs, not user input
+        query = f"""
+            SELECT j.id, j.entrypoint, j.status, j.payload, j.error,
+                   j.created_at, j.started_at, j.completed_at,
+                   c.id AS content_id, c.title AS content_title
+            FROM pgqueuer_jobs j
+            LEFT JOIN contents c
+              ON j.payload ? 'content_id'
+              AND (j.payload->>'content_id')::int = c.id
+            WHERE {where_clause}
+            ORDER BY j.created_at DESC
+            LIMIT ${param_idx} OFFSET ${param_idx + 1}
+        """  # noqa: S608
+
+        rows = await conn.fetch(query, *params)
+
+        items = []
+        for row in rows:
+            payload = row["payload"] if row["payload"] else {}
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+
+            ep = row["entrypoint"]
+            items.append(
+                JobHistoryItem(
+                    id=row["id"],
+                    entrypoint=ep,
+                    task_label=ENTRYPOINT_LABELS.get(ep, ep),
+                    status=JobStatus(row["status"]),
+                    content_id=row["content_id"],
+                    description=_build_description(ep, payload, row["content_title"]),
+                    error=row["error"],
+                    created_at=row["created_at"],
+                    started_at=row["started_at"],
+                    completed_at=row["completed_at"],
+                )
+            )
+
+        return items, total
 
     finally:
         if should_close:

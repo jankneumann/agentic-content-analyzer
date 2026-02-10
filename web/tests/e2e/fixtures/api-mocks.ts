@@ -36,6 +36,7 @@ export class ApiMocks {
       this.mockAudioDigests(),
       this.mockAudioDigestStats(),
       this.mockThemes(),
+      this.mockJobHistory(),
       this.mockChatConfig(),
       this.mockSystemHealth(),
     ])
@@ -57,6 +58,7 @@ export class ApiMocks {
       this.mockAudioDigestsEmpty(),
       this.mockAudioDigestStatsEmpty(),
       this.mockThemesEmpty(),
+      this.mockJobHistoryEmpty(),
       this.mockChatConfig(),
       this.mockSystemHealth(),
     ])
@@ -664,6 +666,27 @@ export class ApiMocks {
         body: JSON.stringify(
           mockData.createTaskResponse({ message: "Analysis started" })
         ),
+      })
+    )
+  }
+
+  // ─── Job History Endpoints ──────────────────────────────
+
+  async mockJobHistory(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/jobs/history*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createJobHistoryResponse()),
+      })
+    )
+  }
+
+  async mockJobHistoryEmpty(): Promise<void> {
+    await this.mockJobHistory(
+      mockData.createJobHistoryResponse({
+        data: [],
+        pagination: { page: 1, page_size: 20, total: 0 },
       })
     )
   }

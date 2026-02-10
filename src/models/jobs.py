@@ -117,3 +117,50 @@ class JobRetryResponse(BaseModel):
     status: JobStatus
     retry_count: int
     message: str = "Job re-enqueued for processing"
+
+
+# ============================================================================
+# Task History (Audit Log)
+# ============================================================================
+
+ENTRYPOINT_LABELS: dict[str, str] = {
+    "summarize_content": "Summarize",
+    "summarize_batch": "Summarize (Batch)",
+    "extract_url_content": "URL Extraction",
+    "process_content": "Process Content",
+    "ingest_content": "Ingest",
+}
+
+TYPE_ALIASES: dict[str, str] = {
+    "summarize": "summarize_content",
+    "batch": "summarize_batch",
+    "extract": "extract_url_content",
+    "process": "process_content",
+    "ingest": "ingest_content",
+}
+
+
+class JobHistoryItem(BaseModel):
+    """Enriched job record for the Task History audit view.
+
+    Extends the raw job data with human-readable labels and
+    context-aware descriptions built from payload + content table.
+    """
+
+    id: int
+    entrypoint: str
+    task_label: str
+    status: JobStatus
+    content_id: int | None = None
+    description: str | None = None
+    error: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class JobHistoryResponse(BaseModel):
+    """Paginated job history API response."""
+
+    data: list[JobHistoryItem]
+    pagination: dict[str, int] = Field(description="Pagination info: page, page_size, total")

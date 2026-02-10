@@ -704,6 +704,53 @@ export function createApprovedScripts() {
   ]
 }
 
+/** Create a single job history item */
+export function createJobHistoryItem(
+  overrides: Partial<{
+    id: number
+    entrypoint: string
+    task_label: string
+    status: string
+    content_id: number | null
+    description: string | null
+    error: string | null
+    created_at: string
+    started_at: string | null
+    completed_at: string | null
+  }> = {}
+) {
+  return {
+    id: 1,
+    entrypoint: "summarize_content",
+    task_label: "Summarize",
+    status: "completed",
+    content_id: 101,
+    description: "AI Weekly Newsletter",
+    error: null,
+    created_at: "2025-01-16T12:00:00Z",
+    started_at: "2025-01-16T12:00:01Z",
+    completed_at: "2025-01-16T12:00:05Z",
+    ...overrides,
+  }
+}
+
+/** Create a paginated job history response */
+export function createJobHistoryResponse(
+  overrides: Partial<{
+    data: ReturnType<typeof createJobHistoryItem>[]
+    pagination: { page: number; page_size: number; total: number }
+  }> = {}
+) {
+  return {
+    data: overrides.data ?? [
+      createJobHistoryItem({ id: 1, entrypoint: "summarize_content", task_label: "Summarize", status: "completed", content_id: 101, description: "AI Weekly Newsletter" }),
+      createJobHistoryItem({ id: 2, entrypoint: "ingest_content", task_label: "Ingest", status: "completed", content_id: null, description: "Gmail ingestion" }),
+      createJobHistoryItem({ id: 3, entrypoint: "summarize_content", task_label: "Summarize", status: "failed", content_id: 42, description: "ML Ops Digest", error: "Connection timeout" }),
+    ],
+    pagination: overrides.pagination ?? { page: 1, page_size: 20, total: 3 },
+  }
+}
+
 /** Create chat config response */
 export function createChatConfig() {
   return {
