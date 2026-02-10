@@ -28,13 +28,13 @@
 - [x] 3.1 Update `SupabaseFileStorage` to detect local mode
 - [x] 3.2 Use local S3 endpoint when `supabase_local=True`
 - [x] 3.3 Handle local bucket creation (no dashboard needed)
-- [ ] 3.4 Test storage operations against local instance (requires running local Supabase)
+- [x] 3.4 Test storage operations against local instance (requires running local Supabase)
 
 ## Phase 4: Database Provider Updates
 
 - [x] 4.1 Ensure database provider works with local Supabase
 - [x] 4.2 Document connection string format for local
-- [ ] 4.3 Test migrations against local Supabase (requires running local Supabase)
+- [x] 4.3 Test migrations against local Supabase (requires running local Supabase)
 
 ## Phase 5: Supabase CLI Integration
 
@@ -52,7 +52,7 @@
 - [x] 6.1 Add integration test for local Supabase storage
 - [x] 6.2 Add integration test for local Supabase database
 - [ ] 6.3 Add CI workflow for local Supabase tests (deferred - requires CI changes)
-- [ ] 6.4 Test schema sync workflow (requires running local Supabase)
+- [x] 6.4 Test schema sync workflow (requires running local Supabase)
 
 ## Phase 7: Documentation
 

@@ -256,6 +256,17 @@ docker compose -f docker-compose.supabase.yml -p supabase logs supabase-storage
 # Local Supabase Storage uses the service role key for auth
 ```
 
+**Database init scripts not running**:
+Init scripts in `supabase/docker/init/` only run on first start (empty data volume). If you added init scripts after initial start:
+```bash
+# Remove the volume to force re-initialization
+docker compose -f docker-compose.supabase.yml -p supabase down -v
+docker compose -f docker-compose.supabase.yml -p supabase up -d
+```
+
+**Storage migration fails with "permission denied"**:
+The `supabase_storage_admin` role needs `CREATE` permission on the database. This is granted by `supabase/docker/init/00-roles.sql`. If you see this error, the init scripts didn't run — see above.
+
 ---
 
 ## Supabase Cloud Database (Bring Your Own)

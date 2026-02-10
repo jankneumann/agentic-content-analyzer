@@ -744,12 +744,26 @@ def validate_profile(
     """
     errors: list[str] = []
 
+    # Detect local Supabase mode — cloud-only requirements are skipped
+    supabase_local = get_setting_value(profile.settings, "database", "supabase_local")
+
     # Check provider-specific requirements
     for category, providers in PROVIDER_REQUIREMENTS.items():
         provider_value = getattr(profile.providers, category)
         required_settings = providers.get(provider_value, [])
 
         for setting_key in required_settings:
+            # Skip cloud-only Supabase requirements when supabase_local=true
+            if (
+                supabase_local
+                and provider_value == "supabase"
+                and setting_key
+                in (
+                    "supabase_project_ref",
+                    "supabase_db_password",
+                )
+            ):
+                continue
             value = get_setting_value(profile.settings, category, setting_key)
             if value is None or value == "":
                 errors.append(
@@ -760,6 +774,9 @@ def validate_profile(
     # Check coherence rules
     for cat1, val1, cat2, _val2, required in COHERENCE_RULES:
         if getattr(profile.providers, cat1) == val1:
+            # supabase_local satisfies Supabase cross-provider coherence
+            if supabase_local and val1 == "supabase":
+                continue
             # Check if the required config is present
             has_required = any(
                 get_setting_value(profile.settings, cat2, key) is not None for key in required
