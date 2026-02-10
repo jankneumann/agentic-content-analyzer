@@ -40,6 +40,18 @@ The system SHALL provide `aca jobs history` as a CLI command for viewing histori
 - **THEN** output is valid JSON with `jobs`, `total`, `offset`, `limit` fields
 - **AND** each job includes `id`, `entrypoint`, `task_label`, `status`, `content_id`, `content_title`, `created_at`
 
+#### Scenario: Invalid type alias
+- **WHEN** `aca jobs history --type bogus` is executed
+- **AND** `bogus` is not a recognized type alias
+- **THEN** an error message listing valid aliases is displayed
+- **AND** exit code is 1
+
+#### Scenario: Invalid since format
+- **WHEN** `aca jobs history --since bogus` is executed
+- **AND** `bogus` is not a valid duration shorthand or ISO datetime
+- **THEN** an error message indicating supported formats is displayed
+- **AND** exit code is 1
+
 #### Scenario: No matching jobs
 - **WHEN** `aca jobs history --since 1d --type summarize` is executed
 - **AND** no jobs match the criteria

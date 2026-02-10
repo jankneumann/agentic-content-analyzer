@@ -1,5 +1,18 @@
 # Tasks: Add Task Audit Log
 
+## Dependency Graph
+
+```
+1 (models) → 2 (query fn) → 3 (API endpoint) → 5 (types + hook) → 7 (page) → 8 (filters) → 10 (E2E tests)
+                           → 4 (CLI command)  → 9 (backend tests)
+                                                6 (nav item) ─────→ 7
+```
+
+- **Independent tasks**: 6 (nav item) can run in parallel with 4 and 5
+- **Sequential chains**: 1→2→3→5→7→8 (longest), 1→2→4 (CLI branch)
+- **Max parallel width**: 3 (tasks 4, 5, 6 can run after task 3 completes)
+- **File overlap**: Tasks 7 and 8 share `task-history.tsx` — must be sequential
+
 ## Phase 1: Backend Data Layer
 
 - [ ] 1. Add `JobHistoryItem`, `JobHistoryResponse`, `ENTRYPOINT_LABELS`, and `TYPE_ALIASES` to `src/models/jobs.py`

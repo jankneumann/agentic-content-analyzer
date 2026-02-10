@@ -95,7 +95,7 @@ This is separate from `JobListItem` because it includes `content_title` and `tas
 ## File Changes
 
 ### Backend (Python)
-- `src/models/jobs.py` — Add `JobHistoryItem`, `JobHistoryResponse`, `ENTRYPOINT_LABELS`
+- `src/models/jobs.py` — Add `JobHistoryItem`, `JobHistoryResponse`, `ENTRYPOINT_LABELS`, `TYPE_ALIASES`
 - `src/queue/setup.py` — Add `list_job_history()` function
 - `src/api/job_routes.py` — Add `GET /api/v1/jobs/history` endpoint
 - `src/cli/job_commands.py` — Add `aca jobs history` command
