@@ -413,6 +413,10 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Supabase free tier IPv6 only | Direct connections use IPv6; use pooler if on IPv4-only network |
 | DATABASE_PROVIDER required for cloud | Must explicitly set `DATABASE_PROVIDER=supabase` or `neon` |
 | Local Supabase needs SUPABASE_LOCAL | Set `SUPABASE_LOCAL=true` for auto-configured local endpoints |
+| Local Supabase DB needs init scripts | `supabase/postgres` image requires roles (`supabase_admin`, `anon`, etc.) via `supabase/docker/init/` SQL scripts |
+| Local Supabase storage IPv6 health check | Use `127.0.0.1` not `localhost` in wget health checks — Node.js binds IPv4 only but `wget` resolves to IPv6 `::1` |
+| Local Supabase storage needs DB grants | `supabase_storage_admin` needs `GRANT CREATE ON DATABASE postgres` to run migrations |
+| PostgREST container has no curl/wget | Use `bash -c 'echo -n > /dev/tcp/localhost/3000'` for health checks |
 | Supabase Storage uses S3 API | Use `SUPABASE_ACCESS_KEY_ID`/`SUPABASE_SECRET_ACCESS_KEY`, NOT service role key |
 | datetime.utcnow() is deprecated | Use `datetime.now(UTC)` instead (Python 3.12+) |
 | Settings tests pick up .env | Pass `_env_file=None` to `Settings()` to isolate tests |

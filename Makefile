@@ -231,12 +231,21 @@ opik-logs:  ## Tail Opik stack logs
 supabase-up:  ## Start local Supabase stack (database + storage)
 	@echo "Starting Supabase stack..."
 	@docker compose -f docker-compose.supabase.yml -p supabase up -d
-	@echo "Waiting for Supabase DB to be healthy..."
-	@timeout=60; \
+	@echo "Waiting for Supabase services to be healthy..."
+	@timeout=120; \
 	elapsed=0; \
-	while ! docker exec newsletter-supabase-db pg_isready -U postgres -d postgres >/dev/null 2>&1; do \
+	while true; do \
+		db_ok=$$(docker exec newsletter-supabase-db pg_isready -U postgres -d postgres >/dev/null 2>&1 && echo 1 || echo 0); \
+		storage_ok=$$(wget -q --spider http://localhost:54323/status 2>/dev/null && echo 1 || echo 0); \
+		kong_ok=$$(curl -sf -o /dev/null -w '' http://localhost:54321/ 2>/dev/null && echo 1 || echo 0); \
+		if [ "$$db_ok" = "1" ] && [ "$$storage_ok" = "1" ] && [ "$$kong_ok" = "1" ]; then break; fi; \
 		if [ $$elapsed -ge $$timeout ]; then \
-			echo "✗ Timeout waiting for Supabase DB"; \
+			echo ""; \
+			echo "Timeout waiting for Supabase services."; \
+			echo "  DB: $$([ $$db_ok = 1 ] && echo OK || echo FAILED)"; \
+			echo "  Storage: $$([ $$storage_ok = 1 ] && echo OK || echo FAILED)"; \
+			echo "  Kong: $$([ $$kong_ok = 1 ] && echo OK || echo FAILED)"; \
+			echo "Check logs with: make supabase-logs"; \
 			exit 1; \
 		fi; \
 		sleep 2; \
@@ -244,10 +253,12 @@ supabase-up:  ## Start local Supabase stack (database + storage)
 		printf "."; \
 	done
 	@echo ""
-	@echo "✓ Supabase stack is ready!"
+	@echo ""
+	@echo "Supabase stack is ready!"
 	@echo "  Supabase API:     http://localhost:54321"
 	@echo "  Supabase DB:      localhost:54322"
 	@echo "  Supabase Storage: http://localhost:54323"
+	@echo "  PostgREST:        http://localhost:54324"
 	@echo ""
 	@echo "To use Supabase as your database/storage provider:"
 	@echo "  export PROFILE=local-supabase"
