@@ -33,7 +33,7 @@ The pipeline SHALL execute all ingestion sources (Gmail, RSS, YouTube, Podcast, 
 
 ### Requirement: Queue-Based Summarization
 
-The pipeline SHALL enqueue content items for summarization and process them via a worker pool.
+The pipeline SHALL enqueue content items for summarization and process them via a worker pool. Summarization prompts SHALL be loaded from the `PromptService` (database override, falling back to `prompts.yaml` defaults) rather than from hardcoded string constants.
 
 #### Scenario: Batch summarization via queue
 - **WHEN** `aca summarize pending` is executed
@@ -58,6 +58,13 @@ The pipeline SHALL enqueue content items for summarization and process them via 
 - **THEN** duplicate jobs are NOT created
 - **AND** only content_ids not already in `queued` or `in_progress` status are enqueued
 
+#### Scenario: Summarization uses configurable prompts
+- **WHEN** a content item is summarized
+- **THEN** the summarization agent SHALL load the system prompt via `PromptService.get_pipeline_prompt("summarization", "system")`
+- **AND** the user prompt template SHALL be loaded via `PromptService.get_pipeline_prompt("summarization", "user_template")`
+- **AND** template variables (`{title}`, `{publication}`, `{author}`, `{date}`, `{source_type}`, `{content}`) SHALL be interpolated at runtime
+- **AND** if a database override exists for the prompt key, the override SHALL be used instead of the YAML default
+
 ### Requirement: Pipeline Progress Tracking
 
 The pipeline SHALL emit structured progress events for each stage.
@@ -79,3 +86,46 @@ The pipeline SHALL emit structured progress events for each stage.
 - **WHEN** the pipeline has been running for more than `PIPELINE_TIMEOUT` (default: 2 hours)
 - **THEN** the pipeline logs a warning and continues (does not force-terminate)
 - **AND** individual job timeouts are handled separately by workers
+
+### Requirement: Configurable Pipeline Prompts
+
+All pipeline processors SHALL load their LLM prompts via `PromptService` instead of using hardcoded string constants. Each processor SHALL support database overrides that take precedence over `prompts.yaml` defaults.
+
+#### Scenario: Digest creation uses configurable prompt
+- **WHEN** a digest is created
+- **THEN** the system prompt SHALL be loaded via `PromptService.get_pipeline_prompt("digest_creation", "system")`
+- **AND** if a database override exists for key `pipeline.digest_creation.system`, the override SHALL be used
+
+#### Scenario: Theme analysis uses configurable prompt
+- **WHEN** theme analysis is performed
+- **THEN** the system prompt SHALL be loaded via `PromptService.get_pipeline_prompt("theme_analysis", "system")`
+- **AND** if a database override exists for key `pipeline.theme_analysis.system`, the override SHALL be used
+
+#### Scenario: Podcast script generation uses configurable prompts
+- **WHEN** a podcast script is generated
+- **THEN** the system prompt SHALL be loaded via `PromptService.get_pipeline_prompt("podcast_script", "system")`
+- **AND** length-specific prompts SHALL be loaded via `PromptService.get_pipeline_prompt("podcast_script", "length_{length}")`
+- **AND** template variables (`{period}`, `{word_count_min}`, `{word_count_max}`, `{duration_mins}`) SHALL be interpolated
+
+#### Scenario: Digest revision uses configurable prompt
+- **WHEN** a digest revision is requested
+- **THEN** the system prompt SHALL be loaded via `PromptService.get_pipeline_prompt("digest_revision", "system")`
+
+#### Scenario: Script revision uses configurable prompt
+- **WHEN** a podcast script section revision is requested
+- **THEN** the system prompt SHALL be loaded via `PromptService.get_pipeline_prompt("script_revision", "system")`
+
+#### Scenario: Historical context uses configurable prompt
+- **WHEN** theme evolution analysis is performed
+- **THEN** the prompt template SHALL be loaded via `PromptService.get_pipeline_prompt("historical_context", "evolution_template")`
+
+#### Scenario: Prompt override applied at runtime
+- **WHEN** a user has set a custom prompt override via the settings API or CLI
+- **AND** a pipeline processor runs
+- **THEN** the processor SHALL use the overridden prompt value
+- **AND** the `prompts.yaml` default SHALL NOT be used for that key
+
+#### Scenario: Fallback to YAML when no DB available
+- **WHEN** a processor runs without a database session
+- **THEN** prompts SHALL be loaded from `prompts.yaml` defaults
+- **AND** the processor SHALL function correctly without database access
