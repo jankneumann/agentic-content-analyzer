@@ -176,7 +176,17 @@ class HybridSearchService:
         content_ids: list[int] | None = None,
     ) -> list[tuple[int, float]]:
         """Search chunks by embedding cosine similarity."""
-        query_embedding = await self._embedder.embed(query)
+        try:
+            query_embedding = await self._embedder.embed(query)
+        except Exception:
+            logger.warning(
+                "Vector embedding failed at query time, returning empty results",
+                exc_info=True,
+            )
+            return []
+
+        # Normalize to list[float] for pgvector str() compatibility
+        vec = list(query_embedding) if not isinstance(query_embedding, list) else query_embedding
 
         # Build SQL for vector similarity search
         if content_ids:
@@ -191,7 +201,7 @@ class HybridSearchService:
             result = self._session.execute(
                 stmt,
                 {
-                    "query_vec": str(query_embedding),
+                    "query_vec": str(vec),
                     "limit": limit,
                     "content_ids": content_ids,
                 },
@@ -206,7 +216,7 @@ class HybridSearchService:
             """)
             result = self._session.execute(
                 stmt,
-                {"query_vec": str(query_embedding), "limit": limit},
+                {"query_vec": str(vec), "limit": limit},
             )
 
         return [(row.id, row.similarity) for row in result]

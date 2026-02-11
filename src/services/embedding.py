@@ -175,10 +175,6 @@ class CohereEmbeddingProvider:
     def max_tokens(self) -> int:
         return 512
 
-    def set_input_type(self, input_type: str) -> None:
-        """Set input type: 'search_document' for indexing, 'search_query' for queries."""
-        self._input_type = input_type
-
     async def embed(self, text: str) -> list[float]:
         results = await self.embed_batch([text])
         return results[0]

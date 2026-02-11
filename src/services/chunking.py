@@ -549,7 +549,15 @@ def get_chunking_strategy(
     Returns:
         ChunkingStrategy instance
     """
-    name = strategy_override or PARSER_TO_STRATEGY.get(parser_used or "", "markdown")
+    if strategy_override:
+        name = strategy_override
+    else:
+        name = PARSER_TO_STRATEGY.get(parser_used or "", "markdown")
+        if parser_used and parser_used not in PARSER_TO_STRATEGY:
+            logger.warning(
+                f"Unknown parser '{parser_used}', falling back to markdown chunking strategy"
+            )
+
     cls = STRATEGY_REGISTRY.get(name, MarkdownChunkingStrategy)
     return cls()
 
