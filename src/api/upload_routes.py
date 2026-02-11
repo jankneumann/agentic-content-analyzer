@@ -22,6 +22,51 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
+# File signature (magic bytes) mapping for upload validation.
+# Each entry maps a file extension to a list of valid magic byte prefixes.
+# Files with extensions not in this mapping skip signature validation.
+FILE_SIGNATURES: dict[str, list[bytes]] = {
+    "pdf": [b"%PDF"],
+    "docx": [b"PK\x03\x04"],  # DOCX is ZIP-based
+    "xlsx": [b"PK\x03\x04"],  # XLSX is ZIP-based
+    "pptx": [b"PK\x03\x04"],  # PPTX is ZIP-based
+    "zip": [b"PK\x03\x04", b"PK\x05\x06"],  # Regular and empty ZIP
+    "png": [b"\x89PNG\r\n\x1a\n"],
+    "jpg": [b"\xff\xd8\xff"],
+    "jpeg": [b"\xff\xd8\xff"],
+    "gif": [b"GIF87a", b"GIF89a"],
+    "html": [b"<!DOCTYPE", b"<!doctype", b"<html", b"<HTML"],
+    "htm": [b"<!DOCTYPE", b"<!doctype", b"<html", b"<HTML"],
+}
+
+# Expected MIME types for file extensions.
+# Used to cross-check client-provided Content-Type against declared extension.
+# Generic types (application/octet-stream, empty) always bypass this check.
+EXTENSION_MIME_MAP: dict[str, set[str]] = {
+    "pdf": {"application/pdf"},
+    "docx": {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/zip",
+    },
+    "xlsx": {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip",
+    },
+    "pptx": {
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/zip",
+    },
+    "zip": {"application/zip", "application/x-zip-compressed"},
+    "png": {"image/png"},
+    "jpg": {"image/jpeg"},
+    "jpeg": {"image/jpeg"},
+    "gif": {"image/gif"},
+    "html": {"text/html", "application/xhtml+xml"},
+    "htm": {"text/html", "application/xhtml+xml"},
+    "txt": {"text/plain"},
+    "md": {"text/plain", "text/markdown"},
+    "csv": {"text/csv", "text/plain"},
+}
 
 # ============================================================================
 # Request/Response Models
@@ -78,6 +123,64 @@ class SupportedFormatsResponse(BaseModel):
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
+
+def _validate_file_signature(data: bytes, extension: str) -> str | None:
+    """Validate file content matches expected magic bytes for the extension.
+
+    Args:
+        data: File content (at least first chunk).
+        extension: Lowercase file extension without dot.
+
+    Returns:
+        Error message if signature mismatch, None if valid or unknown extension.
+    """
+    expected_signatures = FILE_SIGNATURES.get(extension)
+    if expected_signatures is None:
+        # Unknown extension — skip validation (no magic bytes to check)
+        return None
+
+    for sig in expected_signatures:
+        if data[: len(sig)] == sig:
+            return None
+
+    return (
+        f"File content does not match expected format for .{extension}. "
+        f"The file may be corrupted or have an incorrect extension."
+    )
+
+
+def _validate_mime_type(content_type: str | None, extension: str) -> str | None:
+    """Validate client-provided Content-Type against declared file extension.
+
+    Generic MIME types (application/octet-stream, empty/None) bypass this check
+    since many clients use them as defaults.
+
+    Args:
+        content_type: Client-provided Content-Type header value.
+        extension: Lowercase file extension without dot.
+
+    Returns:
+        Error message if MIME type contradicts extension, None if valid.
+    """
+    if not content_type or content_type == "application/octet-stream":
+        return None
+
+    expected_mimes = EXTENSION_MIME_MAP.get(extension)
+    if expected_mimes is None:
+        # Unknown extension — skip MIME validation
+        return None
+
+    # Normalize: strip parameters (e.g., "text/html; charset=utf-8" → "text/html")
+    mime_base = content_type.split(";")[0].strip().lower()
+
+    if mime_base in expected_mimes:
+        return None
+
+    return (
+        f"Content-Type '{mime_base}' does not match expected type for .{extension}. "
+        f"Expected one of: {sorted(expected_mimes)}"
+    )
 
 
 def get_parser_router() -> ParserRouter:
@@ -159,6 +262,16 @@ async def upload_document(
     # Get format from filename
     filename = file.filename
     format_ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "unknown"
+
+    # Validate file signature (magic bytes) matches declared extension
+    signature_error = _validate_file_signature(contents, format_ext)
+    if signature_error:
+        raise HTTPException(status_code=415, detail=signature_error)
+
+    # Cross-check client-provided MIME type against declared extension
+    mime_error = _validate_mime_type(file.content_type, format_ext)
+    if mime_error:
+        raise HTTPException(status_code=415, detail=mime_error)
 
     # Create parser router and ingestion service
     parser_router = get_parser_router()

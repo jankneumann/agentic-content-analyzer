@@ -274,12 +274,29 @@ class Settings(BaseSettings):
     # Examples: "http://localhost:5173,http://localhost:3000" or "*"
     allowed_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    _DEV_DEFAULT_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+
+    def _is_dev_default_origins(self) -> bool:
+        """Check if allowed_origins is still the development default value.
+
+        Returns:
+            True if allowed_origins matches the dev default (localhost only)
+        """
+        return self.allowed_origins == self._DEV_DEFAULT_ORIGINS
+
     def get_allowed_origins_list(self) -> list[str]:
         """Parse allowed_origins string into a list.
 
+        In production, if allowed_origins is still the development default
+        (localhost only), returns an empty list to deny all cross-origin
+        requests until explicit origins are configured.
+
         Returns:
-            List of allowed origin URLs, or ["*"] for all origins
+            List of allowed origin URLs, or ["*"] for all origins,
+            or [] in production with unconfigured origins
         """
+        if self.environment == "production" and self._is_dev_default_origins():
+            return []
         if self.allowed_origins == "*":
             return ["*"]
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
@@ -739,6 +756,34 @@ class Settings(BaseSettings):
                     )
             case "noop":
                 pass
+        return self
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Settings:
+        """Warn about insecure configuration when running in production.
+
+        Checks for common security misconfigurations:
+        - Missing ADMIN_API_KEY (sensitive endpoints unprotected)
+        - Default localhost-only CORS origins (likely misconfigured)
+
+        Only emits warnings — does not raise errors.
+        """
+        if self.environment != "production":
+            return self
+
+        if not self.admin_api_key:
+            logger.warning(
+                "ADMIN_API_KEY is not set in production. "
+                "Settings and prompt management endpoints will reject all requests."
+            )
+
+        if self._is_dev_default_origins():
+            logger.warning(
+                "ALLOWED_ORIGINS is using development defaults (localhost only) in production. "
+                "Cross-origin requests will be denied. "
+                "Set ALLOWED_ORIGINS to your production frontend URL(s)."
+            )
+
         return self
 
     def _mask_url(self, url: str) -> str:
