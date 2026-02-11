@@ -168,20 +168,17 @@ async def list_summaries(
         # Join with Content to get title/publication
         # OPTIMIZATION: Select specific columns to avoid loading heavy JSON/Text fields
         # and full ORM objects. Also fetch only a substring of executive_summary.
-        query = (
-            db.query(
-                Summary.id,
-                Summary.content_id,
-                Summary.key_themes,
-                Summary.model_used,
-                Summary.created_at,
-                Summary.processing_time_seconds,
-                func.substr(Summary.executive_summary, 1, 203).label("executive_summary_preview"),
-                Content.title,
-                Content.publication,
-            )
-            .join(Content, Summary.content_id == Content.id)
-        )
+        query = db.query(
+            Summary.id,
+            Summary.content_id,
+            Summary.key_themes,
+            Summary.model_used,
+            Summary.created_at,
+            Summary.processing_time_seconds,
+            func.substr(Summary.executive_summary, 1, 203).label("executive_summary_preview"),
+            Content.title,
+            Content.publication,
+        ).join(Content, Summary.content_id == Content.id)
 
         # Apply filters
         if content_id:
