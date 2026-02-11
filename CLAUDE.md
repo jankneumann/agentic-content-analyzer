@@ -483,6 +483,8 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
 | Prompt/settings API returns 500 | Must set `ADMIN_API_KEY` env var (or in `.secrets.yaml` with profile); fail-secure design blocks access when unconfigured |
 | Prompt API auth header is `X-Admin-Key` | NOT `X-Admin-API-Key` or `Authorization` — defined in `src/api/dependencies.py:9` as `APIKeyHeader(name="X-Admin-Key")` |
+| Worktree test DB naming | Each worktree auto-creates `newsletters_test_<worktree>` (sanitized, max 63 chars). `TEST_DATABASE_URL` env var overrides. Use `make test-clean` to drop all worktree test DBs |
+| Test DB auto-created by conftest | Session-scoped fixtures auto-create via admin connection to `postgres` DB. No `make test-setup` needed for PG (still needed for Neo4j) |
 
 ## Quick Links by Task
 

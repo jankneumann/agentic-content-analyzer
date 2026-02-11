@@ -12,12 +12,14 @@ import os
 import subprocess
 import sys
 
+from tests.helpers.test_db import get_test_db_name
+
 # Test database configuration
 DB_USER = os.getenv("DB_USER", "newsletter_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "newsletter_password")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
-TEST_DB_NAME = "newsletters_test"
+TEST_DB_NAME = get_test_db_name()
 
 
 def run_command(cmd: list[str], check: bool = True) -> bool:
@@ -80,7 +82,7 @@ def drop_database(db_name: str) -> bool:
         "-d",
         "postgres",  # Connect to postgres database
         "-c",
-        f"DROP DATABASE IF EXISTS {db_name};",
+        f'DROP DATABASE IF EXISTS "{db_name}";',
     ]
 
     try:
@@ -108,7 +110,7 @@ def create_database(db_name: str) -> bool:
         "-d",
         "postgres",  # Connect to postgres database
         "-c",
-        f"CREATE DATABASE {db_name};",
+        f'CREATE DATABASE "{db_name}";',
     ]
 
     try:
