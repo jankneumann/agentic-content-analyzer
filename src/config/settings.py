@@ -70,6 +70,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
         "observability",
         "api_keys",
         "digest",
+        "search",
     ]
 
     for section in section_mappings:
@@ -571,6 +572,29 @@ class Settings(BaseSettings):
 
     # Health Check Configuration
     health_check_timeout_seconds: int = 5  # Timeout for health check probes
+
+    # Search & Embedding Configuration
+    embedding_provider: str = "local"  # local, openai, voyage, cohere
+    embedding_model: str = "all-MiniLM-L6-v2"  # Model name for chosen provider
+    embedding_dimensions: int = 384  # Must match model output dimensions
+    search_bm25_strategy: str = "auto"  # auto, paradedb, native
+    search_rerank_enabled: bool = False
+    search_rerank_provider: str = "cohere"  # cohere, jina, local, llm
+    search_rerank_model: str | None = None  # None = provider default
+    search_rerank_top_k: int = 50
+    chunk_size_tokens: int = 512
+    chunk_overlap_tokens: int = 64
+    search_bm25_weight: float = 0.5
+    search_vector_weight: float = 0.5
+    search_rrf_k: int = 60
+    search_default_limit: int = 20
+    search_max_limit: int = 100
+    enable_search_indexing: bool = True
+
+    # Search Provider API Keys
+    voyage_api_key: str | None = None
+    cohere_api_key: str | None = None
+    jina_api_key: str | None = None
 
     @field_validator("otel_logs_export_level")
     @classmethod

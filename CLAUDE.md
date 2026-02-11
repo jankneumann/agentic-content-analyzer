@@ -36,6 +36,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
 | [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
 | [Content Capture](docs/CONTENT_CAPTURE.md) | Chrome extension, bookmarklet, save URL API |
+| [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
 
 **Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
@@ -124,6 +125,9 @@ aca prompts import --file prompts.yaml    # Import overrides
 # Management
 aca manage verify-setup                # Check service connectivity
 aca manage check-profile-secrets       # Find unresolved secrets
+aca manage backfill-chunks             # Index existing content for search
+aca manage backfill-chunks --dry-run   # Preview what would be indexed
+aca manage backfill-chunks --embed-only # Fill missing embeddings only
 
 # Job Queue Workers
 aca worker start                       # Start worker (5 concurrent tasks)
@@ -481,6 +485,9 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | New secrets need `base.yaml` wiring | Add `${VAR:-}` reference in `profiles/base.yaml` under the appropriate settings section |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
+| Changing embedding provider | Different providers have different dimensions — requires re-creating vector column and re-indexing all content via backfill |
+| `index_content()` is fail-safe | Never raises exceptions — failures are logged. Content ingestion always succeeds even if search indexing fails |
+| pgvector not mapped in ORM | `DocumentChunk.embedding` and `search_vector` are NOT SQLAlchemy columns — access via raw SQL only |
 | Prompt/settings API returns 500 | Must set `ADMIN_API_KEY` env var (or in `.secrets.yaml` with profile); fail-secure design blocks access when unconfigured |
 | Prompt API auth header is `X-Admin-Key` | NOT `X-Admin-API-Key` or `Authorization` — defined in `src/api/dependencies.py:9` as `APIKeyHeader(name="X-Admin-Key")` |
 

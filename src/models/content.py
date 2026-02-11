@@ -166,8 +166,14 @@ class Content(Base):  # type: ignore[valid-type, misc]
         foreign_keys="Image.source_content_id",
     )
 
-    # Note: Content → Chunks relationship will be added when DocumentChunk model
-    # is created for search/RAG functionality
+    # Content → DocumentChunk relationship (one-to-many for search chunks)
+    chunks: Mapped[list["DocumentChunk"]] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "DocumentChunk",
+        back_populates="content",
+        foreign_keys="DocumentChunk.content_id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     # Composite unique constraint on source_type + source_id
     __table_args__ = (

@@ -72,6 +72,27 @@ settings:
     otel_service_name: newsletter-aggregator
 
   # ---------------------------------------------------------------------------
+  # Search & Embedding Settings
+  # ---------------------------------------------------------------------------
+  search:
+    embedding_provider: local
+    embedding_model: all-MiniLM-L6-v2
+    embedding_dimensions: 384
+    search_bm25_strategy: auto
+    search_rerank_enabled: false
+    search_rerank_provider: cohere
+    search_rerank_model: ""
+    search_rerank_top_k: 50
+    chunk_size_tokens: 512
+    chunk_overlap_tokens: 64
+    search_bm25_weight: 0.5
+    search_vector_weight: 0.5
+    search_rrf_k: 60
+    search_default_limit: 20
+    search_max_limit: 100
+    enable_search_indexing: true
+
+  # ---------------------------------------------------------------------------
   # API Keys (loaded from secrets)
   # ---------------------------------------------------------------------------
   # These use ${VAR} syntax to reference secrets from .secrets.yaml
@@ -85,6 +106,9 @@ settings:
     sendgrid_api_key: "${SENDGRID_API_KEY:-}"
     substack_session_cookie: "${SUBSTACK_SESSION_COOKIE:-}"
     admin_api_key: "${ADMIN_API_KEY:-}"
+    voyage_api_key: "${VOYAGE_API_KEY:-}"
+    cohere_api_key: "${COHERE_API_KEY:-}"
+    jina_api_key: "${JINA_API_KEY:-}"
 
   # ---------------------------------------------------------------------------
   # Digest Settings

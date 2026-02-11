@@ -65,3 +65,13 @@ settings:
     elevenlabs_api_key: "${STAGING_ELEVENLABS_API_KEY:-${ELEVENLABS_API_KEY:-}}"
     sendgrid_api_key: "${STAGING_SENDGRID_API_KEY:-${SENDGRID_API_KEY:-}}"
     admin_api_key: "${STAGING_ADMIN_API_KEY:-${ADMIN_API_KEY:-}}"
+    voyage_api_key: "${STAGING_VOYAGE_API_KEY:-${VOYAGE_API_KEY:-}}"
+    cohere_api_key: "${STAGING_COHERE_API_KEY:-${COHERE_API_KEY:-}}"
+    jina_api_key: "${STAGING_JINA_API_KEY:-${JINA_API_KEY:-}}"
+
+  search:
+    embedding_provider: openai
+    embedding_model: text-embedding-3-small
+    embedding_dimensions: 1536
+    search_rerank_enabled: true
+    search_rerank_provider: cohere

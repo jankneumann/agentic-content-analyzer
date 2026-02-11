@@ -697,6 +697,12 @@ class RSSContentIngestionService:
 
                     db.add(content)
                     db.flush()
+
+                    # Index for search (fail-safe — never blocks ingestion)
+                    from src.services.indexing import index_content
+
+                    index_content(content, db)
+
                     count += 1
                     logger.info(f"Ingested: {content_data.title}")
 

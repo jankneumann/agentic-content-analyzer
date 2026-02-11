@@ -83,6 +83,9 @@ dependencies = [
     # CLI
     "typer>=0.9.0",
     "rich>=13.0.0",
+
+    # Vector Search
+    "pgvector>=0.3.0",  # PostgreSQL pgvector Python bindings
 ]
 
 [project.scripts]
@@ -110,6 +113,11 @@ braintrust = [
 ]
 metrics = [
     "opentelemetry-exporter-prometheus>=0.41b0",  # Prometheus metrics export
+]
+embeddings = [
+    "sentence-transformers>=2.2.0",  # Local embedding models (CPU)
+    "voyageai>=0.2.0",              # Voyage AI embeddings (retrieval-optimized)
+    "cohere>=5.0.0",                # Cohere embeddings and reranking
 ]
 
 [build-system]

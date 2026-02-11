@@ -20,6 +20,54 @@ from src.cli.output import is_json_mode, output_result
 app = typer.Typer(help="Setup and operational management commands.")
 
 
+@app.command("backfill-chunks")
+def backfill_chunks_cmd(
+    batch_size: int = typer.Option(100, "--batch-size", "-b", help="Content records per batch"),
+    delay: float = typer.Option(1.0, "--delay", "-d", help="Seconds between embedding batches"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would be done without writing"
+    ),
+    embed_only: bool = typer.Option(False, "--embed-only", help="Only fill missing embeddings"),
+    content_id: int | None = typer.Option(
+        None, "--content-id", "-c", help="Process specific content ID"
+    ),
+) -> None:
+    """Backfill document chunks and embeddings for existing content.
+
+    Processes content records that have no associated chunks, generating
+    chunks from markdown_content and embedding them for search indexing.
+    """
+    import asyncio
+
+    from src.scripts.backfill_chunks import backfill_chunks
+
+    result = asyncio.run(
+        backfill_chunks(
+            batch_size=batch_size,
+            delay=delay,
+            dry_run=dry_run,
+            embed_only=embed_only,
+            content_id=content_id,
+        )
+    )
+
+    if is_json_mode():
+        output_result(result)
+    else:
+        if result.get("skipped"):
+            typer.echo(typer.style(f"Skipped: {result['reason']}", fg=typer.colors.YELLOW))
+            return
+
+        typer.echo("\nBackfill complete:")
+        typer.echo(f"  Content processed: {result['content_processed']}")
+        typer.echo(f"  Chunks created:    {result['chunks_created']}")
+        typer.echo(f"  Embeddings:        {result['embeddings_generated']}")
+        if result.get("errors"):
+            typer.echo(typer.style(f"  Errors:            {result['errors']}", fg=typer.colors.RED))
+        if result.get("skipped_count", 0):
+            typer.echo(f"  Skipped:           {result['skipped']}")
+
+
 def _flatten_dict(d: dict[str, Any], parent_key: str = "", sep: str = ".") -> dict[str, Any]:
     """Flatten a nested dictionary into dot-separated keys.
 
