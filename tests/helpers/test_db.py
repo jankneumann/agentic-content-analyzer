@@ -84,8 +84,14 @@ def ensure_test_db_exists(db_name: str, base_url: str) -> None:
     Connects to the ``postgres`` admin database with ``AUTOCOMMIT``
     isolation to issue DDL. Raises ``RuntimeError`` with a helpful
     message if the admin connection fails.
+
+    Handles the race condition where two concurrent pytest sessions
+    both detect the DB is missing and try to create it — the second
+    attempt gets PG error 42P04 ("database already exists") which is
+    safely ignored.
     """
     admin_url = base_url.rsplit("/", 1)[0] + "/postgres"
+    admin_engine = None
     try:
         admin_engine = _sa_create_engine(admin_url, isolation_level="AUTOCOMMIT")
         with admin_engine.connect() as conn:
@@ -95,9 +101,20 @@ def ensure_test_db_exists(db_name: str, base_url: str) -> None:
             ).scalar()
             if not exists:
                 logger.info("Auto-creating test database: %s", db_name)
-                # DB names can't be parameterized — use quoted identifier
-                conn.execute(text(f'CREATE DATABASE "{db_name}"'))
-        admin_engine.dispose()
+                try:
+                    # DB names can't be parameterized — use quoted identifier
+                    conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+                except Exception as create_exc:
+                    # Handle race condition: another process created it first
+                    # PG error code 42P04 = duplicate_database
+                    err_str = str(create_exc)
+                    if "already exists" in err_str or "42P04" in err_str:
+                        logger.info(
+                            "Database '%s' was created by another process (race condition handled)",
+                            db_name,
+                        )
+                    else:
+                        raise
     except Exception as exc:
         raise RuntimeError(
             f"Could not auto-create test database '{db_name}'. "
@@ -106,6 +123,9 @@ def ensure_test_db_exists(db_name: str, base_url: str) -> None:
             f"createdb {db_name}\n"
             f"Original error: {exc}"
         ) from exc
+    finally:
+        if admin_engine is not None:
+            admin_engine.dispose()
 
 
 def create_test_engine(url: str | None = None) -> Engine:

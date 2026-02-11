@@ -206,6 +206,8 @@ class TestEnsureTestDbExists:
         # The second call's first arg is a text() clause — check its .text attr
         create_arg = mock_conn.execute.call_args_list[1][0][0]
         assert "CREATE DATABASE" in create_arg.text
+        # Engine should be disposed via finally block
+        mock_engine.dispose.assert_called_once()
 
     def test_skips_when_exists(self):
         """Does not create when database already exists."""
@@ -255,6 +257,47 @@ class TestEnsureTestDbExists:
                     "newsletters_test",
                     "postgresql://user:pass@localhost/newsletters",
                 )
+
+    def test_handles_race_condition_already_exists(self):
+        """Handles race condition when another process creates the DB first."""
+        mock_conn = MagicMock()
+        # First call: SELECT check says DB doesn't exist
+        mock_conn.execute.return_value.scalar.return_value = None
+        # Second call: CREATE DATABASE fails because it was just created
+        create_exc = Exception('database "newsletters_test_foo" already exists')
+        mock_conn.execute.side_effect = [
+            MagicMock(scalar=MagicMock(return_value=None)),  # SELECT
+            create_exc,  # CREATE
+        ]
+
+        mock_engine = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("tests.helpers.test_db._sa_create_engine", return_value=mock_engine):
+            # Should not raise — race condition is handled gracefully
+            ensure_test_db_exists(
+                "newsletters_test_foo",
+                "postgresql://user:pass@localhost/newsletters",
+            )
+
+        # Engine should still be disposed via finally block
+        mock_engine.dispose.assert_called_once()
+
+    def test_disposes_engine_on_failure(self):
+        """Engine is disposed even when an error occurs."""
+        mock_engine = MagicMock()
+        mock_engine.connect.side_effect = Exception("connection refused")
+
+        with patch("tests.helpers.test_db._sa_create_engine", return_value=mock_engine):
+            with pytest.raises(RuntimeError):
+                ensure_test_db_exists(
+                    "newsletters_test",
+                    "postgresql://user:pass@localhost/newsletters",
+                )
+
+        # Engine should still be disposed via finally block
+        mock_engine.dispose.assert_called_once()
 
 
 # =============================================================================

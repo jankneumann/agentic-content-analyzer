@@ -82,7 +82,7 @@ def drop_database(db_name: str) -> bool:
         "-d",
         "postgres",  # Connect to postgres database
         "-c",
-        f"DROP DATABASE IF EXISTS {db_name};",
+        f'DROP DATABASE IF EXISTS "{db_name}";',
     ]
 
     try:
@@ -110,7 +110,7 @@ def create_database(db_name: str) -> bool:
         "-d",
         "postgres",  # Connect to postgres database
         "-c",
-        f"CREATE DATABASE {db_name};",
+        f'CREATE DATABASE "{db_name}";',
     ]
 
     try:
