@@ -12,7 +12,6 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
-from sqlalchemy.orm import defer, joinedload
 
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
@@ -167,28 +166,21 @@ async def list_summaries(
     """
     with get_db() as db:
         # Join with Content to get title/publication
-        # OPTIMIZATION: joinedload to avoid N+1 queries, defer to avoid loading heavy fields
+        # OPTIMIZATION: Select specific columns to avoid loading heavy JSON/Text fields
+        # and full ORM objects. Also fetch only a substring of executive_summary.
         query = (
-            db.query(Summary)
-            .join(Content, Summary.content_id == Content.id)
-            .options(
-                joinedload(Summary.content).options(
-                    defer(Content.markdown_content),
-                    defer(Content.tables_json),
-                    defer(Content.links_json),
-                    defer(Content.metadata_json),
-                    defer(Content.raw_content),
-                    defer(Content.error_message),
-                ),
-                defer(Summary.strategic_insights),
-                defer(Summary.technical_details),
-                defer(Summary.actionable_items),
-                defer(Summary.notable_quotes),
-                defer(Summary.relevant_links),
-                defer(Summary.relevance_scores),
-                defer(Summary.markdown_content),
-                defer(Summary.theme_tags),
+            db.query(
+                Summary.id,
+                Summary.content_id,
+                Summary.key_themes,
+                Summary.model_used,
+                Summary.created_at,
+                Summary.processing_time_seconds,
+                func.substr(Summary.executive_summary, 1, 203).label("executive_summary_preview"),
+                Content.title,
+                Content.publication,
             )
+            .join(Content, Summary.content_id == Content.id)
         )
 
         # Apply filters
@@ -219,20 +211,36 @@ async def list_summaries(
 
         # Convert to response models
         items = []
-        for s in summaries:
+        for row in summaries:
+            # Unpack the row (named tuple-like)
+            (
+                s_id,
+                s_content_id,
+                s_key_themes,
+                s_model_used,
+                s_created_at,
+                s_processing_time,
+                s_exec_preview,
+                c_title,
+                c_publication,
+            ) = row
+
+            # Handle preview truncation
+            preview_text = s_exec_preview or ""
+            if len(preview_text) > 200:
+                preview_text = preview_text[:200] + "..."
+
             items.append(
                 SummaryListItem(
-                    id=s.id,
-                    content_id=s.content_id,
-                    title=s.content.title if s.content else "Unknown",
-                    publication=s.content.publication if s.content else None,
-                    executive_summary_preview=s.executive_summary[:200] + "..."
-                    if len(s.executive_summary) > 200
-                    else s.executive_summary,
-                    key_themes=s.key_themes or [],
-                    model_used=s.model_used,
-                    created_at=s.created_at,
-                    processing_time_seconds=s.processing_time_seconds,
+                    id=s_id,
+                    content_id=s_content_id,
+                    title=c_title,
+                    publication=c_publication,
+                    executive_summary_preview=preview_text,
+                    key_themes=s_key_themes or [],
+                    model_used=s_model_used,
+                    created_at=s_created_at,
+                    processing_time_seconds=s_processing_time,
                 )
             )
 
