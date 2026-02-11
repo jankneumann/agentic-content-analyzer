@@ -28,9 +28,10 @@ The API already has foundational security: API key authentication on settings en
   - Alternatives considered: Hard failure (too disruptive), silent pass (defeats purpose).
 
 ## Risks / Trade-offs
-- CORS enforcement in production may break existing deployments that rely on dev defaults — mitigate via clear logging and documentation.
+- **CORS behavior change in production**: `get_allowed_origins_list()` returning empty list for unconfigured production deployments will block cross-origin requests. This is a deliberate security default, but will break existing production deployments that relied on dev defaults silently passing through. Mitigate via: startup warning log, clear documentation of required `ALLOWED_ORIGINS` for production.
+- **Startup warnings are advisory only**: Production misconfigurations (missing `ADMIN_API_KEY`, dev CORS defaults) produce log warnings but do NOT prevent startup. This is intentional — hard failures could cause downtime for deployments that work correctly despite non-ideal config.
 - Magic bytes validation adds a small check on every upload; negligible performance impact since first chunk is already in memory.
-- Public endpoint allowlist is informational unless paired with middleware enforcement — start with documentation, enforce later if needed.
+- Public endpoint allowlist is documentation-only (not enforcement middleware). In the single-user model, most endpoints are intentionally unauthenticated. Enforcement can be added later if multi-user support is needed.
 
 ## Migration Plan
 1. Add production startup validators to `settings.py` — warn on missing `ADMIN_API_KEY` and dev-default CORS.

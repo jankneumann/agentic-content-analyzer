@@ -49,15 +49,23 @@ The system SHALL load allowed CORS origins from configuration and apply restrict
 - **WHEN** a browser client makes a request from `http://localhost:5173` in development mode
 - **THEN** the API response includes `Access-Control-Allow-Origin: http://localhost:5173`
 
-### Requirement: Explicit public endpoint allowlist
-The system SHALL maintain an explicit list of endpoints that are intentionally accessible without authentication.
+#### Scenario: CORS preflight from allowed origin
+- **WHEN** a browser sends an OPTIONS preflight request from an origin in the configured allowlist
+- **THEN** the API responds with appropriate `Access-Control-Allow-*` headers and 200 status
 
-#### Scenario: Request to a listed public endpoint
-- **WHEN** a client calls an endpoint listed in the public allowlist (e.g., `/health`, `/ready`)
+### Requirement: Explicit public endpoint allowlist
+The system SHALL maintain a documented list of endpoints that are intentionally accessible without authentication, distinguishing between system endpoints (health, config) and application endpoints (content, digests) that are unauthenticated due to the single-user deployment model.
+
+#### Scenario: System endpoint listed as public
+- **WHEN** a client calls a system endpoint listed in the public allowlist (e.g., `/health`, `/ready`, `/api/v1/system/config`)
 - **THEN** the API returns the response without requiring authentication
 
-#### Scenario: Request to an unlisted endpoint without credentials
-- **WHEN** a client calls an endpoint NOT listed in the public allowlist without valid credentials in production
+#### Scenario: Application endpoint in single-user mode
+- **WHEN** a client calls a content API endpoint (e.g., `/api/v1/content`, `/api/v1/digests`) without credentials
+- **THEN** the API returns the response without requiring authentication (single-user model — instance is the security boundary)
+
+#### Scenario: Protected endpoint without credentials in production
+- **WHEN** a client calls a settings/admin endpoint (e.g., `/api/v1/settings/prompts`) without valid credentials in production
 - **THEN** the API returns a 401 Unauthorized response
 
 ### Requirement: File upload signature validation
@@ -85,6 +93,10 @@ The system SHALL validate that the client-provided MIME type is consistent with 
 #### Scenario: Upload with contradictory MIME type and extension
 - **WHEN** a client uploads a file with MIME type `image/png` but extension `.pdf`
 - **THEN** the API rejects the upload with a 415 Unsupported Media Type response indicating type mismatch
+
+#### Scenario: Upload with generic MIME type fallback
+- **WHEN** a client uploads a file with MIME type `application/octet-stream` (browser/tool generic fallback)
+- **THEN** the API skips MIME cross-check and proceeds with extension-based and signature-based validation only
 
 ### Requirement: Safe document upload size enforcement (existing)
 The system SHALL validate document uploads with early size checks before full buffering.
