@@ -19,7 +19,7 @@ import logging
 import os
 import warnings
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -274,15 +274,19 @@ class Settings(BaseSettings):
     # Examples: "http://localhost:5173,http://localhost:3000" or "*"
     allowed_origins: str = "http://localhost:5173,http://localhost:3000"
 
-    _DEV_DEFAULT_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    _DEV_DEFAULT_ORIGINS: ClassVar[set[str]] = {"http://localhost:5173", "http://localhost:3000"}
 
     def _is_dev_default_origins(self) -> bool:
         """Check if allowed_origins is still the development default value.
 
+        Uses normalized set comparison so that ordering, spacing, or
+        trailing commas don't bypass the production CORS deny.
+
         Returns:
             True if allowed_origins matches the dev default (localhost only)
         """
-        return self.allowed_origins == self._DEV_DEFAULT_ORIGINS
+        origins = {o.strip() for o in self.allowed_origins.split(",") if o.strip()}
+        return origins == self._DEV_DEFAULT_ORIGINS
 
     def get_allowed_origins_list(self) -> list[str]:
         """Parse allowed_origins string into a list.

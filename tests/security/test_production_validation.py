@@ -137,3 +137,30 @@ class TestCORSDefaults:
             # allowed_origins defaults to dev defaults
         )
         assert s.get_allowed_origins_list() == []
+
+    def test_production_dev_defaults_with_spaces_returns_empty(self):
+        """Dev defaults with extra spaces should still be detected."""
+        s = _make_settings(
+            environment="production",
+            admin_api_key="key",
+            allowed_origins="http://localhost:5173, http://localhost:3000",
+        )
+        assert s.get_allowed_origins_list() == []
+
+    def test_production_dev_defaults_reversed_returns_empty(self):
+        """Dev defaults in reversed order should still be detected."""
+        s = _make_settings(
+            environment="production",
+            admin_api_key="key",
+            allowed_origins="http://localhost:3000,http://localhost:5173",
+        )
+        assert s.get_allowed_origins_list() == []
+
+    def test_production_single_localhost_not_dev_default(self):
+        """Single localhost origin is not the dev default set — should pass through."""
+        s = _make_settings(
+            environment="production",
+            admin_api_key="key",
+            allowed_origins="http://localhost:5173",
+        )
+        assert s.get_allowed_origins_list() == ["http://localhost:5173"]
