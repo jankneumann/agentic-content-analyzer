@@ -9,14 +9,12 @@ Test Database Isolation:
 - No impact on development/production database
 """
 
-import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.api.app import app
@@ -34,12 +32,10 @@ from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
 from tests.factories.summary import SummaryFactory
+from tests.helpers.test_db import create_test_engine, get_test_database_url
 
-# Test database configuration
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql://newsletter_user:newsletter_password@localhost/newsletters_test",
-)
+# Worktree-aware test database URL (shared helper handles detection)
+TEST_DATABASE_URL = get_test_database_url()
 
 
 @pytest.fixture(autouse=True)
@@ -63,19 +59,10 @@ def api_test_env(monkeypatch):
 def test_db_engine():
     """Create test database engine.
 
-    Uses newsletters_test database (separate from development).
+    Uses shared helper for worktree-aware DB naming and auto-creation.
     Drops and recreates all tables at session start for clean state.
-    This handles interrupted previous runs that left stale data.
     """
-    engine = create_engine(TEST_DATABASE_URL, echo=False)
-
-    # Verify we're using test database (safety check)
-    db_name = engine.url.database
-    if not db_name or "test" not in db_name.lower():
-        raise ValueError(
-            f"Safety check failed: Database '{db_name}' does not contain 'test'. "
-            f"Set TEST_DATABASE_URL to a test database to proceed."
-        )
+    engine = create_test_engine(TEST_DATABASE_URL)
 
     # Drop all tables first for clean state (handles interrupted previous runs)
     Base.metadata.drop_all(engine)

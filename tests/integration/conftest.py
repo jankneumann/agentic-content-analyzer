@@ -32,13 +32,13 @@ Note: The test Neo4j instance uses the 'test' profile and runs on port 7688 to
 ensure test cleanup never affects production knowledge graph data.
 """
 
+import logging
 import os
 from collections.abc import Generator
 from unittest.mock import MagicMock
 
 import pytest
 from neo4j import GraphDatabase
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # Import Base and all models that use it to ensure they're registered with metadata
@@ -54,12 +54,16 @@ from src.models.summary import Summary  # noqa: F401
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 from tests.factories.content import ContentFactory
 from tests.factories.summary import SummaryFactory
-
-# Test database configuration
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql://newsletter_user:newsletter_password@localhost/newsletters_test",
+from tests.helpers.test_db import (
+    create_test_engine,
+    get_test_database_url,
+    get_worktree_name,
 )
+
+logger = logging.getLogger(__name__)
+
+# Worktree-aware test database URL (shared helper handles detection)
+TEST_DATABASE_URL = get_test_database_url()
 
 # Test Neo4j configuration (dedicated test instance on different port)
 TEST_NEO4J_URI = os.getenv("TEST_NEO4J_URI", "bolt://localhost:7688")
@@ -71,19 +75,10 @@ TEST_NEO4J_PASSWORD = os.getenv("TEST_NEO4J_PASSWORD", "newsletter_password")
 def test_db_engine():
     """Create test database engine.
 
-    Uses newsletters_test database (separate from development).
+    Uses shared helper for worktree-aware DB naming and auto-creation.
     Drops and recreates all tables at session start for clean state.
-    This handles interrupted previous runs that left stale data.
     """
-    engine = create_engine(TEST_DATABASE_URL, echo=False)
-
-    # Verify we're using test database (safety check)
-    db_name = engine.url.database
-    if not db_name or "test" not in db_name.lower():
-        raise ValueError(
-            f"Safety check failed: Database '{db_name}' does not contain 'test'. "
-            f"Set TEST_DATABASE_URL to a test database to proceed."
-        )
+    engine = create_test_engine(TEST_DATABASE_URL)
 
     # Drop all tables first for clean state (handles interrupted previous runs)
     # All models share the same Base.metadata
@@ -154,6 +149,17 @@ def neo4j_driver():
     The test instance is separate from dev/prod (port 7687) to prevent
     accidentally deleting production data during test cleanup.
     """
+    # Warn when running from a worktree without a dedicated Neo4j URI
+    worktree = get_worktree_name()
+    if worktree and not os.getenv("TEST_NEO4J_URI"):
+        logger.warning(
+            "Running from worktree '%s' without TEST_NEO4J_URI set. "
+            "All worktrees share the same Neo4j test instance on port 7688. "
+            "Concurrent integration tests may interfere with each other. "
+            "Set TEST_NEO4J_URI to a dedicated instance for parallel safety.",
+            worktree,
+        )
+
     # Safety check: Verify we're not connecting to production port
     if "7687" in TEST_NEO4J_URI:
         raise ValueError(
