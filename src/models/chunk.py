@@ -5,7 +5,7 @@ and full-text search vectors. Each chunk belongs to a Content record
 and is automatically deleted when the parent Content is removed (CASCADE).
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
@@ -80,7 +80,7 @@ class DocumentChunk(Base):  # type: ignore[valid-type, misc]
     # in migrations and search strategy implementations.
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
 
     # Relationships
     content: Mapped["Content"] = relationship(  # type: ignore[name-defined]  # noqa: F821

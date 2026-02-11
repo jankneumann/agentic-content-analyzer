@@ -22,6 +22,26 @@ from src.config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
+def _run_async(coro):  # type: ignore[no-untyped-def]
+    """Run an async coroutine from sync code, handling nested event loops.
+
+    asyncio.run() fails if an event loop is already running (e.g., inside
+    FastAPI async handlers or task workers). In that case, we run the
+    coroutine in a separate thread with its own event loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No event loop running — safe to use asyncio.run()
+        return asyncio.run(coro)
+
+    # Already in an async context — run in a new thread
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 def index_content(
     content: object,  # Content model — use object to avoid circular import
     db: Session,
@@ -83,7 +103,13 @@ def _index_content_impl(content: object, db: Session) -> None:
         from src.services.embedding import embed_chunks, get_embedding_provider
 
         provider = get_embedding_provider()
-        embeddings = asyncio.run(embed_chunks(chunks, provider))
+        embeddings = _run_async(embed_chunks(chunks, provider))
+
+        if len(embeddings) != len(chunks):
+            logger.warning(
+                f"Embedding count mismatch for content {content_id}: "
+                f"{len(embeddings)} embeddings for {len(chunks)} chunks"
+            )
 
         for chunk, embedding in zip(chunks, embeddings, strict=False):
             db.execute(
@@ -144,6 +170,7 @@ def register_content_listeners() -> None:
     rechunking when the content changes. Call once at app startup.
     """
     from src.models.content import Content
+    from src.storage.database import get_db_session  # Validate import at registration time
 
     @event.listens_for(Content, "after_update")
     def _on_content_update(mapper, connection, target):  # type: ignore[no-untyped-def]
@@ -165,13 +192,9 @@ def register_content_listeners() -> None:
         # with the same connection, so use after_commit instead
         @event.listens_for(state.session, "after_commit", once=True)
         def _reindex_after_commit(session):  # type: ignore[no-untyped-def]
-            from src.storage.database import get_db_session
-
             new_db = get_db_session()
             try:
-                from src.models.content import Content as ContentModel
-
-                refreshed = new_db.query(ContentModel).get(target.id)
+                refreshed = new_db.query(Content).get(target.id)
                 if refreshed:
                     reindex_content(refreshed, new_db)
                     new_db.commit()

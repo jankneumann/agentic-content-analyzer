@@ -54,11 +54,21 @@ class OpenAIEmbeddingProvider:
 
     def __init__(self, model: str = "text-embedding-3-small") -> None:
         self._model = model
+        self._client = None
         self._dimensions_map = {
             "text-embedding-3-small": 1536,
             "text-embedding-3-large": 3072,
             "text-embedding-ada-002": 1536,
         }
+
+    def _get_client(self):  # type: ignore[no-untyped-def]
+        """Lazy-initialize the OpenAI client for connection reuse."""
+        if self._client is None:
+            from openai import AsyncOpenAI
+
+            settings = get_settings()
+            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        return self._client
 
     @property
     def name(self) -> str:
@@ -77,10 +87,7 @@ class OpenAIEmbeddingProvider:
         return results[0]
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        from openai import AsyncOpenAI
-
-        settings = get_settings()
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = self._get_client()
         normalized = [_normalize_text(t) for t in texts]
 
         response = await client.embeddings.create(
@@ -95,11 +102,21 @@ class VoyageEmbeddingProvider:
 
     def __init__(self, model: str = "voyage-3") -> None:
         self._model = model
+        self._client = None
         self._dimensions_map = {
             "voyage-3": 1024,
             "voyage-3-lite": 512,
             "voyage-2": 1024,
         }
+
+    def _get_client(self):  # type: ignore[no-untyped-def]
+        """Lazy-initialize the Voyage AI client for connection reuse."""
+        if self._client is None:
+            import voyageai  # type: ignore[import-untyped]
+
+            settings = get_settings()
+            self._client = voyageai.AsyncClient(api_key=settings.voyage_api_key)
+        return self._client
 
     @property
     def name(self) -> str:
@@ -118,10 +135,7 @@ class VoyageEmbeddingProvider:
         return results[0]
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        import voyageai  # type: ignore[import-untyped]
-
-        settings = get_settings()
-        client = voyageai.AsyncClient(api_key=settings.voyage_api_key)
+        client = self._get_client()
         normalized = [_normalize_text(t) for t in texts]
 
         response = await client.embed(
@@ -137,7 +151,17 @@ class CohereEmbeddingProvider:
 
     def __init__(self, model: str = "embed-english-v3.0") -> None:
         self._model = model
+        self._client = None
         self._input_type = "search_document"  # Set to "search_query" for queries
+
+    def _get_client(self):  # type: ignore[no-untyped-def]
+        """Lazy-initialize the Cohere client for connection reuse."""
+        if self._client is None:
+            import cohere  # type: ignore[import-untyped]
+
+            settings = get_settings()
+            self._client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
+        return self._client
 
     @property
     def name(self) -> str:
@@ -160,10 +184,7 @@ class CohereEmbeddingProvider:
         return results[0]
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        import cohere  # type: ignore[import-untyped]
-
-        settings = get_settings()
-        client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
+        client = self._get_client()
         normalized = [_normalize_text(t) for t in texts]
 
         response = await client.embed(
@@ -172,7 +193,12 @@ class CohereEmbeddingProvider:
             input_type=self._input_type,
             embedding_types=["float"],
         )
-        return [list(e) for e in response.embeddings.float_]
+        # Cohere SDK v2 uses .float_ (with underscore to avoid Python keyword collision)
+        # but some versions may use .float — handle both
+        embeddings = getattr(response.embeddings, "float_", None) or getattr(
+            response.embeddings, "float", []
+        )
+        return [list(e) for e in embeddings]
 
 
 class LocalEmbeddingProvider:

@@ -170,4 +170,5 @@ aca manage backfill-chunks --batch-size 50 --delay 2.0
 | "Unknown embedding provider" | Install optional deps: `pip install ".[embeddings]"` |
 | pg_search not detected | Check `SELECT * FROM pg_extension WHERE extname = 'pg_search'` |
 | Embedding API rate limits | Increase `--delay` in backfill; reduce `--batch-size` |
-| Changing embedding provider | Re-run backfill (`--embed-only`) — dimensions must match migration |
+| Changing embedding provider | Different providers have different dimensions. You must: 1) `ALTER TABLE document_chunks ALTER COLUMN embedding TYPE vector(N)` where N is the new dimension, 2) Re-run backfill with `--embed-only` to regenerate all embeddings |
+| Migration uses vector(384) | The migration creates the column with 384 dimensions (matching local provider). For production with OpenAI (1536), alter the column before backfilling |

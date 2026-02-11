@@ -91,9 +91,11 @@ class HybridSearchService:
         search_limit = min((query.limit + query.offset) * 5, settings.search_max_limit * 5)
 
         # Execute search based on type
+        # BM25 strategies use synchronous DB calls, so we run them in a thread
+        # to avoid blocking the async event loop.
         if query.type == SearchType.BM25:
-            bm25_results = self._bm25.search(
-                query.query, limit=search_limit, content_ids=content_ids
+            bm25_results = await asyncio.to_thread(
+                self._bm25.search, query.query, search_limit, content_ids
             )
             vector_results: list[tuple[int, float]] = []
         elif query.type == SearchType.VECTOR:
