@@ -112,13 +112,15 @@ def _index_content_impl(content: object, db: Session) -> None:
             )
 
         for chunk, embedding in zip(chunks, embeddings, strict=False):
+            # Normalize to list[float] — handles numpy arrays, torch tensors, etc.
+            vec = list(embedding) if not isinstance(embedding, list) else embedding
             db.execute(
                 text("""
                     UPDATE document_chunks
                     SET embedding = :embedding::vector
                     WHERE id = :id
                 """),
-                {"embedding": str(embedding), "id": chunk.id},
+                {"embedding": str(vec), "id": chunk.id},
             )
 
         logger.info(f"Generated {len(embeddings)} embeddings for content {content_id}")

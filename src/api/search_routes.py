@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from src.models.search import (
+    ChunkContentInfo,
+    ChunkDetail,
     SearchFilter,
     SearchQuery,
     SearchResponse,
@@ -79,11 +81,11 @@ async def search_post(
     return await service.search(query)
 
 
-@router.get("/chunks/{chunk_id}")
+@router.get("/chunks/{chunk_id}", response_model=ChunkDetail)
 async def get_chunk(
     chunk_id: int,
     db: Session = Depends(get_db),
-) -> dict:
+) -> ChunkDetail:
     """Retrieve a single chunk by ID with its content metadata."""
     from sqlalchemy import text
 
@@ -118,27 +120,27 @@ async def get_chunk(
     if not row:
         raise HTTPException(status_code=404, detail="Chunk not found")
 
-    return {
-        "chunk_id": row.chunk_id,
-        "content_id": row.content_id,
-        "chunk_text": row.chunk_text,
-        "chunk_index": row.chunk_index,
-        "section_path": row.section_path,
-        "heading_text": row.heading_text,
-        "chunk_type": row.chunk_type,
-        "page_number": row.page_number,
-        "start_char": row.start_char,
-        "end_char": row.end_char,
-        "timestamp_start": row.timestamp_start,
-        "timestamp_end": row.timestamp_end,
-        "deep_link_url": row.deep_link_url,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
-        "content": {
-            "id": row.content_id,
-            "title": row.content_title,
-            "source_type": row.source_type,
-            "publication": row.publication,
-            "published_date": row.published_date.isoformat() if row.published_date else None,
-            "source_url": row.source_url,
-        },
-    }
+    return ChunkDetail(
+        chunk_id=row.chunk_id,
+        content_id=row.content_id,
+        chunk_text=row.chunk_text,
+        chunk_index=row.chunk_index,
+        section_path=row.section_path,
+        heading_text=row.heading_text,
+        chunk_type=row.chunk_type,
+        page_number=row.page_number,
+        start_char=row.start_char,
+        end_char=row.end_char,
+        timestamp_start=row.timestamp_start,
+        timestamp_end=row.timestamp_end,
+        deep_link_url=row.deep_link_url,
+        created_at=row.created_at,
+        content=ChunkContentInfo(
+            id=row.content_id,
+            title=row.content_title,
+            source_type=row.source_type,
+            publication=row.publication,
+            published_date=row.published_date,
+            source_url=row.source_url,
+        ),
+    )

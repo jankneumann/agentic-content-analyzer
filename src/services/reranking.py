@@ -114,7 +114,12 @@ class JinaRerankProvider:
             response.raise_for_status()
             data = response.json()
 
-        return [(r["index"], r["relevance_score"]) for r in data["results"]]
+        results = data.get("results", [])
+        return [
+            (r["index"], r["relevance_score"])
+            for r in results
+            if "index" in r and "relevance_score" in r
+        ]
 
 
 class LocalCrossEncoderProvider:

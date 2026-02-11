@@ -104,3 +104,34 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
     total: int  # Total matching results (for pagination)
     meta: SearchMeta
+
+
+class ChunkContentInfo(BaseModel):
+    """Content metadata for a chunk detail response."""
+
+    id: int
+    title: str | None = None
+    source_type: str | None = None
+    publication: str | None = None
+    published_date: datetime | None = None
+    source_url: str | None = None
+
+
+class ChunkDetail(BaseModel):
+    """Detailed chunk information returned by the chunk detail endpoint."""
+
+    chunk_id: int
+    content_id: int
+    chunk_text: str
+    chunk_index: int
+    section_path: str | None = None
+    heading_text: str | None = None
+    chunk_type: str
+    page_number: int | None = None
+    start_char: int | None = None
+    end_char: int | None = None
+    timestamp_start: float | None = None
+    timestamp_end: float | None = None
+    deep_link_url: str | None = None
+    created_at: datetime | None = None
+    content: ChunkContentInfo

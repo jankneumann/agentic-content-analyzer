@@ -81,7 +81,7 @@ settings:
     search_bm25_strategy: auto
     search_rerank_enabled: false
     search_rerank_provider: cohere
-    search_rerank_model: ""
+    search_rerank_model: null
     search_rerank_top_k: 50
     chunk_size_tokens: 512
     chunk_overlap_tokens: 64

@@ -16,20 +16,28 @@ import logging
 import re
 from typing import Protocol, runtime_checkable
 
-import tiktoken
-
 from src.config.settings import get_settings
 from src.models.chunk import ChunkType, DocumentChunk
 
 logger = logging.getLogger(__name__)
 
-# Token encoder for chunk size estimation
-_encoder = tiktoken.get_encoding("cl100k_base")
+# Token encoder for chunk size estimation — lazy-initialized
+_encoder = None
+
+
+def _get_encoder():  # type: ignore[no-untyped-def]
+    """Lazy-initialize the tiktoken encoder."""
+    global _encoder
+    if _encoder is None:
+        import tiktoken
+
+        _encoder = tiktoken.get_encoding("cl100k_base")
+    return _encoder
 
 
 def _count_tokens(text: str) -> int:
     """Count tokens using tiktoken cl100k_base encoding."""
-    return len(_encoder.encode(text))
+    return len(_get_encoder().encode(text))
 
 
 def _split_into_sentences(text: str) -> list[str]:

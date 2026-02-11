@@ -158,7 +158,12 @@ async def _backfill_full(
                             SET embedding = :embedding::vector
                             WHERE id = :id
                         """),
-                        {"embedding": str(embedding), "id": chunk.id},
+                        {
+                            "embedding": str(
+                                list(embedding) if not isinstance(embedding, list) else embedding
+                            ),
+                            "id": chunk.id,
+                        },
                     )
                 stats["embeddings_generated"] += len(embeddings)
             except Exception:
@@ -230,7 +235,12 @@ async def _backfill_embeddings_only(
                         SET embedding = :embedding::vector
                         WHERE id = :id
                     """),
-                    {"embedding": str(embedding), "id": row.id},
+                    {
+                        "embedding": str(
+                            list(embedding) if not isinstance(embedding, list) else embedding
+                        ),
+                        "id": row.id,
+                    },
                 )
             db.commit()
             stats["embeddings_generated"] += len(embeddings)

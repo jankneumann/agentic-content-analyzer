@@ -154,8 +154,14 @@ class PostgresNativeFTSStrategy:
 
 def _check_pg_search_available(session: Session) -> bool:
     """Check if pg_search extension is installed in the database."""
-    result = session.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'pg_search'"))
-    return result.fetchone() is not None
+    try:
+        result = session.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'pg_search'"))
+        return result.fetchone() is not None
+    except Exception:
+        logger.debug(
+            "pg_search availability check failed, falling back to native FTS", exc_info=True
+        )
+        return False
 
 
 def get_bm25_strategy(session: Session) -> BM25SearchStrategy:

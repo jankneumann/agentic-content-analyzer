@@ -596,6 +596,24 @@ class Settings(BaseSettings):
     cohere_api_key: str | None = None
     jina_api_key: str | None = None
 
+    @model_validator(mode="after")
+    def validate_search_config(self) -> Settings:
+        """Validate search configuration cross-field constraints."""
+        if self.chunk_overlap_tokens >= self.chunk_size_tokens:
+            raise ValueError(
+                f"chunk_overlap_tokens ({self.chunk_overlap_tokens}) must be "
+                f"less than chunk_size_tokens ({self.chunk_size_tokens})"
+            )
+        if not (0.0 <= self.search_bm25_weight <= 1.0):
+            raise ValueError(
+                f"search_bm25_weight must be between 0.0 and 1.0, got {self.search_bm25_weight}"
+            )
+        if not (0.0 <= self.search_vector_weight <= 1.0):
+            raise ValueError(
+                f"search_vector_weight must be between 0.0 and 1.0, got {self.search_vector_weight}"
+            )
+        return self
+
     @field_validator("otel_logs_export_level")
     @classmethod
     def validate_otel_logs_export_level(cls, v: str) -> str:
