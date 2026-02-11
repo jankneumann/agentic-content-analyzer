@@ -1,34 +1,42 @@
 ## Context
-The API is intended for internal use but may be deployed in environments where unauthenticated access and permissive CORS are unacceptable. File upload endpoints also need stronger guardrails against abuse and sensitive error disclosure.
+The API already has foundational security: API key authentication on settings endpoints (`X-Admin-Key` header via `verify_admin_key()` in `dependencies.py`), configurable CORS origins (`ALLOWED_ORIGINS`), streaming upload size enforcement (1MB chunks), and global error sanitization middleware. However, production deployments rely on manual configuration — there is no automatic enforcement of secure defaults, no file content validation (only extension-based), and no centralized public endpoint allowlist.
 
 ## Goals / Non-Goals
 - Goals:
-  - Require authentication for non-public endpoints in production.
-  - Make CORS policy configurable and secure-by-default for production.
-  - Harden upload processing against memory exhaustion and file spoofing.
-  - Avoid leaking internal exception details in API responses.
+  - Automatically enforce secure defaults in production (CORS, auth key presence).
+  - Add file signature (magic bytes) validation to complement extension-based format checks.
+  - Define an explicit public endpoint allowlist so unauthenticated routes are intentional.
+  - Validate production security configuration at startup.
 - Non-Goals:
-  - Redesign of the ingestion pipeline or parser architecture.
-  - Replacing existing auth providers or identity systems.
+  - Redesigning authentication (API key mechanism is established and working).
+  - Adding rate limiting or DDoS protection (separate concern).
+  - Protecting content API endpoints (single-user model — instance is the security boundary).
+  - Malware/virus scanning of uploaded files.
 
 ## Decisions
-- Decision: Introduce a pluggable authentication dependency (API key or bearer token) with an explicit allowlist for public routes.
-  - Alternatives considered: Global middleware only, or per-route decorators without centralized config.
-- Decision: Move CORS origins to settings and enforce stricter defaults when ENVIRONMENT=production.
-  - Alternatives considered: Hardcoded origin lists, or disabling CORS entirely in production.
-- Decision: Enforce upload size limits before full buffering and validate file type using MIME/signature checks in addition to extensions.
-  - Alternatives considered: Extension-only validation and full in-memory buffering.
+- Decision: Use API key authentication via `X-Admin-Key` header (already implemented).
+  - Rationale: Established in codebase, sufficient for single-user model, used by Chrome extension and admin UI.
+  - Alternatives considered: Bearer tokens (unnecessary complexity for single-user), OAuth (overkill).
+- Decision: Enforce CORS by environment — restrictive defaults in production, permissive in development.
+  - Rationale: Prevents accidental exposure when deploying without explicit CORS config.
+  - Alternatives considered: Always require explicit config (too strict for dev), wildcard default (insecure).
+- Decision: Validate file uploads by magic bytes in addition to extension.
+  - Rationale: Extension-only validation allows spoofed file types. Magic bytes catch files with wrong extensions (e.g., executable renamed to `.pdf`).
+  - Alternatives considered: Full MIME sniffing library (heavyweight), extension-only (current, insufficient).
+- Decision: Log warnings (not hard failures) for production misconfigurations at startup.
+  - Rationale: Hard failures could break existing deployments that work correctly despite non-ideal config. Warnings surface issues without causing downtime.
+  - Alternatives considered: Hard failure (too disruptive), silent pass (defeats purpose).
 
 ## Risks / Trade-offs
-- Adding auth may require client updates; mitigate via clear docs and staged rollout.
-- Streaming validation may complicate parser integration; mitigate with a small adapter layer.
+- CORS enforcement in production may break existing deployments that rely on dev defaults — mitigate via clear logging and documentation.
+- Magic bytes validation adds a small check on every upload; negligible performance impact since first chunk is already in memory.
+- Public endpoint allowlist is informational unless paired with middleware enforcement — start with documentation, enforce later if needed.
 
 ## Migration Plan
-1. Add auth configuration and allowlist for public routes.
-2. Update CORS configuration and verify frontend access.
-3. Update upload endpoint to validate size/type early and sanitize errors.
-4. Document and test changes.
-
-## Open Questions
-- Which authentication mechanism should be the initial default (API key vs. bearer token)?
-- Which endpoints must remain public (e.g., health check, system config)?
+1. Add production startup validators to `settings.py` — warn on missing `ADMIN_API_KEY` and dev-default CORS.
+2. Update `get_allowed_origins_list()` to return empty list for production when no explicit origins configured.
+3. Add magic bytes validation in `upload_routes.py` after first chunk read (before format routing).
+4. Add MIME cross-check against declared extension.
+5. Define `PUBLIC_ENDPOINTS` constant documenting intentionally unauthenticated routes.
+6. Add tests for all new behaviors.
+7. Document production security requirements in setup docs.
