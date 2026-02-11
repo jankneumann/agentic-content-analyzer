@@ -77,11 +77,19 @@ def get_test_db_name() -> str:
     return "newsletters_test"
 ```
 
+**Assumption:** `Path.cwd()` is the repository root. This holds for all standard
+invocations (`pytest`, `make test`, IDE test runners) because they use the project
+root as working directory. If tests are run from a subdirectory (e.g., `cd tests &&
+python -m pytest`), worktree detection silently falls back to the default
+`newsletters_test` name — which is safe but loses parallel isolation.
+
 **Alternatives considered:**
 - Branch name from `git rev-parse --abbrev-ref HEAD`: Requires subprocess call, slower,
   and branch names can collide across repos. Worktree directory name is already unique.
 - UUID per test run: Would create unbounded databases requiring cleanup.
 - CWD hash: Not human-readable, harder to debug.
+- Walk up directories to find `.git`: Would fix the subdirectory case but adds complexity
+  for a scenario that doesn't occur in practice.
 
 ### Decision 2: Auto-create via admin DB connection
 
