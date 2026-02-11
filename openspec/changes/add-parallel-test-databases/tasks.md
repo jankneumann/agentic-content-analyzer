@@ -11,7 +11,7 @@
   - `get_test_database_url()` — resolve full URL; `TEST_DATABASE_URL` env var overrides worktree detection
   - `ensure_test_db_exists()` — auto-create via admin connection to `postgres` DB with `AUTOCOMMIT`; clear error message on failure
   - `create_test_engine()` — safety check (`"test" in db_name`), auto-create, engine creation, `drop_all`/`create_all`
-- [ ] 2.2 Write unit tests covering: worktree detection (main repo, worktree, corrupted `.git`), DB name sanitization, 63-char truncation, `TEST_DATABASE_URL` override, safety check rejection
+- [ ] 2.2 Write unit tests covering: worktree detection (main repo, worktree, corrupted `.git`), DB name sanitization, 63-char truncation, `TEST_DATABASE_URL` override, safety check rejection, admin connection failure error message
 
 > **Dependency:** Tasks 3.x and 5.x depend on 2.1 being complete.
 
