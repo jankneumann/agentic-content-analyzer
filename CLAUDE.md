@@ -492,6 +492,11 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Prompt API auth header is `X-Admin-Key` | NOT `X-Admin-API-Key` or `Authorization` — defined in `src/api/dependencies.py:9` as `APIKeyHeader(name="X-Admin-Key")` |
 | Worktree test DB naming | Each worktree auto-creates `newsletters_test_<worktree>` (sanitized, max 63 chars). `TEST_DATABASE_URL` env var overrides. Use `make test-clean` to drop all worktree test DBs |
 | Test DB auto-created by conftest | Session-scoped fixtures auto-create via admin connection to `postgres` DB. No `make test-setup` needed for PG (still needed for Neo4j) |
+| Production CORS returns empty list | When `ENVIRONMENT=production` and `ALLOWED_ORIGINS` is dev defaults (localhost), `get_allowed_origins_list()` returns `[]` — must set explicit origins |
+| Production startup warns (doesn't fail) | Missing `ADMIN_API_KEY` or dev CORS in production logs warnings but does NOT prevent startup — intentional per design |
+| Upload magic bytes validation | File uploads are validated against `FILE_SIGNATURES` mapping in `upload_routes.py` — mismatched extensions return 415 |
+| Upload MIME cross-check | Client `Content-Type` is validated against `EXTENSION_MIME_MAP` — `application/octet-stream` and `None` bypass the check |
+| `ENDPOINT_AUTH_MAP` in `dependencies.py` | Documentation-only constant — lists all routes and their auth requirements. No enforcement middleware (single-user model) |
 
 ## Quick Links by Task
 
