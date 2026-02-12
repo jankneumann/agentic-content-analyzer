@@ -9,9 +9,10 @@ import logging
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict
 
+from src.api.dependencies import verify_admin_key
 from src.config.settings import settings
 from src.ingestion.files import FileContentIngestionService
 from src.models.content import Content, ContentSource
@@ -108,7 +109,11 @@ def get_parser_router() -> ParserRouter:
 # ============================================================================
 
 
-@router.post("/upload", response_model=DocumentUploadResponse)
+@router.post(
+    "/upload",
+    response_model=DocumentUploadResponse,
+    dependencies=[Depends(verify_admin_key)],
+)
 async def upload_document(
     file: Annotated[UploadFile, File(description="Document file to upload")],
     publication: Annotated[str | None, Form(description="Publisher/source name")] = None,

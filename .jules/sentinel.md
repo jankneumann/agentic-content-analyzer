@@ -42,3 +42,8 @@
 **Vulnerability:** Background tasks for podcast script generation (`generate_script_task`) and audio generation (`generate_audio_task`) caught generic `Exception` and saved `str(e)` to the `error_message` database field. This exposed internal error details (including potential secrets or connection strings) to API consumers, despite previous efforts to fix this pattern elsewhere.
 **Learning:** Security fixes are often incomplete if they rely on manual discovery. The "leak `str(e)`" pattern appeared in modules (`script_routes.py`, `podcast_routes.py`) that were missed in previous remediation waves.
 **Prevention:** Use automated code scanning (SAST) or `grep` across the *entire* codebase to identify all instances of `error_message = str(e)` or similar patterns. Establish a strict rule: never assign raw exception strings to user-visible data models.
+
+## 2025-05-30 - [Missing Authorization in Upload Endpoint]
+**Vulnerability:** The `/api/v1/documents/upload` endpoint in `src/api/upload_routes.py` was publicly accessible because it lacked the `Depends(verify_admin_key)` dependency, unlike other sensitive endpoints (e.g., settings). This allowed unauthenticated users to upload files.
+**Learning:** When adding new routers or endpoints, it's easy to forget applying global or router-level dependencies. Explicit is better than implicit, but consistency is key.
+**Prevention:** Always verify authentication requirements for new endpoints. Consider applying auth dependencies at the `APIRouter` level (e.g., `router = APIRouter(dependencies=[Depends(verify_admin_key)])`) to ensure all routes in the module are protected by default.
