@@ -13,12 +13,23 @@ from src.models.audio_digest import (
 )
 from src.models.base import Base
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
+from src.models.chunk import ChunkType, DocumentChunk
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
 from src.models.image import Image, ImageSource
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
+from src.models.search import (
+    ChunkResult,
+    SearchFilter,
+    SearchMeta,
+    SearchQuery,
+    SearchResponse,
+    SearchResult,
+    SearchScores,
+    SearchType,
+)
 from src.models.settings import PromptOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
@@ -33,6 +44,18 @@ from src.models.youtube import (
 __all__ = [
     # Base
     "Base",
+    # Chunk
+    "DocumentChunk",
+    "ChunkType",
+    # Search
+    "SearchType",
+    "SearchQuery",
+    "SearchFilter",
+    "ChunkResult",
+    "SearchScores",
+    "SearchResult",
+    "SearchMeta",
+    "SearchResponse",
     # Audio Digest
     "AudioDigest",
     "AudioDigestCreate",

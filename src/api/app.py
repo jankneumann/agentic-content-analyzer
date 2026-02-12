@@ -23,6 +23,7 @@ from src.api.otel_proxy_routes import router as otel_proxy_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
+from src.api.search_routes import router as search_router
 from src.api.settings_routes import router as settings_router
 from src.api.source_routes import router as source_router
 from src.api.summary_routes import router as summary_router
@@ -95,6 +96,7 @@ app.include_router(save_router)  # Mobile content capture
 app.include_router(source_router)
 app.include_router(health_router)  # Health and readiness probes
 app.include_router(job_router)  # Job queue management
+app.include_router(search_router)  # Hybrid document search
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 

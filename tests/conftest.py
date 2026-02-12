@@ -32,13 +32,13 @@ import os
 
 import pytest
 from pytest_factoryboy import register
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
 from tests.factories.summary import SummaryFactory
+from tests.helpers.test_db import create_test_engine, get_test_database_url
 
 # =============================================================================
 # Environment Isolation
@@ -110,18 +110,15 @@ register(PodcastScriptRecordFactory)
 register(PodcastFactory)
 
 
-# Test database URL (same as api/conftest.py for consistency)
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql://newsletter_user:newsletter_password@localhost/newsletters_test",
-)
+# Worktree-aware test database URL (shared helper handles detection)
+TEST_DATABASE_URL = get_test_database_url()
 
 
 @pytest.fixture(scope="session")
 def test_engine():
     """Create test database engine (session-scoped).
 
-    This fixture provides the SQLAlchemy engine for the test database.
+    Uses shared helper for worktree-aware DB naming and auto-creation.
     Tables are created fresh at the start and dropped at the end.
     """
     from src.models.audio_digest import AudioDigest  # noqa: F401
@@ -133,15 +130,7 @@ def test_engine():
     from src.models.summary import Summary  # noqa: F401
     from src.models.theme import ThemeAnalysis  # noqa: F401
 
-    engine = create_engine(TEST_DATABASE_URL, echo=False)
-
-    # Safety check: Only use test databases
-    db_name = engine.url.database
-    if not db_name or "test" not in db_name.lower():
-        raise ValueError(
-            f"Safety check failed: Database '{db_name}' does not contain 'test'. "
-            f"Set TEST_DATABASE_URL to a test database."
-        )
+    engine = create_test_engine(TEST_DATABASE_URL)
 
     # Drop all tables for clean state (handles interrupted runs)
     Base.metadata.drop_all(engine)

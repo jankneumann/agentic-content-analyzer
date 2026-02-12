@@ -42,6 +42,12 @@ class SourceDefaults(BaseModel):
     # Podcast-specific defaults
     transcribe: bool = True
     stt_provider: Literal["openai", "local_whisper"] = "openai"
+    # Chunking overrides (for search indexing)
+    chunk_size_tokens: int | None = None  # Override global CHUNK_SIZE_TOKENS
+    chunk_overlap_tokens: int | None = None  # Override global CHUNK_OVERLAP_TOKENS
+    chunking_strategy: str | None = (
+        None  # Force: structured, youtube_transcript, gemini_summary, markdown, section
+    )
 
 
 # --- Source Type Models ---

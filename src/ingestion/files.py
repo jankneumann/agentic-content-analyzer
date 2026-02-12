@@ -128,6 +128,11 @@ class FileContentIngestionService:
         self.db.commit()
         self.db.refresh(content)
 
+        # Index for search (fail-safe — never blocks ingestion)
+        from src.services.indexing import index_content
+
+        index_content(content, self.db)
+
         logger.info(
             f"Ingested {file_path.name} as content ID {content.id} "
             f"(parser: {doc_content.parser_used}, {doc_content.processing_time_ms}ms)"
@@ -197,6 +202,11 @@ class FileContentIngestionService:
         self.db.add(content)
         self.db.commit()
         self.db.refresh(content)
+
+        # Index for search (fail-safe — never blocks ingestion)
+        from src.services.indexing import index_content
+
+        index_content(content, self.db)
 
         logger.info(
             f"Ingested {filename} as content ID {content.id} (parser: {doc_content.parser_used})"

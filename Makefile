@@ -59,21 +59,31 @@ test-integration:  ## Run integration tests (requires test services)
 
 test-setup:  ## Start test infrastructure (PostgreSQL test DB, Neo4j test instance)
 	@echo "Starting test infrastructure..."
-	createdb newsletters_test 2>/dev/null || echo "Test database already exists"
+	@TEST_DB_NAME=$$(python -c "from tests.helpers.test_db import get_test_db_name; print(get_test_db_name())") && \
+		createdb "$$TEST_DB_NAME" 2>/dev/null || echo "Test database already exists: $$TEST_DB_NAME"
 	docker compose up -d neo4j-test
 	@echo "Waiting for Neo4j test instance to be ready..."
 	@sleep 5
-	@echo "✓ Test infrastructure ready!"
-	@echo "  - PostgreSQL test DB: newsletters_test"
-	@echo "  - Neo4j test instance: bolt://localhost:7688 (http://localhost:7475)"
+	@TEST_DB_NAME=$$(python -c "from tests.helpers.test_db import get_test_db_name; print(get_test_db_name())") && \
+		echo "✓ Test infrastructure ready!" && \
+		echo "  - PostgreSQL test DB: $$TEST_DB_NAME" && \
+		echo "  - Neo4j test instance: bolt://localhost:7688 (http://localhost:7475)"
 
 test-teardown:  ## Stop test infrastructure
 	docker compose stop neo4j-test
 	@echo "Test infrastructure stopped (data preserved)"
 
-test-clean:  ## Stop and remove test infrastructure (WARNING: deletes test data)
+test-clean:  ## Stop and remove test infrastructure (WARNING: deletes ALL test databases)
 	docker compose down neo4j-test -v
-	dropdb newsletters_test 2>/dev/null || echo "Test database already removed"
+	@echo "Dropping all test databases (newsletters_test*)..."
+	@docker exec newsletter-postgres psql -U newsletter_user -d postgres -tAc \
+		"SELECT datname FROM pg_database WHERE datname LIKE 'newsletters_test%'" 2>/dev/null | \
+		while read -r db; do \
+			if [ -n "$$db" ]; then \
+				docker exec newsletter-postgres psql -U newsletter_user -d postgres -c "DROP DATABASE \"$$db\"" 2>/dev/null && \
+					echo "  Dropped: $$db" || echo "  Failed to drop: $$db"; \
+			fi; \
+		done
 	@echo "Test infrastructure cleaned"
 
 lint:  ## Lint code with ruff
