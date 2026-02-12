@@ -183,6 +183,7 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         patch("src.api.source_routes.get_db", mock_get_db),
         patch("src.api.upload_routes.get_db", mock_get_db),
         patch("src.api.save_routes.get_db", mock_get_db),
+        patch("src.api.search_routes.get_db", mock_get_db),
         patch("src.services.script_review_service.get_db", mock_get_db),
         patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):

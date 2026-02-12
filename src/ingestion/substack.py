@@ -387,6 +387,13 @@ class SubstackContentIngestionService:
                         status=ContentStatus.PARSED,
                     )
                     db.add(content)
+                    db.flush()  # Ensure content.id is assigned for indexing
+
+                    # Index for search (fail-safe — never blocks ingestion)
+                    from src.services.indexing import index_content
+
+                    index_content(content, db)
+
                     count += 1
                     logger.info(f"Ingested: {content_data.title}")
 
