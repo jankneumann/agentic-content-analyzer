@@ -1,7 +1,7 @@
 """add summary model used index
 
 Revision ID: 1a4ad3270eb7
-Revises: 8f6faaa1bce9, f9a8b7c6d5e5
+Revises: b8affd253096
 Create Date: 2026-02-10 18:43:40.352432
 
 """
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '1a4ad3270eb7'
-down_revision: Union[str, Sequence[str], None] = ('8f6faaa1bce9', 'f9a8b7c6d5e5')
+down_revision: Union[str, Sequence[str], None] = 'b8affd253096'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
