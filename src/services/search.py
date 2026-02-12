@@ -247,7 +247,7 @@ class HybridSearchService:
         params: dict = {}
 
         if f.source_types:
-            conditions.append("c.source_type = ANY(:source_types)")
+            conditions.append("c.source_type::text = ANY(:source_types)")
             params["source_types"] = f.source_types
         if f.date_from:
             conditions.append("c.published_date >= :date_from")
@@ -259,7 +259,7 @@ class HybridSearchService:
             conditions.append("c.publication = ANY(:publications)")
             params["publications"] = f.publications
         if f.statuses:
-            conditions.append("c.status = ANY(:statuses)")
+            conditions.append("c.status::text = ANY(:statuses)")
             params["statuses"] = f.statuses
 
         # chunk_types filter is applied directly on chunks, not via content pre-filter

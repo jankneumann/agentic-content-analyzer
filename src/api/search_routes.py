@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import text
 
 from src.models.search import (
     ChunkContentInfo,
@@ -39,7 +39,6 @@ async def search_get(
     date_from: datetime | None = Query(default=None, description="Filter: published after"),
     date_to: datetime | None = Query(default=None, description="Filter: published before"),
     publication: list[str] | None = Query(default=None, description="Filter by publications"),
-    db: Session = Depends(get_db),
 ) -> SearchResponse:
     """Simple search via query parameters.
 
@@ -63,59 +62,58 @@ async def search_get(
         offset=offset,
     )
 
-    service = HybridSearchService(session=db)
-    return await service.search(query)
+    with get_db() as db:
+        service = HybridSearchService(session=db)
+        return await service.search(query)
 
 
 @router.post("", response_model=SearchResponse)
 async def search_post(
     query: SearchQuery,
-    db: Session = Depends(get_db),
 ) -> SearchResponse:
     """Advanced search with full filter and weight control.
 
     Accepts a JSON body with query, type, filters, weights,
     and pagination parameters.
     """
-    service = HybridSearchService(session=db)
-    return await service.search(query)
+    with get_db() as db:
+        service = HybridSearchService(session=db)
+        return await service.search(query)
 
 
 @router.get("/chunks/{chunk_id}", response_model=ChunkDetail)
 async def get_chunk(
     chunk_id: int,
-    db: Session = Depends(get_db),
 ) -> ChunkDetail:
     """Retrieve a single chunk by ID with its content metadata."""
-    from sqlalchemy import text
-
-    stmt = text("""
-        SELECT
-            dc.id as chunk_id,
-            dc.content_id,
-            dc.chunk_text,
-            dc.chunk_index,
-            dc.section_path,
-            dc.heading_text,
-            dc.chunk_type,
-            dc.page_number,
-            dc.start_char,
-            dc.end_char,
-            dc.timestamp_start,
-            dc.timestamp_end,
-            dc.deep_link_url,
-            dc.created_at,
-            c.title as content_title,
-            c.source_type,
-            c.publication,
-            c.published_date,
-            c.source_url
-        FROM document_chunks dc
-        JOIN contents c ON c.id = dc.content_id
-        WHERE dc.id = :chunk_id
-    """)
-    result = db.execute(stmt, {"chunk_id": chunk_id})
-    row = result.fetchone()
+    with get_db() as db:
+        stmt = text("""
+            SELECT
+                dc.id as chunk_id,
+                dc.content_id,
+                dc.chunk_text,
+                dc.chunk_index,
+                dc.section_path,
+                dc.heading_text,
+                dc.chunk_type,
+                dc.page_number,
+                dc.start_char,
+                dc.end_char,
+                dc.timestamp_start,
+                dc.timestamp_end,
+                dc.deep_link_url,
+                dc.created_at,
+                c.title as content_title,
+                c.source_type,
+                c.publication,
+                c.published_date,
+                c.source_url
+            FROM document_chunks dc
+            JOIN contents c ON c.id = dc.content_id
+            WHERE dc.id = :chunk_id
+        """)
+        result = db.execute(stmt, {"chunk_id": chunk_id})
+        row = result.fetchone()
 
     if not row:
         raise HTTPException(status_code=404, detail="Chunk not found")
