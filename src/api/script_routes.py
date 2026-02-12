@@ -7,9 +7,10 @@ Provides REST endpoints for:
 - Script approval/rejection
 """
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.api.dependencies import verify_admin_key
 from src.models.chat import Conversation, MessageRole
 from src.models.podcast import (
     PodcastLength,
@@ -26,7 +27,9 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/scripts", tags=["podcast-scripts"])
+router = APIRouter(
+    prefix="/api/v1/scripts", tags=["podcast-scripts"], dependencies=[Depends(verify_admin_key)]
+)
 
 # Allowed sort fields for script listing
 SCRIPT_SORT_FIELDS = {"id", "digest_id", "status", "created_at"}
