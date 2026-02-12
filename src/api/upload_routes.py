@@ -9,9 +9,10 @@ import logging
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict
 
+from src.api.dependencies import verify_admin_key
 from src.config.settings import settings
 from src.ingestion.files import FileContentIngestionService
 from src.models.content import Content, ContentSource
@@ -20,7 +21,11 @@ from src.storage.database import get_db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+router = APIRouter(
+    prefix="/api/v1/documents",
+    tags=["documents"],
+    dependencies=[Depends(verify_admin_key)],
+)
 
 # File signature (magic bytes) mapping for upload validation.
 # Each entry maps a file extension to a list of valid magic byte prefixes.
