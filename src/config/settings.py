@@ -469,6 +469,10 @@ class Settings(BaseSettings):
     )
     youtube_similarity_threshold: float = 0.85  # Slide dedup threshold (0-1, higher = stricter)
 
+    # YouTube Async/Parallel Ingestion
+    youtube_max_concurrent_videos: int = 5  # Max parallel videos per playlist
+    youtube_max_concurrent_playlists: int = 3  # Max parallel playlists
+
     # Document Parser Configuration
     enable_docling: bool = True  # Enable Docling parser for advanced PDF/OCR
     docling_enable_ocr: bool = False  # Enable OCR for scanned documents (requires docling[ocr])

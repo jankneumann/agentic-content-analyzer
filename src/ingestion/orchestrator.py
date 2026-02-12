@@ -106,7 +106,8 @@ def ingest_youtube_playlist(
 
     Uses YouTubeContentIngestionService to process playlists (via YouTube
     Data API) and channels. Supports both Gemini native video extraction
-    and transcript-based fallback.
+    and transcript-based fallback.  Service methods are async; this function
+    bridges via asyncio.run() to keep callers synchronous.
 
     Args:
         max_videos: Maximum videos per playlist/channel.
@@ -117,21 +118,25 @@ def ingest_youtube_playlist(
     Returns:
         Number of items ingested from playlists and channels.
     """
+    import asyncio
+
     from src.ingestion.youtube import YouTubeContentIngestionService
 
-    service = YouTubeContentIngestionService(use_oauth=use_oauth)
-    playlist_count = service.ingest_all_playlists(
-        max_videos_per_playlist=max_videos,
-        after_date=after_date,
-        force_reprocess=force_reprocess,
-    )
-    channel_count = service.ingest_channels(
-        max_videos_per_channel=max_videos,
-        after_date=after_date,
-        force_reprocess=force_reprocess,
-    )
+    async def _run() -> int:
+        service = YouTubeContentIngestionService(use_oauth=use_oauth)
+        playlist_count = await service.ingest_all_playlists(
+            max_videos_per_playlist=max_videos,
+            after_date=after_date,
+            force_reprocess=force_reprocess,
+        )
+        channel_count = await service.ingest_channels(
+            max_videos_per_channel=max_videos,
+            after_date=after_date,
+            force_reprocess=force_reprocess,
+        )
+        return playlist_count + channel_count
 
-    return playlist_count + channel_count
+    return asyncio.run(_run())
 
 
 def ingest_youtube_rss(
@@ -144,7 +149,8 @@ def ingest_youtube_rss(
 
     Uses YouTubeRSSIngestionService to process channel RSS feeds.
     Supports Gemini native video extraction (with low resolution by default)
-    and transcript-based fallback.
+    and transcript-based fallback.  Service methods are async; this function
+    bridges via asyncio.run() to keep callers synchronous.
 
     Args:
         max_videos: Maximum videos per feed.
@@ -154,13 +160,17 @@ def ingest_youtube_rss(
     Returns:
         Number of items ingested from RSS feeds.
     """
+    import asyncio
+
     from src.ingestion.youtube import YouTubeRSSIngestionService
 
     service = YouTubeRSSIngestionService()
-    return service.ingest_all_feeds(
-        max_entries_per_feed=max_videos,
-        after_date=after_date,
-        force_reprocess=force_reprocess,
+    return asyncio.run(
+        service.ingest_all_feeds(
+            max_entries_per_feed=max_videos,
+            after_date=after_date,
+            force_reprocess=force_reprocess,
+        )
     )
 
 

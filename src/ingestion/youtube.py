@@ -7,6 +7,7 @@ Creates Content records with markdown-formatted transcripts including timestamp 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import random
@@ -521,7 +522,7 @@ Be thorough and detailed — capture everything discussed. Do NOT editorialize, 
 Format as clean markdown with headers for major topic transitions."""
 
 
-def _extract_video_content_with_gemini(
+async def _extract_video_content_with_gemini(
     video_url: str,
     model_step: str,
     gemini_resolution: str = "default",
@@ -536,8 +537,6 @@ def _extract_video_content_with_gemini(
     Returns:
         Extracted content as markdown text, or None on failure.
     """
-    import asyncio
-
     from src.config.models import ModelStep, get_model_config
     from src.services.llm_router import LLMRouter
 
@@ -554,16 +553,14 @@ def _extract_video_content_with_gemini(
 
         resolution = gemini_resolution if gemini_resolution != "default" else None
 
-        response = asyncio.run(
-            router.generate_with_video(
-                model=model,
-                system_prompt="You are a video content analyst. Extract detailed content from YouTube videos.",
-                user_prompt=GEMINI_VIDEO_EXTRACTION_PROMPT,
-                video_url=video_url,
-                media_resolution=resolution,
-                max_tokens=8192,
-                temperature=0.3,
-            )
+        response = await router.generate_with_video(
+            model=model,
+            system_prompt="You are a video content analyst. Extract detailed content from YouTube videos.",
+            user_prompt=GEMINI_VIDEO_EXTRACTION_PROMPT,
+            video_url=video_url,
+            media_resolution=resolution,
+            max_tokens=8192,
+            temperature=0.3,
         )
 
         if response.text and len(response.text) > 100:
@@ -593,7 +590,244 @@ class YouTubeContentIngestionService:
         """Initialize YouTube content ingestion service."""
         self.client = YouTubeClient(use_oauth=use_oauth)
 
-    def ingest_playlist(
+    async def _process_video(
+        self,
+        video: dict[str, Any],
+        playlist_id: str,
+        force_reprocess: bool = False,
+        languages: list[str] | None = None,
+        *,
+        gemini_summary: bool = True,
+        gemini_resolution: str = "default",
+        proofread: bool = True,
+        hint_terms: list[str] | None = None,
+    ) -> bool:
+        """Process a single video from a playlist.
+
+        Each call creates its own DB session for per-video isolation.
+
+        Args:
+            video: Video metadata dict from YouTubeClient.get_playlist_videos.
+            playlist_id: YouTube playlist ID.
+            force_reprocess: Reprocess existing videos.
+            languages: Preferred transcript languages.
+            gemini_summary: Try Gemini native video extraction first.
+            gemini_resolution: Resolution for Gemini (low, medium, high, default).
+            proofread: Run LLM proofreading on auto-generated captions.
+            hint_terms: Per-playlist hint terms for proofreading.
+
+        Returns:
+            True if video was ingested/updated, False if skipped/failed.
+        """
+        try:
+            if languages is None:
+                languages = DEFAULT_LANGUAGES
+
+            with get_db() as db:
+                # Generate source_id
+                source_id = f"youtube:{video['video_id']}"
+
+                # Check if already exists in Content table
+                existing = (
+                    db.query(Content)
+                    .filter(
+                        Content.source_type == ContentSource.YOUTUBE,
+                        Content.source_id == source_id,
+                    )
+                    .first()
+                )
+
+                if existing and not force_reprocess:
+                    logger.debug(f"Video already exists: {video['title']}")
+                    return False
+
+                video_url = f"https://www.youtube.com/watch?v={video['video_id']}"
+                processing_method = "transcript"
+                parser_used = "youtube_transcript_api"
+                raw_content = None
+                raw_format = None
+                markdown_content = None
+                transcript_language = None
+                is_auto_generated = False
+                segment_count = 0
+                duration_seconds = 0.0
+
+                # --- Path 1: Gemini native video extraction ---
+                if gemini_summary:
+                    gemini_content = await _extract_video_content_with_gemini(
+                        video_url=video_url,
+                        model_step="youtube_processing",
+                        gemini_resolution=gemini_resolution,
+                    )
+                    if gemini_content:
+                        markdown_content = gemini_content
+                        processing_method = "gemini_native"
+                        parser_used = "gemini"
+
+                # --- Path 2: Transcript-based extraction (fallback) ---
+                if markdown_content is None:
+                    transcript = await asyncio.to_thread(
+                        self.client.get_transcript, video["video_id"], languages
+                    )
+
+                    if not transcript:
+                        logger.warning(f"No transcript for: {video['title']}")
+                        return False
+
+                    # Update transcript with video metadata
+                    transcript.title = video["title"]
+                    transcript.channel_title = video["channel_title"]
+                    transcript.published_date = video["published_date"]
+                    transcript.thumbnail_url = video.get("thumbnail_url")
+                    transcript.playlist_id = video.get("playlist_id")
+
+                    transcript_language = transcript.language
+                    is_auto_generated = transcript.is_auto_generated
+                    segment_count = len(transcript.segments)
+                    duration_seconds = sum(s.duration for s in transcript.segments)
+
+                    # Proofread auto-generated captions
+                    if proofread and transcript.is_auto_generated:
+                        try:
+                            from src.ingestion.youtube_captions import (
+                                proofread_transcript,
+                            )
+
+                            result = await proofread_transcript(
+                                segments=transcript.segments,
+                                hint_terms=hint_terms,
+                                is_auto_generated=True,
+                            )
+                            transcript.segments = result.segments
+                            is_auto_generated = True
+                            processing_method = "transcript_proofread"
+                            logger.info(
+                                f"Proofread {result.corrections_count} corrections "
+                                f"for {video['title']}"
+                            )
+                        except Exception as e:
+                            logger.warning(f"Proofreading failed for {video['title']}: {e}")
+
+                    # Convert to markdown
+                    markdown_content = transcript_to_markdown(transcript)
+
+                    # Store raw transcript as JSON for re-parsing
+                    raw_content = json.dumps(transcript.to_storage_dict())
+                    raw_format = "transcript_json"
+
+                # Generate content hash from markdown
+                content_hash = generate_markdown_hash(markdown_content)
+
+                # Check for content duplicate
+                content_duplicate = None
+                if not existing and content_hash:
+                    content_duplicate = (
+                        db.query(Content).filter(Content.content_hash == content_hash).first()
+                    )
+
+                # Build metadata
+                metadata_json: dict[str, Any] = {
+                    "video_id": video["video_id"],
+                    "playlist_id": playlist_id,
+                    "processing_method": processing_method,
+                    "thumbnail_url": video.get("thumbnail_url"),
+                }
+                if processing_method == "gemini_native":
+                    metadata_json["gemini_resolution"] = gemini_resolution
+                else:
+                    metadata_json.update(
+                        {
+                            "language": transcript_language,
+                            "is_auto_generated": is_auto_generated,
+                            "segment_count": segment_count,
+                            "duration_seconds": duration_seconds,
+                            "is_proofread": processing_method == "transcript_proofread",
+                        }
+                    )
+
+                # Optional: Extract keyframes
+                if settings.youtube_keyframe_extraction:
+                    metadata_json = await self._extract_keyframes(
+                        video_id=video["video_id"],
+                        transcript=None,  # type: ignore[arg-type]
+                        metadata_json=metadata_json,
+                    )
+
+                if existing and force_reprocess:
+                    # Update existing
+                    existing.title = video["title"]
+                    existing.author = video["channel_title"]
+                    existing.publication = video["channel_title"]
+                    existing.published_date = video["published_date"]
+                    existing.source_url = video_url
+                    existing.markdown_content = markdown_content
+                    existing.raw_content = raw_content
+                    existing.raw_format = raw_format
+                    existing.metadata_json = metadata_json
+                    existing.content_hash = content_hash
+                    existing.parser_used = parser_used
+                    existing.status = ContentStatus.PARSED
+                    existing.error_message = None
+                    logger.info(f"Updated for reprocessing: {video['title']}")
+                    return True
+
+                elif content_duplicate:
+                    # Link to canonical
+                    content = Content(
+                        source_type=ContentSource.YOUTUBE,
+                        source_id=source_id,
+                        source_url=video_url,
+                        title=video["title"],
+                        author=video["channel_title"],
+                        publication=video["channel_title"],
+                        published_date=video["published_date"],
+                        markdown_content=markdown_content,
+                        raw_content=raw_content,
+                        raw_format=raw_format,
+                        metadata_json=metadata_json,
+                        parser_used=parser_used,
+                        content_hash=content_hash,
+                        canonical_id=content_duplicate.id,
+                        status=ContentStatus.COMPLETED,
+                    )
+                    db.add(content)
+                    logger.info(f"Linked duplicate: {video['title']}")
+                    return True
+
+                else:
+                    # Create new
+                    content = Content(
+                        source_type=ContentSource.YOUTUBE,
+                        source_id=source_id,
+                        source_url=video_url,
+                        title=video["title"],
+                        author=video["channel_title"],
+                        publication=video["channel_title"],
+                        published_date=video["published_date"],
+                        markdown_content=markdown_content,
+                        raw_content=raw_content,
+                        raw_format=raw_format,
+                        metadata_json=metadata_json,
+                        parser_used=parser_used,
+                        content_hash=content_hash,
+                        status=ContentStatus.PARSED,
+                    )
+                    db.add(content)
+                    db.flush()  # Ensure content.id is assigned for indexing
+
+                    # Index for search (fail-safe — never blocks ingestion)
+                    from src.services.indexing import index_content
+
+                    index_content(content, db)
+
+                    logger.info(f"Ingested: {video['title']}")
+                    return True
+
+        except Exception as e:
+            logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
+            return False
+
+    async def ingest_playlist(
         self,
         playlist_id: str,
         max_videos: int = 10,
@@ -634,232 +868,48 @@ class YouTubeContentIngestionService:
         if languages is None:
             languages = DEFAULT_LANGUAGES
 
-        # Get videos from playlist
-        videos = self.client.get_playlist_videos(
-            playlist_id=playlist_id,
-            max_results=max_videos,
-            after_date=after_date,
+        # Get videos from playlist (sync YouTube API call)
+        videos = await asyncio.to_thread(
+            self.client.get_playlist_videos,
+            playlist_id,
+            max_videos,
+            after_date,
         )
 
         if not videos:
             logger.info("No videos found in playlist")
             return 0
 
-        # Process each video
-        count = 0
-        with get_db() as db:
-            for video in videos:
-                try:
-                    # Generate source_id
-                    source_id = f"youtube:{video['video_id']}"
+        # Process videos in parallel with concurrency limit
+        semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_videos)
 
-                    # Check if already exists in Content table
-                    existing = (
-                        db.query(Content)
-                        .filter(
-                            Content.source_type == ContentSource.YOUTUBE,
-                            Content.source_id == source_id,
-                        )
-                        .first()
-                    )
+        async def process_with_limit(video: dict[str, Any]) -> bool:
+            async with semaphore:
+                return await self._process_video(
+                    video,
+                    playlist_id,
+                    force_reprocess=force_reprocess,
+                    languages=languages,
+                    gemini_summary=gemini_summary,
+                    gemini_resolution=gemini_resolution,
+                    proofread=proofread,
+                    hint_terms=hint_terms,
+                )
 
-                    if existing and not force_reprocess:
-                        logger.debug(f"Video already exists: {video['title']}")
-                        continue
+        tasks = [process_with_limit(v) for v in videos]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                    video_url = f"https://www.youtube.com/watch?v={video['video_id']}"
-                    processing_method = "transcript"
-                    parser_used = "youtube_transcript_api"
-                    raw_content = None
-                    raw_format = None
-                    markdown_content = None
-                    transcript_language = None
-                    is_auto_generated = False
-                    segment_count = 0
-                    duration_seconds = 0.0
+        count = sum(1 for r in results if r is True)
 
-                    # --- Path 1: Gemini native video extraction ---
-                    if gemini_summary:
-                        gemini_content = _extract_video_content_with_gemini(
-                            video_url=video_url,
-                            model_step="youtube_processing",
-                            gemini_resolution=gemini_resolution,
-                        )
-                        if gemini_content:
-                            markdown_content = gemini_content
-                            processing_method = "gemini_native"
-                            parser_used = "gemini"
-
-                    # --- Path 2: Transcript-based extraction (fallback) ---
-                    if markdown_content is None:
-                        transcript = self.client.get_transcript(video["video_id"], languages)
-
-                        if not transcript:
-                            logger.warning(f"No transcript for: {video['title']}")
-                            continue
-
-                        # Update transcript with video metadata
-                        transcript.title = video["title"]
-                        transcript.channel_title = video["channel_title"]
-                        transcript.published_date = video["published_date"]
-                        transcript.thumbnail_url = video.get("thumbnail_url")
-                        transcript.playlist_id = video.get("playlist_id")
-
-                        transcript_language = transcript.language
-                        is_auto_generated = transcript.is_auto_generated
-                        segment_count = len(transcript.segments)
-                        duration_seconds = sum(s.duration for s in transcript.segments)
-
-                        # Proofread auto-generated captions
-                        if proofread and transcript.is_auto_generated:
-                            try:
-                                import asyncio
-
-                                from src.ingestion.youtube_captions import (
-                                    proofread_transcript,
-                                )
-
-                                result = asyncio.run(
-                                    proofread_transcript(
-                                        segments=transcript.segments,
-                                        hint_terms=hint_terms,
-                                        is_auto_generated=True,
-                                    )
-                                )
-                                transcript.segments = result.segments
-                                is_auto_generated = True
-                                processing_method = "transcript_proofread"
-                                logger.info(
-                                    f"Proofread {result.corrections_count} corrections "
-                                    f"for {video['title']}"
-                                )
-                            except Exception as e:
-                                logger.warning(f"Proofreading failed for {video['title']}: {e}")
-
-                        # Convert to markdown
-                        markdown_content = transcript_to_markdown(transcript)
-
-                        # Store raw transcript as JSON for re-parsing
-                        raw_content = json.dumps(transcript.to_storage_dict())
-                        raw_format = "transcript_json"
-
-                    # Generate content hash from markdown
-                    content_hash = generate_markdown_hash(markdown_content)
-
-                    # Check for content duplicate
-                    content_duplicate = None
-                    if not existing and content_hash:
-                        content_duplicate = (
-                            db.query(Content).filter(Content.content_hash == content_hash).first()
-                        )
-
-                    # Build metadata
-                    metadata_json: dict[str, Any] = {
-                        "video_id": video["video_id"],
-                        "playlist_id": playlist_id,
-                        "processing_method": processing_method,
-                        "thumbnail_url": video.get("thumbnail_url"),
-                    }
-                    if processing_method == "gemini_native":
-                        metadata_json["gemini_resolution"] = gemini_resolution
-                    else:
-                        metadata_json.update(
-                            {
-                                "language": transcript_language,
-                                "is_auto_generated": is_auto_generated,
-                                "segment_count": segment_count,
-                                "duration_seconds": duration_seconds,
-                                "is_proofread": processing_method == "transcript_proofread",
-                            }
-                        )
-
-                    # Optional: Extract keyframes
-                    if settings.youtube_keyframe_extraction:
-                        metadata_json = self._extract_keyframes(
-                            video_id=video["video_id"],
-                            transcript=None,  # type: ignore[arg-type]
-                            metadata_json=metadata_json,
-                        )
-
-                    if existing and force_reprocess:
-                        # Update existing
-                        existing.title = video["title"]
-                        existing.author = video["channel_title"]
-                        existing.publication = video["channel_title"]
-                        existing.published_date = video["published_date"]
-                        existing.source_url = video_url
-                        existing.markdown_content = markdown_content
-                        existing.raw_content = raw_content
-                        existing.raw_format = raw_format
-                        existing.metadata_json = metadata_json
-                        existing.content_hash = content_hash
-                        existing.parser_used = parser_used
-                        existing.status = ContentStatus.PARSED
-                        existing.error_message = None
-                        count += 1
-                        logger.info(f"Updated for reprocessing: {video['title']}")
-
-                    elif content_duplicate:
-                        # Link to canonical
-                        content = Content(
-                            source_type=ContentSource.YOUTUBE,
-                            source_id=source_id,
-                            source_url=video_url,
-                            title=video["title"],
-                            author=video["channel_title"],
-                            publication=video["channel_title"],
-                            published_date=video["published_date"],
-                            markdown_content=markdown_content,
-                            raw_content=raw_content,
-                            raw_format=raw_format,
-                            metadata_json=metadata_json,
-                            parser_used=parser_used,
-                            content_hash=content_hash,
-                            canonical_id=content_duplicate.id,
-                            status=ContentStatus.COMPLETED,
-                        )
-                        db.add(content)
-                        count += 1
-                        logger.info(f"Linked duplicate: {video['title']}")
-
-                    else:
-                        # Create new
-                        content = Content(
-                            source_type=ContentSource.YOUTUBE,
-                            source_id=source_id,
-                            source_url=video_url,
-                            title=video["title"],
-                            author=video["channel_title"],
-                            publication=video["channel_title"],
-                            published_date=video["published_date"],
-                            markdown_content=markdown_content,
-                            raw_content=raw_content,
-                            raw_format=raw_format,
-                            metadata_json=metadata_json,
-                            parser_used=parser_used,
-                            content_hash=content_hash,
-                            status=ContentStatus.PARSED,
-                        )
-                        db.add(content)
-                        db.flush()  # Ensure content.id is assigned for indexing
-
-                        # Index for search (fail-safe — never blocks ingestion)
-                        from src.services.indexing import index_content
-
-                        index_content(content, db)
-
-                        count += 1
-                        logger.info(f"Ingested: {video['title']}")
-
-                except Exception as e:
-                    logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
-                    db.rollback()
-                    continue
+        # Log exceptions
+        for r in results:
+            if isinstance(r, Exception):
+                logger.error(f"Unexpected error in video processing: {r}")
 
         logger.info(f"Successfully ingested {count} content items")
         return count
 
-    def ingest_all_playlists(
+    async def ingest_all_playlists(
         self,
         sources: list[YouTubePlaylistSource] | None = None,
         playlist_ids: list[str] | None = None,
@@ -908,7 +958,7 @@ class YouTubeContentIngestionService:
 
         # --- Visibility filtering ---
         skipped_private = 0
-        total = 0
+        eligible_sources: list[YouTubePlaylistSource] = []
         for source in resolved_sources:
             if source.visibility == "private" and not self.client.oauth_available:
                 skipped_private += 1
@@ -916,30 +966,45 @@ class YouTubeContentIngestionService:
                     f"Skipping private playlist '{source.name or source.id}' (OAuth not available)"
                 )
                 continue
+            eligible_sources.append(source)
 
-            try:
-                max_videos = source.max_entries or max_videos_per_playlist
-                count = self.ingest_playlist(
-                    playlist_id=source.id,
-                    max_videos=max_videos,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                    gemini_summary=source.gemini_summary,
-                    gemini_resolution=source.gemini_resolution,
-                    proofread=source.proofread,
-                    hint_terms=source.hint_terms if source.hint_terms else None,
-                )
-                total += count
-            except Exception as e:
-                logger.error(f"Error ingesting playlist {source.name or source.id}: {e}")
-                continue
+        # --- Parallel playlist processing ---
+        semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
+
+        async def ingest_one(source: YouTubePlaylistSource) -> int:
+            async with semaphore:
+                try:
+                    max_videos = source.max_entries or max_videos_per_playlist
+                    return await self.ingest_playlist(
+                        playlist_id=source.id,
+                        max_videos=max_videos,
+                        after_date=after_date,
+                        force_reprocess=force_reprocess,
+                        gemini_summary=source.gemini_summary,
+                        gemini_resolution=source.gemini_resolution,
+                        proofread=source.proofread,
+                        hint_terms=source.hint_terms if source.hint_terms else None,
+                    )
+                except Exception as e:
+                    logger.error(f"Error ingesting playlist {source.name or source.id}: {e}")
+                    return 0
+
+        tasks = [ingest_one(s) for s in eligible_sources]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        total = 0
+        for r in results:
+            if isinstance(r, int):
+                total += r
+            elif isinstance(r, Exception):
+                logger.error(f"Unexpected error in playlist processing: {r}")
 
         if skipped_private:
             logger.info(f"Skipped {skipped_private} private playlist(s) due to missing OAuth")
 
         return total
 
-    def ingest_channels(
+    async def ingest_channels(
         self,
         sources: list[YouTubeChannelSource] | None = None,
         max_videos_per_channel: int = 10,
@@ -970,9 +1035,9 @@ class YouTubeContentIngestionService:
             logger.info("No YouTube channels configured")
             return 0
 
-        # --- Resolve and ingest ---
+        # --- Visibility filtering ---
         skipped_private = 0
-        total = 0
+        eligible_sources: list[YouTubeChannelSource] = []
         for source in resolved_sources:
             if source.visibility == "private" and not self.client.oauth_available:
                 skipped_private += 1
@@ -981,40 +1046,57 @@ class YouTubeContentIngestionService:
                     "(OAuth not available)"
                 )
                 continue
+            eligible_sources.append(source)
 
-            # Resolve channel to uploads playlist
-            playlist_id = self.client.resolve_channel_to_playlist(source.channel_id)
-            if not playlist_id:
-                logger.warning(
-                    f"Could not resolve channel '{source.name or source.channel_id}' "
-                    "to uploads playlist, skipping"
-                )
-                continue
+        # --- Parallel channel processing ---
+        semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
 
-            try:
-                max_videos = source.max_entries or max_videos_per_channel
-                count = self.ingest_playlist(
-                    playlist_id=playlist_id,
-                    max_videos=max_videos,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                    languages=source.languages,
-                    gemini_summary=source.gemini_summary,
-                    gemini_resolution=source.gemini_resolution,
-                    proofread=source.proofread,
-                    hint_terms=source.hint_terms if source.hint_terms else None,
+        async def ingest_one(source: YouTubeChannelSource) -> int:
+            async with semaphore:
+                # Resolve channel to uploads playlist (sync API call)
+                playlist_id = await asyncio.to_thread(
+                    self.client.resolve_channel_to_playlist, source.channel_id
                 )
-                total += count
-            except Exception as e:
-                logger.error(f"Error ingesting channel {source.name or source.channel_id}: {e}")
-                continue
+                if not playlist_id:
+                    logger.warning(
+                        f"Could not resolve channel '{source.name or source.channel_id}' "
+                        "to uploads playlist, skipping"
+                    )
+                    return 0
+
+                try:
+                    max_videos = source.max_entries or max_videos_per_channel
+                    return await self.ingest_playlist(
+                        playlist_id=playlist_id,
+                        max_videos=max_videos,
+                        after_date=after_date,
+                        force_reprocess=force_reprocess,
+                        languages=source.languages,
+                        gemini_summary=source.gemini_summary,
+                        gemini_resolution=source.gemini_resolution,
+                        proofread=source.proofread,
+                        hint_terms=source.hint_terms if source.hint_terms else None,
+                    )
+                except Exception as e:
+                    logger.error(f"Error ingesting channel {source.name or source.channel_id}: {e}")
+                    return 0
+
+        tasks = [ingest_one(s) for s in eligible_sources]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        total = 0
+        for r in results:
+            if isinstance(r, int):
+                total += r
+            elif isinstance(r, Exception):
+                logger.error(f"Unexpected error in channel processing: {r}")
 
         if skipped_private:
             logger.info(f"Skipped {skipped_private} private channel(s) due to missing OAuth")
 
         return total
 
-    def _extract_keyframes(
+    async def _extract_keyframes(
         self,
         video_id: str,
         transcript: YouTubeTranscript,
@@ -1026,7 +1108,7 @@ class YouTubeContentIngestionService:
 
             extractor = KeyframeExtractor()
 
-            if not extractor.is_available():
+            if not await extractor.is_available():
                 logger.warning("Keyframe extraction skipped: ffmpeg not available")
                 return metadata_json
 
@@ -1035,7 +1117,7 @@ class YouTubeContentIngestionService:
                 for seg in transcript.segments
             ]
 
-            result = extractor.extract_keyframes_for_video(
+            result = await extractor.extract_keyframes_for_video(
                 video_id=video_id,
                 transcript_segments=segments,
             )
@@ -1142,7 +1224,7 @@ class YouTubeRSSIngestionService:
 
         return videos
 
-    def ingest_feed(
+    async def ingest_feed(
         self,
         feed_url: str,
         max_entries: int = 10,
@@ -1172,32 +1254,75 @@ class YouTubeRSSIngestionService:
         Returns:
             Number of content items ingested
         """
-        videos = self._parse_feed(feed_url, max_entries=max_entries)
+        # feedparser is sync — run in thread
+        videos = await asyncio.to_thread(self._parse_feed, feed_url, max_entries)
 
         if not videos:
             logger.info(f"No videos found in RSS feed: {feed_url}")
             return 0
 
-        count = 0
-        with get_db() as db:
-            for video in videos:
-                video_id = video["video_id"]
-                source_id = f"youtube:{video_id}"
+        # Process videos in parallel with concurrency limit
+        semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_videos)
 
-                # Date filter
-                if (
-                    after_date
-                    and video.get("published_date")
-                    and video["published_date"] < after_date
-                ):
-                    continue
+        async def process_one(video: dict[str, Any]) -> bool:
+            async with semaphore:
+                return await self._process_rss_video(
+                    video,
+                    feed_url=feed_url,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                    source_name=source_name,
+                    source_tags=source_tags,
+                    gemini_summary=gemini_summary,
+                    gemini_resolution=gemini_resolution,
+                )
 
+        tasks = [process_one(v) for v in videos]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        count = sum(1 for r in results if r is True)
+
+        # Log exceptions
+        for r in results:
+            if isinstance(r, Exception):
+                logger.error(f"Unexpected error in RSS video processing: {r}")
+
+        return count
+
+    async def _process_rss_video(
+        self,
+        video: dict[str, Any],
+        *,
+        feed_url: str,
+        after_date: datetime | None = None,
+        force_reprocess: bool = False,
+        source_name: str | None = None,
+        source_tags: list[str] | None = None,
+        gemini_summary: bool = True,
+        gemini_resolution: str = "low",
+    ) -> bool:
+        """Process a single video from an RSS feed.
+
+        Each call creates its own DB session for per-video isolation.
+
+        Returns:
+            True if video was ingested, False if skipped/failed.
+        """
+        try:
+            video_id = video["video_id"]
+            source_id = f"youtube:{video_id}"
+
+            # Date filter
+            if after_date and video.get("published_date") and video["published_date"] < after_date:
+                return False
+
+            with get_db() as db:
                 # Dedup check
                 if not force_reprocess:
                     existing = db.query(Content).filter(Content.source_id == source_id).first()
                     if existing:
                         logger.debug(f"Skipping existing video: {video_id}")
-                        continue
+                        return False
 
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
                 processing_method = "transcript"
@@ -1209,7 +1334,7 @@ class YouTubeRSSIngestionService:
 
                 # --- Path 1: Gemini native video extraction ---
                 if gemini_summary:
-                    gemini_content = _extract_video_content_with_gemini(
+                    gemini_content = await _extract_video_content_with_gemini(
                         video_url=video_url,
                         model_step="youtube_rss_processing",
                         gemini_resolution=gemini_resolution,
@@ -1221,10 +1346,10 @@ class YouTubeRSSIngestionService:
 
                 # --- Path 2: Transcript-based extraction (fallback) ---
                 if markdown_content is None:
-                    transcript = self.client.get_transcript(video_id)
+                    transcript = await asyncio.to_thread(self.client.get_transcript, video_id)
                     if not transcript:
                         logger.info(f"No transcript available for {video_id}: {video['title']}")
-                        continue
+                        return False
 
                     # Enrich transcript with feed metadata
                     if not transcript.title and video.get("title"):
@@ -1288,16 +1413,18 @@ class YouTubeRSSIngestionService:
 
                     index_content(content, db)
 
-                    count += 1
                     logger.info(f"Ingested YouTube RSS video: {video['title']}")
+                    return True
                 except Exception as e:
                     logger.error(f"Error creating content for video {video_id}: {e}")
                     db.rollback()
-                    continue
+                    return False
 
-        return count
+        except Exception as e:
+            logger.error(f"Error processing RSS video {video.get('video_id', 'unknown')}: {e}")
+            return False
 
-    def ingest_all_feeds(
+    async def ingest_all_feeds(
         self,
         sources: list[YouTubeRSSSource] | None = None,
         max_entries_per_feed: int = 10,
@@ -1324,26 +1451,38 @@ class YouTubeRSSIngestionService:
 
         logger.info(f"Processing {len(resolved_sources)} YouTube RSS feed(s)")
 
+        # Process feeds in parallel with concurrency limit
+        semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
+
+        async def ingest_one(source: YouTubeRSSSource) -> int:
+            async with semaphore:
+                feed_label = source.name or source.url
+                logger.debug(f"Fetching RSS feed: {feed_label}")
+                try:
+                    max_entries = source.max_entries or max_entries_per_feed
+                    return await self.ingest_feed(
+                        feed_url=source.url,
+                        max_entries=max_entries,
+                        after_date=after_date,
+                        force_reprocess=force_reprocess,
+                        source_name=source.name,
+                        source_tags=source.tags if source.tags else None,
+                        gemini_summary=source.gemini_summary,
+                        gemini_resolution=source.gemini_resolution,
+                    )
+                except Exception as e:
+                    logger.error(f"Error ingesting YouTube RSS feed {feed_label}: {e}")
+                    return 0
+
+        tasks = [ingest_one(s) for s in resolved_sources]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
         total = 0
-        for i, source in enumerate(resolved_sources, 1):
-            feed_label = source.name or source.url
-            logger.debug(f"[{i}/{len(resolved_sources)}] Fetching RSS feed: {feed_label}")
-            try:
-                max_entries = source.max_entries or max_entries_per_feed
-                count = self.ingest_feed(
-                    feed_url=source.url,
-                    max_entries=max_entries,
-                    after_date=after_date,
-                    force_reprocess=force_reprocess,
-                    source_name=source.name,
-                    source_tags=source.tags if source.tags else None,
-                    gemini_summary=source.gemini_summary,
-                    gemini_resolution=source.gemini_resolution,
-                )
-                total += count
-            except Exception as e:
-                logger.error(f"Error ingesting YouTube RSS feed {feed_label}: {e}")
-                continue
+        for r in results:
+            if isinstance(r, int):
+                total += r
+            elif isinstance(r, Exception):
+                logger.error(f"Unexpected error in RSS feed processing: {r}")
 
         logger.info(
             f"YouTube RSS feed ingestion complete: {total} item(s) from {len(resolved_sources)} feed(s)"
@@ -1405,19 +1544,23 @@ def main() -> None:
     # Create service (uses unified Content model)
     service = YouTubeContentIngestionService(use_oauth=not args.public_only)
 
-    # Ingest
+    # Ingest using asyncio.run() for the async service methods
     if args.playlist_id:
-        count = service.ingest_playlist(
-            playlist_id=args.playlist_id,
-            max_videos=args.max_videos,
-            after_date=after_date,
-            force_reprocess=args.force,
+        count = asyncio.run(
+            service.ingest_playlist(
+                playlist_id=args.playlist_id,
+                max_videos=args.max_videos,
+                after_date=after_date,
+                force_reprocess=args.force,
+            )
         )
     else:
-        count = service.ingest_all_playlists(
-            max_videos_per_playlist=args.max_videos,
-            after_date=after_date,
-            force_reprocess=args.force,
+        count = asyncio.run(
+            service.ingest_all_playlists(
+                max_videos_per_playlist=args.max_videos,
+                after_date=after_date,
+                force_reprocess=args.force,
+            )
         )
 
     print(f"Ingested {count} content items")
