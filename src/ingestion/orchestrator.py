@@ -164,14 +164,15 @@ def ingest_youtube_rss(
 
     from src.ingestion.youtube import YouTubeRSSIngestionService
 
-    service = YouTubeRSSIngestionService()
-    return asyncio.run(
-        service.ingest_all_feeds(
+    async def _run() -> int:
+        service = YouTubeRSSIngestionService()
+        return await service.ingest_all_feeds(
             max_entries_per_feed=max_videos,
             after_date=after_date,
             force_reprocess=force_reprocess,
         )
-    )
+
+    return asyncio.run(_run())
 
 
 def ingest_youtube(

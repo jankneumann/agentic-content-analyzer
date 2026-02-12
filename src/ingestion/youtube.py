@@ -749,7 +749,7 @@ class YouTubeContentIngestionService:
                 if settings.youtube_keyframe_extraction:
                     metadata_json = await self._extract_keyframes(
                         video_id=video["video_id"],
-                        transcript=None,  # type: ignore[arg-type]
+                        transcript=None,
                         metadata_json=metadata_json,
                     )
 
@@ -1099,7 +1099,7 @@ class YouTubeContentIngestionService:
     async def _extract_keyframes(
         self,
         video_id: str,
-        transcript: YouTubeTranscript,
+        transcript: YouTubeTranscript | None,
         metadata_json: dict[str, Any],
     ) -> dict[str, Any]:
         """Extract keyframes from a video and add to metadata."""
@@ -1112,10 +1112,14 @@ class YouTubeContentIngestionService:
                 logger.warning("Keyframe extraction skipped: ffmpeg not available")
                 return metadata_json
 
-            segments = [
-                {"text": seg.text, "start": seg.start, "duration": seg.duration}
-                for seg in transcript.segments
-            ]
+            segments = (
+                [
+                    {"text": seg.text, "start": seg.start, "duration": seg.duration}
+                    for seg in transcript.segments
+                ]
+                if transcript and transcript.segments
+                else []
+            )
 
             result = await extractor.extract_keyframes_for_video(
                 video_id=video_id,
@@ -1129,20 +1133,20 @@ class YouTubeContentIngestionService:
             if result.slides:
                 slide_data = []
                 for slide in result.slides:
-                    closest_segment = min(
-                        segments,
-                        key=lambda s: abs(s["start"] - slide.timestamp),
-                    )
+                    slide_entry: dict[str, Any] = {
+                        "frame_path": slide.path,
+                        "timestamp": slide.timestamp,
+                        "timestamp_url": f"https://youtube.com/watch?v={video_id}&t={int(slide.timestamp)}",
+                        "hash": slide.hash_value,
+                    }
+                    if segments:
+                        closest_segment = min(
+                            segments,
+                            key=lambda s: abs(s["start"] - slide.timestamp),
+                        )
+                        slide_entry["transcript_text"] = closest_segment["text"]
 
-                    slide_data.append(
-                        {
-                            "frame_path": slide.path,
-                            "timestamp": slide.timestamp,
-                            "timestamp_url": f"https://youtube.com/watch?v={video_id}&t={int(slide.timestamp)}",
-                            "transcript_text": closest_segment["text"],
-                            "hash": slide.hash_value,
-                        }
-                    )
+                    slide_data.append(slide_entry)
 
                 metadata_json["slides"] = slide_data
                 metadata_json["slide_count"] = result.slide_count
@@ -1388,37 +1392,32 @@ class YouTubeRSSIngestionService:
                 if source_tags:
                     metadata["source_tags"] = source_tags
 
-                try:
-                    content = Content(
-                        source_type=ContentSource.YOUTUBE,
-                        source_id=source_id,
-                        title=video.get("title", f"Video {video_id}"),
-                        author=video.get("channel_title"),
-                        publication=video.get("channel_title"),
-                        source_url=video_url,
-                        raw_content=raw_content,
-                        raw_format=raw_format,
-                        markdown_content=markdown_content,
-                        content_hash=content_hash,
-                        parser_used=parser_used,
-                        status=ContentStatus.PARSED,
-                        published_date=video.get("published_date"),
-                        metadata_json=metadata,
-                    )
-                    db.add(content)
-                    db.commit()
+                content = Content(
+                    source_type=ContentSource.YOUTUBE,
+                    source_id=source_id,
+                    title=video.get("title", f"Video {video_id}"),
+                    author=video.get("channel_title"),
+                    publication=video.get("channel_title"),
+                    source_url=video_url,
+                    raw_content=raw_content,
+                    raw_format=raw_format,
+                    markdown_content=markdown_content,
+                    content_hash=content_hash,
+                    parser_used=parser_used,
+                    status=ContentStatus.PARSED,
+                    published_date=video.get("published_date"),
+                    metadata_json=metadata,
+                )
+                db.add(content)
+                db.flush()  # Ensure content.id is assigned for indexing
 
-                    # Index for search (fail-safe — never blocks ingestion)
-                    from src.services.indexing import index_content
+                # Index for search (fail-safe — never blocks ingestion)
+                from src.services.indexing import index_content
 
-                    index_content(content, db)
+                index_content(content, db)
 
-                    logger.info(f"Ingested YouTube RSS video: {video['title']}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Error creating content for video {video_id}: {e}")
-                    db.rollback()
-                    return False
+                logger.info(f"Ingested YouTube RSS video: {video['title']}")
+                return True
 
         except Exception as e:
             logger.error(f"Error processing RSS video {video.get('video_id', 'unknown')}: {e}")
