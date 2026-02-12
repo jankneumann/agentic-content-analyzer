@@ -10,7 +10,7 @@
  */
 
 import * as React from "react"
-import { Loader2, Mic, Search, Plus, X } from "lucide-react"
+import { Mic, Search, Plus, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -230,12 +230,13 @@ export function GenerateScriptDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleGenerate} disabled={isGenerating || !digestId}>
+          <Button
+            onClick={handleGenerate}
+            disabled={!digestId}
+            isLoading={isGenerating}
+          >
             {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating...
-              </>
+              "Generating..."
             ) : (
               <>
                 <Mic className="mr-2 h-4 w-4" />

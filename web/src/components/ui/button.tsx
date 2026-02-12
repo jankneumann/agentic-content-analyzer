@@ -32,6 +32,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -99,6 +100,7 @@ const buttonVariants = cva(
  * - variant: Visual style (default, destructive, outline, etc.)
  * - size: Button size (default, sm, lg, icon)
  * - asChild: When true, renders children as the button element
+ * - isLoading: When true, shows a loading spinner and disables the button
  */
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -113,6 +115,12 @@ export interface ButtonProps
    * </Button>
    */
   asChild?: boolean
+  /**
+   * When true, shows a loading spinner and disables the button.
+   * - If size="icon", replaces children with spinner
+   * - Otherwise, prepends spinner to children
+   */
+  isLoading?: boolean
 }
 
 /**
@@ -122,7 +130,19 @@ export interface ButtonProps
  * when using the asChild prop.
  */
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  (
+    {
+      className,
+      variant,
+      size,
+      asChild = false,
+      isLoading = false,
+      children,
+      disabled,
+      ...props
+    },
+    ref
+  ) => {
     // When asChild is true, use Slot to pass styles to the child element
     // Otherwise, render a native button
     const Comp = asChild ? Slot : "button"
@@ -130,8 +150,22 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        disabled={isLoading || disabled}
         {...props}
-      />
+      >
+        {isLoading && !asChild ? (
+          size === "icon" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {children}
+            </>
+          )
+        ) : (
+          children
+        )}
+      </Comp>
     )
   }
 )
