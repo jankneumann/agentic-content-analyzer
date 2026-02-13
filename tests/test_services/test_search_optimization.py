@@ -31,7 +31,7 @@ class TestSearchOptimization:
         mock_row.section_path = "Section 1"
         mock_row.heading_text = "Heading"
         mock_row.chunk_type = "paragraph"
-        mock_row.deep_link_url = "http://example.com"
+        mock_row.deep_link_url = "https://example.com"
         mock_row.title = "Test Doc"
         mock_row.source_type = "manual"
         mock_row.publication = "Test Pub"

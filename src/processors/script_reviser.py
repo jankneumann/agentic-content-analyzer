@@ -5,6 +5,7 @@ podcast script based on reviewer feedback, leaving other sections unchanged.
 """
 
 import json
+import math
 from datetime import datetime
 
 from anthropic import Anthropic
@@ -340,7 +341,9 @@ Respond with ONLY the JSON object, no additional text.
         for turn in dialogue:
             speaker = turn.speaker.upper()
             emphasis = f" [{turn.emphasis}]" if turn.emphasis else ""
-            pause = f" (pause: {turn.pause_after}s)" if turn.pause_after != 0.5 else ""
+            pause = (
+                f" (pause: {turn.pause_after}s)" if not math.isclose(turn.pause_after, 0.5) else ""
+            )
             lines.append(f"{speaker}{emphasis}: {turn.text}{pause}")
 
         return "\n\n".join(lines)
