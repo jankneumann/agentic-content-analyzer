@@ -382,11 +382,14 @@ class HybridSearchService:
         chunk_ids = list(final_scores.keys())
 
         # Fetch chunk data + content metadata in one query
+        # OPTIMIZATION: Use substr to fetch only the first 500 characters of chunk_text
+        # This saves significant memory and bandwidth for large chunks, as we only need
+        # the beginning for highlighting and preview.
         stmt = text("""
             SELECT
                 dc.id as chunk_id,
                 dc.content_id,
-                dc.chunk_text,
+                substr(dc.chunk_text, 1, 500) as chunk_text,
                 dc.section_path,
                 dc.heading_text,
                 dc.chunk_type,
