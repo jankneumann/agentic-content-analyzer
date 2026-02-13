@@ -19,6 +19,7 @@ import {
   AlertCircle,
   RefreshCw,
   Pencil,
+  X,
 } from "lucide-react"
 
 import {
@@ -26,6 +27,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -160,9 +166,30 @@ export function PromptManager() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearch("")
+              }
+            }}
             placeholder="Search prompts..."
-            className="h-8 pl-8 text-sm"
+            aria-label="Search prompts"
+            className="h-8 pl-8 pr-8 text-sm"
           />
+          {search && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Clear search</TooltipContent>
+            </Tooltip>
+          )}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
           <span>{filteredPrompts.length} {filteredPrompts.length === 1 ? "prompt" : "prompts"}</span>
@@ -190,7 +217,8 @@ export function PromptManager() {
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 rounded-md border bg-card px-3 py-2.5 text-left hover:bg-accent/50 transition-colors"
+                  className="flex w-full items-center gap-2 rounded-md border bg-card px-3 py-2.5 text-left hover:bg-accent/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label={`Toggle ${formatCategory(category)} category`}
                 >
                   <ChevronRight
                     className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
