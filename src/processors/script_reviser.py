@@ -343,9 +343,7 @@ Respond with ONLY the JSON object, no additional text.
             emphasis = f" [{turn.emphasis}]" if turn.emphasis else ""
             # Use isclose for float comparison to avoid RUF069
             pause = (
-                f" (pause: {turn.pause_after}s)"
-                if not math.isclose(turn.pause_after, 0.5)
-                else ""
+                f" (pause: {turn.pause_after}s)" if not math.isclose(turn.pause_after, 0.5) else ""
             )
             lines.append(f"{speaker}{emphasis}: {turn.text}{pause}")
 
