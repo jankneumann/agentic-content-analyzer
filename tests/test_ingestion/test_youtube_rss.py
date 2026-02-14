@@ -6,7 +6,9 @@ records.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.config.sources import YouTubeRSSSource
 from src.ingestion.youtube import YouTubeClient, YouTubeRSSIngestionService
@@ -202,12 +204,25 @@ class TestYouTubeRSSNoApiKey:
 
 
 class TestYouTubeRSSIngestion:
-    """Tests for YouTubeRSSIngestionService.ingest_feed()."""
+    """Tests for YouTubeRSSIngestionService.ingest_feed().
 
+    All tests disable the Gemini path (mock returns None) to test the
+    transcript-based fallback, and mock index_content to avoid DB side effects.
+    """
+
+    @pytest.mark.asyncio
+    @patch("src.services.indexing.index_content")
+    @patch(
+        "src.ingestion.youtube._extract_video_content_with_gemini",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     @patch("src.ingestion.youtube.get_db")
     @patch.object(YouTubeClient, "__init__", _mock_init)
     @patch.object(YouTubeRSSIngestionService, "_parse_feed")
-    def test_ingests_video_with_transcript(self, mock_parse_feed, mock_get_db):
+    async def test_ingests_video_with_transcript(
+        self, mock_parse_feed, mock_get_db, _mock_gemini, _mock_index
+    ):
         """Video with transcript creates a Content record."""
         mock_parse_feed.return_value = [
             {
@@ -236,7 +251,7 @@ class TestYouTubeRSSIngestion:
         service = YouTubeRSSIngestionService()
         service.client.get_transcript = MagicMock(return_value=mock_transcript)
 
-        count = service.ingest_feed("https://example.com/feed")
+        count = await service.ingest_feed("https://example.com/feed")
 
         assert count == 1
         mock_db.add.assert_called_once()
@@ -244,10 +259,16 @@ class TestYouTubeRSSIngestion:
         assert added_content.source_id == "youtube:abc123"
         assert added_content.title == "Test Video"
 
+    @pytest.mark.asyncio
+    @patch(
+        "src.ingestion.youtube._extract_video_content_with_gemini",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     @patch("src.ingestion.youtube.get_db")
     @patch.object(YouTubeClient, "__init__", _mock_init)
     @patch.object(YouTubeRSSIngestionService, "_parse_feed")
-    def test_skips_video_without_transcript(self, mock_parse_feed, mock_get_db):
+    async def test_skips_video_without_transcript(self, mock_parse_feed, mock_get_db, _mock_gemini):
         """Video with no transcript is skipped."""
         mock_parse_feed.return_value = [
             {
@@ -268,15 +289,16 @@ class TestYouTubeRSSIngestion:
         service = YouTubeRSSIngestionService()
         service.client.get_transcript = MagicMock(return_value=None)
 
-        count = service.ingest_feed("https://example.com/feed")
+        count = await service.ingest_feed("https://example.com/feed")
 
         assert count == 0
         mock_db.add.assert_not_called()
 
+    @pytest.mark.asyncio
     @patch("src.ingestion.youtube.get_db")
     @patch.object(YouTubeClient, "__init__", _mock_init)
     @patch.object(YouTubeRSSIngestionService, "_parse_feed")
-    def test_deduplicates_by_source_id(self, mock_parse_feed, mock_get_db):
+    async def test_deduplicates_by_source_id(self, mock_parse_feed, mock_get_db):
         """Existing video (source_id match) is skipped."""
         mock_parse_feed.return_value = [
             {
@@ -297,15 +319,24 @@ class TestYouTubeRSSIngestion:
 
         service = YouTubeRSSIngestionService()
 
-        count = service.ingest_feed("https://example.com/feed")
+        count = await service.ingest_feed("https://example.com/feed")
 
         assert count == 0
         mock_db.add.assert_not_called()
 
+    @pytest.mark.asyncio
+    @patch("src.services.indexing.index_content")
+    @patch(
+        "src.ingestion.youtube._extract_video_content_with_gemini",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     @patch("src.ingestion.youtube.get_db")
     @patch.object(YouTubeClient, "__init__", _mock_init)
     @patch.object(YouTubeRSSIngestionService, "_parse_feed")
-    def test_includes_source_metadata(self, mock_parse_feed, mock_get_db):
+    async def test_includes_source_metadata(
+        self, mock_parse_feed, mock_get_db, _mock_gemini, _mock_index
+    ):
         """Content metadata includes source_name, source_tags, and discovery_method."""
         mock_parse_feed.return_value = [
             {
@@ -333,7 +364,7 @@ class TestYouTubeRSSIngestion:
         service = YouTubeRSSIngestionService()
         service.client.get_transcript = MagicMock(return_value=mock_transcript)
 
-        count = service.ingest_feed(
+        count = await service.ingest_feed(
             "https://example.com/feed",
             source_name="AI Weekly",
             source_tags=["ai", "weekly"],
@@ -353,11 +384,15 @@ class TestYouTubeRSSIngestion:
 
 
 class TestYouTubeRSSSourceResolution:
-    """Tests for YouTubeRSSIngestionService.ingest_all_feeds()."""
+    """Tests for YouTubeRSSIngestionService.ingest_all_feeds().
 
+    ingest_feed is mocked as AsyncMock since ingest_all_feeds awaits it.
+    """
+
+    @pytest.mark.asyncio
     @patch.object(YouTubeClient, "__init__", _mock_init)
-    @patch.object(YouTubeRSSIngestionService, "ingest_feed", return_value=3)
-    def test_uses_sources_parameter(self, mock_ingest_feed):
+    @patch.object(YouTubeRSSIngestionService, "ingest_feed", new_callable=AsyncMock, return_value=3)
+    async def test_uses_sources_parameter(self, mock_ingest_feed):
         """When sources parameter is provided, use them directly."""
         sources = [
             YouTubeRSSSource(
@@ -371,15 +406,16 @@ class TestYouTubeRSSSourceResolution:
         ]
 
         service = YouTubeRSSIngestionService()
-        total = service.ingest_all_feeds(sources=sources)
+        total = await service.ingest_all_feeds(sources=sources)
 
         assert mock_ingest_feed.call_count == 2
         assert total == 6
 
+    @pytest.mark.asyncio
     @patch("src.ingestion.youtube.settings")
     @patch.object(YouTubeClient, "__init__", _mock_init)
-    @patch.object(YouTubeRSSIngestionService, "ingest_feed", return_value=2)
-    def test_loads_from_sources_config(self, mock_ingest_feed, mock_settings):
+    @patch.object(YouTubeRSSIngestionService, "ingest_feed", new_callable=AsyncMock, return_value=2)
+    async def test_loads_from_sources_config(self, mock_ingest_feed, mock_settings):
         """When no sources param, loads from SourcesConfig."""
         mock_config = MagicMock()
         mock_config.get_youtube_rss_sources.return_value = [
@@ -389,17 +425,20 @@ class TestYouTubeRSSSourceResolution:
             ),
         ]
         mock_settings.get_sources_config.return_value = mock_config
+        # Provide concurrency setting for semaphore
+        mock_settings.youtube_max_concurrent_playlists = 3
 
         service = YouTubeRSSIngestionService()
-        total = service.ingest_all_feeds()
+        total = await service.ingest_all_feeds()
 
         mock_settings.get_sources_config.assert_called_once()
         mock_ingest_feed.assert_called_once()
         assert total == 2
 
+    @pytest.mark.asyncio
     @patch.object(YouTubeClient, "__init__", _mock_init)
-    @patch.object(YouTubeRSSIngestionService, "ingest_feed", return_value=1)
-    def test_per_source_max_entries(self, mock_ingest_feed):
+    @patch.object(YouTubeRSSIngestionService, "ingest_feed", new_callable=AsyncMock, return_value=1)
+    async def test_per_source_max_entries(self, mock_ingest_feed):
         """source.max_entries overrides max_entries_per_feed."""
         sources = [
             YouTubeRSSSource(
@@ -414,7 +453,7 @@ class TestYouTubeRSSSourceResolution:
         ]
 
         service = YouTubeRSSIngestionService()
-        service.ingest_all_feeds(sources=sources, max_entries_per_feed=20)
+        await service.ingest_all_feeds(sources=sources, max_entries_per_feed=20)
 
         assert mock_ingest_feed.call_count == 2
         calls = mock_ingest_feed.call_args_list

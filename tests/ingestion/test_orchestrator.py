@@ -7,7 +7,7 @@ to verify correct wiring: lazy import, instantiation, call, and return type.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -93,18 +93,24 @@ class TestIngestRss:
 
 
 class TestIngestYoutube:
+    """YouTube orchestrator tests.
+
+    Service methods are now async; orchestrator bridges via asyncio.run().
+    Mocks must use AsyncMock for awaitable methods.
+    """
+
     @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     def test_calls_all_three_methods_across_two_services(self, mock_content_cls, mock_rss_cls):
         from src.ingestion.orchestrator import ingest_youtube
 
         mock_content = MagicMock()
-        mock_content.ingest_all_playlists.return_value = 3
-        mock_content.ingest_channels.return_value = 2
+        mock_content.ingest_all_playlists = AsyncMock(return_value=3)
+        mock_content.ingest_channels = AsyncMock(return_value=2)
         mock_content_cls.return_value = mock_content
 
         mock_rss = MagicMock()
-        mock_rss.ingest_all_feeds.return_value = 1
+        mock_rss.ingest_all_feeds = AsyncMock(return_value=1)
         mock_rss_cls.return_value = mock_rss
 
         result = ingest_youtube()
@@ -119,9 +125,9 @@ class TestIngestYoutube:
     def test_returns_int(self, mock_content_cls, mock_rss_cls):
         from src.ingestion.orchestrator import ingest_youtube
 
-        mock_content_cls.return_value.ingest_all_playlists.return_value = 0
-        mock_content_cls.return_value.ingest_channels.return_value = 0
-        mock_rss_cls.return_value.ingest_all_feeds.return_value = 0
+        mock_content_cls.return_value.ingest_all_playlists = AsyncMock(return_value=0)
+        mock_content_cls.return_value.ingest_channels = AsyncMock(return_value=0)
+        mock_rss_cls.return_value.ingest_all_feeds = AsyncMock(return_value=0)
 
         result = ingest_youtube()
         assert result == 0
@@ -132,9 +138,9 @@ class TestIngestYoutube:
     def test_passes_use_oauth(self, mock_content_cls, mock_rss_cls):
         from src.ingestion.orchestrator import ingest_youtube
 
-        mock_content_cls.return_value.ingest_all_playlists.return_value = 0
-        mock_content_cls.return_value.ingest_channels.return_value = 0
-        mock_rss_cls.return_value.ingest_all_feeds.return_value = 0
+        mock_content_cls.return_value.ingest_all_playlists = AsyncMock(return_value=0)
+        mock_content_cls.return_value.ingest_channels = AsyncMock(return_value=0)
+        mock_rss_cls.return_value.ingest_all_feeds = AsyncMock(return_value=0)
 
         ingest_youtube(use_oauth=False)
 
@@ -146,12 +152,12 @@ class TestIngestYoutube:
         from src.ingestion.orchestrator import ingest_youtube
 
         mock_content = MagicMock()
-        mock_content.ingest_all_playlists.return_value = 0
-        mock_content.ingest_channels.return_value = 0
+        mock_content.ingest_all_playlists = AsyncMock(return_value=0)
+        mock_content.ingest_channels = AsyncMock(return_value=0)
         mock_content_cls.return_value = mock_content
 
         mock_rss = MagicMock()
-        mock_rss.ingest_all_feeds.return_value = 0
+        mock_rss.ingest_all_feeds = AsyncMock(return_value=0)
         mock_rss_cls.return_value = mock_rss
 
         after = datetime(2025, 1, 1, tzinfo=UTC)
