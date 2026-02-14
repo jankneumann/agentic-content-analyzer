@@ -142,7 +142,6 @@ class DatabaseSettings(BaseModel):
 
     # Common
     database_url: str | None = None
-    redis_url: str | None = None
 
     # Local provider
     local_database_url: str | None = None

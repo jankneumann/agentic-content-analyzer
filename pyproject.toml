@@ -18,9 +18,7 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
 
     # Task Queue
-    "celery>=5.3.0",
-    "redis>=5.0.0",
-    "pgqueuer>=0.25.0",   # PostgreSQL-native task queue (for mobile capture)
+    "pgqueuer>=0.25.0",   # PostgreSQL-native task queue
     "asyncpg>=0.30.0",    # Async PostgreSQL driver (for PGQueuer)
 
     # Web Framework

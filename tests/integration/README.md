@@ -16,7 +16,7 @@ Integration tests cover:
 
 Ensure these services are running:
 ```bash
-docker compose up -d postgres redis neo4j
+docker compose up -d postgres neo4j
 ```
 
 ### 2. Create Test Database

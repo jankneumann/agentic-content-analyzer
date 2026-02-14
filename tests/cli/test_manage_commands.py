@@ -35,21 +35,15 @@ class TestVerifySetup:
     @patch("src.storage.database.get_db")
     def test_verify_all_pass(self, mock_get_db, mock_settings, mock_graphiti):
         # Mock settings as a module with attributes
-        mock_settings.redis_url = "redis://localhost:6379"
         mock_settings.anthropic_api_key = "sk-ant-real-key"
 
         mock_db = MagicMock()
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
-        # Mock redis.from_url inside the function
-        with patch("redis.from_url") as mock_redis:
-            mock_redis_client = MagicMock()
-            mock_redis.return_value = mock_redis_client
-
-            result = runner.invoke(app, ["manage", "verify-setup"])
-            assert result.exit_code == 0
-            assert "Pass" in result.output or "pass" in result.output
+        result = runner.invoke(app, ["manage", "verify-setup"])
+        assert result.exit_code == 0
+        assert "Pass" in result.output or "pass" in result.output
 
     @patch("src.storage.database.get_db")
     def test_verify_db_fail(self, mock_get_db):

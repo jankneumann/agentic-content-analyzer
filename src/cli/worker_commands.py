@@ -55,12 +55,9 @@ async def _run_worker(concurrency: int) -> None:
     Args:
         concurrency: Maximum number of concurrent tasks
     """
-    from datetime import timedelta
+    from src.queue.worker import register_all_handlers, run_worker
 
-    from src.queue.setup import close_queue, get_queue
-    from src.tasks.content import register_content_tasks
-
-    # Track shutdown state
+    # Register signal handlers for graceful shutdown
     shutdown_event = asyncio.Event()
 
     def signal_handler(signum: int, frame: object) -> None:
@@ -69,54 +66,40 @@ async def _run_worker(concurrency: int) -> None:
         logger.info(f"Received {sig_name}, initiating graceful shutdown...")
         shutdown_event.set()
 
-    # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    try:
-        # Initialize queue
-        pgq = await get_queue()
+    # Register all job handlers
+    register_all_handlers()
 
-        # Register task handlers
-        register_content_tasks(pgq)
+    logger.info(f"Worker ready - concurrency={concurrency}, listening for jobs...")
 
-        logger.info(f"Worker ready - concurrency={concurrency}, listening for jobs...")
-
-        if not is_json_mode():
-            typer.echo(
-                typer.style(
-                    f"Worker started with concurrency={concurrency}",
-                    fg=typer.colors.GREEN,
-                )
+    if not is_json_mode():
+        typer.echo(
+            typer.style(
+                f"Worker started with concurrency={concurrency}",
+                fg=typer.colors.GREEN,
             )
-            typer.echo("Press Ctrl+C to stop gracefully")
-        else:
-            output_result(
-                {
-                    "status": "ready",
-                    "concurrency": concurrency,
-                    "message": "Worker started and listening for jobs",
-                }
-            )
-
-        # Run the worker loop
-        # PGQueuer handles signal-based shutdown internally when running
-        await pgq.run(
-            dequeue_timeout=timedelta(seconds=30),
-            batch_size=10,
-            max_concurrent_tasks=concurrency,
+        )
+        typer.echo("Press Ctrl+C to stop gracefully")
+    else:
+        output_result(
+            {
+                "status": "ready",
+                "concurrency": concurrency,
+                "message": "Worker started and listening for jobs",
+            }
         )
 
+    try:
+        await run_worker(concurrency=concurrency)
     except asyncio.CancelledError:
         logger.info("Worker cancelled, shutting down...")
     except Exception as e:
         logger.error(f"Worker error: {e}")
         raise
     finally:
-        # Clean up queue connection
-        await close_queue()
         logger.info("Worker shutdown complete")
-
         if not is_json_mode():
             typer.echo(typer.style("Worker stopped", fg=typer.colors.YELLOW))
 

@@ -314,7 +314,9 @@ class Settings(BaseSettings):
     )
     local_database_url: str | None = None  # Override for local provider
     neon_database_url: str | None = None  # Override for neon provider
-    redis_url: str = "redis://localhost:6379/0"
+    # Worker Configuration
+    worker_enabled: bool = True  # Enable embedded queue worker in API process
+    worker_concurrency: int = 5  # Max concurrent tasks (1-20)
 
     # Database Provider Configuration
     # Explicit provider selection - no auto-detection magic
@@ -521,10 +523,6 @@ class Settings(BaseSettings):
 
     # Email Delivery
     sendgrid_api_key: str | None = None
-
-    # Celery
-    celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/0"
 
     # Digest Scheduling
     daily_digest_hour: int = 7  # 7am

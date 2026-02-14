@@ -293,7 +293,6 @@ def inspect_settings(
             "observability_provider": settings.observability_provider,
             "database_url": settings._mask_url(settings.get_effective_database_url()),
             "neo4j_uri": settings.get_effective_neo4j_uri(),
-            "redis_url": settings.redis_url,
         }
 
         # Add API keys (masked unless --show-secrets)
@@ -421,7 +420,7 @@ def _categorize_setting(key: str) -> str:
     """Categorize a setting by its prefix."""
     key_upper = key.upper()
 
-    if key_upper.startswith(("DATABASE_", "SUPABASE_DB", "NEON_", "RAILWAY_DATABASE", "REDIS_")):
+    if key_upper.startswith(("DATABASE_", "SUPABASE_DB", "NEON_", "RAILWAY_DATABASE")):
         return "database"
     if key_upper.startswith(("NEO4J_", "GRAPHITI_", "SEMAPHORE_")):
         return "neo4j"

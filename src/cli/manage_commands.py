@@ -118,7 +118,7 @@ def setup_gmail() -> None:
 def verify_setup() -> None:
     """Check connectivity for all services.
 
-    Verifies that the database, Redis, Neo4j, and LLM API are
+    Verifies that the database, Neo4j, and LLM API are
     reachable and properly configured. Results are displayed in
     a summary table.
     """
@@ -135,18 +135,6 @@ def verify_setup() -> None:
         results.append({"service": "Database", "status": "pass"})
     except Exception as e:
         results.append({"service": "Database", "status": "fail", "error": str(e)})
-
-    # --- Redis check ---
-    try:
-        import redis  # type: ignore[import-untyped]
-
-        from src.config import settings
-
-        r = redis.from_url(settings.redis_url)
-        r.ping()
-        results.append({"service": "Redis", "status": "pass"})
-    except Exception as e:
-        results.append({"service": "Redis", "status": "fail", "error": str(e)})
 
     # --- Neo4j check ---
     try:

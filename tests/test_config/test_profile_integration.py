@@ -70,7 +70,6 @@ def base_profile_yaml() -> dict:
             "log_level": "DEBUG",
             "database": {
                 "database_url": "postgresql://test:test@localhost/test",
-                "redis_url": "redis://localhost:6379/1",
             },
             "api_keys": {
                 "anthropic_api_key": "test-anthropic-key",
@@ -141,7 +140,6 @@ class TestProfileLoadsIntoSettings:
                 "environment": "development",
                 "log_level": "DEBUG",
                 "database_url": "postgresql://test:test@localhost/test",
-                "redis_url": "redis://localhost:6379/1",
                 "anthropic_api_key": "test-anthropic-key",
             }
 

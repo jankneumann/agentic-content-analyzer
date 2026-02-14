@@ -43,7 +43,6 @@ settings:
   database:
     # Default local PostgreSQL (Docker Compose)
     database_url: "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
-    redis_url: "redis://localhost:6379/0"
 
   # ---------------------------------------------------------------------------
   # Neo4j / Knowledge Graph Settings

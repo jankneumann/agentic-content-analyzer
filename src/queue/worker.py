@@ -1,0 +1,350 @@
+"""Embedded queue worker that processes jobs from pgqueuer_jobs table.
+
+Uses SELECT FOR UPDATE SKIP LOCKED to claim jobs from our custom
+pgqueuer_jobs table and dispatch them to registered task handlers.
+
+This is a lightweight alternative to PGQueuer's run() which expects
+its own native schema. Our custom table has additional features like
+progress tracking and batch reconciliation.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
+from typing import Any
+
+import asyncpg
+
+from src.storage.database import get_queue_connection_string
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Registry of entrypoint → async handler functions
+_handlers: dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
+
+
+def _sqlalchemy_url_to_asyncpg(url: str) -> str:
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgres://", 1)
+    return url
+
+
+def register_handler(entrypoint: str) -> Callable:
+    """Decorator to register an async handler for a job entrypoint."""
+
+    def decorator(func: Callable[..., Coroutine[Any, Any, None]]) -> Callable:
+        _handlers[entrypoint] = func
+        return func
+
+    return decorator
+
+
+async def _claim_jobs(
+    conn: asyncpg.Connection,
+    *,
+    batch_size: int = 5,
+) -> list[dict[str, Any]]:
+    """Claim available jobs using SELECT FOR UPDATE SKIP LOCKED."""
+    rows = await conn.fetch(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'in_progress', started_at = NOW()
+        WHERE id IN (
+            SELECT id FROM pgqueuer_jobs
+            WHERE status = 'queued'
+              AND execute_after <= NOW()
+            ORDER BY priority DESC, created_at ASC
+            LIMIT $1
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, entrypoint, payload
+        """,
+        batch_size,
+    )
+    return [dict(row) for row in rows]
+
+
+async def _complete_job(conn: asyncpg.Connection, job_id: int) -> None:
+    """Mark a job as completed."""
+    await conn.execute(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'completed', completed_at = NOW()
+        WHERE id = $1
+        """,
+        job_id,
+    )
+
+
+async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
+    """Mark a job as failed with an error message."""
+    await conn.execute(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'failed', error = $2, completed_at = NOW()
+        WHERE id = $1
+        """,
+        job_id,
+        error[:1000],  # Truncate long error messages
+    )
+
+
+async def _process_job(
+    conn: asyncpg.Connection,
+    job: dict[str, Any],
+) -> None:
+    """Process a single job by dispatching to its registered handler."""
+    job_id = job["id"]
+    entrypoint = job["entrypoint"]
+    payload = job["payload"] or {}
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+
+    handler = _handlers.get(entrypoint)
+    if handler is None:
+        logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
+        await _fail_job(conn, job_id, f"Unknown entrypoint: {entrypoint}")
+        return
+
+    try:
+        await handler(job_id, payload)
+        await _complete_job(conn, job_id)
+        logger.info(f"Job {job_id} ({entrypoint}) completed")
+    except Exception as e:
+        logger.error(f"Job {job_id} ({entrypoint}) failed: {e}")
+        await _fail_job(conn, job_id, str(e))
+
+
+async def run_worker(
+    *,
+    concurrency: int = 5,
+    poll_interval: float = 5.0,
+) -> None:
+    """Run the embedded queue worker loop.
+
+    Continuously polls pgqueuer_jobs for queued jobs, claims them
+    using SELECT FOR UPDATE SKIP LOCKED, and processes them
+    concurrently up to the given limit.
+
+    Also listens on pg_notify('pgqueuer', ...) for immediate wakeup
+    when new jobs are enqueued.
+
+    Args:
+        concurrency: Max concurrent job tasks
+        poll_interval: Seconds between polls when no jobs found
+    """
+    queue_url = get_queue_connection_string()
+    asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+
+    conn = await asyncpg.connect(asyncpg_url)
+
+    # Set up LISTEN for immediate job notification
+    notify_event = asyncio.Event()
+
+    def _on_notify(
+        connection: asyncpg.Connection,
+        pid: int,
+        channel: str,
+        payload: str,
+    ) -> None:
+        notify_event.set()
+
+    await conn.add_listener("pgqueuer", _on_notify)
+
+    active_tasks: set[asyncio.Task] = set()
+    logger.info(f"Embedded worker started (concurrency={concurrency})")
+
+    try:
+        while True:
+            # Clean up completed tasks
+            done = {t for t in active_tasks if t.done()}
+            for t in done:
+                # Re-raise exceptions from tasks so they get logged
+                try:
+                    t.result()
+                except Exception:
+                    pass  # Already logged in _process_job
+            active_tasks -= done
+
+            # How many slots available?
+            available = concurrency - len(active_tasks)
+            if available > 0:
+                jobs = await _claim_jobs(conn, batch_size=available)
+                for job in jobs:
+                    task = asyncio.create_task(_process_job(conn, job))
+                    active_tasks.add(task)
+
+                if jobs:
+                    # Found work — immediately loop to check for more
+                    continue
+
+            # No work found — wait for notification or poll timeout
+            notify_event.clear()
+            try:
+                await asyncio.wait_for(notify_event.wait(), timeout=poll_interval)
+            except TimeoutError:
+                pass
+
+    except asyncio.CancelledError:
+        logger.info("Embedded worker shutting down...")
+        # Wait for active tasks to complete
+        if active_tasks:
+            logger.info(f"Waiting for {len(active_tasks)} active tasks...")
+            await asyncio.gather(*active_tasks, return_exceptions=True)
+        raise
+    finally:
+        await conn.remove_listener("pgqueuer", _on_notify)
+        await conn.close()
+
+
+def register_all_handlers() -> None:
+    """Register all job handlers.
+
+    This imports and registers handlers for all known entrypoints.
+    """
+    # Import here to avoid circular imports — these modules register
+    # handlers via the @register_handler decorator or direct assignment.
+    _register_content_handlers()
+    logger.info(f"Registered {len(_handlers)} job handlers: {list(_handlers.keys())}")
+
+
+def _register_content_handlers() -> None:
+    """Register content processing handlers."""
+    import asyncio as _asyncio
+
+    from src.queue.setup import reconcile_batch_job_status, update_job_progress
+
+    @register_handler("extract_url_content")
+    async def extract_url_content(job_id: int, payload: dict) -> None:
+        from src.services.url_extractor import URLExtractor
+        from src.storage.database import get_db
+
+        content_id = payload.get("content_id")
+        if not content_id:
+            raise ValueError("Missing content_id")
+
+        with get_db() as db:
+            extractor = URLExtractor(db)
+            await extractor.extract_content(content_id)
+
+    @register_handler("process_content")
+    async def process_content(job_id: int, payload: dict) -> None:
+        content_id = payload.get("content_id")
+        task_type = payload.get("task_type", "summarize")
+        if not content_id:
+            raise ValueError("Missing content_id")
+
+        if task_type == "summarize":
+            from src.processors.summarizer import ContentSummarizer
+
+            summarizer = ContentSummarizer()
+            summarizer.summarize_content(content_id)
+        else:
+            raise ValueError(f"Unknown task_type: {task_type}")
+
+    @register_handler("scan_newsletters")
+    async def scan_newsletters(job_id: int, payload: dict) -> None:
+        from src.ingestion.gmail import GmailContentIngestionService
+
+        service = GmailContentIngestionService()
+        service.ingest_content(query="label:newsletters-ai")
+
+    @register_handler("summarize_content")
+    async def summarize_content(job_id: int, payload: dict) -> None:
+        from anthropic import RateLimitError
+
+        from src.processors.summarizer import ContentSummarizer
+
+        content_id = payload.get("content_id")
+        if not content_id:
+            raise ValueError("Missing content_id")
+
+        await update_job_progress(job_id, 10, "Starting summarization")
+
+        RATE_LIMIT_BACKOFF_DELAYS = [5, 10, 20]
+        last_error: Exception | None = None
+
+        for attempt, delay in enumerate([*RATE_LIMIT_BACKOFF_DELAYS, None], start=1):
+            try:
+                summarizer = ContentSummarizer()
+                success = summarizer.summarize_content(content_id)
+
+                if success:
+                    await update_job_progress(job_id, 100, "Completed")
+                    await reconcile_batch_job_status(content_id)
+                    return
+                else:
+                    raise RuntimeError(
+                        f"Summarization returned failure for content_id={content_id}"
+                    )
+
+            except RateLimitError as e:
+                last_error = e
+                if delay is not None:
+                    logger.warning(
+                        f"Rate limited on attempt {attempt} for content_id={content_id}, "
+                        f"retrying in {delay}s"
+                    )
+                    await update_job_progress(
+                        job_id, 10, f"Rate limited, retrying in {delay}s (attempt {attempt})"
+                    )
+                    await _asyncio.sleep(delay)
+                else:
+                    raise
+
+            except Exception:
+                raise
+
+        if last_error:
+            raise last_error
+
+    @register_handler("ingest_content")
+    async def ingest_content(job_id: int, payload: dict) -> None:
+        from datetime import timedelta
+
+        from src.ingestion.orchestrator import (
+            ingest_gmail,
+            ingest_podcast,
+            ingest_rss,
+            ingest_substack,
+            ingest_youtube,
+            ingest_youtube_playlist,
+            ingest_youtube_rss,
+        )
+
+        source = payload.get("source", "gmail")
+        max_results = payload.get("max_results", 50)
+        days_back = payload.get("days_back", 7)
+        force_reprocess = payload.get("force_reprocess", False)
+
+        await update_job_progress(job_id, 10, f"Starting {source} ingestion")
+
+        after_date = datetime.now(UTC) - timedelta(days=days_back)
+
+        source_map: dict[str, tuple] = {
+            "gmail": (ingest_gmail, {"max_results": max_results}),
+            "rss": (ingest_rss, {"max_entries_per_feed": max_results}),
+            "youtube": (ingest_youtube, {"max_videos": max_results}),
+            "youtube-playlist": (ingest_youtube_playlist, {"max_videos": max_results}),
+            "youtube-rss": (ingest_youtube_rss, {"max_videos": max_results}),
+            "podcast": (ingest_podcast, {"max_entries_per_feed": max_results}),
+            "substack": (ingest_substack, {"max_entries_per_source": max_results}),
+        }
+
+        if source not in source_map:
+            raise ValueError(f"Unsupported source: {source}")
+
+        ingest_func, kwargs = source_map[source]
+        count = await _asyncio.to_thread(
+            lambda: ingest_func(
+                after_date=after_date,
+                force_reprocess=force_reprocess,
+                **kwargs,
+            )
+        )
+
+        await update_job_progress(job_id, 100, f"Ingested {count} items from {source}")

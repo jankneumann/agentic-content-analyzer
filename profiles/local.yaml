@@ -26,7 +26,6 @@ settings:
   database:
     # Local PostgreSQL from Docker Compose
     database_url: "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
-    redis_url: "redis://localhost:6379/0"
 
   neo4j:
     # Local Neo4j from Docker Compose

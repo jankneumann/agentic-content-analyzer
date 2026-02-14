@@ -31,7 +31,6 @@ settings:
   database:
     # Prefer staging-specific env vars, then fall back to Railway defaults
     railway_database_url: "${STAGING_RAILWAY_DATABASE_URL:-${RAILWAY_DATABASE_URL:-${DATABASE_URL}}}"
-    redis_url: "${STAGING_REDIS_URL:-${REDIS_URL:-redis://localhost:6379/0}}"
 
     # Keep pool settings aligned with production for realistic behavior
     railway_pool_size: 3

@@ -114,7 +114,6 @@ class TestCategorizeSettings:
         """Test database settings categorization."""
         assert _categorize_setting("DATABASE_URL") == "database"
         assert _categorize_setting("NEON_DATABASE_URL") == "database"
-        assert _categorize_setting("REDIS_URL") == "database"
         assert _categorize_setting("SUPABASE_DB_URL") == "database"
 
     def test_neo4j_category(self) -> None:

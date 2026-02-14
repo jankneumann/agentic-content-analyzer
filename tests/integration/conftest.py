@@ -24,7 +24,7 @@ Test Database Isolation:
 
 Setup:
 1. Create PostgreSQL test database: createdb newsletters_test
-2. Start dev dependencies: docker compose up -d postgres redis neo4j
+2. Start dev dependencies: docker compose up -d postgres neo4j
 3. Start test Neo4j instance: docker compose up -d neo4j-test
 4. Run integration tests: pytest tests/integration/ -v
 

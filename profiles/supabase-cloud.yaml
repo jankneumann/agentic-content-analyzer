@@ -38,8 +38,6 @@ settings:
     supabase_pooler_mode: transaction
     supabase_az: "0"
 
-    redis_url: "${REDIS_URL:-redis://localhost:6379/0}"
-
   neo4j:
     # Neo4j AuraDB (free tier available)
     neo4j_auradb_uri: "${NEO4J_AURADB_URI}"

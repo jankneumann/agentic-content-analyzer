@@ -129,8 +129,8 @@ aca manage backfill-chunks             # Index existing content for search
 aca manage backfill-chunks --dry-run   # Preview what would be indexed
 aca manage backfill-chunks --embed-only # Fill missing embeddings only
 
-# Job Queue Workers
-aca worker start                       # Start worker (5 concurrent tasks)
+# Job Queue Workers (embedded worker runs automatically with API)
+aca worker start                       # Standalone worker (optional, 5 concurrent tasks)
 aca worker start --concurrency 10      # Custom concurrency (max 20)
 
 # Job Management
@@ -552,7 +552,6 @@ aca profile list    # See available profiles
 ```bash
 # Minimum required in .env
 DATABASE_URL=postgresql://localhost/newsletters
-REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
 ANTHROPIC_API_KEY=sk-ant-...
 ADMIN_API_KEY=your-admin-key      # Protects settings/prompt management endpoints

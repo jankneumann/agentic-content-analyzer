@@ -37,7 +37,6 @@ settings:
   database:
     # Railway auto-injects DATABASE_URL or RAILWAY_DATABASE_URL
     railway_database_url: "${RAILWAY_DATABASE_URL:-${DATABASE_URL}}"
-    redis_url: "${REDIS_URL:-redis://localhost:6379/0}"
 
     # Railway PostgreSQL pool settings (optimized for Hobby plan)
     railway_pool_size: 3

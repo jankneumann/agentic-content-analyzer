@@ -107,7 +107,7 @@ class TestProfileInspect:
         mock_settings.get_effective_database_url.return_value = "postgresql://localhost/test"
         mock_settings._mask_url.return_value = "postgresql://localhost/test"
         mock_settings.get_effective_neo4j_uri.return_value = "bolt://localhost:7687"
-        mock_settings.redis_url = "redis://localhost:6379"
+
         mock_settings.anthropic_api_key = "sk-ant-test"
         mock_settings.openai_api_key = None
         mock_settings.google_api_key = None
@@ -130,7 +130,7 @@ class TestProfileInspect:
         mock_settings.get_effective_database_url.return_value = "postgresql://localhost/test"
         mock_settings._mask_url.return_value = "postgresql://localhost/test"
         mock_settings.get_effective_neo4j_uri.return_value = "bolt://localhost:7687"
-        mock_settings.redis_url = "redis://localhost:6379"
+
         mock_settings.anthropic_api_key = "sk-ant-test"
         mock_settings.openai_api_key = None
         mock_settings.google_api_key = None

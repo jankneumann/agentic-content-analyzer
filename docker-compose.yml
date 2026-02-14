@@ -17,19 +17,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: newsletter-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   neo4j:
     image: neo4j:5
     container_name: newsletter-neo4j
@@ -72,7 +59,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   neo4j_data:
   neo4j_logs:
   neo4j_test_data:

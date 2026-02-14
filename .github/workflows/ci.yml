@@ -52,16 +52,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
@@ -82,7 +72,6 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
-          REDIS_URL: redis://localhost:6379/0
           ANTHROPIC_API_KEY: test-key-for-ci
           ENVIRONMENT: test
         run: |

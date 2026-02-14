@@ -4,7 +4,6 @@ import os
 import sys
 
 import psycopg2
-import redis
 from neo4j import GraphDatabase
 
 from src.config import settings
@@ -46,25 +45,11 @@ def check_postgres() -> bool:
         return False
 
 
-def check_redis() -> bool:
-    """Check Redis connection."""
-    try:
-        r = redis.from_url(settings.redis_url)
-        r.ping()
-        print("✓ Redis connection successful")
-        return True
-    except Exception as e:
-        print(f"❌ Redis connection failed: {e}")
-        print("   Run: docker compose up -d redis")
-        return False
-
-
 def check_neo4j() -> bool:
     """Check Neo4j connection."""
     try:
         driver = GraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password)
+            settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password)
         )
         with driver.session() as session:
             result = session.run("RETURN 1")
@@ -96,12 +81,11 @@ def main() -> None:
         check_env_file(),
         check_api_keys(),
         check_postgres(),
-        check_redis(),
         check_neo4j(),
         check_gmail_credentials(),
     ]
 
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     if all(checks):
         print("✓ All checks passed! Setup is complete.")
         print("\nNext steps:")

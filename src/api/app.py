@@ -35,12 +35,36 @@ from src.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
+    import asyncio
+
+    from src.utils.logging import get_logger
+
+    logger = get_logger(__name__)
+
     # Startup: Initialize telemetry (observability provider + OTel infrastructure)
     from src.telemetry import setup_telemetry
 
     setup_telemetry(app=app)
 
+    # Start embedded queue worker if enabled
+    worker_task: asyncio.Task | None = None
+    if settings.worker_enabled:
+        from src.queue.worker import register_all_handlers, run_worker
+
+        concurrency = min(max(settings.worker_concurrency, 1), 20)
+        register_all_handlers()
+        worker_task = asyncio.create_task(run_worker(concurrency=concurrency))
+
     yield
+
+    # Shutdown: Stop embedded worker
+    if worker_task is not None:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Embedded worker stopped")
 
     # Shutdown: Flush and close telemetry
     from src.telemetry import shutdown_telemetry

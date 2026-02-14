@@ -60,7 +60,6 @@ def base_profile_data() -> dict:
         "settings": {
             "database": {
                 "database_url": "postgresql://localhost/test",
-                "redis_url": "redis://localhost:6379",
             },
             "neo4j": {
                 "neo4j_uri": "bolt://localhost:7687",
@@ -476,7 +475,6 @@ class TestResolveInheritance:
 
         # Inherited from base
         assert data["providers"]["neo4j"] == "local"
-        assert data["settings"]["database"]["redis_url"] == "redis://localhost:6379"
 
     def test_multi_level_inheritance(self, temp_profiles_dir: Path) -> None:
         """Test grandparent -> parent -> child inheritance."""
