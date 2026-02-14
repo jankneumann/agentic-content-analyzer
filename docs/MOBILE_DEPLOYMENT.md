@@ -15,7 +15,7 @@
 | PGQueuer setup module | ✅ Complete | `src/queue/setup.py` |
 | Content extraction tasks | ✅ Complete | `src/tasks/content.py` |
 | Save URL API endpoints | ✅ Complete | `src/api/save_routes.py` |
-| Worker entry point | ✅ Complete | `src/worker.py` |
+| Worker (embedded + standalone) | ✅ Complete | `src/queue/worker.py` |
 | URL content extractor | ✅ Complete | `src/services/url_extractor.py` |
 | Railway deployment config | ✅ Complete | `Dockerfile`, `railway.toml` |
 | iOS Shortcuts documentation | ✅ Complete | `shortcuts/README.md` |
@@ -38,7 +38,7 @@ This abstraction means the queue code works identically across local, Supabase, 
 
 **Content Extraction**: Uses `trafilatura` for HTML-to-markdown conversion instead of a custom parser. Trafilatura provides academic-quality content extraction with better handling of article content.
 
-**Graceful Degradation**: If PGQueuer is unavailable, falls back to FastAPI BackgroundTasks (non-durable but functional).
+**Embedded Worker**: The queue worker runs as an async task inside the FastAPI lifespan by default (`WORKER_ENABLED=true`). For scaled deployments, disable the embedded worker and run a separate service via `aca worker start`.
 
 ---
 
@@ -74,28 +74,40 @@ Deploy the content capture and AI analysis app to Railway for mobile access (iOS
 ### Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Railway                               │
-│  ┌─────────────────────┐    ┌─────────────────────────────┐ │
-│  │   FastAPI Web       │    │   FastAPI Worker            │ │
-│  │   (Service 1)       │    │   (Service 2)               │ │
-│  │                     │    │                             │ │
-│  │ • API endpoints     │    │ • PGQueuer consumer         │ │
-│  │ • AI chat streaming │    │ • Uses DIRECT connection    │ │
-│  │ • Uses POOLED conn  │    │ • Processes background jobs │ │
-│  └──────────┬──────────┘    └──────────────┬──────────────┘ │
-└─────────────┼──────────────────────────────┼─────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                            Railway                                    │
+│                                                                       │
+│  Option A: Single Service (default)                                  │
+│  ┌─────────────────────────────────┐                                 │
+│  │   FastAPI Web + Embedded Worker │                                 │
+│  │                                 │                                 │
+│  │ • API endpoints                 │                                 │
+│  │ • AI chat streaming             │                                 │
+│  │ • Embedded queue worker         │   WORKER_ENABLED=true (default) │
+│  │ • Uses DIRECT conn for worker   │                                 │
+│  └──────────────┬──────────────────┘                                 │
+│                                                                       │
+│  Option B: Scaled Deployment                                         │
+│  ┌─────────────────────┐    ┌─────────────────────────────┐          │
+│  │   FastAPI Web       │    │   Standalone Worker         │          │
+│  │   (Service 1)       │    │   (Service 2)               │          │
+│  │                     │    │                             │          │
+│  │ • API endpoints     │    │ • aca worker start          │          │
+│  │ • WORKER_ENABLED=   │    │ • Uses DIRECT connection    │          │
+│  │   false             │    │ • Processes background jobs │          │
+│  └──────────┬──────────┘    └──────────────┬──────────────┘          │
+└─────────────┼──────────────────────────────┼─────────────────────────┘
               │                              │
               ▼                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│           PostgreSQL (via DatabaseProvider)                  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
-│  │ Content tables  │  │ pgqueuer_jobs   │  │ pg_cron      │ │
-│  │ (application)   │  │ (task queue)    │  │ (scheduler)  │ │
-│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
-│                                                              │
-│  Provider: local | supabase | neon (auto-selected)          │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│           PostgreSQL (via DatabaseProvider)                           │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐         │
+│  │ Content tables  │  │ pgqueuer_jobs   │  │ pg_cron      │         │
+│  │ (application)   │  │ (task queue)    │  │ (scheduler)  │         │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘         │
+│                                                                      │
+│  Provider: local | supabase | neon (auto-selected)                   │
+└──────────────────────────────────────────────────────────────────────┘
               ▲
               │
 ┌─────────────┴─────────────┐
@@ -128,18 +140,19 @@ The `DatabaseProvider.get_queue_url()` method handles this automatically per pro
 - **Cloudflare Workers**: Python support in beta, timeout issues with AI API calls, different programming model for background tasks
 - **Fly.io**: Good option but slightly more config; Railway is simpler for this use case
 
-#### Task Queue: PGQueuer
+#### Task Queue: Custom PostgreSQL Worker
 **Rationale:**
-- Pure Python library, no extensions required (works with Neon)
-- Uses Postgres `SELECT FOR UPDATE SKIP LOCKED` pattern
-- Built-in support for:
+- Custom async worker loop (`src/queue/worker.py`) using `SELECT FOR UPDATE SKIP LOCKED`
+- Jobs stored in `pgqueuer_jobs` table (created via Alembic migration) with custom columns for progress tracking and batch reconciliation
+- LISTEN/NOTIFY on `pgqueuer` channel for immediate job wakeup
+- Embedded in FastAPI lifespan by default — no separate process needed
+- No additional infrastructure (no Redis, no Celery) required
+- Supports:
   - Job priorities
-  - Retry logic
   - Deferred execution (`execute_after`)
-  - Job cancellation
-  - Dashboard CLI for monitoring
-- Async-native, works with FastAPI
-- No additional infrastructure (Redis) required
+  - Progress tracking and batch reconciliation
+  - Concurrent processing with configurable concurrency (1-20)
+  - Graceful shutdown with active task draining
 
 **Why not pgmq/Supabase Queues:**
 - pgmq extension is not available on Neon
@@ -150,45 +163,38 @@ The `DatabaseProvider.get_queue_url()` method handles this automatically per pro
 - Runs inside Postgres, independent of worker uptime
 - Neon supports pg_cron natively
 - Scheduled jobs fire even if worker is temporarily down
-- Worker can scale to zero between jobs (cost savings)
-- pg_cron inserts jobs into PGQueuer table; worker processes them
-
-**Why not PGQueuer's built-in scheduler:**
-- Requires worker to run 24/7 just to check schedules
-- Worker downtime = missed scheduled jobs
+- pg_cron inserts jobs into `pgqueuer_jobs` table; worker processes them when API starts
 
 ### Hybrid Scheduler Pattern
 
-pg_cron handles the "when" (scheduling), PGQueuer handles the "what" (job processing):
+pg_cron handles the "when" (scheduling), the queue worker handles the "what" (job processing):
 
 ```sql
--- pg_cron job (runs in Neon, always available)
+-- pg_cron job (runs in Postgres, always available)
 SELECT cron.schedule(
     'daily-newsletter-scan',
     '0 6 * * *',  -- 6 AM UTC daily
     $$
-    SELECT pgqueuer.enqueue('scan_newsletters', '{}'::jsonb, 0);
+    SELECT pgqueuer_enqueue('scan_newsletters', '{}');
     $$
 );
 ```
 
 ```python
-# PGQueuer worker (runs on Railway, processes jobs)
-@pgq.entrypoint("scan_newsletters")
-async def scan_newsletters(job: Job) -> None:
-    emails = await fetch_unread_newsletters()
-    for email in emails:
-        await queries.enqueue(
-            "process_newsletter",
-            payload={"email_id": email.id},
-            priority=0
-        )
+# Queue worker (embedded in FastAPI or standalone via `aca worker start`)
+# Handlers registered in src/queue/worker.py
 
-@pgq.entrypoint("process_newsletter")
-async def process_newsletter(job: Job) -> None:
-    content = await fetch_email_content(job.payload["email_id"])
-    summary = await summarize_with_ai(content)
-    await save_summary(job.payload["email_id"], summary)
+@register_handler("scan_newsletters")
+async def scan_newsletters(job_id: int, payload: dict) -> None:
+    from src.ingestion.gmail import GmailContentIngestionService
+    service = GmailContentIngestionService()
+    service.ingest_content(query="label:newsletters-ai")
+
+@register_handler("summarize_content")
+async def summarize_content(job_id: int, payload: dict) -> None:
+    from src.processors.summarizer import ContentSummarizer
+    summarizer = ContentSummarizer()
+    summarizer.summarize_content(payload["content_id"])
 ```
 
 ## API Endpoints
@@ -278,11 +284,17 @@ Set all variables directly in Railway's service settings (legacy approach).
   - `DATABASE_URL`: Connection string
   - `ALLOWED_ORIGINS`: `*` (for iOS Shortcuts)
 
-**Service 2: Worker**
+**Worker** (embedded by default — no separate service needed):
+- The queue worker runs embedded in the API process via FastAPI lifespan
+- Set `WORKER_ENABLED=true` (default) and `WORKER_CONCURRENCY=5` (default)
+- No separate Railway service is required for most deployments
+
+**Service 2: Standalone Worker** (optional — for scaled deployments):
 - Name: `worker`
-- Start Command: `python -m src.worker`
-- Environment Variables: Same as web
+- Start Command: `aca worker start --concurrency 10`
+- Environment Variables: Same as web, plus `WORKER_ENABLED=false` on Service 1
 - Note: No public domain needed (internal only)
+- Both embedded and standalone workers can run simultaneously (safe via `SKIP LOCKED`)
 
 **Automated Backups** (Railway custom image only):
 - Backups are handled automatically via pg_cron → MinIO when using the custom PostgreSQL image
@@ -420,9 +432,9 @@ Fix by updating the orphan migration's `down_revision` to point to the correct p
 ## Cost Estimate
 
 ### Railway (Monthly)
-- Web service: ~$3-5 (low traffic, scales to zero possible)
-- Worker service: ~$2-5 (mostly idle, wakes for jobs)
-- **Total: ~$5-10/month**
+- Web service (with embedded worker): ~$3-7 (low traffic, scales to zero possible)
+- Optional standalone worker service: ~$2-5 (only if scaling beyond embedded worker)
+- **Total: ~$3-7/month** (single service) or **~$5-12/month** (with standalone worker)
 
 ### Neon (Monthly)
 - Current plan (likely free tier or Launch): $0-19
@@ -433,8 +445,8 @@ Fix by updating the orphan migration's `down_revision` to point to the correct p
 
 | Risk | Mitigation |
 |------|------------|
-| Worker downtime misses jobs | Jobs persist in Postgres; processed when worker restarts |
-| pg_cron fires but worker is down | Job queued in DB; worker catches up when available |
+| Worker downtime misses jobs | Jobs persist in Postgres; processed when API restarts (embedded worker auto-starts) |
+| pg_cron fires but worker is down | Job queued in DB; worker catches up when API restarts |
 | Long-running AI tasks timeout | Railway has no hard timeout for containers |
 | Database connection limits | Use connection pooling (asyncpg pool) |
 | Cost overruns | Railway usage-based; set spending alerts |
@@ -457,8 +469,7 @@ Fix by updating the orphan migration's `down_revision` to point to the correct p
 
 ## References
 
-- [PGQueuer Documentation](https://pgqueuer.readthedocs.io/)
-- [PGQueuer GitHub](https://github.com/janbjorge/pgqueuer)
+- [PostgreSQL SELECT FOR UPDATE SKIP LOCKED](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE)
 - [Neon pg_cron Documentation](https://neon.tech/docs/extensions/pg_cron)
 - [Railway Documentation](https://docs.railway.app/)
-- [FastAPI BackgroundTasks](https://fastapi.tiangolo.com/tutorial/background-tasks/)
+- [FastAPI Lifespan Events](https://fastapi.tiangolo.com/advanced/events/)

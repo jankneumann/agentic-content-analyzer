@@ -310,7 +310,7 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 
 ## Job Queue Architecture
 
-The system uses a PostgreSQL-based job queue (PGQueuer) for reliable background processing with transactional guarantees.
+The system uses a PostgreSQL-based job queue for reliable background processing with transactional guarantees. Jobs are stored in the `pgqueuer_jobs` table and claimed using `SELECT FOR UPDATE SKIP LOCKED` for safe concurrent processing.
 
 ### Architecture Diagram
 
@@ -330,19 +330,22 @@ The system uses a PostgreSQL-based job queue (PGQueuer) for reliable background 
                      │                          │                          │
               ┌──────┴──────┐           ┌───────┴───────┐          ┌───────┴───────┐
               │  Producers  │           │  Job Queue    │          │    Workers    │
-              │             │           │  (PGQueuer)   │          │               │
+              │             │           │  (PostgreSQL) │          │               │
               │ • API calls │──enqueue──│               │──dequeue─│ • Concurrent  │
               │ • CLI cmds  │           │ • SKIP LOCKED │          │   processing  │
               │ • Scheduler │           │ • Priority    │          │ • Graceful    │
-              │             │           │ • Retries     │          │   shutdown    │
-              └─────────────┘           └───────────────┘          └───────────────┘
+              │             │           │ • LISTEN/     │          │   shutdown    │
+              └─────────────┘           │   NOTIFY      │          └───────────────┘
+                                        └───────────────┘
                                                 │
                                     ┌───────────┴───────────┐
                                     │    Task Handlers      │
                                     │                       │
                                     │ • summarize_content   │
-                                    │ • scan_newsletter     │
+                                    │ • ingest_content      │
                                     │ • extract_url_content │
+                                    │ • process_content     │
+                                    │ • scan_newsletters    │
                                     └───────────────────────┘
 ```
 
@@ -350,10 +353,35 @@ The system uses a PostgreSQL-based job queue (PGQueuer) for reliable background 
 
 | Component | Description |
 |-----------|-------------|
-| **Producers** | API endpoints, CLI commands, and scheduled tasks that enqueue jobs |
-| **Job Queue** | PostgreSQL table with `SELECT FOR UPDATE SKIP LOCKED` for reliable dequeue |
-| **Workers** | Long-running processes that claim and execute jobs concurrently |
-| **Task Handlers** | Registered functions that process specific job types |
+| **Producers** | API endpoints, CLI commands, and scheduled tasks that enqueue jobs via `src/queue/setup.py` |
+| **Job Queue** | `pgqueuer_jobs` PostgreSQL table with `SELECT FOR UPDATE SKIP LOCKED` for reliable dequeue |
+| **Workers** | Async loops that claim and execute jobs concurrently (`src/queue/worker.py`) |
+| **Task Handlers** | Registered async functions that process specific job entrypoints |
+
+### Worker Modes
+
+The worker can run in two modes:
+
+| Mode | How it starts | Use case |
+|------|--------------|----------|
+| **Embedded** (default) | Auto-starts inside FastAPI lifespan | Development, single-service deployment |
+| **Standalone** | `aca worker start` | Scaled deployment, debugging |
+
+**Embedded mode** runs the worker as an `asyncio.create_task()` inside the FastAPI lifespan. It starts automatically when the API server boots — no extra processes needed. Controlled by environment variables:
+
+```bash
+WORKER_ENABLED=true       # Enable embedded worker (default: true)
+WORKER_CONCURRENCY=5      # Max concurrent tasks (default: 5, max: 20)
+```
+
+**Standalone mode** runs the worker as a separate process via the CLI. Useful for Railway deployments where you want a dedicated worker service, or for running additional workers alongside the embedded one:
+
+```bash
+aca worker start                    # Default concurrency (5)
+aca worker start --concurrency 10   # Custom concurrency
+```
+
+**Running both simultaneously** is safe — `SELECT FOR UPDATE SKIP LOCKED` prevents double-claiming. Jobs are distributed non-deterministically, and combined concurrency is additive. To run only standalone workers, set `WORKER_ENABLED=false` on the API service.
 
 ### Job Lifecycle
 
@@ -363,18 +391,24 @@ QUEUED → IN_PROGRESS → COMPLETED
               └──(error)──→ FAILED ──(retry)──→ QUEUED
 ```
 
-### Worker Commands
+### Job Claiming
 
-```bash
-# Start worker (default 5 concurrent tasks)
-aca worker start
+The worker uses PostgreSQL's `SELECT FOR UPDATE SKIP LOCKED` pattern for safe concurrent job claiming:
 
-# Start with higher concurrency
-aca worker start --concurrency 10
-
-# Set via environment
-WORKER_CONCURRENCY=8 aca worker start
+```sql
+UPDATE pgqueuer_jobs
+SET status = 'in_progress', started_at = NOW()
+WHERE id IN (
+    SELECT id FROM pgqueuer_jobs
+    WHERE status = 'queued' AND execute_after <= NOW()
+    ORDER BY priority DESC, created_at ASC
+    LIMIT $batch_size
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, entrypoint, payload
 ```
+
+The worker also uses `LISTEN/NOTIFY` on the `pgqueuer` channel for immediate wakeup when new jobs are enqueued, falling back to polling every 5 seconds.
 
 ### Job Management
 

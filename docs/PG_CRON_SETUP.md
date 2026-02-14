@@ -1,20 +1,20 @@
 # pg_cron Setup for Scheduled Jobs
 
-This document describes how to set up pg_cron for scheduled task execution with the PGQueuer durable task queue.
+This document describes how to set up pg_cron for scheduled task execution with the PostgreSQL-based job queue.
 
 ## Overview
 
 The system uses a **hybrid scheduling pattern**:
 - **pg_cron** handles the "when" (scheduling) - runs inside Postgres, independent of worker uptime
-- **PGQueuer** handles the "what" (job processing) - runs as a separate worker process
+- **Queue worker** handles the "what" (job processing) - runs embedded in the API process or as a standalone process
 
-This separation means scheduled jobs fire even if the worker is temporarily unavailable.
+This separation means scheduled jobs fire even if the worker is temporarily unavailable. Jobs persist in the `pgqueuer_jobs` table and are processed when the API starts (embedded worker) or when a standalone worker connects.
 
 ## Prerequisites
 
 - PostgreSQL database with pg_cron extension (Supabase recommended, or Neon Scale plan)
-- PGQueuer tables created via Alembic migration
-- Worker process running to consume jobs
+- `pgqueuer_jobs` table created via Alembic migration
+- API server running (embedded worker auto-starts) or standalone worker via `aca worker start`
 
 ## Supabase pg_cron Setup (Recommended)
 
@@ -236,5 +236,5 @@ SELECT cron.schedule(
 
 - [Supabase Cron Documentation](https://supabase.com/docs/guides/cron)
 - [Neon pg_cron Documentation](https://neon.tech/docs/extensions/pg_cron)
-- [PGQueuer Documentation](https://pgqueuer.readthedocs.io/)
+- [PostgreSQL SELECT FOR UPDATE SKIP LOCKED](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE)
 - [Cron Expression Generator](https://crontab.guru/)

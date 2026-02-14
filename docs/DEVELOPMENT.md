@@ -137,10 +137,19 @@ See [Review System Documentation](REVIEW_SYSTEM.md#audio-digests) for full API r
 
 ### Background Tasks (Job Queue)
 
-The system uses a PostgreSQL-based job queue (PGQueuer) for background processing.
+The system uses a PostgreSQL-based job queue for background processing. The worker runs **embedded in the FastAPI process** by default — no separate worker process needed.
 
+**Embedded worker** (default — auto-starts with the API):
 ```bash
-# Start job queue worker (default 5 concurrent tasks)
+# Worker starts automatically with `make dev-bg` or `uvicorn src.api.app:app`
+# Configure via environment variables:
+WORKER_ENABLED=true       # Enable/disable embedded worker (default: true)
+WORKER_CONCURRENCY=5      # Max concurrent tasks (default: 5, max: 20)
+```
+
+**Standalone worker** (optional — for scaled deployments or debugging):
+```bash
+# Start a separate worker process
 aca worker start
 
 # Start with custom concurrency (max 20)
@@ -148,7 +157,12 @@ aca worker start --concurrency 10
 
 # Set concurrency via environment
 WORKER_CONCURRENCY=8 aca worker start
+```
 
+Both modes can run simultaneously — `SELECT FOR UPDATE SKIP LOCKED` prevents double-claiming. To run only standalone workers, set `WORKER_ENABLED=false`.
+
+**Job management:**
+```bash
 # List jobs in queue
 aca jobs list
 aca jobs list --status failed
@@ -164,14 +178,6 @@ aca jobs retry --failed      # All failed jobs
 # Cleanup old completed jobs
 aca jobs cleanup --older-than 30d
 aca jobs cleanup --older-than 7d --dry-run  # Preview what would be deleted
-```
-
-**Legacy Celery (deprecated)**:
-```bash
-# These commands still work but are being phased out
-celery -A src.tasks worker --loglevel=info
-celery -A src.tasks beat --loglevel=info
-celery -A src.tasks flower  # Web UI at localhost:5555
 ```
 
 ### API Server
@@ -1082,11 +1088,11 @@ Common issues when running job queue workers:
 | Issue | Solution |
 |-------|----------|
 | Worker won't start | Check `DATABASE_URL` is set and PostgreSQL is running |
-| Jobs stuck in `queued` | Ensure a worker is running: `aca worker start` |
-| Jobs stuck in `in_progress` | Worker crashed mid-job; jobs auto-recover on restart |
-| High memory usage | Reduce concurrency: `aca worker start --concurrency 3` |
+| Jobs stuck in `queued` | Check embedded worker is enabled (`WORKER_ENABLED=true`) or start standalone: `aca worker start` |
+| Jobs stuck in `in_progress` | Worker crashed mid-job; jobs remain in_progress until manually cleaned or retried |
+| High memory usage | Reduce concurrency: `WORKER_CONCURRENCY=3` or `aca worker start --concurrency 3` |
 | Connection errors | Check PostgreSQL max connections; reduce worker concurrency |
-| Worker won't stop | Press Ctrl+C twice; graceful shutdown waits for in-progress jobs |
+| API won't start (worker error) | Set `WORKER_ENABLED=false` to disable embedded worker and debug separately |
 
 **Diagnosing job failures**:
 ```bash
@@ -1102,6 +1108,7 @@ aca jobs retry 123
 
 **Environment variables for workers**:
 ```bash
+WORKER_ENABLED=true     # Enable embedded worker in API process (default: true)
 WORKER_CONCURRENCY=5    # Default concurrent tasks (1-20)
 LOG_LEVEL=INFO          # Worker log verbosity
 ```
