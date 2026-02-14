@@ -81,6 +81,9 @@ def get_test_database_url() -> str:
 def ensure_test_db_exists(db_name: str, base_url: str) -> None:
     """Create the test database if it doesn't exist.
 
+    If the URL is for SQLite, we skip this check as SQLite creates
+    databases (files) automatically on connection.
+
     Connects to the ``postgres`` admin database with ``AUTOCOMMIT``
     isolation to issue DDL. Raises ``RuntimeError`` with a helpful
     message if the admin connection fails.
@@ -90,6 +93,9 @@ def ensure_test_db_exists(db_name: str, base_url: str) -> None:
     attempt gets PG error 42P04 ("database already exists") which is
     safely ignored.
     """
+    if "sqlite" in base_url:
+        return
+
     admin_url = base_url.rsplit("/", 1)[0] + "/postgres"
     admin_engine = None
     try:
