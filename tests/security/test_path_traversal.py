@@ -30,24 +30,26 @@ class TestPathTraversal:
                 # Import after patching
                 from src.ingestion.youtube_keyframes import KeyframeExtractor
 
-                with patch.object(KeyframeExtractor, "_verify_ffmpeg"):
-                    yield KeyframeExtractor(output_dir="/tmp/test")  # noqa: S108
+                yield KeyframeExtractor(output_dir="/tmp/test")  # noqa: S108
 
-    def test_path_traversal_video_id(self, extractor):
+    @pytest.mark.asyncio
+    async def test_path_traversal_video_id(self, extractor):
         """Test that invalid video IDs with path traversal characters are rejected."""
         malicious_id = "../../evil"
 
         with pytest.raises(ValueError, match="Invalid video ID"):
-            extractor.download_video(malicious_id)
+            await extractor.download_video(malicious_id)
 
-    def test_shell_injection_video_id(self, extractor):
+    @pytest.mark.asyncio
+    async def test_shell_injection_video_id(self, extractor):
         """Test that invalid video IDs with shell characters are rejected."""
         malicious_id = "video; rm -rf /"
 
         with pytest.raises(ValueError, match="Invalid video ID"):
-            extractor.download_video(malicious_id)
+            await extractor.download_video(malicious_id)
 
-    def test_valid_video_id(self, extractor, mock_settings):
+    @pytest.mark.asyncio
+    async def test_valid_video_id(self, extractor, mock_settings):
         """Test that valid video IDs are accepted."""
         valid_id = "dQw4w9WgXcQ"
 
@@ -59,6 +61,6 @@ class TestPathTraversal:
             with patch("src.ingestion.youtube_keyframes.settings", mock_settings):
                 with patch.dict("sys.modules", {"yt_dlp": mock_ytdlp_module}):
                     with patch("os.path.exists", return_value=True):
-                        result = extractor.download_video(valid_id)
+                        result = await extractor.download_video(valid_id)
                         assert result is not None
                         assert valid_id in result
