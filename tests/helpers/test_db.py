@@ -90,6 +90,9 @@ def ensure_test_db_exists(db_name: str, base_url: str) -> None:
     attempt gets PG error 42P04 ("database already exists") which is
     safely ignored.
     """
+    if "sqlite" in base_url:
+        return
+
     admin_url = base_url.rsplit("/", 1)[0] + "/postgres"
     admin_engine = None
     try:
