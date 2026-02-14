@@ -1,3 +1,0 @@
-## 2025-10-29 - TooltipTrigger and Link Interaction
-**Learning:** `TooltipTrigger` with `asChild` does not reliably pass refs or event handlers to `@tanstack/react-router` `Link` components or primitive `<a>` tags when wrapped inside a styled `Button` component with `asChild`. This causes the tooltip to fail to appear.
-**Action:** When adding tooltips to navigation actions that look like buttons, use the `Button` component directly with an `onClick` handler that calls `navigate()` (from `useNavigate`), instead of wrapping a `Link` component. This ensures proper ref forwarding and event handling for the tooltip trigger.
