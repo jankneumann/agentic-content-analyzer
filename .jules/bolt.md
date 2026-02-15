@@ -17,3 +17,7 @@
 ## 2026-02-09 - Deferring Heavy Columns in Bulk Operations
 **Learning:** `Content` model has very large text/JSON columns (`markdown_content`, `tables_json`). When fetching bulk records for processing (e.g., triggering summarization), failure to `defer()` these columns can cause significant memory and time overhead, even if only IDs are needed.
 **Action:** Always use `defer()` on heavy columns when fetching `Content` objects for background tasks or ID-only operations.
+
+## 2026-02-15 - Explicit Column Selection for List Views
+**Learning:** Even with `defer()`, `db.query(Content)` hydrates full ORM objects which adds significant overhead (~38% slower) compared to explicitly selecting only the required columns for list views.
+**Action:** Prefer `db.query(Model.col1, Model.col2)` over `db.query(Model).options(defer(...))` when fetching data for list endpoints where only a subset of fields is needed.
