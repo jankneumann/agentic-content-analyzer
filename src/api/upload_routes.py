@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from src.api.dependencies import verify_admin_key
 from src.config.settings import settings
-from src.ingestion.files import FileContentIngestionService
+from src.ingestion.files import FileContentIngestionService, FileIngestionError
 from src.models.content import Content, ContentSource
 from src.parsers import DoclingParser, MarkItDownParser, ParserRouter, YouTubeParser
 from src.storage.database import get_db
@@ -330,7 +330,7 @@ async def upload_document(
                 processing_time_ms=None,  # Would need to track this
             )
 
-    except ValueError as e:
+    except FileIngestionError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Document upload failed: {e}", exc_info=True)

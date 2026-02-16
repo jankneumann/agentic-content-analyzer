@@ -23,6 +23,12 @@ from src.utils.content_hash import generate_markdown_hash
 logger = logging.getLogger(__name__)
 
 
+class FileIngestionError(ValueError):
+    """Exception raised for expected ingestion errors (e.g. file too large)."""
+
+    pass
+
+
 def calculate_file_hash_sync(file_path: Path) -> str:
     """Calculate SHA-256 hash of file contents (blocking).
 
@@ -94,7 +100,7 @@ class FileContentIngestionService:
         # Check file size
         size_mb = file_path.stat().st_size / (1024 * 1024)
         if size_mb > self.max_file_size_mb:
-            raise ValueError(
+            raise FileIngestionError(
                 f"File size ({size_mb:.1f}MB) exceeds limit ({self.max_file_size_mb}MB)"
             )
 
@@ -169,7 +175,7 @@ class FileContentIngestionService:
         # Check size
         size_mb = len(file_bytes) / (1024 * 1024)  # type: ignore[arg-type]
         if size_mb > self.max_file_size_mb:
-            raise ValueError(
+            raise FileIngestionError(
                 f"File size ({size_mb:.1f}MB) exceeds limit ({self.max_file_size_mb}MB)"
             )
 
