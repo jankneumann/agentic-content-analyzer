@@ -249,9 +249,7 @@ async def upload_document(
     # to avoid permission issues on some OSes or if we need to pass path around.
     # Using NamedTemporaryFile ensures proper resource management compared to raw mkstemp.
     tmp_file = tempfile.NamedTemporaryFile(
-        delete=False,
-        mode="wb",
-        suffix=f".{format_ext}" if format_ext != "unknown" else None
+        delete=False, mode="wb", suffix=f".{format_ext}" if format_ext != "unknown" else None
     )
     temp_path = tmp_file.name
 
