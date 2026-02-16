@@ -60,6 +60,8 @@ class TestFetchURL:
             mock_client_instance.stream.return_value = mock_stream_ctx
 
             mock_response = MagicMock()
+            mock_response.is_redirect = False
+            mock_response.headers = {}
             mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
             mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
 
@@ -78,6 +80,7 @@ class TestFetchURL:
             "content-length": "100",
         }
         mock_response.encoding = "utf-8"
+        mock_response.is_redirect = False
 
         # Mock streaming content
         content_bytes = b"<html><body><h1>Test Article</h1></body></html>"
@@ -95,31 +98,51 @@ class TestFetchURL:
         # Verify arguments
         call_kwargs = mock_client.call_args.kwargs
         assert call_kwargs["timeout"] == DEFAULT_TIMEOUT
-        assert call_kwargs["follow_redirects"] is True
+        assert call_kwargs["follow_redirects"] is False
         assert call_kwargs["headers"] == {"User-Agent": USER_AGENT}
-        assert "event_hooks" in call_kwargs
+        assert "event_hooks" not in call_kwargs
 
         mock_client_instance.stream.assert_called_with("GET", "https://example.com/article")
 
     @pytest.mark.asyncio
     async def test_fetch_url_follows_redirects(self, mock_stream_client):
         """URL fetching follows redirects and returns final URL."""
-        _, _, mock_response = mock_stream_client
+        _, mock_client_instance, _ = mock_stream_client
         mock_db = MagicMock()
         extractor = URLExtractor(mock_db)
 
-        mock_response.url = "https://example.com/final-url"
-        mock_response.headers = {"content-type": "text/html"}
-        mock_response.encoding = "utf-8"
+        # Setup mock to return different responses
+        response1 = MagicMock()
+        response1.is_redirect = True
+        response1.headers = {"Location": "/final-url"}
+        response1.url = "https://example.com/redirect"
+
+        response2 = MagicMock()
+        response2.is_redirect = False
+        response2.headers = {"content-type": "text/html"}
+        response2.url = "https://example.com/final-url"
+        response2.encoding = "utf-8"
 
         async def iter_bytes():
             yield b"<html><body>Content</body></html>"
 
-        mock_response.aiter_bytes.return_value = iter_bytes()
+        response2.aiter_bytes.return_value = iter_bytes()
+
+        # Configure stream() to return contexts that yield these responses
+        ctx1 = MagicMock()
+        ctx1.__aenter__ = AsyncMock(return_value=response1)
+        ctx1.__aexit__ = AsyncMock(return_value=None)
+
+        ctx2 = MagicMock()
+        ctx2.__aenter__ = AsyncMock(return_value=response2)
+        ctx2.__aexit__ = AsyncMock(return_value=None)
+
+        mock_client_instance.stream.side_effect = [ctx1, ctx2]
 
         _html, final_url = await extractor._fetch_url("https://example.com/redirect")
 
         assert final_url == "https://example.com/final-url"
+        assert mock_client_instance.stream.call_count == 2
 
     @pytest.mark.asyncio
     async def test_fetch_url_raises_on_http_error(self, mock_stream_client):
