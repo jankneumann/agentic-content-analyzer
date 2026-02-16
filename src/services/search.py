@@ -177,7 +177,7 @@ class HybridSearchService:
     ) -> list[tuple[int, float]]:
         """Search chunks by embedding cosine similarity."""
         try:
-            query_embedding = await self._embedder.embed(query)
+            query_embedding = await self._embedder.embed(query, is_query=True)
         except Exception:
             logger.warning(
                 "Vector embedding failed at query time, returning empty results",
@@ -191,11 +191,11 @@ class HybridSearchService:
         # Build SQL for vector similarity search
         if content_ids:
             stmt = text("""
-                SELECT dc.id, 1 - (dc.embedding <=> :query_vec::vector) as similarity
+                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity
                 FROM document_chunks dc
                 WHERE dc.embedding IS NOT NULL
                   AND dc.content_id = ANY(:content_ids)
-                ORDER BY dc.embedding <=> :query_vec::vector
+                ORDER BY dc.embedding <=> CAST(:query_vec AS vector)
                 LIMIT :limit
             """)
             result = self._session.execute(
@@ -208,10 +208,10 @@ class HybridSearchService:
             )
         else:
             stmt = text("""
-                SELECT dc.id, 1 - (dc.embedding <=> :query_vec::vector) as similarity
+                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity
                 FROM document_chunks dc
                 WHERE dc.embedding IS NOT NULL
-                ORDER BY dc.embedding <=> :query_vec::vector
+                ORDER BY dc.embedding <=> CAST(:query_vec AS vector)
                 LIMIT :limit
             """)
             result = self._session.execute(

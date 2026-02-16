@@ -140,6 +140,53 @@ sources:
 | `markdown` (default) | MarkItDownParser | General markdown content |
 | `section` | (manual) | Summaries and digests |
 
+## Switching Embedding Providers
+
+The `switch-embeddings` command safely migrates from one embedding provider to another. It handles clearing old embeddings, rebuilding the HNSW index, and optionally re-embedding all content.
+
+```bash
+# Preview what would happen
+aca manage switch-embeddings --dry-run
+
+# Switch to OpenAI (with automatic backfill)
+aca manage switch-embeddings --provider openai --model text-embedding-3-small
+
+# Switch without backfill (schedule overnight)
+aca manage switch-embeddings --provider voyage --model voyage-3 --skip-backfill
+
+# Skip confirmation prompt
+aca manage switch-embeddings --yes
+
+# Custom batch size and rate limiting
+aca manage switch-embeddings --batch-size 50 --delay 2.0
+```
+
+**What happens during a switch:**
+1. Validates the target provider can be instantiated
+2. NULLs all existing embeddings and metadata
+3. Drops and recreates the HNSW index
+4. Optionally triggers a backfill with the new provider
+
+**Impact:** Vector search is unavailable during the switch until backfill completes. BM25 keyword search continues working throughout.
+
+**Duration estimates:**
+- Clearing embeddings: seconds (single UPDATE)
+- Index rebuild: seconds
+- Backfill: ~1-5 minutes per 1000 chunks (depends on provider API speed)
+
+**Embedding metadata tracking:** Each chunk records which provider/model generated its embedding (`embedding_provider`, `embedding_model` columns). A startup check warns if the configured provider doesn't match what's in the database.
+
+**Advanced local models:**
+
+For instruction-tuned models like `gte-Qwen2-1.5B-instruct`:
+
+```bash
+EMBEDDING_PROVIDER=local
+EMBEDDING_MODEL=Alibaba-NLP/gte-Qwen2-1.5B-instruct
+EMBEDDING_TRUST_REMOTE_CODE=true
+EMBEDDING_MAX_SEQ_LENGTH=8192  # Optional: override model default
+```
+
 ## Backfill
 
 Index existing content that was ingested before search was enabled:
@@ -170,5 +217,6 @@ aca manage backfill-chunks --batch-size 50 --delay 2.0
 | "Unknown embedding provider" | Install optional deps: `pip install ".[embeddings]"` |
 | pg_search not detected | Check `SELECT * FROM pg_extension WHERE extname = 'pg_search'` |
 | Embedding API rate limits | Increase `--delay` in backfill; reduce `--batch-size` |
-| Changing embedding provider | Different providers have different dimensions. You must: 1) `ALTER TABLE document_chunks ALTER COLUMN embedding TYPE vector(N)` where N is the new dimension, 2) Re-run backfill with `--embed-only` to regenerate all embeddings |
-| Migration uses vector(384) | The migration creates the column with 384 dimensions (matching local provider). For production with OpenAI (1536), alter the column before backfilling |
+| Changing embedding provider | Use `aca manage switch-embeddings` — handles clearing, index rebuild, and backfill |
+| Config mismatch warning at startup | Means DB embeddings are from a different provider than configured. Run `aca manage switch-embeddings` to normalize |
+| Mixed providers in DB | Multiple providers wrote embeddings. Run `aca manage switch-embeddings` to normalize to one provider |

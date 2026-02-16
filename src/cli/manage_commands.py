@@ -275,3 +275,98 @@ def check_profile_secrets() -> None:
             f"\n[yellow]{len(unresolved)} unresolved reference(s) found. "
             f"Set these environment variables or add them to .secrets.yaml.[/yellow]"
         )
+
+
+@app.command("switch-embeddings")
+def switch_embeddings_cmd(
+    provider: str | None = typer.Option(
+        None, "--provider", "-p", help="Target embedding provider (default: from settings)"
+    ),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="Target embedding model (default: from settings)"
+    ),
+    batch_size: int = typer.Option(100, "--batch-size", "-b", help="Batch size for backfill"),
+    delay: float = typer.Option(1.0, "--delay", "-d", help="Seconds between backfill batches"),
+    skip_backfill: bool = typer.Option(
+        False, "--skip-backfill", help="Only clear embeddings, don't re-embed"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would be done without changes"
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+) -> None:
+    """Switch embedding provider: clear embeddings, rebuild index, backfill.
+
+    This command safely migrates from one embedding provider to another:
+    1. Validates the target provider can be instantiated
+    2. NULLs all existing embeddings and metadata
+    3. Drops and recreates the HNSW index
+    4. Optionally triggers a backfill with the new provider
+
+    WARNING: This clears ALL existing embeddings. Vector search will be
+    unavailable until backfill completes. BM25 search continues working.
+    """
+    import asyncio
+
+    from src.config.settings import get_settings
+    from src.scripts.switch_embeddings import switch_embeddings
+
+    settings = get_settings()
+    target_provider = provider or settings.embedding_provider
+    target_model = model or settings.embedding_model
+
+    if not dry_run and not yes:
+        typer.echo(
+            f"\nThis will clear ALL existing embeddings and switch to "
+            f"{target_provider}/{target_model}."
+        )
+        typer.echo("Vector search will be unavailable until backfill completes.")
+        typer.echo("BM25 keyword search will continue working.\n")
+        if not typer.confirm("Proceed?"):
+            raise typer.Exit(0)
+
+    result = asyncio.run(
+        switch_embeddings(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            delay=delay,
+            skip_backfill=skip_backfill,
+            dry_run=dry_run,
+        )
+    )
+
+    if is_json_mode():
+        output_result(result)
+    else:
+        if result.get("error"):
+            typer.echo(typer.style(f"Error: {result['error']}", fg=typer.colors.RED))
+            raise typer.Exit(1)
+
+        if result.get("dry_run"):
+            typer.echo("\n[DRY RUN] Switch summary:")
+        else:
+            typer.echo("\nSwitch complete:")
+
+        typer.echo(f"  Provider:    {result['target_provider']}")
+        typer.echo(f"  Model:       {result['target_model']}")
+        typer.echo(f"  Dimensions:  {result['target_dimensions']}")
+        typer.echo(f"  Existing:    {result['existing_embeddings']} embeddings")
+        typer.echo(f"  Total:       {result['total_chunks']} chunks")
+
+        if not result.get("dry_run"):
+            cleared = result.get("embeddings_cleared", 0)
+            typer.echo(f"  Cleared:     {cleared} embeddings")
+            if result.get("backfill"):
+                bf = result["backfill"]
+                typer.echo(f"  Re-embedded: {bf.get('embeddings_generated', 0)} chunks")
+                if bf.get("errors"):
+                    typer.echo(typer.style(f"  Errors:      {bf['errors']}", fg=typer.colors.RED))
+            elif result.get("skip_backfill"):
+                typer.echo(
+                    typer.style(
+                        "  Backfill skipped. Run 'aca manage backfill-chunks --embed-only' "
+                        "when ready.",
+                        fg=typer.colors.YELLOW,
+                    )
+                )

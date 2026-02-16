@@ -103,6 +103,7 @@ def _index_content_impl(content: object, db: Session) -> None:
         from src.services.embedding import embed_chunks, get_embedding_provider
 
         provider = get_embedding_provider()
+        settings = get_settings()
         embeddings = _run_async(embed_chunks(chunks, provider))
 
         if len(embeddings) != len(chunks):
@@ -117,10 +118,17 @@ def _index_content_impl(content: object, db: Session) -> None:
             db.execute(
                 text("""
                     UPDATE document_chunks
-                    SET embedding = :embedding::vector
+                    SET embedding = CAST(:embedding AS vector),
+                        embedding_provider = :provider,
+                        embedding_model = :model
                     WHERE id = :id
                 """),
-                {"embedding": str(vec), "id": chunk.id},
+                {
+                    "embedding": str(vec),
+                    "provider": provider.name,
+                    "model": settings.embedding_model,
+                    "id": chunk.id,
+                },
             )
 
         logger.info(f"Generated {len(embeddings)} embeddings for content {content_id}")

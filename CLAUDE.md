@@ -128,6 +128,8 @@ aca manage check-profile-secrets       # Find unresolved secrets
 aca manage backfill-chunks             # Index existing content for search
 aca manage backfill-chunks --dry-run   # Preview what would be indexed
 aca manage backfill-chunks --embed-only # Fill missing embeddings only
+aca manage switch-embeddings            # Switch embedding provider (interactive)
+aca manage switch-embeddings --dry-run  # Preview switch without changes
 
 # Job Queue Workers (embedded worker runs automatically with API)
 aca worker start                       # Standalone worker (optional, 5 concurrent tasks)
@@ -485,9 +487,12 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | New secrets need `base.yaml` wiring | Add `${VAR:-}` reference in `profiles/base.yaml` under the appropriate settings section |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
-| Changing embedding provider | Different providers have different dimensions — requires re-creating vector column and re-indexing all content via backfill |
+| Changing embedding provider | Use `aca manage switch-embeddings` — handles clearing, index rebuild, and backfill safely |
+| Embedding provider asymmetry | Voyage/Cohere/local have different query vs document encoding — always pass `is_query=True` when embedding search queries |
+| `embedding_trust_remote_code` | Defaults to `false` — must explicitly enable for instruction-tuned models like `gte-Qwen2-1.5B-instruct` |
+| Embedding config mismatch | Startup warns if DB embeddings are from a different provider than configured — run `switch-embeddings` to fix |
 | `index_content()` is fail-safe | Never raises exceptions — failures are logged. Content ingestion always succeeds even if search indexing fails |
-| pgvector not mapped in ORM | `DocumentChunk.embedding` and `search_vector` are NOT SQLAlchemy columns — access via raw SQL only |
+| pgvector not mapped in ORM | `DocumentChunk.embedding` and `search_vector` are NOT SQLAlchemy columns — access via raw SQL only. `embedding_provider`/`embedding_model` ARE mapped |
 | Prompt/settings API returns 500 | Must set `ADMIN_API_KEY` env var (or in `.secrets.yaml` with profile); fail-secure design blocks access when unconfigured |
 | Prompt API auth header is `X-Admin-Key` | NOT `X-Admin-API-Key` or `Authorization` — defined in `src/api/dependencies.py:9` as `APIKeyHeader(name="X-Admin-Key")` |
 | Worktree test DB naming | Each worktree auto-creates `newsletters_test_<worktree>` (sanitized, max 63 chars). `TEST_DATABASE_URL` env var overrides. Use `make test-clean` to drop all worktree test DBs |

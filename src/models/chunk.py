@@ -47,6 +47,11 @@ class DocumentChunk(Base):  # type: ignore[valid-type, misc]
     They are NOT declared as SQLAlchemy columns here to avoid import
     dependencies on pgvector Python bindings at model load time.
     Access them via raw SQL queries in the search strategies.
+
+    The embedding column uses unconstrained ``vector`` (no fixed dimensions).
+    Actual dimensions are determined by the configured embedding provider.
+    The ``embedding_provider`` and ``embedding_model`` columns track which
+    provider/model generated each embedding for provenance and mismatch detection.
     """
 
     __tablename__ = "document_chunks"
@@ -74,6 +79,10 @@ class DocumentChunk(Base):  # type: ignore[valid-type, misc]
     timestamp_start = Column(Float, nullable=True)  # For YouTube (seconds)
     timestamp_end = Column(Float, nullable=True)
     deep_link_url = Column(String(2000), nullable=True)  # Direct link to chunk location
+
+    # Embedding provenance metadata
+    embedding_provider = Column(String(50), nullable=True)  # e.g. "openai", "local", "unknown"
+    embedding_model = Column(String(100), nullable=True)  # e.g. "text-embedding-3-small"
 
     # Note: 'embedding' (vector) and 'search_vector' (tsvector) columns exist
     # in the database but are NOT mapped here. They are managed via raw SQL

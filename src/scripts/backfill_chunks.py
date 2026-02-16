@@ -150,18 +150,22 @@ async def _backfill_full(
 
             # Generate embeddings
             try:
+                settings = get_settings()
                 embeddings = await embed_chunks(chunks, provider)
                 for chunk, embedding in zip(chunks, embeddings, strict=False):
+                    vec = list(embedding) if not isinstance(embedding, list) else embedding
                     db.execute(
                         text("""
                             UPDATE document_chunks
-                            SET embedding = :embedding::vector
+                            SET embedding = CAST(:embedding AS vector),
+                                embedding_provider = :provider,
+                                embedding_model = :model
                             WHERE id = :id
                         """),
                         {
-                            "embedding": str(
-                                list(embedding) if not isinstance(embedding, list) else embedding
-                            ),
+                            "embedding": str(vec),
+                            "provider": provider.name,
+                            "model": settings.embedding_model,
                             "id": chunk.id,
                         },
                     )
@@ -227,18 +231,22 @@ async def _backfill_embeddings_only(
         texts = [row.chunk_text for row in batch]
 
         try:
+            settings = get_settings()
             embeddings = await provider.embed_batch(texts)
             for row, embedding in zip(batch, embeddings, strict=False):
+                vec = list(embedding) if not isinstance(embedding, list) else embedding
                 db.execute(
                     text("""
                         UPDATE document_chunks
-                        SET embedding = :embedding::vector
+                        SET embedding = CAST(:embedding AS vector),
+                            embedding_provider = :provider,
+                            embedding_model = :model
                         WHERE id = :id
                     """),
                     {
-                        "embedding": str(
-                            list(embedding) if not isinstance(embedding, list) else embedding
-                        ),
+                        "embedding": str(vec),
+                        "provider": provider.name,
+                        "model": settings.embedding_model,
                         "id": row.id,
                     },
                 )

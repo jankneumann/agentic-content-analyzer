@@ -46,10 +46,11 @@ def _search_columns(test_db_engine):
         )
 
         # Try adding pgvector column (skip if extension not available)
+        # Uses unconstrained vector (no fixed dimensions) matching production schema
         try:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.execute(
-                text("ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding vector(384)")
+                text("ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding vector")
             )
         except Exception:
             conn.rollback()
@@ -198,10 +199,20 @@ def seeded_content(db_session):
         db_session.execute(
             text("""
                 INSERT INTO document_chunks
-                    (content_id, chunk_text, chunk_index, chunk_type, heading_text, created_at)
-                VALUES (:cid, :txt, :idx, :ctype, :heading, NOW())
+                    (content_id, chunk_text, chunk_index, chunk_type, heading_text,
+                     embedding_provider, embedding_model, created_at)
+                VALUES (:cid, :txt, :idx, :ctype, :heading,
+                        :provider, :model, NOW())
             """),
-            {"cid": content_id, "txt": chunk_text, "idx": idx, "ctype": ctype, "heading": heading},
+            {
+                "cid": content_id,
+                "txt": chunk_text,
+                "idx": idx,
+                "ctype": ctype,
+                "heading": heading,
+                "provider": "local",
+                "model": "all-MiniLM-L6-v2",
+            },
         )
 
     db_session.flush()
