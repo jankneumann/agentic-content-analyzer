@@ -175,15 +175,23 @@ export function GenerateScriptDialog({
           {/* Web Search Toggle */}
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div className="space-y-0.5">
-              <Label className="flex items-center gap-2">
+              <Label
+                htmlFor="web-search-toggle"
+                className="flex items-center gap-2"
+              >
                 <Search className="h-4 w-4" />
                 Enable Web Search
               </Label>
-              <p className="text-xs text-muted-foreground">
+              <p id="web-search-desc" className="text-xs text-muted-foreground">
                 Allow the AI to search for additional context
               </p>
             </div>
-            <Switch checked={enableWebSearch} onCheckedChange={setEnableWebSearch} />
+            <Switch
+              id="web-search-toggle"
+              aria-describedby="web-search-desc"
+              checked={enableWebSearch}
+              onCheckedChange={setEnableWebSearch}
+            />
           </div>
 
           {/* Focus Topics */}
