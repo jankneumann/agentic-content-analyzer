@@ -247,7 +247,13 @@ async def upload_document(
     # Create temporary file to stream upload
     # We use delete=False and manually cleanup in finally block
     # to avoid permission issues on some OSes or if we need to pass path around.
-    fd, temp_path = tempfile.mkstemp(suffix=f".{format_ext}" if format_ext != "unknown" else None)
+    # Using NamedTemporaryFile ensures proper resource management compared to raw mkstemp.
+    tmp_file = tempfile.NamedTemporaryFile(
+        delete=False,
+        mode="wb",
+        suffix=f".{format_ext}" if format_ext != "unknown" else None
+    )
+    temp_path = tmp_file.name
 
     try:
         # Check file size incrementally to prevent memory exhaustion
@@ -258,7 +264,7 @@ async def upload_document(
         total_bytes = 0
         first_chunk = b""
 
-        with os.fdopen(fd, "wb") as tmp:
+        with tmp_file:
             while True:
                 chunk = await file.read(CHUNK_SIZE)
                 if not chunk:
@@ -276,7 +282,7 @@ async def upload_document(
                         detail=f"File size ({size_mb:.1f}MB) exceeds limit ({settings.max_upload_size_mb}MB)",
                     )
 
-                tmp.write(chunk)
+                tmp_file.write(chunk)
 
         size_mb = total_bytes / (1024 * 1024)
 
