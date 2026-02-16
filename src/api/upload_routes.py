@@ -247,11 +247,8 @@ async def upload_document(
     # Create temporary file to stream upload
     # We use delete=False and manually cleanup in finally block
     # to avoid permission issues on some OSes or if we need to pass path around.
-    # Using NamedTemporaryFile ensures proper resource management compared to raw mkstemp.
-    tmp_file = tempfile.NamedTemporaryFile(
-        delete=False, mode="wb", suffix=f".{format_ext}" if format_ext != "unknown" else None
-    )
-    temp_path = tmp_file.name
+    # Using NamedTemporaryFile as context manager ensures proper resource management.
+    temp_path = None
 
     try:
         # Check file size incrementally to prevent memory exhaustion
@@ -262,7 +259,10 @@ async def upload_document(
         total_bytes = 0
         first_chunk = b""
 
-        with tmp_file:
+        with tempfile.NamedTemporaryFile(
+            delete=False, mode="wb", suffix=f".{format_ext}" if format_ext != "unknown" else None
+        ) as tmp_file:
+            temp_path = tmp_file.name
             while True:
                 chunk = await file.read(CHUNK_SIZE)
                 if not chunk:
@@ -357,7 +357,7 @@ async def upload_document(
         raise HTTPException(status_code=500, detail="Processing failed due to an internal error")
     finally:
         # Cleanup temp file
-        if os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except OSError:
