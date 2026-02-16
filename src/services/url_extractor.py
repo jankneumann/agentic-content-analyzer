@@ -143,33 +143,49 @@ class URLExtractor:
                     target_url = urljoin(str(response.url), target)
                     await validate_url(target_url)
 
-        async with httpx.AsyncClient(
+        async with httpx.AsyncClient(  # noqa: SIM117
             timeout=DEFAULT_TIMEOUT,
             follow_redirects=True,
             headers={"User-Agent": USER_AGENT},
             event_hooks={"response": [check_redirect]},
         ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+            # Stream response to check headers and download in chunks
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
 
-            # Check content size
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > MAX_CONTENT_SIZE:
-                raise ValueError(
-                    f"Content too large: {content_length} bytes (max {MAX_CONTENT_SIZE})"
-                )
+                # Check content size from headers
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > MAX_CONTENT_SIZE:
+                    raise ValueError(
+                        f"Content too large: {content_length} bytes (max {MAX_CONTENT_SIZE})"
+                    )
 
-            # Check content type
-            content_type = response.headers.get("content-type", "")
-            if not any(content_type.startswith(ct) for ct in ALLOWED_CONTENT_TYPES):
-                raise ValueError(f"Unsupported content type: {content_type} (expected HTML)")
+                # Check content type
+                content_type = response.headers.get("content-type", "")
+                if not any(content_type.startswith(ct) for ct in ALLOWED_CONTENT_TYPES):
+                    raise ValueError(f"Unsupported content type: {content_type} (expected HTML)")
 
-            # Check actual response size
-            text = response.text
-            if len(text.encode("utf-8")) > MAX_CONTENT_SIZE:
-                raise ValueError(f"Response body too large (max {MAX_CONTENT_SIZE} bytes)")
+                # Download content in chunks
+                content_chunks = []
+                current_size = 0
+                async for chunk in response.aiter_bytes():
+                    current_size += len(chunk)
+                    if current_size > MAX_CONTENT_SIZE:
+                        raise ValueError(f"Response body too large (max {MAX_CONTENT_SIZE} bytes)")
+                    content_chunks.append(chunk)
 
-            return text, str(response.url)
+                # Reassemble and decode content
+                body_bytes = b"".join(content_chunks)
+
+                # Use detected encoding or fallback to utf-8
+                encoding = response.encoding or "utf-8"
+                try:
+                    text = body_bytes.decode(encoding)
+                except (LookupError, UnicodeDecodeError):
+                    # Fallback to utf-8 with replacement if encoding fails
+                    text = body_bytes.decode("utf-8", errors="replace")
+
+                return text, str(response.url)
 
     async def _parse_html(self, html_content: str, url: str) -> tuple[str, dict]:
         """Parse HTML content to markdown.

@@ -42,120 +42,149 @@ class TestURLExtractorInit:
 class TestFetchURL:
     """Tests for URL fetching functionality."""
 
+    @pytest.fixture
+    def mock_stream_client(self):
+        """Fixture for mocking httpx stream context."""
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client_instance = (
+                MagicMock()
+            )  # Use MagicMock, not AsyncMock, to control method types
+            mock_client.return_value = mock_client_instance
+
+            # AsyncClient is an async context manager
+            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.__aexit__ = AsyncMock(return_value=None)
+
+            # Setup stream mock - stream() is a sync method returning an async context manager
+            mock_stream_ctx = MagicMock()
+            mock_client_instance.stream.return_value = mock_stream_ctx
+
+            mock_response = MagicMock()
+            mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+            yield mock_client, mock_client_instance, mock_response
+
     @pytest.mark.asyncio
-    async def test_fetch_url_success(self):
+    async def test_fetch_url_success(self, mock_stream_client):
         """Fetches URL content with proper headers."""
+        mock_client, mock_client_instance, mock_response = mock_stream_client
         mock_db = MagicMock()
         extractor = URLExtractor(mock_db)
 
-        mock_response = MagicMock()
-        mock_response.text = "<html><body><h1>Test Article</h1></body></html>"
         mock_response.url = "https://example.com/article"
         mock_response.headers = {
             "content-type": "text/html; charset=utf-8",
             "content-length": "100",
         }
+        mock_response.encoding = "utf-8"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client_instance = AsyncMock()
-            mock_client_instance.get.return_value = mock_response
-            mock_client_instance.__aenter__.return_value = mock_client_instance
-            mock_client_instance.__aexit__.return_value = None
-            mock_client.return_value = mock_client_instance
+        # Mock streaming content
+        content_bytes = b"<html><body><h1>Test Article</h1></body></html>"
 
-            html, final_url = await extractor._fetch_url("https://example.com/article")
+        async def iter_bytes():
+            yield content_bytes
 
-            assert html == "<html><body><h1>Test Article</h1></body></html>"
-            assert final_url == "https://example.com/article"
+        mock_response.aiter_bytes.return_value = iter_bytes()
 
-            # Verify arguments (checking partial match for event_hooks)
-            call_kwargs = mock_client.call_args.kwargs
-            assert call_kwargs["timeout"] == DEFAULT_TIMEOUT
-            assert call_kwargs["follow_redirects"] is True
-            assert call_kwargs["headers"] == {"User-Agent": USER_AGENT}
-            assert "event_hooks" in call_kwargs
+        html, final_url = await extractor._fetch_url("https://example.com/article")
+
+        assert html == "<html><body><h1>Test Article</h1></body></html>"
+        assert final_url == "https://example.com/article"
+
+        # Verify arguments
+        call_kwargs = mock_client.call_args.kwargs
+        assert call_kwargs["timeout"] == DEFAULT_TIMEOUT
+        assert call_kwargs["follow_redirects"] is True
+        assert call_kwargs["headers"] == {"User-Agent": USER_AGENT}
+        assert "event_hooks" in call_kwargs
+
+        mock_client_instance.stream.assert_called_with("GET", "https://example.com/article")
 
     @pytest.mark.asyncio
-    async def test_fetch_url_follows_redirects(self):
+    async def test_fetch_url_follows_redirects(self, mock_stream_client):
         """URL fetching follows redirects and returns final URL."""
+        _, _, mock_response = mock_stream_client
         mock_db = MagicMock()
         extractor = URLExtractor(mock_db)
 
-        mock_response = MagicMock()
-        mock_response.text = "<html><body>Content</body></html>"
-        mock_response.url = "https://example.com/final-url"  # Different from original
+        mock_response.url = "https://example.com/final-url"
         mock_response.headers = {"content-type": "text/html"}
+        mock_response.encoding = "utf-8"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client_instance = AsyncMock()
-            mock_client_instance.get.return_value = mock_response
-            mock_client_instance.__aenter__.return_value = mock_client_instance
-            mock_client_instance.__aexit__.return_value = None
-            mock_client.return_value = mock_client_instance
+        async def iter_bytes():
+            yield b"<html><body>Content</body></html>"
 
-            _html, final_url = await extractor._fetch_url("https://example.com/redirect")
+        mock_response.aiter_bytes.return_value = iter_bytes()
 
-            assert final_url == "https://example.com/final-url"
+        _html, final_url = await extractor._fetch_url("https://example.com/redirect")
+
+        assert final_url == "https://example.com/final-url"
 
     @pytest.mark.asyncio
-    async def test_fetch_url_raises_on_http_error(self):
+    async def test_fetch_url_raises_on_http_error(self, mock_stream_client):
         """Raises exception for HTTP errors (404, 500, etc.)."""
+        _, _, mock_response = mock_stream_client
         mock_db = MagicMock()
         extractor = URLExtractor(mock_db)
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client_instance = AsyncMock()
-            mock_client_instance.get.side_effect = httpx.HTTPStatusError(
-                "Not Found",
-                request=MagicMock(),
-                response=MagicMock(status_code=404),
-            )
-            mock_client_instance.__aenter__.return_value = mock_client_instance
-            mock_client_instance.__aexit__.return_value = None
-            mock_client.return_value = mock_client_instance
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Not Found",
+            request=MagicMock(),
+            response=MagicMock(status_code=404),
+        )
 
-            with pytest.raises(httpx.HTTPStatusError):
-                await extractor._fetch_url("https://example.com/not-found")
+        with pytest.raises(httpx.HTTPStatusError):
+            await extractor._fetch_url("https://example.com/not-found")
 
     @pytest.mark.asyncio
-    async def test_fetch_url_rejects_oversized_content(self):
-        """Rejects responses with Content-Length exceeding the limit."""
+    async def test_fetch_url_rejects_oversized_content_header(self, mock_stream_client):
+        """Rejects responses with Content-Length header exceeding the limit."""
+        _, _, mock_response = mock_stream_client
         mock_db = MagicMock()
         extractor = URLExtractor(mock_db)
 
-        mock_response = MagicMock()
         mock_response.headers = {"content-type": "text/html", "content-length": "999999999"}
         mock_response.url = "https://example.com/huge-page"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client_instance = AsyncMock()
-            mock_client_instance.get.return_value = mock_response
-            mock_client_instance.__aenter__.return_value = mock_client_instance
-            mock_client_instance.__aexit__.return_value = None
-            mock_client.return_value = mock_client_instance
-
-            with pytest.raises(ValueError, match="Content too large"):
-                await extractor._fetch_url("https://example.com/huge-page")
+        with pytest.raises(ValueError, match="Content too large"):
+            await extractor._fetch_url("https://example.com/huge-page")
 
     @pytest.mark.asyncio
-    async def test_fetch_url_rejects_non_html_content(self):
-        """Rejects responses with non-HTML content types."""
+    async def test_fetch_url_rejects_oversized_content_body(self, mock_stream_client):
+        """Rejects responses with body size exceeding limit (when header is missing/small)."""
+        _, _, mock_response = mock_stream_client
         mock_db = MagicMock()
         extractor = URLExtractor(mock_db)
 
-        mock_response = MagicMock()
+        mock_response.headers = {"content-type": "text/html"}
+        mock_response.url = "https://example.com/huge-page"
+
+        # Generate huge content
+        chunk_size = 1024 * 1024  # 1MB
+
+        async def iter_bytes():
+            # Yield 11 chunks of 1MB (limit is 10MB)
+            for _ in range(11):
+                yield b"x" * chunk_size
+
+        mock_response.aiter_bytes.return_value = iter_bytes()
+
+        with pytest.raises(ValueError, match="Response body too large"):
+            await extractor._fetch_url("https://example.com/huge-page")
+
+    @pytest.mark.asyncio
+    async def test_fetch_url_rejects_non_html_content(self, mock_stream_client):
+        """Rejects responses with non-HTML content types."""
+        _, _, mock_response = mock_stream_client
+        mock_db = MagicMock()
+        extractor = URLExtractor(mock_db)
+
         mock_response.headers = {"content-type": "application/pdf"}
         mock_response.url = "https://example.com/document.pdf"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client_instance = AsyncMock()
-            mock_client_instance.get.return_value = mock_response
-            mock_client_instance.__aenter__.return_value = mock_client_instance
-            mock_client_instance.__aexit__.return_value = None
-            mock_client.return_value = mock_client_instance
-
-            with pytest.raises(ValueError, match="Unsupported content type"):
-                await extractor._fetch_url("https://example.com/document.pdf")
+        with pytest.raises(ValueError, match="Unsupported content type"):
+            await extractor._fetch_url("https://example.com/document.pdf")
 
 
 class TestParseHTML:
@@ -484,12 +513,14 @@ class TestExtractContent:
         with patch.object(extractor, "_fetch_url", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.side_effect = Exception(error_msg)
 
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="Connection failed"):
                 await extractor.extract_content(1)
 
             assert mock_content.status == ContentStatus.FAILED
             assert secret_key not in mock_content.error_message
-            assert mock_content.error_message == "Content extraction failed. Please try again later."
+            assert (
+                mock_content.error_message == "Content extraction failed. Please try again later."
+            )
 
 
 class TestExtractURLToContent:
