@@ -206,6 +206,7 @@ The system SHALL provide `aca podcast` subcommands for podcast generation workfl
 - **THEN** recent podcast scripts SHALL be listed with id, digest title, and creation date
 
 ### Requirement: Manage subcommands
+
 The system SHALL provide `aca manage` subcommands for setup and operational tasks.
 
 #### Scenario: Setup Gmail OAuth
@@ -226,6 +227,17 @@ The system SHALL provide `aca manage` subcommands for setup and operational task
 - **WHEN** `aca manage check-profile-secrets` is executed
 - **THEN** the active profile SHALL be inspected for unresolved `${VAR}` references
 - **AND** any missing secrets SHALL be listed as warnings
+
+#### Scenario: Switch embedding provider
+- **WHEN** `aca manage switch-embeddings --provider <name> --model <model> [--batch-size N] [--delay N] [--skip-backfill] [--dry-run] [--yes]` is executed
+- **THEN** the system validates the target provider/model, clears existing embeddings, rebuilds the HNSW index, and optionally triggers backfill
+- **AND** a summary of cleared and regenerated embeddings SHALL be displayed
+- **AND** confirmation SHALL be required unless `--yes` is provided
+
+#### Scenario: Backfill chunks
+- **WHEN** `aca manage backfill-chunks [--batch-size N] [--delay N] [--dry-run] [--embed-only] [--content-id N]` is executed
+- **THEN** existing content without chunks SHALL be chunked and embedded
+- **AND** a summary of processed content, created chunks, and generated embeddings SHALL be displayed
 
 ### Requirement: Backward compatibility
 Legacy entrypoints SHALL continue to work but emit deprecation warnings.

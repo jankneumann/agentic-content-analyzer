@@ -213,7 +213,7 @@ The system SHALL keep tables as whole chunks even if they exceed the target size
 
 ### Requirement: Chunk Embedding Storage
 
-The system SHALL store chunk embeddings as vector columns using the pgvector extension (available on all supported backends).
+The system SHALL store chunk embeddings as unconstrained vector columns using the pgvector extension (available on all supported backends).
 
 The system SHALL generate embeddings for each chunk using a configurable embedding provider.
 
@@ -221,7 +221,7 @@ The system SHALL support the following embedding providers:
 - **OpenAI**: text-embedding-3-small (1536 dims), text-embedding-3-large (3072 dims)
 - **Voyage AI**: voyage-3 (1024 dims), voyage-3-lite (512 dims)
 - **Cohere**: embed-english-v3.0 (1024 dims), embed-english-light-v3.0 (384 dims)
-- **Local**: sentence-transformers models including all-MiniLM-L6-v2 (384 dims), all-mpnet-base-v2 (768 dims)
+- **Local**: Any sentence-transformers model, including instruction-tuned models (e.g., all-MiniLM-L6-v2 at 384 dims, gte-Qwen2-1.5B-instruct at 1536 dims)
 
 The system SHALL select the embedding provider based on configuration (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`).
 
@@ -229,13 +229,29 @@ The system SHALL create HNSW indexes on chunk embedding columns for fast approxi
 
 The system SHALL support batch embedding generation for efficiency.
 
-The system SHALL handle different vector dimensions based on the configured provider/model.
+The system SHALL use unconstrained vector columns (`vector` without dimension) so that any provider's dimensions are accepted without schema changes.
+
+The system SHALL record embedding provenance by storing the provider name and model identifier alongside each chunk's embedding.
+
+The system SHALL distinguish between query and document embedding when the provider supports asymmetric encoding:
+- **Cohere**: `input_type="search_query"` for queries, `"search_document"` for documents
+- **Voyage**: `input_type="query"` for queries, `"document"` for documents
+- **Local instruction-tuned models**: `prompt_name="query"` for queries when the model's `prompts` dict includes a "query" key
+- **OpenAI**: No distinction (symmetric model)
+
+The system SHALL support `trust_remote_code` for local sentence-transformers models that require it (e.g., `gte-Qwen2-1.5B-instruct`), gated by the `EMBEDDING_TRUST_REMOTE_CODE` setting (default: false).
+
+The system SHALL auto-detect embedding dimensions from loaded local models via `model.get_sentence_embedding_dimension()`, falling back to a known-model lookup and then `EMBEDDING_DIMENSIONS` setting.
+
+The system SHALL support overriding the local model's max sequence length via `EMBEDDING_MAX_SEQ_LENGTH` setting.
 
 #### Scenario: Chunks embedded on document ingestion
 
 - **WHEN** a document is ingested and chunked
 - **THEN** the system generates embeddings using the configured provider
 - **AND** stores embeddings in the `document_chunks.embedding` column
+- **AND** stores the provider name in `document_chunks.embedding_provider`
+- **AND** stores the model identifier in `document_chunks.embedding_model`
 
 #### Scenario: Batch embedding for multiple chunks
 
@@ -254,17 +270,41 @@ The system SHALL handle different vector dimensions based on the configured prov
 - **WHEN** `EMBEDDING_PROVIDER` is set to "openai"
 - **THEN** the system uses the OpenAI embeddings API
 - **AND** uses text-embedding-3-small by default (1536 dimensions)
+- **AND** uses symmetric encoding (no query/document distinction)
 
-#### Scenario: Local embedding provider
+#### Scenario: Local embedding provider with instruction-tuned model
 
-- **WHEN** `EMBEDDING_PROVIDER` is set to "local"
-- **THEN** the system uses sentence-transformers locally
+- **WHEN** `EMBEDDING_PROVIDER` is set to "local" and `EMBEDDING_MODEL` is set to "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+- **AND** `EMBEDDING_TRUST_REMOTE_CODE` is true
+- **THEN** the system loads the model with `trust_remote_code=True`
+- **AND** auto-detects 1536 dimensions from the loaded model
+- **AND** uses `prompt_name="query"` for search query embeddings
+- **AND** uses plain encoding (no prompt) for document chunk embeddings
 - **AND** does not make external API calls
+
+#### Scenario: Local embedding provider with standard model
+
+- **WHEN** `EMBEDDING_PROVIDER` is set to "local" and `EMBEDDING_MODEL` is set to "all-MiniLM-L6-v2"
+- **THEN** the system loads the model without `trust_remote_code`
+- **AND** uses 384 dimensions
+- **AND** uses plain encoding for both queries and documents (model has no query prompt)
+
+#### Scenario: Cohere query vs document embedding
+
+- **WHEN** the system embeds a search query using the Cohere provider
+- **THEN** the API call uses `input_type="search_query"`
+- **AND** when embedding document chunks, the API call uses `input_type="search_document"`
+
+#### Scenario: Voyage query vs document embedding
+
+- **WHEN** the system embeds a search query using the Voyage provider
+- **THEN** the API call uses `input_type="query"`
+- **AND** when embedding document chunks, the API call uses `input_type="document"`
 
 #### Scenario: Provider change requires re-indexing
 
 - **WHEN** the embedding provider or model is changed to one with different vector dimensions
-- **THEN** the system requires re-indexing of all chunks
+- **THEN** the system requires re-indexing of all chunks via `aca manage switch-embeddings`
 - **AND** logs a warning about dimension mismatch if existing embeddings exist
 
 #### Scenario: Chunk exceeds provider max token limit
@@ -295,7 +335,7 @@ The system SHALL handle different vector dimensions based on the configured prov
 
 The system SHALL support semantic search using vector cosine similarity on document chunks.
 
-The system SHALL convert user queries to embeddings using the same provider/model used for chunk embeddings.
+The system SHALL convert user queries to embeddings using the same provider/model used for chunk embeddings, with query-specific encoding when the provider supports asymmetric embedding.
 
 The system SHALL search against chunk embeddings and aggregate results to document level.
 
@@ -311,7 +351,7 @@ The system SHALL return results with matching chunks highlighted.
 #### Scenario: Vector search with query embedding
 
 - **WHEN** a user submits a search query
-- **THEN** the system generates an embedding for the query using the configured provider
+- **THEN** the system generates an embedding for the query using the configured provider with query-specific encoding (`is_query=True`)
 - **AND** computes cosine similarity against all chunk embeddings
 - **AND** aggregates chunk scores to document scores
 - **AND** returns documents with their best-matching chunks
@@ -636,9 +676,11 @@ The system SHALL detect backend capabilities at startup and select appropriate s
 The system SHALL support configuration of search parameters via environment variables.
 
 **Embedding Configuration:**
-- `EMBEDDING_PROVIDER`: provider name (openai, voyage, cohere, local; default: openai)
+- `EMBEDDING_PROVIDER`: provider name (openai, voyage, cohere, local; default: local)
 - `EMBEDDING_MODEL`: model identifier within provider (optional, uses provider default)
 - `EMBEDDING_DIMENSIONS`: vector dimensions (auto-detected if not specified)
+- `EMBEDDING_TRUST_REMOTE_CODE`: trust remote code in sentence-transformers models (default: false)
+- `EMBEDDING_MAX_SEQ_LENGTH`: override model's max sequence length (default: model's built-in value)
 
 **BM25 Configuration:**
 - `SEARCH_BM25_STRATEGY`: explicit strategy override (paradedb, native; default: auto-detect)
@@ -712,6 +754,27 @@ The system SHALL support configuration of search parameters via environment vari
 - **WHEN** `EMBEDDING_PROVIDER` is set to "local"
 - **THEN** the system does not require external API connectivity for embeddings
 
+#### Scenario: Instruction-tuned local model configuration
+
+- **WHEN** `EMBEDDING_PROVIDER` is "local" and `EMBEDDING_MODEL` is "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+- **AND** `EMBEDDING_TRUST_REMOTE_CODE` is true
+- **AND** `EMBEDDING_MAX_SEQ_LENGTH` is 8192
+- **THEN** the model loads with `trust_remote_code=True` and max sequence length overridden to 8192
+- **AND** `EMBEDDING_DIMENSIONS` auto-detects to 1536
+
+#### Scenario: Dimension mismatch warning
+
+- **WHEN** `EMBEDDING_DIMENSIONS` is set to a value that does not match the known dimensions for the configured provider/model
+- **THEN** the system issues a warning at settings validation time
+- **AND** does not prevent startup (unknown models may have custom dimensions)
+
+#### Scenario: Embedding config mismatch at startup
+
+- **WHEN** the API starts and existing embeddings in the database were generated by a different provider/model than the current config
+- **THEN** the system logs a warning with the mismatch details
+- **AND** suggests running `aca manage switch-embeddings` to re-embed
+- **AND** does not prevent startup
+
 #### Scenario: Per-source chunking in source configuration
 
 - **WHEN** a source entry in `sources.d/` specifies `chunk_size_tokens`, `chunk_overlap_tokens`, or `chunking_strategy`
@@ -720,7 +783,7 @@ The system SHALL support configuration of search parameters via environment vari
 
 #### Scenario: BM25 strategy override with unavailable extension
 
-- **WHEN** `SEARCH_BM25_STRATEGY` is set to "paradedb" but pg_search is not installed (e.g., bare PostgreSQL without extensions)
+- **WHEN** `SEARCH_BM25_STRATEGY` is set to "paradedb" but pg_search is not installed
 - **THEN** the system raises a configuration error at startup
 - **AND** the error message indicates pg_search is required for the "paradedb" strategy
 
@@ -728,7 +791,7 @@ The system SHALL support configuration of search parameters via environment vari
 
 - **WHEN** `EMBEDDING_DIMENSIONS` is changed to a value different from existing chunk embeddings
 - **THEN** the system logs a warning at startup about dimension mismatch
-- **AND** existing embeddings are not usable for vector search until re-indexed via backfill
+- **AND** existing embeddings are not usable for vector search until re-indexed via `aca manage switch-embeddings`
 
 ---
 
@@ -744,6 +807,8 @@ The system SHALL track progress and support resumption after interruption.
 
 The system SHALL respect API rate limits during embedding generation.
 
+The system SHALL record embedding provenance (provider name and model) alongside each generated embedding during backfill.
+
 #### Scenario: Backfill existing content
 
 - **WHEN** the backfill command is executed
@@ -751,6 +816,7 @@ The system SHALL respect API rate limits during embedding generation.
 - **AND** chunks each content record's `markdown_content` using parser-appropriate strategy
 - **AND** skips content records that already have chunks with non-NULL embeddings
 - **AND** generates and stores embeddings for each chunk
+- **AND** stores the embedding provider and model metadata for each chunk
 - **AND** reports progress periodically
 
 #### Scenario: Backfill resumes after interruption
@@ -769,8 +835,6 @@ The system SHALL respect API rate limits during embedding generation.
 - **WHEN** backfill is running
 - **THEN** the system reports documents processed, chunks created, and estimated time remaining
 - **AND** supports dry-run mode to preview without making changes
-
----
 
 ### Requirement: Chunk Lifecycle Management
 
@@ -831,3 +895,61 @@ The system SHALL execute cross-encoder reranking of 50 candidates in under 500ms
 - **THEN** the `meta.query_time_ms` value accurately reflects the actual duration
 - **AND** the system still returns results (no timeout abort)
 - **AND** the SLA violation is detectable by monitoring systems via the response metadata
+
+### Requirement: Embedding Provider Switching
+
+The system SHALL provide a CLI command `aca manage switch-embeddings` to safely switch between embedding providers.
+
+The system SHALL orchestrate the following steps during a provider switch:
+1. Validate the target provider/model can be instantiated
+2. NULL all existing embeddings and their metadata
+3. Drop the HNSW index on the embedding column
+4. Recreate the HNSW index
+5. Optionally trigger a backfill to regenerate embeddings with the new provider
+
+The system SHALL support a dry-run mode that previews the switch without making changes.
+
+The system SHALL require confirmation before executing a destructive switch (unless `--yes` flag is provided).
+
+The system SHALL support skipping the backfill step (via `--skip-backfill`) for cases where backfill should be scheduled separately.
+
+#### Scenario: Switch embedding provider
+
+- **WHEN** `aca manage switch-embeddings --provider openai --model text-embedding-3-small --yes` is executed
+- **THEN** the system validates that OpenAI with text-embedding-3-small can be instantiated
+- **AND** NULLs all existing embeddings and metadata in `document_chunks`
+- **AND** drops and recreates the HNSW index
+- **AND** triggers a backfill to regenerate all embeddings with OpenAI
+- **AND** reports the number of embeddings cleared and regenerated
+
+#### Scenario: Dry run switch
+
+- **WHEN** `aca manage switch-embeddings --provider voyage --model voyage-3 --dry-run` is executed
+- **THEN** the system reports what would happen (provider, model, dimensions, affected rows)
+- **AND** does not modify the database
+
+#### Scenario: Switch with skip backfill
+
+- **WHEN** `aca manage switch-embeddings --provider local --model all-MiniLM-L6-v2 --skip-backfill --yes` is executed
+- **THEN** the system clears embeddings and rebuilds the index
+- **AND** does NOT trigger a backfill
+- **AND** vector search returns empty results until backfill is run manually
+
+#### Scenario: Switch requires confirmation
+
+- **WHEN** `aca manage switch-embeddings --provider openai --model text-embedding-3-small` is executed without `--yes`
+- **THEN** the system prompts for confirmation before proceeding
+- **AND** aborting the confirmation cancels the operation with no changes
+
+#### Scenario: Invalid provider or model
+
+- **WHEN** `aca manage switch-embeddings --provider nonexistent --model foo` is executed
+- **THEN** the system reports a validation error
+- **AND** does not modify the database
+- **AND** exit code is 1
+
+#### Scenario: BM25 search during switch
+
+- **WHEN** a provider switch is in progress and embeddings are cleared
+- **THEN** BM25 search continues to work normally
+- **AND** hybrid search returns BM25-only results (vector component returns empty)
