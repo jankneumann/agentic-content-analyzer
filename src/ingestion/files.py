@@ -75,6 +75,7 @@ class FileContentIngestionService:
         title: str | None = None,
         prefer_structured: bool = False,
         ocr_needed: bool = False,
+        format_hint: str | None = None,
     ) -> Content:
         """Ingest a file and create a Content record.
 
@@ -84,6 +85,7 @@ class FileContentIngestionService:
             title: Optional title override (uses extracted or filename if not provided)
             prefer_structured: Prefer Docling for table extraction
             ocr_needed: Force OCR processing
+            format_hint: Optional format hint (e.g. "pdf") if file extension is misleading
 
         Returns:
             Created or existing Content record
@@ -119,6 +121,7 @@ class FileContentIngestionService:
             str(file_path),
             prefer_structured=prefer_structured,
             ocr_needed=ocr_needed,
+            format_hint=format_hint,
         )
 
         # Create content record
