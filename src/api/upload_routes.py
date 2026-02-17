@@ -6,6 +6,8 @@ Supports PDF, DOCX, PPTX, XLSX, and other formats.
 """
 
 import logging
+import os
+import tempfile
 from datetime import datetime
 from typing import Annotated
 
@@ -14,7 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 from src.api.dependencies import verify_admin_key
 from src.config.settings import settings
-from src.ingestion.files import FileContentIngestionService
+from src.ingestion.files import FileContentIngestionService, FileIngestionError
 from src.models.content import Content, ContentSource
 from src.parsers import DoclingParser, MarkItDownParser, ParserRouter, YouTubeParser
 from src.storage.database import get_db
@@ -238,72 +240,87 @@ async def upload_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
 
-    # Check file size incrementally to prevent memory exhaustion
-    # 1MB chunks
-    CHUNK_SIZE = 1024 * 1024
-    MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
-
-    content_chunks = []
-    total_bytes = 0
-
-    while True:
-        chunk = await file.read(CHUNK_SIZE)
-        if not chunk:
-            break
-
-        total_bytes += len(chunk)
-        if total_bytes > MAX_BYTES:
-            size_mb = total_bytes / (1024 * 1024)
-            raise HTTPException(
-                status_code=413,
-                detail=f"File size ({size_mb:.1f}MB) exceeds limit ({settings.max_upload_size_mb}MB)",
-            )
-
-        content_chunks.append(chunk)
-
-    contents = b"".join(content_chunks)
-    size_mb = total_bytes / (1024 * 1024)
-
     # Get format from filename
     filename = file.filename
     format_ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "unknown"
 
-    # Validate file signature (magic bytes) matches declared extension
-    signature_error = _validate_file_signature(contents, format_ext)
-    if signature_error:
-        raise HTTPException(status_code=415, detail=signature_error)
+    # Create temporary file to stream upload
+    # We use delete=False and manually cleanup in finally block
+    # to avoid permission issues on some OSes or if we need to pass path around.
+    # Using NamedTemporaryFile as context manager ensures proper resource management.
+    temp_path = None
 
-    # Cross-check client-provided MIME type against declared extension
-    mime_error = _validate_mime_type(file.content_type, format_ext)
-    if mime_error:
-        raise HTTPException(status_code=415, detail=mime_error)
-
-    # Create parser router and ingestion service
-    parser_router = get_parser_router()
-
-    # Check if format is supported
-    supported = set()
-    for parser_name in parser_router.available_parsers:
-        parser = parser_router.parsers[parser_name]
-        supported.update(parser.supported_formats)
-        supported.update(parser.fallback_formats)
-
-    if format_ext not in supported and format_ext != "unknown":
-        raise HTTPException(
-            status_code=415,
-            detail=f"Unsupported format: {format_ext}. Supported: {sorted(supported)}",
-        )
-
-    # Process the document using the unified Content model
     try:
+        # Check file size incrementally to prevent memory exhaustion
+        # 1MB chunks
+        CHUNK_SIZE = 1024 * 1024
+        MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
+
+        total_bytes = 0
+        first_chunk = b""
+
+        with tempfile.NamedTemporaryFile(
+            delete=False, mode="wb", suffix=f".{format_ext}" if format_ext != "unknown" else None
+        ) as tmp_file:
+            temp_path = tmp_file.name
+            while True:
+                chunk = await file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+
+                # Keep first chunk for signature validation
+                if not first_chunk:
+                    first_chunk = chunk
+
+                total_bytes += len(chunk)
+                if total_bytes > MAX_BYTES:
+                    size_mb = total_bytes / (1024 * 1024)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File size ({size_mb:.1f}MB) exceeds limit ({settings.max_upload_size_mb}MB)",
+                    )
+
+                tmp_file.write(chunk)
+
+        size_mb = total_bytes / (1024 * 1024)
+
+        # Validate file signature (magic bytes) matches declared extension
+        if first_chunk:
+            signature_error = _validate_file_signature(first_chunk, format_ext)
+            if signature_error:
+                raise HTTPException(status_code=415, detail=signature_error)
+
+        # Cross-check client-provided MIME type against declared extension
+        mime_error = _validate_mime_type(file.content_type, format_ext)
+        if mime_error:
+            raise HTTPException(status_code=415, detail=mime_error)
+
+        # Create parser router and ingestion service
+        parser_router = get_parser_router()
+
+        # Check if format is supported
+        supported = set()
+        for parser_name in parser_router.available_parsers:
+            parser = parser_router.parsers[parser_name]
+            supported.update(parser.supported_formats)
+            supported.update(parser.fallback_formats)
+
+        if format_ext not in supported and format_ext != "unknown":
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported format: {format_ext}. Supported: {sorted(supported)}",
+            )
+
+        # Process the document using the unified Content model
         with get_db() as db:
             service = FileContentIngestionService(router=parser_router, db=db)
 
-            content = await service.ingest_bytes(
-                data=contents,
-                filename=filename,
+            content = await service.ingest_file(
+                file_path=temp_path,
                 publication=publication,
                 title=title,
+                prefer_structured=prefer_structured,
+                ocr_needed=ocr_needed,
                 format_hint=format_ext,
             )
 
@@ -330,11 +347,21 @@ async def upload_document(
                 processing_time_ms=None,  # Would need to track this
             )
 
-    except ValueError as e:
+    except FileIngestionError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        # Don't shadow HTTPException
+        if isinstance(e, HTTPException):
+            raise e
         logger.error(f"Document upload failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Processing failed due to an internal error")
+    finally:
+        # Cleanup temp file
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logger.warning(f"Failed to remove temp file: {temp_path}")
 
 
 @router.get("/formats", response_model=SupportedFormatsResponse)

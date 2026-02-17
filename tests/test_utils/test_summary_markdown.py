@@ -259,6 +259,4 @@ class TestRoundTrip:
         """Strategic insights survive round-trip."""
         md = generate_summary_markdown(sample_summary_data)
         parsed = parse_markdown_summary(md)
-        assert len(parsed["strategic_insights"]) == len(
-            sample_summary_data["strategic_insights"]
-        )
+        assert len(parsed["strategic_insights"]) == len(sample_summary_data["strategic_insights"])

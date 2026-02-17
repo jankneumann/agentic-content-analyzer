@@ -183,7 +183,7 @@ def test_upload_file_within_limit(client):
         with patch("src.api.upload_routes.FileContentIngestionService") as mock_service:
             mock_instance = mock_service.return_value
 
-            # Make ingest_bytes return a mock content object
+            # Make ingest_file return a mock content object
             mock_content = Content(
                 id=1,
                 title="Test",
@@ -191,11 +191,17 @@ def test_upload_file_within_limit(client):
                 source_id="test",
                 source_type="file_upload",
             )
-            mock_instance.ingest_bytes = AsyncMock(return_value=mock_content)
+            mock_instance.ingest_file = AsyncMock(return_value=mock_content)
 
             response = client.post("/api/v1/documents/upload", files=files)
 
             assert response.status_code == 200
+            # Verify ingest_file was called (implies temp file creation worked)
+            assert mock_instance.ingest_file.called
+            # Verify arguments
+            args, kwargs = mock_instance.ingest_file.call_args
+            assert str(kwargs["file_path"]).endswith(".txt")
+            assert kwargs["format_hint"] == "txt"
 
 
 # ============================================================================
@@ -242,7 +248,7 @@ def test_upload_unknown_extension_skips_signature_check(client):
             source_id="test",
             source_type="file_upload",
         )
-        mock_instance.ingest_bytes = AsyncMock(return_value=mock_content)
+        mock_instance.ingest_file = AsyncMock(return_value=mock_content)
 
         response = client.post("/api/v1/documents/upload", files=files)
         # Should not be 415 from signature check
@@ -284,7 +290,7 @@ def test_upload_pdf_with_octet_stream_passes_mime_check(client):
             source_id="test",
             source_type="file_upload",
         )
-        mock_instance.ingest_bytes = AsyncMock(return_value=mock_content)
+        mock_instance.ingest_file = AsyncMock(return_value=mock_content)
 
         response = client.post("/api/v1/documents/upload", files=files)
         assert response.status_code == 200

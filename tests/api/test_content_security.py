@@ -50,16 +50,10 @@ def test_content_routes_require_auth(raw_client, monkeypatch):
     assert "Missing authentication header" in response.json()["detail"]
 
     # 2. Test invalid key (403)
-    response = raw_client.get(
-        "/api/v1/contents",
-        headers={"X-Admin-Key": "wrong-key"}
-    )
+    response = raw_client.get("/api/v1/contents", headers={"X-Admin-Key": "wrong-key"})
     assert response.status_code == 403
     assert "Invalid admin API key" in response.json()["detail"]
 
     # 3. Test valid key (200)
-    response = raw_client.get(
-        "/api/v1/contents",
-        headers={"X-Admin-Key": "secret-key"}
-    )
+    response = raw_client.get("/api/v1/contents", headers={"X-Admin-Key": "secret-key"})
     assert response.status_code == 200

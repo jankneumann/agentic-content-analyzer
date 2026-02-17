@@ -20,10 +20,11 @@ def clean_env(monkeypatch):
 @pytest.fixture
 def mock_upload_dependencies():
     """Setup common mocks for upload endpoint testing."""
-    with patch("src.api.upload_routes.get_db") as mock_get_db, \
-         patch("src.api.upload_routes.FileContentIngestionService") as mock_service, \
-         patch("src.api.upload_routes.get_parser_router") as mock_get_router:
-
+    with (
+        patch("src.api.upload_routes.get_db") as mock_get_db,
+        patch("src.api.upload_routes.FileContentIngestionService") as mock_service,
+        patch("src.api.upload_routes.get_parser_router") as mock_get_router,
+    ):
         # Mock DB
         mock_db = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_db
@@ -36,7 +37,7 @@ def mock_upload_dependencies():
             canonical_id=None,
             metadata_json={},
             markdown_content="Test",
-            parser_used="markitdown"
+            parser_used="markitdown",
         )
         mock_instance = mock_service.return_value
         mock_instance.ingest_bytes = AsyncMock(return_value=mock_content)
@@ -54,11 +55,7 @@ def mock_upload_dependencies():
 
         mock_get_router.return_value = mock_router
 
-        yield {
-            "db": mock_db,
-            "service": mock_instance,
-            "router": mock_router
-        }
+        yield {"db": mock_db, "service": mock_instance, "router": mock_router}
 
 
 def test_upload_missing_auth_rejected(clean_env, mock_upload_dependencies):
@@ -81,7 +78,9 @@ def test_upload_invalid_auth_rejected(clean_env, mock_upload_dependencies):
     client = TestClient(app)
 
     files = {"file": ("test.txt", b"content", "text/plain")}
-    response = client.post("/api/v1/documents/upload", files=files, headers={"X-Admin-Key": "wrong-key"})
+    response = client.post(
+        "/api/v1/documents/upload", files=files, headers={"X-Admin-Key": "wrong-key"}
+    )
 
     assert response.status_code == 403
 
@@ -94,7 +93,9 @@ def test_upload_valid_auth_accepted(clean_env, mock_upload_dependencies):
 
     files = {"file": ("test.txt", b"content", "text/plain")}
     # Valid key
-    response = client.post("/api/v1/documents/upload", files=files, headers={"X-Admin-Key": "secret-key"})
+    response = client.post(
+        "/api/v1/documents/upload", files=files, headers={"X-Admin-Key": "secret-key"}
+    )
 
     if response.status_code != 200:
         print(f"Error: {response.text}")

@@ -343,7 +343,8 @@ async def get_summary_navigation(
     """
     with get_db() as db:
         # Build base query with Content join
-        query = db.query(Summary).join(Content)
+        # OPTIMIZATION: Only fetch IDs to avoid loading full Summary objects for navigation
+        query = db.query(Summary.id, Summary.content_id).join(Content)
 
         if model_used:
             query = query.filter(Summary.model_used == model_used)

@@ -14,7 +14,9 @@ class TestDoclingParser:
     @pytest.fixture
     def parser(self):
         """Create a DoclingParser instance without loading actual Docling."""
-        with patch("src.parsers.docling_parser.DoclingParser.converter", new_callable=lambda: MagicMock()):
+        with patch(
+            "src.parsers.docling_parser.DoclingParser.converter", new_callable=lambda: MagicMock()
+        ):
             parser = DoclingParser(enable_ocr=False)
             # Don't actually load the converter
             parser._converter = MagicMock()
@@ -146,7 +148,9 @@ class TestDoclingParser:
 
     def test_init_default_values(self):
         """Test default initialization values."""
-        with patch("src.parsers.docling_parser.DoclingParser.converter", new_callable=lambda: MagicMock()):
+        with patch(
+            "src.parsers.docling_parser.DoclingParser.converter", new_callable=lambda: MagicMock()
+        ):
             parser = DoclingParser()
             assert parser.enable_ocr is False
             assert parser.max_file_size_mb == 100
@@ -154,7 +158,9 @@ class TestDoclingParser:
 
     def test_init_custom_values(self):
         """Test custom initialization values."""
-        with patch("src.parsers.docling_parser.DoclingParser.converter", new_callable=lambda: MagicMock()):
+        with patch(
+            "src.parsers.docling_parser.DoclingParser.converter", new_callable=lambda: MagicMock()
+        ):
             parser = DoclingParser(
                 enable_ocr=True,
                 max_file_size_mb=50,

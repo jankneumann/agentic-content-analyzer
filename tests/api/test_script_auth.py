@@ -17,9 +17,10 @@ def test_script_routes_auth(db_session):
         yield db_session
 
     # Patch get_db in both the router and the service it uses
-    with patch("src.api.script_routes.get_db", side_effect=mock_get_db), \
-         patch("src.services.script_review_service.get_db", side_effect=mock_get_db):
-
+    with (
+        patch("src.api.script_routes.get_db", side_effect=mock_get_db),
+        patch("src.services.script_review_service.get_db", side_effect=mock_get_db),
+    ):
         client = TestClient(app)
 
         # 1. Test UNAUTHORIZED access (missing header)

@@ -1,4 +1,3 @@
-
 import pytest
 
 from src.parsers.youtube_parser import YouTubeParser
@@ -8,6 +7,7 @@ from src.utils.youtube_links import extract_video_id
 def test_extract_video_id_valid():
     assert extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
     assert extract_video_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
 
 @pytest.mark.asyncio
 async def test_parser_accepts_valid_id():
@@ -23,6 +23,7 @@ async def test_parser_accepts_valid_id():
         # It should fail because no transcript found, but NOT validation error
         assert "Invalid YouTube video ID" not in str(e)
         assert "Transcript not available" in str(e) or "No transcript available" in str(e)
+
 
 @pytest.mark.asyncio
 async def test_parser_rejects_invalid_chars():
