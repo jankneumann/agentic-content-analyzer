@@ -28,7 +28,9 @@ def test_summary_model_used_index():
     # However, since we rely on `Base.metadata.create_all` in tests (not migration scripts directly),
     # the index name comes from the Model definition `index=True` which defaults to `ix_table_column`.
 
-    assert "ix_summaries_model_used" in index_names, f"Index ix_summaries_model_used not found. Available: {index_names}"
+    assert "ix_summaries_model_used" in index_names, (
+        f"Index ix_summaries_model_used not found. Available: {index_names}"
+    )
 
     # Verify the column
     index = next(i for i in indexes if i["name"] == "ix_summaries_model_used")
