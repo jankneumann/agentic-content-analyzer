@@ -525,9 +525,6 @@ def _generate_highlight(
     # Use first 500 chars for highlight context
     snippet = chunk_text[:500]
 
-    if not query_terms:
-        return snippet[:200]
-
     # HTML-escape the snippet first
     escaped = html.escape(snippet)
 

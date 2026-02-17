@@ -13,6 +13,7 @@ import { Send, Loader2, Globe } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { Toggle } from "@/components/ui/toggle"
 import {
   Tooltip,
   TooltipContent,
@@ -148,20 +149,20 @@ export function ChatInput({
       {/* Options row */}
       {webSearchEnabled && (
         <div className="flex items-center gap-4 px-1">
-          <button
-            type="button"
-            onClick={() => setEnableWebSearch(!enableWebSearch)}
+          <Toggle
+            pressed={enableWebSearch}
+            onPressedChange={setEnableWebSearch}
             disabled={disabled || isLoading}
+            aria-label="Toggle web search"
             className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
-              enableWebSearch
-                ? "bg-blue-500/10 text-blue-500"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              "h-auto gap-1.5 px-2 py-1 text-xs",
+              "data-[state=on]:bg-blue-500/10 data-[state=on]:text-blue-500",
+              "text-muted-foreground hover:text-foreground"
             )}
           >
             <Globe className="h-3 w-3" />
             Web search {enableWebSearch ? "on" : "off"}
-          </button>
+          </Toggle>
         </div>
       )}
 

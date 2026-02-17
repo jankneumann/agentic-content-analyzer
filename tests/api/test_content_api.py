@@ -339,7 +339,9 @@ class TestTriggerIngestion:
             "max_results": 10,
             "days_back": 7,
         }
-        with patch("src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock) as mock_enqueue:
+        with patch(
+            "src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock
+        ) as mock_enqueue:
             mock_enqueue.return_value = 123
             response = client.post("/api/v1/contents/ingest", json=payload)
             assert response.status_code == 200
@@ -356,7 +358,9 @@ class TestTriggerIngestion:
             "max_results": 50,
             "days_back": 3,
         }
-        with patch("src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock) as mock_enqueue:
+        with patch(
+            "src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock
+        ) as mock_enqueue:
             mock_enqueue.return_value = 123
             response = client.post("/api/v1/contents/ingest", json=payload)
             assert response.status_code == 200
@@ -382,7 +386,9 @@ class TestTriggerSummarization:
         """Triggers summarization for all pending content."""
         # The endpoint starts a background task and returns immediately
         payload = {}  # Empty = all pending
-        with patch("src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock) as mock_enqueue:
+        with patch(
+            "src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock
+        ) as mock_enqueue:
             mock_enqueue.return_value = 123
             response = client.post("/api/v1/contents/summarize", json=payload)
             assert response.status_code == 200
@@ -396,7 +402,9 @@ class TestTriggerSummarization:
         payload = {
             "content_ids": [sample_contents[0].id, sample_contents[2].id],
         }
-        with patch("src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock) as mock_enqueue:
+        with patch(
+            "src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock
+        ) as mock_enqueue:
             mock_enqueue.return_value = 123
             response = client.post("/api/v1/contents/summarize", json=payload)
             assert response.status_code == 200

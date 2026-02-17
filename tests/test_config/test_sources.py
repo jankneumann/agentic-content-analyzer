@@ -486,7 +486,7 @@ class TestLoadSourcesFromLegacy:
 
     def test_load_youtube_playlists(self, tmp_path):
         yt_file = tmp_path / "youtube_playlists.txt"
-        yt_file.write_text("# Comment\n" "PLtest1 | Test playlist 1\n" "PLtest2\n")
+        yt_file.write_text("# Comment\nPLtest1 | Test playlist 1\nPLtest2\n")
         config = load_sources_from_legacy(
             rss_feeds_file=str(tmp_path / "nonexistent.txt"),
             youtube_playlists_file=str(yt_file),

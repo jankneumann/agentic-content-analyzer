@@ -111,7 +111,7 @@ def sample_theme_analysis_dict() -> dict[str, Any]:
                 "trend": "growing",
                 "relevance_score": 0.9,
                 "key_points": ["New models released", "Better efficiency"],
-                "continuity_text": "Continuing the trend from last week"
+                "continuity_text": "Continuing the trend from last week",
             },
             {
                 "name": "Cloud Security",
@@ -119,15 +119,13 @@ def sample_theme_analysis_dict() -> dict[str, Any]:
                 "trend": "stable",
                 "relevance_score": 0.7,
                 "key_points": ["Zero trust adoption"],
-                "historical_context": {
-                    "evolution_summary": "Security remains a top priority"
-                }
-            }
+                "historical_context": {"evolution_summary": "Security remains a top priority"},
+            },
         ],
         "cross_theme_insights": [
             "AI is impacting security practices",
-            "Cloud costs are driving efficiency"
-        ]
+            "Cloud costs are driving efficiency",
+        ],
     }
 
 
@@ -201,12 +199,14 @@ class TestRevisionContext:
         assert "2025-01-15" in formatted
         assert "**Newsletter Count**: 5" in formatted
 
-    def test_theme_analysis_formatting(self, sample_digest, sample_summaries, sample_theme_analysis_dict):
+    def test_theme_analysis_formatting(
+        self, sample_digest, sample_summaries, sample_theme_analysis_dict
+    ):
         """Test formatting of theme analysis data."""
         context = RevisionContext(
             digest=sample_digest,
             summaries=sample_summaries,
-            theme_analysis=sample_theme_analysis_dict
+            theme_analysis=sample_theme_analysis_dict,
         )
 
         formatted = context.to_llm_context()

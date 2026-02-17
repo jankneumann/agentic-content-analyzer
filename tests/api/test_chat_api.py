@@ -68,9 +68,9 @@ class TestChatConfig:
         default_model = data["default_model"]
         available_ids = [m["id"] for m in data["available_models"]]
 
-        assert (
-            default_model in available_ids
-        ), f"Default model '{default_model}' not in available models"
+        assert default_model in available_ids, (
+            f"Default model '{default_model}' not in available models"
+        )
 
     def test_get_chat_config_has_feature_flags(self, client):
         """Test that chat config includes feature flags."""
@@ -113,9 +113,9 @@ class TestChatModelProviders:
 
         for model in data["available_models"]:
             if model["id"].startswith("claude-"):
-                assert (
-                    model["provider"] == "claude"
-                ), f"Model {model['id']} should have provider 'claude'"
+                assert model["provider"] == "claude", (
+                    f"Model {model['id']} should have provider 'claude'"
+                )
 
     def test_gemini_models_have_correct_provider(self, client):
         """Test that Gemini models are labeled with 'gemini' provider."""
@@ -126,9 +126,9 @@ class TestChatModelProviders:
 
         for model in data["available_models"]:
             if model["id"].startswith("gemini-"):
-                assert (
-                    model["provider"] == "gemini"
-                ), f"Model {model['id']} should have provider 'gemini'"
+                assert model["provider"] == "gemini", (
+                    f"Model {model['id']} should have provider 'gemini'"
+                )
 
     def test_gpt_models_have_correct_provider(self, client):
         """Test that GPT models are labeled with 'gpt' provider."""
