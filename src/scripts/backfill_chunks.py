@@ -31,6 +31,8 @@ async def backfill_chunks(
     dry_run: bool = False,
     embed_only: bool = False,
     content_id: int | None = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """Backfill document chunks and embeddings for existing content.
 
@@ -41,6 +43,8 @@ async def backfill_chunks(
         embed_only: If True, only generate embeddings for existing chunks
                     that are missing them (skip chunking).
         content_id: If set, only process this specific content record.
+        provider: Override embedding provider (default: from settings).
+        model: Override embedding model (default: from settings).
 
     Returns:
         Summary dict with counts of content processed, chunks created, etc.
@@ -64,7 +68,9 @@ async def backfill_chunks(
 
     try:
         if embed_only:
-            stats = await _backfill_embeddings_only(db, batch_size, delay, dry_run, stats)
+            stats = await _backfill_embeddings_only(
+                db, batch_size, delay, dry_run, stats, provider, model
+            )
         else:
             stats = await _backfill_full(
                 db,
@@ -73,6 +79,8 @@ async def backfill_chunks(
                 dry_run,
                 content_id,
                 stats,
+                provider,
+                model,
             )
     finally:
         db.close()
@@ -87,10 +95,12 @@ async def _backfill_full(
     dry_run: bool,
     content_id: int | None,
     stats: dict,
+    provider_name: str | None = None,
+    model_name: str | None = None,
 ) -> dict:
     """Backfill both chunks and embeddings for unchunked content."""
     chunking_service = ChunkingService()
-    provider = get_embedding_provider()
+    provider = get_embedding_provider(provider_name, model_name)
 
     # Find content with no chunks
     if content_id:
@@ -204,9 +214,11 @@ async def _backfill_embeddings_only(
     delay: float,
     dry_run: bool,
     stats: dict,
+    provider_name: str | None = None,
+    model_name: str | None = None,
 ) -> dict:
     """Generate embeddings for existing chunks that are missing them."""
-    provider = get_embedding_provider()
+    provider = get_embedding_provider(provider_name, model_name)
 
     # Find chunks without embeddings
     stmt = text("""
@@ -266,6 +278,23 @@ async def _backfill_embeddings_only(
 
         if delay > 0 and batch_start + batch_size < total:
             await asyncio.sleep(delay)
+
+    # Rebuild HNSW index if embeddings were generated (may have been
+    # dropped by switch_embeddings --skip-backfill)
+    if stats["embeddings_generated"] > 0 and not dry_run:
+        try:
+            logger.info("Ensuring HNSW index exists...")
+            db.execute(
+                text("""
+                    CREATE INDEX IF NOT EXISTS ix_document_chunks_embedding_hnsw
+                    ON document_chunks USING hnsw (embedding vector_cosine_ops)
+                """)
+            )
+            db.commit()
+            logger.info("HNSW index verified")
+        except Exception:
+            logger.warning("Could not create HNSW index", exc_info=True)
+            db.rollback()
 
     return stats
 

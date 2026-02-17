@@ -129,12 +129,14 @@ async def switch_embeddings(
                 delay=delay,
                 dry_run=False,
                 embed_only=True,
+                provider=target_provider,
+                model=target_model,
             )
             summary["backfill"] = backfill_result
         else:
             logger.info(
                 "Backfill skipped. Run 'aca manage backfill-chunks --embed-only' "
-                "when ready to re-embed."
+                "when ready to re-embed. The HNSW index will be rebuilt automatically."
             )
 
         return summary

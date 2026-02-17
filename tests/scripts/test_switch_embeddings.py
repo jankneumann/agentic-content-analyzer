@@ -102,3 +102,46 @@ async def test_invalid_provider_returns_error(mock_get_provider, mock_get_settin
 
     assert "error" in result
     assert "bogus" in result["error"]
+
+
+@pytest.mark.asyncio
+@patch("src.scripts.backfill_chunks.backfill_chunks")
+@patch("src.storage.database.get_db_session")
+@patch("src.config.settings.get_settings")
+@patch("src.services.embedding.get_embedding_provider")
+async def test_backfill_receives_target_provider(
+    mock_get_provider, mock_get_settings, mock_get_db, mock_backfill
+):
+    """P1 fix: switch_embeddings passes target provider/model to backfill_chunks."""
+    from src.scripts.switch_embeddings import switch_embeddings
+
+    mock_provider = MagicMock()
+    mock_provider.dimensions = 768
+    mock_get_provider.return_value = mock_provider
+
+    mock_settings = MagicMock()
+    mock_settings.embedding_provider = "local"
+    mock_settings.embedding_model = "all-MiniLM-L6-v2"
+    mock_get_settings.return_value = mock_settings
+
+    mock_db = MagicMock()
+    mock_db.execute.side_effect = [
+        MagicMock(scalar=MagicMock(return_value=10)),  # existing count
+        MagicMock(scalar=MagicMock(return_value=20)),  # total count
+        None,  # UPDATE
+        None,  # DROP INDEX
+        None,  # CREATE INDEX
+    ]
+    mock_get_db.return_value = mock_db
+
+    mock_backfill.return_value = {"embeddings_generated": 20}
+
+    result = await switch_embeddings(provider="openai", model="text-embedding-3-small")
+
+    # Verify backfill was called with the TARGET provider, not the current one
+    mock_backfill.assert_called_once()
+    call_kwargs = mock_backfill.call_args[1]
+    assert call_kwargs["provider"] == "openai"
+    assert call_kwargs["model"] == "text-embedding-3-small"
+    assert call_kwargs["embed_only"] is True
+    assert result["backfill"] == {"embeddings_generated": 20}
