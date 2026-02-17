@@ -354,7 +354,18 @@ async def list_contents(
     Results are paginated and sorted by the specified field (default: ingested_at desc).
     """
     with get_db() as db:
-        query = db.query(Content)
+        # OPTIMIZATION: Explicitly select only the columns needed for the list view
+        # This avoids hydrating full ORM objects and loading heavy text/JSON fields,
+        # which is significantly faster than using defer().
+        query = db.query(
+            Content.id,
+            Content.source_type,
+            Content.title,
+            Content.publication,
+            Content.published_date,
+            Content.status,
+            Content.ingested_at,
+        )
 
         # Apply filters
         if source_type:
@@ -386,17 +397,6 @@ async def list_contents(
             query = query.order_by(sort_column.asc())
         else:
             query = query.order_by(sort_column.desc())
-
-        # OPTIMIZATION: Defer heavy text/json columns for list view
-        # This is safer than load_only as it automatically includes new lightweight columns
-        query = query.options(
-            defer(Content.markdown_content),
-            defer(Content.tables_json),
-            defer(Content.links_json),
-            defer(Content.metadata_json),
-            defer(Content.raw_content),
-            defer(Content.error_message),
-        )
 
         # Apply pagination
         contents = query.offset(offset).limit(page_size).all()

@@ -25,3 +25,7 @@
 ## 2026-02-14 - Optimize Search Preview Fetch
 **Learning:** The search endpoint was fetching the full `chunk_text` for every result candidate, only to truncate it to 500 characters in Python for the preview. For large documents, this wasted significant database I/O and memory.
 **Action:** Use `substr(column, 1, 500)` in the SQL query to perform the truncation at the database level.
+
+## 2026-02-15 - Explicit Column Selection for List Views
+**Learning:** Even with `defer()`, `db.query(Content)` hydrates full ORM objects which adds significant overhead (~38% slower) compared to explicitly selecting only the required columns for list views.
+**Action:** Prefer `db.query(Model.col1, Model.col2)` over `db.query(Model).options(defer(...))` when fetching data for list endpoints where only a subset of fields is needed.
