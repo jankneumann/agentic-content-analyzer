@@ -35,10 +35,9 @@ import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"
 import { toast } from "sonner"
 
-import { cn } from "@/lib/utils"
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
