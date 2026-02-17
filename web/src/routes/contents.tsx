@@ -13,7 +13,6 @@ import { createRoute, Link, useNavigate } from "@tanstack/react-router"
 import {
   FileText,
   RefreshCw,
-  Search,
   Mail,
   Rss,
   Youtube,
@@ -46,7 +45,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
+import { SearchInput } from "@/components/ui/search-input"
 import {
   Select,
   SelectContent,
@@ -409,12 +408,11 @@ function ContentsPage() {
           {/* Filter row */}
           <div className="mb-4 flex flex-col gap-4 md:flex-row">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
+              <SearchInput
                 placeholder="Search contents..."
                 value={searchValue}
                 onChange={(e) => handleSearch(e.target.value)}
-                className="pl-9"
+                onClear={() => handleSearch("")}
               />
             </div>
             <Select
