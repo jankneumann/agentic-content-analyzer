@@ -32,7 +32,7 @@ class BM25SearchStrategy(Protocol):
         query: str,
         limit: int = 100,
         content_ids: list[int] | None = None,
-    ) -> list[tuple[int, float]]:
+    ) -> list[tuple[int, float, int]]:
         """Search chunks by keyword relevance.
 
         Args:
@@ -41,7 +41,7 @@ class BM25SearchStrategy(Protocol):
             content_ids: Optional filter to specific content IDs
 
         Returns:
-            List of (chunk_id, score) tuples, sorted by score descending.
+            List of (chunk_id, score, content_id) tuples, sorted by score descending.
         """
         ...
 
@@ -66,13 +66,13 @@ class ParadeDBBM25Strategy:
         query: str,
         limit: int = 100,
         content_ids: list[int] | None = None,
-    ) -> list[tuple[int, float]]:
+    ) -> list[tuple[int, float, int]]:
         if not query.strip():
             return []
 
         if content_ids:
             stmt = text("""
-                SELECT id, paradedb.score(id) as score
+                SELECT id, paradedb.score(id) as score, content_id
                 FROM document_chunks
                 WHERE chunk_text @@@ :query
                   AND content_id = ANY(:content_ids)
@@ -85,7 +85,7 @@ class ParadeDBBM25Strategy:
             )
         else:
             stmt = text("""
-                SELECT id, paradedb.score(id) as score
+                SELECT id, paradedb.score(id) as score, content_id
                 FROM document_chunks
                 WHERE chunk_text @@@ :query
                 ORDER BY score DESC
@@ -96,7 +96,7 @@ class ParadeDBBM25Strategy:
                 {"query": query, "limit": limit},
             )
 
-        return [(row.id, row.score) for row in result]
+        return [(row.id, row.score, row.content_id) for row in result]
 
 
 class PostgresNativeFTSStrategy:
@@ -119,13 +119,13 @@ class PostgresNativeFTSStrategy:
         query: str,
         limit: int = 100,
         content_ids: list[int] | None = None,
-    ) -> list[tuple[int, float]]:
+    ) -> list[tuple[int, float, int]]:
         if not query.strip():
             return []
 
         if content_ids:
             stmt = text("""
-                SELECT id, ts_rank_cd(search_vector, plainto_tsquery('english', :query)) as rank
+                SELECT id, ts_rank_cd(search_vector, plainto_tsquery('english', :query)) as rank, content_id
                 FROM document_chunks
                 WHERE search_vector @@ plainto_tsquery('english', :query)
                   AND content_id = ANY(:content_ids)
@@ -138,7 +138,7 @@ class PostgresNativeFTSStrategy:
             )
         else:
             stmt = text("""
-                SELECT id, ts_rank_cd(search_vector, plainto_tsquery('english', :query)) as rank
+                SELECT id, ts_rank_cd(search_vector, plainto_tsquery('english', :query)) as rank, content_id
                 FROM document_chunks
                 WHERE search_vector @@ plainto_tsquery('english', :query)
                 ORDER BY rank DESC
@@ -149,7 +149,7 @@ class PostgresNativeFTSStrategy:
                 {"query": query, "limit": limit},
             )
 
-        return [(row.id, row.rank) for row in result]
+        return [(row.id, row.rank, row.content_id) for row in result]
 
 
 def _check_pg_search_available(session: Session) -> bool:
