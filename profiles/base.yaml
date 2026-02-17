@@ -90,6 +90,8 @@ settings:
     search_default_limit: 20
     search_max_limit: 100
     enable_search_indexing: true
+    embedding_trust_remote_code: false
+    embedding_max_seq_length: null
 
   # ---------------------------------------------------------------------------
   # API Keys (loaded from secrets)

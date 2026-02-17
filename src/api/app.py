@@ -46,6 +46,20 @@ async def lifespan(app: FastAPI):
 
     setup_telemetry(app=app)
 
+    # Check embedding configuration matches database state (non-blocking)
+    if settings.enable_search_indexing:
+        try:
+            from src.services.embedding_check import check_embedding_config_mismatch
+            from src.storage.database import get_db_session
+
+            db = get_db_session()
+            try:
+                check_embedding_config_mismatch(db)
+            finally:
+                db.close()
+        except Exception:
+            logger.debug("Embedding config check skipped", exc_info=True)
+
     # Start embedded queue worker if enabled
     worker_task: asyncio.Task | None = None
     if settings.worker_enabled:

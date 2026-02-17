@@ -614,6 +614,10 @@ class Settings(BaseSettings):
     search_max_limit: int = 100
     enable_search_indexing: bool = True
 
+    # Local embedding model advanced settings
+    embedding_trust_remote_code: bool = False  # Allow trust_remote_code for sentence-transformers
+    embedding_max_seq_length: int | None = None  # Override model's max_seq_length
+
     # Search Provider API Keys
     voyage_api_key: str | None = None
     cohere_api_key: str | None = None
@@ -635,6 +639,31 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"search_vector_weight must be between 0.0 and 1.0, got {self.search_vector_weight}"
             )
+
+        # Warn if embedding_dimensions doesn't match known provider/model dims
+        known_dims: dict[str, dict[str, int]] = {
+            "openai": {
+                "text-embedding-3-small": 1536,
+                "text-embedding-3-large": 3072,
+                "text-embedding-ada-002": 1536,
+            },
+            "voyage": {"voyage-3": 1024, "voyage-3-lite": 512, "voyage-2": 1024},
+            "cohere": {"embed-english-v3.0": 1024},
+            "local": {
+                "all-MiniLM-L6-v2": 384,
+                "all-MiniLM-L12-v2": 384,
+                "all-mpnet-base-v2": 768,
+            },
+        }
+        provider_dims = known_dims.get(self.embedding_provider, {})
+        expected = provider_dims.get(self.embedding_model)
+        if expected is not None and self.embedding_dimensions != expected:
+            logger.warning(
+                f"EMBEDDING_DIMENSIONS={self.embedding_dimensions} does not match "
+                f"known dimensions for {self.embedding_provider}/{self.embedding_model} "
+                f"(expected {expected}). This may cause vector insertion errors."
+            )
+
         return self
 
     @field_validator("otel_logs_export_level")
