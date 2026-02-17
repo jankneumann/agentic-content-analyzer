@@ -47,9 +47,9 @@ def test_regenerate_with_feedback_error_leakage(
         assert '"status": "error"' in content_text
 
         # KEY ASSERTION: The sensitive secret should NOT be in the response
-        assert (
-            sensitive_secret not in content_text
-        ), "VULNERABILITY: Sensitive secret leaked in error message!"
+        assert sensitive_secret not in content_text, (
+            "VULNERABILITY: Sensitive secret leaked in error message!"
+        )
 
         # Assert that we get the safe generic error message
         assert "An internal error occurred during regeneration" in content_text

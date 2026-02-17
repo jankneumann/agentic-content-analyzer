@@ -120,6 +120,8 @@ class URLExtractor:
     async def _fetch_url(self, url: str) -> tuple[str, str]:
         """Fetch content from a URL.
 
+        Handles redirects manually to ensure strict SSRF validation at each step.
+
         Args:
             url: URL to fetch
 
@@ -128,48 +130,80 @@ class URLExtractor:
 
         Raises:
             httpx.HTTPError: If fetch fails
-            ValueError: If content is too large or not HTML
+            ValueError: If content is too large, not HTML, or redirects exceed limit
         """
-        # Validate URL to prevent SSRF
-        await validate_url(url)
-
-        async def check_redirect(response: httpx.Response) -> None:
-            if response.is_redirect:
-                target = response.headers.get("Location")
-                if target:
-                    from urllib.parse import urljoin
-
-                    # Resolve relative URLs
-                    target_url = urljoin(str(response.url), target)
-                    await validate_url(target_url)
+        max_redirects = 10
+        redirect_count = 0
+        current_url = url
 
         async with httpx.AsyncClient(
             timeout=DEFAULT_TIMEOUT,
-            follow_redirects=True,
+            follow_redirects=False,  # Handle redirects manually for security check
             headers={"User-Agent": USER_AGENT},
-            event_hooks={"response": [check_redirect]},
         ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+            while redirect_count < max_redirects:
+                # Validate URL before request to prevent SSRF
+                await validate_url(current_url)
 
-            # Check content size
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > MAX_CONTENT_SIZE:
-                raise ValueError(
-                    f"Content too large: {content_length} bytes (max {MAX_CONTENT_SIZE})"
-                )
+                # Stream response
+                async with client.stream("GET", current_url) as response:
+                    # Handle redirects
+                    if response.is_redirect:
+                        location = response.headers.get("Location")
+                        if not location:
+                            # 3xx without Location header, treat as error or stop?
+                            # Standard behavior is to stop if no location.
+                            response.raise_for_status()
 
-            # Check content type
-            content_type = response.headers.get("content-type", "")
-            if not any(content_type.startswith(ct) for ct in ALLOWED_CONTENT_TYPES):
-                raise ValueError(f"Unsupported content type: {content_type} (expected HTML)")
+                        from urllib.parse import urljoin
 
-            # Check actual response size
-            text = response.text
-            if len(text.encode("utf-8")) > MAX_CONTENT_SIZE:
-                raise ValueError(f"Response body too large (max {MAX_CONTENT_SIZE} bytes)")
+                        # Resolve relative URLs
+                        current_url = urljoin(str(response.url), location)
+                        redirect_count += 1
+                        continue
 
-            return text, str(response.url)
+                    # Raise for 4xx/5xx errors
+                    response.raise_for_status()
+
+                    # Check content size from headers
+                    content_length = response.headers.get("content-length")
+                    if content_length and int(content_length) > MAX_CONTENT_SIZE:
+                        raise ValueError(
+                            f"Content too large: {content_length} bytes (max {MAX_CONTENT_SIZE})"
+                        )
+
+                    # Check content type
+                    content_type = response.headers.get("content-type", "")
+                    if not any(content_type.startswith(ct) for ct in ALLOWED_CONTENT_TYPES):
+                        raise ValueError(
+                            f"Unsupported content type: {content_type} (expected HTML)"
+                        )
+
+                    # Download content in chunks
+                    content_chunks = []
+                    current_size = 0
+                    async for chunk in response.aiter_bytes():
+                        current_size += len(chunk)
+                        if current_size > MAX_CONTENT_SIZE:
+                            raise ValueError(
+                                f"Response body too large (max {MAX_CONTENT_SIZE} bytes)"
+                            )
+                        content_chunks.append(chunk)
+
+                    # Reassemble and decode content
+                    body_bytes = b"".join(content_chunks)
+
+                    # Use detected encoding or fallback to utf-8
+                    encoding = response.encoding or "utf-8"
+                    try:
+                        text = body_bytes.decode(encoding)
+                    except (LookupError, UnicodeDecodeError):
+                        # Fallback to utf-8 with replacement if encoding fails
+                        text = body_bytes.decode("utf-8", errors="replace")
+
+                    return text, str(response.url)
+
+            raise ValueError(f"Too many redirects (max {max_redirects})")
 
     async def _parse_html(self, html_content: str, url: str) -> tuple[str, dict]:
         """Parse HTML content to markdown.

@@ -432,9 +432,9 @@ class TestPromptContent:
 
         for prompt in data["prompts"]:
             # Default value should not be empty
-            assert (
-                len(prompt["default_value"]) > 50
-            ), f"Prompt {prompt['key']} has suspiciously short default value"
+            assert len(prompt["default_value"]) > 50, (
+                f"Prompt {prompt['key']} has suspiciously short default value"
+            )
 
     def test_prompt_preserves_formatting(self, client, db_session):
         """Test that prompts preserve newlines and formatting."""

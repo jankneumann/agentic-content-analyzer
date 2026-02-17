@@ -21,3 +21,7 @@
 ## 2026-02-12 - Fetching Full ORM Objects for Navigation
 **Learning:** The `get_summary_navigation` endpoint was fetching full `Summary` and `Content` objects (thousands of them) into memory just to extract IDs for calculating prev/next links. This is O(N) in memory and time.
 **Action:** Use explicit column selection `db.query(Summary.id, Summary.content_id)` to fetch only the necessary data as tuples, avoiding ORM object overhead and loading large text fields.
+
+## 2026-02-14 - Optimize Search Preview Fetch
+**Learning:** The search endpoint was fetching the full `chunk_text` for every result candidate, only to truncate it to 500 characters in Python for the preview. For large documents, this wasted significant database I/O and memory.
+**Action:** Use `substr(column, 1, 500)` in the SQL query to perform the truncation at the database level.

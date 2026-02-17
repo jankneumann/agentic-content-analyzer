@@ -66,9 +66,9 @@ class TestSupabaseConnection:
             timeout = result.scalar()
             # Supabase server may override client timeout, just verify it's set
             # Common values: "30s" (client), "2min" (server default)
-            assert (
-                timeout is not None and timeout != "0"
-            ), f"Expected timeout to be set, got {timeout}"
+            assert timeout is not None and timeout != "0", (
+                f"Expected timeout to be set, got {timeout}"
+            )
             print(f"Supabase statement_timeout: {timeout}")
 
 
