@@ -17,3 +17,7 @@
 ## 2026-02-09 - Deferring Heavy Columns in Bulk Operations
 **Learning:** `Content` model has very large text/JSON columns (`markdown_content`, `tables_json`). When fetching bulk records for processing (e.g., triggering summarization), failure to `defer()` these columns can cause significant memory and time overhead, even if only IDs are needed.
 **Action:** Always use `defer()` on heavy columns when fetching `Content` objects for background tasks or ID-only operations.
+
+## 2026-02-14 - Optimize Search Preview Fetch
+**Learning:** The search endpoint was fetching the full `chunk_text` for every result candidate, only to truncate it to 500 characters in Python for the preview. For large documents, this wasted significant database I/O and memory.
+**Action:** Use `substr(column, 1, 500)` in the SQL query to perform the truncation at the database level.

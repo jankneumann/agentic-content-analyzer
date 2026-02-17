@@ -386,7 +386,7 @@ class HybridSearchService:
             SELECT
                 dc.id as chunk_id,
                 dc.content_id,
-                dc.chunk_text,
+                substr(dc.chunk_text, 1, 500) as chunk_text,
                 dc.section_path,
                 dc.heading_text,
                 dc.chunk_type,
@@ -430,7 +430,7 @@ class HybridSearchService:
 
             chunk_result = ChunkResult(
                 chunk_id=chunk_id,
-                content=row.chunk_text[:500],  # Truncate for response size
+                content=row.chunk_text,  # Already truncated by DB
                 section=row.section_path or row.heading_text,
                 score=final_scores.get(chunk_id, 0.0),
                 highlight=highlight,
