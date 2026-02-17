@@ -316,13 +316,15 @@ async def test_extract_themes_with_relevance_filtering(
     with patch("src.processors.theme_analyzer.LLMRouter") as MockRouter:
         mock_router_instance = MockRouter.return_value
         # Use AsyncMock for generate
-        mock_router_instance.generate = AsyncMock(return_value=LLMResponse(
-            text=mock_response_low_relevance,
-            input_tokens=100,
-            output_tokens=50,
-            provider=Provider.ANTHROPIC,
-            model_version="test-version"
-        ))
+        mock_router_instance.generate = AsyncMock(
+            return_value=LLMResponse(
+                text=mock_response_low_relevance,
+                input_tokens=100,
+                output_tokens=50,
+                provider=Provider.ANTHROPIC,
+                model_version="test-version",
+            )
+        )
 
         analyzer = ThemeAnalyzer()
 
@@ -356,23 +358,25 @@ async def test_extract_themes_providers_failover(
         mock_router_instance = MockRouter.return_value
 
         # First call fails, second succeeds. Use side_effect with AsyncMock.
-        mock_router_instance.generate = AsyncMock(side_effect=[
-            Exception("Bedrock Error"),
-            LLMResponse(
-                text="[]", # Empty JSON for simplicity
-                input_tokens=100,
-                output_tokens=50,
-                provider=Provider.GOOGLE_VERTEX,
-                model_version="test-version"
-            )
-        ])
+        mock_router_instance.generate = AsyncMock(
+            side_effect=[
+                Exception("Bedrock Error"),
+                LLMResponse(
+                    text="[]",  # Empty JSON for simplicity
+                    input_tokens=100,
+                    output_tokens=50,
+                    provider=Provider.GOOGLE_VERTEX,
+                    model_version="test-version",
+                ),
+            ]
+        )
 
         analyzer = ThemeAnalyzer()
 
         # Configure multiple providers including new ones
         providers = [
             ProviderConfig(provider=Provider.AWS_BEDROCK, api_key=""),
-            ProviderConfig(provider=Provider.GOOGLE_VERTEX, api_key="")
+            ProviderConfig(provider=Provider.GOOGLE_VERTEX, api_key=""),
         ]
         analyzer.model_config.get_providers_for_model = MagicMock(return_value=providers)
         analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
@@ -390,5 +394,5 @@ async def test_extract_themes_providers_failover(
 
         # Check providers used
         calls = mock_router_instance.generate.call_args_list
-        assert calls[0].kwargs['provider'] == Provider.AWS_BEDROCK
-        assert calls[1].kwargs['provider'] == Provider.GOOGLE_VERTEX
+        assert calls[0].kwargs["provider"] == Provider.AWS_BEDROCK
+        assert calls[1].kwargs["provider"] == Provider.GOOGLE_VERTEX

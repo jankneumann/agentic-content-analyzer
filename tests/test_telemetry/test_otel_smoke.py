@@ -305,6 +305,6 @@ class TestProviderContractParity:
 
         # Same attribute values
         for key in opik_attrs:
-            assert (
-                opik_attrs[key] == otel_attrs[key]
-            ), f"Mismatch on {key}: opik={opik_attrs[key]!r} vs otel={otel_attrs[key]!r}"
+            assert opik_attrs[key] == otel_attrs[key], (
+                f"Mismatch on {key}: opik={opik_attrs[key]!r} vs otel={otel_attrs[key]!r}"
+            )

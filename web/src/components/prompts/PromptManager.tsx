@@ -19,6 +19,7 @@ import {
   AlertCircle,
   RefreshCw,
   Pencil,
+  X,
 } from "lucide-react"
 
 import {
@@ -161,8 +162,24 @@ export function PromptManager() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search prompts..."
-            className="h-8 pl-8 text-sm"
+            aria-label="Search prompts"
+            className="h-8 pl-8 pr-8 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearch("")
+              }
+            }}
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
           <span>{filteredPrompts.length} {filteredPrompts.length === 1 ? "prompt" : "prompts"}</span>

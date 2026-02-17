@@ -15,6 +15,7 @@ class TestSettingsSecurity:
     @pytest.fixture
     def plain_client(self, db_session):
         """Create a TestClient with database patching but NO automatic auth."""
+
         @contextmanager
         def mock_get_db():
             yield db_session

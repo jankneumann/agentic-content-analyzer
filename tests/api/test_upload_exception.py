@@ -16,9 +16,7 @@ def test_upload_exception_leak(client: TestClient):
         mock_instance.ingest_bytes = AsyncMock(side_effect=Exception(secret_message))
 
         # Create a dummy file
-        files = {
-            "file": ("test.txt", b"dummy content", "text/plain")
-        }
+        files = {"file": ("test.txt", b"dummy content", "text/plain")}
 
         # Perform the request
         response = client.post("/api/v1/documents/upload", files=files)

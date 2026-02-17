@@ -7,12 +7,13 @@ listing, retrieving, creating, deleting, and ingesting content records.
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import defer
 
+from src.api.dependencies import verify_admin_key
 from src.models.content import (
     Content,
     ContentCreate,
@@ -56,7 +57,11 @@ CONTENT_SORT_FIELDS = {
     "ingested_at",
 }
 
-router = APIRouter(prefix="/api/v1/contents", tags=["contents"])
+router = APIRouter(
+    prefix="/api/v1/contents",
+    tags=["contents"],
+    dependencies=[Depends(verify_admin_key)],
+)
 
 
 # ============================================================================
