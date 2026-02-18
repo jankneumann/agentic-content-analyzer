@@ -1233,6 +1233,7 @@ class Settings(BaseSettings):
                 service = SettingsService(db)
                 return service.get(f"voice.{field}")
         except Exception:
+            logger.debug("Voice DB override lookup failed for %s", field)
             return None
 
     def get_effective_voice_provider(self) -> str:
@@ -1240,6 +1241,11 @@ class Settings(BaseSettings):
 
         Resolution: env var > DB override > Settings default.
         """
+        import os
+
+        env_value = os.environ.get("AUDIO_DIGEST_PROVIDER")
+        if env_value:
+            return env_value
         db_value = self._get_voice_db_override("provider")
         if db_value:
             return db_value
@@ -1250,6 +1256,11 @@ class Settings(BaseSettings):
 
         Resolution: env var > DB override > Settings default.
         """
+        import os
+
+        env_value = os.environ.get("AUDIO_DIGEST_DEFAULT_VOICE")
+        if env_value:
+            return env_value
         db_value = self._get_voice_db_override("default_voice")
         if db_value:
             return db_value
@@ -1260,6 +1271,14 @@ class Settings(BaseSettings):
 
         Resolution: env var > DB override > Settings default.
         """
+        import os
+
+        env_value = os.environ.get("AUDIO_DIGEST_SPEED")
+        if env_value:
+            try:
+                return float(env_value)
+            except ValueError:
+                pass
         db_value = self._get_voice_db_override("speed")
         if db_value:
             try:

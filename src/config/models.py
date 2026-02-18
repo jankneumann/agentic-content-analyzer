@@ -109,6 +109,7 @@ def _get_db_model_override(step: str) -> str | None:
             return service.get(f"model.{step}")
     except Exception:
         # DB not available (e.g., during startup, CLI without DB)
+        logger.debug("DB model override lookup failed for %s", step)
         return None
 
 

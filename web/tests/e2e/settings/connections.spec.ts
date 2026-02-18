@@ -42,8 +42,8 @@ test.describe("Settings > Connections", () => {
   }) => {
     await settingsPage.navigate()
 
-    // PostgreSQL has latency_ms: 5.2 in the mock
-    await expect(settingsPage.page.getByText(/5\.2/)).toBeVisible()
+    // PostgreSQL has latency_ms: 5.2 in the mock, component renders Math.round() = 5ms
+    await expect(settingsPage.page.getByText(/5ms/)).toBeVisible()
   })
 
   test("shows overall healthy status", async ({ settingsPage }) => {
@@ -90,7 +90,7 @@ test.describe("Settings > Connections", () => {
     await settingsPage.navigate()
 
     await expect(
-      settingsPage.page.getByText(/failed to load/i)
+      settingsPage.page.getByText(/failed to check/i)
     ).toBeVisible()
   })
 

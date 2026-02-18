@@ -776,19 +776,52 @@ class TestVoiceOverrideResolution:
             voice_id = s.get_audio_digest_voice_id(None)
             assert voice_id == "alloy"
 
-    def test_db_exception_falls_back_to_default(self):
-        """If DB lookup throws, Settings defaults are used."""
+    def test_db_exception_propagates_from_effective_methods(self):
+        """If _get_voice_db_override is fully mocked to raise, callers propagate.
+
+        The real _get_voice_db_override has internal try/except protection,
+        but when mocked with side_effect, the mock replaces it entirely.
+        This verifies get_effective_* methods don't add redundant try/except.
+        """
         from unittest.mock import patch
+
+        import pytest
 
         s = self._make_settings()
         with patch.object(s, "_get_voice_db_override", side_effect=Exception("DB down")):
-            # get_effective methods catch exceptions in _get_voice_db_override
-            # But since we're patching the method itself to raise, we need to test
-            # that the callers handle None gracefully
-            pass
+            with pytest.raises(Exception, match="DB down"):
+                s.get_effective_voice_provider()
 
-        # Simpler: just verify that _get_voice_db_override returning None works
+    def test_defaults_used_when_db_returns_none(self):
+        """When _get_voice_db_override returns None, Settings defaults are used."""
+        from unittest.mock import patch
+
+        s = self._make_settings()
         with patch.object(s, "_get_voice_db_override", return_value=None):
             assert s.get_effective_voice_provider() == "openai"
             assert s.get_effective_voice() == "nova"
             assert s.get_effective_voice_speed() == 1.0
+
+    def test_env_var_takes_precedence_over_db_override(self):
+        """Env vars win over DB overrides for voice settings."""
+        import os
+        from unittest.mock import patch
+
+        s = self._make_settings()
+        with (
+            patch.object(s, "_get_voice_db_override", return_value="elevenlabs"),
+            patch.dict(os.environ, {"AUDIO_DIGEST_PROVIDER": "custom-provider"}),
+        ):
+            assert s.get_effective_voice_provider() == "custom-provider"
+
+        with (
+            patch.object(s, "_get_voice_db_override", return_value="alloy"),
+            patch.dict(os.environ, {"AUDIO_DIGEST_DEFAULT_VOICE": "shimmer"}),
+        ):
+            assert s.get_effective_voice() == "shimmer"
+
+        with (
+            patch.object(s, "_get_voice_db_override", return_value="1.5"),
+            patch.dict(os.environ, {"AUDIO_DIGEST_SPEED": "0.8"}),
+        ):
+            assert s.get_effective_voice_speed() == 0.8

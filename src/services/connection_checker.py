@@ -52,7 +52,8 @@ def _check_database() -> ServiceStatus:
             latency_ms=round(latency, 1),
         )
     except Exception as exc:
-        return ServiceStatus(name="PostgreSQL", status="unavailable", details=str(exc))
+        logger.warning("PostgreSQL health check failed: %s", exc)
+        return ServiceStatus(name="PostgreSQL", status="unavailable", details="Connection failed")
 
 
 def _check_neo4j() -> ServiceStatus:
@@ -68,8 +69,10 @@ def _check_neo4j() -> ServiceStatus:
             uri,
             auth=(settings.neo4j_user, settings.neo4j_password),
         )
-        driver.verify_connectivity()
-        driver.close()
+        try:
+            driver.verify_connectivity()
+        finally:
+            driver.close()
         return ServiceStatus(
             name="Neo4j",
             status="ok",
@@ -82,7 +85,8 @@ def _check_neo4j() -> ServiceStatus:
             details="neo4j driver not installed",
         )
     except Exception as exc:
-        return ServiceStatus(name="Neo4j", status="unavailable", details=str(exc))
+        logger.warning("Neo4j health check failed: %s", exc)
+        return ServiceStatus(name="Neo4j", status="unavailable", details="Connection failed")
 
 
 def _check_anthropic() -> ServiceStatus:
@@ -172,9 +176,9 @@ def _check_embedding() -> ServiceStatus:
 async def check_all_connections() -> ConnectionCheckResult:
     """Run all connection checks concurrently.
 
-    Uses asyncio to run checks in parallel with per-service timeout.
+    Uses asyncio.gather to run checks in parallel with per-service timeout.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     timeout = settings.health_check_timeout_seconds
 
     # Run sync checks in executor with timeout
@@ -188,30 +192,25 @@ async def check_all_connections() -> ConnectionCheckResult:
         _check_embedding,
     ]
 
-    results = []
-    for check_fn in sync_checks:
+    async def _run_check(check_fn):  # type: ignore[no-untyped-def]
         try:
-            status = await asyncio.wait_for(
+            return await asyncio.wait_for(
                 loop.run_in_executor(None, check_fn),
                 timeout=timeout,
             )
-            results.append(status)
         except TimeoutError:
-            results.append(
-                ServiceStatus(
-                    name=check_fn.__name__.replace("_check_", "").title(),
-                    status="unavailable",
-                    details=f"Health check timed out after {timeout}s",
-                )
+            return ServiceStatus(
+                name=check_fn.__name__.replace("_check_", "").title(),
+                status="unavailable",
+                details=f"Health check timed out after {timeout}s",
             )
         except Exception as exc:
             logger.warning("Connection check %s failed: %s", check_fn.__name__, exc)
-            results.append(
-                ServiceStatus(
-                    name=check_fn.__name__.replace("_check_", "").title(),
-                    status="error",
-                    details=str(exc),
-                )
+            return ServiceStatus(
+                name=check_fn.__name__.replace("_check_", "").title(),
+                status="error",
+                details="Connection check failed",
             )
 
-    return ConnectionCheckResult(services=results)
+    results = await asyncio.gather(*[_run_check(fn) for fn in sync_checks])
+    return ConnectionCheckResult(services=list(results))

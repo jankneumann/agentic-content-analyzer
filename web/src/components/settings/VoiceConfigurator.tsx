@@ -83,6 +83,8 @@ export function VoiceConfigurator() {
 
   // Local speed state for smooth slider interaction
   const [localSpeed, setLocalSpeed] = useState<number | null>(null)
+  // Local voice state for debounced text input
+  const [localVoice, setLocalVoice] = useState<string | null>(null)
 
   const handleUpdate = (field: string, value: string) => {
     updateMutation.mutate({ field, value })
@@ -180,8 +182,14 @@ export function VoiceConfigurator() {
         <EnvLockWrapper source={data.default_voice.source}>
           <input
             type="text"
-            value={data.default_voice.value}
-            onChange={(e) => handleUpdate("default_voice", e.target.value)}
+            value={localVoice ?? data.default_voice.value}
+            onChange={(e) => setLocalVoice(e.target.value)}
+            onBlur={() => {
+              if (localVoice !== null && localVoice !== data.default_voice.value) {
+                handleUpdate("default_voice", localVoice)
+              }
+              setLocalVoice(null)
+            }}
             disabled={data.default_voice.source === "env"}
             className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             placeholder="e.g. alloy, shimmer, onyx"
