@@ -53,7 +53,7 @@ class AudioDigestGenerator:
             speed: Speech speed (0.25 to 4.0)
         """
         self.provider = provider
-        self.voice = voice or settings.audio_digest_default_voice
+        self.voice = voice or settings.get_effective_voice()
         self.speed = speed
 
         # Map provider string to VoiceProvider enum

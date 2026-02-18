@@ -44,11 +44,15 @@ Usage:
     )
 """
 
+import logging
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class Provider(StrEnum):
@@ -84,6 +88,28 @@ class ModelStep(StrEnum):
     ENTITY_EXTRACTION = "entity_extraction"  # Entity extraction for knowledge graph
     RERANKING = "reranking"  # Search result reranking (Graphiti)
     PODCAST_SCRIPT = "podcast_script"  # Podcast script generation from digest
+
+
+# Map of env var names per model step (e.g., MODEL_SUMMARIZATION)
+_STEP_ENV_VARS: dict[str, str] = {step.value: f"MODEL_{step.value.upper()}" for step in ModelStep}
+
+
+def _get_db_model_override(step: str) -> str | None:
+    """Look up a model override from the settings_overrides table.
+
+    Uses a lazy import to avoid circular dependencies between config and storage.
+    Returns None if no override exists or if the DB is unavailable.
+    """
+    try:
+        from src.services.settings_service import SettingsService
+        from src.storage.database import get_db
+
+        with get_db() as db:
+            service = SettingsService(db)
+            return service.get(f"model.{step}")
+    except Exception:
+        # DB not available (e.g., during startup, CLI without DB)
+        return None
 
 
 @dataclass
@@ -281,12 +307,29 @@ class ModelConfig:
     def get_model_for_step(self, step: ModelStep) -> str:
         """Get the model ID for a pipeline step.
 
+        Resolution order (highest precedence first):
+        1. Environment variable (MODEL_SUMMARIZATION, etc.)
+        2. Database override (settings_overrides table, key: model.<step>)
+        3. Constructor value / YAML default
+
         Args:
             step: Pipeline step
 
         Returns:
-            Model ID (e.g., "claude-haiku-4-5-20251001")
+            Model ID (e.g., "claude-haiku-4-5")
         """
+        # 1. Check env var
+        env_var = _STEP_ENV_VARS[step.value]
+        env_value = os.environ.get(env_var)
+        if env_value and env_value in MODEL_REGISTRY:
+            return env_value
+
+        # 2. Check DB override
+        db_value = _get_db_model_override(step.value)
+        if db_value and db_value in MODEL_REGISTRY:
+            return db_value
+
+        # 3. Fall back to constructor value (from YAML defaults)
         return self._models[step]
 
     def get_model_info(self, model_id: str) -> ModelInfo:

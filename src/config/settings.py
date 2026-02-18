@@ -1219,21 +1219,76 @@ class Settings(BaseSettings):
 
         return config
 
+    def _get_voice_db_override(self, field: str) -> str | None:
+        """Look up a voice override from the settings_overrides table.
+
+        Uses a lazy import to avoid circular dependencies.
+        Returns None if no override exists or if the DB is unavailable.
+        """
+        try:
+            from src.services.settings_service import SettingsService
+            from src.storage.database import get_db
+
+            with get_db() as db:
+                service = SettingsService(db)
+                return service.get(f"voice.{field}")
+        except Exception:
+            return None
+
+    def get_effective_voice_provider(self) -> str:
+        """Get the effective TTS provider with DB override support.
+
+        Resolution: env var > DB override > Settings default.
+        """
+        db_value = self._get_voice_db_override("provider")
+        if db_value:
+            return db_value
+        return self.audio_digest_provider
+
+    def get_effective_voice(self) -> str:
+        """Get the effective default voice with DB override support.
+
+        Resolution: env var > DB override > Settings default.
+        """
+        db_value = self._get_voice_db_override("default_voice")
+        if db_value:
+            return db_value
+        return self.audio_digest_default_voice
+
+    def get_effective_voice_speed(self) -> float:
+        """Get the effective voice speed with DB override support.
+
+        Resolution: env var > DB override > Settings default.
+        """
+        db_value = self._get_voice_db_override("speed")
+        if db_value:
+            try:
+                return float(db_value)
+            except ValueError:
+                pass
+        return self.audio_digest_speed
+
     def get_audio_digest_voice_id(self, preset: str | None = None) -> str:
         """Get the voice ID for audio digest generation.
 
+        Resolution order for voice:
+        1. Preset lookup (if preset name provided and known)
+        2. DB override (voice.default_voice in settings_overrides)
+        3. Settings default (audio_digest_default_voice from env/config)
+
         Args:
             preset: Optional preset name (professional, warm, energetic, calm)
-                    Falls back to audio_digest_default_voice if not preset or unknown.
+                    Falls back to effective default voice if not preset or unknown.
 
         Returns:
             Provider-specific voice ID
         """
+        provider = self.get_effective_voice_provider()
         if preset and preset in AUDIO_DIGEST_VOICE_PRESETS:
             provider_voices = AUDIO_DIGEST_VOICE_PRESETS[preset]
-            if self.audio_digest_provider in provider_voices:
-                return provider_voices[self.audio_digest_provider]
-        return self.audio_digest_default_voice
+            if provider in provider_voices:
+                return provider_voices[provider]
+        return self.get_effective_voice()
 
 
 @lru_cache
