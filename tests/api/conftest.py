@@ -27,6 +27,9 @@ from src.models.podcast import (
     PodcastStatus,
 )
 from src.models.settings import PromptOverride  # noqa: F401 - registers with Base.metadata
+from src.models.settings_override import (
+    SettingsOverride,  # noqa: F401 - registers with Base.metadata
+)
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
@@ -179,6 +182,9 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         patch("src.api.script_routes.get_db", mock_get_db),
         patch("src.api.chat_routes.get_db", mock_get_db),
         patch("src.api.settings_routes.get_db", mock_get_db),
+        patch("src.api.settings_override_routes.get_db", mock_get_db),
+        patch("src.api.model_settings_routes.get_db", mock_get_db),
+        patch("src.api.voice_settings_routes.get_db", mock_get_db),
         patch("src.api.content_routes.get_db", mock_get_db),
         patch("src.api.source_routes.get_db", mock_get_db),
         patch("src.api.upload_routes.get_db", mock_get_db),

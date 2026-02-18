@@ -2,6 +2,7 @@
  * Settings Page
  *
  * Application configuration including:
+ * - LLM prompt customization
  * - Model selection per pipeline step
  * - Voice configuration for podcasts
  * - API connections
@@ -22,6 +23,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { PromptManager } from "@/components/prompts/PromptManager"
+import { ModelConfigurator } from "@/components/settings/ModelConfigurator"
+import { VoiceConfigurator } from "@/components/settings/VoiceConfigurator"
+import { ConnectionDashboard } from "@/components/settings/ConnectionDashboard"
 
 export const SettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -64,15 +68,13 @@ function SettingsPage() {
               <CardTitle className="text-base">LLM Models</CardTitle>
             </div>
             <CardDescription>
-              Select models for each pipeline step.
+              Select which model to use for each pipeline step. Cost per million
+              tokens shown for each option. Environment variables take precedence
+              over database overrides.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
-              <p className="text-sm text-muted-foreground">
-                Model configuration coming in Phase 3
-              </p>
-            </div>
+            <ModelConfigurator />
           </CardContent>
         </Card>
       </PageSection>
@@ -85,15 +87,12 @@ function SettingsPage() {
               <CardTitle className="text-base">TTS Voices</CardTitle>
             </div>
             <CardDescription>
-              Configure voices for podcast generation.
+              Configure text-to-speech provider, voice, and speed for audio
+              digests and podcasts. Select presets for quick configuration.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
-              <p className="text-sm text-muted-foreground">
-                Voice configuration coming in Phase 3
-              </p>
-            </div>
+            <VoiceConfigurator />
           </CardContent>
         </Card>
       </PageSection>
@@ -106,15 +105,12 @@ function SettingsPage() {
               <CardTitle className="text-base">API Connections</CardTitle>
             </div>
             <CardDescription>
-              Status of backend service connections.
+              Health status of all configured backend services. Auto-refreshes
+              every 60 seconds.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
-              <p className="text-sm text-muted-foreground">
-                Connection status coming in Phase 3
-              </p>
-            </div>
+            <ConnectionDashboard />
           </CardContent>
         </Card>
       </PageSection>

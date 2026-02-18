@@ -93,6 +93,17 @@ export {
   useTestPrompt,
 } from "./use-prompts"
 
+// Settings hooks (model, voice, connections)
+export {
+  useModelSettings,
+  useUpdateModel,
+  useResetModel,
+  useVoiceSettings,
+  useUpdateVoice,
+  useResetVoice,
+  useConnectionStatus,
+} from "./use-settings"
+
 // Content hooks (unified content model)
 export {
   useContents,

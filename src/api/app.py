@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.audio_digest_routes import router as audio_digest_router
 from src.api.chat_routes import router as chat_router
+from src.api.connection_status_routes import router as connection_status_router
 from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
 from src.api.files_routes import router as files_router
@@ -19,16 +20,19 @@ from src.api.health_routes import router as health_router
 from src.api.job_routes import router as job_router
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.telemetry import TraceIdMiddleware
+from src.api.model_settings_routes import router as model_settings_router
 from src.api.otel_proxy_routes import router as otel_proxy_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
 from src.api.search_routes import router as search_router
+from src.api.settings_override_routes import router as settings_override_router
 from src.api.settings_routes import router as settings_router
 from src.api.source_routes import router as source_router
 from src.api.summary_routes import router as summary_router
 from src.api.theme_routes import router as theme_router
 from src.api.upload_routes import router as upload_router
+from src.api.voice_settings_routes import router as voice_settings_router
 from src.config import settings
 
 
@@ -128,6 +132,10 @@ app.include_router(podcast_router)
 app.include_router(theme_router)
 app.include_router(chat_router)
 app.include_router(settings_router)
+app.include_router(settings_override_router)
+app.include_router(model_settings_router)
+app.include_router(voice_settings_router)
+app.include_router(connection_status_router)
 app.include_router(upload_router)
 app.include_router(files_router)
 app.include_router(save_router)  # Mobile content capture

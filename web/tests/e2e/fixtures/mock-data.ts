@@ -868,3 +868,141 @@ export function createPromptTestResponse(
     ...overrides,
   }
 }
+
+// ─── Settings: Model Configuration ────────────────────────
+
+export function createModelOption(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5",
+    family: "claude",
+    supports_vision: true,
+    supports_video: false,
+    cost_per_mtok_input: 3.0,
+    cost_per_mtok_output: 15.0,
+    providers: ["anthropic"],
+    ...overrides,
+  }
+}
+
+export function createStepConfig(overrides: Record<string, unknown> = {}) {
+  return {
+    step: "summarization",
+    current_model: "claude-haiku-4-5",
+    source: "default",
+    env_var: "MODEL_SUMMARIZATION",
+    default_model: "claude-haiku-4-5",
+    ...overrides,
+  }
+}
+
+export function createModelSettingsResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    steps: [
+      createStepConfig({
+        step: "summarization",
+        current_model: "claude-haiku-4-5",
+        source: "default",
+        env_var: "MODEL_SUMMARIZATION",
+        default_model: "claude-haiku-4-5",
+      }),
+      createStepConfig({
+        step: "theme_analysis",
+        current_model: "claude-sonnet-4-5",
+        source: "default",
+        env_var: "MODEL_THEME_ANALYSIS",
+        default_model: "claude-sonnet-4-5",
+      }),
+      createStepConfig({
+        step: "digest_creation",
+        current_model: "claude-sonnet-4-5",
+        source: "db",
+        env_var: "MODEL_DIGEST_CREATION",
+        default_model: "claude-haiku-4-5",
+      }),
+    ],
+    available_models: [
+      createModelOption({
+        id: "claude-haiku-4-5",
+        name: "Claude Haiku 4.5",
+        family: "claude",
+        cost_per_mtok_input: 0.8,
+        cost_per_mtok_output: 4.0,
+      }),
+      createModelOption({
+        id: "claude-sonnet-4-5",
+        name: "Claude Sonnet 4.5",
+        family: "claude",
+        cost_per_mtok_input: 3.0,
+        cost_per_mtok_output: 15.0,
+      }),
+      createModelOption({
+        id: "gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        family: "gemini",
+        supports_video: true,
+        cost_per_mtok_input: 0.15,
+        cost_per_mtok_output: 0.6,
+        providers: ["google"],
+      }),
+    ],
+    ...overrides,
+  }
+}
+
+export function createEmptyModelSettingsResponse() {
+  return { steps: [], available_models: [] }
+}
+
+// ─── Settings: Voice Configuration ────────────────────────
+
+export function createVoiceSettingInfo(overrides: Record<string, unknown> = {}) {
+  return {
+    key: "voice.provider",
+    value: "openai",
+    source: "default",
+    ...overrides,
+  }
+}
+
+export function createVoiceSettingsResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    provider: createVoiceSettingInfo({ key: "voice.provider", value: "openai", source: "default" }),
+    default_voice: createVoiceSettingInfo({ key: "voice.default_voice", value: "nova", source: "default" }),
+    speed: createVoiceSettingInfo({ key: "voice.speed", value: "1.0", source: "default" }),
+    presets: [
+      { name: "professional", voices: { openai: "nova", elevenlabs: "Rachel" } },
+      { name: "warm", voices: { openai: "shimmer", elevenlabs: "Domi" } },
+      { name: "energetic", voices: { openai: "echo", elevenlabs: "Bella" } },
+      { name: "calm", voices: { openai: "fable", elevenlabs: "Elli" } },
+    ],
+    valid_providers: ["openai", "elevenlabs"],
+    ...overrides,
+  }
+}
+
+// ─── Settings: Connection Status ──────────────────────────
+
+export function createServiceStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "PostgreSQL",
+    status: "ok",
+    details: "local provider",
+    latency_ms: 5.2,
+    ...overrides,
+  }
+}
+
+export function createConnectionStatusResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    services: [
+      createServiceStatus({ name: "PostgreSQL", status: "ok", details: "local provider", latency_ms: 5.2 }),
+      createServiceStatus({ name: "Neo4j", status: "not_configured", details: "No URI configured", latency_ms: null }),
+      createServiceStatus({ name: "Anthropic", status: "ok", details: "API key configured", latency_ms: null }),
+      createServiceStatus({ name: "OpenAI", status: "not_configured", details: "OPENAI_API_KEY not set", latency_ms: null }),
+      createServiceStatus({ name: "Embeddings", status: "ok", details: "local provider", latency_ms: 12.3 }),
+    ],
+    all_ok: true,
+    ...overrides,
+  }
+}
