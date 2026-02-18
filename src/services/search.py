@@ -169,7 +169,9 @@ class HybridSearchService:
         )
 
         # Pagination is applied inside _aggregate_to_documents for performance
-        total = len({chunk_content_map.get(cid) for cid in final_scores if cid in chunk_content_map})
+        total = len(
+            {chunk_content_map.get(cid) for cid in final_scores if cid in chunk_content_map}
+        )
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
