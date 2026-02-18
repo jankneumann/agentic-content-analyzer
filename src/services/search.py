@@ -97,7 +97,7 @@ class HybridSearchService:
             bm25_results = await asyncio.to_thread(
                 self._bm25.search, query.query, search_limit, content_ids
             )
-            vector_results: list[tuple[int, float]] = []
+            vector_results: list[tuple[int, float, int]] = []
         elif query.type == SearchType.VECTOR:
             bm25_results = []
             vector_results = await self._vector_search(
@@ -111,8 +111,18 @@ class HybridSearchService:
             )
 
         # Build raw score maps: chunk_id -> score
-        bm25_scores: dict[int, float] = {cid: score for cid, score in bm25_results}
-        vector_scores: dict[int, float] = {cid: score for cid, score in vector_results}
+        # And keep track of chunk -> content mapping for late row lookup
+        bm25_scores: dict[int, float] = {}
+        chunk_content_map: dict[int, int] = {}
+
+        for cid, score, content_id in bm25_results:
+            bm25_scores[cid] = score
+            chunk_content_map[cid] = content_id
+
+        vector_scores: dict[int, float] = {}
+        for cid, score, content_id in vector_results:
+            vector_scores[cid] = score
+            chunk_content_map[cid] = content_id
 
         # Merge all candidate chunk IDs
         all_chunk_ids = set(bm25_scores.keys()) | set(vector_scores.keys())
@@ -147,7 +157,7 @@ class HybridSearchService:
         else:
             final_scores = rrf_scores
 
-        # Aggregate to document level
+        # Aggregate to document level (using late row lookup)
         results = self._aggregate_to_documents(
             final_scores,
             bm25_scores,
@@ -155,11 +165,11 @@ class HybridSearchService:
             rrf_scores,
             rerank_scores,
             query=query,
+            chunk_content_map=chunk_content_map,
         )
 
-        # Apply pagination
-        total = len(results)
-        results = results[query.offset : query.offset + query.limit]
+        # Pagination is applied inside _aggregate_to_documents for performance
+        total = len({chunk_content_map.get(cid) for cid in final_scores if cid in chunk_content_map})
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -174,7 +184,7 @@ class HybridSearchService:
         query: str,
         limit: int = 100,
         content_ids: list[int] | None = None,
-    ) -> list[tuple[int, float]]:
+    ) -> list[tuple[int, float, int]]:
         """Search chunks by embedding cosine similarity."""
         try:
             query_embedding = await self._embedder.embed(query, is_query=True)
@@ -191,7 +201,7 @@ class HybridSearchService:
         # Build SQL for vector similarity search
         if content_ids:
             stmt = text("""
-                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity
+                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity, dc.content_id
                 FROM document_chunks dc
                 WHERE dc.embedding IS NOT NULL
                   AND dc.content_id = ANY(:content_ids)
@@ -208,7 +218,7 @@ class HybridSearchService:
             )
         else:
             stmt = text("""
-                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity
+                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity, dc.content_id
                 FROM document_chunks dc
                 WHERE dc.embedding IS NOT NULL
                 ORDER BY dc.embedding <=> CAST(:query_vec AS vector)
@@ -219,7 +229,7 @@ class HybridSearchService:
                 {"query_vec": str(vec), "limit": limit},
             )
 
-        return [(row.id, row.similarity) for row in result]
+        return [(row.id, row.similarity, row.content_id) for row in result]
 
     def _resolve_content_filter(self, query: SearchQuery) -> list[int] | None:
         """Pre-filter content IDs based on search filters.
@@ -374,14 +384,61 @@ class HybridSearchService:
         rrf_scores: dict[int, float],
         rerank_scores: dict[int, float],
         query: SearchQuery,
+        chunk_content_map: dict[int, int],
     ) -> list[SearchResult]:
-        """Group chunk results by content_id and enrich with content metadata."""
+        """Group chunk results by content_id and enrich with content metadata.
+
+        OPTIMIZATION: Implements Late Row Lookup.
+        1. Groups chunks by content_id using chunk_content_map (in-memory)
+        2. Calculates document scores and sorts documents
+        3. Applies pagination to get only the top document IDs
+        4. Fetches heavy metadata/text ONLY for chunks in the top documents
+        """
         if not final_scores:
             return []
 
-        chunk_ids = list(final_scores.keys())
+        # 1. Group chunks by content_id and find best score per content
+        content_scores: dict[int, float] = defaultdict(float)
+        content_chunks_map: dict[int, list[tuple[int, float]]] = defaultdict(list)
 
-        # Fetch chunk data + content metadata in one query
+        for chunk_id, score in final_scores.items():
+            content_id = chunk_content_map.get(chunk_id)
+            if content_id:
+                content_scores[content_id] = max(content_scores[content_id], score)
+                content_chunks_map[content_id].append((chunk_id, score))
+
+        if not content_scores:
+            return []
+
+        # 2. Sort content by score descending
+        # Sort key: (score DESC, content_id DESC) for deterministic order
+        sorted_content_ids = sorted(
+            content_scores.keys(),
+            key=lambda cid: (content_scores[cid], cid),
+            reverse=True,
+        )
+
+        # 3. Apply pagination (Late Row Lookup)
+        # We only need full details for documents on the current page
+        paged_content_ids = sorted_content_ids[query.offset : query.offset + query.limit]
+
+        if not paged_content_ids:
+            return []
+
+        # Identify which chunks to fetch for these contents
+        # We need top 3 chunks for each of the paged documents
+        target_chunk_ids = []
+        for cid in paged_content_ids:
+            # Sort chunks for this content by score
+            chunks = content_chunks_map[cid]
+            chunks.sort(key=lambda x: x[1], reverse=True)
+            # Take top 3 chunks
+            target_chunk_ids.extend([c[0] for c in chunks[:3]])
+
+        if not target_chunk_ids:
+            return []
+
+        # 4. Fetch chunk data + content metadata ONLY for target chunks
         stmt = text("""
             SELECT
                 dc.id as chunk_id,
@@ -399,13 +456,13 @@ class HybridSearchService:
             JOIN contents c ON c.id = dc.content_id
             WHERE dc.id = ANY(:chunk_ids)
         """)
-        result = self._session.execute(stmt, {"chunk_ids": chunk_ids})
+        result = self._session.execute(stmt, {"chunk_ids": target_chunk_ids})
         rows = list(result)
 
         # Extract query terms for highlighting
         query_terms = _extract_query_terms(query.query)
 
-        # Group chunks by content_id
+        # Group chunks by content_id (again, but now with full data)
         content_chunks: dict[int, list] = defaultdict(list)
         content_meta: dict[int, dict] = {}
 
@@ -443,14 +500,19 @@ class HybridSearchService:
         # Build document-level results
         results: list[SearchResult] = []
 
-        for content_id, chunks in content_chunks.items():
+        # Iterate over paged_content_ids to preserve sort order
+        for content_id in paged_content_ids:
+            if content_id not in content_meta:
+                continue
+
             meta = content_meta[content_id]
+            chunks = content_chunks.get(content_id, [])
 
             # Sort chunks by final score descending
             chunks.sort(key=lambda c: c.score, reverse=True)
 
             # Document score = best chunk score
-            best_score = chunks[0].score if chunks else 0.0
+            best_score = content_scores[content_id]
 
             # Collect per-method scores from the best chunk
             best_chunk_id = chunks[0].chunk_id if chunks else None
@@ -470,12 +532,9 @@ class HybridSearchService:
                     source=meta["source_type"],
                     publication=meta["publication"],
                     published_date=meta["published_date"],
-                    matching_chunks=chunks[:3],  # Top 3 chunks per document
+                    matching_chunks=chunks,  # Already filtered to top chunks
                 )
             )
-
-        # Sort results by document score descending, tiebreak by content_id
-        results.sort(key=lambda r: (-r.score, r.id))
 
         return results
 
