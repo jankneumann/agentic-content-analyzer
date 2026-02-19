@@ -30,15 +30,24 @@ test.describe("Settings > Voice", () => {
   test("shows current provider", async ({ settingsPage }) => {
     await settingsPage.navigate()
 
-    // Should show "openai" as the current provider (default mock)
-    await expect(settingsPage.page.getByText("openai")).toBeVisible()
+    // Scope to the Voice Configuration section to avoid matching the Model
+    // section's comboboxes, and use the provider select specifically
+    const voiceSection = settingsPage.page.locator("section", {
+      has: settingsPage.page.getByText("Voice Configuration"),
+    })
+    await expect(
+      voiceSection.getByRole("combobox").first()
+    ).toContainText("openai")
   })
 
   test("shows current speed value", async ({ settingsPage }) => {
     await settingsPage.navigate()
 
-    // Speed is displayed as "1.0x" or "1.0"
-    await expect(settingsPage.page.getByText(/1\.0/)).toBeVisible()
+    // Speed is displayed as "1.0x" — scope to the large display text to avoid
+    // matching the slider label which also shows "1.0x"
+    await expect(
+      settingsPage.page.locator("span.text-2xl").getByText(/1\.0/)
+    ).toBeVisible()
   })
 
   test("shows voice presets", async ({ settingsPage }) => {
@@ -83,8 +92,13 @@ test.describe("Settings > Voice", () => {
     await apiMocks.mockVoiceSettings(data)
     await settingsPage.navigate()
 
+    // Scope to the Voice Configuration section to avoid matching the Model
+    // section's comboboxes, and use the provider select specifically
+    const voiceSection = settingsPage.page.locator("section", {
+      has: settingsPage.page.getByText("Voice Configuration"),
+    })
     await expect(
-      settingsPage.page.getByText("elevenlabs")
-    ).toBeVisible()
+      voiceSection.getByRole("combobox").first()
+    ).toContainText("elevenlabs")
   })
 })
