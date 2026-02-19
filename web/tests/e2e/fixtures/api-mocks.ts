@@ -40,6 +40,9 @@ export class ApiMocks {
       this.mockChatConfig(),
       this.mockSystemHealth(),
       this.mockPrompts(),
+      this.mockModelSettings(),
+      this.mockVoiceSettings(),
+      this.mockConnectionStatus(),
     ])
   }
 
@@ -63,6 +66,9 @@ export class ApiMocks {
       this.mockChatConfig(),
       this.mockSystemHealth(),
       this.mockPromptsEmpty(),
+      this.mockModelSettingsEmpty(),
+      this.mockVoiceSettings(),
+      this.mockConnectionStatus(),
     ])
   }
 
@@ -782,6 +788,90 @@ export class ApiMocks {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(data ?? mockData.createPromptTestResponse()),
+      })
+    )
+  }
+
+  // ─── Model Settings Endpoints ───────────────────────────
+
+  async mockModelSettings(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/settings/models", (route) => {
+      if (route.request().url().includes("/models/")) return route.fallback()
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createModelSettingsResponse()),
+      })
+    })
+  }
+
+  async mockModelSettingsEmpty(): Promise<void> {
+    await this.mockModelSettings(mockData.createEmptyModelSettingsResponse())
+  }
+
+  async mockModelUpdate(): Promise<void> {
+    await this.page.route("**/api/v1/settings/models/*", (route) => {
+      const method = route.request().method()
+      if (method === "PUT") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ step: "summarization", model_id: "claude-sonnet-4-5", source: "db" }),
+        })
+      }
+      if (method === "DELETE") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ step: "summarization", model_id: "claude-haiku-4-5", source: "default" }),
+        })
+      }
+      return route.fallback()
+    })
+  }
+
+  // ─── Voice Settings Endpoints ───────────────────────────
+
+  async mockVoiceSettings(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/settings/voice", (route) => {
+      if (route.request().url().includes("/voice/")) return route.fallback()
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createVoiceSettingsResponse()),
+      })
+    })
+  }
+
+  async mockVoiceUpdate(): Promise<void> {
+    await this.page.route("**/api/v1/settings/voice/*", (route) => {
+      const method = route.request().method()
+      if (method === "PUT") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ field: "provider", value: "elevenlabs", source: "db" }),
+        })
+      }
+      if (method === "DELETE") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ field: "provider", value: "openai", source: "default" }),
+        })
+      }
+      return route.fallback()
+    })
+  }
+
+  // ─── Connection Status Endpoints ────────────────────────
+
+  async mockConnectionStatus(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/settings/connections*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createConnectionStatusResponse()),
       })
     )
   }

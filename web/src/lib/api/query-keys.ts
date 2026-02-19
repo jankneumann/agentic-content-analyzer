@@ -271,6 +271,16 @@ export const promptKeys = {
 }
 
 /**
+ * Query keys for settings management
+ */
+export const settingsKeys = {
+  all: ["settings"] as const,
+  models: () => [...settingsKeys.all, "models"] as const,
+  voice: () => [...settingsKeys.all, "voice"] as const,
+  connections: () => [...settingsKeys.all, "connections"] as const,
+}
+
+/**
  * Combined query keys export
  *
  * Use this for easy access to all query key factories.
@@ -286,4 +296,5 @@ export const queryKeys = {
   chat: chatKeys,
   system: systemKeys,
   prompts: promptKeys,
+  settings: settingsKeys,
 }
