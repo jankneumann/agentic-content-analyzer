@@ -29,31 +29,80 @@ def summarize_pending(
             help="Maximum number of pending items to summarize (default: all).",
         ),
     ] = None,
+    sync: Annotated[
+        bool,
+        typer.Option(
+            "--sync",
+            help="Run synchronously instead of enqueuing to job queue.",
+        ),
+    ] = False,
 ) -> None:
     """Summarize all pending content items.
 
-    Finds content with PENDING or PARSED status and runs summarization.
+    By default, enqueues summarization jobs to the queue for concurrent
+    processing by the embedded worker (or standalone aca worker).
+    Use --sync for sequential in-process summarization.
     """
+    import asyncio
+
     from src.cli.output import is_json_mode, output_result
 
     try:
-        from src.processors.summarizer import ContentSummarizer
+        if sync:
+            from src.processors.summarizer import ContentSummarizer
 
-        summarizer = ContentSummarizer()
+            summarizer = ContentSummarizer()
 
-        if not is_json_mode():
-            msg = "Summarizing pending content"
-            if limit:
-                msg += f" (limit: {limit})"
-            msg += "..."
-            console.print(msg)
+            if not is_json_mode():
+                msg = "Summarizing pending content (sync mode)"
+                if limit:
+                    msg += f" (limit: {limit})"
+                msg += "..."
+                console.print(msg)
 
-        count = summarizer.summarize_pending_contents(limit=limit)
+            count = summarizer.summarize_pending_contents(limit=limit)
 
-        if is_json_mode():
-            output_result({"summarized_count": count, "limit": limit})
+            if is_json_mode():
+                output_result({"summarized_count": count, "limit": limit, "mode": "sync"})
+            else:
+                console.print(f"[green]Successfully summarized {count} content item(s).[/green]")
         else:
-            console.print(f"[green]Successfully summarized {count} content item(s).[/green]")
+            from src.processors.summarizer import ContentSummarizer
+
+            summarizer = ContentSummarizer()
+
+            if not is_json_mode():
+                msg = "Enqueuing pending content for summarization"
+                if limit:
+                    msg += f" (limit: {limit})"
+                msg += "..."
+                console.print(msg)
+
+            result = asyncio.run(summarizer.enqueue_pending_contents(limit=limit))
+
+            enqueued: int = result["enqueued_count"]  # type: ignore[assignment]
+            skipped: int = result["skipped_count"]  # type: ignore[assignment]
+
+            if is_json_mode():
+                output_result(
+                    {
+                        "enqueued_count": enqueued,
+                        "skipped_count": skipped,
+                        "job_ids": result["job_ids"],
+                        "limit": limit,
+                        "mode": "queue",
+                    }
+                )
+            else:
+                console.print(
+                    f"[green]Enqueued {enqueued} summarization job(s) "
+                    f"({skipped} already in queue).[/green]"
+                )
+                if enqueued > 0:
+                    console.print(
+                        "[dim]Jobs will be processed by the embedded worker "
+                        "(WORKER_CONCURRENCY controls parallelism).[/dim]"
+                    )
 
     except Exception as e:
         if is_json_mode():
@@ -69,37 +118,84 @@ def summarize_by_id(
         int,
         typer.Argument(help="Content ID to summarize."),
     ],
+    sync: Annotated[
+        bool,
+        typer.Option(
+            "--sync",
+            help="Run synchronously instead of enqueuing to job queue.",
+        ),
+    ] = False,
 ) -> None:
-    """Summarize a specific content item by its ID."""
+    """Summarize a specific content item by its ID.
+
+    By default, enqueues a summarization job to the queue.
+    Use --sync for immediate in-process summarization.
+    """
+    import asyncio
+
     from src.cli.output import is_json_mode, output_result
 
     try:
-        from src.processors.summarizer import ContentSummarizer
+        if sync:
+            from src.processors.summarizer import ContentSummarizer
 
-        summarizer = ContentSummarizer()
+            summarizer = ContentSummarizer()
 
-        if not is_json_mode():
-            console.print(f"Summarizing content ID {content_id}...")
+            if not is_json_mode():
+                console.print(f"Summarizing content ID {content_id} (sync)...")
 
-        success = summarizer.summarize_content(content_id)
+            success = summarizer.summarize_content(content_id)
 
-        if success:
-            if is_json_mode():
-                output_result({"content_id": content_id, "summarized": True})
+            if success:
+                if is_json_mode():
+                    output_result({"content_id": content_id, "summarized": True, "mode": "sync"})
+                else:
+                    console.print(f"[green]Successfully summarized content {content_id}.[/green]")
             else:
-                console.print(f"[green]Successfully summarized content {content_id}.[/green]")
+                if is_json_mode():
+                    output_result(
+                        {"content_id": content_id, "summarized": False},
+                        success=False,
+                    )
+                else:
+                    console.print(
+                        f"[red]Failed to summarize content {content_id}. "
+                        f"Check that the ID exists and has not already been summarized.[/red]"
+                    )
+                raise typer.Exit(1)
         else:
-            if is_json_mode():
-                output_result(
-                    {"content_id": content_id, "summarized": False},
-                    success=False,
-                )
+            from src.queue.setup import enqueue_summarization_job
+
+            if not is_json_mode():
+                console.print(f"Enqueuing content ID {content_id} for summarization...")
+
+            job_id = asyncio.run(enqueue_summarization_job(content_id))
+
+            if job_id is not None:
+                if is_json_mode():
+                    output_result(
+                        {
+                            "content_id": content_id,
+                            "job_id": job_id,
+                            "enqueued": True,
+                            "mode": "queue",
+                        }
+                    )
+                else:
+                    console.print(
+                        f"[green]Enqueued summarization job {job_id} "
+                        f"for content {content_id}.[/green]"
+                    )
             else:
-                console.print(
-                    f"[red]Failed to summarize content {content_id}. "
-                    f"Check that the ID exists and has not already been summarized.[/red]"
-                )
-            raise typer.Exit(1)
+                if is_json_mode():
+                    output_result(
+                        {"content_id": content_id, "enqueued": False, "reason": "already_queued"}
+                    )
+                else:
+                    console.print(
+                        f"[yellow]Content {content_id} is already queued "
+                        f"for summarization.[/yellow]"
+                    )
 
     except typer.Exit:
         raise

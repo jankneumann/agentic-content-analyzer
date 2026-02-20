@@ -242,7 +242,7 @@ def _register_content_handlers() -> None:
             from src.processors.summarizer import ContentSummarizer
 
             summarizer = ContentSummarizer()
-            summarizer.summarize_content(content_id)
+            await _asyncio.to_thread(summarizer.summarize_content, content_id)
         else:
             raise ValueError(f"Unknown task_type: {task_type}")
 
@@ -271,7 +271,7 @@ def _register_content_handlers() -> None:
         for attempt, delay in enumerate([*RATE_LIMIT_BACKOFF_DELAYS, None], start=1):
             try:
                 summarizer = ContentSummarizer()
-                success = summarizer.summarize_content(content_id)
+                success = await _asyncio.to_thread(summarizer.summarize_content, content_id)
 
                 if success:
                     await update_job_progress(job_id, 100, "Completed")

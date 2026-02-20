@@ -84,10 +84,10 @@ class RailwayProvider:
             Engine configuration dictionary
         """
         # Use settings for pool configuration (allows Hobby/Pro/Enterprise tuning)
-        pool_size = settings.railway_pool_size
-        max_overflow = settings.railway_max_overflow
-        pool_recycle = settings.railway_pool_recycle
-        pool_timeout = settings.railway_pool_timeout
+        pool_size: int = settings.railway_pool_size  # type: ignore[attr-defined]
+        max_overflow: int = settings.railway_max_overflow  # type: ignore[attr-defined]
+        pool_recycle: int = settings.railway_pool_recycle  # type: ignore[attr-defined]
+        pool_timeout: int = settings.railway_pool_timeout  # type: ignore[attr-defined]
 
         return {
             "pool_pre_ping": True,  # Validate connections before use
@@ -148,8 +148,8 @@ class RailwayProvider:
             Engine configuration for queue workers
         """
         # Workers can use slightly larger pools
-        pool_size = settings.railway_pool_size + 2
-        max_overflow = settings.railway_max_overflow + 3
+        pool_size: int = settings.railway_pool_size + 2  # type: ignore[attr-defined]
+        max_overflow: int = settings.railway_max_overflow + 3  # type: ignore[attr-defined]
 
         return {
             "pool_pre_ping": True,
@@ -175,7 +175,7 @@ class RailwayProvider:
         Returns:
             True if pg_cron is enabled in settings
         """
-        return settings.railway_pg_cron_enabled
+        return bool(settings.railway_pg_cron_enabled)  # type: ignore[attr-defined]
 
     def supports_pgvector(self) -> bool:
         """Check if pgvector extension is available.
@@ -186,7 +186,7 @@ class RailwayProvider:
         Returns:
             True if pgvector is enabled in settings
         """
-        return settings.railway_pgvector_enabled
+        return bool(settings.railway_pgvector_enabled)  # type: ignore[attr-defined]
 
     def supports_pg_search(self) -> bool:
         """Check if pg_search (ParadeDB) extension is available.
@@ -197,7 +197,7 @@ class RailwayProvider:
         Returns:
             True if pg_search is enabled in settings
         """
-        return settings.railway_pg_search_enabled
+        return bool(settings.railway_pg_search_enabled)  # type: ignore[attr-defined]
 
     def supports_pgmq(self) -> bool:
         """Check if pgmq extension is available.
@@ -208,4 +208,4 @@ class RailwayProvider:
         Returns:
             True if pgmq is enabled in settings
         """
-        return settings.railway_pgmq_enabled
+        return bool(settings.railway_pgmq_enabled)  # type: ignore[attr-defined]
