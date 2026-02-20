@@ -147,8 +147,8 @@ class HybridSearchService:
         else:
             final_scores = rrf_scores
 
-        # Aggregate to document level
-        results = self._aggregate_to_documents(
+        # Aggregate to document level (includes pagination)
+        results, total = self._aggregate_to_documents(
             final_scores,
             bm25_scores,
             vector_scores,
@@ -156,10 +156,6 @@ class HybridSearchService:
             rerank_scores,
             query=query,
         )
-
-        # Apply pagination
-        total = len(results)
-        results = results[query.offset : query.offset + query.limit]
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -374,14 +370,64 @@ class HybridSearchService:
         rrf_scores: dict[int, float],
         rerank_scores: dict[int, float],
         query: SearchQuery,
-    ) -> list[SearchResult]:
-        """Group chunk results by content_id and enrich with content metadata."""
+    ) -> tuple[list[SearchResult], int]:
+        """Group chunk results by content_id and enrich with content metadata.
+
+        Optimized to fetch heavy metadata only for the final page of documents.
+
+        Returns:
+            Tuple of (list of SearchResult, total document count)
+        """
         if not final_scores:
-            return []
+            return [], 0
 
         chunk_ids = list(final_scores.keys())
 
-        # Fetch chunk data + content metadata in one query
+        # 1. Fetch lightweight mapping of chunk_id -> content_id for ALL candidates
+        # This allows us to aggregate scores and group by document without loading heavy data
+        stmt = text("SELECT id, content_id FROM document_chunks WHERE id = ANY(:chunk_ids)")
+        mapping_rows = self._session.execute(stmt, {"chunk_ids": chunk_ids}).fetchall()
+
+        # 2. Group chunk scores by content_id
+        content_chunk_scores: dict[int, list[tuple[int, float]]] = defaultdict(list)
+        for row in mapping_rows:
+            chunk_id = row.id
+            content_id = row.content_id
+            score = final_scores.get(chunk_id, 0.0)
+            content_chunk_scores[content_id].append((chunk_id, score))
+
+        # 3. Calculate document scores (max chunk score) and sort documents
+        # Structure: (content_id, doc_score, top_chunks)
+        document_candidates: list[tuple[int, float, list[tuple[int, float]]]] = []
+
+        for content_id, chunks in content_chunk_scores.items():
+            # Sort chunks by score descending
+            chunks.sort(key=lambda x: x[1], reverse=True)
+            best_score = chunks[0][1] if chunks else 0.0
+
+            # Keep top 3 chunks for snippets
+            top_chunks = chunks[:3]
+            document_candidates.append((content_id, best_score, top_chunks))
+
+        # Sort documents by score descending
+        document_candidates.sort(key=lambda x: (-x[1], x[0]))
+
+        total = len(document_candidates)
+
+        # 4. Apply pagination to get the slice of documents to return
+        paginated_docs = document_candidates[query.offset : query.offset + query.limit]
+
+        if not paginated_docs:
+            return [], total
+
+        # 5. Fetch full metadata ONLY for the chunks we need to display
+        # Collect chunk IDs from the top chunks of the selected documents
+        chunks_to_fetch = [
+            chunk_id
+            for _, _, top_chunks in paginated_docs
+            for chunk_id, _ in top_chunks
+        ]
+
         stmt = text("""
             SELECT
                 dc.id as chunk_id,
@@ -399,13 +445,13 @@ class HybridSearchService:
             JOIN contents c ON c.id = dc.content_id
             WHERE dc.id = ANY(:chunk_ids)
         """)
-        result = self._session.execute(stmt, {"chunk_ids": chunk_ids})
+        result = self._session.execute(stmt, {"chunk_ids": chunks_to_fetch})
         rows = list(result)
 
         # Extract query terms for highlighting
         query_terms = _extract_query_terms(query.query)
 
-        # Group chunks by content_id
+        # Group fetched chunk data by content_id
         content_chunks: dict[int, list] = defaultdict(list)
         content_meta: dict[int, dict] = {}
 
@@ -443,16 +489,18 @@ class HybridSearchService:
         # Build document-level results
         results: list[SearchResult] = []
 
-        for content_id, chunks in content_chunks.items():
-            meta = content_meta[content_id]
+        # Iterate over paginated_docs to preserve order
+        for content_id, best_score, _ in paginated_docs:
+            if content_id not in content_meta:
+                continue
 
-            # Sort chunks by final score descending
+            meta = content_meta[content_id]
+            chunks = content_chunks.get(content_id, [])
+
+            # Sort chunks by final score descending (re-sort the fetched objects)
             chunks.sort(key=lambda c: c.score, reverse=True)
 
-            # Document score = best chunk score
-            best_score = chunks[0].score if chunks else 0.0
-
-            # Collect per-method scores from the best chunk
+            # Collect per-method scores from the best chunk (first one)
             best_chunk_id = chunks[0].chunk_id if chunks else None
             scores = SearchScores(
                 bm25=bm25_scores.get(best_chunk_id) if best_chunk_id else None,
@@ -470,14 +518,11 @@ class HybridSearchService:
                     source=meta["source_type"],
                     publication=meta["publication"],
                     published_date=meta["published_date"],
-                    matching_chunks=chunks[:3],  # Top 3 chunks per document
+                    matching_chunks=chunks,  # Already limited to top 3 during fetch selection
                 )
             )
 
-        # Sort results by document score descending, tiebreak by content_id
-        results.sort(key=lambda r: (-r.score, r.id))
-
-        return results
+        return results, total
 
     def _build_meta(self, elapsed_ms: int) -> SearchMeta:
         """Build search execution metadata."""
