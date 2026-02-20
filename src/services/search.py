@@ -423,9 +423,7 @@ class HybridSearchService:
         # 5. Fetch full metadata ONLY for the chunks we need to display
         # Collect chunk IDs from the top chunks of the selected documents
         chunks_to_fetch = [
-            chunk_id
-            for _, _, top_chunks in paginated_docs
-            for chunk_id, _ in top_chunks
+            chunk_id for _, _, top_chunks in paginated_docs for chunk_id, _ in top_chunks
         ]
 
         stmt = text("""
