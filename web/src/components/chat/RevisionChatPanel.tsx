@@ -40,6 +40,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -298,15 +303,20 @@ export function RevisionChatPanel({
         <div className="flex items-center gap-2">
           {/* Debug context button - only show when conversation exists */}
           {conversationId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleFetchDebugContext}
-              className="h-7 w-7 p-0"
-              title="View LLM context"
-            >
-              <Bug className="h-4 w-4 text-muted-foreground" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleFetchDebugContext}
+                  className="h-7 w-7 p-0"
+                  aria-label="View LLM context"
+                >
+                  <Bug className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>View LLM context</TooltipContent>
+            </Tooltip>
           )}
           <button
             onClick={onToggle}
@@ -456,19 +466,40 @@ export function RevisionChatPanel({
                 rows={2}
               />
               <div className="absolute bottom-2 right-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
-                  className="h-7 w-7 p-0"
-                >
-                  {isStreaming ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MessageSquare className="h-4 w-4" />
-                  )}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {!canSubmit ? (
+                      <span className="inline-block" tabIndex={0}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled
+                          className="h-7 w-7 p-0 pointer-events-none"
+                          aria-label="Send message"
+                        >
+                          {isStreaming ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <MessageSquare className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleSubmit}
+                        className="h-7 w-7 p-0"
+                        aria-label="Send message"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isStreaming ? "Sending..." : "Send message (Enter)"}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
