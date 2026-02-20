@@ -3,17 +3,19 @@
 ## Task 1.1: Add `APP_SECRET_KEY` to Settings and Profiles
 
 **Priority**: P0 (Blocker)
-**Estimate**: 1 hour
+**Estimate**: 2 hours
 **Dependencies**: None
 
 ### Description
 
-Add the `app_secret_key` field to the Settings model and wire it into the profile system. Add a `generate-secret` management command.
+Add `app_secret_key` and `auth_cookie_cross_origin` fields to the Settings model. Wire into the profile system. Enable proxy headers for correct client IP resolution behind reverse proxies. Add a `generate-secret` management command.
 
 ### Acceptance Criteria
 
 - [ ] `app_secret_key: str | None` field added to `Settings` in `src/config/settings.py`
+- [ ] `auth_cookie_cross_origin: bool = False` field added to `Settings`
 - [ ] `app_secret_key: "${APP_SECRET_KEY:-}"` added to `profiles/base.yaml` under `settings`
+- [ ] `auth_cookie_cross_origin: "${AUTH_COOKIE_CROSS_ORIGIN:-false}"` added to `profiles/base.yaml`
 - [ ] Startup validator logs warning if `APP_SECRET_KEY` not set in production (like `admin_api_key`)
 - [ ] Startup validator logs warning if key is < 32 characters
 - [ ] `aca manage generate-secret` command prints a cryptographically random 64-char key (uses `secrets.token_urlsafe(48)`)
@@ -22,14 +24,18 @@ Add the `app_secret_key` field to the Settings model and wire it into the profil
 
 ### Files Changed
 
-- `src/config/settings.py` — add field + startup validation in `validate_production_security()`
-- `profiles/base.yaml` — add `app_secret_key` reference
+- `src/config/settings.py` — add fields + startup validation in `validate_production_security()`
+- `profiles/base.yaml` — add `app_secret_key` and `auth_cookie_cross_origin` references
 - `src/cli/manage.py` (or equivalent) — add `generate-secret` subcommand
+- `Dockerfile` — add `--proxy-headers --forwarded-allow-ips='*'` to uvicorn entrypoint (required for rate limiter to see real client IPs behind Railway/any reverse proxy)
+- `Makefile` — add `--proxy-headers` to dev uvicorn command
 
 ### Testing
 
 - Settings loads with `APP_SECRET_KEY` from env
 - Settings loads without `APP_SECRET_KEY` (None, no crash)
+- `auth_cookie_cross_origin` defaults to `False`
+- `auth_cookie_cross_origin=True` when `AUTH_COOKIE_CROSS_ORIGIN=true` in env
 - Warning logged when missing in production
 - Warning logged when key < 32 chars
 - `generate-secret` outputs a valid key of correct length
@@ -51,14 +57,14 @@ Create `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and `GET /api/v1/a
 - [ ] `POST /api/v1/auth/login` accepts `{ "password": "..." }`
 - [ ] Password verified with `secrets.compare_digest()` against `APP_SECRET_KEY`
 - [ ] JWT signing key derived via `hmac.new(key, b"jwt-signing-key", "sha256").digest()` — never use raw password as signing key
-- [ ] On success: returns 200 with `Set-Cookie: session=<JWT>` (HttpOnly, Secure in production, SameSite auto-detected, Max-Age=604800, Path=/)
-- [ ] On failure: returns 401 `{ "error": "Invalid credentials" }`
+- [ ] On success: returns 200 with `Set-Cookie: session=<JWT>` (HttpOnly, Secure in production, SameSite per `auth_cookie_cross_origin` setting, Max-Age=604800, Path=/)
+- [ ] On failure: returns 401 `{ "error": "Invalid credentials", "detail": "...", "trace_id": "..." }` (matches existing error handler format — see `src/api/middleware/error_handler.py`)
 - [ ] Failed login logged at WARNING with client IP: `"Failed login attempt from %s"`
 - [ ] Successful login logged at INFO: `"Successful login from %s"`
 - [ ] JWT payload: `{ "iss": "newsletter-aggregator", "iat": <unix>, "exp": <unix+7d> }`
 - [ ] `POST /api/v1/auth/logout` clears the session cookie (Set-Cookie with Max-Age=0)
 - [ ] `GET /api/v1/auth/session` returns `{ "authenticated": true/false }` based on valid cookie
-- [ ] SameSite auto-detection: `Lax` when all allowed origins share the API host, `None` when cross-origin origins detected (see proposal "Cross-Origin Cookie Strategy")
+- [ ] SameSite determined by `settings.auth_cookie_cross_origin`: `False` → `Lax` (default), `True` → `None` (for Railway split deployments)
 - [ ] Auth router registered in `src/api/app.py`
 - [ ] `PyJWT` added to `pyproject.toml` dependencies
 
@@ -73,11 +79,11 @@ Create `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and `GET /api/v1/a
 {"authenticated": true}
 # + Set-Cookie header with JWT
 
-# Failure (401) — body:
-{"error": "Invalid credentials"}
+# Failure (401) — body (matches existing error handler format):
+{"error": "Invalid credentials", "detail": "The password provided is incorrect.", "trace_id": "abc123..."}
 
 # Rate limited (429) — body:
-{"error": "Too many login attempts. Try again in N minutes."}
+{"error": "Too many login attempts", "detail": "Try again in N minutes.", "trace_id": "abc123..."}
 
 # POST /api/v1/auth/logout
 # Success (200) — body:
@@ -110,8 +116,8 @@ Create `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and `GET /api/v1/a
 - JWT signed with HMAC-derived key (not raw password)
 - Cookie flags correct (HttpOnly, SameSite, Path=/)
 - Secure flag only set when not in development
-- SameSite=None when cross-origin origins in ALLOWED_ORIGINS
-- SameSite=Lax when same-origin only
+- SameSite=None when `auth_cookie_cross_origin=True`
+- SameSite=Lax when `auth_cookie_cross_origin=False` (default)
 
 ---
 
@@ -134,7 +140,8 @@ In-memory rate limiter for the login endpoint. No Redis or external dependencies
 - [ ] Cleanup runs periodically (e.g., every 100 requests) to prevent unbounded memory growth
 - [ ] Rate limiter is a standalone module (reusable for Phase 2 if needed)
 - [ ] Thread-safe (FastAPI may use multiple workers — per-process is acceptable for Phase 1)
-- [ ] Trusts `X-Forwarded-For` only when behind a trusted proxy (configurable)
+- [ ] Uses `request.client.host` for client IP (proxy headers resolved by uvicorn `--proxy-headers` from Task 1.1)
+- [ ] Resets rate limiter state on process restart (acceptable for Phase 1 — in-memory only)
 
 ### Implementation Notes
 
@@ -209,6 +216,12 @@ AUTH_EXEMPT_PATHS = [
     "/api/v1/otel/v1/traces",
     "/api/v1/auth/",           # All auth endpoints (login, logout, session)
 ]
+# Note: /docs, /redoc, /openapi.json are NOT exempted — they are protected
+# behind auth like all other endpoints. API schema visible only after login.
+#
+# Note: Frontend assets (PWA manifest, service worker, icons) are NOT served
+# by the backend (no StaticFiles mount). They are served by the frontend
+# service (Vite dev server or separate Railway service). No exemptions needed.
 ```
 
 ### Sliding Window with Threshold
@@ -235,7 +248,7 @@ AUTH_EXEMPT_PATHS = [
 - Request with valid cookie proceeds
 - Request with expired cookie returns 401
 - Request with valid `X-Admin-Key` proceeds (no cookie needed)
-- Request with neither returns 401 in production
+- Request with neither returns 401 in production (response matches error handler format: `{"error": ..., "detail": ..., "trace_id": ...}`)
 - Request to exempted path proceeds without auth
 - Cookie refreshed when token > 1 day old
 - Cookie NOT refreshed when token < 1 day old
@@ -396,8 +409,9 @@ Write comprehensive backend tests for auth endpoints, middleware, rate limiter, 
 - Session check with valid cookie → `{ authenticated: true }`
 - Session check without cookie → `{ authenticated: false }`
 - Session check with expired JWT → `{ authenticated: false }`
-- SameSite=None when cross-origin ALLOWED_ORIGINS configured
-- SameSite=Lax when same-origin only
+- SameSite=None when `auth_cookie_cross_origin=True`
+- SameSite=Lax when `auth_cookie_cross_origin=False`
+- Error responses match existing format (`{"error": ..., "detail": ..., "trace_id": ...}`)
 
 **Auth middleware (`test_auth_middleware.py`):**
 - Protected endpoint with valid cookie → 200
@@ -487,7 +501,7 @@ Update the OpenSpec API security specification to reflect the new authentication
 - [ ] Document coexistence of session cookie + X-Admin-Key
 - [ ] Document exempted paths
 - [ ] Document configuration (APP_SECRET_KEY)
-- [ ] Document cross-origin cookie strategy (SameSite auto-detection)
+- [ ] Document cross-origin cookie strategy (`AUTH_COOKIE_CROSS_ORIGIN` setting)
 - [ ] Document rate limiting behavior
 - [ ] Document dev mode bypass
 - [ ] Document login auditing (log levels and format)
@@ -498,10 +512,24 @@ Update the OpenSpec API security specification to reflect the new authentication
 
 ---
 
+## Implementation Gotchas
+
+These are things that would cause real bugs if overlooked during implementation:
+
+| Gotcha | Impact | Mitigation |
+|---|---|---|
+| Uvicorn `--proxy-headers` missing | Rate limiter sees proxy IP, locks out everyone after 5 failures | Task 1.1 adds flag to Dockerfile + Makefile |
+| `credentials: "include"` is global on fetch | Harmless — cookies absent or ignored on unauthed endpoints | Add a code comment explaining why |
+| OpenAPI docs unexempted | `/docs`, `/redoc`, `/openapi.json` blocked in production | Intentional — API schema behind auth. Access after login. |
+| PWA assets not a backend concern | Someone might add unnecessary middleware exemptions | Backend has no `StaticFiles` mount. Frontend serves its own assets. |
+| Session revocation = key rotation only | No per-device logout (stateless JWT trade-off) | Document: rotate `APP_SECRET_KEY` to force re-login everywhere |
+| Rate limiter resets on restart | Attacker could force restart to clear state | Acceptable for Phase 1. Phase 2 could use Redis or DB-backed limiter |
+| Cross-tab logout delay | Other tabs discover logout after staleTime (5 min) | Acceptable for personal tool. Could add `BroadcastChannel` later |
+
 ## Summary
 
 **Total Tasks**: 9
-**Total Estimate**: 23 hours (~3 days)
+**Total Estimate**: 24 hours (~3 days)
 
 **Critical Path**:
 ```
@@ -519,6 +547,6 @@ Update the OpenSpec API security specification to reflect the new authentication
 - Task 3.3 can run anytime after the implementation tasks
 
 **Risk Areas**:
+- Task 1.1 (proxy headers) — without `--proxy-headers`, rate limiter locks out all users behind a reverse proxy
 - Task 1.4 (middleware) — touches every request; must not break existing endpoints or SSE streaming
 - Task 2.2 (session check) — must not create redirect loops or break dev mode
-- Task 1.2 (cross-origin SameSite) — must detect deployment topology correctly

@@ -81,7 +81,7 @@ Browser                    FastAPI                    Database
 |---|---|---|
 | Credential | Single password (`APP_SECRET_KEY` env var) | Owner-only tool. No user table needed. Falls back to `ADMIN_API_KEY` if `APP_SECRET_KEY` not set, preserving backward compatibility. |
 | Token format | JWT (HS256, signed with HMAC-derived key) | Stateless — no sessions table needed. Signing key derived from password via HMAC so knowing the password alone doesn't allow forging tokens. |
-| Token delivery | HttpOnly Secure SameSite cookie | Immune to XSS (JavaScript can't read it). SameSite auto-detected: `Lax` for same-origin, `None` for cross-origin (Railway split deployments). |
+| Token delivery | HttpOnly Secure SameSite cookie | Immune to XSS (JavaScript can't read it). `SameSite=Lax` by default; `SameSite=None` when `AUTH_COOKIE_CROSS_ORIGIN=true` (Railway split deployments). |
 | Token lifetime | 7 days, sliding window (1-day threshold) | Personal tool — convenience over strict expiry. Cookie refreshed only when token > 1 day old (avoids rewriting on every request). |
 | Login UI | SPA route at `/login` via TanStack Router `beforeLoad` | Prevents flash-of-content. No username/email needed. Redirects to `/` in dev mode. |
 | API clients | `X-Admin-Key` header still works | CLI, curl, bookmarklet, Chrome extension — all keep working. Cookie auth is additive, not a replacement. |
@@ -261,6 +261,14 @@ These were open questions during the initial design discussion. All have been re
 
 6. **Rate limiting is P0** — 5 failed attempts per IP per 15 min. In-memory, no Redis. Single-password login must not be brute-forceable.
 
-7. **Cross-origin cookies handled via SameSite auto-detection** — `Lax` for same-origin deployments, `None; Secure` for cross-origin (Railway). Frontend adds `credentials: "include"` when `VITE_API_URL` is set. See `proposal.md` "Cross-Origin Cookie Strategy" for details.
+7. **Cross-origin cookies via explicit `AUTH_COOKIE_CROSS_ORIGIN` setting** — `false` (default) → `SameSite=Lax`, `true` → `SameSite=None; Secure` for Railway split deployments. Auto-detection was rejected (backend has no canonical `api_base_url` field — the deployer knows their topology). Frontend adds `credentials: "include"` when `VITE_API_URL` is set.
 
 8. **Failed login attempts logged at WARNING with client IP** — critical for single-user tool to detect probing. Successful logins logged at INFO.
+
+9. **Session revocation = key rotation** — changing `APP_SECRET_KEY` invalidates all sessions (HMAC-derived signing key changes). No per-device revocation (stateless JWT trade-off). Acceptable for single-user.
+
+10. **Proxy headers required** — uvicorn must run with `--proxy-headers` behind Railway or any reverse proxy. Without it, rate limiter sees the proxy IP and locks out all users after 5 failures from anyone.
+
+11. **OpenAPI docs protected** — `/docs`, `/redoc`, `/openapi.json` are behind auth like all other endpoints. API schema visible only after login.
+
+12. **Error responses match existing format** — auth errors use `{"error": "...", "detail": "...", "trace_id": "..."}` to work with the frontend `ApiClientError` parser.
