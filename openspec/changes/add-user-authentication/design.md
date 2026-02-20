@@ -80,25 +80,29 @@ Browser                    FastAPI                    Database
 | Decision | Choice | Rationale |
 |---|---|---|
 | Credential | Single password (`APP_SECRET_KEY` env var) | Owner-only tool. No user table needed. Falls back to `ADMIN_API_KEY` if `APP_SECRET_KEY` not set, preserving backward compatibility. |
-| Token format | JWT (HS256, signed with `APP_SECRET_KEY`) | Stateless — no sessions table needed. Can be verified without DB lookup. |
-| Token delivery | HttpOnly Secure SameSite=Lax cookie | Immune to XSS (JavaScript can't read it). Works transparently with `fetch()`. No localStorage token juggling. |
-| Token lifetime | 7 days, sliding window | Personal tool — convenience over strict expiry. Each authenticated request extends the session. |
-| Login UI | Simple password-only form at `/login` | No username/email needed for single-user. Just a password field + submit. |
+| Token format | JWT (HS256, signed with HMAC-derived key) | Stateless — no sessions table needed. Signing key derived from password via HMAC so knowing the password alone doesn't allow forging tokens. |
+| Token delivery | HttpOnly Secure SameSite cookie | Immune to XSS (JavaScript can't read it). SameSite auto-detected: `Lax` for same-origin, `None` for cross-origin (Railway split deployments). |
+| Token lifetime | 7 days, sliding window (1-day threshold) | Personal tool — convenience over strict expiry. Cookie refreshed only when token > 1 day old (avoids rewriting on every request). |
+| Login UI | SPA route at `/login` via TanStack Router `beforeLoad` | Prevents flash-of-content. No username/email needed. Redirects to `/` in dev mode. |
 | API clients | `X-Admin-Key` header still works | CLI, curl, bookmarklet, Chrome extension — all keep working. Cookie auth is additive, not a replacement. |
 | Dev mode | No auth required (unchanged) | `ENVIRONMENT=development` bypasses auth like today. |
+| Rate limiting | 5 attempts / IP / 15 min (in-memory) | Must-have for internet-exposed single-password login. No Redis needed. |
+| Login auditing | WARNING on failure, INFO on success (with IP) | Critical for owner to detect probing attempts. |
 
 #### What changes
 
-**Backend** (~200-300 lines):
+**Backend** (~400 lines):
 - `src/api/auth_routes.py` — `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/session`
 - `src/api/middleware/auth.py` — middleware that checks cookie OR `X-Admin-Key` header on every request (except `/health`, `/ready`, `/login`, `/api/v1/auth/*`, static assets)
+- `src/api/rate_limiter.py` — in-memory rate limiter (5 attempts / IP / 15 min)
 - `src/config/settings.py` — add `app_secret_key` field
 - `pyproject.toml` — add `PyJWT` dependency
 
-**Frontend** (~150-200 lines):
-- `web/src/pages/login.tsx` — password form
-- `web/src/lib/auth.ts` — `checkSession()`, redirect-to-login logic
-- `web/src/routes/__root.tsx` — session check on app mount
+**Frontend** (~200 lines):
+- `web/src/routes/login.tsx` — password form
+- `web/src/lib/api/auth.ts` — `checkSession()`, `login()`, `logout()`
+- `web/src/lib/api/client.ts` — add `credentials: "include"` for cross-origin
+- `web/src/routes/__root.tsx` — `beforeLoad` session check (prevents flash-of-content)
 
 **No database changes. No migrations. No user table.**
 
@@ -241,25 +245,22 @@ The existing proposal in `openspec/changes/add-user-authentication/proposal.md` 
 
 ---
 
-## Open Questions (For Discussion)
+## Resolved Design Decisions
 
-1. **Should Phase 1 password be separate from `ADMIN_API_KEY`?**
-   - Option A: New `APP_SECRET_KEY` (cleaner separation, different purpose)
-   - Option B: Reuse `ADMIN_API_KEY` as the login password (fewer env vars)
-   - Recommendation: Option A — admin key is an API concept, login password is a user concept
+These were open questions during the initial design discussion. All have been resolved:
 
-2. **Should the login page be part of the React SPA or a standalone HTML page?**
-   - SPA route: Consistent with app, but needs the JS bundle to load first
-   - Standalone HTML: Faster initial load, works even if SPA has errors
-   - Recommendation: SPA route (`/login`) — simpler, and the app already requires JS
+1. **Phase 1 password is separate from `ADMIN_API_KEY`** — new `APP_SECRET_KEY` env var. Admin key is an API concept; login password is a user concept. Both coexist.
 
-3. **Should we protect ALL endpoints or keep some public?**
-   - `/health` and `/ready` must stay public (orchestrator probes)
-   - `/api/v1/system/config` could stay public (feature flags, no sensitive data)
-   - Everything else behind auth in production
-   - The `/api/v1/save/*` endpoint (content capture) needs consideration — the Chrome extension and bookmarklet currently use it without auth. Could support both cookie and `X-Admin-Key`.
+2. **Login page is an SPA route** (`/login`) — consistent with app, uses TanStack Router `beforeLoad` to prevent flash-of-content. In dev mode, `/login` redirects to `/`.
 
-4. **Token refresh strategy?**
-   - Sliding window (extend on each request) — simpler, good for personal tool
-   - Explicit refresh token — more standard, better for multi-user
-   - Recommendation: Sliding window for Phase 1, explicit refresh for Phase 2
+3. **All endpoints protected** (except infrastructure probes, system config, OTLP proxy, and auth endpoints). `/api/v1/save/*` requires cookie or `X-Admin-Key` — Chrome extension and bookmarklet authenticate via header.
+
+4. **Sliding window with 1-day threshold** — cookie only refreshed when token > 1 day old (not on every request). Avoids rewriting `Set-Cookie` on every API call. 7-day expiry on inactivity.
+
+5. **JWT signing key is HMAC-derived** from `APP_SECRET_KEY` — knowing the password doesn't allow forging tokens. `hmac.new(key, b"jwt-signing-key", "sha256").digest()`.
+
+6. **Rate limiting is P0** — 5 failed attempts per IP per 15 min. In-memory, no Redis. Single-password login must not be brute-forceable.
+
+7. **Cross-origin cookies handled via SameSite auto-detection** — `Lax` for same-origin deployments, `None; Secure` for cross-origin (Railway). Frontend adds `credentials: "include"` when `VITE_API_URL` is set. See `proposal.md` "Cross-Origin Cookie Strategy" for details.
+
+8. **Failed login attempts logged at WARNING with client IP** — critical for single-user tool to detect probing. Successful logins logged at INFO.
