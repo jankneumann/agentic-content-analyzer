@@ -9,16 +9,16 @@ from __future__ import annotations
 import logging
 import secrets
 from datetime import UTC, datetime
-from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
 from src.api.auth_routes import (
     _COOKIE_NAME,
     _SLIDING_WINDOW_THRESHOLD_SECONDS,
     _create_jwt,
+    _error_response,
     _set_session_cookie,
     _verify_jwt,
 )
@@ -35,32 +35,6 @@ AUTH_EXEMPT_PREFIXES = (
     "/api/v1/auth/",
     "/api/v1/auth",  # Exact match for /api/v1/auth without trailing slash
 )
-
-
-def _get_trace_id() -> str | None:
-    """Extract current OTel trace ID if available."""
-    try:
-        from opentelemetry import trace
-
-        span = trace.get_current_span()
-        ctx = span.get_span_context()
-        if ctx and ctx.trace_id:
-            return format(ctx.trace_id, "032x")
-    except (ImportError, Exception):
-        pass
-    return None
-
-
-def _unauthorized_response() -> JSONResponse:
-    """Create a 401 JSON response matching the existing error handler format."""
-    body: dict[str, Any] = {
-        "error": "Authentication required",
-        "detail": "Please log in or provide X-Admin-Key header.",
-    }
-    trace_id = _get_trace_id()
-    if trace_id:
-        body["trace_id"] = trace_id
-    return JSONResponse(status_code=401, content=body)
 
 
 def _is_exempt(path: str) -> bool:
@@ -109,14 +83,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if secrets.compare_digest(admin_key, settings.admin_api_key):
                 return await call_next(request)
             # Explicit invalid key → 403 (spec: "explicit keys are always validated")
-            body: dict[str, Any] = {
-                "error": "Forbidden",
-                "detail": "Invalid admin API key",
-            }
-            trace_id = _get_trace_id()
-            if trace_id:
-                body["trace_id"] = trace_id
-            return JSONResponse(status_code=403, content=body)
+            return _error_response(403, "Forbidden", "Invalid admin API key")
 
         # Neither auth method succeeded
-        return _unauthorized_response()
+        return _error_response(
+            401, "Authentication required", "Please log in or provide X-Admin-Key header."
+        )

@@ -209,6 +209,49 @@ class TestProtectedEndpoints:
 
 
 # ===========================================================================
+# Admin Endpoint (verify_admin_key dependency) Tests
+# ===========================================================================
+
+
+class TestAdminEndpointAuth:
+    """Test that session cookies pass both middleware AND verify_admin_key.
+
+    Admin endpoints like /api/v1/settings/overrides have a Depends(verify_admin_key)
+    as defense-in-depth ON TOP of AuthMiddleware. This tests the full auth chain.
+    """
+
+    # An admin endpoint with Depends(verify_admin_key) — may return DB errors but
+    # auth should pass before reaching the DB layer.
+    _ADMIN_ENDPOINT = "/api/v1/settings/overrides/"
+
+    def test_session_cookie_passes_admin_endpoint(self, production_client):
+        """Valid session cookie passes both middleware and verify_admin_key."""
+        token = _make_valid_jwt()
+
+        resp = production_client.get(
+            self._ADMIN_ENDPOINT,
+            headers={"Cookie": f"{_COOKIE_NAME}={token}"},
+        )
+        # Should NOT be 401 or 403 -- may be 500 (no DB) but auth passed
+        assert resp.status_code not in (401, 403), (
+            f"Session cookie rejected by admin endpoint: {resp.status_code} {resp.json()}"
+        )
+
+    def test_admin_key_passes_admin_endpoint(self, production_client):
+        """Valid X-Admin-Key passes both middleware and verify_admin_key."""
+        resp = production_client.get(
+            self._ADMIN_ENDPOINT,
+            headers={"X-Admin-Key": _ADMIN_KEY},
+        )
+        assert resp.status_code not in (401, 403)
+
+    def test_no_auth_blocked_on_admin_endpoint(self, production_client):
+        """No auth credentials returns 401 on admin endpoints."""
+        resp = production_client.get(self._ADMIN_ENDPOINT)
+        assert resp.status_code == 401
+
+
+# ===========================================================================
 # Exempt Endpoint Tests
 # ===========================================================================
 
