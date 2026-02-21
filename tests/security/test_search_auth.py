@@ -1,8 +1,10 @@
-import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from fastapi.testclient import TestClient
+
 from src.api.app import app
 from src.config.settings import Settings
-from unittest.mock import patch, MagicMock, AsyncMock
+from src.models.search import SearchMeta, SearchResponse
 
 client = TestClient(app)
 
@@ -49,12 +51,11 @@ def test_search_routes_accessible_with_key(mock_get_settings):
         mock_get_db.return_value.__enter__.return_value = mock_db
 
         mock_instance = mock_service.return_value
-        # Mock search to return a basic SearchResponse structure as expected by the model
         mock_instance.search = AsyncMock(
-            return_value=MagicMock(
+            return_value=SearchResponse(
                 results=[],
                 total=0,
-                meta=MagicMock(
+                meta=SearchMeta(
                     bm25_strategy="mock",
                     embedding_provider="mock",
                     embedding_model="mock",
@@ -68,7 +69,4 @@ def test_search_routes_accessible_with_key(mock_get_settings):
 
         response = client.get("/api/v1/search?q=test", headers={"X-Admin-Key": "secret-key"})
 
-        # It might fail with validation error on response model or something,
-        # but definitely not 401/403.
-        assert response.status_code != 401
-        assert response.status_code != 403
+        assert response.status_code == 200
