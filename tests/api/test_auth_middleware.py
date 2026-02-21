@@ -294,6 +294,24 @@ class TestExemptEndpoints:
                 f"{path} was blocked by auth middleware"
             )
 
+    def test_options_preflight_not_blocked(self, production_client):
+        """OPTIONS requests pass through auth for CORS preflight support.
+
+        Browsers send OPTIONS preflight before actual requests. If auth
+        blocks OPTIONS, CORS fails and the frontend cannot make any API calls.
+        """
+        resp = production_client.request(
+            "OPTIONS",
+            _PROTECTED_ENDPOINT,
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp.status_code != 401, (
+            "OPTIONS preflight blocked by auth middleware — CORS will fail"
+        )
+
 
 # ===========================================================================
 # Development Mode Tests

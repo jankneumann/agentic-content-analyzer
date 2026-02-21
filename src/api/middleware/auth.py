@@ -59,6 +59,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if settings.is_development:
             return await call_next(request)
 
+        # CORS preflight: let OPTIONS through so CORSMiddleware can respond
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Exempt paths: health, ready, system config, otel proxy, auth endpoints
         if _is_exempt(request.url.path):
             return await call_next(request)
