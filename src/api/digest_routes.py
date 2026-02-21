@@ -10,9 +10,10 @@ Provides REST endpoints for:
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.api.dependencies import verify_admin_key
 from src.models.digest import (
     Digest,
     DigestRequest,
@@ -26,7 +27,11 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/digests", tags=["digests"])
+router = APIRouter(
+    prefix="/api/v1/digests",
+    tags=["digests"],
+    dependencies=[Depends(verify_admin_key)],
+)
 
 # Allowed fields for sorting digests
 DIGEST_SORT_FIELDS = {"id", "digest_type", "status", "created_at", "period_start", "period_end"}
