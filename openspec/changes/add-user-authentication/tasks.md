@@ -1,531 +1,552 @@
-# Implementation Tasks: Add User Authentication
+# Implementation Tasks: Owner Authentication (Phase 1)
 
-## Task 1.1: Create Database Schema
+## Task 1.1: Add `APP_SECRET_KEY` to Settings and Profiles
 
 **Priority**: P0 (Blocker)
-**Estimate**: 4 hours
+**Estimate**: 2 hours
 **Dependencies**: None
 
 ### Description
-Create PostgreSQL database schema for users and sessions tables with appropriate indexes and constraints.
+
+Add `app_secret_key` and `auth_cookie_cross_origin` fields to the Settings model. Wire into the profile system. Enable proxy headers for correct client IP resolution behind reverse proxies. Add a `generate-secret` management command.
 
 ### Acceptance Criteria
-- [ ] Users table created with columns: id, email, password_hash, created_at, updated_at, is_active
-- [ ] Sessions table created with columns: id, user_id, token, expires_at, created_at
-- [ ] Foreign key constraint from sessions.user_id to users.id
-- [ ] Unique index on users.email
-- [ ] Index on sessions.token for fast lookups
-- [ ] Index on sessions.expires_at for cleanup queries
-- [ ] Migration script created and tested
-- [ ] Rollback script created and tested
 
-### Implementation Notes
-```sql
--- Example structure
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  is_active BOOLEAN DEFAULT TRUE
-);
+- [ ] `app_secret_key: str | None` field added to `Settings` in `src/config/settings.py`
+- [ ] `auth_cookie_cross_origin: bool = False` field added to `Settings`
+- [ ] `app_secret_key: "${APP_SECRET_KEY:-}"` added to `profiles/base.yaml` under `settings`
+- [ ] `auth_cookie_cross_origin: "${AUTH_COOKIE_CROSS_ORIGIN:-false}"` added to `profiles/base.yaml`
+- [ ] Startup validator logs warning if `APP_SECRET_KEY` not set in production (like `admin_api_key`)
+- [ ] Startup validator logs warning if key is < 32 characters
+- [ ] `aca manage generate-secret` command prints a cryptographically random 64-char key (uses `secrets.token_urlsafe(48)`)
+- [ ] Existing `ADMIN_API_KEY` behavior unchanged
+- [ ] Tests pass with `_env_file=None` (no pickup from `.env`)
 
-CREATE INDEX idx_users_email ON users(email);
-```
+### Files Changed
+
+- `src/config/settings.py` — add fields + startup validation in `validate_production_security()`
+- `profiles/base.yaml` — add `app_secret_key` and `auth_cookie_cross_origin` references
+- `src/cli/manage.py` (or equivalent) — add `generate-secret` subcommand
+- `Dockerfile` — add `--proxy-headers --forwarded-allow-ips='*'` to uvicorn entrypoint (required for rate limiter to see real client IPs behind Railway/any reverse proxy)
+- `Makefile` — add `--proxy-headers` to dev uvicorn command
 
 ### Testing
-- Migration runs successfully
-- Rollback works correctly
-- Constraints are enforced (duplicate email fails)
-- Indexes exist and are used by queries
+
+- Settings loads with `APP_SECRET_KEY` from env
+- Settings loads without `APP_SECRET_KEY` (None, no crash)
+- `auth_cookie_cross_origin` defaults to `False`
+- `auth_cookie_cross_origin=True` when `AUTH_COOKIE_CROSS_ORIGIN=true` in env
+- Warning logged when missing in production
+- Warning logged when key < 32 chars
+- `generate-secret` outputs a valid key of correct length
 
 ---
 
-## Task 1.2: Create User Model and Repository
+## Task 1.2: Create Auth Endpoints
 
 **Priority**: P0 (Blocker)
 **Estimate**: 3 hours
 **Dependencies**: Task 1.1
 
 ### Description
-Create User model with methods for CRUD operations and password handling.
+
+Create `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and `GET /api/v1/auth/session` endpoints. JWT signing key is HMAC-derived from `APP_SECRET_KEY` (not used directly).
 
 ### Acceptance Criteria
-- [ ] User model class created with validation
-- [ ] Methods: create(), findByEmail(), findById(), update(), delete()
-- [ ] Password hashing using bcrypt (12 rounds)
-- [ ] Password verification method
-- [ ] Email validation (valid format)
-- [ ] Unit tests for all methods
-- [ ] Test coverage > 90%
+
+- [ ] `POST /api/v1/auth/login` accepts `{ "password": "..." }`
+- [ ] Password verified with `secrets.compare_digest()` against `APP_SECRET_KEY`
+- [ ] JWT signing key derived via `hmac.new(key, b"jwt-signing-key", "sha256").digest()` — never use raw password as signing key
+- [ ] On success: returns 200 with `Set-Cookie: session=<JWT>` (HttpOnly, Secure in production, SameSite per `auth_cookie_cross_origin` setting, Max-Age=604800, Path=/)
+- [ ] On failure: returns 401 `{ "error": "Invalid credentials", "detail": "...", "trace_id": "..." }` (matches existing error handler format — see `src/api/middleware/error_handler.py`)
+- [ ] Failed login logged at WARNING with client IP: `"Failed login attempt from %s"`
+- [ ] Successful login logged at INFO: `"Successful login from %s"`
+- [ ] JWT payload: `{ "iss": "newsletter-aggregator", "iat": <unix>, "exp": <unix+7d> }`
+- [ ] `POST /api/v1/auth/logout` clears the session cookie (Set-Cookie with Max-Age=0)
+- [ ] `GET /api/v1/auth/session` returns `{ "authenticated": true/false }` based on valid cookie
+- [ ] SameSite determined by `settings.auth_cookie_cross_origin`: `False` → `Lax` (default), `True` → `None` (for Railway split deployments)
+- [ ] Auth router registered in `src/api/app.py`
+- [ ] `PyJWT` added to `pyproject.toml` dependencies
+
+### Request/Response Formats
+
+```python
+# POST /api/v1/auth/login
+# Request body:
+{"password": "the-app-secret"}
+
+# Success (200) — body:
+{"authenticated": true}
+# + Set-Cookie header with JWT
+
+# Failure (401) — body (matches existing error handler format):
+{"error": "Invalid credentials", "detail": "The password provided is incorrect.", "trace_id": "abc123..."}
+
+# Rate limited (429) — body:
+{"error": "Too many login attempts", "detail": "Try again in N minutes.", "trace_id": "abc123..."}
+
+# POST /api/v1/auth/logout
+# Success (200) — body:
+{"authenticated": false}
+# + Set-Cookie clearing the session
+
+# GET /api/v1/auth/session
+# Authenticated (200):
+{"authenticated": true}
+# Not authenticated (200):
+{"authenticated": false}
+```
+
+### Files Changed
+
+- `src/api/auth_routes.py` — new file, auth router
+- `src/api/app.py` — register auth router
+- `pyproject.toml` — add `PyJWT` dependency
+
+### Testing
+
+- Login with correct password returns 200 + cookie
+- Login with wrong password returns 401 + WARNING log with IP
+- Successful login emits INFO log with IP
+- Login with empty password returns 401 (or 422)
+- Login when `APP_SECRET_KEY` not set returns 500
+- Logout clears session cookie
+- Session endpoint returns status based on cookie validity
+- JWT expiry is 7 days from login
+- JWT signed with HMAC-derived key (not raw password)
+- Cookie flags correct (HttpOnly, SameSite, Path=/)
+- Secure flag only set when not in development
+- SameSite=None when `auth_cookie_cross_origin=True`
+- SameSite=Lax when `auth_cookie_cross_origin=False` (default)
+
+---
+
+## Task 1.3: Create Rate Limiter
+
+**Priority**: P0 (Blocker)
+**Estimate**: 2 hours
+**Dependencies**: Task 1.2
+
+### Description
+
+In-memory rate limiter for the login endpoint. No Redis or external dependencies. Tracks failed attempts per client IP with automatic expiry.
+
+### Acceptance Criteria
+
+- [ ] 5 failed login attempts per IP within 15 minutes triggers lockout
+- [ ] Locked-out IPs receive 429 with `Retry-After` header and human-readable message
+- [ ] Successful login does NOT reset the counter (prevents timing attacks)
+- [ ] Counter entries expire after 15 minutes (TTL-based cleanup)
+- [ ] Cleanup runs periodically (e.g., every 100 requests) to prevent unbounded memory growth
+- [ ] Rate limiter is a standalone module (reusable for Phase 2 if needed)
+- [ ] Thread-safe (FastAPI may use multiple workers — per-process is acceptable for Phase 1)
+- [ ] Uses `request.client.host` for client IP (proxy headers resolved by uvicorn `--proxy-headers` from Task 1.1)
+- [ ] Resets rate limiter state on process restart (acceptable for Phase 1 — in-memory only)
 
 ### Implementation Notes
-```javascript
-class User {
-  static async create({ email, password }) {
-    const hash = await bcrypt.hash(password, 12);
-    // Insert into database
-  }
 
-  async verifyPassword(password) {
-    return bcrypt.compare(password, this.password_hash);
-  }
-}
+```python
+# src/api/rate_limiter.py
+from collections import defaultdict
+from time import monotonic
+
+class LoginRateLimiter:
+    def __init__(self, max_attempts: int = 5, window_seconds: int = 900):
+        self._attempts: dict[str, list[float]] = defaultdict(list)
+        self._max = max_attempts
+        self._window = window_seconds
+
+    def is_blocked(self, ip: str) -> bool:
+        """Check if IP is blocked. Prunes expired entries."""
+        ...
+
+    def record_failure(self, ip: str) -> None:
+        """Record a failed login attempt."""
+        ...
+
+    def get_retry_after(self, ip: str) -> int:
+        """Seconds until the IP can retry."""
+        ...
 ```
 
+### Files Changed
+
+- `src/api/rate_limiter.py` — new file, standalone rate limiter
+
 ### Testing
-- User creation works with valid data
-- Duplicate email throws error
-- Password hashing is applied
-- Password verification works
-- Invalid email format rejected
+
+- 5 failures from same IP → 6th attempt blocked with 429
+- Different IPs tracked independently
+- Entries expire after 15 minutes (use time mocking)
+- Cleanup doesn't affect unexpired entries
+- Memory doesn't grow unbounded under sustained attack simulation
 
 ---
 
-## Task 2.1: Implement Registration Endpoint
-
-**Priority**: P0 (Blocker)
-**Estimate**: 4 hours
-**Dependencies**: Task 1.2
-
-### Description
-Create POST /api/auth/register endpoint for new user registration.
-
-### Acceptance Criteria
-- [ ] POST /api/auth/register endpoint created
-- [ ] Request validation (email format, password length)
-- [ ] Duplicate email returns 409 Conflict
-- [ ] Success returns 201 Created with user data (no password)
-- [ ] Password requirements enforced (min 8 chars)
-- [ ] Rate limiting: 5 attempts per IP per hour
-- [ ] Integration tests for all scenarios
-- [ ] API documentation updated
-
-### Request/Response Format
-```javascript
-// Request
-POST /api/auth/register
-{
-  "email": "user@example.com",
-  "password": "securepass123"
-}
-
-// Success Response (201)
-{
-  "id": "uuid",
-  "email": "user@example.com",
-  "created_at": "2026-01-12T10:00:00Z"
-}
-
-// Error Response (409)
-{
-  "error": "Email already registered"
-}
-```
-
-### Testing
-- Valid registration succeeds
-- Duplicate email handled
-- Invalid email format rejected
-- Weak password rejected
-- Rate limiting works
-
----
-
-## Task 2.2: Implement Login Endpoint
-
-**Priority**: P0 (Blocker)
-**Estimate**: 5 hours
-**Dependencies**: Task 1.2
-
-### Description
-Create POST /api/auth/login endpoint with JWT token generation.
-
-### Acceptance Criteria
-- [ ] POST /api/auth/login endpoint created
-- [ ] Password verification using bcrypt
-- [ ] JWT token generated on success (24hr expiration)
-- [ ] Token contains user id and email
-- [ ] Failed login returns 401 Unauthorized
-- [ ] Rate limiting: 5 failed attempts = 15 min lockout
-- [ ] Session recorded in sessions table
-- [ ] Integration tests for all scenarios
-- [ ] API documentation updated
-
-### Request/Response Format
-```javascript
-// Request
-POST /api/auth/login
-{
-  "email": "user@example.com",
-  "password": "securepass123"
-}
-
-// Success Response (200)
-{
-  "token": "eyJhbGc...",
-  "user": {
-    "id": "uuid",
-    "email": "user@example.com"
-  }
-}
-
-// Error Response (401)
-{
-  "error": "Invalid credentials"
-}
-```
-
-### Testing
-- Valid login succeeds
-- Invalid password fails
-- Non-existent user fails
-- Rate limiting works
-- JWT token is valid
-
----
-
-## Task 2.3: Implement Authentication Middleware
+## Task 1.4: Create Auth Middleware
 
 **Priority**: P0 (Blocker)
 **Estimate**: 3 hours
-**Dependencies**: Task 2.2
+**Dependencies**: Task 1.2
 
 ### Description
-Create middleware to verify JWT tokens and protect routes.
+
+Create FastAPI middleware that enforces authentication on all endpoints except explicitly exempted ones. Supports both session cookies (browser) and `X-Admin-Key` headers (programmatic). Implements sliding window with threshold.
 
 ### Acceptance Criteria
-- [ ] Middleware extracts token from Authorization header
-- [ ] Token format: "Bearer <token>"
-- [ ] JWT signature verified
-- [ ] Token expiration checked
-- [ ] User ID extracted and attached to request
-- [ ] Missing token returns 401
-- [ ] Invalid token returns 403
-- [ ] Expired token returns 401
-- [ ] Unit tests for all scenarios
 
-### Implementation Notes
-```javascript
-async function authenticateToken(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
+- [ ] Middleware checks for `session` cookie first, then `X-Admin-Key` header
+- [ ] Valid JWT in cookie: request proceeds. If token `iat` is > 1 day old, cookie refreshed with new JWT (sliding window with threshold — avoids rewriting on every request)
+- [ ] Valid `X-Admin-Key` header: request proceeds (backward compat)
+- [ ] Neither present in production: returns 401
+- [ ] Exempted paths skip auth entirely: `/health`, `/ready`, `/api/v1/system/config`, `/api/v1/otel/v1/traces`, `/api/v1/auth/*`
+- [ ] Development mode (`ENVIRONMENT=development`): all requests pass (unchanged behavior)
+- [ ] Middleware registered in `src/api/app.py` (before route registration)
+- [ ] Existing `verify_admin_key` dependency on settings/prompts/contents routes unchanged (defense in depth)
+- [ ] `ENDPOINT_AUTH_MAP` in `dependencies.py` updated to reflect new auth model
+- [ ] SSE/streaming endpoints: auth checked before generator starts (no data leaks to unauthenticated clients)
 
-  if (!token) {
-    return res.status(401).json({ error: 'Token required' });
-  }
+### Exempted Paths
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.userId;
-    next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Invalid token' });
-  }
-}
+```python
+AUTH_EXEMPT_PATHS = [
+    "/health",
+    "/ready",
+    "/api/v1/system/config",
+    "/api/v1/otel/v1/traces",
+    "/api/v1/auth/",           # All auth endpoints (login, logout, session)
+]
+# Note: /docs, /redoc, /openapi.json are NOT exempted — they are protected
+# behind auth like all other endpoints. API schema visible only after login.
+#
+# Note: Frontend assets (PWA manifest, service worker, icons) are NOT served
+# by the backend (no StaticFiles mount). They are served by the frontend
+# service (Vite dev server or separate Railway service). No exemptions needed.
 ```
 
+### Sliding Window with Threshold
+
+```python
+# On each authenticated request with a valid cookie:
+# 1. Decode JWT (verify signature + expiry)
+# 2. Check iat claim: if (now - iat) > 1 day:
+#    a. Issue new JWT with refreshed iat + exp
+#    b. Set updated cookie on response
+# 3. If (now - iat) <= 1 day: no cookie refresh (save bandwidth)
+# Result: session only expires after 7 days of inactivity,
+#         cookie only rewritten at most once per day
+```
+
+### Files Changed
+
+- `src/api/middleware/auth.py` — new file, auth middleware
+- `src/api/app.py` — register middleware
+- `src/api/dependencies.py` — update `ENDPOINT_AUTH_MAP` documentation
+
 ### Testing
-- Valid token allows access
-- Missing token blocks access
-- Invalid token blocks access
-- Expired token blocks access
-- User ID properly attached
+
+- Request with valid cookie proceeds
+- Request with expired cookie returns 401
+- Request with valid `X-Admin-Key` proceeds (no cookie needed)
+- Request with neither returns 401 in production (response matches error handler format: `{"error": ..., "detail": ..., "trace_id": ...}`)
+- Request to exempted path proceeds without auth
+- Cookie refreshed when token > 1 day old
+- Cookie NOT refreshed when token < 1 day old
+- Development mode bypasses all auth
+- Invalid JWT signature returns 401
+- Tampered JWT returns 401
+- JWT signed with raw password (not HMAC-derived key) returns 401
+- SSE endpoint: unauthenticated request returns 401 before any streaming data
 
 ---
 
-## Task 2.4: Implement Logout Endpoint
-
-**Priority**: P1
-**Estimate**: 2 hours
-**Dependencies**: Task 2.3
-
-### Description
-Create POST /api/auth/logout endpoint to invalidate tokens.
-
-### Acceptance Criteria
-- [ ] POST /api/auth/logout endpoint created
-- [ ] Requires authentication middleware
-- [ ] Removes session from sessions table
-- [ ] Returns 200 OK on success
-- [ ] Already logged out returns 200 OK (idempotent)
-- [ ] Integration tests
-- [ ] API documentation updated
-
-### Request/Response Format
-```javascript
-// Request
-POST /api/auth/logout
-Authorization: Bearer <token>
-
-// Success Response (200)
-{
-  "message": "Logged out successfully"
-}
-```
-
-### Testing
-- Logout invalidates session
-- Token can't be used after logout
-- Idempotent behavior
-
----
-
-## Task 3.1: Create Auth Context and Provider
+## Task 2.1: Create Login Page
 
 **Priority**: P0 (Blocker)
-**Estimate**: 4 hours
-**Dependencies**: Task 2.2
+**Estimate**: 3 hours
+**Dependencies**: Task 1.2
 
 ### Description
-Create React context for managing authentication state across the application.
+
+Create a `/login` route in the React frontend with a password-only form.
 
 ### Acceptance Criteria
-- [ ] AuthContext created with TypeScript types
-- [ ] AuthProvider component wraps app
-- [ ] State includes: user, isAuthenticated, isLoading
-- [ ] Methods: login(), logout(), checkAuth()
-- [ ] Token stored in localStorage
-- [ ] Auto-refresh on page load
-- [ ] Loading states handled
-- [ ] Unit tests for context
+
+- [ ] `/login` route registered in TanStack Router
+- [ ] Password input field (type="password") with submit button
+- [ ] Form submits `POST /api/v1/auth/login` with `{ password }` body
+- [ ] On success (200): redirect to `/` (or `returnTo` query param if present)
+- [ ] On failure (401): show "Invalid password" error message
+- [ ] On rate limit (429): show "Too many attempts" with retry countdown
+- [ ] Loading state during submission (disabled button, spinner)
+- [ ] Responsive layout (works on mobile)
+- [ ] Accessible (label, aria attributes, keyboard submit with Enter)
+- [ ] Matches existing app visual style (Tailwind CSS)
+- [ ] No email/username field — password only
+- [ ] In development mode (auth disabled): visiting `/login` redirects to `/`
+
+### Component Structure
+
+```tsx
+// web/src/routes/login.tsx
+// - App title/branding
+// - PasswordInput (autoFocus)
+// - SubmitButton ("Sign in")
+// - ErrorMessage (conditionally shown, handles 401 and 429 differently)
+```
+
+### Files Changed
+
+- `web/src/routes/login.tsx` — new file, login page route
+- `web/src/routeTree.gen.ts` — auto-regenerated by TanStack Router
+
+### Testing (E2E)
+
+- Login page renders with password field and submit button
+- Submitting correct password redirects to home
+- Submitting wrong password shows error
+- Enter key submits form
+- Button shows loading state during submission
+- In dev mode, `/login` redirects to `/`
+
+---
+
+## Task 2.2: Add Session Check to App Root and API Client
+
+**Priority**: P0 (Blocker)
+**Estimate**: 3 hours
+**Dependencies**: Task 2.1
+
+### Description
+
+Add a session check using TanStack Router's `beforeLoad` hook that redirects unauthenticated users to `/login`. Add `credentials: "include"` to the API client for cross-origin cookie support.
+
+### Acceptance Criteria
+
+- [ ] `beforeLoad` hook on root route calls `GET /api/v1/auth/session`
+- [ ] If `{ authenticated: false }`: redirect to `/login?returnTo=<current_path>`
+- [ ] If `{ authenticated: true }`: render app normally
+- [ ] TanStack Router's pending state shown while checking session (no flash-of-content)
+- [ ] `/login` route itself does NOT trigger the session check (avoid redirect loop)
+- [ ] Session check result cached via TanStack Query (staleTime: 5 min)
+- [ ] If session check fails (network error): show retry option, not login redirect
+- [ ] When `VITE_AUTH_ENABLED` is `false` (or unset in dev): skip session check entirely
+- [ ] API client adds `credentials: "include"` when `VITE_API_URL` is set (cross-origin deployments)
 
 ### Implementation Notes
+
+```tsx
+// web/src/routes/__root.tsx — use beforeLoad for auth guard
+export const Route = createRootRoute({
+  beforeLoad: async ({ location }) => {
+    if (location.pathname === '/login') return  // Skip for login page
+    if (!isAuthEnabled()) return                 // Skip in dev mode
+
+    const session = await checkSession()
+    if (!session.authenticated) {
+      throw redirect({
+        to: '/login',
+        search: { returnTo: location.pathname },
+      })
+    }
+  },
+  component: RootComponent,
+})
+```
+
 ```typescript
-interface AuthContextType {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  checkAuth: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-```
-
-### Testing
-- Context provides auth state
-- Login updates state
-- Logout clears state
-- Page refresh maintains auth
-- Loading states work
-
----
-
-## Task 3.2: Create Login Form Component
-
-**Priority**: P0 (Blocker)
-**Estimate**: 4 hours
-**Dependencies**: Task 3.1
-
-### Description
-Create responsive login form with validation and error handling.
-
-### Acceptance Criteria
-- [ ] LoginForm component created
-- [ ] Email and password input fields
-- [ ] Client-side validation (email format)
-- [ ] Form submission calls auth context login()
-- [ ] Loading state during submission
-- [ ] Error messages displayed
-- [ ] Success redirects to dashboard
-- [ ] Responsive design (mobile + desktop)
-- [ ] Accessible (ARIA labels, keyboard navigation)
-- [ ] Unit tests with React Testing Library
-
-### Design
-```jsx
-<LoginForm>
-  <EmailInput />
-  <PasswordInput />
-  <SubmitButton />
-  <ErrorMessage />
-  <ForgotPasswordLink />
-</LoginForm>
-```
-
-### Testing
-- Form renders correctly
-- Validation works
-- Submit calls login function
-- Error messages shown
-- Loading state displays
-- Success redirects
-
----
-
-## Task 3.3: Create Registration Form Component
-
-**Priority**: P0 (Blocker)
-**Estimate**: 4 hours
-**Dependencies**: Task 3.1
-
-### Description
-Create responsive registration form with password confirmation.
-
-### Acceptance Criteria
-- [ ] RegisterForm component created
-- [ ] Email, password, confirmPassword fields
-- [ ] Password strength indicator
-- [ ] Passwords must match
-- [ ] Client-side validation
-- [ ] Form submission calls API
-- [ ] Success auto-logs in user
-- [ ] Error handling
-- [ ] Responsive design
-- [ ] Accessible
-- [ ] Unit tests
-
-### Design
-```jsx
-<RegisterForm>
-  <EmailInput />
-  <PasswordInput />
-  <ConfirmPasswordInput />
-  <PasswordStrengthMeter />
-  <SubmitButton />
-  <ErrorMessage />
-</RegisterForm>
-```
-
-### Testing
-- Form renders correctly
-- Password matching works
-- Strength meter works
-- Submit calls register endpoint
-- Success logs in user
-- Errors displayed
-
----
-
-## Task 3.4: Create Protected Route Component
-
-**Priority**: P0 (Blocker)
-**Estimate**: 2 hours
-**Dependencies**: Task 3.1
-
-### Description
-Create ProtectedRoute wrapper component that requires authentication.
-
-### Acceptance Criteria
-- [ ] ProtectedRoute component created
-- [ ] Checks isAuthenticated from context
-- [ ] Redirects to /login if not authenticated
-- [ ] Preserves intended destination
-- [ ] Shows loading state while checking
-- [ ] Works with React Router v6
-- [ ] Unit tests
-
-### Implementation Notes
-```typescript
-function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const location = useLocation();
-
-  if (isLoading) return <LoadingSpinner />;
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  return <>{children}</>;
+// web/src/lib/api/client.ts — cross-origin credentials
+const fetchOptions: RequestInit = {
+  // Include cookies in cross-origin requests when API is on a different host
+  credentials: import.meta.env.VITE_API_URL ? "include" : "same-origin",
 }
 ```
 
-### Testing
-- Authenticated users see content
-- Unauthenticated redirected
-- Loading state works
-- Return URL preserved
+### Files Changed
+
+- `web/src/routes/__root.tsx` — add `beforeLoad` session check
+- `web/src/lib/api/auth.ts` — new file, auth API functions (`checkSession`, `login`, `logout`)
+- `web/src/lib/api/client.ts` — add `credentials` option for cross-origin
+- `web/src/lib/api/index.ts` — re-export auth functions
+
+### Testing (E2E)
+
+- Unauthenticated visit to `/` redirects to `/login`
+- Unauthenticated visit to `/digests` redirects to `/login?returnTo=/digests`
+- After login, redirect back to intended page
+- Authenticated user sees app normally (no redirect, no flash)
+- Login page is accessible without authentication
+- Cross-origin: cookies included in requests when `VITE_API_URL` set
 
 ---
 
-## Task 4.1: Write Integration Tests
-
-**Priority**: P1
-**Estimate**: 6 hours
-**Dependencies**: Task 2.4, Task 3.4
-
-### Description
-Write end-to-end tests for complete authentication flows.
-
-### Acceptance Criteria
-- [ ] Test: Complete registration flow
-- [ ] Test: Complete login flow
-- [ ] Test: Protected route access
-- [ ] Test: Logout flow
-- [ ] Test: Session persistence
-- [ ] Test: Invalid credentials
-- [ ] Test: Expired token handling
-- [ ] All tests pass
-- [ ] Test coverage > 80%
-
-### Test Scenarios
-1. New user registers → auto-logged in → can access protected routes
-2. Existing user logs in → token received → can access protected routes
-3. User logs out → token invalidated → redirected from protected routes
-4. Page refresh → token still valid → user stays logged in
-5. Expired token → automatically logged out → redirected to login
-
-### Testing
-- E2E tests run in CI
-- All scenarios pass
-- No flaky tests
-
----
-
-## Task 4.2: Security Audit and Hardening
+## Task 3.1: Backend Tests
 
 **Priority**: P0
 **Estimate**: 4 hours
-**Dependencies**: Task 4.1
+**Dependencies**: Tasks 1.1–1.4
 
 ### Description
-Perform security review and implement additional hardening measures.
+
+Write comprehensive backend tests for auth endpoints, middleware, rate limiter, and security properties.
 
 ### Acceptance Criteria
-- [ ] HTTPS enforced for all auth endpoints
-- [ ] CSRF protection implemented
-- [ ] SQL injection prevention verified
-- [ ] XSS prevention verified
-- [ ] Rate limiting tested
-- [ ] Password requirements documented
-- [ ] Security headers configured (Helmet.js)
-- [ ] Dependency audit clean (npm audit)
-- [ ] Penetration testing checklist completed
-- [ ] Security documentation updated
 
-### Security Checklist
-- [ ] Passwords stored as bcrypt hashes (12 rounds)
-- [ ] JWT tokens expire after 24 hours
-- [ ] Sessions tracked and can be revoked
-- [ ] Rate limiting on auth endpoints
-- [ ] Input validation on all fields
-- [ ] Error messages don't leak info
-- [ ] CORS properly configured
-- [ ] Security headers set
+- [ ] `tests/api/test_auth_routes.py` — endpoint tests
+- [ ] `tests/api/test_auth_middleware.py` — middleware tests
+- [ ] `tests/api/test_rate_limiter.py` — rate limiter tests
+- [ ] `tests/security/test_owner_auth.py` — security-specific tests
 
-### Testing
-- Automated security scans pass
-- Manual penetration tests pass
-- No critical vulnerabilities
+### Test Cases
+
+**Auth endpoints (`test_auth_routes.py`):**
+- Login with correct password → 200 + session cookie
+- Login with wrong password → 401 + WARNING log with client IP
+- Successful login → INFO log with client IP
+- Login with empty password → 401 (or 422)
+- Login when APP_SECRET_KEY not configured → 500
+- Logout → cookie cleared
+- Session check with valid cookie → `{ authenticated: true }`
+- Session check without cookie → `{ authenticated: false }`
+- Session check with expired JWT → `{ authenticated: false }`
+- SameSite=None when `auth_cookie_cross_origin=True`
+- SameSite=Lax when `auth_cookie_cross_origin=False`
+- Error responses match existing format (`{"error": ..., "detail": ..., "trace_id": ...}`)
+
+**Auth middleware (`test_auth_middleware.py`):**
+- Protected endpoint with valid cookie → 200
+- Protected endpoint with valid X-Admin-Key → 200
+- Protected endpoint with neither → 401
+- Protected endpoint with expired cookie → 401
+- Exempted endpoint without auth → 200 (health, ready, system/config)
+- Auth endpoints without auth → 200 (no redirect loop)
+- Development mode: all endpoints accessible without auth
+- Sliding window: response cookie has refreshed expiry when token > 1 day old
+- Sliding window: response cookie NOT refreshed when token < 1 day old
+- SSE endpoint: 401 returned before any streaming data sent
+
+**Rate limiter (`test_rate_limiter.py`):**
+- 5 failures → 6th attempt returns 429 with Retry-After header
+- Different IPs tracked independently
+- Entries expire after window (time-mocked)
+- Memory cleanup works
+- Lockout message includes human-readable retry time
+
+**Security tests (`test_owner_auth.py`):**
+- JWT with wrong signature rejected
+- JWT with tampered payload rejected
+- JWT signed with raw APP_SECRET_KEY (not HMAC-derived) rejected
+- JWT signed with different key rejected
+- Cookie flags verified (HttpOnly, SameSite, Path)
+- Timing-safe comparison used (not just `==`)
+
+### Files Changed
+
+- `tests/api/test_auth_routes.py` — new file
+- `tests/api/test_auth_middleware.py` — new file
+- `tests/api/test_rate_limiter.py` — new file
+- `tests/security/test_owner_auth.py` — new file
 
 ---
 
+## Task 3.2: E2E Tests
+
+**Priority**: P1
+**Estimate**: 3 hours
+**Dependencies**: Tasks 2.1–2.2, 3.1
+
+### Description
+
+Write Playwright E2E tests for the login flow and protected routes.
+
+### Acceptance Criteria
+
+- [ ] E2E test file: `web/tests/e2e/auth/login.spec.ts`
+- [ ] Uses mock API routes (no real backend needed, consistent with existing E2E approach)
+- [ ] Import custom `test` from `../fixtures` (not `@playwright/test`)
+
+### Test Cases
+
+- Visit `/` without session → redirected to `/login`
+- Login page renders password field and submit button
+- Submit correct password → redirected to home (no flash-of-content)
+- Submit wrong password → error message shown
+- Submit with Enter key → form submits
+- After login, navigate to other pages without redirect
+- Logout → redirected to `/login`
+- Visit `/login` when already authenticated → redirected to `/`
+- `returnTo` parameter preserved through login flow
+- Rate limited (429) → shows "too many attempts" message
+
+### Files Changed
+
+- `web/tests/e2e/auth/login.spec.ts` — new file
+- `web/tests/e2e/fixtures/mock-data.ts` — add auth mock responses if needed
+
+---
+
+## Task 3.3: Update API Security Spec
+
+**Priority**: P2
+**Estimate**: 1 hour
+**Dependencies**: Tasks 1.1–2.2
+
+### Description
+
+Update the OpenSpec API security specification to reflect the new authentication model.
+
+### Acceptance Criteria
+
+- [ ] `openspec/specs/api-security/spec.md` updated with owner auth model
+- [ ] Document coexistence of session cookie + X-Admin-Key
+- [ ] Document exempted paths
+- [ ] Document configuration (APP_SECRET_KEY)
+- [ ] Document cross-origin cookie strategy (`AUTH_COOKIE_CROSS_ORIGIN` setting)
+- [ ] Document rate limiting behavior
+- [ ] Document dev mode bypass
+- [ ] Document login auditing (log levels and format)
+
+### Files Changed
+
+- `openspec/specs/api-security/spec.md` — update existing spec
+
+---
+
+## Implementation Gotchas
+
+These are things that would cause real bugs if overlooked during implementation:
+
+| Gotcha | Impact | Mitigation |
+|---|---|---|
+| Uvicorn `--proxy-headers` missing | Rate limiter sees proxy IP, locks out everyone after 5 failures | Task 1.1 adds flag to Dockerfile + Makefile |
+| `credentials: "include"` is global on fetch | Harmless — cookies absent or ignored on unauthed endpoints | Add a code comment explaining why |
+| OpenAPI docs unexempted | `/docs`, `/redoc`, `/openapi.json` blocked in production | Intentional — API schema behind auth. Access after login. |
+| PWA assets not a backend concern | Someone might add unnecessary middleware exemptions | Backend has no `StaticFiles` mount. Frontend serves its own assets. |
+| Session revocation = key rotation only | No per-device logout (stateless JWT trade-off) | Document: rotate `APP_SECRET_KEY` to force re-login everywhere |
+| Rate limiter resets on restart | Attacker could force restart to clear state | Acceptable for Phase 1. Phase 2 could use Redis or DB-backed limiter |
+| Cross-tab logout delay | Other tabs discover logout after staleTime (5 min) | Acceptable for personal tool. Could add `BroadcastChannel` later |
+
 ## Summary
 
-**Total Tasks**: 12
-**Total Estimate**: 45 hours (≈6 days)
+**Total Tasks**: 9
+**Total Estimate**: 24 hours (~3 days)
 
 **Critical Path**:
-1.1 → 1.2 → 2.1, 2.2 → 2.3 → 3.1 → 3.2, 3.3, 3.4 → 4.1 → 4.2
+```
+1.1 (Settings) → 1.2 (Endpoints) → 1.3 (Rate limiter) ─┐
+                       │                                   ├→ 1.4 (Middleware) → 3.1 (Backend tests)
+                       ↓                                   │
+                  2.1 (Login page) → 2.2 (Session check) ─┘→ 3.2 (E2E tests)
+                                                                      ↓
+                                                                3.3 (Update spec)
+```
 
-**Parallelization Opportunities**:
-- After 2.3: Tasks 2.4, 3.1 can run in parallel
-- After 3.1: Tasks 3.2, 3.3, 3.4 can run in parallel
-- Task 2.1 and 2.2 are independent and can overlap
+**Parallelization**:
+- After 1.2: Tasks 1.3, 1.4, and 2.1 can run in parallel
+- After 1.4 + 2.2: Tasks 3.1 and 3.2 can run in parallel
+- Task 3.3 can run anytime after the implementation tasks
 
 **Risk Areas**:
-- Task 2.3 (middleware) - affects all protected routes
-- Task 4.2 (security) - may uncover issues requiring rework
+- Task 1.1 (proxy headers) — without `--proxy-headers`, rate limiter locks out all users behind a reverse proxy
+- Task 1.4 (middleware) — touches every request; must not break existing endpoints or SSE streaming
+- Task 2.2 (session check) — must not create redirect loops or break dev mode
