@@ -138,8 +138,8 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             from src.ingestion.gmail import GmailContentIngestionService
 
             service = GmailContentIngestionService()
-            # Ingest content from newsletters label
-            count = service.ingest_content(query="label:newsletters-ai")
+            label_query = " OR ".join(f"label:{label}" for label in labels) if labels else ""
+            count = service.ingest_content(query=label_query)
 
             logger.info(f"Newsletter scan completed: {count} new items")
 
@@ -186,7 +186,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
                     await update_job_progress(job.id, 100, "Completed")
                     logger.info(f"Summarization completed for content_id={content_id}")
                     # Check if this completes a batch job
-                    await reconcile_batch_job_status(content_id)
+                    await reconcile_batch_job_status(job.id)
                     return
                 else:
                     # Summarization failed but not due to exception

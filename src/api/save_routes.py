@@ -4,7 +4,6 @@ These endpoints allow saving URLs for background content extraction,
 supporting iOS Shortcuts, bookmarklets, Chrome extension, and web forms.
 """
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -91,12 +90,12 @@ async def _enqueue_extraction(content_id: int) -> None:
     Uses PGQueuer if available, otherwise falls back to direct extraction.
     """
     try:
-        from src.queue.setup import get_queue_queries
+        from src.queue.setup import enqueue_queue_job
 
-        queries = await get_queue_queries()
-        # PGQueuer expects bytes payload, serialize dict to JSON bytes
-        payload = json.dumps({"content_id": content_id}).encode("utf-8")
-        await queries.enqueue("extract_url_content", payload)
+        await enqueue_queue_job(
+            "extract_url_content",
+            {"content_id": content_id},
+        )
         logger.info(f"Enqueued extraction task for content_id={content_id}")
     except Exception as e:
         if isinstance(e, ImportError):

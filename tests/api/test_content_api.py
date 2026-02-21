@@ -389,7 +389,7 @@ class TestTriggerSummarization:
         with patch(
             "src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock
         ) as mock_enqueue:
-            mock_enqueue.return_value = 123
+            mock_enqueue.return_value = (123, 2)
             response = client.post("/api/v1/contents/summarize", json=payload)
             assert response.status_code == 200
             data = response.json()
@@ -405,7 +405,7 @@ class TestTriggerSummarization:
         with patch(
             "src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock
         ) as mock_enqueue:
-            mock_enqueue.return_value = 123
+            mock_enqueue.return_value = (123, 2)
             response = client.post("/api/v1/contents/summarize", json=payload)
             assert response.status_code == 200
             data = response.json()

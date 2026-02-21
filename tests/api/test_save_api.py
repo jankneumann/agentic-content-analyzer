@@ -334,9 +334,9 @@ class TestEnqueueExtraction:
 
     def test_enqueue_uses_pgqueuer_when_available(self, client, db_session):
         """Uses PGQueuer to enqueue extraction when available."""
-        mock_queries = AsyncMock()
+        mock_enqueue = AsyncMock(return_value=(100, True))
 
-        with patch("src.queue.setup.get_queue_queries", return_value=mock_queries):
+        with patch("src.queue.setup.enqueue_queue_job", mock_enqueue):
             response = client.post(
                 "/api/v1/content/save-url",
                 json={"url": "https://example.com/enqueue-test"},
