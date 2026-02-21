@@ -49,12 +49,18 @@ class HoverflyClient:
         """Close the HTTP client."""
         self._client.close()
 
+    def __enter__(self) -> HoverflyClient:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
     def is_healthy(self) -> bool:
         """Check if Hoverfly is running and responsive."""
         try:
             resp = self._client.get(f"{self.admin_url}/api/v2/hoverfly")
             return resp.status_code == 200
-        except httpx.ConnectError:
+        except httpx.TransportError:
             return False
 
     def get_mode(self) -> str:

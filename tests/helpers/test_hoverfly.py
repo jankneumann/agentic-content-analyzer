@@ -46,6 +46,13 @@ class TestHoverflyClientHealth:
 
         assert client.is_healthy() is False
 
+    def test_is_healthy_returns_false_on_timeout(self, client, mock_httpx_client):
+        import httpx
+
+        mock_httpx_client.get.side_effect = httpx.ReadTimeout("timed out")
+
+        assert client.is_healthy() is False
+
 
 class TestHoverflyClientMode:
     def test_get_mode(self, client, mock_httpx_client):
@@ -151,3 +158,8 @@ class TestHoverflyClientInit:
         c = HoverflyClient()
         assert c.admin_url == "http://localhost:8888"
         assert c.proxy_url == "http://localhost:8500"
+
+    def test_context_manager(self, mock_httpx_client):
+        with HoverflyClient() as client:
+            assert client.admin_url == "http://localhost:8888"
+        mock_httpx_client.close.assert_called_once()

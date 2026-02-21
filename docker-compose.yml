@@ -58,7 +58,7 @@ services:
       - test  # Only start with --profile test or when explicitly specified
 
   hoverfly:
-    image: spectolabs/hoverfly:latest
+    image: spectolabs/hoverfly:v1.10.5
     container_name: newsletter-hoverfly
     ports:
       - "8500:8500"  # Proxy/webserver port

@@ -19,11 +19,14 @@ Fixtures:
 
 from __future__ import annotations
 
+import logging
 import os
 
 import pytest
 
 from tests.helpers.hoverfly import DEFAULT_ADMIN_URL, DEFAULT_PROXY_URL, HoverflyClient
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -34,11 +37,8 @@ def hoverfly_available() -> bool:
     Set HOVERFLY_ADMIN_URL to override the default endpoint.
     """
     admin_url = os.getenv("HOVERFLY_ADMIN_URL", DEFAULT_ADMIN_URL)
-    client = HoverflyClient(admin_url=admin_url)
-    try:
+    with HoverflyClient(admin_url=admin_url) as client:
         return client.is_healthy()
-    finally:
-        client.close()
 
 
 @pytest.fixture(autouse=True)
@@ -71,9 +71,12 @@ def hoverfly(hoverfly_available: bool) -> HoverflyClient:
 
     yield client
 
-    # Cleanup: reset simulations after each test for isolation
+    # Cleanup: reset simulations after each test for isolation.
+    # Suppress errors so a Hoverfly crash doesn't mask the real test failure.
     try:
         client.reset_simulation()
+    except Exception:
+        logger.warning("Failed to reset Hoverfly simulations during teardown", exc_info=True)
     finally:
         client.close()
 
