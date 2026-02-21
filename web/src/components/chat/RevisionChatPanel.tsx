@@ -533,19 +533,36 @@ export function RevisionChatPanel({
               </div>
 
               {/* Generate Preview button */}
-              <Button
-                size="sm"
-                onClick={onGeneratePreview}
-                disabled={!canGenerate}
-                className="gap-1.5"
-              >
-                {isGenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Generate Preview
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={canGenerate ? -1 : 0} className="inline-block outline-none">
+                    <Button
+                      size="sm"
+                      onClick={onGeneratePreview}
+                      disabled={!canGenerate}
+                      className={cn("gap-1.5", !canGenerate && "pointer-events-none")}
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      Generate Preview
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isStreaming ? (
+                    <p>Please wait for the response to finish</p>
+                  ) : isGenerating ? (
+                    <p>Preview is currently generating</p>
+                  ) : isPreviewMode ? (
+                    <p>Please accept or reject the current preview</p>
+                  ) : (
+                    <p>Generate a preview based on the chat context</p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </>
