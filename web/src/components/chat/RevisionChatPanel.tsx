@@ -552,15 +552,15 @@ export function RevisionChatPanel({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {isStreaming ? (
-                    <p>Please wait for the response to finish</p>
-                  ) : isGenerating ? (
-                    <p>Preview is currently generating</p>
-                  ) : isPreviewMode ? (
-                    <p>Please accept or reject the current preview</p>
-                  ) : (
-                    <p>Generate a preview based on the chat context</p>
-                  )}
+                  <p>
+                    {isStreaming
+                      ? "Please wait for the response to finish"
+                      : isGenerating
+                        ? "Preview is currently generating"
+                        : isPreviewMode
+                          ? "Please accept or reject the current preview"
+                          : "Generate a preview based on the chat context"}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </div>
