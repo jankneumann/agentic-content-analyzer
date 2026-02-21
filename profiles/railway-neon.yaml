@@ -1,0 +1,125 @@
+# Railway + Neon Production Profile
+# ==================================
+# Hybrid deployment: Railway hosts compute (API, frontend, MinIO storage),
+# Neon provides the database with copy-on-write branching for agent workflows.
+#
+# Why this combination:
+#   - Railway: Excellent compute hosting, MinIO for storage, simple deploys
+#   - Neon: Instant database branching (copy-on-write), scale-to-zero,
+#     point-in-time recovery — ideal for agent-driven development where
+#     each agent can work on an isolated branch of production data
+#
+# Trade-offs vs pure Railway:
+#   - (+) Database branching: agents get isolated DB copies in milliseconds
+#   - (+) Scale-to-zero: no idle DB costs during off-hours
+#   - (+) Point-in-time recovery built-in
+#   - (-) Cross-cloud latency: Railway → Neon adds ~5-15ms per query
+#   - (-) No pgmq extension (Neon doesn't support it; use PGQueuer instead)
+#   - (-) No pg_search/ParadeDB (use pgvector + BM25 via application layer)
+#   - (-) Backups managed by Neon (not pg_cron → MinIO)
+#
+# Required secrets in .secrets.yaml or environment:
+#   - NEON_DATABASE_URL (pooled connection string from Neon console)
+#   - NEON_API_KEY (for branch management — the key differentiator)
+#   - NEON_PROJECT_ID (for branch management API)
+#   - MINIO_ROOT_USER, MINIO_ROOT_PASSWORD (Railway MinIO service)
+#   - NEO4J_AURADB_URI, NEO4J_AURADB_PASSWORD
+#   - ANTHROPIC_API_KEY
+#   - ADMIN_API_KEY
+#
+# Optional Cloudflare DNS (custom domain):
+#   - CNAME app.yourdomain.com → your-frontend.up.railway.app
+#   - CNAME api.yourdomain.com → your-backend.up.railway.app
+#   - Set ALLOWED_ORIGINS=https://app.yourdomain.com
+#   - Cloudflare handles SSL termination, caching, DDoS protection
+#
+# Usage:
+#   Set PROFILE=railway-neon in Railway service variables
+
+name: railway-neon
+extends: base
+description: Railway compute + Neon database with branching for agent workflows
+
+providers:
+  database: neon
+  neo4j: auradb
+  storage: railway
+  observability: braintrust
+
+settings:
+  environment: production
+  log_level: INFO
+
+  # CORS — update with your custom domain or Railway frontend URL
+  # If using Cloudflare custom domain: https://app.yourdomain.com
+  # If using Railway default: https://your-frontend.up.railway.app
+  allowed_origins: "${ALLOWED_ORIGINS:-https://your-app.up.railway.app}"
+
+  # ---------------------------------------------------------------------------
+  # Database: Neon Serverless PostgreSQL
+  # ---------------------------------------------------------------------------
+  # Use the POOLED connection string from Neon console for application queries.
+  # The provider automatically derives direct URLs for migrations/workers.
+  database:
+    neon_database_url: "${NEON_DATABASE_URL:-${DATABASE_URL}}"
+    neon_direct_url: "${NEON_DIRECT_URL:-}"
+
+    # Neon branch management (the killer feature for agent workflows)
+    # These enable programmatic branch creation/deletion via the Neon API
+    neon_api_key: "${NEON_API_KEY:-}"
+    neon_project_id: "${NEON_PROJECT_ID:-}"
+    neon_default_branch: "${NEON_DEFAULT_BRANCH:-main}"
+
+  # ---------------------------------------------------------------------------
+  # Neo4j: AuraDB (cloud knowledge graph)
+  # ---------------------------------------------------------------------------
+  neo4j:
+    neo4j_auradb_uri: "${NEO4J_AURADB_URI}"
+    neo4j_auradb_user: neo4j
+    neo4j_auradb_password: "${NEO4J_AURADB_PASSWORD}"
+
+  # ---------------------------------------------------------------------------
+  # Storage: Railway MinIO (S3-compatible)
+  # ---------------------------------------------------------------------------
+  storage:
+    storage_provider: railway
+    minio_root_user: "${MINIO_ROOT_USER}"
+    minio_root_password: "${MINIO_ROOT_PASSWORD}"
+    railway_minio_endpoint: "${RAILWAY_MINIO_ENDPOINT:-}"
+    railway_minio_bucket: "${RAILWAY_MINIO_BUCKET:-newsletter-files}"
+
+  # ---------------------------------------------------------------------------
+  # Observability: Braintrust + OTel
+  # ---------------------------------------------------------------------------
+  observability:
+    braintrust_api_key: "${BRAINTRUST_API_KEY:-}"
+    braintrust_project_name: "AI Content Analyzer"
+    otel_enabled: true
+    otel_service_name: newsletter-aggregator
+    otel_exporter_otlp_endpoint: "https://api.braintrust.dev/otel/v1/traces"
+
+  # ---------------------------------------------------------------------------
+  # API Keys
+  # ---------------------------------------------------------------------------
+  api_keys:
+    anthropic_api_key: "${ANTHROPIC_API_KEY}"
+    openai_api_key: "${OPENAI_API_KEY:-}"
+    google_api_key: "${GOOGLE_API_KEY:-}"
+    tavily_api_key: "${TAVILY_API_KEY:-}"
+    elevenlabs_api_key: "${ELEVENLABS_API_KEY:-}"
+    sendgrid_api_key: "${SENDGRID_API_KEY:-}"
+    admin_api_key: "${ADMIN_API_KEY:-}"
+    voyage_api_key: "${VOYAGE_API_KEY:-}"
+    cohere_api_key: "${COHERE_API_KEY:-}"
+    jina_api_key: "${JINA_API_KEY:-}"
+
+  # ---------------------------------------------------------------------------
+  # Search & Embeddings
+  # ---------------------------------------------------------------------------
+  search:
+    embedding_provider: openai
+    embedding_model: text-embedding-3-small
+    embedding_dimensions: 1536
+    search_rerank_enabled: true
+    search_rerank_provider: cohere
+    search_rerank_model: rerank-english-v3.0

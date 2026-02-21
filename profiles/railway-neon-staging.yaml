@@ -1,0 +1,77 @@
+# Railway + Neon Staging Profile
+# ================================
+# Staging variant of railway-neon for CI/CD and pre-production validation.
+# Uses staging-prefixed env vars to avoid polluting production.
+#
+# Key difference from production:
+#   - Uses STAGING_* prefixed env vars (falls back to production vars)
+#   - Separate Braintrust project for staging traces
+#   - Neon branching is especially useful here: create a branch from
+#     production data, run smoke tests / Playwright E2E against it,
+#     then delete the branch — zero risk to production data
+#
+# Usage:
+#   export PROFILE=railway-neon-staging
+#   # Or in CI: PROFILE=railway-neon-staging pytest -m smoke
+
+name: railway-neon-staging
+extends: base
+description: Staging deployment — Railway compute + Neon database branching
+
+providers:
+  database: neon
+  neo4j: auradb
+  storage: railway
+  observability: braintrust
+
+settings:
+  environment: staging
+  log_level: INFO
+
+  allowed_origins: "${ALLOWED_ORIGINS:-https://staging.your-app.up.railway.app}"
+
+  database:
+    neon_database_url: "${STAGING_NEON_DATABASE_URL:-${NEON_DATABASE_URL:-${DATABASE_URL}}}"
+    neon_direct_url: "${STAGING_NEON_DIRECT_URL:-${NEON_DIRECT_URL:-}}"
+
+    # Branch management — staging should always have these for E2E test branching
+    neon_api_key: "${STAGING_NEON_API_KEY:-${NEON_API_KEY:-}}"
+    neon_project_id: "${STAGING_NEON_PROJECT_ID:-${NEON_PROJECT_ID:-}}"
+    neon_default_branch: "${STAGING_NEON_DEFAULT_BRANCH:-${NEON_DEFAULT_BRANCH:-main}}"
+
+  neo4j:
+    neo4j_auradb_uri: "${STAGING_NEO4J_AURADB_URI:-${NEO4J_AURADB_URI}}"
+    neo4j_auradb_user: "${STAGING_NEO4J_AURADB_USER:-neo4j}"
+    neo4j_auradb_password: "${STAGING_NEO4J_AURADB_PASSWORD:-${NEO4J_AURADB_PASSWORD}}"
+
+  storage:
+    minio_root_user: "${STAGING_MINIO_ROOT_USER:-${MINIO_ROOT_USER}}"
+    minio_root_password: "${STAGING_MINIO_ROOT_PASSWORD:-${MINIO_ROOT_PASSWORD}}"
+    railway_minio_endpoint: "${STAGING_RAILWAY_MINIO_ENDPOINT:-${RAILWAY_MINIO_ENDPOINT:-}}"
+    railway_minio_bucket: "${STAGING_RAILWAY_MINIO_BUCKET:-newsletter-files-staging}"
+
+  observability:
+    braintrust_api_key: "${STAGING_BRAINTRUST_API_KEY:-${BRAINTRUST_API_KEY:-}}"
+    braintrust_project_name: "AI Content Analyzer Staging"
+    otel_enabled: true
+    otel_service_name: "newsletter-aggregator-staging"
+    otel_exporter_otlp_endpoint: "https://api.braintrust.dev/otel/v1/traces"
+
+  api_keys:
+    anthropic_api_key: "${STAGING_ANTHROPIC_API_KEY:-${ANTHROPIC_API_KEY:-}}"
+    openai_api_key: "${STAGING_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
+    google_api_key: "${STAGING_GOOGLE_API_KEY:-${GOOGLE_API_KEY:-}}"
+    tavily_api_key: "${STAGING_TAVILY_API_KEY:-${TAVILY_API_KEY:-}}"
+    elevenlabs_api_key: "${STAGING_ELEVENLABS_API_KEY:-${ELEVENLABS_API_KEY:-}}"
+    sendgrid_api_key: "${STAGING_SENDGRID_API_KEY:-${SENDGRID_API_KEY:-}}"
+    admin_api_key: "${STAGING_ADMIN_API_KEY:-${ADMIN_API_KEY:-}}"
+    voyage_api_key: "${STAGING_VOYAGE_API_KEY:-${VOYAGE_API_KEY:-}}"
+    cohere_api_key: "${STAGING_COHERE_API_KEY:-${COHERE_API_KEY:-}}"
+    jina_api_key: "${STAGING_JINA_API_KEY:-${JINA_API_KEY:-}}"
+
+  search:
+    embedding_provider: openai
+    embedding_model: text-embedding-3-small
+    embedding_dimensions: 1536
+    search_rerank_enabled: true
+    search_rerank_provider: cohere
