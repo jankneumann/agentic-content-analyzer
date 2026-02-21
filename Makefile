@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging hoverfly-up hoverfly-down hoverfly-status hoverfly-capture test-hoverfly
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging hoverfly-up hoverfly-down hoverfly-status test-hoverfly
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -397,19 +397,6 @@ hoverfly-status:  ## Check Hoverfly status and loaded simulations
 		echo "✗ Hoverfly is not running"; \
 		echo "  Start with: make hoverfly-up"; \
 	fi
-
-hoverfly-capture:  ## Switch Hoverfly to capture mode (record real API calls)
-	@if ! curl -sf http://localhost:8888/api/v2/hoverfly >/dev/null 2>&1; then \
-		echo "✗ Hoverfly is not running! Start with: make hoverfly-up"; \
-		exit 1; \
-	fi
-	@echo "Switching Hoverfly to capture mode..."
-	@curl -s -X PUT http://localhost:8888/api/v2/hoverfly/mode -d '{"mode":"capture"}' >/dev/null
-	@echo "✓ Hoverfly is now in capture mode"
-	@echo "  All HTTP requests through localhost:8500 will be recorded"
-	@echo ""
-	@echo "When done, export the simulation:"
-	@echo "  curl -s http://localhost:8888/api/v2/simulation | python3 -m json.tool > simulation.json"
 
 full-up:  ## Start all services (core + Opik observability)
 	@echo "Starting core services..."

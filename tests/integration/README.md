@@ -197,13 +197,29 @@ They follow the [Hoverfly v5 schema](https://docs.hoverfly.io/en/latest/pages/re
 }
 ```
 
-**Option 2: Capture mode** - Record real API responses:
+**Option 2: Capture mode** - Record real API responses. Capture requires
+restarting Hoverfly in proxy mode (the default `docker-compose.yml` runs
+webserver mode, which has no upstream to record from):
 ```bash
-make hoverfly-capture
-# Make requests through localhost:8500
-curl http://localhost:8500/real-api-endpoint
+# Stop webserver-mode instance
+make hoverfly-down
+
+# Start Hoverfly in proxy mode (remove -webserver flag)
+docker compose --profile test run -d --name newsletter-hoverfly-capture \
+  -p 8500:8500 -p 8888:8888 hoverfly
+
+# Switch to capture mode
+curl -X PUT http://localhost:8888/api/v2/hoverfly/mode -d '{"mode":"capture"}'
+
+# Make requests through the proxy
+HTTP_PROXY=http://localhost:8500 curl http://real-api-endpoint/feed
+
 # Export recorded simulation
 curl -s http://localhost:8888/api/v2/simulation | python3 -m json.tool > simulation.json
+
+# Clean up and restart webserver mode
+docker rm -f newsletter-hoverfly-capture
+make hoverfly-up
 ```
 
 ### Available Fixtures

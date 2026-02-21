@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Generator
 
 import pytest
 
@@ -42,7 +43,7 @@ def hoverfly_available() -> bool:
 
 
 @pytest.fixture(autouse=True)
-def requires_hoverfly(request, hoverfly_available: bool):
+def requires_hoverfly(request: pytest.FixtureRequest, hoverfly_available: bool) -> None:
     """Skip tests marked with @pytest.mark.hoverfly if Hoverfly is not running.
 
     This fixture only activates for tests with the 'hoverfly' marker.
@@ -54,7 +55,7 @@ def requires_hoverfly(request, hoverfly_available: bool):
 
 
 @pytest.fixture
-def hoverfly(hoverfly_available: bool) -> HoverflyClient:
+def hoverfly(hoverfly_available: bool) -> Generator[HoverflyClient, None, None]:
     """Provide a HoverflyClient with automatic cleanup.
 
     Resets all simulations after each test to ensure isolation.
