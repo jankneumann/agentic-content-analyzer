@@ -7,6 +7,7 @@ Integration tests for the newsletter aggregator core pipeline. These tests verif
 Integration tests cover:
 - **Newsletter Summarization**: End-to-end summarization workflow with database storage
 - **Theme Analysis**: Multi-newsletter theme extraction with Graphiti integration
+- **Hoverfly API Simulation**: HTTP-level testing with simulated external APIs
 - **Digest Generation**: Full digest creation pipeline (coming soon)
 - **Knowledge Graph**: Entity extraction and historical context (coming soon)
 
@@ -102,6 +103,7 @@ Integration tests use a **separate test database** to ensure:
 Integration tests mock **external services only**:
 - ✅ **Real Database**: PostgreSQL operations
 - ✅ **Real Transactions**: Commit/rollback behavior
+- ✅ **Real HTTP (Hoverfly)**: HTTP-level behavior via simulated responses
 - ❌ **Mocked LLM API**: No actual API calls (cost/speed)
 - ❌ **Mocked Graphiti**: Simulated knowledge graph responses
 
@@ -110,11 +112,130 @@ This ensures we test:
 - Business logic
 - Error handling
 - Status transitions
+- HTTP request/response behavior (headers, status codes, content types)
 
 Without:
 - API costs
 - External dependencies
 - Slow API calls
+
+## Hoverfly API Simulation
+
+Hoverfly provides HTTP-level testing by acting as a simulated webserver. Unlike
+unit test mocks that patch at the Python level, Hoverfly tests real HTTP behavior:
+headers, content negotiation, error codes, and response formats.
+
+### When to Use Hoverfly vs Mocks
+
+| Scenario | Use Hoverfly | Use Mocks |
+|----------|-------------|-----------|
+| HTTP status code handling | Yes | No |
+| Response header parsing | Yes | No |
+| Content-Type negotiation | Yes | No |
+| Business logic with DB | No | Yes |
+| LLM response processing | No | Yes |
+| Fast unit tests | No | Yes |
+
+### Quick Start
+
+```bash
+# Start Hoverfly
+make hoverfly-up
+
+# Run Hoverfly tests only
+make test-hoverfly
+
+# Stop Hoverfly
+make hoverfly-down
+```
+
+### Writing Hoverfly Tests
+
+```python
+import httpx
+import pytest
+
+SIMULATIONS_DIR = Path(__file__).parent / "fixtures" / "simulations"
+
+@pytest.mark.hoverfly
+@pytest.mark.integration
+def test_my_http_feature(hoverfly, hoverfly_url):
+    """Test HTTP behavior with simulated responses."""
+    # Load simulation (reset automatically after each test)
+    hoverfly.import_simulation(SIMULATIONS_DIR / "rss_feed.json")
+
+    # Make real HTTP request to Hoverfly webserver
+    response = httpx.get(f"{hoverfly_url}/feed")
+
+    # Assert on HTTP-level behavior
+    assert response.status_code == 200
+    assert "application/rss+xml" in response.headers["content-type"]
+```
+
+### Creating Simulations
+
+Simulations are JSON files stored in `tests/integration/fixtures/simulations/`.
+They follow the [Hoverfly v5 schema](https://docs.hoverfly.io/en/latest/pages/reference/simulationschema.html).
+
+**Option 1: Manual creation** - Write JSON matching request/response pairs:
+```json
+{
+  "data": {
+    "pairs": [{
+      "request": {
+        "path": [{"matcher": "exact", "value": "/feed"}],
+        "method": [{"matcher": "exact", "value": "GET"}]
+      },
+      "response": {
+        "status": 200,
+        "body": "...",
+        "headers": {"Content-Type": ["application/rss+xml"]}
+      }
+    }]
+  },
+  "meta": {"schemaVersion": "v5"}
+}
+```
+
+**Option 2: Capture mode** - Record real API responses. Capture requires
+restarting Hoverfly in proxy mode (the default `docker-compose.yml` runs
+webserver mode, which has no upstream to record from):
+```bash
+# Stop webserver-mode instance
+make hoverfly-down
+
+# Start Hoverfly in proxy mode (remove -webserver flag)
+docker compose --profile test run -d --name newsletter-hoverfly-capture \
+  -p 8500:8500 -p 8888:8888 hoverfly
+
+# Switch to capture mode
+curl -X PUT http://localhost:8888/api/v2/hoverfly/mode -d '{"mode":"capture"}'
+
+# Make requests through the proxy
+HTTP_PROXY=http://localhost:8500 curl http://real-api-endpoint/feed
+
+# Export recorded simulation
+curl -s http://localhost:8888/api/v2/simulation | python3 -m json.tool > simulation.json
+
+# Clean up and restart webserver mode
+docker rm -f newsletter-hoverfly-capture
+make hoverfly-up
+```
+
+### Available Fixtures
+
+| Fixture | Scope | Description |
+|---------|-------|-------------|
+| `hoverfly_available` | session | `True` if Hoverfly is running |
+| `requires_hoverfly` | function | Auto-skip `@pytest.mark.hoverfly` tests if down |
+| `hoverfly` | function | `HoverflyClient` instance (auto-cleanup) |
+| `hoverfly_url` | function | Base URL for HTTP requests (`http://localhost:8500`) |
+
+### Simulation Files
+
+| File | Description |
+|------|-------------|
+| `rss_feed.json` | RSS feed responses: valid feed, empty feed, 500 error, 404 |
 
 ## Troubleshooting
 

@@ -13,38 +13,34 @@ Usage:
 Requirements:
     - NEON_API_KEY environment variable must be set
     - NEON_PROJECT_ID environment variable must be set
-    - Optional: NEON_DEFAULT_BRANCH (auto-detected if not set)
+    - Optional: NEON_DEFAULT_BRANCH (defaults to "main" via Settings)
 
 Note:
     These fixtures are skipped if Neon credentials are not configured.
     This allows running other tests without Neon access.
 """
 
-import os
 import uuid
 from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
 
-# Load environment variables from .env file for tests
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass  # dotenv not installed, rely on environment variables
-
+from src.config.settings import get_settings
 from src.storage.providers.neon_branch import NeonBranchManager
 
-# Check if Neon is configured (after loading .env)
-NEON_CONFIGURED = bool(os.environ.get("NEON_API_KEY") and os.environ.get("NEON_PROJECT_ID"))
+
+def _neon_is_configured() -> bool:
+    """Check if Neon credentials are configured via Settings."""
+    settings = get_settings()
+    return bool(settings.neon_api_key and settings.neon_project_id)
+
+
+# Check if Neon is configured (evaluated at import time via Settings)
+NEON_CONFIGURED = _neon_is_configured()
 
 # Skip reason for when Neon is not configured
 SKIP_REASON = "Neon credentials not configured (NEON_API_KEY, NEON_PROJECT_ID required)"
-
-# Cache for detected default branch name
-_detected_default_branch: str | None = None
 
 
 def generate_branch_name(prefix: str = "test") -> str:
@@ -61,16 +57,16 @@ def generate_branch_name(prefix: str = "test") -> str:
 
 
 async def _detect_default_branch(manager: NeonBranchManager) -> str:
-    """Auto-detect the default branch (root branch without a parent).
+    """Get the default branch name from Settings, falling back to auto-detection.
 
     Args:
         manager: NeonBranchManager instance (must be in async context)
 
     Returns:
-        Name of the root branch (e.g., "main", "production")
+        Name of the default branch (e.g., "main", "production")
 
     Raises:
-        RuntimeError: If no root branch is found
+        RuntimeError: If auto-detection fails to find a root branch
     """
     global _detected_default_branch
 
@@ -78,22 +74,14 @@ async def _detect_default_branch(manager: NeonBranchManager) -> str:
     if _detected_default_branch is not None:
         return _detected_default_branch
 
-    # Check environment variable first
-    env_branch = os.environ.get("NEON_DEFAULT_BRANCH")
-    if env_branch:
-        _detected_default_branch = env_branch
-        return env_branch
+    # Use Settings value (defaults to "main", overridden by NEON_DEFAULT_BRANCH env var)
+    settings = get_settings()
+    _detected_default_branch = settings.neon_default_branch
+    return _detected_default_branch
 
-    # Auto-detect by finding branch without a parent
-    branches = await manager.list_branches()
-    for branch in branches:
-        if branch.parent_id is None:
-            _detected_default_branch = branch.name
-            return branch.name
 
-    raise RuntimeError(
-        "No root branch found in Neon project. Please set NEON_DEFAULT_BRANCH environment variable."
-    )
+# Cache for detected default branch name
+_detected_default_branch: str | None = None
 
 
 @pytest.fixture(scope="function")
@@ -118,7 +106,7 @@ async def neon_test_branch() -> AsyncIterator[str]:
     and deletes it when the module finishes. All tests in the module share
     the same branch for efficiency.
 
-    The parent branch is auto-detected (the root branch without a parent).
+    The parent branch is read from Settings (NEON_DEFAULT_BRANCH, default: "main").
 
     Yields:
         PostgreSQL connection string for the test branch
@@ -133,7 +121,7 @@ async def neon_test_branch() -> AsyncIterator[str]:
     manager = NeonBranchManager()
 
     async with manager:
-        # Auto-detect the default branch
+        # Get the default branch from Settings
         default_branch = await _detect_default_branch(manager)
         async with manager.branch_context(branch_name, parent=default_branch) as conn_str:
             yield conn_str
@@ -147,7 +135,7 @@ async def neon_isolated_branch() -> AsyncIterator[str]:
     providing maximum isolation. Use this when tests modify the database
     and cannot share state.
 
-    The parent branch is auto-detected (the root branch without a parent).
+    The parent branch is read from Settings (NEON_DEFAULT_BRANCH, default: "main").
 
     Yields:
         PostgreSQL connection string for the isolated test branch
@@ -167,7 +155,7 @@ async def neon_isolated_branch() -> AsyncIterator[str]:
     manager = NeonBranchManager()
 
     async with manager:
-        # Auto-detect the default branch
+        # Get the default branch from Settings
         default_branch = await _detect_default_branch(manager)
         async with manager.branch_context(branch_name, parent=default_branch) as conn_str:
             yield conn_str

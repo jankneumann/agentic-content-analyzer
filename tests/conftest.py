@@ -219,4 +219,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "e2e: End-to-end API tests")
     config.addinivalue_line("markers", "slow: Tests that take >1s to complete")
     config.addinivalue_line("markers", "live_api: Tests that call real external APIs (costs money)")
+    config.addinivalue_line(
+        "markers", "hoverfly: Tests requiring Hoverfly API simulator (make hoverfly-up)"
+    )
     config.addinivalue_line("markers", "crawl4ai: Tests requiring Crawl4AI setup")
