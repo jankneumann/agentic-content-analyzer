@@ -7,7 +7,7 @@ from typing import Any
 from asyncpg.exceptions import DataError as AsyncpgDataError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DataError, IntegrityError
 
 from src.utils.logging import get_logger
 
@@ -56,6 +56,26 @@ def register_error_handlers(app: FastAPI) -> None:
             content={
                 "error": "Unprocessable Entity",
                 "detail": f"Invalid parameter value: {exc.orig}",
+            },
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+        """Convert SQLAlchemy IntegrityError to 409 Conflict.
+
+        Covers unique constraint violations, foreign key violations,
+        and check constraint failures — all indicate conflicting state,
+        not invalid input format.
+        """
+        logger.warning(
+            f"Database constraint violation: {exc.orig}",
+            extra={"path": request.url.path},
+        )
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "Conflict",
+                "detail": "Operation conflicts with existing data",
             },
         )
 

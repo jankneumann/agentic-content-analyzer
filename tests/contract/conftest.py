@@ -28,6 +28,7 @@ from unittest.mock import patch
 
 import pytest
 import schemathesis
+from sqlalchemy import event
 from sqlalchemy.orm import Session, sessionmaker
 
 # Ensure contract tests never boot embedded worker during app import/lifespan.
@@ -151,12 +152,34 @@ def contract_db_engine():
 
 @pytest.fixture
 def contract_db_session(contract_db_engine) -> Session:
-    """Create a database session with transaction rollback for contract tests."""
+    """Create a database session with auto-savepoint isolation.
+
+    Uses SQLAlchemy's ``after_transaction_end`` event to automatically
+    restart savepoints whenever a route handler calls ``session.commit()``
+    or ``session.rollback()``.  This keeps the session perpetually inside
+    a savepoint so the outer transaction is never committed — allowing
+    full rollback at the end of the test.
+    """
     connection = contract_db_engine.connect()
     transaction = connection.begin()
 
     session_factory = sessionmaker(bind=connection)
     session = session_factory()
+
+    # Start the first savepoint — all subsequent ones are auto-created
+    # by the event listener below.
+    session.begin_nested()
+
+    @event.listens_for(session, "after_transaction_end")
+    def _restart_savepoint(sess: Session, trans) -> None:  # type: ignore[no-untyped-def]
+        """Auto-restart a savepoint when one is committed or rolled back.
+
+        This keeps the session always inside a SAVEPOINT, so route handlers
+        that call session.commit() only release the current savepoint (not
+        the outer test transaction).
+        """
+        if trans.nested and not trans._parent.nested:  # type: ignore[union-attr]
+            sess.begin_nested()
 
     # Configure factories to use this session
     ContentFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
@@ -168,8 +191,10 @@ def contract_db_session(contract_db_engine) -> Session:
     ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     DigestFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
+    event.remove(session, "after_transaction_end", _restart_savepoint)
     session.close()
-    transaction.rollback()
+    if transaction.is_active:
+        transaction.rollback()
     connection.close()
 
 
@@ -263,27 +288,24 @@ def seeded_db(contract_db_session):
 
 
 def _make_db_patcher(session):
-    """Create mock get_db context manager with savepoint isolation.
+    """Create mock get_db context manager bound to the test session.
 
-    Uses PostgreSQL SAVEPOINTs so that if one Schemathesis-generated request
-    triggers a database error (e.g., invalid enum value), subsequent requests
-    in the same Hypothesis test case still get a clean transaction state.
+    Savepoint isolation is handled by the ``contract_db_session`` fixture's
+    ``after_transaction_end`` event listener — the session is always inside
+    a SAVEPOINT that is auto-restarted after each commit or rollback.
+
+    If a route handler triggers a database error, we rollback the session
+    (releasing the current savepoint) so the event listener can create a
+    fresh one for the next request.
     """
 
     @contextmanager
     def mock_get_db():
-        nested = session.begin_nested()
         try:
             yield session
         except Exception:
-            nested.rollback()
+            session.rollback()
             raise
-        else:
-            try:
-                nested.commit()
-            except Exception:
-                nested.rollback()
-                raise
 
     return mock_get_db
 
