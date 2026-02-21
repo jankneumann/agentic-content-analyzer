@@ -20,12 +20,12 @@ Fixtures:
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Generator
 
 import pytest
 
-from tests.helpers.hoverfly import DEFAULT_ADMIN_URL, DEFAULT_PROXY_URL, HoverflyClient
+from src.config.settings import get_settings
+from tests.helpers.hoverfly import HoverflyClient
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,10 @@ def hoverfly_available() -> bool:
     """Check if Hoverfly is running (session-scoped).
 
     Returns True if Hoverfly admin API is reachable.
-    Set HOVERFLY_ADMIN_URL to override the default endpoint.
+    URLs are read from Settings (HOVERFLY_ADMIN_URL env var).
     """
-    admin_url = os.getenv("HOVERFLY_ADMIN_URL", DEFAULT_ADMIN_URL)
-    with HoverflyClient(admin_url=admin_url) as client:
+    settings = get_settings()
+    with HoverflyClient(admin_url=settings.hoverfly_admin_url) as client:
         return client.is_healthy()
 
 
@@ -61,14 +61,16 @@ def hoverfly(hoverfly_available: bool) -> Generator[HoverflyClient, None, None]:
     Resets all simulations after each test to ensure isolation.
     The client connects to the admin API for simulation management.
 
-    Set HOVERFLY_ADMIN_URL / HOVERFLY_PROXY_URL to override defaults.
+    URLs are read from Settings (HOVERFLY_ADMIN_URL / HOVERFLY_PROXY_URL env vars).
     """
     if not hoverfly_available:
         pytest.skip("Hoverfly is not running (start with: make hoverfly-up)")
 
-    admin_url = os.getenv("HOVERFLY_ADMIN_URL", DEFAULT_ADMIN_URL)
-    proxy_url = os.getenv("HOVERFLY_PROXY_URL", DEFAULT_PROXY_URL)
-    client = HoverflyClient(admin_url=admin_url, proxy_url=proxy_url)
+    settings = get_settings()
+    client = HoverflyClient(
+        admin_url=settings.hoverfly_admin_url,
+        proxy_url=settings.hoverfly_proxy_url,
+    )
 
     yield client
 
@@ -89,6 +91,6 @@ def hoverfly_url(hoverfly: HoverflyClient) -> str:
     Use this URL as the base for httpx requests in tests:
         response = httpx.get(f"{hoverfly_url}/feed")
 
-    Set HOVERFLY_PROXY_URL to override the default endpoint.
+    URL is read from Settings (HOVERFLY_PROXY_URL env var).
     """
     return hoverfly.proxy_url

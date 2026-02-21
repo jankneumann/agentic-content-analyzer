@@ -587,6 +587,8 @@ class Settings(BaseSettings):
     opik_api_key: str | None = None  # Comet Cloud API key
     opik_workspace: str | None = None  # Comet Cloud workspace
     opik_project_name: str = "newsletter-aggregator"  # Opik project name
+    opik_base_url: str = "http://localhost:5174"  # Opik UI/nginx proxy URL
+    opik_backend_url: str = "http://localhost:8080"  # Opik backend (health check)
 
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key
@@ -626,8 +628,8 @@ class Settings(BaseSettings):
     # Test / Hoverfly API Simulation Configuration
     # Set these to route HTTP clients through Hoverfly during integration tests.
     # When hoverfly_admin_url is set, test fixtures can upload simulations automatically.
-    hoverfly_proxy_url: str | None = None  # Hoverfly webserver URL (e.g., http://localhost:8500)
-    hoverfly_admin_url: str | None = None  # Hoverfly admin API URL (e.g., http://localhost:8888)
+    hoverfly_proxy_url: str = "http://localhost:8500"  # Hoverfly webserver URL
+    hoverfly_admin_url: str = "http://localhost:8888"  # Hoverfly admin API URL
 
     @model_validator(mode="after")
     def validate_search_config(self) -> Settings:
