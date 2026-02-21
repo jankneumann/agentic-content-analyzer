@@ -258,6 +258,33 @@ def test_upload_unknown_extension_skips_signature_check(client):
         )
 
 
+def test_upload_no_extension_is_rejected(client):
+    """Test that uploading a file with no extension (format="unknown") is REJECTED.
+
+    Security regression test: Previously, "unknown" format bypassed the supported format check,
+    allowing arbitrary files to be uploaded. This test ensures the fix works.
+    """
+    with patch("src.api.upload_routes.FileContentIngestionService") as mock_service:
+        mock_instance = mock_service.return_value
+        mock_content = Content(
+            id=1,
+            title="Exploit",
+            status=ContentStatus.PARSED,
+            source_id="exploit",
+            source_type="file_upload",
+        )
+        mock_instance.ingest_file = AsyncMock(return_value=mock_content)
+
+        # File with NO extension -> format_ext="unknown"
+        content = b"#!/bin/bash\necho 'This is a script'"
+        files = {"file": ("malicious_script", content, "application/octet-stream")}
+
+        response = client.post("/api/v1/documents/upload", files=files)
+
+        assert response.status_code == 415
+        assert "Unsupported format: unknown" in response.json()["detail"]
+
+
 # ============================================================================
 # Integration Tests: MIME Type Cross-Check via API
 # ============================================================================

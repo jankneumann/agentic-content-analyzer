@@ -305,7 +305,7 @@ async def upload_document(
             supported.update(parser.supported_formats)
             supported.update(parser.fallback_formats)
 
-        if format_ext not in supported and format_ext != "unknown":
+        if format_ext not in supported:
             raise HTTPException(
                 status_code=415,
                 detail=f"Unsupported format: {format_ext}. Supported: {sorted(supported)}",
