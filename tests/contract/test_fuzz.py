@@ -15,41 +15,27 @@ import pytest
 import schemathesis
 from hypothesis import settings as hypothesis_settings
 
-# Endpoints excluded from fuzz testing — SSE, binary, external-dependent,
-# or mutating endpoints that trigger LLM calls / external services.
-EXCLUDED_FUZZ_REGEX = "|".join(
-    [
-        # SSE streaming
-        r"/api/v1/contents/ingest/status/",
-        r"/api/v1/contents/summarize/status/",
-        r"/api/v1/content/\{content_id\}/status",
-        r"/api/v1/chat/conversations/\{conversation_id\}/messages",
-        r"/api/v1/chat/conversations/\{conversation_id\}/regenerate",
-        r"/api/v1/summaries/preview",
-        # Binary / file serving
-        r"/api/v1/files/",
-        r"/api/v1/podcasts/\{podcast_id\}/audio",
-        r"/api/v1/audio-digests/\{audio_digest_id\}/stream",
-        # Proxy
-        r"/api/v1/otel/",
-        # External dependencies
-        r"/api/v1/settings/connections",
-        # Mutating endpoints that trigger LLM calls or external services
-        r"/api/v1/contents/ingest$",
-        r"/api/v1/contents/summarize$",
-        r"/api/v1/digests/generate$",
-        r"/api/v1/digests/\{digest_id\}/regenerate$",
-        r"/api/v1/themes/analyze$",
-        r"/api/v1/scripts/generate$",
-        r"/api/v1/scripts/\{script_id\}/regenerate$",
-        r"/api/v1/podcasts/generate$",
-        r"/api/v1/audio-digests$",
-        r"/api/v1/content/save-url$",
-        r"/api/v1/content/save-page$",
-        r"/api/v1/documents/upload$",
-        r"/api/v1/summaries/\{summary_id\}/regenerate",
-    ]
-)
+from tests.contract.conftest import EXCLUDED_COMMON_PATHS
+
+# Fuzz tests exclude everything that conformance tests exclude, PLUS
+# mutating endpoints that trigger LLM calls or external services.
+_FUZZ_ONLY_EXCLUSIONS: list[str] = [
+    r"/api/v1/contents/ingest$",
+    r"/api/v1/contents/summarize$",
+    r"/api/v1/digests/generate$",
+    r"/api/v1/digests/\{digest_id\}/regenerate$",
+    r"/api/v1/themes/analyze$",
+    r"/api/v1/scripts/generate$",
+    r"/api/v1/scripts/\{script_id\}/regenerate$",
+    r"/api/v1/podcasts/generate$",
+    r"/api/v1/audio-digests$",
+    r"/api/v1/content/save-url$",
+    r"/api/v1/content/save-page$",
+    r"/api/v1/documents/upload$",
+    r"/api/v1/summaries/\{summary_id\}/regenerate",
+]
+
+EXCLUDED_FUZZ_REGEX = "|".join(EXCLUDED_COMMON_PATHS + _FUZZ_ONLY_EXCLUSIONS)
 
 schema = schemathesis.pytest.from_fixture("contract_schema")
 
@@ -63,7 +49,7 @@ def _call_no_transport_error(case):
     """
     try:
         return case.call()
-    except Exception:
+    except (ConnectionError, OSError, ValueError):
         pytest.skip("Transport error (e.g., NUL byte in parameter)")
 
 

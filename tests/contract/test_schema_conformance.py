@@ -18,34 +18,9 @@ import pytest
 import schemathesis
 from hypothesis import settings as hypothesis_settings
 
-# ---------------------------------------------------------------------------
-# Regex pattern matching endpoints to exclude from schema conformance.
-#
-# SSE/streaming endpoints return text/event-stream which cannot be validated
-# against JSON response schemas. File endpoints return binary data.
-# The OTEL proxy proxies raw OTLP payloads.
-# Connection status requires a live Neo4j instance.
-# ---------------------------------------------------------------------------
-EXCLUDED_PATH_REGEX = "|".join(
-    [
-        # SSE streaming endpoints (return text/event-stream, not JSON)
-        r"/api/v1/contents/ingest/status/",
-        r"/api/v1/contents/summarize/status/",
-        r"/api/v1/content/\{content_id\}/status",
-        r"/api/v1/chat/conversations/\{conversation_id\}/messages",
-        r"/api/v1/chat/conversations/\{conversation_id\}/regenerate",
-        r"/api/v1/summaries/preview",
-        # Binary file serving
-        r"/api/v1/files/",
-        # Audio streaming
-        r"/api/v1/audio-digests/\{audio_digest_id\}/stream",
-        r"/api/v1/podcasts/\{podcast_id\}/audio",
-        # OTEL proxy
-        r"/api/v1/otel/",
-        # Requires Neo4j
-        r"/api/v1/settings/connections",
-    ]
-)
+from tests.contract.conftest import EXCLUDED_COMMON_PATHS
+
+EXCLUDED_PATH_REGEX = "|".join(EXCLUDED_COMMON_PATHS)
 
 schema = schemathesis.pytest.from_fixture("contract_schema")
 
@@ -65,7 +40,7 @@ def test_get_endpoints_conform_to_schema(case):
 
     try:
         response = case.call()
-    except Exception:
+    except (ConnectionError, OSError, ValueError):
         # Schemathesis may generate inputs (e.g., NUL bytes) that cause
         # low-level driver errors before a response is produced.
         # These are tracked as separate issues, not contract failures.
@@ -79,6 +54,10 @@ def test_get_endpoints_conform_to_schema(case):
     # Schema conformance for successful responses only.
     # 4xx responses (validation errors, not found) are expected when
     # Schemathesis generates edge-case parameter values.
+    # Note: In Schemathesis v4, validate_response() with not_a_server_error
+    # provides the available check. Full schema conformance is done by
+    # call_and_validate() which we avoid due to RejectedPositiveData issues
+    # with optional enum parameters (e.g., status=null).
     if response.status_code < 400:
         case.validate_response(
             response,

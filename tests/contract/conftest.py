@@ -41,6 +41,30 @@ from tests.helpers.test_db import create_test_engine, get_test_database_url
 
 TEST_DATABASE_URL = get_test_database_url()
 
+# ---------------------------------------------------------------------------
+# Shared endpoint exclusion patterns used by both conformance and fuzz tests.
+# SSE streaming endpoints return text/event-stream, binary endpoints serve
+# files, and the OTEL proxy forwards raw OTLP payloads — none of these can
+# be validated against JSON response schemas.
+# ---------------------------------------------------------------------------
+EXCLUDED_COMMON_PATHS: list[str] = [
+    # SSE streaming endpoints (return text/event-stream, not JSON)
+    r"/api/v1/contents/ingest/status/",
+    r"/api/v1/contents/summarize/status/",
+    r"/api/v1/content/\{content_id\}/status",
+    r"/api/v1/chat/conversations/\{conversation_id\}/messages",
+    r"/api/v1/chat/conversations/\{conversation_id\}/regenerate",
+    r"/api/v1/summaries/preview",
+    # Binary file serving / audio streaming
+    r"/api/v1/files/",
+    r"/api/v1/podcasts/\{podcast_id\}/audio",
+    r"/api/v1/audio-digests/\{audio_digest_id\}/stream",
+    # OTEL proxy
+    r"/api/v1/otel/",
+    # Requires Neo4j
+    r"/api/v1/settings/connections",
+]
+
 
 @pytest.fixture(autouse=True)
 def contract_test_env(monkeypatch):
@@ -193,10 +217,15 @@ def _make_db_patcher(session):
         nested = session.begin_nested()
         try:
             yield session
-            nested.commit()
         except Exception:
             nested.rollback()
             raise
+        else:
+            try:
+                nested.commit()
+            except Exception:
+                nested.rollback()
+                raise
 
     return mock_get_db
 
@@ -211,6 +240,12 @@ def contract_schema(seeded_db):
     mock_get_db = _make_db_patcher(seeded_db)
 
     with (
+        # Source-level patch — catches lazy imports inside service methods
+        # (e.g., PromptService._get_override_from_db, SettingsService._get_override_from_db)
+        # that do `from src.storage.database import get_db` at call time.
+        patch("src.storage.database.get_db", mock_get_db),
+        # Route-level patches — each route module has already imported get_db
+        # at module load time, so the source patch alone doesn't cover them.
         patch("src.api.audio_digest_routes.get_db", mock_get_db),
         patch("src.api.summary_routes.get_db", mock_get_db),
         patch("src.api.digest_routes.get_db", mock_get_db),

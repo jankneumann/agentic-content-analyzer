@@ -13,7 +13,8 @@ We need a shared, automated contract testing workflow for FastAPI endpoints that
 ## Decisions
 - Decision: Use Schemathesis to generate fuzz and schema validation tests against the FastAPI OpenAPI schema.
   - Alternatives considered: Dredd, custom pytest generators; Schemathesis provides modern OpenAPI-aware fuzzing and is actively maintained.
-- Decision: Use Pact OSS with an OSS Pact Broker for contract artifact sharing.
+- Decision: Defer Pact OSS / contract broker until external API consumers exist.
+  - Rationale: Single-producer system with no external consumers — Pact adds overhead without value. Revisit when multi-agent consumers are introduced.
   - Alternatives considered: bespoke JSON schema checks or repo-local contract files; broker enables multi-agent coordination and versioning.
 
 ## Risks / Trade-offs
