@@ -52,7 +52,9 @@ async def _claim_jobs(
     rows = await conn.fetch(
         """
         UPDATE pgqueuer_jobs
-        SET status = 'in_progress', started_at = NOW()
+        SET status = 'in_progress',
+            started_at = COALESCE(started_at, NOW()),
+            heartbeat_at = NOW()
         WHERE id IN (
             SELECT id FROM pgqueuer_jobs
             WHERE status = 'queued'
@@ -73,7 +75,7 @@ async def _complete_job(conn: asyncpg.Connection, job_id: int) -> None:
     await conn.execute(
         """
         UPDATE pgqueuer_jobs
-        SET status = 'completed', completed_at = NOW()
+        SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
         WHERE id = $1
         """,
         job_id,
@@ -85,7 +87,7 @@ async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
     await conn.execute(
         """
         UPDATE pgqueuer_jobs
-        SET status = 'failed', error = $2, completed_at = NOW()
+        SET status = 'failed', error = $2, completed_at = NOW(), heartbeat_at = NOW()
         WHERE id = $1
         """,
         job_id,
@@ -110,13 +112,27 @@ async def _process_job(
         await _fail_job(conn, job_id, f"Unknown entrypoint: {entrypoint}")
         return
 
+    async def _heartbeat_loop() -> None:
+        from src.queue.setup import touch_job_heartbeat
+
+        while True:
+            await asyncio.sleep(15)
+            await touch_job_heartbeat(job_id)
+
+    heartbeat_task = asyncio.create_task(_heartbeat_loop())
     try:
+        from src.queue.setup import touch_job_heartbeat
+
+        await touch_job_heartbeat(job_id)
         await handler(job_id, payload)
         await _complete_job(conn, job_id)
         logger.info(f"Job {job_id} ({entrypoint}) completed")
     except Exception as e:
         logger.error(f"Job {job_id} ({entrypoint}) failed: {e}")
         await _fail_job(conn, job_id, str(e))
+    finally:
+        heartbeat_task.cancel()
+        await asyncio.gather(heartbeat_task, return_exceptions=True)
 
 
 async def run_worker(
@@ -139,6 +155,9 @@ async def run_worker(
     """
     queue_url = get_queue_connection_string()
     asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+    from src.queue.setup import ensure_queue_schema_compatible
+
+    await ensure_queue_schema_compatible()
 
     conn = await asyncpg.connect(asyncpg_url)
 
@@ -251,7 +270,13 @@ def _register_content_handlers() -> None:
         from src.ingestion.gmail import GmailContentIngestionService
 
         service = GmailContentIngestionService()
-        service.ingest_content(query="label:newsletters-ai")
+        labels = payload.get("labels")
+        if labels is None:
+            # Keep scheduler defaults aligned with Gmail ingestion defaults.
+            service.ingest_content()
+        else:
+            label_query = " OR ".join(f"label:{label}" for label in labels) if labels else ""
+            service.ingest_content(query=label_query)
 
     @register_handler("summarize_content")
     async def summarize_content(job_id: int, payload: dict) -> None:
@@ -275,7 +300,7 @@ def _register_content_handlers() -> None:
 
                 if success:
                     await update_job_progress(job_id, 100, "Completed")
-                    await reconcile_batch_job_status(content_id)
+                    await reconcile_batch_job_status(job_id)
                     return
                 else:
                     raise RuntimeError(

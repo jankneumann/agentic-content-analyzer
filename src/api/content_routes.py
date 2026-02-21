@@ -169,48 +169,19 @@ async def _enqueue_ingestion_job(
 
     Returns the job ID for status tracking.
     """
-    import json
+    from src.queue.setup import enqueue_queue_job
 
-    import asyncpg
-
-    from src.queue.setup import (
-        _sqlalchemy_url_to_asyncpg,
-        get_queue_connection_string,
+    job_id, _created = await enqueue_queue_job(
+        "ingest_content",
+        {
+            "source": source.value,
+            "max_results": max_results,
+            "days_back": days_back,
+            "force_reprocess": force_reprocess,
+        },
     )
-
-    queue_url = get_queue_connection_string()
-    asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-    conn = await asyncpg.connect(asyncpg_url)
-
-    try:
-        payload = json.dumps(
-            {
-                "source": source.value,
-                "max_results": max_results,
-                "days_back": days_back,
-                "force_reprocess": force_reprocess,
-                "progress": 0,
-                "message": "Queued",
-            }
-        )
-
-        job_id: int = await conn.fetchval(
-            """
-            INSERT INTO pgqueuer_jobs (entrypoint, payload, status, created_at, execute_after)
-            VALUES ('ingest_content', $1::jsonb, 'queued', NOW(), NOW())
-            RETURNING id
-            """,
-            payload,
-        )
-
-        # Notify workers
-        await conn.execute("SELECT pg_notify('pgqueuer', 'ingest_content')")
-
-        logger.info(f"Enqueued ingestion job {job_id} for source {source.value}")
-        return job_id
-
-    finally:
-        await conn.close()
+    logger.info(f"Enqueued ingestion job {job_id} for source {source.value}")
+    return job_id
 
 
 class DuplicateInfo(BaseModel):
@@ -268,7 +239,7 @@ async def get_ingestion_status(task_id: str) -> StreamingResponse:
     Stream real-time progress updates for the ingestion task.
     Reads from pgqueuer_jobs table for persistent status tracking.
     """
-    from src.queue.setup import get_job_status
+    from src.queue.setup import DEFAULT_STATUS_POLL_SECONDS, get_job_status
 
     # Validate task_id is a valid job ID
     try:
@@ -284,34 +255,36 @@ async def get_ingestion_status(task_id: str) -> StreamingResponse:
     async def event_generator():
         import json
 
-        while True:
-            job = await get_job_status(job_id)
-            if not job:
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
-                break
+        from src.queue.setup import _open_queue_connection
 
-            # Map job record to SSE response format
-            payload = job.payload or {}
-            task_data = {
-                "status": _map_job_status_to_task_status(job.status),
-                "progress": payload.get("progress", 0),
-                "total": payload.get("total", 0),
-                "processed": payload.get("processed", 0),
-                "source": payload.get("source", "unknown"),
-                "message": payload.get("message", ""),
-                "started_at": job.started_at.isoformat() if job.started_at else None,
-            }
+        conn = await _open_queue_connection()
+        try:
+            while True:
+                job = await get_job_status(job_id, conn=conn)
+                if not job:
+                    yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
+                    break
 
-            if job.error:
-                task_data["message"] = job.error
+                payload = job.payload or {}
+                task_data = {
+                    "status": _map_job_status_to_task_status(job.status),
+                    "progress": payload.get("progress", 0),
+                    "total": payload.get("total", 0),
+                    "processed": payload.get("processed", 0),
+                    "source": payload.get("source", "unknown"),
+                    "message": payload.get("message", ""),
+                    "started_at": job.started_at.isoformat() if job.started_at else None,
+                }
+                if job.error:
+                    task_data["message"] = job.error
 
-            yield f"data: {json.dumps(task_data)}\n\n"
+                yield f"data: {json.dumps(task_data)}\n\n"
+                if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+                    break
 
-            # Check for terminal states
-            if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
-                break
-
-            await asyncio.sleep(0.5)
+                await asyncio.sleep(DEFAULT_STATUS_POLL_SECONDS)
+        finally:
+            await conn.close()
 
     return StreamingResponse(
         event_generator(),
@@ -705,80 +678,17 @@ class SummarizeContentResponse(BaseModel):
 async def _enqueue_summarization_batch_job(
     content_ids: list[int],
     force: bool,
-) -> int:
+) -> tuple[int, int]:
     """Enqueue a batch summarization job to track overall progress.
 
-    Individual content items are enqueued as separate jobs via enqueue_summarization_job.
+    Individual content items are enqueued as linked child jobs in one transaction.
     This function creates a parent job to track the batch progress.
 
-    Returns the batch job ID for status tracking.
+    Returns (batch job ID, queued child count) for status tracking.
     """
-    import json
+    from src.queue.setup import enqueue_summarization_batch
 
-    import asyncpg
-
-    from src.queue.setup import (
-        _sqlalchemy_url_to_asyncpg,
-        enqueue_summarization_job,
-        get_queue_connection_string,
-    )
-
-    queue_url = get_queue_connection_string()
-    asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-    conn = await asyncpg.connect(asyncpg_url)
-
-    try:
-        # Create batch tracking job
-        payload = json.dumps(
-            {
-                "content_ids": content_ids,
-                "force": force,
-                "total": len(content_ids),
-                "enqueued": 0,
-                "completed": 0,
-                "failed": 0,
-                "progress": 0,
-                "message": "Enqueueing individual jobs",
-            }
-        )
-
-        batch_job_id: int = await conn.fetchval(
-            """
-            INSERT INTO pgqueuer_jobs (entrypoint, payload, status, created_at, execute_after)
-            VALUES ('summarize_batch', $1::jsonb, 'in_progress', NOW(), NOW())
-            RETURNING id
-            """,
-            payload,
-        )
-
-        logger.info(f"Created batch summarization job {batch_job_id} for {len(content_ids)} items")
-
-    finally:
-        await conn.close()
-
-    # Enqueue individual summarization jobs
-    enqueued_count = 0
-    for content_id in content_ids:
-        job_id = await enqueue_summarization_job(content_id)
-        if job_id is not None:
-            enqueued_count += 1
-
-    # Update batch job with enqueued count
-    conn = await asyncpg.connect(asyncpg_url)
-    try:
-        await conn.execute(
-            """
-            UPDATE pgqueuer_jobs
-            SET payload = payload || $1::jsonb
-            WHERE id = $2
-            """,
-            json.dumps({"enqueued": enqueued_count, "message": f"Enqueued {enqueued_count} jobs"}),
-            batch_job_id,
-        )
-    finally:
-        await conn.close()
-
-    return batch_job_id
+    return await enqueue_summarization_batch(content_ids, force=force)
 
 
 @router.post("/summarize", response_model=SummarizeContentResponse)
@@ -857,12 +767,12 @@ async def trigger_content_summarization(
         )
 
     # Enqueue batch job to pgqueuer_jobs table (persistent, survives restarts)
-    batch_job_id = await _enqueue_summarization_batch_job(content_ids, request.force)
+    batch_job_id, queued_count = await _enqueue_summarization_batch_job(content_ids, request.force)
 
     return SummarizeContentResponse(
         task_id=str(batch_job_id),
         message="Content summarization queued",
-        queued_count=len(content_ids),
+        queued_count=queued_count,
         content_ids=content_ids,
     )
 
@@ -877,7 +787,7 @@ async def get_content_summarization_status(task_id: str) -> StreamingResponse:
 
     For batch jobs, aggregates progress from individual summarization jobs.
     """
-    from src.queue.setup import get_job_status
+    from src.queue.setup import DEFAULT_STATUS_POLL_SECONDS, get_batch_child_counts, get_job_status
 
     # Validate task_id is a valid job ID
     try:
@@ -893,82 +803,28 @@ async def get_content_summarization_status(task_id: str) -> StreamingResponse:
     async def event_generator():
         import json
 
-        import asyncpg
+        from src.queue.setup import _open_queue_connection
 
-        from src.queue.setup import (
-            _sqlalchemy_url_to_asyncpg,
-            get_queue_connection_string,
-        )
+        conn = await _open_queue_connection()
+        try:
+            while True:
+                job = await get_job_status(job_id, conn=conn)
+                if not job:
+                    yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
+                    break
 
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+                payload = job.payload or {}
 
-        while True:
-            job = await get_job_status(job_id)
-            if not job:
-                yield f"data: {json.dumps({'status': 'error', 'message': 'Task not found'})}\n\n"
-                break
-
-            payload = job.payload or {}
-
-            # For batch jobs, count individual job progress
-            if job.entrypoint == "summarize_batch":
-                content_ids = payload.get("content_ids", [])
-                total = len(content_ids)
-
-                if total > 0:
-                    # Query status of individual summarize_content jobs
-                    conn = await asyncpg.connect(asyncpg_url)
-                    try:
-                        # Count completed and failed jobs for our content_ids
-                        # Jobs have payload->content_id matching our list
-                        result = await conn.fetch(
-                            """
-                            SELECT status, COUNT(*) as cnt
-                            FROM pgqueuer_jobs
-                            WHERE entrypoint = 'summarize_content'
-                              AND (payload->>'content_id')::int = ANY($1::int[])
-                            GROUP BY status
-                            """,
-                            content_ids,
-                        )
-
-                        completed = 0
-                        failed = 0
-                        in_progress = 0
-                        for row in result:
-                            if row["status"] == "completed":
-                                completed = row["cnt"]
-                            elif row["status"] == "failed":
-                                failed = row["cnt"]
-                            elif row["status"] == "in_progress":
-                                in_progress = row["cnt"]
-
-                        processed = completed + failed
-                        progress = int((processed / total) * 100) if total > 0 else 0
-
-                        # Determine batch status
-                        if processed == total:
-                            batch_status = "completed"
-                            # Update batch job to completed
-                            await conn.execute(
-                                """
-                                UPDATE pgqueuer_jobs
-                                SET status = 'completed', completed_at = NOW()
-                                WHERE id = $1 AND status != 'completed'
-                                """,
-                                job_id,
-                            )
-                        elif in_progress > 0 or processed < total:
-                            batch_status = "processing"
-                        else:
-                            batch_status = "queued"
-
-                    finally:
-                        await conn.close()
+                if job.entrypoint == "summarize_batch":
+                    counts = await get_batch_child_counts(job.id, conn=conn)
+                    total = counts["total"]
+                    completed = counts["completed"]
+                    failed = counts["failed"]
+                    processed = completed + failed
+                    progress = int((processed / total) * 100) if total > 0 else 100
 
                     task_data = {
-                        "status": batch_status,
+                        "status": _map_job_status_to_task_status(job.status),
                         "progress": progress,
                         "total": total,
                         "processed": processed,
@@ -980,40 +836,28 @@ async def get_content_summarization_status(task_id: str) -> StreamingResponse:
                     }
                 else:
                     task_data = {
-                        "status": "completed",
-                        "progress": 100,
-                        "total": 0,
-                        "processed": 0,
-                        "completed": 0,
-                        "failed": 0,
-                        "current_content_id": None,
-                        "message": "No content to summarize",
+                        "status": _map_job_status_to_task_status(job.status),
+                        "progress": payload.get("progress", 0),
+                        "total": 1,
+                        "processed": 1
+                        if job.status in (JobStatus.COMPLETED, JobStatus.FAILED)
+                        else 0,
+                        "completed": 1 if job.status == JobStatus.COMPLETED else 0,
+                        "failed": 1 if job.status == JobStatus.FAILED else 0,
+                        "current_content_id": payload.get("content_id"),
+                        "message": payload.get("message", ""),
                         "started_at": job.started_at.isoformat() if job.started_at else None,
                     }
-            else:
-                # Single summarization job
-                task_data = {
-                    "status": _map_job_status_to_task_status(job.status),
-                    "progress": payload.get("progress", 0),
-                    "total": 1,
-                    "processed": 1 if job.status in (JobStatus.COMPLETED, JobStatus.FAILED) else 0,
-                    "completed": 1 if job.status == JobStatus.COMPLETED else 0,
-                    "failed": 1 if job.status == JobStatus.FAILED else 0,
-                    "current_content_id": payload.get("content_id"),
-                    "message": payload.get("message", ""),
-                    "started_at": job.started_at.isoformat() if job.started_at else None,
-                }
 
-            if job.error:
-                task_data["message"] = job.error
+                if job.error:
+                    task_data["message"] = job.error
 
-            yield f"data: {json.dumps(task_data)}\n\n"
-
-            # Check for terminal states
-            if task_data["status"] in ("completed", "error"):
-                break
-
-            await asyncio.sleep(0.5)
+                yield f"data: {json.dumps(task_data)}\n\n"
+                if task_data["status"] in ("completed", "error"):
+                    break
+                await asyncio.sleep(DEFAULT_STATUS_POLL_SECONDS)
+        finally:
+            await conn.close()
 
     return StreamingResponse(
         event_generator(),

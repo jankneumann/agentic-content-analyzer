@@ -21,7 +21,10 @@ Job Payload Schema:
 
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -43,6 +46,30 @@ logger = get_logger(__name__)
 _queue: PgQueuer | None = None
 _connection: asyncpg.Connection | None = None
 
+DEFAULT_STATUS_POLL_SECONDS = 1.0
+DEFAULT_STALE_THRESHOLD_HOURS = 1
+REQUIRED_PAYLOAD_FIELDS: dict[str, set[str]] = {
+    "summarize_content": {"content_id"},
+    "extract_url_content": {"content_id"},
+    "ingest_content": {"source", "max_results", "days_back", "force_reprocess"},
+}
+REQUIRED_QUEUE_COLUMNS: set[str] = {
+    "id",
+    "entrypoint",
+    "payload",
+    "priority",
+    "status",
+    "created_at",
+    "execute_after",
+    "started_at",
+    "completed_at",
+    "heartbeat_at",
+    "parent_job_id",
+    "idempotency_key",
+    "error",
+    "retry_count",
+}
+
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
     """Convert SQLAlchemy URL format to asyncpg format.
@@ -61,6 +88,74 @@ def _sqlalchemy_url_to_asyncpg(url: str) -> str:
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgres://", 1)
     return url
+
+
+async def _open_queue_connection() -> asyncpg.Connection:
+    queue_url = get_queue_connection_string()
+    asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+    return await asyncpg.connect(asyncpg_url)
+
+
+@asynccontextmanager
+async def _queue_connection(
+    conn: asyncpg.Connection | None = None,
+) -> AsyncIterator[asyncpg.Connection]:
+    if conn is not None:
+        yield conn
+        return
+    if _connection is not None:
+        yield _connection
+        return
+    temp = await _open_queue_connection()
+    try:
+        yield temp
+    finally:
+        await temp.close()
+
+
+def _normalize_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    normalized.setdefault("progress", 0)
+    normalized.setdefault("message", "Queued")
+    normalized.setdefault("schema_version", 1)
+    return normalized
+
+
+def _payload_int(payload: dict[str, Any], key: str) -> int | None:
+    value = payload.get(key)
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _validate_payload(entrypoint: str, payload: dict[str, Any]) -> None:
+    required = REQUIRED_PAYLOAD_FIELDS.get(entrypoint)
+    if not required:
+        return
+    missing = [field for field in required if payload.get(field) is None]
+    if missing:
+        raise ValueError(
+            f"Invalid payload for '{entrypoint}': missing {', '.join(sorted(missing))}"
+        )
+
+
+def _build_idempotency_key(entrypoint: str, payload: dict[str, Any]) -> str | None:
+    if entrypoint in {"summarize_content", "extract_url_content"}:
+        content_id = _payload_int(payload, "content_id")
+        return f"{entrypoint}:content_id:{content_id}" if content_id else None
+    if entrypoint == "ingest_content":
+        key_payload = {
+            "source": payload.get("source"),
+            "max_results": payload.get("max_results"),
+            "days_back": payload.get("days_back"),
+            "force_reprocess": payload.get("force_reprocess"),
+        }
+        digest = hashlib.sha256(
+            json.dumps(key_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return f"ingest_content:{digest}"
+    return None
 
 
 async def get_queue() -> PgQueuer:
@@ -120,6 +215,30 @@ async def close_queue() -> None:
         logger.info("PGQueuer connection closed")
 
 
+async def ensure_queue_schema_compatible() -> None:
+    """Fail fast if required queue schema migrations are missing."""
+    async with _queue_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'pgqueuer_jobs'
+            """
+        )
+    if not rows:
+        raise RuntimeError(
+            "Queue schema missing: table 'pgqueuer_jobs' not found. Run database migrations first."
+        )
+    actual = {str(row["column_name"]) for row in rows}
+    missing = sorted(REQUIRED_QUEUE_COLUMNS - actual)
+    if missing:
+        missing_csv = ", ".join(missing)
+        raise RuntimeError(
+            "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
+            f"{missing_csv}. Run migrations first."
+        )
+
+
 async def init_queue_schema() -> None:
     """Initialize the PGQueuer database schema.
 
@@ -143,6 +262,9 @@ async def init_queue_schema() -> None:
                 execute_after TIMESTAMPTZ DEFAULT NOW(),
                 started_at TIMESTAMPTZ,
                 completed_at TIMESTAMPTZ,
+                heartbeat_at TIMESTAMPTZ,
+                parent_job_id BIGINT REFERENCES pgqueuer_jobs(id) ON DELETE SET NULL,
+                idempotency_key TEXT,
                 error TEXT,
                 retry_count INTEGER DEFAULT 0
             );
@@ -152,6 +274,16 @@ async def init_queue_schema() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_pgqueuer_jobs_entrypoint
                 ON pgqueuer_jobs(entrypoint);
+
+            CREATE INDEX IF NOT EXISTS idx_pgqueuer_jobs_parent_job_id
+                ON pgqueuer_jobs(parent_job_id);
+
+            CREATE INDEX IF NOT EXISTS idx_pgqueuer_jobs_heartbeat
+                ON pgqueuer_jobs(status, heartbeat_at);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_pgqueuer_jobs_active_dedupe
+                ON pgqueuer_jobs(entrypoint, idempotency_key)
+                WHERE status IN ('queued', 'in_progress') AND idempotency_key IS NOT NULL;
         """)
 
         # Create helper function for pg_cron to enqueue jobs
@@ -187,7 +319,11 @@ async def init_queue_schema() -> None:
 # ============================================================================
 
 
-async def get_job_status(job_id: int) -> JobRecord | None:
+async def get_job_status(
+    job_id: int,
+    *,
+    conn: asyncpg.Connection | None = None,
+) -> JobRecord | None:
     """Fetch job status by ID.
 
     Used by SSE endpoints and CLI to query job progress.
@@ -198,20 +334,8 @@ async def get_job_status(job_id: int) -> JobRecord | None:
     Returns:
         JobRecord if found, None if job doesn't exist
     """
-    global _connection
-
-    if _connection is None:
-        # Get a temporary connection for the query
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
-
-    try:
-        row = await conn.fetchrow(
+    async with _queue_connection(conn) as query_conn:
+        row = await query_conn.fetchrow(
             """
             SELECT
                 id,
@@ -221,6 +345,8 @@ async def get_job_status(job_id: int) -> JobRecord | None:
                 priority,
                 error,
                 retry_count,
+                parent_job_id,
+                heartbeat_at,
                 created_at,
                 started_at,
                 completed_at
@@ -237,6 +363,8 @@ async def get_job_status(job_id: int) -> JobRecord | None:
         payload = row["payload"] if row["payload"] else {}
         if isinstance(payload, str):
             payload = json.loads(payload)
+        parent_job_id = row.get("parent_job_id", None)
+        heartbeat_at = row.get("heartbeat_at", None)
 
         return JobRecord(
             id=row["id"],
@@ -246,20 +374,20 @@ async def get_job_status(job_id: int) -> JobRecord | None:
             priority=row["priority"],
             error=row["error"],
             retry_count=row["retry_count"],
+            parent_job_id=parent_job_id,
+            heartbeat_at=heartbeat_at,
             created_at=row["created_at"],
             started_at=row["started_at"],
             completed_at=row["completed_at"],
         )
-
-    finally:
-        if should_close:
-            await conn.close()
 
 
 async def update_job_progress(
     job_id: int,
     progress: int,
     message: str,
+    *,
+    conn: asyncpg.Connection | None = None,
 ) -> None:
     """Update job progress in the payload.
 
@@ -271,24 +399,14 @@ async def update_job_progress(
         progress: Completion percentage (0-100)
         message: Current status message
     """
-    global _connection
-
-    if _connection is None:
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
-
-    try:
+    async with _queue_connection(conn) as query_conn:
         # Merge progress into existing payload
         progress_data = json.dumps({"progress": progress, "message": message})
-        await conn.execute(
+        await query_conn.execute(
             """
             UPDATE pgqueuer_jobs
             SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb
+              , heartbeat_at = NOW()
             WHERE id = $2
             """,
             progress_data,
@@ -296,9 +414,21 @@ async def update_job_progress(
         )
         logger.debug(f"Updated job {job_id} progress: {progress}% - {message}")
 
-    finally:
-        if should_close:
-            await conn.close()
+
+async def touch_job_heartbeat(
+    job_id: int,
+    *,
+    conn: asyncpg.Connection | None = None,
+) -> None:
+    async with _queue_connection(conn) as query_conn:
+        await query_conn.execute(
+            """
+            UPDATE pgqueuer_jobs
+            SET heartbeat_at = NOW()
+            WHERE id = $1
+            """,
+            job_id,
+        )
 
 
 async def list_jobs(
@@ -319,21 +449,9 @@ async def list_jobs(
     Returns:
         Tuple of (jobs list, total count)
     """
-    global _connection
-
-    if _connection is None:
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
-
-    # Clamp limit
     limit = min(limit, 100)
 
-    try:
+    async with _queue_connection() as conn:
         # Build WHERE clause
         conditions = []
         params: list[Any] = []
@@ -368,7 +486,8 @@ async def list_jobs(
                 payload,
                 error,
                 created_at,
-                started_at
+                started_at,
+                heartbeat_at
             FROM pgqueuer_jobs
             WHERE {where_clause}
             ORDER BY created_at DESC
@@ -391,15 +510,11 @@ async def list_jobs(
                     progress=payload.get("progress", 0),
                     error=row["error"],
                     created_at=row["created_at"],
-                    updated_at=row["started_at"],
+                    updated_at=row["heartbeat_at"] or row["started_at"] or row["created_at"],
                 )
             )
 
         return jobs, total
-
-    finally:
-        if should_close:
-            await conn.close()
 
 
 async def retry_failed_job(job_id: int) -> JobRecord | None:
@@ -413,18 +528,7 @@ async def retry_failed_job(job_id: int) -> JobRecord | None:
     Returns:
         Updated JobRecord if successful, None if job not found or not retryable
     """
-    global _connection
-
-    if _connection is None:
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
-
-    try:
+    async with _queue_connection() as conn:
         # Only retry failed jobs
         result = await conn.fetchrow(
             """
@@ -435,7 +539,8 @@ async def retry_failed_job(job_id: int) -> JobRecord | None:
                 retry_count = retry_count + 1,
                 started_at = NULL,
                 completed_at = NULL,
-                execute_after = NOW()
+                execute_after = NOW(),
+                heartbeat_at = NOW()
             WHERE id = $1 AND status = 'failed'
             RETURNING id
             """,
@@ -448,11 +553,7 @@ async def retry_failed_job(job_id: int) -> JobRecord | None:
         # Notify workers
         await conn.execute("SELECT pg_notify('pgqueuer', 'job_retry')")
 
-        return await get_job_status(job_id)
-
-    finally:
-        if should_close:
-            await conn.close()
+        return await get_job_status(job_id, conn=conn)
 
 
 async def cleanup_old_jobs(older_than_days: int = 30) -> int:
@@ -467,18 +568,7 @@ async def cleanup_old_jobs(older_than_days: int = 30) -> int:
     Returns:
         Number of jobs deleted
     """
-    global _connection
-
-    if _connection is None:
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
-
-    try:
+    async with _queue_connection() as conn:
         cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
 
         result = await conn.execute(
@@ -495,12 +585,10 @@ async def cleanup_old_jobs(older_than_days: int = 30) -> int:
         logger.info(f"Cleaned up {count} old completed jobs (older than {older_than_days} days)")
         return count
 
-    finally:
-        if should_close:
-            await conn.close()
 
-
-async def mark_stale_jobs_failed(stale_threshold_hours: int = 1) -> int:
+async def mark_stale_jobs_failed(
+    stale_threshold_hours: int = DEFAULT_STALE_THRESHOLD_HOURS,
+) -> int:
     """Mark stale in_progress jobs as failed.
 
     Jobs stuck in 'in_progress' for longer than the threshold
@@ -512,18 +600,7 @@ async def mark_stale_jobs_failed(stale_threshold_hours: int = 1) -> int:
     Returns:
         Number of jobs marked as failed
     """
-    global _connection
-
-    if _connection is None:
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
-
-    try:
+    async with _queue_connection() as conn:
         cutoff = datetime.now(UTC) - timedelta(hours=stale_threshold_hours)
 
         result = await conn.execute(
@@ -532,9 +609,10 @@ async def mark_stale_jobs_failed(stale_threshold_hours: int = 1) -> int:
             SET
                 status = 'failed',
                 error = 'stale_timeout',
-                completed_at = NOW()
+                completed_at = NOW(),
+                heartbeat_at = NOW()
             WHERE status = 'in_progress'
-              AND started_at < $1
+              AND COALESCE(heartbeat_at, started_at) < $1
             """,
             cutoff,
         )
@@ -547,9 +625,60 @@ async def mark_stale_jobs_failed(stale_threshold_hours: int = 1) -> int:
             )
         return count
 
-    finally:
-        if should_close:
-            await conn.close()
+
+async def enqueue_queue_job(
+    entrypoint: str,
+    payload: dict[str, Any],
+    *,
+    priority: int = 0,
+    parent_job_id: int | None = None,
+    conn: asyncpg.Connection | None = None,
+) -> tuple[int, bool]:
+    """Enqueue with canonical payload and active-job idempotency."""
+    _validate_payload(entrypoint, payload)
+    payload = _normalize_job_payload(payload)
+    idempotency_key = _build_idempotency_key(entrypoint, payload)
+
+    async with _queue_connection(conn) as query_conn:
+        row = await query_conn.fetchrow(
+            """
+            INSERT INTO pgqueuer_jobs (
+                entrypoint, payload, priority, status, created_at, execute_after,
+                parent_job_id, heartbeat_at, idempotency_key
+            )
+            VALUES ($1, $2::jsonb, $3, 'queued', NOW(), NOW(), $4, NOW(), $5)
+            ON CONFLICT (entrypoint, idempotency_key)
+            WHERE status IN ('queued', 'in_progress') AND idempotency_key IS NOT NULL
+            DO NOTHING
+            RETURNING id
+            """,
+            entrypoint,
+            json.dumps(payload),
+            priority,
+            parent_job_id,
+            idempotency_key,
+        )
+        if row:
+            job_id = int(row["id"])
+            await query_conn.execute("SELECT pg_notify('pgqueuer', $1)", entrypoint)
+            return job_id, True
+
+        existing_id = await query_conn.fetchval(
+            """
+            SELECT id
+            FROM pgqueuer_jobs
+            WHERE entrypoint = $1
+              AND idempotency_key = $2
+              AND status IN ('queued', 'in_progress')
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            entrypoint,
+            idempotency_key,
+        )
+        if existing_id is None:
+            raise RuntimeError(f"Unable to enqueue or locate duplicate job for '{entrypoint}'")
+        return int(existing_id), False
 
 
 async def enqueue_summarization_job(content_id: int) -> int | None:
@@ -564,57 +693,104 @@ async def enqueue_summarization_job(content_id: int) -> int | None:
     Returns:
         Job ID if enqueued, None if already in queue
     """
-    global _connection
+    job_id, created = await enqueue_queue_job(
+        "summarize_content",
+        {"content_id": content_id},
+    )
+    if not created:
+        logger.debug(f"Content {content_id} already in active queue (job {job_id})")
+        return None
+    logger.info(f"Enqueued summarization job {job_id} for content {content_id}")
+    return job_id
 
-    if _connection is None:
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
 
-    try:
-        # Check if already queued or in_progress
-        existing = await conn.fetchval(
-            """
-            SELECT id FROM pgqueuer_jobs
-            WHERE entrypoint = 'summarize_content'
-              AND (payload->>'content_id')::int = $1
-              AND status IN ('queued', 'in_progress')
-            """,
-            content_id,
-        )
+async def enqueue_summarization_batch(
+    content_ids: list[int],
+    *,
+    force: bool,
+) -> tuple[int, int]:
+    """Atomically enqueue parent batch and linked child jobs."""
+    normalized_ids = list(dict.fromkeys(content_ids))
+    parent_payload = _normalize_job_payload(
+        {
+            "content_ids": normalized_ids,
+            "force": force,
+            "requested_total": len(normalized_ids),
+            "total": 0,
+            "enqueued": 0,
+            "completed": 0,
+            "failed": 0,
+            "message": "Queueing batch children",
+        }
+    )
 
-        if existing:
-            logger.debug(f"Content {content_id} already in queue (job {existing})")
-            return None
+    async with _queue_connection() as conn:
+        async with conn.transaction():
+            parent_id = await conn.fetchval(
+                """
+                INSERT INTO pgqueuer_jobs (
+                    entrypoint, payload, status, created_at, execute_after, heartbeat_at
+                )
+                VALUES ('summarize_batch', $1::jsonb, 'in_progress', NOW(), NOW(), NOW())
+                RETURNING id
+                """,
+                json.dumps(parent_payload),
+            )
+            assert parent_id is not None
 
-        # Enqueue new job
-        payload = json.dumps({"content_id": content_id, "progress": 0, "message": "Queued"})
-        job_id: int | None = await conn.fetchval(
-            """
-            INSERT INTO pgqueuer_jobs (entrypoint, payload, status, created_at, execute_after)
-            VALUES ('summarize_content', $1::jsonb, 'queued', NOW(), NOW())
-            RETURNING id
-            """,
-            payload,
-        )
+            child_ids: list[int] = []
+            duplicate_existing_ids: list[int] = []
+            for content_id in normalized_ids:
+                child_id, created = await enqueue_queue_job(
+                    "summarize_content",
+                    {"content_id": content_id},
+                    parent_job_id=int(parent_id),
+                    conn=conn,
+                )
+                if created:
+                    child_ids.append(child_id)
+                else:
+                    duplicate_existing_ids.append(child_id)
 
-        # Notify workers
-        await conn.execute("SELECT pg_notify('pgqueuer', 'summarize_content')")
+            terminal_status = "in_progress"
+            terminal_completed_at = None
+            if not child_ids:
+                terminal_status = "completed"
+                terminal_completed_at = datetime.now(UTC)
 
-        logger.info(f"Enqueued summarization job {job_id} for content {content_id}")
-        return job_id
-
-    finally:
-        if should_close:
-            await conn.close()
+            await conn.execute(
+                """
+                UPDATE pgqueuer_jobs
+                SET payload = payload || $2::jsonb,
+                    status = $3,
+                    completed_at = $4,
+                    heartbeat_at = NOW()
+                WHERE id = $1
+                """,
+                int(parent_id),
+                json.dumps(
+                    {
+                        "child_job_ids": child_ids,
+                        "duplicate_existing_job_ids": duplicate_existing_ids,
+                        "total": len(child_ids),
+                        "enqueued": len(child_ids),
+                        "message": (
+                            "Batch complete: all work already active elsewhere"
+                            if not child_ids
+                            else f"Enqueued {len(child_ids)} child job(s)"
+                        ),
+                        "progress": 100 if not child_ids else 0,
+                    }
+                ),
+                terminal_status,
+                terminal_completed_at,
+            )
+        await conn.execute("SELECT pg_notify('pgqueuer', 'summarize_batch')")
+        return int(parent_id), len(child_ids)
 
 
 async def reconcile_batch_job_status(
-    content_id: int,
+    child_job_id: int,
     *,
     include_current_as_completed: bool = True,
 ) -> None:
@@ -627,102 +803,114 @@ async def reconcile_batch_job_status(
     This ensures batch jobs reach terminal state without requiring SSE polling.
 
     Args:
-        content_id: The content_id of the just-completed child job
+        child_job_id: The id of the just-completed child job
         include_current_as_completed: If True, count the current job as completed
             even if PGQueuer hasn't updated its status yet. Set to True when calling
             from within a task that's about to return successfully.
     """
-    global _connection
-
-    if _connection is None:
-        queue_url = get_queue_connection_string()
-        asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
-        conn = await asyncpg.connect(asyncpg_url)
-        should_close = True
-    else:
-        conn = _connection
-        should_close = False
-
-    try:
-        # Find any in_progress batch jobs that include this content_id
-        batch_jobs = await conn.fetch(
+    async with _queue_connection() as conn:
+        batch_id = await conn.fetchval(
             """
-            SELECT id, payload
+            SELECT parent_job_id
             FROM pgqueuer_jobs
-            WHERE entrypoint = 'summarize_batch'
-              AND status = 'in_progress'
-              AND payload->'content_ids' @> $1::jsonb
+            WHERE id = $1
             """,
-            json.dumps([content_id]),
+            child_job_id,
         )
+        if batch_id is None:
+            return
 
-        for batch_job in batch_jobs:
-            batch_id = batch_job["id"]
-            payload = batch_job["payload"] or {}
-            if isinstance(payload, str):
-                payload = json.loads(payload)
+        row = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+                COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+                COUNT(*)::int AS total
+            FROM pgqueuer_jobs
+            WHERE parent_job_id = $1
+              AND entrypoint = 'summarize_content'
+            """,
+            int(batch_id),
+        )
+        if row is None:
+            return
 
-            content_ids = payload.get("content_ids", [])
-            if not content_ids:
-                continue
+        completed = int(row["completed"] or 0)
+        failed = int(row["failed"] or 0)
+        total = int(row["total"] or 0)
 
-            # Count completed and failed child jobs for this batch
-            result = await conn.fetch(
+        if include_current_as_completed:
+            child_status = await conn.fetchval(
                 """
-                SELECT status, COUNT(*) as cnt
+                SELECT status
                 FROM pgqueuer_jobs
-                WHERE entrypoint = 'summarize_content'
-                  AND (payload->>'content_id')::int = ANY($1)
-                  AND status IN ('completed', 'failed')
-                GROUP BY status
+                WHERE id = $1
                 """,
-                content_ids,
+                child_job_id,
             )
+            if child_status == "in_progress":
+                completed += 1
 
-            completed = 0
-            failed = 0
-            for row in result:
-                if row["status"] == "completed":
-                    completed = row["cnt"]
-                elif row["status"] == "failed":
-                    failed = row["cnt"]
+        processed = completed + failed
+        progress = int((processed / total) * 100) if total > 0 else 100
+        is_terminal = processed >= total
 
-            # If called from within a completing task, check if the current job
-            # is still 'in_progress' and count it as completing
-            if include_current_as_completed:
-                current_job_status = await conn.fetchval(
-                    """
-                    SELECT status FROM pgqueuer_jobs
-                    WHERE entrypoint = 'summarize_content'
-                      AND (payload->>'content_id')::int = $1
-                      AND status = 'in_progress'
-                    """,
-                    content_id,
-                )
-                if current_job_status:
-                    # Current job is still in_progress but about to complete
-                    completed += 1
+        await conn.execute(
+            """
+            UPDATE pgqueuer_jobs
+            SET payload = COALESCE(payload, '{}'::jsonb) || $2::jsonb,
+                status = CASE WHEN $3 THEN 'completed' ELSE status END,
+                completed_at = CASE WHEN $3 THEN NOW() ELSE completed_at END,
+                heartbeat_at = NOW()
+            WHERE id = $1 AND status = 'in_progress'
+            """,
+            int(batch_id),
+            json.dumps(
+                {
+                    "completed": completed,
+                    "failed": failed,
+                    "total": total,
+                    "processed": processed,
+                    "progress": progress,
+                    "message": f"Processed {processed}/{total}",
+                }
+            ),
+            is_terminal,
+        )
+        if is_terminal:
+            logger.info(f"Batch job {batch_id} completed: {completed} succeeded, {failed} failed")
 
-            total = len(content_ids)
-            processed = completed + failed
 
-            # If all child jobs are done, mark the batch as completed
-            if processed >= total:
-                await conn.execute(
-                    """
-                    UPDATE pgqueuer_jobs
-                    SET status = 'completed', completed_at = NOW()
-                    WHERE id = $1 AND status = 'in_progress'
-                    """,
-                    batch_id,
-                )
-                logger.info(
-                    f"Batch job {batch_id} completed: {completed} succeeded, {failed} failed"
-                )
-
-    finally:
-        if should_close:
-            await conn.close()
+async def get_batch_child_counts(
+    parent_job_id: int,
+    *,
+    conn: asyncpg.Connection | None = None,
+) -> dict[str, int]:
+    """Return summarize child status counts for a batch parent."""
+    async with _queue_connection(conn) as query_conn:
+        row = await query_conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+                COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+                COUNT(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
+                COUNT(*) FILTER (WHERE status = 'queued')::int AS queued,
+                COUNT(*)::int AS total
+            FROM pgqueuer_jobs
+            WHERE parent_job_id = $1
+              AND entrypoint = 'summarize_content'
+            """,
+            parent_job_id,
+        )
+        if row is None:
+            return {"completed": 0, "failed": 0, "in_progress": 0, "queued": 0, "total": 0}
+        return {
+            "completed": int(row["completed"] or 0),
+            "failed": int(row["failed"] or 0),
+            "in_progress": int(row["in_progress"] or 0),
+            "queued": int(row["queued"] or 0),
+            "total": int(row["total"] or 0),
+        }
 
 
 def _build_description(
@@ -869,3 +1057,32 @@ async def list_job_history(
     finally:
         if should_close:
             await conn.close()
+
+
+async def get_queue_health_snapshot(
+    *,
+    stale_threshold_hours: int = DEFAULT_STALE_THRESHOLD_HOURS,
+) -> dict[str, Any]:
+    """Return queue reachability and worker activity snapshot."""
+    async with _queue_connection() as conn:
+        await conn.fetchval("SELECT 1")
+        heartbeat_cutoff = datetime.now(UTC) - timedelta(hours=stale_threshold_hours)
+        row = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'queued')::int AS queued,
+                COUNT(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
+                COUNT(*) FILTER (
+                    WHERE status = 'in_progress'
+                      AND COALESCE(heartbeat_at, started_at, created_at) >= $1
+                )::int AS active_workers
+            FROM pgqueuer_jobs
+            """,
+            heartbeat_cutoff,
+        )
+        assert row is not None
+        return {
+            "queued": int(row["queued"] or 0),
+            "in_progress": int(row["in_progress"] or 0),
+            "active_workers": int(row["active_workers"] or 0),
+        }

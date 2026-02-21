@@ -16,7 +16,7 @@
   - Google ADK (Agent Development Kit)
   - Microsoft Agent Framework (Semantic Kernel or AutoGen)
 - **Ingestion**: Gmail API, feedparser (RSS/Podcasts), YouTube Data API, OpenAI Whisper (STT)
-- **Task Queue**: Celery + Redis
+- **Task Queue**: PostgreSQL queue (`pgqueuer_jobs`) with async workers
 - **Web**: FastAPI (APIs, web UI)
 - **Testing**: pytest
 
@@ -66,7 +66,7 @@ src/
     summary_markdown.py   # Summary markdown templates
     digest_markdown.py    # Digest markdown templates
     content_hash.py       # Content deduplication hashing
-  tasks/            # Celery tasks
+  tasks/            # Queue task handlers
   api/              # FastAPI app
   config/           # Configuration
     models.py       # Model registry and configuration

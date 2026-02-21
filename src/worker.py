@@ -1,79 +1,65 @@
-"""PGQueuer worker entry point.
+"""Embedded worker entry point.
 
-This module runs the background job processor that consumes tasks
-from the PostgreSQL queue and executes them.
-
-Usage:
-    python -m src.worker
-
-The worker uses direct database connections (not pooled) for:
-- Reliable LISTEN/NOTIFY for job notifications
-- Long-lived connections that don't exhaust pooler limits
-- Isolation from web application connection pool
+Runs the same queue runtime used by `aca worker start` so local and deployed
+workers share concurrency, dequeue, and shutdown semantics.
 """
 
 import asyncio
+import os
 import signal
 import sys
 
-from src.queue.setup import close_queue, get_queue
-from src.tasks.content import register_content_tasks
+from src.queue.worker import register_all_handlers, run_worker
 from src.telemetry import setup_telemetry, shutdown_telemetry
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Flag for graceful shutdown
-_shutdown_requested = False
+DEFAULT_CONCURRENCY = 5
+MAX_CONCURRENCY = 20
+
+
+def _get_runtime_concurrency() -> int:
+    raw = os.environ.get("WORKER_CONCURRENCY")
+    if not raw:
+        return DEFAULT_CONCURRENCY
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(f"Invalid WORKER_CONCURRENCY='{raw}', using {DEFAULT_CONCURRENCY}")
+        return DEFAULT_CONCURRENCY
+    if 1 <= value <= MAX_CONCURRENCY:
+        return value
+    logger.warning(
+        f"WORKER_CONCURRENCY={value} out of range (1-{MAX_CONCURRENCY}), using {DEFAULT_CONCURRENCY}"
+    )
+    return DEFAULT_CONCURRENCY
 
 
 def _handle_shutdown(signum: int, frame: object) -> None:
-    """Handle shutdown signals gracefully."""
-    global _shutdown_requested
     logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-    _shutdown_requested = True
 
 
 async def main() -> None:
-    """Main worker entry point.
-
-    Sets up signal handlers, initializes the queue connection,
-    registers task handlers, and runs the worker loop.
-    """
-    global _shutdown_requested
-
-    # Set up signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
-    # Initialize telemetry (Braintrust LLM tracing + SQLAlchemy/httpx instrumentation)
-    # app=None skips FastAPI instrumentation since worker has no HTTP server
     setup_telemetry(app=None)
+    concurrency = _get_runtime_concurrency()
 
-    logger.info("Starting PGQueuer worker...")
-
+    logger.info(f"Starting embedded queue worker (concurrency={concurrency})")
     try:
-        # Get PGQueuer instance (uses provider abstraction for connection)
-        pgq = await get_queue()
+        from src.queue.setup import ensure_queue_schema_compatible
 
-        # Register all task handlers
-        register_content_tasks(pgq)
-
-        logger.info("Worker started, listening for jobs...")
-        logger.info("Press Ctrl+C to stop")
-
-        # Run the worker (blocks until shutdown)
-        # PGQueuer uses LISTEN/NOTIFY for efficient job polling
-        await pgq.run()
-
+        await ensure_queue_schema_compatible()
+        register_all_handlers()
+        await run_worker(concurrency=concurrency)
     except asyncio.CancelledError:
         logger.info("Worker cancelled")
     except Exception as e:
         logger.error(f"Worker error: {e}")
         raise
     finally:
-        # Clean up
-        await close_queue()
         shutdown_telemetry()
         logger.info("Worker shutdown complete")
 

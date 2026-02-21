@@ -109,12 +109,16 @@ async def readiness_check() -> JSONResponse:
 
     # Queue check (PGQueuer uses PostgreSQL, so this is optional)
     try:
-        from src.queue.setup import _connection as queue_conn
+        from src.queue.setup import get_queue_health_snapshot
 
-        if queue_conn is not None:
-            checks["queue"] = "ok"
-        else:
-            checks["queue"] = "not_connected"
+        queue_snapshot = await asyncio.wait_for(
+            get_queue_health_snapshot(),
+            timeout=settings.health_check_timeout_seconds,
+        )
+        checks["queue"] = "ok"
+        checks["queue_queued"] = str(queue_snapshot["queued"])
+        checks["queue_in_progress"] = str(queue_snapshot["in_progress"])
+        checks["queue_active_workers"] = str(queue_snapshot["active_workers"])
     except ImportError:
         checks["queue"] = "not_configured"
     except Exception as exc:
