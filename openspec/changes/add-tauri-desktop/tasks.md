@@ -44,7 +44,11 @@
 
 - [ ] 6.1 Add `tauri-plugin-notification` to Rust dependencies
 - [ ] 6.2 Request notification permission on first launch
-- [ ] 6.3 Send native notification on digest completion (poll backend or WebSocket)
+- [ ] 6.3 Define notification event types matching capacitor-mobile (batch_summary, theme_analysis, digest, script, audio, pipeline, failure)
+- [ ] 6.4 Implement backend polling or WebSocket listener for job completion events
+- [ ] 6.5 Send native notification per event type (summary batch, theme analysis, digest, script, audio generation, pipeline completion, job failure)
+- [ ] 6.6 Add notification preferences (per-event-type enable/disable) in settings UI
+- [ ] 6.7 Route notification clicks to appropriate content view based on event type
 - [ ] 6.4 Handle notification click (show window, navigate to digest)
 
 ## 7. Build Scripts

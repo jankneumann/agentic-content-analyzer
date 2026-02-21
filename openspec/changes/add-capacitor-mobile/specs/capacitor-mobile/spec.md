@@ -41,20 +41,48 @@ The system SHALL provide a utility to detect whether the app is running in a nat
 - **AND** `getPlatform()` SHALL return `"web"`
 
 ### Requirement: Push Notifications
-The system SHALL support native push notifications for digest completion and content processing events.
+The system SHALL support native push notifications for all backend pipeline completion events.
 
 #### Scenario: Request permission
 - **WHEN** the user enables push notifications in settings
 - **THEN** the system SHALL request native push notification permission
 - **AND** register the device token with the backend
 
-#### Scenario: Receive notification
-- **WHEN** a push notification arrives while the app is in the background
-- **THEN** the system SHALL display a native notification with the event title and summary
+#### Scenario: Batch summary completion notification
+- **WHEN** a batch summarization job completes on the backend
+- **THEN** the system SHALL send a push notification with the count of summarized items (e.g., "12 items summarized")
+
+#### Scenario: Theme analysis completion notification
+- **WHEN** a theme analysis job completes on the backend
+- **THEN** the system SHALL send a push notification with the number of themes identified
+
+#### Scenario: Digest completion notification
+- **WHEN** a daily or weekly digest is created on the backend
+- **THEN** the system SHALL send a push notification with the digest title and type (daily/weekly)
+
+#### Scenario: Podcast script completion notification
+- **WHEN** a podcast script is generated on the backend
+- **THEN** the system SHALL send a push notification with the script title
+
+#### Scenario: Audio generation completion notification
+- **WHEN** a podcast audio or audio digest is generated on the backend
+- **THEN** the system SHALL send a push notification with the audio title and duration
+
+#### Scenario: Pipeline completion notification
+- **WHEN** a full pipeline run (ingest → summarize → digest) completes
+- **THEN** the system SHALL send a single summary notification with pipeline results
+
+#### Scenario: Job failure notification
+- **WHEN** any background job fails
+- **THEN** the system SHALL send a push notification with the job type and error summary
 
 #### Scenario: Notification tap
 - **WHEN** the user taps a push notification
-- **THEN** the app SHALL open and navigate to the relevant content (e.g., the completed digest)
+- **THEN** the app SHALL open and navigate to the relevant content (e.g., the completed digest, script, or audio)
+
+#### Scenario: Notification preferences
+- **WHEN** the user configures notification preferences in settings
+- **THEN** they SHALL be able to enable/disable notifications per event type (summaries, digests, scripts, audio, failures)
 
 #### Scenario: Web fallback
 - **WHEN** the app is running as a PWA (not native)

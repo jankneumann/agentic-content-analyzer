@@ -80,7 +80,12 @@ Key existing touchpoints:
 - **Always-on cleanup (every transcript)**: Adds latency and cost to every voice input, even short search queries where cleanup is unnecessary.
 - **Prompt-only cleanup (no dedicated endpoint)**: Embed cleanup in the chat system prompt. But this conflates the user's intent ("clean up my text") with the chat task.
 
-**Rationale**: An explicit cleanup step gives users control — they choose when to clean up. The backend endpoint reuses the existing LLM router (`src/services/llm_router.py`) and model configuration system, so the cleanup model is configurable per the standard pipeline pattern. The voice key phrase provides a hands-free trigger, while the button provides a visual alternative.
+**Rationale**: An explicit cleanup step gives users control — they choose when to clean up. The backend endpoint registers `VOICE_CLEANUP` as a proper `ModelStep` in `src/config/models.py`, adds its default to `model_registry.yaml`, and wires it through `ModelConfig.__init__()` — the same pattern used by all other pipeline steps (summarization, theme_analysis, etc.). This means:
+- It automatically appears in the Model Configuration section of the Settings UI
+- Users can override via `MODEL_VOICE_CLEANUP` env var, DB override, or YAML default
+- Cost data and model families show up in the dropdown just like other steps
+
+The voice key phrase provides a hands-free trigger, while the button provides a visual alternative.
 
 The cleanup prompt instructs the LLM to:
 - Fix grammar, punctuation, and filler words ("um", "uh", "like")

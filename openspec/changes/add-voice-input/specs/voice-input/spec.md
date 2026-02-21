@@ -189,10 +189,13 @@ The system SHALL provide an LLM-based cleanup step that transforms raw voice tra
 - **AND** preserve the user's intent and meaning without adding information
 - **AND** return only the cleaned text without explanations or metadata
 
-#### Scenario: Cleanup model configuration
+#### Scenario: Cleanup model as pipeline step
 - **WHEN** the cleanup model is not explicitly configured
-- **THEN** the system SHALL default to the `MODEL_VOICE_CLEANUP` setting (default: `claude-haiku-4-5`)
-- **AND** the model SHALL be configurable via the existing model configuration system
+- **THEN** the system SHALL use the `VOICE_CLEANUP` pipeline step (default: `claude-haiku-4-5`)
+- **AND** the step SHALL be registered in the `ModelStep` enum alongside existing steps (summarization, theme_analysis, etc.)
+- **AND** the default model SHALL be defined in `model_registry.yaml` under `default_models.voice_cleanup`
+- **AND** the step SHALL appear in the Model Configuration UI on the Settings page automatically
+- **AND** the model SHALL be overridable via env var `MODEL_VOICE_CLEANUP`, DB override, or YAML default (standard 3-tier precedence)
 
 #### Scenario: Cleanup error handling
 - **WHEN** the cleanup API call fails (network error or server error)

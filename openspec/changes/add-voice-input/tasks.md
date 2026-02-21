@@ -52,8 +52,11 @@
 
 - [ ] 7.1 Create `POST /api/v1/voice/cleanup` endpoint accepting `{ "text": "..." }` and returning `{ "cleaned_text": "..." }`
 - [ ] 7.2 Add cleanup prompt template (fix grammar, remove filler words, structure text, preserve intent)
-- [ ] 7.3 Wire cleanup endpoint to LLM router with `MODEL_VOICE_CLEANUP` configuration (default: `claude-haiku-4-5`)
-- [ ] 7.4 Add `MODEL_VOICE_CLEANUP` to model configuration system and settings UI
+- [ ] 7.3 Add `VOICE_CLEANUP = "voice_cleanup"` to `ModelStep` enum in `src/config/models.py`
+- [ ] 7.4 Add `voice_cleanup: claude-haiku-4-5` to `default_models` in `src/config/model_registry.yaml`
+- [ ] 7.5 Add `voice_cleanup` parameter to `ModelConfig.__init__()` and wire to `self._models`
+- [ ] 7.6 Wire cleanup endpoint to use `model_config.get_model_for_step(ModelStep.VOICE_CLEANUP)`
+- [ ] 7.7 Update model settings test step count assertion in `tests/api/test_model_settings_api.py`
 
 ## 8. LLM Transcript Cleanup — Frontend
 

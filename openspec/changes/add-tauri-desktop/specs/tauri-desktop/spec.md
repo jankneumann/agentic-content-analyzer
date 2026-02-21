@@ -106,17 +106,51 @@ The system SHALL accept files dropped onto the application window for document i
 - **THEN** the drop zone overlay SHALL disappear
 
 ### Requirement: Desktop Notifications
-The system SHALL send native desktop notifications for key events.
+The system SHALL send native desktop notifications for all backend pipeline completion events.
+
+#### Scenario: Batch summary completion notification
+- **WHEN** a batch summarization job completes on the backend
+- **AND** the desktop app is running
+- **THEN** a native notification SHALL be displayed with the count of summarized items
+
+#### Scenario: Theme analysis completion notification
+- **WHEN** a theme analysis job completes on the backend
+- **AND** the desktop app is running
+- **THEN** a native notification SHALL be displayed with the number of themes identified
 
 #### Scenario: Digest completion notification
-- **WHEN** a digest is completed on the backend
+- **WHEN** a daily or weekly digest is created on the backend
 - **AND** the desktop app is running
-- **THEN** a native notification SHALL be displayed with the digest title
+- **THEN** a native notification SHALL be displayed with the digest title and type
+
+#### Scenario: Podcast script completion notification
+- **WHEN** a podcast script is generated on the backend
+- **AND** the desktop app is running
+- **THEN** a native notification SHALL be displayed with the script title
+
+#### Scenario: Audio generation completion notification
+- **WHEN** a podcast audio or audio digest is generated on the backend
+- **AND** the desktop app is running
+- **THEN** a native notification SHALL be displayed with the audio title and duration
+
+#### Scenario: Pipeline completion notification
+- **WHEN** a full pipeline run completes on the backend
+- **AND** the desktop app is running
+- **THEN** a single summary notification SHALL be displayed with pipeline results
+
+#### Scenario: Job failure notification
+- **WHEN** any background job fails on the backend
+- **AND** the desktop app is running
+- **THEN** a native notification SHALL be displayed with the job type and error summary
 
 #### Scenario: Notification click
 - **WHEN** the user clicks a notification
 - **THEN** the main window SHALL be shown and focused
-- **AND** the app SHALL navigate to the completed digest
+- **AND** the app SHALL navigate to the relevant content (digest, script, audio, or job)
+
+#### Scenario: Notification preferences
+- **WHEN** the user configures notification preferences in settings
+- **THEN** they SHALL be able to enable/disable notifications per event type (summaries, digests, scripts, audio, failures)
 
 #### Scenario: Notification permission
 - **WHEN** the app starts for the first time

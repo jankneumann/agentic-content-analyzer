@@ -26,7 +26,12 @@
 - [ ] 4.2 Add push notification opt-in toggle to settings UI
 - [ ] 4.3 Add backend endpoint `POST /api/v1/devices/register` for device token registration
 - [ ] 4.4 Add device token storage (new DB table or settings override)
-- [ ] 4.5 Integrate push notification send on digest completion events
+- [ ] 4.5 Define notification event types enum (batch_summary, theme_analysis, digest, script, audio, pipeline, failure)
+- [ ] 4.6 Add backend notification dispatch service that emits push notifications on job completion
+- [ ] 4.7 Integrate notification dispatch into batch summarization, theme analysis, digest creation, script generation, and audio generation job handlers
+- [ ] 4.8 Add notification preferences API (per-event-type enable/disable)
+- [ ] 4.9 Add notification preferences UI in settings (toggles per event type)
+- [ ] 4.10 Handle notification tap navigation (route to digest, script, audio, or job detail based on event type)
 
 ## 5. Native Share Target
 
