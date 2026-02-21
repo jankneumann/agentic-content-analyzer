@@ -22,8 +22,9 @@ Key existing touchpoints:
 
 **Goals:**
 - Add real-time audio streaming from browser to backend via WebSocket
-- Support multiple cloud STT providers (OpenAI Whisper, Google Cloud Speech, Deepgram)
+- Support multiple cloud STT providers (Gemini, OpenAI Whisper, Deepgram)
 - Provide interim transcript results with <500ms latency
+- Return clean, structured text directly from cloud STT (built-in cleanup via transcription prompt) — bypassing the separate `VOICE_CLEANUP` step
 - Make cloud STT a configurable pipeline step (provider/model selection in settings UI)
 - Integrate cleanly with the existing engine abstraction (`STTEngine` interface)
 
@@ -62,23 +63,50 @@ Key existing touchpoints:
 
 **Rationale**: Follows the project's existing provider patterns (database providers, storage providers, TTS providers). Adding a new provider means implementing one class, no changes to the WebSocket endpoint.
 
-### 4. OpenAI Whisper API as default provider
+### 4. Gemini Flash 3.0 as default provider with built-in cleanup
 
-**Choice**: Default to OpenAI Whisper API since the project already has `openai` SDK installed and `OPENAI_API_KEY` is commonly configured for TTS.
+**Choice**: Default to Google Gemini Flash 3.0's native audio input. The transcription prompt includes cleanup instructions (fix grammar, remove filler words, structure text), so cloud STT returns clean text in a single API call — bypassing the separate `VOICE_CLEANUP` pipeline step entirely.
 
 **Alternatives considered**:
-- **Deepgram**: Best real-time streaming support and lowest cost ($0.0043/min), but requires a separate API key. Excellent choice as second provider.
-- **Google Cloud Speech-to-Text**: Strong multi-language, but more complex auth (service account JSON vs API key).
+- **OpenAI Whisper API + separate VOICE_CLEANUP**: Whisper is purpose-built for STT, but requires two sequential API calls (transcription + LLM cleanup). Higher latency, higher cost (~$0.36/hr Whisper + cleanup tokens), and loses audio context after the STT step — the cleanup LLM only sees lossy text.
+- **Deepgram**: Best real-time streaming support and lowest cost ($0.0043/min), but no built-in cleanup — would still need the `VOICE_CLEANUP` step. Offered as an alternative provider for users who want raw transcripts or lower cost.
+- **Google Cloud Speech-to-Text**: Strong multi-language but more complex auth (service account JSON). No built-in cleanup.
 
-**Rationale**: OpenAI Whisper shares the existing `OPENAI_API_KEY`, so users who already have TTS configured get cloud STT with zero additional setup. Deepgram is offered as an optional provider for users who want lower cost or better streaming.
+**Rationale**: Gemini Flash 3.0 with native audio input is strictly superior for the combined transcription+cleanup use case:
+- **Single API call**: ~200-500ms for transcription + cleanup vs ~2-4s for Whisper + separate LLM call
+- **Audio context preserved**: Gemini "hears" the audio — can distinguish meaningful pauses from filler, understand emphasis and tone — producing better cleanup than a text-only LLM working from lossy STT output
+- **Cost**: ~$0.10/hr audio input + negligible output tokens vs ~$0.36/hr for Whisper + cleanup tokens
+- **Already in stack**: The project uses Gemini for YouTube video processing (`MODEL_YOUTUBE_PROCESSING`), so the API key and SDK are already configured
+- **The separate `VOICE_CLEANUP` step remains valuable** for browser STT (Web Speech API) and on-device STT (Whisper WASM), which return raw transcripts without cleanup
 
-### 5. CLOUD_STT as a pipeline step in ModelConfig
+OpenAI Whisper and Deepgram are offered as alternative providers for users who prefer raw transcripts, need specific streaming behavior, or already have those API keys configured.
 
-**Choice**: Register `CLOUD_STT` in the `ModelStep` enum and `model_registry.yaml`, using the same 3-tier precedence as other steps.
+### 5. CLOUD_STT as a pipeline step — provider selection via ModelStep config dialog
 
-**Rationale**: Matches the `VOICE_CLEANUP` pattern from `add-voice-input`. Users can select the cloud STT provider/model via the Model Configuration section in Settings. The env var `MODEL_CLOUD_STT` provides deployment-level control.
+**Choice**: Register `CLOUD_STT` in the `ModelStep` enum and `model_registry.yaml` with `gemini-2.5-flash` as the default, using the same 3-tier precedence as other steps. The cloud STT provider is determined implicitly by the model family — selecting a Gemini model uses the Gemini API, selecting `whisper-1` uses the OpenAI API, selecting `deepgram-nova-3` uses the Deepgram API. There is no separate "cloud STT provider" setting. Provider/model selection happens in the existing Model Configuration dialog alongside all other pipeline steps.
 
-### 6. Audio format: PCM 16-bit mono 16kHz
+**Alternatives considered**:
+- **Separate `voice.cloud_stt_provider` setting with its own UI selector**: Introduces a parallel provider selection mechanism outside the ModelStep system, duplicating configuration concerns and fragmenting the UX.
+
+**Rationale**: Every other pipeline step (summarization, theme analysis, YouTube processing, etc.) uses the same ModelStep config dialog for model selection. Cloud STT should be no different. The factory pattern maps model family → provider adapter: `gemini` family → `GeminiSTTProvider`, `whisper` family → `WhisperSTTProvider`, `deepgram` family → `DeepgramSTTProvider`. Only models with `supports_audio: true` are shown as options for the CLOUD_STT step. The env var `MODEL_CLOUD_STT` provides deployment-level control. Switching providers is a one-dropdown change in the Model Configuration dialog.
+
+### 5a. `supports_audio` capability indicator in model registry
+
+**Choice**: Add a `supports_audio: boolean` field to model definitions in `model_registry.yaml`, analogous to the existing `supports_video` field. This flag indicates whether a model can accept audio input for transcription.
+
+**Rationale**: The model registry already uses capability flags (`supports_vision`, `supports_video`) to indicate what input modalities a model supports. Audio input is a distinct capability — only certain models (Gemini with native audio, Whisper, Deepgram) can accept raw audio. The CLOUD_STT pipeline step uses this flag to filter the model selector to only show audio-capable models. The `ModelInfo` dataclass and `load_model_registry()` parser gain a `supports_audio` field following the exact pattern of `supports_video`.
+
+### 6. Cloud STT bypasses VOICE_CLEANUP step
+
+**Choice**: When the cloud STT engine is active and the provider supports built-in cleanup (Gemini), the transcript is returned already cleaned. The frontend skips the separate `VOICE_CLEANUP` API call. The cleanup button in ChatInput remains available for manual re-cleanup if the user wants to refine further.
+
+**Alternatives considered**:
+- **Always run VOICE_CLEANUP regardless of engine**: Consistent behavior, but adds 1-3s latency and cost for no quality benefit when Gemini already cleaned the text.
+- **Remove VOICE_CLEANUP entirely**: Too aggressive — browser STT and on-device STT still produce raw transcripts that benefit from separate cleanup.
+
+**Rationale**: The `CloudSTTEngine` returns a `{ cleaned: boolean }` flag alongside the transcript. When `cleaned: true`, the frontend knows to skip the automatic cleanup step. Users can still manually trigger cleanup via the sparkle button if they want to refine further.
+
+### 7. Audio format: PCM 16-bit mono 16kHz
 
 **Choice**: Capture audio as PCM 16-bit mono at 16kHz sample rate. Convert from MediaRecorder's default format (typically opus/webm) using AudioContext.
 
@@ -96,4 +124,4 @@ Key existing touchpoints:
 ## Open Questions
 
 - Should the WebSocket endpoint require authentication (API key in query params or initial handshake)? (Leaning: yes, use `X-Admin-Key` in the WebSocket handshake.)
-- Should we support Deepgram as the default instead of OpenAI for better real-time streaming? (Leaning: OpenAI default for zero-config, Deepgram as recommended alternative.)
+- Should providers that don't support built-in cleanup (Deepgram, Whisper) auto-trigger the `VOICE_CLEANUP` step, or let the user decide? (Leaning: auto-trigger when available, with a setting to disable.)

@@ -37,9 +37,16 @@ The system SHALL provide a `useVoiceInput` React hook that wraps the Web Speech 
 - **THEN** the hook SHALL update `interimTranscript` with the interim text
 
 #### Scenario: Final results (cloud)
-- **WHEN** the cloud STT WebSocket returns a message with `type: "final"`
+- **WHEN** the cloud STT WebSocket returns a message with `type: "final"` and `cleaned: true`
 - **THEN** the hook SHALL append the result to `transcript`
 - **AND** clear `interimTranscript`
+- **AND** set `transcriptCleaned` to `true` (signaling that the separate cleanup step can be skipped)
+
+#### Scenario: Final results (cloud, uncleaned)
+- **WHEN** the cloud STT WebSocket returns a message with `type: "final"` and `cleaned: false`
+- **THEN** the hook SHALL append the result to `transcript`
+- **AND** clear `interimTranscript`
+- **AND** set `transcriptCleaned` to `false`
 
 #### Scenario: Continuous mode
 - **WHEN** `continuous` option is set to `true`

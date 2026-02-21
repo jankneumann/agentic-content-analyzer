@@ -6,32 +6,44 @@ Cloud-based speech-to-text with real-time audio streaming via WebSocket, support
 ## ADDED Requirements
 
 ### Requirement: Cloud STT Provider Abstraction
-The system SHALL provide a provider abstraction for cloud-based speech-to-text services.
+The system SHALL provide a provider abstraction for cloud-based speech-to-text services, where the provider is determined by the model selected for the `CLOUD_STT` pipeline step.
 
 #### Scenario: Provider interface
 - **WHEN** a cloud STT provider is implemented
 - **THEN** it SHALL implement the `CloudSTTProvider` interface with methods: `start_stream()`, `send_audio(chunk)`, `get_results()`, `stop_stream()`
 - **AND** it SHALL normalize provider-specific response formats into a common transcript result structure
+- **AND** each result SHALL include a `cleaned: boolean` flag indicating whether the transcript includes built-in cleanup
+
+#### Scenario: Provider resolved from model family
+- **WHEN** a model is configured for the `CLOUD_STT` pipeline step
+- **THEN** the system SHALL resolve the provider adapter from the model family
+- **AND** `gemini` family models SHALL use the `GeminiSTTProvider`
+- **AND** `whisper` family models SHALL use the `WhisperSTTProvider`
+- **AND** `deepgram` family models SHALL use the `DeepgramSTTProvider`
+
+#### Scenario: Gemini provider (default)
+- **WHEN** the `CLOUD_STT` model is a Gemini family model (e.g., `gemini-2.5-flash`)
+- **THEN** the system SHALL use the Google Gemini API with native audio input for transcription
+- **AND** the transcription prompt SHALL include cleanup instructions (fix grammar, remove filler words, structure text)
+- **AND** the result SHALL have `cleaned: true`
+- **AND** use the configured `GOOGLE_API_KEY`
 
 #### Scenario: OpenAI Whisper provider
-- **WHEN** the cloud STT provider is set to `"openai"`
+- **WHEN** the `CLOUD_STT` model is a Whisper family model (e.g., `whisper-1`)
 - **THEN** the system SHALL use the OpenAI Whisper API for transcription
+- **AND** the result SHALL have `cleaned: false` (raw transcript)
 - **AND** use the configured `OPENAI_API_KEY`
 
 #### Scenario: Deepgram provider
-- **WHEN** the cloud STT provider is set to `"deepgram"`
+- **WHEN** the `CLOUD_STT` model is a Deepgram family model (e.g., `deepgram-nova-3`)
 - **THEN** the system SHALL use the Deepgram streaming API for transcription
+- **AND** the result SHALL have `cleaned: false` (raw transcript)
 - **AND** use the configured `DEEPGRAM_API_KEY`
 
-#### Scenario: Google Cloud Speech provider
-- **WHEN** the cloud STT provider is set to `"google"`
-- **THEN** the system SHALL use the Google Cloud Speech-to-Text streaming API
-- **AND** use the configured Google Cloud credentials
-
 #### Scenario: Provider not configured
-- **WHEN** the selected cloud STT provider has no API key configured
+- **WHEN** the selected `CLOUD_STT` model's provider has no API key configured
 - **THEN** the system SHALL return an error indicating the provider requires configuration
-- **AND** the voice settings UI SHALL show the provider as `not_configured`
+- **AND** the Model Configuration dialog SHALL show the API key status for the selected model's provider
 
 ### Requirement: WebSocket Audio Streaming Endpoint
 The system SHALL provide a WebSocket endpoint for real-time audio streaming and transcript delivery.
@@ -55,7 +67,8 @@ The system SHALL provide a WebSocket endpoint for real-time audio streaming and 
 
 #### Scenario: Receive final transcript
 - **WHEN** the cloud STT provider returns a final transcript result
-- **THEN** the server SHALL send a JSON WebSocket message: `{ "type": "final", "text": "complete transcript" }`
+- **THEN** the server SHALL send a JSON WebSocket message: `{ "type": "final", "text": "complete transcript", "cleaned": true|false }`
+- **AND** the `cleaned` flag SHALL indicate whether the transcript includes built-in cleanup from the provider
 
 #### Scenario: Stream error
 - **WHEN** the cloud STT provider returns an error during streaming
@@ -100,7 +113,7 @@ The system SHALL capture microphone audio and stream it to the backend via WebSo
 - **AND** close the WebSocket connection cleanly
 
 ### Requirement: Cloud STT Pipeline Step
-The system SHALL register cloud STT as a configurable pipeline step in the model configuration system.
+The system SHALL register cloud STT as a configurable pipeline step in the model configuration system, with provider selection handled via the existing Model Configuration dialog.
 
 #### Scenario: ModelStep registration
 - **WHEN** the application starts
@@ -108,14 +121,56 @@ The system SHALL register cloud STT as a configurable pipeline step in the model
 - **AND** the default model SHALL be defined in `model_registry.yaml` under `default_models.cloud_stt`
 
 #### Scenario: Model selection
-- **WHEN** the cloud STT provider/model is not explicitly configured
-- **THEN** the system SHALL use the `CLOUD_STT` pipeline step default (e.g., `whisper-1` for OpenAI)
+- **WHEN** the cloud STT model is not explicitly configured
+- **THEN** the system SHALL use the `CLOUD_STT` pipeline step default (`gemini-2.5-flash`)
 - **AND** the model SHALL be overridable via env var `MODEL_CLOUD_STT`, DB override, or YAML default
 
 #### Scenario: Settings UI display
 - **WHEN** the Model Configuration section of the Settings page renders
-- **THEN** `CLOUD_STT` SHALL appear as a configurable pipeline step
-- **AND** available models SHALL be listed per the configured provider
+- **THEN** `CLOUD_STT` SHALL appear as a configurable pipeline step alongside other steps
+- **AND** the model selector SHALL only show models with `supports_audio: true`
+- **AND** selecting a model implicitly selects its provider (no separate provider dropdown)
+
+#### Scenario: Audio-capable model filtering
+- **WHEN** the model selector for `CLOUD_STT` is displayed
+- **THEN** only models with `supports_audio: true` in `model_registry.yaml` SHALL be shown
+- **AND** each model option SHALL indicate its provider family (Gemini, OpenAI, Deepgram)
+
+### Requirement: Audio Capability Indicator
+The system SHALL declare audio input capability for models in the model registry, analogous to the existing `supports_video` flag.
+
+#### Scenario: Audio capability in model registry
+- **WHEN** a model supports audio input for transcription
+- **THEN** its definition in `model_registry.yaml` SHALL include `supports_audio: true`
+- **AND** models that do not support audio input SHALL have `supports_audio: false` (or omit the field, defaulting to `false`)
+
+#### Scenario: ModelInfo dataclass
+- **WHEN** the model registry is loaded
+- **THEN** `ModelInfo` SHALL include a `supports_audio: bool` field
+- **AND** the `load_model_registry()` function SHALL parse the `supports_audio` field from YAML
+
+#### Scenario: Audio-capable models
+- **WHEN** the following models are defined
+- **THEN** `supports_audio` SHALL be `true` for: Gemini family models (2.0+), `whisper-1`, `deepgram-nova-3`
+- **AND** `supports_audio` SHALL be `false` for: Claude family models, GPT family models
+
+### Requirement: Built-in Cleanup Bypass
+The system SHALL skip the separate `VOICE_CLEANUP` pipeline step when the cloud STT provider returns already-cleaned transcripts.
+
+#### Scenario: Gemini returns cleaned transcript
+- **WHEN** the cloud STT engine returns a final transcript with `cleaned: true`
+- **THEN** the frontend SHALL insert the transcript directly without calling `POST /api/v1/voice/cleanup`
+- **AND** the cleanup button SHALL remain available for manual re-cleanup if desired
+
+#### Scenario: Whisper/Deepgram returns raw transcript
+- **WHEN** the cloud STT engine returns a final transcript with `cleaned: false`
+- **THEN** the frontend SHALL treat the transcript the same as browser/on-device STT output
+- **AND** the user MAY trigger cleanup manually via the cleanup button or voice key phrase
+
+#### Scenario: Cleanup button always available
+- **WHEN** a cloud STT transcript is inserted (regardless of `cleaned` flag)
+- **THEN** the cleanup button SHALL remain enabled
+- **AND** clicking it SHALL send the text through `VOICE_CLEANUP` for additional refinement
 
 ### Requirement: Cloud STT Language Configuration
 The system SHALL support language selection for cloud STT transcription.
