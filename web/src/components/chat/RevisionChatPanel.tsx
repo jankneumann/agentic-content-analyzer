@@ -257,6 +257,14 @@ export function RevisionChatPanel({
     }
   }, [conversationId])
 
+  // Generate tooltip text based on state
+  const generatePreviewTooltip = React.useMemo(() => {
+    if (isStreaming) return "Please wait for the response to finish"
+    if (isGenerating) return "Preview is currently generating"
+    if (isPreviewMode) return "Please accept or reject the current preview"
+    return "Generate a preview based on the chat context"
+  }, [isStreaming, isGenerating, isPreviewMode])
+
   // Collapsed state
   if (!isExpanded) {
     return (
@@ -552,15 +560,7 @@ export function RevisionChatPanel({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>
-                    {isStreaming
-                      ? "Please wait for the response to finish"
-                      : isGenerating
-                        ? "Preview is currently generating"
-                        : isPreviewMode
-                          ? "Please accept or reject the current preview"
-                          : "Generate a preview based on the chat context"}
-                  </p>
+                  <p>{generatePreviewTooltip}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
