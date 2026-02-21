@@ -40,16 +40,14 @@
 - [ ] 5.5 Display success/error toast for each dropped file
 - [ ] 5.6 Support multiple file drops with summary notification
 
-## 6. Desktop Notifications
+## 6. Desktop Notification Delivery (depends on `add-notification-events` for backend)
 
 - [ ] 6.1 Add `tauri-plugin-notification` to Rust dependencies
 - [ ] 6.2 Request notification permission on first launch
-- [ ] 6.3 Define notification event types matching capacitor-mobile (batch_summary, theme_analysis, digest, script, audio, pipeline, failure)
-- [ ] 6.4 Implement backend polling or WebSocket listener for job completion events
-- [ ] 6.5 Send native notification per event type (summary batch, theme analysis, digest, script, audio generation, pipeline completion, job failure)
-- [ ] 6.6 Add notification preferences (per-event-type enable/disable) in settings UI
-- [ ] 6.7 Route notification clicks to appropriate content view based on event type
-- [ ] 6.4 Handle notification click (show window, navigate to digest)
+- [ ] 6.3 Subscribe to backend SSE endpoint (`GET /api/v1/notifications/stream`) on app start
+- [ ] 6.4 Convert incoming SSE events to native desktop notifications via Tauri notification plugin
+- [ ] 6.5 Handle notification click — show/focus window, navigate via event `payload.url`
+- [ ] 6.6 Implement SSE reconnection with `Last-Event-ID` for missed events
 
 ## 7. Build Scripts
 

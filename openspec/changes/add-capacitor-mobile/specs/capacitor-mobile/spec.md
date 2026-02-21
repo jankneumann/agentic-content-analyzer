@@ -40,49 +40,25 @@ The system SHALL provide a utility to detect whether the app is running in a nat
 - **THEN** `isNative()` SHALL return `false`
 - **AND** `getPlatform()` SHALL return `"web"`
 
-### Requirement: Push Notifications
-The system SHALL support native push notifications for all backend pipeline completion events.
+### Requirement: Push Notification Delivery
+The system SHALL deliver notification events from `add-notification-events` as native push notifications on iOS and Android. The backend event system (event types, dispatch, preferences, device registration) is defined in the `notification-events` capability.
 
 #### Scenario: Request permission
 - **WHEN** the user enables push notifications in settings
-- **THEN** the system SHALL request native push notification permission
-- **AND** register the device token with the backend
+- **THEN** the system SHALL request native push notification permission via Capacitor Push Notifications plugin
+- **AND** register the device token with the backend device registration API (`POST /api/v1/notifications/devices`)
 
-#### Scenario: Batch summary completion notification
-- **WHEN** a batch summarization job completes on the backend
-- **THEN** the system SHALL send a push notification with the count of summarized items (e.g., "12 items summarized")
-
-#### Scenario: Theme analysis completion notification
-- **WHEN** a theme analysis job completes on the backend
-- **THEN** the system SHALL send a push notification with the number of themes identified
-
-#### Scenario: Digest completion notification
-- **WHEN** a daily or weekly digest is created on the backend
-- **THEN** the system SHALL send a push notification with the digest title and type (daily/weekly)
-
-#### Scenario: Podcast script completion notification
-- **WHEN** a podcast script is generated on the backend
-- **THEN** the system SHALL send a push notification with the script title
-
-#### Scenario: Audio generation completion notification
-- **WHEN** a podcast audio or audio digest is generated on the backend
-- **THEN** the system SHALL send a push notification with the audio title and duration
-
-#### Scenario: Pipeline completion notification
-- **WHEN** a full pipeline run (ingest → summarize → digest) completes
-- **THEN** the system SHALL send a single summary notification with pipeline results
-
-#### Scenario: Job failure notification
-- **WHEN** any background job fails
-- **THEN** the system SHALL send a push notification with the job type and error summary
+#### Scenario: Receive push notification
+- **WHEN** the backend dispatch service emits a notification event for a registered device
+- **THEN** the native push notification SHALL be displayed with the event title and summary
 
 #### Scenario: Notification tap
 - **WHEN** the user taps a push notification
-- **THEN** the app SHALL open and navigate to the relevant content (e.g., the completed digest, script, or audio)
+- **THEN** the app SHALL open and navigate to the content specified in the event's `payload.url`
 
-#### Scenario: Notification preferences
-- **WHEN** the user configures notification preferences in settings
-- **THEN** they SHALL be able to enable/disable notifications per event type (summaries, digests, scripts, audio, failures)
+#### Scenario: Token refresh
+- **WHEN** the push notification token is refreshed by the OS
+- **THEN** the system SHALL re-register the updated token with the backend
 
 #### Scenario: Web fallback
 - **WHEN** the app is running as a PWA (not native)

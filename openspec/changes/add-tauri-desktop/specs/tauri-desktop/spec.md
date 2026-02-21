@@ -105,57 +105,30 @@ The system SHALL accept files dropped onto the application window for document i
 - **WHEN** the drag leaves the window or the file is dropped
 - **THEN** the drop zone overlay SHALL disappear
 
-### Requirement: Desktop Notifications
-The system SHALL send native desktop notifications for all backend pipeline completion events.
+### Requirement: Desktop Notification Delivery
+The system SHALL deliver notification events from `add-notification-events` as native desktop notifications via Tauri's notification plugin. The backend event system (event types, dispatch, preferences, device registration) is defined in the `notification-events` capability.
 
-#### Scenario: Batch summary completion notification
-- **WHEN** a batch summarization job completes on the backend
-- **AND** the desktop app is running
-- **THEN** a native notification SHALL be displayed with the count of summarized items
+#### Scenario: Subscribe to event stream
+- **WHEN** the desktop app starts
+- **THEN** it SHALL connect to the backend SSE endpoint (`GET /api/v1/notifications/stream`) for real-time events
 
-#### Scenario: Theme analysis completion notification
-- **WHEN** a theme analysis job completes on the backend
-- **AND** the desktop app is running
-- **THEN** a native notification SHALL be displayed with the number of themes identified
-
-#### Scenario: Digest completion notification
-- **WHEN** a daily or weekly digest is created on the backend
-- **AND** the desktop app is running
-- **THEN** a native notification SHALL be displayed with the digest title and type
-
-#### Scenario: Podcast script completion notification
-- **WHEN** a podcast script is generated on the backend
-- **AND** the desktop app is running
-- **THEN** a native notification SHALL be displayed with the script title
-
-#### Scenario: Audio generation completion notification
-- **WHEN** a podcast audio or audio digest is generated on the backend
-- **AND** the desktop app is running
-- **THEN** a native notification SHALL be displayed with the audio title and duration
-
-#### Scenario: Pipeline completion notification
-- **WHEN** a full pipeline run completes on the backend
-- **AND** the desktop app is running
-- **THEN** a single summary notification SHALL be displayed with pipeline results
-
-#### Scenario: Job failure notification
-- **WHEN** any background job fails on the backend
-- **AND** the desktop app is running
-- **THEN** a native notification SHALL be displayed with the job type and error summary
+#### Scenario: Display native notification
+- **WHEN** a notification event arrives via SSE
+- **THEN** a native desktop notification SHALL be displayed with the event title and summary
 
 #### Scenario: Notification click
 - **WHEN** the user clicks a notification
 - **THEN** the main window SHALL be shown and focused
-- **AND** the app SHALL navigate to the relevant content (digest, script, audio, or job)
-
-#### Scenario: Notification preferences
-- **WHEN** the user configures notification preferences in settings
-- **THEN** they SHALL be able to enable/disable notifications per event type (summaries, digests, scripts, audio, failures)
+- **AND** the app SHALL navigate to the content specified in the event's `payload.url`
 
 #### Scenario: Notification permission
 - **WHEN** the app starts for the first time
 - **THEN** the system SHALL request notification permission from the OS
 - **AND** respect the user's choice without re-prompting
+
+#### Scenario: SSE reconnection
+- **WHEN** the SSE connection drops
+- **THEN** the app SHALL reconnect with `Last-Event-ID` to receive missed events
 
 ### Requirement: Desktop Platform Detection
 The system SHALL detect Tauri desktop context for conditional feature activation.

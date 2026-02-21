@@ -8,7 +8,7 @@ Capacitor adds a native shell around the same web build, enabling native APIs wi
 
 **Goals:**
 - Wrap the existing Vite build in Capacitor for iOS and Android
-- Provide native push notifications for digest completion events
+- Deliver native push notifications by consuming the shared backend notification event system (from `add-notification-events`)
 - Implement native share target to receive URLs from other apps (replacing iOS Shortcuts for content capture)
 - Add Capacitor native speech recognition as a third STT engine option
 - Maintain PWA as the primary web deployment — Capacitor is additive, not replacing

@@ -28,6 +28,6 @@ The application runs as a PWA, which works well for mobile access but lacks nati
 - **Frontend**: Platform detection utility, conditional plugin imports, Capacitor config files
 - **Build**: New `npx cap sync`, `npx cap open ios/android` commands; Xcode and Android Studio for native builds
 - **Dependencies**: `@capacitor/core`, `@capacitor/ios`, `@capacitor/android`, plus plugins (`@capacitor/push-notifications`, `@capacitor/share`, `@capacitor/haptics`, `@capacitor/status-bar`, `@capgo/capacitor-native-audio` or equivalent STT plugin)
-- **Infrastructure**: No backend changes — Capacitor talks to the same API
+- **Infrastructure**: No new backend services — Capacitor consumes existing API and notification event system (from `add-notification-events`)
 - **Distribution**: App Store / Play Store submissions (requires developer accounts)
 - **Existing PWA**: Unchanged — Capacitor wraps the same build output, PWA continues to work independently

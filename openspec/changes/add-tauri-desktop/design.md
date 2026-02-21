@@ -11,7 +11,7 @@ The existing platform detection utility (from `add-capacitor-mobile`) needs exte
 - Provide system tray with digest notification badges and quick actions
 - Implement global keyboard shortcut for voice input toggle
 - Enable native file drag-and-drop for document ingestion
-- Desktop notifications for digest completion events
+- Deliver desktop notifications by subscribing to the shared backend SSE event stream (from `add-notification-events`)
 - Provide build scripts and CI configuration for cross-platform builds
 
 **Non-Goals:**

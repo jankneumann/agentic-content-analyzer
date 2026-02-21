@@ -8,7 +8,7 @@ The application is web-first but power users on desktop want native window manag
 - Implement system tray with digest notification badges and quick actions (open, ingest URL, start voice input)
 - Add global keyboard shortcut for voice input (e.g., `Cmd+Shift+V` / `Ctrl+Shift+V` to toggle microphone from any app)
 - Implement native file drag-and-drop for document ingestion (PDF, DOCX, etc. dropped onto the app window)
-- Add native notification support for digest completion events
+- Deliver native desktop notifications by subscribing to the backend SSE event stream (from `add-notification-events`)
 - Extend platform detection utility (from `add-capacitor-mobile`) to detect Tauri desktop context
 - Add deep linking via `aca://` URL scheme for desktop
 - Provide build scripts for macOS, Windows, and Linux targets

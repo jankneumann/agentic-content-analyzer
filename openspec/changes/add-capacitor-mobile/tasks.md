@@ -20,18 +20,13 @@
 - [ ] 3.3 Configure iOS permissions in `Info.plist` (microphone, speech recognition, push notifications)
 - [ ] 3.4 Configure Android permissions in `AndroidManifest.xml` (microphone, speech recognition)
 
-## 4. Push Notifications
+## 4. Push Notification Delivery (depends on `add-notification-events` for backend)
 
-- [ ] 4.1 Create `web/src/lib/push-notifications.ts` with registration and token management
-- [ ] 4.2 Add push notification opt-in toggle to settings UI
-- [ ] 4.3 Add backend endpoint `POST /api/v1/devices/register` for device token registration
-- [ ] 4.4 Add device token storage (new DB table or settings override)
-- [ ] 4.5 Define notification event types enum (batch_summary, theme_analysis, digest, script, audio, pipeline, failure)
-- [ ] 4.6 Add backend notification dispatch service that emits push notifications on job completion
-- [ ] 4.7 Integrate notification dispatch into batch summarization, theme analysis, digest creation, script generation, and audio generation job handlers
-- [ ] 4.8 Add notification preferences API (per-event-type enable/disable)
-- [ ] 4.9 Add notification preferences UI in settings (toggles per event type)
-- [ ] 4.10 Handle notification tap navigation (route to digest, script, audio, or job detail based on event type)
+- [ ] 4.1 Create `web/src/lib/push-notifications.ts` with Capacitor Push Notifications plugin wrapper
+- [ ] 4.2 Implement device token registration via backend API (`POST /api/v1/notifications/devices`)
+- [ ] 4.3 Handle token refresh (re-register updated token with backend)
+- [ ] 4.4 Add push notification opt-in toggle to settings UI (native platforms only)
+- [ ] 4.5 Handle notification tap — navigate to content via event `payload.url`
 
 ## 5. Native Share Target
 
@@ -71,5 +66,5 @@
 
 - [ ] 10.1 Add E2E tests for platform detection (mock Capacitor context)
 - [ ] 10.2 Add E2E tests for share target flow (mocked)
-- [ ] 10.3 Add backend tests for device registration endpoint
+- [ ] 10.3 Add E2E tests for push notification opt-in flow (mocked)
 - [ ] 10.4 Manual testing checklist for iOS and Android builds
