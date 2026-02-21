@@ -121,8 +121,24 @@ class PromptService:
         """
         path = key.split(".")
         template = self._get_prompt(key, path)
+        return self.render_template(template, variables)
+
+    @staticmethod
+    def render_template(template: str, variables: dict[str, Any]) -> str:
+        """Render a template string with variables safely.
+
+        Applies the same escaping logic as render() to ensure consistency.
+
+        Args:
+            template: The template string (e.g. "Hello {name}")
+            variables: Dictionary of variables to substitute
+
+        Returns:
+            Rendered string with variables substituted
+        """
         if not variables:
             return template
+
         # Escape literal braces in variable values to prevent format_map
         # from treating JSON content like {"key": "value"} as placeholders
         safe_variables = {

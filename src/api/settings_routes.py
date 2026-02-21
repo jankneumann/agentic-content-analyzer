@@ -286,9 +286,9 @@ async def test_prompt(key: str, request: PromptTestRequest) -> PromptTestRespons
         variable_names = _extract_variable_names(template)
 
         # Render with provided variables
-        from src.services.prompt_service import SafeDict
-
-        rendered = template.format_map(SafeDict(request.variables))
+        # Use PromptService.render_template to ensure consistency with production rendering
+        # (e.g. escaping braces in variable values)
+        rendered = PromptService.render_template(template, request.variables)
 
         return PromptTestResponse(
             rendered_prompt=rendered,
