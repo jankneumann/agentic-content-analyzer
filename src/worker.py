@@ -49,6 +49,9 @@ async def main() -> None:
 
     logger.info(f"Starting embedded queue worker (concurrency={concurrency})")
     try:
+        from src.queue.setup import ensure_queue_schema_compatible
+
+        await ensure_queue_schema_compatible()
         register_all_handlers()
         await run_worker(concurrency=concurrency)
     except asyncio.CancelledError:

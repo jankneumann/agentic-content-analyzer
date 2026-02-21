@@ -53,6 +53,22 @@ REQUIRED_PAYLOAD_FIELDS: dict[str, set[str]] = {
     "extract_url_content": {"content_id"},
     "ingest_content": {"source", "max_results", "days_back", "force_reprocess"},
 }
+REQUIRED_QUEUE_COLUMNS: set[str] = {
+    "id",
+    "entrypoint",
+    "payload",
+    "priority",
+    "status",
+    "created_at",
+    "execute_after",
+    "started_at",
+    "completed_at",
+    "heartbeat_at",
+    "parent_job_id",
+    "idempotency_key",
+    "error",
+    "retry_count",
+}
 
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
@@ -197,6 +213,30 @@ async def close_queue() -> None:
         _connection = None
         _queue = None
         logger.info("PGQueuer connection closed")
+
+
+async def ensure_queue_schema_compatible() -> None:
+    """Fail fast if required queue schema migrations are missing."""
+    async with _queue_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'pgqueuer_jobs'
+            """
+        )
+    if not rows:
+        raise RuntimeError(
+            "Queue schema missing: table 'pgqueuer_jobs' not found. Run database migrations first."
+        )
+    actual = {str(row["column_name"]) for row in rows}
+    missing = sorted(REQUIRED_QUEUE_COLUMNS - actual)
+    if missing:
+        missing_csv = ", ".join(missing)
+        raise RuntimeError(
+            "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
+            f"{missing_csv}. Run migrations first."
+        )
 
 
 async def init_queue_schema() -> None:
@@ -381,19 +421,14 @@ async def touch_job_heartbeat(
     conn: asyncpg.Connection | None = None,
 ) -> None:
     async with _queue_connection(conn) as query_conn:
-        try:
-            await query_conn.execute(
-                """
-                UPDATE pgqueuer_jobs
-                SET heartbeat_at = NOW()
-                WHERE id = $1
-                """,
-                job_id,
-            )
-        except asyncpg.exceptions.UndefinedColumnError:
-            # Backward compatibility for environments that have not applied
-            # the heartbeat migration yet.
-            return
+        await query_conn.execute(
+            """
+            UPDATE pgqueuer_jobs
+            SET heartbeat_at = NOW()
+            WHERE id = $1
+            """,
+            job_id,
+        )
 
 
 async def list_jobs(

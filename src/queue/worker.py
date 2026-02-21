@@ -49,90 +49,50 @@ async def _claim_jobs(
     batch_size: int = 5,
 ) -> list[dict[str, Any]]:
     """Claim available jobs using SELECT FOR UPDATE SKIP LOCKED."""
-    try:
-        rows = await conn.fetch(
-            """
-            UPDATE pgqueuer_jobs
-            SET status = 'in_progress',
-                started_at = COALESCE(started_at, NOW()),
-                heartbeat_at = NOW()
-            WHERE id IN (
-                SELECT id FROM pgqueuer_jobs
-                WHERE status = 'queued'
-                  AND execute_after <= NOW()
-                ORDER BY priority DESC, created_at ASC
-                LIMIT $1
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING id, entrypoint, payload
-            """,
-            batch_size,
+    rows = await conn.fetch(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'in_progress',
+            started_at = COALESCE(started_at, NOW()),
+            heartbeat_at = NOW()
+        WHERE id IN (
+            SELECT id FROM pgqueuer_jobs
+            WHERE status = 'queued'
+              AND execute_after <= NOW()
+            ORDER BY priority DESC, created_at ASC
+            LIMIT $1
+            FOR UPDATE SKIP LOCKED
         )
-    except asyncpg.exceptions.UndefinedColumnError:
-        rows = await conn.fetch(
-            """
-            UPDATE pgqueuer_jobs
-            SET status = 'in_progress',
-                started_at = COALESCE(started_at, NOW())
-            WHERE id IN (
-                SELECT id FROM pgqueuer_jobs
-                WHERE status = 'queued'
-                  AND execute_after <= NOW()
-                ORDER BY priority DESC, created_at ASC
-                LIMIT $1
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING id, entrypoint, payload
-            """,
-            batch_size,
-        )
+        RETURNING id, entrypoint, payload
+        """,
+        batch_size,
+    )
     return [dict(row) for row in rows]
 
 
 async def _complete_job(conn: asyncpg.Connection, job_id: int) -> None:
     """Mark a job as completed."""
-    try:
-        await conn.execute(
-            """
-            UPDATE pgqueuer_jobs
-            SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
-            WHERE id = $1
-            """,
-            job_id,
-        )
-    except asyncpg.exceptions.UndefinedColumnError:
-        await conn.execute(
-            """
-            UPDATE pgqueuer_jobs
-            SET status = 'completed', completed_at = NOW()
-            WHERE id = $1
-            """,
-            job_id,
-        )
+    await conn.execute(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
+        WHERE id = $1
+        """,
+        job_id,
+    )
 
 
 async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
     """Mark a job as failed with an error message."""
-    try:
-        await conn.execute(
-            """
-            UPDATE pgqueuer_jobs
-            SET status = 'failed', error = $2, completed_at = NOW(), heartbeat_at = NOW()
-            WHERE id = $1
-            """,
-            job_id,
-            error[:1000],  # Truncate long error messages
-        )
-    except asyncpg.exceptions.UndefinedColumnError:
-        await conn.execute(
-            """
-            UPDATE pgqueuer_jobs
-            SET status = 'failed', error = $2, completed_at = NOW()
-            WHERE id = $1
-            """,
-            job_id,
-            error[:1000],
-        )
+    await conn.execute(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'failed', error = $2, completed_at = NOW(), heartbeat_at = NOW()
+        WHERE id = $1
+        """,
+        job_id,
+        error[:1000],  # Truncate long error messages
+    )
 
 
 async def _process_job(
@@ -195,6 +155,9 @@ async def run_worker(
     """
     queue_url = get_queue_connection_string()
     asyncpg_url = _sqlalchemy_url_to_asyncpg(queue_url)
+    from src.queue.setup import ensure_queue_schema_compatible
+
+    await ensure_queue_schema_compatible()
 
     conn = await asyncpg.connect(asyncpg_url)
 

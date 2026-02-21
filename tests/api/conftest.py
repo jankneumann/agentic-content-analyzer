@@ -9,6 +9,7 @@ Test Database Isolation:
 - No impact on development/production database
 """
 
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -16,6 +17,9 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
+
+# Ensure API tests never boot embedded worker during app import/lifespan.
+os.environ.setdefault("WORKER_ENABLED", "false")
 
 from src.api.app import app
 from src.models.audio_digest import AudioDigest  # noqa: F401 - registers with Base.metadata
@@ -49,6 +53,8 @@ def api_test_env(monkeypatch):
     to allow authenticated access.
     """
     monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")
+    # API tests validate routes; they do not need embedded worker startup.
+    monkeypatch.setenv("WORKER_ENABLED", "false")
 
     # Clear settings cache to pick up the new env var
     from src.config.settings import get_settings

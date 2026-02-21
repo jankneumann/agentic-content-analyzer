@@ -67,8 +67,10 @@ async def lifespan(app: FastAPI):
     # Start embedded queue worker if enabled
     worker_task: asyncio.Task | None = None
     if settings.worker_enabled:
+        from src.queue.setup import ensure_queue_schema_compatible
         from src.queue.worker import register_all_handlers, run_worker
 
+        await ensure_queue_schema_compatible()
         concurrency = min(max(settings.worker_concurrency, 1), 20)
         register_all_handlers()
         worker_task = asyncio.create_task(run_worker(concurrency=concurrency))
