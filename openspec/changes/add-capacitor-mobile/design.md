@@ -7,7 +7,7 @@ Capacitor adds a native shell around the same web build, enabling native APIs wi
 ## Goals / Non-Goals
 
 **Goals:**
-- Wrap the existing Vite build in Capacitor for iOS and Android
+- Wrap the existing Vite build in Capacitor for iOS (Android scaffolded, deployment deferred)
 - Deliver native push notifications by consuming the shared backend notification event system (from `add-notification-events`)
 - Implement native share target to receive URLs from other apps (replacing iOS Shortcuts for content capture)
 - Add Capacitor native speech recognition as a third STT engine option
@@ -17,7 +17,8 @@ Capacitor adds a native shell around the same web build, enabling native APIs wi
 **Non-Goals:**
 - Native UI components (keep everything as web views)
 - Offline-first data sync (app requires API connectivity)
-- Full App Store production release workflow (initial deployment targets beta channels only)
+- Full App Store production release workflow (initial deployment targets TestFlight beta only)
+- Android deployment pipeline (deferred to a separate proposal — no test device available)
 - Background fetch / background processing (beyond push notifications)
 - Tablet-specific layouts (responsive web layout handles this)
 
@@ -74,29 +75,31 @@ export const getPlatform = () => Capacitor.getPlatform(); // 'ios' | 'android' |
 
 **Rationale**: Native speech recognition (iOS Speech framework, Android SpeechRecognizer) offers better accuracy, offline support (on recent OS versions), and tighter system integration than the Web Speech API. The engine abstraction from `add-on-device-stt` makes this a clean addition.
 
-### 6. Deployment model: CI/CD → TestFlight / Play Store internal track
+### 6. Deployment model: CI/CD → TestFlight (iOS only)
 
-**Choice**: Use GitHub Actions with macOS runners for iOS builds and Linux runners for Android builds. Distribute iOS betas via TestFlight and Android betas via Play Store internal testing track. Use Fastlane for build automation, code signing, and store upload.
+**Choice**: Use GitHub Actions with macOS runners for iOS builds. Distribute iOS betas via TestFlight. Use Fastlane for build automation, code signing, and store upload. Android deployment is deferred to a separate proposal (no test device available).
 
 **Pipeline stages:**
-1. **Build**: On merge to main (or manual trigger), CI runs `pnpm build && npx cap sync`, then builds native archives
+1. **Build**: On merge to main (or manual trigger), CI runs `pnpm build && npx cap sync`, then builds the iOS archive
 2. **iOS signing**: Fastlane Match manages provisioning profiles and certificates in a private Git repo. CI exports a signed `.ipa` via `xcodebuild archive` + `exportArchive`
 3. **iOS distribution**: Fastlane `pilot upload_build` pushes the `.ipa` to TestFlight. Beta testers are invited via Apple Developer Console
-4. **Android signing**: Release keystore stored as CI secret. Gradle `assembleRelease` produces a signed `.aab` (App Bundle)
-5. **Android distribution**: Fastlane `supply` (or direct Play Console API) uploads the `.aab` to the internal testing track. Testers opt in via a Play Store link
-6. **Promotion to production**: Manual step — after beta validation, promote TestFlight build to App Store review / promote internal track to production in Play Console
+4. **Promotion to production**: Manual step — after beta validation, promote TestFlight build to App Store review
 
 **Alternatives considered:**
-- **Manual Xcode/Android Studio uploads**: Error-prone, doesn't scale, requires developer machine for every release
+- **Manual Xcode uploads**: Error-prone, doesn't scale, requires developer machine for every release
 - **Expo EAS Build**: Designed for React Native/Expo, not Capacitor. Would require ejecting or extensive workarounds
 - **Appflow (Ionic)**: Ionic's paid CI/CD service. Works well with Capacitor but adds cost ($499/mo for team plan) and vendor lock-in
 - **Codemagic**: Good Capacitor support but adds another CI vendor alongside GitHub Actions
 
-**Rationale**: GitHub Actions + Fastlane is the standard open-source approach for Capacitor apps. Fastlane handles the painful parts (code signing, provisioning, store uploads) while GitHub Actions provides the CI infrastructure already used by the project. TestFlight and Play Store internal track are the native beta channels — no extra services needed. The pipeline is free for public repos and costs ~$0.08/min for macOS runners on private repos.
+**Rationale**: GitHub Actions + Fastlane is the standard open-source approach for Capacitor apps. Fastlane handles the painful parts (code signing, provisioning, store uploads) while GitHub Actions provides the CI infrastructure already used by the project. TestFlight is Apple's native beta channel — no extra services needed. The pipeline is free for public repos and costs ~$0.08/min for macOS runners on private repos.
 
 **Developer account requirements:**
 - **Apple Developer Program**: $99/year. Required for TestFlight, App Store, and code signing certificates
-- **Google Play Developer**: $25 one-time. Required for Play Store internal testing and production
+
+**Deferred to separate proposal:**
+- Android release signing (keystore management)
+- Play Store internal testing track and production distribution
+- Google Play Developer account setup ($25 one-time)
 
 ## Risks / Trade-offs
 

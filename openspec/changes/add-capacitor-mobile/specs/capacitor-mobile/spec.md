@@ -1,12 +1,12 @@
 # capacitor-mobile Specification
 
 ## Purpose
-Native mobile shell via Capacitor, providing platform detection, native plugin integration, build configuration, and app distribution for iOS and Android.
+Native mobile shell via Capacitor, providing platform detection, native plugin integration, build configuration, and iOS app distribution via TestFlight. Android platform is scaffolded but deployment is deferred to a separate proposal.
 
 ## ADDED Requirements
 
 ### Requirement: Capacitor Configuration
-The system SHALL include Capacitor configuration to wrap the existing web build in native iOS and Android shells.
+The system SHALL include Capacitor configuration to wrap the existing web build in a native iOS shell. Android platform is scaffolded for future use.
 
 #### Scenario: Capacitor initialization
 - **WHEN** `npx cap init` is run in the `web/` directory
@@ -17,14 +17,15 @@ The system SHALL include Capacitor configuration to wrap the existing web build 
 - **THEN** an `ios/` directory SHALL be created with an Xcode project
 - **AND** the project SHALL be configured with the app bundle identifier
 
-#### Scenario: Android platform
+#### Scenario: Android platform (scaffolded, deployment deferred)
 - **WHEN** `npx cap add android` is run
 - **THEN** an `android/` directory SHALL be created with a Gradle project
 - **AND** the project SHALL be configured with the app package name
+- **AND** Android build and deployment SHALL be deferred to a separate proposal
 
 #### Scenario: Sync web build
 - **WHEN** `npx cap sync` is run after a Vite production build
-- **THEN** the contents of `dist/` SHALL be copied to both native platforms
+- **THEN** the contents of `dist/` SHALL be copied to the iOS platform
 - **AND** native plugin dependencies SHALL be resolved
 
 ### Requirement: Platform Detection
@@ -108,8 +109,8 @@ The system SHALL provide npm scripts for building and running native apps.
 - **WHEN** `pnpm cap:open:ios` or `pnpm cap:open:android` is run
 - **THEN** Xcode or Android Studio SHALL open with the native project
 
-### Requirement: Deployment Pipeline
-The system SHALL provide a CI/CD pipeline for building, signing, and distributing native apps to beta testing channels.
+### Requirement: iOS Deployment Pipeline
+The system SHALL provide a CI/CD pipeline for building, signing, and distributing the iOS app to TestFlight for beta testing.
 
 #### Scenario: iOS code signing
 - **WHEN** a CI build produces an iOS archive
@@ -123,28 +124,18 @@ The system SHALL provide a CI/CD pipeline for building, signing, and distributin
 - **AND** configured beta testers SHALL receive an automatic notification to install the new build
 - **AND** the TestFlight build SHALL include the git commit SHA and build number in its metadata
 
-#### Scenario: Android release signing
-- **WHEN** a CI build produces an Android release
-- **THEN** Gradle SHALL sign the `.aab` (App Bundle) with the release keystore
-- **AND** the keystore, key alias, and passwords SHALL be stored as CI secrets (never committed to the repository)
-
-#### Scenario: Android beta distribution via Play Store internal testing
-- **WHEN** a signed `.aab` is produced by CI
-- **THEN** Fastlane `supply` SHALL upload the bundle to the Play Store internal testing track
-- **AND** configured internal testers SHALL be able to install via the Play Store opt-in link
-
 #### Scenario: CI trigger
 - **WHEN** a commit is merged to the main branch
-- **THEN** the CI pipeline SHALL automatically build and distribute to beta channels
+- **THEN** the CI pipeline SHALL automatically build and distribute to TestFlight
 - **AND** a manual workflow dispatch option SHALL also be available for on-demand builds
 
 #### Scenario: Build versioning
 - **WHEN** a CI build runs
 - **THEN** the build number SHALL be set to the CI run number (monotonically increasing)
 - **AND** the version string SHALL match the `package.json` version
-- **AND** both iOS `CFBundleVersion` and Android `versionCode` SHALL be updated automatically
+- **AND** iOS `CFBundleVersion` and `CFBundleShortVersionString` SHALL be updated automatically
 
 #### Scenario: Promotion to production
-- **WHEN** a beta build has been validated by testers
-- **THEN** promotion to App Store review (iOS) or production track (Android) SHALL be a manual step
-- **AND** the CI pipeline SHALL NOT automatically promote builds to production
+- **WHEN** a TestFlight beta build has been validated by testers
+- **THEN** promotion to App Store review SHALL be a manual step
+- **AND** the CI pipeline SHALL NOT automatically promote builds to the App Store

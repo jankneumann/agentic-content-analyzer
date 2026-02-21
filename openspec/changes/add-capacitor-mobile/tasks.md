@@ -3,7 +3,7 @@
 - [ ] 1.1 Install `@capacitor/core`, `@capacitor/cli` in `web/`
 - [ ] 1.2 Run `npx cap init` with app ID and name, configure `capacitor.config.ts`
 - [ ] 1.3 Add iOS platform (`npx cap add ios`)
-- [ ] 1.4 Add Android platform (`npx cap add android`)
+- [ ] 1.4 Add Android platform (`npx cap add android`) — scaffolded only, deployment deferred
 - [ ] 1.5 Configure `webDir` to point to Vite `dist/` output
 - [ ] 1.6 Add `ios/` and `android/` to `.gitignore` (or commit — decide convention)
 
@@ -18,7 +18,6 @@
 - [ ] 3.1 Install `@capacitor/push-notifications`, `@capacitor/haptics`, `@capacitor/status-bar`, `@capacitor/splash-screen`
 - [ ] 3.2 Install `@capacitor-community/speech-recognition` for native STT
 - [ ] 3.3 Configure iOS permissions in `Info.plist` (microphone, speech recognition, push notifications)
-- [ ] 3.4 Configure Android permissions in `AndroidManifest.xml` (microphone, speech recognition)
 
 ## 4. Push Notification Delivery (depends on `add-notification-events` for backend)
 
@@ -30,8 +29,7 @@
 
 ## 5. Native Share Target
 
-- [ ] 5.1 Configure Android intent filter in `AndroidManifest.xml` for receiving text/URL shares
-- [ ] 5.2 Create iOS Share Extension target in Xcode project
+- [ ] 5.1 Create iOS Share Extension target in Xcode project
 - [ ] 5.3 Implement share handler that extracts URL and calls `save-url` API
 - [ ] 5.4 Add confirmation toast after successful share save
 - [ ] 5.5 Add offline queue for shares when device is disconnected
@@ -59,30 +57,26 @@
 
 - [ ] 9.1 Add `pnpm cap:dev` script (Vite dev server + live reload)
 - [ ] 9.2 Add `pnpm cap:build` script (Vite build + cap sync)
-- [ ] 9.3 Add `pnpm cap:open:ios` and `pnpm cap:open:android` scripts
-- [ ] 9.4 Document build requirements (Xcode, Android Studio) in README
+- [ ] 9.3 Add `pnpm cap:open:ios` script
+- [ ] 9.4 Document build requirements (Xcode, macOS) in README
 
-## 10. Deployment Pipeline
+## 10. iOS Deployment Pipeline
 
 - [ ] 10.1 Set up Fastlane Match for iOS code signing (private Git repo for profiles + certificates)
 - [ ] 10.2 Create `ios/fastlane/Fastfile` with `build_app` and `upload_to_testflight` lanes
-- [ ] 10.3 Create `android/fastlane/Fastfile` with `gradle` build and `supply` upload lanes
-- [ ] 10.4 Generate Android release keystore and document secure storage of keystore/passwords
-- [ ] 10.5 Create `.github/workflows/mobile-build.yml` with macOS runner for iOS and Linux runner for Android
-- [ ] 10.6 Configure CI secrets: Apple Developer credentials, Match passphrase, Android keystore + passwords, Google Play service account JSON
-- [ ] 10.7 Implement automatic build versioning — set `CFBundleVersion`/`versionCode` from CI run number, `CFBundleShortVersionString`/`versionName` from `package.json` version
-- [ ] 10.8 Configure CI trigger on merge to main + manual workflow dispatch
-- [ ] 10.9 Add TestFlight beta tester group configuration (Apple Developer Console)
-- [ ] 10.10 Add Play Store internal testing track configuration and opt-in link
-- [ ] 10.11 Document promotion-to-production steps for both stores (manual process)
-- [ ] 10.12 Add required App Store metadata: privacy policy URL, app description, screenshots, app icon assets
-- [ ] 10.13 Add required Play Store metadata: privacy policy URL, app description, feature graphic, screenshots
+- [ ] 10.3 Create `.github/workflows/ios-build.yml` with macOS runner
+- [ ] 10.4 Configure CI secrets: Apple Developer credentials, Match passphrase
+- [ ] 10.5 Implement automatic build versioning — set `CFBundleVersion` from CI run number, `CFBundleShortVersionString` from `package.json` version
+- [ ] 10.6 Configure CI trigger on merge to main + manual workflow dispatch
+- [ ] 10.7 Add TestFlight beta tester group configuration (Apple Developer Console)
+- [ ] 10.8 Document promotion-to-App-Store steps (manual process)
+- [ ] 10.9 Add required App Store metadata: privacy policy URL, app description, screenshots, app icon assets
 
 ## 11. Testing
 
 - [ ] 11.1 Add E2E tests for platform detection (mock Capacitor context)
 - [ ] 11.2 Add E2E tests for share target flow (mocked)
 - [ ] 11.3 Add E2E tests for push notification opt-in flow (mocked)
-- [ ] 11.4 Manual testing checklist for iOS and Android builds
-- [ ] 11.5 Verify CI pipeline end-to-end: commit → build → TestFlight upload + Play Store upload
+- [ ] 11.4 Manual testing checklist for iOS builds
+- [ ] 11.5 Verify CI pipeline end-to-end: commit → build → TestFlight upload
 - [ ] 11.6 Verify build versioning (monotonic build numbers, version from package.json)
