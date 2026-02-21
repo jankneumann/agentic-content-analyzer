@@ -62,9 +62,27 @@
 - [ ] 9.3 Add `pnpm cap:open:ios` and `pnpm cap:open:android` scripts
 - [ ] 9.4 Document build requirements (Xcode, Android Studio) in README
 
-## 10. Testing
+## 10. Deployment Pipeline
 
-- [ ] 10.1 Add E2E tests for platform detection (mock Capacitor context)
-- [ ] 10.2 Add E2E tests for share target flow (mocked)
-- [ ] 10.3 Add E2E tests for push notification opt-in flow (mocked)
-- [ ] 10.4 Manual testing checklist for iOS and Android builds
+- [ ] 10.1 Set up Fastlane Match for iOS code signing (private Git repo for profiles + certificates)
+- [ ] 10.2 Create `ios/fastlane/Fastfile` with `build_app` and `upload_to_testflight` lanes
+- [ ] 10.3 Create `android/fastlane/Fastfile` with `gradle` build and `supply` upload lanes
+- [ ] 10.4 Generate Android release keystore and document secure storage of keystore/passwords
+- [ ] 10.5 Create `.github/workflows/mobile-build.yml` with macOS runner for iOS and Linux runner for Android
+- [ ] 10.6 Configure CI secrets: Apple Developer credentials, Match passphrase, Android keystore + passwords, Google Play service account JSON
+- [ ] 10.7 Implement automatic build versioning — set `CFBundleVersion`/`versionCode` from CI run number, `CFBundleShortVersionString`/`versionName` from `package.json` version
+- [ ] 10.8 Configure CI trigger on merge to main + manual workflow dispatch
+- [ ] 10.9 Add TestFlight beta tester group configuration (Apple Developer Console)
+- [ ] 10.10 Add Play Store internal testing track configuration and opt-in link
+- [ ] 10.11 Document promotion-to-production steps for both stores (manual process)
+- [ ] 10.12 Add required App Store metadata: privacy policy URL, app description, screenshots, app icon assets
+- [ ] 10.13 Add required Play Store metadata: privacy policy URL, app description, feature graphic, screenshots
+
+## 11. Testing
+
+- [ ] 11.1 Add E2E tests for platform detection (mock Capacitor context)
+- [ ] 11.2 Add E2E tests for share target flow (mocked)
+- [ ] 11.3 Add E2E tests for push notification opt-in flow (mocked)
+- [ ] 11.4 Manual testing checklist for iOS and Android builds
+- [ ] 11.5 Verify CI pipeline end-to-end: commit → build → TestFlight upload + Play Store upload
+- [ ] 11.6 Verify build versioning (monotonic build numbers, version from package.json)

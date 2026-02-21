@@ -12,6 +12,7 @@ The application runs as a PWA, which works well for mobile access but lacks nati
 - Integrate Capacitor's native speech recognition plugin as an additional engine option in the voice input system
 - Add build scripts and CI configuration for iOS/Android builds
 - Configure deep linking for `aca://` URL scheme
+- Define deployment pipeline: code signing, TestFlight (iOS beta), Play Store internal testing track (Android beta), and CI/CD for automated builds
 
 ## Capabilities
 
@@ -29,5 +30,6 @@ The application runs as a PWA, which works well for mobile access but lacks nati
 - **Build**: New `npx cap sync`, `npx cap open ios/android` commands; Xcode and Android Studio for native builds
 - **Dependencies**: `@capacitor/core`, `@capacitor/ios`, `@capacitor/android`, plus plugins (`@capacitor/push-notifications`, `@capacitor/share`, `@capacitor/haptics`, `@capacitor/status-bar`, `@capgo/capacitor-native-audio` or equivalent STT plugin)
 - **Infrastructure**: No new backend services — Capacitor consumes existing API and notification event system (from `add-notification-events`)
-- **Distribution**: App Store / Play Store submissions (requires developer accounts)
+- **Distribution**: iOS via TestFlight (beta) → App Store; Android via Play Store internal testing track → production. CI/CD automates builds; requires Apple Developer ($99/yr) and Google Play Developer ($25 one-time) accounts
+- **Signing**: iOS provisioning profiles + certificates managed via Xcode or Fastlane Match; Android keystore for release signing
 - **Existing PWA**: Unchanged — Capacitor wraps the same build output, PWA continues to work independently

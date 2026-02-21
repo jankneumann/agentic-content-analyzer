@@ -22,6 +22,13 @@ The application currently requires all user input via keyboard — chat queries,
 ### Modified Capabilities
 - `settings-management`: Add voice input preferences (language, continuous mode, auto-submit) to the settings page alongside existing voice output configuration
 
+## Related Changes
+
+- **`add-on-device-stt`**: Adds offline Whisper WASM/WebGPU engine as a second STT option, introduces the `STTEngine` interface abstraction that all engines implement
+- **`add-cloud-stt`**: Adds cloud-based STT via WebSocket streaming (Gemini, OpenAI Whisper, Deepgram), registered as the `CLOUD_STT` pipeline step. Gemini's native audio input combines transcription + cleanup in one call, bypassing the `VOICE_CLEANUP` step defined here. The `VOICE_CLEANUP` step remains valuable for browser and on-device engines that return raw transcripts
+- **`add-capacitor-mobile`**: Adds native speech recognition as a fourth engine option when running in the Capacitor native shell
+- **`add-notification-events`**: Shared backend notification system consumed by mobile and desktop shells
+
 ## Impact
 
 - **Frontend**: New hook (`useVoiceInput`), new component (`VoiceInputButton`), modifications to `ChatInput`, search input, and `VoiceConfigurator`

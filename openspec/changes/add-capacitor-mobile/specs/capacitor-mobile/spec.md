@@ -107,3 +107,44 @@ The system SHALL provide npm scripts for building and running native apps.
 #### Scenario: Open in IDE
 - **WHEN** `pnpm cap:open:ios` or `pnpm cap:open:android` is run
 - **THEN** Xcode or Android Studio SHALL open with the native project
+
+### Requirement: Deployment Pipeline
+The system SHALL provide a CI/CD pipeline for building, signing, and distributing native apps to beta testing channels.
+
+#### Scenario: iOS code signing
+- **WHEN** a CI build produces an iOS archive
+- **THEN** the archive SHALL be signed using provisioning profiles and certificates managed by Fastlane Match
+- **AND** Match SHALL store signing assets in a private Git repository
+- **AND** the CI environment SHALL have access to the Match passphrase and Apple Developer credentials as secrets
+
+#### Scenario: iOS beta distribution via TestFlight
+- **WHEN** a signed `.ipa` is produced by CI
+- **THEN** Fastlane `pilot` SHALL upload the build to TestFlight
+- **AND** configured beta testers SHALL receive an automatic notification to install the new build
+- **AND** the TestFlight build SHALL include the git commit SHA and build number in its metadata
+
+#### Scenario: Android release signing
+- **WHEN** a CI build produces an Android release
+- **THEN** Gradle SHALL sign the `.aab` (App Bundle) with the release keystore
+- **AND** the keystore, key alias, and passwords SHALL be stored as CI secrets (never committed to the repository)
+
+#### Scenario: Android beta distribution via Play Store internal testing
+- **WHEN** a signed `.aab` is produced by CI
+- **THEN** Fastlane `supply` SHALL upload the bundle to the Play Store internal testing track
+- **AND** configured internal testers SHALL be able to install via the Play Store opt-in link
+
+#### Scenario: CI trigger
+- **WHEN** a commit is merged to the main branch
+- **THEN** the CI pipeline SHALL automatically build and distribute to beta channels
+- **AND** a manual workflow dispatch option SHALL also be available for on-demand builds
+
+#### Scenario: Build versioning
+- **WHEN** a CI build runs
+- **THEN** the build number SHALL be set to the CI run number (monotonically increasing)
+- **AND** the version string SHALL match the `package.json` version
+- **AND** both iOS `CFBundleVersion` and Android `versionCode` SHALL be updated automatically
+
+#### Scenario: Promotion to production
+- **WHEN** a beta build has been validated by testers
+- **THEN** promotion to App Store review (iOS) or production track (Android) SHALL be a manual step
+- **AND** the CI pipeline SHALL NOT automatically promote builds to production
