@@ -483,7 +483,12 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Production startup warns (doesn't fail) | Missing `ADMIN_API_KEY` or dev CORS in production logs warnings but does NOT prevent startup — intentional per design |
 | Upload magic bytes validation | File uploads are validated against `FILE_SIGNATURES` mapping in `upload_routes.py` — mismatched extensions return 415 |
 | Upload MIME cross-check | Client `Content-Type` is validated against `EXTENSION_MIME_MAP` — `application/octet-stream` and `None` bypass the check |
-| `ENDPOINT_AUTH_MAP` in `dependencies.py` | Documentation-only constant — lists all routes and their auth requirements. No enforcement middleware (single-user model) |
+| `ENDPOINT_AUTH_MAP` in `dependencies.py` | Documentation-only constant — lists all routes and their auth requirements. Auth enforced by `AuthMiddleware` + `verify_admin_key` dependency |
+| Auth: middleware + route dependency double-check | `AuthMiddleware` and `verify_admin_key` both verify session cookies AND X-Admin-Key — defense-in-depth, not conflicting |
+| Auth: Secure cookies + TestClient | TestClient defaults to `http://testserver` — secure cookies are not sent back. Use `base_url="https://testserver"` in production fixtures |
+| Auth: Cookie header dropped on redirect | httpx regenerates `Cookie` headers from its cookie jar on redirect — manually set `Cookie` headers are lost. Use trailing-slash URLs in tests to avoid 307 redirects |
+| Auth: Invalid X-Admin-Key returns 403 (not 401) | Middleware distinguishes invalid keys (403 Forbidden) from missing auth (401 Unauthorized). Spec requires this for all environments |
+| `APP_SECRET_KEY` is the login password | Used directly for `secrets.compare_digest()` against user input AND as HMAC input for JWT signing key derivation |
 
 ## Quick Links by Task
 

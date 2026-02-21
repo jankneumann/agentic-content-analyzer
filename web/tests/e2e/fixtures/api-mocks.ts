@@ -876,6 +876,62 @@ export class ApiMocks {
     )
   }
 
+  // ─── Auth Endpoints ─────────────────────────────────────
+
+  async mockSessionAuthenticated(): Promise<void> {
+    await this.page.route("**/api/v1/auth/session*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          mockData.createSessionResponse({ authenticated: true })
+        ),
+      })
+    )
+  }
+
+  async mockSessionUnauthenticated(): Promise<void> {
+    await this.page.route("**/api/v1/auth/session*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          mockData.createSessionResponse({ authenticated: false })
+        ),
+      })
+    )
+  }
+
+  async mockLoginSuccess(): Promise<void> {
+    await this.page.route("**/api/v1/auth/login*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockData.createLoginSuccessResponse()),
+      })
+    )
+  }
+
+  async mockLoginFailure(): Promise<void> {
+    await this.page.route("**/api/v1/auth/login*", (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify(mockData.createLoginFailureResponse()),
+      })
+    )
+  }
+
+  async mockLoginRateLimited(): Promise<void> {
+    await this.page.route("**/api/v1/auth/login*", (route) =>
+      route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        body: JSON.stringify(mockData.createLoginRateLimitedResponse()),
+      })
+    )
+  }
+
   // ─── Delayed Response Helper ─────────────────────────────
 
   /** Mock an endpoint with a delayed response (for loading state tests) */
