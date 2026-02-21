@@ -1006,3 +1006,42 @@ export function createConnectionStatusResponse(overrides: Record<string, unknown
     ...overrides,
   }
 }
+
+// ─── Auth ─────────────────────────────────────────────────────
+
+/** Create a session response (authenticated or not) */
+export function createSessionResponse(
+  overrides: Partial<{ authenticated: boolean }> = {}
+) {
+  return {
+    authenticated: false,
+    ...overrides,
+  }
+}
+
+/** Create a successful login response */
+export function createLoginSuccessResponse() {
+  return {
+    authenticated: true,
+  }
+}
+
+/** Create a failed login response (401) */
+export function createLoginFailureResponse(
+  overrides: Partial<{ detail: string }> = {}
+) {
+  return {
+    detail: "Invalid password",
+    ...overrides,
+  }
+}
+
+/** Create a rate-limited login response (429) */
+export function createLoginRateLimitedResponse(
+  overrides: Partial<{ detail: string }> = {}
+) {
+  return {
+    detail: "Too many attempts. Please try again later.",
+    ...overrides,
+  }
+}

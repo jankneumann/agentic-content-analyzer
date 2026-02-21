@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.audio_digest_routes import router as audio_digest_router
+from src.api.auth_routes import router as auth_router
 from src.api.chat_routes import router as chat_router
 from src.api.connection_status_routes import router as connection_status_router
 from src.api.content_routes import router as content_router
@@ -18,6 +19,7 @@ from src.api.digest_routes import router as digest_router
 from src.api.files_routes import router as files_router
 from src.api.health_routes import router as health_router
 from src.api.job_routes import router as job_router
+from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.telemetry import TraceIdMiddleware
 from src.api.model_settings_routes import router as model_settings_router
@@ -118,6 +120,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Auth middleware — enforces session cookie or X-Admin-Key on all non-exempt endpoints
+# Added before telemetry so auth errors still get trace IDs
+app.add_middleware(AuthMiddleware)
+
 # Telemetry middleware — adds X-Trace-Id header to responses
 app.add_middleware(TraceIdMiddleware)
 
@@ -125,6 +131,7 @@ app.add_middleware(TraceIdMiddleware)
 register_error_handlers(app)
 
 # Include routers
+app.include_router(auth_router)  # Auth endpoints (login, logout, session)
 app.include_router(audio_digest_router)
 app.include_router(content_router)
 app.include_router(summary_router)

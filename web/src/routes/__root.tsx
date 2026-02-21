@@ -10,7 +10,7 @@
  * - [name].tsx files define individual routes
  */
 
-import { createRootRoute, Outlet } from "@tanstack/react-router"
+import { createRootRoute, Outlet, redirect } from "@tanstack/react-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { AppShell, BackgroundTasksIndicator } from "@/components/layout"
@@ -18,6 +18,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { Toaster } from "@/components/ui/sonner"
 import { BackgroundTasksProvider } from "@/contexts/BackgroundTasksContext"
+import { checkSession, isAuthEnabled } from "@/lib/api"
 import { initTelemetry } from "@/lib/telemetry"
 
 // Initialize OTel before React renders so fetch instrumentation
@@ -77,5 +78,29 @@ function RootComponent() {
  * All other routes are children of this route.
  */
 export const Route = createRootRoute({
+  beforeLoad: async ({ location }) => {
+    // Skip auth check for the login page (avoid redirect loop)
+    if (location.pathname === "/login") return
+
+    // Skip auth check in dev mode (matches backend dev-mode bypass)
+    if (!isAuthEnabled()) return
+
+    try {
+      const authenticated = await checkSession()
+      if (!authenticated) {
+        throw redirect({
+          to: "/login",
+          search: { returnTo: location.pathname },
+        })
+      }
+    } catch (error) {
+      // Re-throw redirect as-is
+      if (error instanceof Response || (error && typeof error === "object" && "to" in error)) {
+        throw error
+      }
+      // Network error — don't redirect to login (might be a transient failure)
+      // Let the app render and show an error state instead
+    }
+  },
   component: RootComponent,
 })

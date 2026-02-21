@@ -7,4 +7,4 @@ alembic upgrade head
 
 # Start the application
 echo "Starting application..."
-exec uvicorn src.api.app:app --host 0.0.0.0 --port ${PORT:-8000}
+exec uvicorn src.api.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'
