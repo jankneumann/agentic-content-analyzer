@@ -77,6 +77,50 @@ jobs:
         run: |
           pytest tests/test_config/ tests/test_cli/ -v
 
+  contract-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: newsletter_user
+          POSTGRES_PASSWORD: newsletter_password
+          POSTGRES_DB: newsletters
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      - name: Run API contract and fuzz tests
+        env:
+          DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
+          ANTHROPIC_API_KEY: test-key-for-ci
+          ADMIN_API_KEY: test-admin-key
+          ENVIRONMENT: development
+          WORKER_ENABLED: "false"
+        run: |
+          pytest tests/contract/ -m contract -v --no-cov --tb=short
+
   validate-profiles:
     runs-on: ubuntu-latest
     steps:
