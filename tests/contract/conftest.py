@@ -9,6 +9,11 @@ Contract tests run against the live app with a test database, validating
 that responses conform to the OpenAPI schema and that fuzz inputs don't
 cause 500 errors.
 
+Uses Alembic migrations (not ORM metadata) for schema creation to ensure
+the test database matches production exactly — including raw SQL columns
+(search_vector, embedding), migration-only tables (pgqueuer_jobs), and
+triggers that the ORM doesn't define.
+
 Run:
     pytest tests/contract/ -m contract -v
 """
@@ -18,6 +23,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -29,7 +35,6 @@ os.environ.setdefault("WORKER_ENABLED", "false")
 
 from src.api.app import app
 from src.models.audio_digest import AudioDigest  # noqa: F401
-from src.models.base import Base
 from src.models.content import ContentStatus
 from src.models.settings import PromptOverride  # noqa: F401
 from src.models.settings_override import SettingsOverride  # noqa: F401
@@ -40,6 +45,10 @@ from tests.factories.summary import SummaryFactory
 from tests.helpers.test_db import create_test_engine, get_test_database_url
 
 TEST_DATABASE_URL = get_test_database_url()
+
+# Locate the alembic config relative to the project root
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_ALEMBIC_INI = _PROJECT_ROOT / "alembic.ini"
 
 # ---------------------------------------------------------------------------
 # Shared endpoint exclusion patterns used by both conformance and fuzz tests.
@@ -80,14 +89,63 @@ def contract_test_env(monkeypatch):
     get_settings.cache_clear()
 
 
+def _reset_schema(engine) -> None:
+    """Drop and recreate the public schema for a completely clean slate.
+
+    More thorough than Base.metadata.drop_all() — also removes
+    migration-only tables, triggers, functions, and extensions.
+    """
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.execute(text("GRANT ALL ON SCHEMA public TO PUBLIC"))
+        conn.commit()
+
+
 @pytest.fixture(scope="session")
 def contract_db_engine():
-    """Create test database engine for contract tests (session-scoped)."""
+    """Create test database via Alembic migrations (session-scoped).
+
+    Uses Alembic instead of ORM metadata to ensure the test database
+    matches production exactly — including raw SQL columns (search_vector,
+    embedding), migration-only tables (pgqueuer_jobs), triggers, and
+    indexes that the ORM doesn't define.
+    """
     engine = create_test_engine(TEST_DATABASE_URL)
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+
+    # Clean slate: drop and recreate public schema
+    _reset_schema(engine)
+
+    # Run Alembic migrations against the test database.
+    # Must use subprocess because alembic/env.py imports src.config.settings
+    # at module level, caching the main DATABASE_URL. A fresh process with
+    # DATABASE_URL pointing to the test DB avoids this.
+    import subprocess
+
+    # Override all provider-specific URL vars so settings.get_effective_database_url()
+    # returns TEST_DATABASE_URL regardless of .env or profile configuration.
+    env = {
+        **os.environ,
+        "DATABASE_URL": TEST_DATABASE_URL,
+        "LOCAL_DATABASE_URL": TEST_DATABASE_URL,
+        "NEON_DATABASE_URL": "",
+        "SUPABASE_DIRECT_URL": "",
+    }
+    result = subprocess.run(
+        ["alembic", "upgrade", "head"],  # noqa: S607
+        cwd=str(_PROJECT_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Alembic migration failed:\n{result.stderr}\n{result.stdout}")
+
     yield engine
-    Base.metadata.drop_all(engine)
+
+    _reset_schema(engine)
     engine.dispose()
 
 

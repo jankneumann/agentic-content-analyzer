@@ -195,8 +195,8 @@ async def generate_audio_task(
 @router.get("/", response_model=list[PodcastListItem])
 async def list_podcasts(
     status: str | None = Query(None, description="Filter by status"),
-    limit: int = Query(50, le=100, description="Maximum results"),
-    offset: int = Query(0, description="Offset for pagination"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[PodcastListItem]:
@@ -277,7 +277,7 @@ async def get_podcast_statistics() -> PodcastStatistics:
 
 @router.get("/approved-scripts", response_model=list[dict])
 async def list_approved_scripts(
-    limit: int = Query(20, le=50, description="Maximum results"),
+    limit: int = Query(20, ge=1, le=50, description="Maximum results"),
 ) -> list[dict]:
     """List approved scripts ready for audio generation."""
     with get_db() as db:

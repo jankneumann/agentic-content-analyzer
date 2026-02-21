@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: newsletter_user
           POSTGRES_PASSWORD: newsletter_password
@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: newsletter_user
           POSTGRES_PASSWORD: newsletter_password
@@ -110,6 +110,12 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install --system -e ".[dev]"
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
+        run: |
+          alembic upgrade head
 
       - name: Run API contract and fuzz tests
         env:
