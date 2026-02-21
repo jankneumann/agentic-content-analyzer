@@ -21,10 +21,11 @@ Six specific gaps prevent agents from using Neon branching:
 - Integrate Neon branch fixtures into the test conftest for automatic DB selection
 - Add CI/CD workflow for Neon integration tests
 
-### Skill Changes
-- Update `openspec-apply-change` to optionally create a branch before implementation
-- Update `openspec-verify-change` to run tests against branch data
-- Update `openspec-archive-change` to clean up the ephemeral branch
+### Skill Changes (in agentic-coding-tools repo)
+- Create `neon-branch` skill with create/verify/cleanup actions
+- Update `openspec-apply-change` to optionally invoke `neon-branch create` before implementation
+- Update `openspec-verify-change` to invoke `neon-branch verify` against branch data
+- Update `openspec-archive-change` to invoke `neon-branch cleanup` after archiving
 
 ### Test Infrastructure Changes
 - Auto-detect Neon credentials in conftest and use branch-per-test isolation
@@ -37,10 +38,10 @@ Six specific gaps prevent agents from using Neon branching:
 - `database-provider` — Neon branch lifecycle (new capability)
 
 ### Affected Code
-- `.claude/skills/openspec-apply-change/SKILL.md` — Branch creation hook
-- `.claude/skills/openspec-verify-change/SKILL.md` — Branch verification hook
-- `.claude/skills/openspec-archive-change/SKILL.md` — Branch cleanup hook
-- `.claude/settings.json` — SessionStart hook configuration
+- `agentic-coding-tools` repo: `neon-branch` skill (new)
+- `agentic-coding-tools` repo: `openspec-apply-change` skill (branch creation hook)
+- `agentic-coding-tools` repo: `openspec-verify-change` skill (branch verification hook)
+- `agentic-coding-tools` repo: `openspec-archive-change` skill (branch cleanup hook)
 - `tests/conftest.py` — Auto-select Neon when available
 - `tests/integration/conftest.py` — Branch-per-session fixture
 - `.github/workflows/ci.yml` — Neon test job

@@ -6,9 +6,7 @@
 
 | File | Sections Modifying | Resolution |
 |------|-------------------|------------|
-| `.claude/skills/openspec-apply-change/SKILL.md` | 1 only | No conflict |
-| `.claude/skills/openspec-verify-change/SKILL.md` | 1 only | No conflict |
-| `.claude/skills/openspec-archive-change/SKILL.md` | 1 only | No conflict |
+| `agentic-coding-tools` skills (separate repo) | 1 only | No conflict |
 | `tests/integration/conftest.py` | 2 only | No conflict |
 | `.github/workflows/ci.yml` | 3 only | No conflict |
 
@@ -21,28 +19,34 @@
 
 ---
 
-## 1. OpenSpec Skill Integration
+## 1. Neon Branch Skill (in agentic-coding-tools repo)
 
-**Depends on:** Nothing (existing `neon-branch` skill is already created)
-**Files:** `.claude/skills/openspec-*/SKILL.md`
+**Depends on:** Nothing (CLI commands in this repo already exist)
+**Repo:** `agentic-coding-tools` (NOT this repo — skills are managed there)
+**Note:** The skill definitions below should be created as a `neon-branch` skill in the
+agentic-coding-tools repo alongside the existing OpenSpec skills.
 
-- [x] 1.1 Update `openspec-apply-change/SKILL.md` to include optional Neon branch creation
-  - Add step between "Select the change" and "Read context files":
-    "If Neon credentials are available (`aca neon list` succeeds), create branch `claude/<change-name>` via the `neon-branch` skill (create action)"
+- [ ] 1.1 Create `neon-branch` skill in `agentic-coding-tools` with create/verify/cleanup actions
+  - create: `aca neon create claude/<change-name>` + `alembic upgrade head`
+  - verify: `aca neon connection <name>` + run pytest against branch
+  - cleanup: `aca neon delete <name> --force`
+  - Prerequisite check: `aca neon list --json` to verify credentials
+  - Graceful fallback: if Neon unavailable, skip silently
+
+- [ ] 1.2 Update `openspec-apply-change` skill to invoke `neon-branch create` before implementation
+  - Add optional step between "Select the change" and "Read context files":
+    "If Neon credentials are available, create branch `claude/<change-name>`"
   - Include fallback: "If Neon is unavailable, skip silently and use local database"
-  - Note: branch creation includes running `alembic upgrade head`
 
-- [ ] 1.2 Update `openspec-verify-change/SKILL.md` to include optional branch verification
+- [ ] 1.3 Update `openspec-verify-change` skill to invoke `neon-branch verify` during validation
   - Add step after "Verify Completeness" and before "Generate Report":
-    "If a Neon branch `claude/<change-name>` exists, run tests against it via the `neon-branch` skill (verify action)"
+    "If a Neon branch `claude/<change-name>` exists, run tests against it"
   - Add branch test results to the verification report under a new "Branch Testing" section
-  - If no branch exists, note "No Neon branch found — tests ran against local database"
 
-- [ ] 1.3 Update `openspec-archive-change/SKILL.md` to include branch cleanup
+- [ ] 1.4 Update `openspec-archive-change` skill to invoke `neon-branch cleanup` after archiving
   - Add step after "Perform the archive":
-    "If a Neon branch `claude/<change-name>` exists, delete it via the `neon-branch` skill (cleanup action)"
-  - This is cleanup, not validation — proceed with archive even if branch deletion fails
-  - Log: "Cleaned up Neon branch: claude/<change-name>" or "No Neon branch to clean up"
+    "If a Neon branch `claude/<change-name>` exists, delete it"
+  - Cleanup failure should not block archive
 
 ## 2. Test Infrastructure
 
