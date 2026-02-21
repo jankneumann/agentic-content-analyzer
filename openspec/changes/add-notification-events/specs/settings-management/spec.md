@@ -1,8 +1,8 @@
 # settings-management Delta Spec
 
-## MODIFIED Requirements
+## NEW Requirements
 
-### Requirement: Voice Configuration UI
+### Requirement: Notification Preferences UI
 
 The Settings page SHALL include a Notifications section for per-event-type notification preferences.
 

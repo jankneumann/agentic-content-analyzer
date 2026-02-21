@@ -55,7 +55,7 @@ The system SHALL provide a WebSocket endpoint for real-time audio streaming and 
 
 #### Scenario: Authentication required
 - **WHEN** a WebSocket connection is attempted without a valid `X-Admin-Key`
-- **THEN** the server SHALL reject the connection with a 401 close code
+- **THEN** the server SHALL reject the connection with an HTTP 401 response during the WebSocket handshake (before upgrade)
 
 #### Scenario: Send audio chunk
 - **WHEN** the client sends a binary WebSocket message containing audio data (PCM 16-bit mono 16kHz)
