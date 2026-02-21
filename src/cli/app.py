@@ -31,6 +31,7 @@ from src.cli.graph_commands import app as graph_app
 from src.cli.ingest_commands import app as ingest_app
 from src.cli.job_commands import app as job_app
 from src.cli.manage_commands import app as manage_app
+from src.cli.neon_commands import app as neon_app
 
 # Import output utilities from the shared module (avoids circular imports)
 from src.cli.output import _set_json_mode, is_json_mode, output_result  # noqa: F401
@@ -61,6 +62,7 @@ app.add_typer(analyze_app, name="analyze")
 app.add_typer(graph_app, name="graph")
 app.add_typer(podcast_app, name="podcast")
 app.add_typer(manage_app, name="manage")
+app.add_typer(neon_app, name="neon")
 app.add_typer(profile_app, name="profile")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(settings_app, name="settings")

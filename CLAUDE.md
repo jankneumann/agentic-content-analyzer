@@ -126,6 +126,19 @@ aca jobs retry <id>                    # Retry a failed job
 aca jobs retry --failed                # Retry all failed jobs
 aca jobs cleanup --older-than 30d      # Clean up old completed jobs
 
+# Neon Database Branching (agent workflows)
+aca neon list                          # List all branches
+aca neon create <name>                 # Create branch (e.g., claude/feature-xyz)
+aca neon create <name> --parent main   # Create from specific parent
+aca neon delete <name>                 # Delete a branch
+aca neon connection <name>             # Print connection string
+aca neon connection <name> --direct    # Direct URL (for migrations)
+aca neon clean                         # Delete stale claude/ branches (>24h)
+make neon-list                         # Shortcut: list branches
+make neon-create NAME=claude/xyz       # Shortcut: create branch
+make neon-clean                        # Shortcut: clean stale branches
+make test-neon                         # Run Neon integration tests
+
 # Testing
 pytest                                  # All tests
 pytest tests/api/ -v                   # API tests only
