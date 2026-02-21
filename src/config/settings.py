@@ -623,6 +623,12 @@ class Settings(BaseSettings):
     cohere_api_key: str | None = None
     jina_api_key: str | None = None
 
+    # Test / Hoverfly API Simulation Configuration
+    # Set these to route HTTP clients through Hoverfly during integration tests.
+    # When hoverfly_admin_url is set, test fixtures can upload simulations automatically.
+    hoverfly_proxy_url: str | None = None  # Hoverfly webserver URL (e.g., http://localhost:8500)
+    hoverfly_admin_url: str | None = None  # Hoverfly admin API URL (e.g., http://localhost:8888)
+
     @model_validator(mode="after")
     def validate_search_config(self) -> Settings:
         """Validate search configuration cross-field constraints."""

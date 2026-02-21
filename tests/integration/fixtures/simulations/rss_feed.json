@@ -1,0 +1,147 @@
+{
+  "data": {
+    "pairs": [
+      {
+        "request": {
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/feed"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "glob",
+              "value": "*"
+            }
+          ]
+        },
+        "response": {
+          "status": 200,
+          "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>AI Weekly Newsletter</title>\n    <link>https://example.com</link>\n    <description>Weekly AI news and analysis</description>\n    <atom:link href=\"https://example.com/feed\" rel=\"self\" type=\"application/rss+xml\"/>\n    <item>\n      <title>Large Language Models: 2026 Update</title>\n      <link>https://example.com/posts/llm-2026-update</link>\n      <description>An overview of the latest advances in large language models, including new architectures, cost reductions, and expanded context windows.</description>\n      <pubDate>Mon, 16 Feb 2026 08:00:00 GMT</pubDate>\n      <guid>https://example.com/posts/llm-2026-update</guid>\n    </item>\n    <item>\n      <title>Vector Databases Compared</title>\n      <link>https://example.com/posts/vector-db-comparison</link>\n      <description>A detailed comparison of leading vector databases for production AI workloads, covering performance, cost, and ease of integration.</description>\n      <pubDate>Sun, 15 Feb 2026 08:00:00 GMT</pubDate>\n      <guid>https://example.com/posts/vector-db-comparison</guid>\n    </item>\n  </channel>\n</rss>",
+          "encodedBody": false,
+          "headers": {
+            "Content-Type": [
+              "application/rss+xml; charset=utf-8"
+            ]
+          },
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/feed/empty"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "glob",
+              "value": "*"
+            }
+          ]
+        },
+        "response": {
+          "status": 200,
+          "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\">\n  <channel>\n    <title>Empty Feed</title>\n    <link>https://example.com</link>\n    <description>A feed with no items</description>\n  </channel>\n</rss>",
+          "encodedBody": false,
+          "headers": {
+            "Content-Type": [
+              "application/rss+xml; charset=utf-8"
+            ]
+          },
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/feed/error"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "glob",
+              "value": "*"
+            }
+          ]
+        },
+        "response": {
+          "status": 500,
+          "body": "Internal Server Error",
+          "encodedBody": false,
+          "headers": {
+            "Content-Type": [
+              "text/plain"
+            ]
+          },
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/feed/not-found"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "glob",
+              "value": "*"
+            }
+          ]
+        },
+        "response": {
+          "status": 404,
+          "body": "Not Found",
+          "encodedBody": false,
+          "headers": {
+            "Content-Type": [
+              "text/plain"
+            ]
+          },
+          "templated": false
+        }
+      }
+    ],
+    "globalActions": {
+      "delays": [],
+      "delaysLogNormal": []
+    }
+  },
+  "meta": {
+    "schemaVersion": "v5",
+    "hoverflyVersion": "v1.10.5",
+    "timeExported": "2026-02-17T00:00:00Z"
+  }
+}
