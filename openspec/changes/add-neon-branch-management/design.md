@@ -146,37 +146,192 @@ def neon_session_branch(neon_available):
     # Create branch, yield connection string, delete on teardown
 ```
 
-### Decision 6: CI/CD — Conditional Job with Repository Secrets
+### Decision 6: CI/CD — Neon GitHub Actions + Profile-Aware Workflows
 
-**What**: Add a `test-neon` job to `.github/workflows/ci.yml` that runs only when `NEON_API_KEY` secret exists.
+**What**: Use Neon's official GitHub Actions (`create-branch-action`, `delete-branch-action`,
+`schema-diff-action`) in CI workflows, and make CI jobs profile-aware so they use the same
+configuration system as local development.
 
 **Why**:
-- Forks and PRs from external contributors won't have the secret — job is skipped
-- The project maintainer adds `NEON_API_KEY` and `NEON_PROJECT_ID` to repository secrets
-- Uses a dedicated Neon branch `ci/<run-id>` that's cleaned up after the job
+- Neon provides purpose-built GitHub Actions that handle branch lifecycle automatically
+- `create-branch-action@v6` supports `expires_at` — CI branches auto-cleanup even if jobs crash
+- `schema-diff-action@v1` auto-comments on PRs with schema change diffs — reviewers see DB changes without reading SQL
+- Profile-aware CI means CI and local development share the same config resolution logic (no hardcoded env vars)
+- Forks and PRs from external contributors won't have the secret — Neon jobs are skipped
 
-**Pattern**:
+**Neon GitHub Actions ecosystem**:
+
+| Action | Version | Purpose |
+|--------|---------|---------|
+| `neondatabase/create-branch-action` | `@v6` | Create branch per PR, returns `db_url`, `db_url_pooled`, `branch_id` |
+| `neondatabase/delete-branch-action` | `@v3` | Delete branch on PR close |
+| `neondatabase/schema-diff-action` | `@v1` | Diff schemas, post PR comment |
+
+**PR-based branch lifecycle**:
+```
+PR opened/synchronized → create-branch-action → alembic upgrade head → tests → schema-diff
+PR closed             → delete-branch-action
+```
+
+**Profile-aware CI pattern**:
+
+Currently, CI jobs hardcode env vars like `DATABASE_URL` and `ANTHROPIC_API_KEY`. Instead,
+CI jobs should use `PROFILE=<name>` to activate a profile, just like local development.
+
+| CI Job | Profile | Purpose |
+|--------|---------|---------|
+| `lint` | None needed | Static analysis, no DB |
+| `test` | None (local postgres service) | Unit tests against local PG |
+| `test-neon` | `ci-neon` | Integration tests on Neon branch |
+| `validate-profiles` | Each profile | Already profile-aware |
+
+The `ci-neon` profile extends `base` with `database: neon` and takes connection
+strings from the `create-branch-action` outputs:
+
 ```yaml
-test-neon:
-  if: ${{ secrets.NEON_API_KEY != '' }}
-  env:
-    NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-    NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+# profiles/ci-neon.yaml
+name: ci-neon
+extends: base
+description: CI job profile — Neon branch created per PR
+
+providers:
+  database: neon
+  neo4j: local      # CI doesn't need real Neo4j for most tests
+  storage: local
+  observability: noop
+
+settings:
+  environment: test
+  database:
+    # Injected by create-branch-action output → env var
+    neon_database_url: "${NEON_DATABASE_URL}"
+    neon_api_key: "${NEON_API_KEY:-}"
+    neon_project_id: "${NEON_PROJECT_ID:-}"
+```
+
+**Complete CI workflow pattern** (new `neon-pr.yml`):
+
+```yaml
+name: Neon PR Branch
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+jobs:
+  # Create branch on PR open/update
+  create-branch:
+    if: |
+      github.event.action != 'closed' &&
+      vars.NEON_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    outputs:
+      db_url: ${{ steps.create.outputs.db_url }}
+      db_url_pooled: ${{ steps.create.outputs.db_url_pooled }}
+      branch_id: ${{ steps.create.outputs.branch_id }}
+    steps:
+      - uses: neondatabase/create-branch-action@v6
+        id: create
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch_name: preview/pr-${{ github.event.number }}
+          parent_branch: main
+          expires_at: $(date -u -d '+48 hours' +%Y-%m-%dT%H:%M:%SZ)
+
+  # Run migrations + tests on the Neon branch
+  test-neon:
+    needs: create-branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run migrations on Neon branch
+        env:
+          DATABASE_URL: ${{ needs.create-branch.outputs.db_url }}
+        run: alembic upgrade head
+
+      - name: Run tests against Neon branch
+        env:
+          PROFILE: ci-neon
+          NEON_DATABASE_URL: ${{ needs.create-branch.outputs.db_url_pooled }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          ANTHROPIC_API_KEY: test-key-for-ci
+        run: pytest tests/ -v -m "not slow"
+
+  # Schema diff comment on PR
+  schema-diff:
+    needs: create-branch
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: neondatabase/schema-diff-action@v1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          compare_branch: preview/pr-${{ github.event.number }}
+          base_branch: main
+
+  # Delete branch on PR close
+  delete-branch:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: preview/pr-${{ github.event.number }}
+```
+
+### Decision 7: CI Profile for Neon Integration Tests
+
+**What**: Add a `ci-neon.yaml` profile that CI uses when running tests against a Neon branch.
+
+**Why**:
+- CI should use the same profile system as local development — no hardcoded env vars
+- The Neon branch connection string comes from the `create-branch-action` output
+- `database: neon` provider ensures correct pool settings, SSL, etc.
+- Other providers (neo4j, storage) stay `local` — CI doesn't need cloud services for unit tests
+
+**How profiles flow in CI**:
+```
+create-branch-action → outputs db_url → env NEON_DATABASE_URL
+                                       → env PROFILE=ci-neon
+                                       → profiles/ci-neon.yaml reads ${NEON_DATABASE_URL}
+                                       → Settings resolves to Neon provider
 ```
 
 ## Risks / Trade-offs
 
 ### Risk: Neon Free Tier Branch Limits
-- **Issue**: 10 branches max; concurrent agents could exhaust this
-- **Mitigation**: `aca neon clean` runs aggressively (24h default); CI creates and deletes in the same job; agents share session branches when possible
+- **Issue**: 10 branches max; concurrent PRs + agents could exhaust this
+- **Mitigation**: `expires_at` on `create-branch-action` auto-cleans CI branches (48h);
+  agent branches use `--expires-at` via `neonctl` (48h); `aca neon clean` as backup;
+  CI reuses `preview/pr-<number>` (same PR = same branch, not new one)
 
 ### Risk: Branch Creation Latency
 - **Issue**: 2-5s endpoint wake-up adds delay to skill invocation
-- **Mitigation**: Branch creation is a one-time cost per session, not per task; `_wait_for_endpoint_ready()` already polls with 2s interval
+- **Mitigation**: Branch creation is a one-time cost per session, not per task;
+  `_wait_for_endpoint_ready()` already polls with 2s interval
 
 ### Risk: Orphaned Branches from Crashed Sessions
 - **Issue**: If an agent session crashes, the cleanup step never runs
-- **Mitigation**: `aca neon clean --prefix claude/ --older-than 24` is idempotent and safe to run on a schedule or manually
+- **Mitigation**: `expires_at` on both CI (`create-branch-action`) and agent
+  (`neonctl --expires-at`) branches means they auto-delete after 48h regardless.
+  `aca neon clean --prefix claude/ --older-than 24` as additional safety net.
+
+### Risk: Schema Diff Noise
+- **Issue**: `schema-diff-action` may comment on every PR push, even without schema changes
+- **Mitigation**: The action only posts a comment when there ARE differences;
+  no-diff = no comment. Updates existing comment on re-push (doesn't spam).
 
 ### Trade-off: Convention Over Enforcement
 - **Trade-off**: Relying on skill text conventions rather than runtime hooks means agents might skip branch steps
@@ -194,14 +349,17 @@ test-neon:
 5. Add `@pytest.mark.neon` marker to pytest configuration
 6. Wire auto-detection into conftest
 
-### Phase 3: CI/CD
-7. Add `test-neon` job to GitHub Actions
-8. Document required secrets in README/contributing guide
+### Phase 3: CI/CD — Neon GitHub Actions
+7. Create `profiles/ci-neon.yaml` profile
+8. Create `.github/workflows/neon-pr.yml` with full PR lifecycle
+9. Update `.github/workflows/ci.yml` to add `test-neon` job (or delegate to `neon-pr.yml`)
+10. Add `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable to repository settings
+11. Document required secrets in README/contributing guide
 
 ### Rollback Plan
 - Phase 1: Revert SKILL.md changes (additive text, no code)
 - Phase 2: Remove fixtures (no other code depends on them)
-- Phase 3: Remove CI job (no effect on local development)
+- Phase 3: Remove `neon-pr.yml` and `ci-neon.yaml` profile (no effect on main CI or local development)
 
 ## Resolved Questions
 

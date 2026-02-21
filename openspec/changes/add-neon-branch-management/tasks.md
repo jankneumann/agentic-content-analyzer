@@ -8,12 +8,14 @@
 |------|-------------------|------------|
 | `agentic-coding-tools` skills (separate repo) | 1 only | No conflict |
 | `tests/integration/conftest.py` | 2 only | No conflict |
-| `.github/workflows/ci.yml` | 3 only | No conflict |
+| `.github/workflows/neon-pr.yml` (NEW) | 3 only | No conflict |
+| `.github/workflows/ci.yml` | 3 only (comment) | No conflict |
+| `profiles/ci-neon.yaml` (NEW) | 3 only | No conflict |
 
 **Independent streams (can run in parallel):**
 - Stream A: Section 1 (skill integration) — independent of all others
 - Stream B: Section 2 (test infrastructure) — independent of Section 1
-- Stream C: Section 3 (CI/CD) — depends on Section 2 (needs fixtures to exist)
+- Stream C: Section 3 (CI/CD + Neon GitHub Actions) — depends on Section 2 (needs fixtures to exist)
 - Stream D: Section 4 (CLI verification) — depends on existing CLI code
 - Stream E: Section 5 (documentation) — after all implementation
 
@@ -80,25 +82,69 @@ agentic-coding-tools repo alongside the existing OpenSpec skills.
   - Ensure `neon_isolated_branch` (function-scoped) fixture is registered
   - Add `conftest_plugins` import if needed
 
-## 3. CI/CD Integration
+## 3. CI/CD Integration — Neon GitHub Actions
 
 **Depends on:** Section 2 (fixtures must exist for tests to run)
-**Files:** `.github/workflows/ci.yml`
+**Files:** `.github/workflows/neon-pr.yml` (new), `.github/workflows/ci.yml`, `profiles/ci-neon.yaml` (new)
 
-- [ ] 3.1 Add `test-neon` job to `.github/workflows/ci.yml`
-  - Condition: `if: ${{ secrets.NEON_API_KEY != '' }}`
-  - Environment variables: `NEON_API_KEY`, `NEON_PROJECT_ID`
-  - Runs: `pytest tests/integration/test_neon_integration.py -v`
-  - Uses same Python version and setup steps as existing test job
+**Uses:** Neon's official GitHub Actions for branch lifecycle management:
+- [`neondatabase/create-branch-action@v6`](https://github.com/neondatabase/create-branch-action)
+- [`neondatabase/delete-branch-action@v3`](https://github.com/neondatabase/delete-branch-action)
+- [`neondatabase/schema-diff-action@v1`](https://github.com/neondatabase/schema-diff-action)
 
-- [ ] 3.2 Add branch cleanup as post-job step in the `test-neon` job
-  - After tests: `aca neon clean --prefix "claude/test-" --older-than 1 --force`
-  - This catches orphaned branches from failed test runs
-  - `continue-on-error: true` — cleanup failure shouldn't fail the job
+### 3a. CI Profile
 
-- [ ] 3.3 Document required repository secrets in a comment block in the CI workflow
-  - `NEON_API_KEY`: "Neon API key for branch management (optional — job skipped if not set)"
-  - `NEON_PROJECT_ID`: "Neon project ID (required with NEON_API_KEY)"
+- [ ] 3.1 Create `profiles/ci-neon.yaml` profile for CI Neon integration tests
+  - `extends: base` with `database: neon` provider
+  - Settings: `environment: test`, `neon_database_url: "${NEON_DATABASE_URL}"`
+  - Include `neon_api_key` and `neon_project_id` from env vars
+  - Other providers stay local (neo4j, storage, observability: noop)
+
+### 3b. PR Branch Lifecycle Workflow
+
+- [ ] 3.2 Create `.github/workflows/neon-pr.yml` — full PR-based Neon branch lifecycle
+  - Trigger: `pull_request` types `[opened, reopened, synchronize, closed]`
+  - Gate all jobs on `vars.NEON_PROJECT_ID != ''` — skipped for forks/external PRs
+  - Four jobs:
+
+  **Job: `create-branch`** (on open/sync):
+  - Uses `neondatabase/create-branch-action@v6`
+  - Branch name: `preview/pr-${{ github.event.number }}`
+  - Parent: `main`
+  - `expires_at`: 48 hours from now (auto-cleanup safety net)
+  - Outputs: `db_url`, `db_url_pooled`, `branch_id`
+
+  **Job: `test-neon`** (needs `create-branch`):
+  - Install deps, run `alembic upgrade head` against `db_url` (direct)
+  - Run `pytest tests/ -v` with `PROFILE=ci-neon` and `NEON_DATABASE_URL=db_url_pooled`
+  - Profile resolves Neon provider settings automatically
+
+  **Job: `schema-diff`** (needs `create-branch`):
+  - Uses `neondatabase/schema-diff-action@v1`
+  - Compare `preview/pr-${{ github.event.number }}` vs `main`
+  - Requires `permissions: pull-requests: write` for PR comment
+  - Only posts comment when schema differences exist
+
+  **Job: `delete-branch`** (on close):
+  - Uses `neondatabase/delete-branch-action@v3`
+  - Deletes `preview/pr-${{ github.event.number }}`
+  - `continue-on-error: true` — branch may have already expired
+
+### 3c. Existing CI Updates
+
+- [ ] 3.3 Update `.github/workflows/ci.yml` with profile-aware test job (optional)
+  - Existing `test` job continues to use local postgres service container
+  - Add comment documenting that Neon testing happens in `neon-pr.yml`
+  - Validate `ci-neon.yaml` in the existing `validate-profiles` job (automatic — it iterates all profiles)
+
+### 3d. Repository Setup Documentation
+
+- [ ] 3.4 Document required GitHub repository configuration
+  - **Secret:** `NEON_API_KEY` — Neon API key (Settings > Secrets > Actions)
+  - **Variable:** `NEON_PROJECT_ID` — Neon project ID (Settings > Variables > Actions)
+  - Note: Use GitHub Variables (not Secrets) for `NEON_PROJECT_ID` since it's not sensitive
+  - Note: `NEON_PROJECT_ID` as a Variable allows `vars.NEON_PROJECT_ID != ''` gating
+  - Optional: Use Neon GitHub Integration for automatic setup (see [Neon docs](https://neon.com/docs/guides/neon-github-integration))
 
 ## 4. CLI Verification and Hardening
 
