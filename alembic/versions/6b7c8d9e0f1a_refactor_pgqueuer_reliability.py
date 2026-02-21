@@ -61,6 +61,32 @@ def upgrade() -> None:
         """
     )
 
+    # Existing deployments can contain duplicate active jobs before the
+    # dedupe index is introduced. Keep the earliest row and mark the rest as
+    # failed so the unique partial index can be created safely.
+    op.execute(
+        """
+        WITH ranked AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY entrypoint, idempotency_key
+                       ORDER BY created_at ASC, id ASC
+                   ) AS rn
+            FROM pgqueuer_jobs
+            WHERE status IN ('queued', 'in_progress')
+              AND idempotency_key IS NOT NULL
+        )
+        UPDATE pgqueuer_jobs j
+        SET status = 'failed',
+            error = COALESCE(j.error, 'Deduplicated during migration'),
+            completed_at = COALESCE(j.completed_at, NOW()),
+            heartbeat_at = COALESCE(j.heartbeat_at, NOW())
+        FROM ranked r
+        WHERE j.id = r.id
+          AND r.rn > 1
+        """
+    )
+
     indexes = {idx["name"] for idx in inspector.get_indexes("pgqueuer_jobs")}
     if "idx_pgqueuer_jobs_parent_job_id" not in indexes:
         op.create_index("idx_pgqueuer_jobs_parent_job_id", "pgqueuer_jobs", ["parent_job_id"])

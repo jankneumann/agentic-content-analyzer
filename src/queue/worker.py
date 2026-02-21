@@ -270,9 +270,13 @@ def _register_content_handlers() -> None:
         from src.ingestion.gmail import GmailContentIngestionService
 
         service = GmailContentIngestionService()
-        labels = payload.get("labels", ["newsletters"])
-        label_query = " OR ".join(f"label:{label}" for label in labels) if labels else ""
-        service.ingest_content(query=label_query)
+        labels = payload.get("labels")
+        if labels is None:
+            # Keep scheduler defaults aligned with Gmail ingestion defaults.
+            service.ingest_content()
+        else:
+            label_query = " OR ".join(f"label:{label}" for label in labels) if labels else ""
+            service.ingest_content(query=label_query)
 
     @register_handler("summarize_content")
     async def summarize_content(job_id: int, payload: dict) -> None:

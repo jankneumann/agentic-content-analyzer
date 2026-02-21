@@ -127,10 +127,10 @@ def register_content_tasks(pgq: PgQueuer) -> None:
         It fetches unread newsletter emails and enqueues them for processing.
 
         Payload: (optional)
-            labels: list[str] - Gmail labels to scan (default: ["newsletters"])
+            labels: list[str] - Gmail labels to scan (default: service default query)
         """
         payload = _decode_payload(job)
-        labels = payload.get("labels", ["newsletters"])
+        labels = payload.get("labels")
         logger.info(f"Scanning newsletters with labels: {labels}")
 
         try:
@@ -138,8 +138,11 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             from src.ingestion.gmail import GmailContentIngestionService
 
             service = GmailContentIngestionService()
-            label_query = " OR ".join(f"label:{label}" for label in labels) if labels else ""
-            count = service.ingest_content(query=label_query)
+            if labels is None:
+                count = service.ingest_content()
+            else:
+                label_query = " OR ".join(f"label:{label}" for label in labels) if labels else ""
+                count = service.ingest_content(query=label_query)
 
             logger.info(f"Newsletter scan completed: {count} new items")
 
