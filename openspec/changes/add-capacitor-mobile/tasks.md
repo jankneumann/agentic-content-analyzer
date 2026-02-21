@@ -1,0 +1,82 @@
+## 1. Capacitor Setup
+
+- [ ] 1.1 Install `@capacitor/core`, `@capacitor/cli` in `web/`
+- [ ] 1.2 Run `npx cap init` with app ID and name, configure `capacitor.config.ts`
+- [ ] 1.3 Add iOS platform (`npx cap add ios`)
+- [ ] 1.4 Add Android platform (`npx cap add android`) — scaffolded only, deployment deferred
+- [ ] 1.5 Configure `webDir` to point to Vite `dist/` output
+- [ ] 1.6 Add `ios/` and `android/` to `.gitignore` (or commit — decide convention)
+
+## 2. Platform Detection
+
+- [ ] 2.1 Create `web/src/lib/platform.ts` with `isNative()`, `getPlatform()` utilities
+- [ ] 2.2 Add `usePlatform` hook for React components that need platform-conditional rendering
+- [ ] 2.3 Add platform info to telemetry resource attributes
+
+## 3. Native Plugins
+
+- [ ] 3.1 Install `@capacitor/push-notifications`, `@capacitor/haptics`, `@capacitor/status-bar`, `@capacitor/splash-screen`
+- [ ] 3.2 Install `@capacitor-community/speech-recognition` for native STT
+- [ ] 3.3 Configure iOS permissions in `Info.plist` (microphone, speech recognition, push notifications)
+
+## 4. Push Notification Delivery (depends on `add-notification-events` for backend)
+
+- [ ] 4.1 Create `web/src/lib/push-notifications.ts` with Capacitor Push Notifications plugin wrapper
+- [ ] 4.2 Implement device token registration via backend API (`POST /api/v1/notifications/devices`)
+- [ ] 4.3 Handle token refresh (re-register updated token with backend)
+- [ ] 4.4 Add push notification opt-in toggle to settings UI (native platforms only)
+- [ ] 4.5 Handle notification tap — navigate to content via event `payload.url`
+
+## 5. Native Share Target
+
+- [ ] 5.1 Create iOS Share Extension target in Xcode project
+- [ ] 5.3 Implement share handler that extracts URL and calls `save-url` API
+- [ ] 5.4 Add confirmation toast after successful share save
+- [ ] 5.5 Add offline queue for shares when device is disconnected
+
+## 6. Native STT Engine
+
+- [ ] 6.1 Create `NativeSTTEngine` class implementing the `STTEngine` interface (from `add-on-device-stt`)
+- [ ] 6.2 Wire `@capacitor-community/speech-recognition` plugin to the engine interface
+- [ ] 6.3 Update `AutoSTTEngine` to prefer `"native"` when running on Capacitor
+- [ ] 6.4 Handle native STT permissions (request on first use, handle denial)
+
+## 7. Status Bar and Theme
+
+- [ ] 7.1 Integrate `@capacitor/status-bar` with the existing dark/light theme system
+- [ ] 7.2 Update status bar style on theme toggle
+- [ ] 7.3 Configure splash screen with app branding
+
+## 8. Haptic Feedback
+
+- [ ] 8.1 Create `web/src/lib/haptics.ts` with `triggerHaptic(style)` utility (no-op on web)
+- [ ] 8.2 Add haptic feedback on voice input toggle
+- [ ] 8.3 Add haptic feedback on content save confirmation
+
+## 9. Build Scripts
+
+- [ ] 9.1 Add `pnpm cap:dev` script (Vite dev server + live reload)
+- [ ] 9.2 Add `pnpm cap:build` script (Vite build + cap sync)
+- [ ] 9.3 Add `pnpm cap:open:ios` script
+- [ ] 9.4 Document build requirements (Xcode, macOS) in README
+
+## 10. iOS Deployment Pipeline
+
+- [ ] 10.1 Set up Fastlane Match for iOS code signing (private Git repo for profiles + certificates)
+- [ ] 10.2 Create `ios/fastlane/Fastfile` with `build_app` and `upload_to_testflight` lanes
+- [ ] 10.3 Create `.github/workflows/ios-build.yml` with macOS runner
+- [ ] 10.4 Configure CI secrets: Apple Developer credentials, Match passphrase
+- [ ] 10.5 Implement automatic build versioning — set `CFBundleVersion` from CI run number, `CFBundleShortVersionString` from `package.json` version
+- [ ] 10.6 Configure CI trigger on merge to main + manual workflow dispatch
+- [ ] 10.7 Add TestFlight beta tester group configuration (Apple Developer Console)
+- [ ] 10.8 Document promotion-to-App-Store steps (manual process)
+- [ ] 10.9 Add required App Store metadata: privacy policy URL, app description, screenshots, app icon assets
+
+## 11. Testing
+
+- [ ] 11.1 Add E2E tests for platform detection (mock Capacitor context)
+- [ ] 11.2 Add E2E tests for share target flow (mocked)
+- [ ] 11.3 Add E2E tests for push notification opt-in flow (mocked)
+- [ ] 11.4 Manual testing checklist for iOS builds
+- [ ] 11.5 Verify CI pipeline end-to-end: commit → build → TestFlight upload
+- [ ] 11.6 Verify build versioning (monotonic build numbers, version from package.json)

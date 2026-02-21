@@ -382,6 +382,15 @@ def mock_graphiti_client():
     return mock_client
 
 
+# Import Hoverfly fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/hoverfly.py
+from tests.integration.fixtures.hoverfly import (  # noqa: E402, F401
+    hoverfly,
+    hoverfly_available,
+    hoverfly_url,
+    requires_hoverfly,
+)
+
 # Import Neon fixtures to make them available to all integration tests
 # These fixtures are defined in tests/integration/fixtures/neon.py
 from tests.integration.fixtures.neon import (  # noqa: E402, F401

@@ -11,6 +11,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Profiles](docs/PROFILES.md) | Profile-based configuration, inheritance, migration |
 | [Architecture](docs/ARCHITECTURE.md) | System design, ingestion, parsers, data models |
 | [Development](docs/DEVELOPMENT.md) | Commands, patterns, database, testing |
+| [Testing](docs/TESTING.md) | Test categories, factories, E2E, Hoverfly, integration fixtures |
 | [Model Config](docs/MODEL_CONFIGURATION.md) | LLM selection, providers, costs |
 | [Content Guidelines](docs/CONTENT_GUIDELINES.md) | Digest quality standards |
 | [Review System](docs/REVIEW_SYSTEM.md) | Digest/script review workflow, audio digests |
@@ -128,6 +129,12 @@ aca jobs cleanup --older-than 30d      # Clean up old completed jobs
 # Testing
 pytest                                  # All tests
 pytest tests/api/ -v                   # API tests only
+pytest -m hoverfly -v                  # Hoverfly HTTP simulation tests
+
+# Hoverfly API Simulation (HTTP-level integration tests)
+make hoverfly-up                        # Start Hoverfly (webserver mode)
+make hoverfly-down                      # Stop Hoverfly
+make test-hoverfly                      # Run Hoverfly integration tests
 
 # E2E Testing (Playwright)
 cd web && pnpm test:e2e                 # All E2E tests (mocked, no backend needed)
@@ -489,6 +496,9 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Auth: Cookie header dropped on redirect | httpx regenerates `Cookie` headers from its cookie jar on redirect — manually set `Cookie` headers are lost. Use trailing-slash URLs in tests to avoid 307 redirects |
 | Auth: Invalid X-Admin-Key returns 403 (not 401) | Middleware distinguishes invalid keys (403 Forbidden) from missing auth (401 Unauthorized). Spec requires this for all environments |
 | `APP_SECRET_KEY` is the login password | Used directly for `secrets.compare_digest()` against user input AND as HMAC input for JWT signing key derivation |
+| Hoverfly webserver mode has no capture | Default `docker-compose.yml` runs `-webserver` flag — no upstream to record. Must restart in proxy mode for capture (see `tests/integration/README.md`) |
+| Hoverfly simulation reset between tests | `hoverfly` fixture auto-resets; tests that load simulations should not depend on prior test state |
+| Integration fixture env vars must use Settings | Use `get_settings()` not `os.getenv()` — fixtures must honor profile/secrets precedence chain |
 
 ## Quick Links by Task
 
@@ -508,6 +518,8 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 - Database provider tests: [docs/DEVELOPMENT.md#database-provider-testing](docs/DEVELOPMENT.md#database-provider-testing)
 - Neon integration tests: [docs/SETUP.md#test-architecture](docs/SETUP.md#test-architecture)
 - Supabase integration tests: [docs/SETUP.md#supabase-test-architecture](docs/SETUP.md#supabase-test-architecture)
+- Hoverfly API simulation: [docs/TESTING.md#hoverfly-api-simulation](docs/TESTING.md#hoverfly-api-simulation)
+- Integration test fixtures: [docs/TESTING.md#integration-test-fixtures](docs/TESTING.md#integration-test-fixtures)
 - E2E testing guide: [docs/TESTING.md#e2e-testing-playwright](docs/TESTING.md#e2e-testing-playwright)
 - E2E test infrastructure: `web/tests/e2e/fixtures/` (page objects, API mocks, mock data factories)
 - E2E page objects: `web/tests/e2e/fixtures/pages/*.page.ts`

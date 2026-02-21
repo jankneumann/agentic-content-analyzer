@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging hoverfly-up hoverfly-down hoverfly-status test-hoverfly
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -56,6 +56,13 @@ test-opik:  ## Run Opik integration tests (requires: make opik-up)
 
 test-integration:  ## Run integration tests (requires test services)
 	pytest tests/integration/ -v
+
+test-hoverfly:  ## Run Hoverfly integration tests (requires: make hoverfly-up)
+	@if ! curl -sf http://localhost:8888/api/v2/hoverfly >/dev/null 2>&1; then \
+		echo "✗ Hoverfly is not running! Start with: make hoverfly-up"; \
+		exit 1; \
+	fi
+	pytest tests/integration/ -v -m hoverfly
 
 test-setup:  ## Start test infrastructure (PostgreSQL test DB, Neo4j test instance)
 	@echo "Starting test infrastructure..."
@@ -348,6 +355,48 @@ dev-staging:  ## Start dev servers with staging profile (remote backends + Brain
 	@echo ""
 	@echo "Verify connectivity:"
 	@echo "  make verify-staging"
+
+# =============================================================================
+# Hoverfly API Simulation (integration tests)
+# =============================================================================
+
+hoverfly-up:  ## Start Hoverfly API simulator for integration tests
+	@echo "Starting Hoverfly..."
+	@docker compose --profile test up -d hoverfly
+	@echo "Waiting for Hoverfly to be ready..."
+	@timeout=30; \
+	elapsed=0; \
+	while ! curl -sf http://localhost:8888/api/v2/hoverfly >/dev/null 2>&1; do \
+		if [ $$elapsed -ge $$timeout ]; then \
+			echo "✗ Timeout waiting for Hoverfly"; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+		elapsed=$$((elapsed + 1)); \
+		printf "."; \
+	done
+	@echo ""
+	@echo "✓ Hoverfly is ready!"
+	@echo "  Webserver:  http://localhost:8500 (send requests here)"
+	@echo "  Admin API:  http://localhost:8888"
+	@echo ""
+	@echo "Run Hoverfly tests:"
+	@echo "  make test-hoverfly"
+
+hoverfly-down:  ## Stop Hoverfly API simulator
+	@echo "Stopping Hoverfly..."
+	@docker compose --profile test stop hoverfly
+	@echo "✓ Hoverfly stopped"
+
+hoverfly-status:  ## Check Hoverfly status and loaded simulations
+	@if curl -sf http://localhost:8888/api/v2/hoverfly >/dev/null 2>&1; then \
+		echo "✓ Hoverfly is running"; \
+		echo "  Mode: $$(curl -s http://localhost:8888/api/v2/hoverfly/mode | python3 -c 'import sys,json; print(json.load(sys.stdin).get(\"mode\",\"unknown\"))' 2>/dev/null || echo 'unknown')"; \
+		echo "  Pairs: $$(curl -s http://localhost:8888/api/v2/simulation | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get(\"data\",{}).get(\"pairs\",[])))' 2>/dev/null || echo 'unknown')"; \
+	else \
+		echo "✗ Hoverfly is not running"; \
+		echo "  Start with: make hoverfly-up"; \
+	fi
 
 full-up:  ## Start all services (core + Opik observability)
 	@echo "Starting core services..."

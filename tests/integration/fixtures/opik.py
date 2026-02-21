@@ -3,14 +3,13 @@
 Provides fixtures for testing Opik observability provider integration.
 Requires Opik stack running (make opik-up).
 
-Configuration:
-- OPIK_BASE_URL: Opik backend URL (default: http://localhost:5174)
-- Uses unique project names per test for isolation
+Configuration via Settings (env vars):
+- OPIK_BASE_URL: Opik UI/nginx proxy URL (default: http://localhost:5174)
+- OPIK_BACKEND_URL: Opik backend URL for health checks (default: http://localhost:8080)
 """
 
 from __future__ import annotations
 
-import os
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -18,15 +17,16 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
+from src.config.settings import get_settings
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-# Opik configuration
-# Note: Port 5174 is the Opik UI/nginx proxy which routes API calls
-# Port 8080 is the backend but doesn't expose the private API directly
-OPIK_BASE_URL = os.getenv("OPIK_BASE_URL", "http://localhost:5174")
-OPIK_API_URL = os.getenv("OPIK_API_URL", "http://localhost:5174")  # API via UI proxy
-OPIK_BACKEND_URL = os.getenv("OPIK_BACKEND_URL", "http://localhost:8080")  # Health check only
+# Derive Opik URLs from Settings (evaluated once at import time)
+_settings = get_settings()
+OPIK_BASE_URL = _settings.opik_base_url
+OPIK_API_URL = _settings.opik_base_url  # API routes through UI proxy (same URL)
+OPIK_BACKEND_URL = _settings.opik_backend_url
 OPIK_OTLP_ENDPOINT = f"{OPIK_BASE_URL}/api/v1/private/otel"
 
 
@@ -42,7 +42,7 @@ def _opik_is_running() -> bool:
 def _get_project_by_name(project_name: str) -> dict | None:
     """Get a project by name from Opik API.
 
-    Uses the UI proxy (5174) which routes to the private API.
+    Uses the UI proxy which routes to the private API.
     """
     try:
         response = httpx.get(
@@ -55,7 +55,8 @@ def _get_project_by_name(project_name: str) -> dict | None:
             projects = data.get("content", [])
             for project in projects:
                 if project.get("name") == project_name:
-                    return project
+                    result: dict = project
+                    return result
         return None
     except (httpx.ConnectError, httpx.TimeoutException):
         return None
@@ -65,7 +66,7 @@ def _get_traces_for_project(project_id: str, limit: int = 10) -> list[dict]:
     """Get traces for a project from Opik API.
 
     Uses GET /api/v1/private/traces with query parameters.
-    The UI proxy (5174) routes to the private API.
+    The UI proxy routes to the private API.
     """
     try:
         response = httpx.get(
@@ -79,7 +80,8 @@ def _get_traces_for_project(project_id: str, limit: int = 10) -> list[dict]:
         )
         if response.status_code == 200:
             data = response.json()
-            return data.get("content", [])
+            traces: list[dict] = data.get("content", [])
+            return traces
         return []
     except (httpx.ConnectError, httpx.TimeoutException):
         return []
@@ -88,7 +90,7 @@ def _get_traces_for_project(project_id: str, limit: int = 10) -> list[dict]:
 def _delete_project(project_id: str) -> bool:
     """Delete a project from Opik.
 
-    Uses the UI proxy (5174) which routes to the private API.
+    Uses the UI proxy which routes to the private API.
     """
     try:
         response = httpx.delete(
@@ -170,55 +172,55 @@ def opik_provider(unique_project_name: str) -> Generator:
         _delete_project(project["id"])
 
 
-@pytest.fixture
-def opik_test_helpers(unique_project_name: str):
-    """Provide helper functions for Opik test assertions."""
+class OpikTestHelpers:
+    """Helper class for Opik test assertions."""
 
-    class OpikTestHelpers:
-        """Helper class for Opik test assertions."""
+    def __init__(self, project_name: str):
+        self.project_name = project_name
+        self._project_id: str | None = None
 
-        def __init__(self, project_name: str):
-            self.project_name = project_name
-            self._project_id: str | None = None
+    def wait_for_traces(
+        self, expected_count: int = 1, timeout: float = 10.0, poll_interval: float = 0.5
+    ) -> list[dict]:
+        """Wait for traces to appear in Opik.
 
-        def wait_for_traces(
-            self, expected_count: int = 1, timeout: float = 10.0, poll_interval: float = 0.5
-        ) -> list[dict]:
-            """Wait for traces to appear in Opik.
+        Args:
+            expected_count: Minimum number of traces to wait for
+            timeout: Maximum time to wait in seconds
+            poll_interval: Time between polls in seconds
 
-            Args:
-                expected_count: Minimum number of traces to wait for
-                timeout: Maximum time to wait in seconds
-                poll_interval: Time between polls in seconds
+        Returns:
+            List of traces found
 
-            Returns:
-                List of traces found
-
-            Raises:
-                TimeoutError: If traces don't appear within timeout
-            """
-            start = time.time()
-            while time.time() - start < timeout:
-                project = _get_project_by_name(self.project_name)
-                if project:
-                    self._project_id = project["id"]
-                    traces = _get_traces_for_project(project["id"])
-                    if len(traces) >= expected_count:
-                        return traces
-                time.sleep(poll_interval)
-
-            raise TimeoutError(
-                f"Timed out waiting for {expected_count} traces in project '{self.project_name}'. "
-                f"Found: {len(traces) if 'traces' in dir() else 0}"
-            )
-
-        def get_project_id(self) -> str | None:
-            """Get the project ID (cached from wait_for_traces)."""
-            if self._project_id:
-                return self._project_id
+        Raises:
+            TimeoutError: If traces don't appear within timeout
+        """
+        start = time.time()
+        while time.time() - start < timeout:
             project = _get_project_by_name(self.project_name)
             if project:
                 self._project_id = project["id"]
-            return self._project_id
+                traces = _get_traces_for_project(project["id"])
+                if len(traces) >= expected_count:
+                    return traces
+            time.sleep(poll_interval)
 
+        raise TimeoutError(
+            f"Timed out waiting for {expected_count} traces in project '{self.project_name}'. "
+            f"Found: {len(traces) if 'traces' in dir() else 0}"
+        )
+
+    def get_project_id(self) -> str | None:
+        """Get the project ID (cached from wait_for_traces)."""
+        if self._project_id:
+            return self._project_id
+        project = _get_project_by_name(self.project_name)
+        if project:
+            self._project_id = project["id"]
+        return self._project_id
+
+
+@pytest.fixture
+def opik_test_helpers(unique_project_name: str) -> OpikTestHelpers:
+    """Provide helper functions for Opik test assertions."""
     return OpikTestHelpers(unique_project_name)
