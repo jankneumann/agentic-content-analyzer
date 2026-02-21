@@ -97,7 +97,7 @@ class HybridSearchService:
             bm25_results = await asyncio.to_thread(
                 self._bm25.search, query.query, search_limit, content_ids
             )
-            vector_results: list[tuple[int, float]] = []
+            vector_results: list[tuple[int, float, int]] = []
         elif query.type == SearchType.VECTOR:
             bm25_results = []
             vector_results = await self._vector_search(
@@ -111,8 +111,18 @@ class HybridSearchService:
             )
 
         # Build raw score maps: chunk_id -> score
-        bm25_scores: dict[int, float] = {cid: score for cid, score in bm25_results}
-        vector_scores: dict[int, float] = {cid: score for cid, score in vector_results}
+        # And track chunk -> content mapping
+        bm25_scores: dict[int, float] = {}
+        vector_scores: dict[int, float] = {}
+        chunk_content_map: dict[int, int] = {}
+
+        for cid, score, content_id in bm25_results:
+            bm25_scores[cid] = score
+            chunk_content_map[cid] = content_id
+
+        for cid, score, content_id in vector_results:
+            vector_scores[cid] = score
+            chunk_content_map[cid] = content_id
 
         # Merge all candidate chunk IDs
         all_chunk_ids = set(bm25_scores.keys()) | set(vector_scores.keys())
@@ -147,19 +157,44 @@ class HybridSearchService:
         else:
             final_scores = rrf_scores
 
-        # Aggregate to document level
+        # Aggregate scores to document level in memory first
+        # This avoids fetching content for chunks that won't be displayed (pagination optimization)
+        doc_scores: dict[int, float] = {}
+        doc_chunks: dict[int, list[int]] = defaultdict(list)
+
+        for chunk_id, score in final_scores.items():
+            if chunk_id in chunk_content_map:
+                cid = chunk_content_map[chunk_id]
+                # Document score is max of its chunk scores
+                doc_scores[cid] = max(doc_scores.get(cid, 0.0), score)
+                doc_chunks[cid].append(chunk_id)
+
+        # Sort documents by score descending, tie-break by ID
+        sorted_docs = sorted(doc_scores.items(), key=lambda x: (-x[1], x[0]))
+        total = len(sorted_docs)
+
+        # Apply pagination to DOCUMENTS, not chunks
+        paginated_docs = sorted_docs[query.offset : query.offset + query.limit]
+
+        # Identify chunks to fetch (top 3 per document for the paginated docs)
+        chunks_to_fetch: dict[int, float] = {}
+        for cid, _ in paginated_docs:
+            # Get chunks for this doc, sort by score descending
+            chunks = doc_chunks[cid]
+            chunks.sort(key=lambda cid: final_scores[cid], reverse=True)
+            # Take top 3
+            for chunk_id in chunks[:3]:
+                chunks_to_fetch[chunk_id] = final_scores[chunk_id]
+
+        # Aggregate only the needed chunks
         results = self._aggregate_to_documents(
-            final_scores,
+            chunks_to_fetch,
             bm25_scores,
             vector_scores,
             rrf_scores,
             rerank_scores,
             query=query,
         )
-
-        # Apply pagination
-        total = len(results)
-        results = results[query.offset : query.offset + query.limit]
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -174,7 +209,7 @@ class HybridSearchService:
         query: str,
         limit: int = 100,
         content_ids: list[int] | None = None,
-    ) -> list[tuple[int, float]]:
+    ) -> list[tuple[int, float, int]]:
         """Search chunks by embedding cosine similarity."""
         try:
             query_embedding = await self._embedder.embed(query, is_query=True)
@@ -191,7 +226,7 @@ class HybridSearchService:
         # Build SQL for vector similarity search
         if content_ids:
             stmt = text("""
-                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity
+                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity, dc.content_id
                 FROM document_chunks dc
                 WHERE dc.embedding IS NOT NULL
                   AND dc.content_id = ANY(:content_ids)
@@ -208,7 +243,7 @@ class HybridSearchService:
             )
         else:
             stmt = text("""
-                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity
+                SELECT dc.id, 1 - (dc.embedding <=> CAST(:query_vec AS vector)) as similarity, dc.content_id
                 FROM document_chunks dc
                 WHERE dc.embedding IS NOT NULL
                 ORDER BY dc.embedding <=> CAST(:query_vec AS vector)
@@ -219,7 +254,7 @@ class HybridSearchService:
                 {"query_vec": str(vec), "limit": limit},
             )
 
-        return [(row.id, row.similarity) for row in result]
+        return [(row.id, row.similarity, row.content_id) for row in result]
 
     def _resolve_content_filter(self, query: SearchQuery) -> list[int] | None:
         """Pre-filter content IDs based on search filters.
@@ -375,7 +410,18 @@ class HybridSearchService:
         rerank_scores: dict[int, float],
         query: SearchQuery,
     ) -> list[SearchResult]:
-        """Group chunk results by content_id and enrich with content metadata."""
+        """Group chunk results by content_id and enrich with content metadata.
+
+        Args:
+            final_scores: Dict of chunk_id -> score for the specific chunks to be returned.
+                         This should be pre-filtered for pagination (e.g. top 3 chunks
+                         for the top 20 documents).
+            bm25_scores: Full map of BM25 scores (for all candidates)
+            vector_scores: Full map of vector scores
+            rrf_scores: Full map of RRF scores
+            rerank_scores: Full map of rerank scores
+            query: The original search query
+        """
         if not final_scores:
             return []
 

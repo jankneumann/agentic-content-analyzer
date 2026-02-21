@@ -212,6 +212,62 @@ class TestHybridSearchService:
         # Embedder should NOT be called for BM25-only
         self.mock_embedder.embed.assert_not_called()
 
+    @pytest.mark.asyncio
+    @patch("src.services.search.get_settings")
+    async def test_hybrid_search_aggregation_pagination(self, mock_settings):
+        """Test that results are aggregated by content_id and pagination is applied before fetching."""
+        mock_settings.return_value = MagicMock(
+            search_bm25_weight=0.5,
+            search_vector_weight=0.5,
+            search_rrf_k=60,
+            search_max_limit=100,
+            search_rerank_enabled=False,
+            embedding_model="test-model",
+            search_rerank_model=None,
+            database_provider="local",
+        )
+
+        # Mock BM25 results: chunk 1 (doc 101), chunk 2 (doc 101), chunk 3 (doc 102)
+        # Format: (chunk_id, score, content_id)
+        self.mock_bm25.search.return_value = [
+            (1, 1.0, 101),
+            (2, 0.9, 101),
+            (3, 0.8, 102),
+        ]
+
+        # Mock Vector results: chunk 3 (doc 102), chunk 4 (doc 102)
+        # We need to mock _vector_search carefully as it's an async method
+        self.service._vector_search = AsyncMock(return_value=[
+            (3, 0.95, 102),
+            (4, 0.90, 102),
+        ])
+
+        # Mock _aggregate_to_documents to avoid DB calls and verify arguments
+        self.service._aggregate_to_documents = MagicMock(return_value=[])
+
+        # We request limit=1. Doc 102 should have higher score than Doc 101.
+        # RRF Logic:
+        # Chunk 1 (Doc 101): BM25 Rank 1. Score ~ 0.5/61
+        # Chunk 3 (Doc 102): BM25 Rank 3, Vector Rank 1. Score ~ 0.5/63 + 0.5/61.
+        # Chunk 3 score > Chunk 1 score.
+        # So Doc 102 > Doc 101.
+        query = SearchQuery(query="test", limit=1, offset=0)
+
+        # Act
+        await self.service.search(query)
+
+        # Assert
+        call_args = self.service._aggregate_to_documents.call_args
+        assert call_args is not None
+        chunks_to_fetch_arg = call_args[0][0]  # first arg is chunks_to_fetch dict
+
+        # We expect chunks 3 and 4 to be fetched (belonging to doc 102)
+        assert 3 in chunks_to_fetch_arg
+        assert 4 in chunks_to_fetch_arg
+        # Chunk 1 and 2 (doc 101) should NOT be fetched because limit=1 and doc 102 is better
+        assert 1 not in chunks_to_fetch_arg
+        assert 2 not in chunks_to_fetch_arg
+
 
 # --- Indexing service tests ---
 
