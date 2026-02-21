@@ -13,10 +13,13 @@
 #   - (+) Database branching: agents get isolated DB copies in milliseconds
 #   - (+) Scale-to-zero: no idle DB costs during off-hours
 #   - (+) Point-in-time recovery built-in
+#   - (+) pgvector, pg_search/ParadeDB, pg_cron all available on Neon
 #   - (-) Cross-cloud latency: Railway → Neon adds ~5-15ms per query
-#   - (-) No pgmq extension (Neon doesn't support it; use PGQueuer instead)
-#   - (-) No pg_search/ParadeDB (use pgvector + BM25 via application layer)
-#   - (-) Backups managed by Neon (not pg_cron → MinIO)
+#         (mitigate by matching AWS regions between Railway and Neon)
+#   - (-) Backups managed by Neon (not pg_cron → MinIO — simpler, actually)
+#
+# Note: pgmq is NOT available on Neon, but we use PGQueuer (pure SQL
+# SELECT FOR UPDATE SKIP LOCKED), so this is a non-issue.
 #
 # Required secrets in .secrets.yaml or environment:
 #   - NEON_DATABASE_URL (pooled connection string from Neon console)
