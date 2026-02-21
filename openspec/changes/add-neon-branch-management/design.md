@@ -10,7 +10,14 @@ The `NeonBranchManager` class (`src/storage/providers/neon_branch.py`) is fully 
 - Exponential backoff retry on rate limits
 - Endpoint readiness polling
 
-The `aca neon` CLI commands and `neon-branch` skill are already created. What remains is wiring them into the agent workflow lifecycle and test infrastructure.
+The `aca neon` CLI commands and `neon-branch` skill design are ready. Additionally, the official
+Neon CLI (`neonctl`, install via `npm i -g neonctl`) provides features our Python CLI lacks:
+- **`--expires-at`**: Auto-delete branches after a TTL (eliminates orphaned branch problem)
+- **`schema-diff`**: Compare schemas between branches (powerful verification tool)
+- **`connection-string --pooled`**: Direct connection string retrieval
+
+The skill should prefer `neonctl` when available and fall back to `aca neon`.
+What remains is wiring them into the agent workflow lifecycle and test infrastructure.
 
 ### Stakeholders
 - **Agent sessions** (Claude Code): Need isolated DB per session, automatic cleanup
@@ -58,7 +65,36 @@ else:
     # Fall back to local database
 ```
 
-### Decision 2: Skill Integration via Documented Convention (Not Hard Wiring)
+### Decision 2: Prefer neonctl, Fall Back to aca neon
+
+**What**: The `neon-branch` skill detects whether `neonctl` (official Neon CLI) is installed and prefers it over `aca neon` for branch operations.
+
+**Why**:
+- `neonctl` provides `--expires-at` for auto-expiring branches — eliminates orphaned branch problem
+- `neonctl` provides `schema-diff` — catches unintended schema changes during verification
+- `aca neon` is still needed: Python test fixtures use `NeonBranchManager` directly, and `aca neon clean` has built-in prefix/age filtering that `neonctl` lacks
+
+**Tool selection matrix**:
+
+| Operation | Preferred (`neonctl`) | Fallback (`aca neon`) |
+|-----------|----------------------|----------------------|
+| Create branch | `neonctl branches create --expires-at +48h` | `aca neon create` (no TTL) |
+| Schema diff | `neonctl branches schema-diff main <branch>` | Not available |
+| Connection string | `neonctl connection-string <branch> --pooled` | `aca neon connection <branch>` |
+| Delete branch | `neonctl branches delete <branch>` | `aca neon delete <branch> --force` |
+| Bulk cleanup | Not available | `aca neon clean --prefix claude/ --older-than 24` |
+| Python test fixtures | Not applicable | `NeonBranchManager` (async API) |
+
+**Detection pattern**:
+```bash
+if command -v neonctl &>/dev/null; then
+  NEON_CLI="neonctl"
+else
+  NEON_CLI="aca neon"
+fi
+```
+
+### Decision 3: Skill Integration via Documented Convention (Not Hard Wiring)
 
 **What**: Update the OpenSpec skill SKILL.md files to include optional Neon branch steps, rather than creating a middleware or hook system.
 
@@ -73,7 +109,7 @@ else:
 - Branch creation is async (2-5s) and may fail — shouldn't block session start
 - Better to create branches on-demand when work actually starts
 
-### Decision 3: Branch Naming Convention
+### Decision 4: Branch Naming Convention
 
 **What**: All agent-managed branches use the pattern `claude/<change-name>` or `claude/<session-id>`.
 
@@ -90,7 +126,7 @@ claude/session-abc123                # For ad-hoc sessions
 claude/test-run-456                  # For CI test runs
 ```
 
-### Decision 4: Test Infrastructure — Session-Scoped Branch Fixture
+### Decision 5: Test Infrastructure — Session-Scoped Branch Fixture
 
 **What**: Add a `neon_session_branch` fixture to `tests/integration/conftest.py` that creates one branch per test session and shares it across all tests.
 
@@ -110,7 +146,7 @@ def neon_session_branch(neon_available):
     # Create branch, yield connection string, delete on teardown
 ```
 
-### Decision 5: CI/CD — Conditional Job with Repository Secrets
+### Decision 6: CI/CD — Conditional Job with Repository Secrets
 
 **What**: Add a `test-neon` job to `.github/workflows/ci.yml` that runs only when `NEON_API_KEY` secret exists.
 
