@@ -266,7 +266,11 @@ async def get_shared_audio(token: str, request: Request):
     storage_path = f"audio-digests/{audio_filename}"
 
     # Cloud providers: redirect to time-limited signed URL (no auth needed)
-    if hasattr(storage, "get_signed_url") and storage.provider_name in ("s3", "supabase"):
+    if hasattr(storage, "get_signed_url") and storage.provider_name in (
+        "s3",
+        "supabase",
+        "railway",
+    ):
         signed_url = await storage.get_signed_url(storage_path, expires_in=3600)
         return RedirectResponse(url=signed_url, status_code=302)
 
