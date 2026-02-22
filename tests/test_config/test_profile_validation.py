@@ -349,20 +349,26 @@ class TestCoherenceRules:
         # Should warn about coherence
         assert any("storage=supabase" in e and "database" in e for e in errors)
 
-    def test_railway_storage_requires_railway_db_config(self) -> None:
-        """Test that storage=railway requires Railway database config."""
+    def test_railway_storage_works_with_any_database(self) -> None:
+        """Test that storage=railway works independently of database provider.
+
+        Railway MinIO is an S3-compatible object store independent from
+        Railway PostgreSQL — no cross-provider coherence rule needed.
+        """
         profile = Profile(
             name="test",
             providers=ProviderChoices(
-                database="local",  # Not railway!
+                database="neon",
                 storage="railway",
             ),
-            settings=ProfileSettings(),
+            settings=ProfileSettings(
+                database=DatabaseSettings(neon_database_url="postgresql://test"),
+            ),
         )
         errors = validate_profile(profile)
 
-        # Should warn about coherence
-        assert any("storage=railway" in e and "database" in e for e in errors)
+        # No coherence errors for railway storage with non-railway database
+        assert not any("storage=railway" in e and "database" in e for e in errors)
 
     def test_coherent_supabase_config_passes(self, supabase_profile: Profile) -> None:
         """Test that coherent Supabase config passes."""
