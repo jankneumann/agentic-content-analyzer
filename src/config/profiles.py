@@ -704,8 +704,9 @@ COHERENCE_RULES: list[tuple[str, str, str, str, list[str]]] = [
     # (provider_category, provider_value, requires_category, requires_value, or_settings)
     # storage: supabase requires database config for Supabase
     ("storage", "supabase", "database", "supabase", ["supabase_project_ref"]),
-    # storage: railway requires Railway database URL
-    ("storage", "railway", "database", "railway", ["railway_database_url"]),
+    # Note: storage: railway (MinIO) is independent of database provider —
+    # Railway MinIO only needs minio_root_user/password, not railway_database_url.
+    # No coherence rule needed for railway storage.
 ]
 
 

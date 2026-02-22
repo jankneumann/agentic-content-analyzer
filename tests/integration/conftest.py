@@ -399,6 +399,7 @@ from tests.integration.fixtures.neon import (  # noqa: E402, F401
     neon_default_branch,
     neon_isolated_branch,
     neon_manager,
+    neon_session_branch,
     neon_test_branch,
     requires_neon,
 )

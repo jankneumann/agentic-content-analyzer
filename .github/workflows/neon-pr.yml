@@ -1,0 +1,104 @@
+name: Neon PR Branch
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+# Cancel in-progress runs for the same PR (except close events)
+concurrency:
+  group: neon-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
+
+jobs:
+  # ==========================================================================
+  # Create a Neon branch for this PR
+  # ==========================================================================
+  create-branch:
+    if: >-
+      github.event.action != 'closed' &&
+      vars.NEON_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    outputs:
+      db_url: ${{ steps.create.outputs.db_url }}
+      db_url_pooled: ${{ steps.create.outputs.db_url_pooled }}
+      branch_id: ${{ steps.create.outputs.branch_id }}
+    steps:
+      - name: Create Neon branch
+        id: create
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch_name: preview/pr-${{ github.event.pull_request.number }}
+          parent_branch: main
+
+  # ==========================================================================
+  # Run migrations and tests on the Neon branch
+  # ==========================================================================
+  test-neon:
+    needs: create-branch
+    if: needs.create-branch.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run migrations on Neon branch
+        env:
+          DATABASE_URL: ${{ needs.create-branch.outputs.db_url }}
+        run: alembic upgrade head
+
+      - name: Run tests against Neon branch
+        env:
+          PROFILE: ci-neon
+          NEON_DATABASE_URL: ${{ needs.create-branch.outputs.db_url_pooled }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          ANTHROPIC_API_KEY: test-key-for-ci
+        run: pytest tests/ -v -m "not slow and not live_api and not hoverfly and not crawl4ai"
+
+  # ==========================================================================
+  # Post schema diff as PR comment
+  # ==========================================================================
+  schema-diff:
+    needs: create-branch
+    if: needs.create-branch.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Schema diff
+        uses: neondatabase/schema-diff-action@v1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          compare_branch: preview/pr-${{ github.event.pull_request.number }}
+          base_branch: main
+
+  # ==========================================================================
+  # Delete the Neon branch when the PR is closed
+  # ==========================================================================
+  delete-branch:
+    if: >-
+      github.event.action == 'closed' &&
+      vars.NEON_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Neon branch
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: preview/pr-${{ github.event.pull_request.number }}

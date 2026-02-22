@@ -224,5 +224,8 @@ def pytest_configure(config):
     )
     config.addinivalue_line("markers", "crawl4ai: Tests requiring Crawl4AI setup")
     config.addinivalue_line(
+        "markers", "neon: Tests requiring Neon database (NEON_API_KEY, NEON_PROJECT_ID)"
+    )
+    config.addinivalue_line(
         "markers", "contract: API contract and fuzz tests (require test database)"
     )

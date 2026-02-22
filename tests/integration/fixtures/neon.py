@@ -162,6 +162,34 @@ async def neon_isolated_branch() -> AsyncIterator[str]:
 
 
 @pytest_asyncio.fixture(scope="session")
+async def neon_session_branch() -> AsyncIterator[str]:
+    """Create one Neon branch for the entire test session.
+
+    This fixture creates a single branch shared across all tests in the session,
+    keeping within the free-tier 10-branch limit. Tests that need per-test
+    isolation should use ``neon_isolated_branch`` instead.
+
+    The parent branch is read from Settings (NEON_DEFAULT_BRANCH, default: "main").
+
+    Yields:
+        PostgreSQL connection string for the session-wide test branch
+
+    Skip:
+        Skipped if NEON_API_KEY or NEON_PROJECT_ID are not set
+    """
+    if not NEON_CONFIGURED:
+        pytest.skip(SKIP_REASON)
+
+    branch_name = generate_branch_name("test-session")
+    manager = NeonBranchManager()
+
+    async with manager:
+        default_branch = await _detect_default_branch(manager)
+        async with manager.branch_context(branch_name, parent=default_branch) as conn_str:
+            yield conn_str
+
+
+@pytest_asyncio.fixture(scope="session")
 async def neon_default_branch() -> str | None:
     """Get the name of the default (root) branch.
 

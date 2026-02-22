@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging hoverfly-up hoverfly-down hoverfly-status test-hoverfly
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging hoverfly-up hoverfly-down hoverfly-status test-hoverfly neon-list neon-create neon-delete neon-clean test-neon
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -290,6 +290,38 @@ supabase-down:  ## Stop local Supabase stack
 
 supabase-logs:  ## Tail Supabase stack logs
 	@docker compose -f docker-compose.supabase.yml -p supabase logs -f
+
+# =============================================================================
+# Neon Database Branching
+# =============================================================================
+
+neon-list:  ## List Neon database branches
+	@source .venv/bin/activate && python -m src.cli neon list
+
+neon-create:  ## Create a Neon branch (use NAME=claude/feature-xyz)
+	@if [ -z "$(NAME)" ]; then \
+		echo "Usage: make neon-create NAME=claude/feature-xyz"; \
+		exit 1; \
+	fi
+	@source .venv/bin/activate && python -m src.cli neon create "$(NAME)"
+
+neon-delete:  ## Delete a Neon branch (use NAME=claude/feature-xyz)
+	@if [ -z "$(NAME)" ]; then \
+		echo "Usage: make neon-delete NAME=claude/feature-xyz"; \
+		exit 1; \
+	fi
+	@source .venv/bin/activate && python -m src.cli neon delete "$(NAME)"
+
+neon-clean:  ## Clean up stale agent branches (older than 24h with claude/ prefix)
+	@source .venv/bin/activate && python -m src.cli neon clean --prefix "claude/" --older-than 24
+
+test-neon:  ## Run Neon integration tests (requires: NEON_API_KEY, NEON_PROJECT_ID)
+	@if [ -z "$$NEON_API_KEY" ] || [ -z "$$NEON_PROJECT_ID" ]; then \
+		echo "✗ Neon credentials not set!"; \
+		echo "  Set NEON_API_KEY and NEON_PROJECT_ID in environment or .secrets.yaml"; \
+		exit 1; \
+	fi
+	pytest tests/integration/test_neon_integration.py -v
 
 # =============================================================================
 # Profile-Based Development
