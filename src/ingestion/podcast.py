@@ -298,6 +298,7 @@ class PodcastContentIngestionService:
                     )
                     db.add(content)
                     db.commit()
+                    existing_source_ids.add(source_id)
                     count += 1
                 except Exception as e:
                     logger.error(f"Error creating content for episode '{episode['title']}': {e}")
