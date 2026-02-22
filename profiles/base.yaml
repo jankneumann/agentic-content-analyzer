@@ -36,6 +36,7 @@ settings:
   environment: development
   log_level: INFO
   allowed_origins: "http://localhost:5173,http://localhost:3000"
+  auth_cookie_cross_origin: "${AUTH_COOKIE_CROSS_ORIGIN:-false}"
 
   # ---------------------------------------------------------------------------
   # Database Settings
@@ -107,6 +108,7 @@ settings:
     sendgrid_api_key: "${SENDGRID_API_KEY:-}"
     substack_session_cookie: "${SUBSTACK_SESSION_COOKIE:-}"
     admin_api_key: "${ADMIN_API_KEY:-}"
+    app_secret_key: "${APP_SECRET_KEY:-}"
     voyage_api_key: "${VOYAGE_API_KEY:-}"
     cohere_api_key: "${COHERE_API_KEY:-}"
     jina_api_key: "${JINA_API_KEY:-}"

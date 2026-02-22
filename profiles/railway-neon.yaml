@@ -64,7 +64,7 @@ settings:
   # Use the POOLED connection string from Neon console for application queries.
   # The provider automatically derives direct URLs for migrations/workers.
   database:
-    neon_database_url: "${NEON_DATABASE_URL:-${DATABASE_URL}}"
+    neon_database_url: "${NEON_DATABASE_URL}"
     neon_direct_url: "${NEON_DIRECT_URL:-}"
 
     # Neon branch management (the killer feature for agent workflows)

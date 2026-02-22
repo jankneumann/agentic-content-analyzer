@@ -149,6 +149,11 @@ make hoverfly-up                        # Start Hoverfly (webserver mode)
 make hoverfly-down                      # Stop Hoverfly
 make test-hoverfly                      # Run Hoverfly integration tests
 
+# Contract & Fuzz Testing (Schemathesis)
+pytest tests/contract/ -m contract -v --no-cov  # All contract tests
+pytest tests/contract/test_schema_conformance.py -m contract -v --no-cov  # Schema only
+pytest tests/contract/test_fuzz.py -m contract -v --no-cov               # Fuzz only
+
 # E2E Testing (Playwright)
 cd web && pnpm test:e2e                 # All E2E tests (mocked, no backend needed)
 cd web && pnpm test:e2e:ui             # Visual Playwright inspector
@@ -503,10 +508,18 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Production startup warns (doesn't fail) | Missing `ADMIN_API_KEY` or dev CORS in production logs warnings but does NOT prevent startup — intentional per design |
 | Upload magic bytes validation | File uploads are validated against `FILE_SIGNATURES` mapping in `upload_routes.py` — mismatched extensions return 415 |
 | Upload MIME cross-check | Client `Content-Type` is validated against `EXTENSION_MIME_MAP` — `application/octet-stream` and `None` bypass the check |
-| `ENDPOINT_AUTH_MAP` in `dependencies.py` | Documentation-only constant — lists all routes and their auth requirements. No enforcement middleware (single-user model) |
+| `ENDPOINT_AUTH_MAP` in `dependencies.py` | Documentation-only constant — lists all routes and their auth requirements. Auth enforced by `AuthMiddleware` + `verify_admin_key` dependency |
+| Auth: middleware + route dependency double-check | `AuthMiddleware` and `verify_admin_key` both verify session cookies AND X-Admin-Key — defense-in-depth, not conflicting |
+| Auth: Secure cookies + TestClient | TestClient defaults to `http://testserver` — secure cookies are not sent back. Use `base_url="https://testserver"` in production fixtures |
+| Auth: Cookie header dropped on redirect | httpx regenerates `Cookie` headers from its cookie jar on redirect — manually set `Cookie` headers are lost. Use trailing-slash URLs in tests to avoid 307 redirects |
+| Auth: Invalid X-Admin-Key returns 403 (not 401) | Middleware distinguishes invalid keys (403 Forbidden) from missing auth (401 Unauthorized). Spec requires this for all environments |
+| `APP_SECRET_KEY` is the login password | Used directly for `secrets.compare_digest()` against user input AND as HMAC input for JWT signing key derivation |
 | Hoverfly webserver mode has no capture | Default `docker-compose.yml` runs `-webserver` flag — no upstream to record. Must restart in proxy mode for capture (see `tests/integration/README.md`) |
 | Hoverfly simulation reset between tests | `hoverfly` fixture auto-resets; tests that load simulations should not depend on prior test state |
 | Integration fixture env vars must use Settings | Use `get_settings()` not `os.getenv()` — fixtures must honor profile/secrets precedence chain |
+| Contract tests excluded by default | `contract` marker excluded in `addopts` — run explicitly with `pytest tests/contract/ -m contract --no-cov` |
+| Schemathesis NUL byte skip | Schemathesis generates `%00` in query params causing psycopg2 `ValueError` — contract tests skip these via try/except, tracked as separate input validation issue |
+| Contract test savepoints | `tests/contract/conftest.py` uses `begin_nested()` (SAVEPOINTs) so failed API calls don't abort the entire test transaction |
 
 ## Quick Links by Task
 
@@ -531,6 +544,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 - E2E testing guide: [docs/TESTING.md#e2e-testing-playwright](docs/TESTING.md#e2e-testing-playwright)
 - E2E test infrastructure: `web/tests/e2e/fixtures/` (page objects, API mocks, mock data factories)
 - E2E page objects: `web/tests/e2e/fixtures/pages/*.page.ts`
+- Contract testing: `tests/contract/` (Schemathesis schema validation + fuzz testing)
 
 ### Configuration
 - Profile guide: [docs/PROFILES.md](docs/PROFILES.md)

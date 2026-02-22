@@ -14,6 +14,9 @@ export { queryKeys } from "./query-keys"
 export { subscribeToProgress, waitForProgress } from "./sse"
 export type { ProgressEvent, SSEOptions } from "./sse"
 
+// Auth
+export { checkSession, login, logout, isAuthEnabled } from "./auth"
+
 // Entity-specific API functions
 export * from "./summaries"
 export * from "./scripts"

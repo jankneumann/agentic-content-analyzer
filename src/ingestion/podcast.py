@@ -197,24 +197,37 @@ class PodcastContentIngestionService:
 
         count = 0
         with get_db() as db:
+            # Filter by date first to reduce processing set
+            if after_date:
+                episodes = [
+                    e
+                    for e in episodes
+                    if not (e.get("published_date") and e["published_date"] < after_date)
+                ]
+
+            if not episodes:
+                return 0
+
+            # OPTIMIZATION: Bulk check for existing episodes to avoid N+1 queries
+            existing_source_ids = set()
+            if not force_reprocess:
+                source_ids = [f"podcast:{e['guid']}" for e in episodes]
+                if source_ids:
+                    # Use .in_() for O(1) bulk lookup
+                    # Only fetch source_id column to avoid loading full objects
+                    results = (
+                        db.query(Content.source_id).filter(Content.source_id.in_(source_ids)).all()
+                    )
+                    existing_source_ids = {row[0] for row in results}
+
             for episode in episodes:
                 guid = episode["guid"]
                 source_id = f"podcast:{guid}"
 
-                # Date filter
-                if (
-                    after_date
-                    and episode.get("published_date")
-                    and episode["published_date"] < after_date
-                ):
+                # Dedup check (memory-based O(1))
+                if not force_reprocess and source_id in existing_source_ids:
+                    logger.debug(f"Skipping existing episode: {episode['title']}")
                     continue
-
-                # Dedup check
-                if not force_reprocess:
-                    existing = db.query(Content).filter(Content.source_id == source_id).first()
-                    if existing:
-                        logger.debug(f"Skipping existing episode: {episode['title']}")
-                        continue
 
                 # 3-tier transcript extraction
                 transcript_text = None
@@ -285,6 +298,7 @@ class PodcastContentIngestionService:
                     )
                     db.add(content)
                     db.commit()
+                    existing_source_ids.add(source_id)
                     count += 1
                 except Exception as e:
                     logger.error(f"Error creating content for episode '{episode['title']}': {e}")

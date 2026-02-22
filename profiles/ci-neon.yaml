@@ -28,7 +28,7 @@ providers:
   observability: noop
 
 settings:
-  environment: test
+  environment: development
   log_level: WARNING
 
   database:

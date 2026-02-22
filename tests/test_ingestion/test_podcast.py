@@ -280,8 +280,8 @@ class TestPodcastIngestion:
         mock_db.__enter__ = MagicMock(return_value=mock_db)
         mock_db.__exit__ = MagicMock(return_value=False)
         mock_get_db.return_value = mock_db
-        # No existing record
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        # No existing record (bulk check returns empty list)
+        mock_db.query.return_value.filter.return_value.all.return_value = []
 
         service = PodcastContentIngestionService()
         # Client returns one episode
@@ -320,7 +320,8 @@ class TestPodcastIngestion:
         mock_db.__enter__ = MagicMock(return_value=mock_db)
         mock_db.__exit__ = MagicMock(return_value=False)
         mock_get_db.return_value = mock_db
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        # No existing record (bulk check returns empty list)
+        mock_db.query.return_value.filter.return_value.all.return_value = []
 
         service = PodcastContentIngestionService()
         service.client.fetch_feed.return_value = [
@@ -358,6 +359,8 @@ class TestPodcastIngestion:
         mock_db.__enter__ = MagicMock(return_value=mock_db)
         mock_db.__exit__ = MagicMock(return_value=False)
         mock_get_db.return_value = mock_db
+        # No existing record (bulk check returns empty list)
+        mock_db.query.return_value.filter.return_value.all.return_value = []
 
         service = PodcastContentIngestionService()
         service.client.fetch_feed.return_value = [
@@ -392,8 +395,9 @@ class TestPodcastIngestion:
         mock_db.__enter__ = MagicMock(return_value=mock_db)
         mock_db.__exit__ = MagicMock(return_value=False)
         mock_get_db.return_value = mock_db
-        # Return an existing record (dedup hit)
-        mock_db.query.return_value.filter.return_value.first.return_value = MagicMock()
+        # Return an existing source_id (dedup hit)
+        # Bulk check returns list of tuples: [("podcast:ep-existing",)]
+        mock_db.query.return_value.filter.return_value.all.return_value = [("podcast:ep-existing",)]
 
         service = PodcastContentIngestionService()
         service.client.fetch_feed.return_value = [
@@ -428,7 +432,8 @@ class TestPodcastIngestion:
         mock_db.__enter__ = MagicMock(return_value=mock_db)
         mock_db.__exit__ = MagicMock(return_value=False)
         mock_get_db.return_value = mock_db
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        # No existing record (bulk check returns empty list)
+        mock_db.query.return_value.filter.return_value.all.return_value = []
 
         service = PodcastContentIngestionService()
         service.client.fetch_feed.return_value = [

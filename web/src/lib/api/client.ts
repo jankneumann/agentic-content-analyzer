@@ -181,6 +181,9 @@ async function request<T>(
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
+      // Include cookies in cross-origin requests when API is on a different host.
+      // Harmless for unauthenticated endpoints (cookies are simply absent or ignored).
+      credentials: import.meta.env.VITE_API_URL ? "include" : "same-origin",
       ...fetchOptions,
     })
 

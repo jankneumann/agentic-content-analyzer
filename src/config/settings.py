@@ -58,7 +58,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
     settings = profile_data.get("settings", {})
 
     # Top-level settings (environment, log_level, etc.)
-    for key in ["environment", "log_level", "allowed_origins"]:
+    for key in ["environment", "log_level", "allowed_origins", "auth_cookie_cross_origin"]:
         if key in settings:
             result[key] = settings[key]
 
@@ -428,6 +428,10 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     tavily_api_key: str | None = None
     admin_api_key: str | None = None  # Protects sensitive endpoints
+
+    # Owner Authentication (Phase 1)
+    app_secret_key: str | None = None  # Login password for browser/mobile access
+    auth_cookie_cross_origin: bool = False  # SameSite=None for cross-origin deployments
 
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
@@ -860,6 +864,23 @@ class Settings(BaseSettings):
             logger.warning(
                 "ADMIN_API_KEY is not set in production. "
                 "Settings and prompt management endpoints will reject all requests."
+            )
+
+        if not self.app_secret_key and not self.admin_api_key:
+            logger.warning(
+                "Neither APP_SECRET_KEY nor ADMIN_API_KEY is set in production. "
+                "All protected endpoints will be inaccessible."
+            )
+        elif not self.app_secret_key:
+            logger.warning(
+                "APP_SECRET_KEY is not set in production. "
+                "Browser/mobile login will not be available. "
+                "Only X-Admin-Key header authentication will work."
+            )
+        elif self.app_secret_key and len(self.app_secret_key) < 32:
+            logger.warning(
+                "APP_SECRET_KEY is shorter than 32 characters. "
+                "Consider using a stronger key: aca manage generate-secret"
             )
 
         if self._is_dev_default_origins():

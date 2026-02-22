@@ -257,6 +257,14 @@ export function RevisionChatPanel({
     }
   }, [conversationId])
 
+  // Generate tooltip text based on state
+  const generatePreviewTooltip = React.useMemo(() => {
+    if (isStreaming) return "Please wait for the response to finish"
+    if (isGenerating) return "Preview is currently generating"
+    if (isPreviewMode) return "Please accept or reject the current preview"
+    return "Generate a preview based on the chat context"
+  }, [isStreaming, isGenerating, isPreviewMode])
+
   // Collapsed state
   if (!isExpanded) {
     return (
@@ -533,19 +541,28 @@ export function RevisionChatPanel({
               </div>
 
               {/* Generate Preview button */}
-              <Button
-                size="sm"
-                onClick={onGeneratePreview}
-                disabled={!canGenerate}
-                className="gap-1.5"
-              >
-                {isGenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Generate Preview
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={canGenerate ? -1 : 0} className="inline-block outline-none">
+                    <Button
+                      size="sm"
+                      onClick={onGeneratePreview}
+                      disabled={!canGenerate}
+                      className={cn("gap-1.5", !canGenerate && "pointer-events-none")}
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      Generate Preview
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{generatePreviewTooltip}</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </>

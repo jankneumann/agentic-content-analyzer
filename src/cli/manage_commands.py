@@ -20,6 +20,22 @@ from src.cli.output import is_json_mode, output_result
 app = typer.Typer(help="Setup and operational management commands.")
 
 
+@app.command("generate-secret")
+def generate_secret() -> None:
+    """Generate a cryptographically random secret key.
+
+    Prints a 64-character URL-safe random key suitable for
+    APP_SECRET_KEY or ADMIN_API_KEY.
+    """
+    import secrets as _secrets
+
+    key = _secrets.token_urlsafe(48)
+    if is_json_mode():
+        output_result({"secret": key})
+    else:
+        typer.echo(key)
+
+
 @app.command("backfill-chunks")
 def backfill_chunks_cmd(
     batch_size: int = typer.Option(100, "--batch-size", "-b", help="Content records per batch"),

@@ -116,7 +116,9 @@ def create_branch(
     typer.echo(f"  ID: {branch.id}")
     if branch.connection_string:
         typer.echo(f"  Connection: {branch.connection_string}")
-    typer.echo(f"\nTo use: export DATABASE_URL=\"{branch.connection_string or '<see Neon console>'}\"")
+    typer.echo(
+        f'\nTo use: export DATABASE_URL="{branch.connection_string or "<see Neon console>"}"'
+    )
 
 
 @app.command("delete")
@@ -192,26 +194,25 @@ def clean_branches(
 
         async with manager:
             branches = await manager.list_branches()
-            stale = [
-                b
-                for b in branches
-                if b.name.startswith(prefix) and b.created_at < cutoff
-            ]
+            stale = [b for b in branches if b.name.startswith(prefix) and b.created_at < cutoff]
 
             if not stale:
-                typer.echo("No stale branches found.")
+                if not is_json_mode():
+                    typer.echo("No stale branches found.")
                 return []
 
-            typer.echo(f"Found {len(stale)} stale branch(es):")
-            for b in stale:
-                age = datetime.now(UTC) - b.created_at
-                typer.echo(f"  {b.name} (age: {age.days}d {age.seconds // 3600}h)")
+            if not is_json_mode():
+                typer.echo(f"Found {len(stale)} stale branch(es):")
+                for b in stale:
+                    age = datetime.now(UTC) - b.created_at
+                    typer.echo(f"  {b.name} (age: {age.days}d {age.seconds // 3600}h)")
 
             if dry_run:
-                typer.echo("\n(dry run — no branches deleted)")
+                if not is_json_mode():
+                    typer.echo("\n(dry run — no branches deleted)")
                 return [b.name for b in stale]
 
-            if not force:
+            if not force and not is_json_mode():
                 confirm = typer.confirm(f"\nDelete {len(stale)} branch(es)?")
                 if not confirm:
                     raise typer.Abort()
@@ -220,7 +221,8 @@ def clean_branches(
             for b in stale:
                 try:
                     await manager.delete_branch(b.name)
-                    typer.echo(f"  Deleted: {b.name}")
+                    if not is_json_mode():
+                        typer.echo(f"  Deleted: {b.name}")
                     deleted.append(b.name)
                 except Exception as e:
                     typer.echo(f"  Failed to delete {b.name}: {e}", err=True)
