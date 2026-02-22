@@ -48,8 +48,12 @@ class VoiceSettingsResponse(BaseModel):
     provider: VoiceSettingInfo
     default_voice: VoiceSettingInfo
     speed: VoiceSettingInfo
+    input_language: VoiceSettingInfo
+    input_continuous: VoiceSettingInfo
+    input_auto_submit: VoiceSettingInfo
     presets: list[VoicePreset]
     valid_providers: list[str]
+    valid_input_languages: list[str]
 
 
 class VoiceUpdateRequest(BaseModel):
@@ -79,7 +83,35 @@ _VOICE_SETTINGS = {
         "settings_field": "audio_digest_speed",
         "default": "1.0",
     },
+    "input_language": {
+        "env_var": "VOICE_INPUT_LANGUAGE",
+        "settings_field": "voice_input_language",
+        "default": "en-US",
+    },
+    "input_continuous": {
+        "env_var": "VOICE_INPUT_CONTINUOUS",
+        "settings_field": "voice_input_continuous",
+        "default": "false",
+    },
+    "input_auto_submit": {
+        "env_var": "VOICE_INPUT_AUTO_SUBMIT",
+        "settings_field": "voice_input_auto_submit",
+        "default": "false",
+    },
 }
+
+# Valid BCP-47 language tags for voice input
+VALID_INPUT_LANGUAGES = [
+    "en-US",
+    "en-GB",
+    "es-ES",
+    "fr-FR",
+    "de-DE",
+    "ja-JP",
+    "zh-CN",
+]
+
+VALID_BOOLEANS = ["true", "false"]
 
 
 def _resolve_voice_setting(field: str, service: SettingsService) -> tuple[str, str]:
@@ -117,6 +149,9 @@ async def get_voice_settings() -> VoiceSettingsResponse:
         provider_val, provider_src = _resolve_voice_setting("provider", service)
         voice_val, voice_src = _resolve_voice_setting("default_voice", service)
         speed_val, speed_src = _resolve_voice_setting("speed", service)
+        lang_val, lang_src = _resolve_voice_setting("input_language", service)
+        cont_val, cont_src = _resolve_voice_setting("input_continuous", service)
+        auto_val, auto_src = _resolve_voice_setting("input_auto_submit", service)
 
         presets = [
             VoicePreset(name=name, voices=voices)
@@ -131,8 +166,18 @@ async def get_voice_settings() -> VoiceSettingsResponse:
                 key="voice.default_voice", value=voice_val, source=voice_src
             ),
             speed=VoiceSettingInfo(key="voice.speed", value=speed_val, source=speed_src),
+            input_language=VoiceSettingInfo(
+                key="voice.input_language", value=lang_val, source=lang_src
+            ),
+            input_continuous=VoiceSettingInfo(
+                key="voice.input_continuous", value=cont_val, source=cont_src
+            ),
+            input_auto_submit=VoiceSettingInfo(
+                key="voice.input_auto_submit", value=auto_val, source=auto_src
+            ),
             presets=presets,
             valid_providers=VALID_PROVIDERS,
+            valid_input_languages=VALID_INPUT_LANGUAGES,
         )
 
 
@@ -178,6 +223,18 @@ async def update_voice_setting(field: str, request: VoiceUpdateRequest) -> dict:
                 detail=f"Invalid speed: {request.value}. "
                 f"Must be a number between {SPEED_MIN} and {SPEED_MAX}.",
             )
+
+    if field == "input_language" and request.value not in VALID_INPUT_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid language: {request.value}. Valid languages: {VALID_INPUT_LANGUAGES}",
+        )
+
+    if field in ("input_continuous", "input_auto_submit") and request.value not in VALID_BOOLEANS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid value for {field}: {request.value}. Must be 'true' or 'false'.",
+        )
 
     with get_db() as db:
         service = SettingsService(db)

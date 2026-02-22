@@ -42,6 +42,7 @@ export class ApiMocks {
       this.mockPrompts(),
       this.mockModelSettings(),
       this.mockVoiceSettings(),
+      this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
     ])
   }
@@ -68,6 +69,7 @@ export class ApiMocks {
       this.mockPromptsEmpty(),
       this.mockModelSettingsEmpty(),
       this.mockVoiceSettings(),
+      this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
     ])
   }
@@ -862,6 +864,18 @@ export class ApiMocks {
       }
       return route.fallback()
     })
+  }
+
+  // ─── Voice Cleanup Endpoint ─────────────────────────────
+
+  async mockVoiceCleanup(): Promise<void> {
+    await this.page.route("**/api/v1/voice/cleanup*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ cleaned_text: "Cleaned up text." }),
+      })
+    )
   }
 
   // ─── Connection Status Endpoints ────────────────────────

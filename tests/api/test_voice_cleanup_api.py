@@ -1,0 +1,63 @@
+"""API tests for voice transcript cleanup endpoint."""
+
+from unittest.mock import AsyncMock, patch
+
+
+class TestVoiceCleanup:
+    """Test POST /api/v1/voice/cleanup."""
+
+    def test_cleanup_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.text = "Fixed grammar and removed filler words."
+
+        with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
+            instance = mock_router_cls.return_value
+            instance.generate = AsyncMock(return_value=mock_response)
+
+            resp = client.post(
+                "/api/v1/voice/cleanup",
+                json={"text": "um so like I wanted to uh talk about the API"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "cleaned_text" in data
+        assert data["cleaned_text"] == "Fixed grammar and removed filler words."
+
+    def test_cleanup_empty_text(self, client):
+        resp = client.post(
+            "/api/v1/voice/cleanup",
+            json={"text": ""},
+        )
+        assert resp.status_code == 422  # Pydantic validation (min_length=1)
+
+    def test_cleanup_missing_text(self, client):
+        resp = client.post(
+            "/api/v1/voice/cleanup",
+            json={},
+        )
+        assert resp.status_code == 422
+
+    def test_cleanup_uses_voice_cleanup_model_step(self, client):
+        mock_response = AsyncMock()
+        mock_response.text = "Cleaned text."
+
+        with (
+            patch("src.config.models.get_model_config") as mock_get_config,
+            patch("src.services.llm_router.LLMRouter") as mock_router_cls,
+        ):
+            mock_config = mock_get_config.return_value
+            mock_config.get_model_for_step.return_value = "claude-haiku-4-5"
+            instance = mock_router_cls.return_value
+            instance.generate = AsyncMock(return_value=mock_response)
+
+            resp = client.post(
+                "/api/v1/voice/cleanup",
+                json={"text": "hello world"},
+            )
+
+            assert resp.status_code == 200
+            # Verify it used VOICE_CLEANUP model step
+            from src.config.models import ModelStep
+
+            mock_config.get_model_for_step.assert_called_once_with(ModelStep.VOICE_CLEANUP)

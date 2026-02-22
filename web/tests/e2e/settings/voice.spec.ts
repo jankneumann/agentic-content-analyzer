@@ -101,4 +101,67 @@ test.describe("Settings > Voice", () => {
       voiceSection.getByRole("combobox").first()
     ).toContainText("elevenlabs")
   })
+
+  // ── Voice Input Settings ─────────────────────────────────
+
+  test("displays voice input section", async ({ settingsPage }) => {
+    await settingsPage.navigate()
+    await expect(
+      settingsPage.page.getByRole("heading", { name: "Voice Input" })
+    ).toBeVisible()
+  })
+
+  test("shows voice input language selector", async ({ settingsPage }) => {
+    await settingsPage.navigate()
+
+    // The language selector should show the default language
+    await expect(
+      settingsPage.page.getByText("English (US)")
+    ).toBeVisible()
+  })
+
+  test("shows continuous mode toggle", async ({ settingsPage }) => {
+    await settingsPage.navigate()
+
+    await expect(
+      settingsPage.page.getByText("Continuous Mode")
+    ).toBeVisible()
+    await expect(
+      settingsPage.page.getByText("Keep listening after pauses")
+    ).toBeVisible()
+  })
+
+  test("shows auto-submit toggle", async ({ settingsPage }) => {
+    await settingsPage.navigate()
+
+    await expect(
+      settingsPage.page.getByText("Auto-Submit")
+    ).toBeVisible()
+    await expect(
+      settingsPage.page.getByText("Automatically send message")
+    ).toBeVisible()
+  })
+
+  test("voice input settings show source badges", async ({
+    settingsPage,
+    apiMocks,
+  }) => {
+    const data = createVoiceSettingsResponse({
+      input_language: createVoiceSettingInfo({
+        key: "voice.input_language",
+        value: "fr-FR",
+        source: "db",
+      }),
+    })
+    await apiMocks.mockVoiceSettings(data)
+    await settingsPage.navigate()
+
+    // Should show a "db" badge for the overridden language setting.
+    // Scope to the specific label row (div.space-y-2 > div with Language text)
+    // to avoid matching "db" badges from other settings.
+    const languageLabel = settingsPage.page
+      .getByText("Language", { exact: true })
+      .locator("..")
+    await expect(languageLabel.getByText("db")).toBeVisible()
+  })
 })
