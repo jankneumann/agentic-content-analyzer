@@ -7,7 +7,7 @@ Fixes grammar, removes filler words, and structures text.
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
@@ -62,13 +62,26 @@ async def cleanup_transcript(request: CleanupRequest) -> CleanupResponse:
     model_config = get_model_config()
     model_id = model_config.get_model_for_step(ModelStep.VOICE_CLEANUP)
 
-    router_instance = LLMRouter(model_config)
-    response = await router_instance.generate(
-        model=model_id,
-        system_prompt=CLEANUP_SYSTEM_PROMPT,
-        user_prompt=request.text,
-        max_tokens=2048,
-        temperature=0.3,
-    )
+    try:
+        router_instance = LLMRouter(model_config)
+        response = await router_instance.generate(
+            model=model_id,
+            system_prompt=CLEANUP_SYSTEM_PROMPT,
+            user_prompt=request.text,
+            max_tokens=2048,
+            temperature=0.3,
+        )
+    except Exception:
+        logger.exception("Voice cleanup LLM call failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Voice cleanup service is temporarily unavailable. Please try again.",
+        )
 
-    return CleanupResponse(cleaned_text=response.text.strip())
+    cleaned = (response.text or "").strip()
+    if not cleaned:
+        # LLM returned empty — return original text unchanged
+        logger.warning("Voice cleanup returned empty response, returning original text")
+        return CleanupResponse(cleaned_text=request.text)
+
+    return CleanupResponse(cleaned_text=cleaned)

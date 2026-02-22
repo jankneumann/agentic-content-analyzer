@@ -61,3 +61,48 @@ class TestVoiceCleanup:
             from src.config.models import ModelStep
 
             mock_config.get_model_for_step.assert_called_once_with(ModelStep.VOICE_CLEANUP)
+
+    def test_cleanup_llm_error_returns_502(self, client):
+        with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
+            instance = mock_router_cls.return_value
+            instance.generate = AsyncMock(side_effect=RuntimeError("API key missing"))
+
+            resp = client.post(
+                "/api/v1/voice/cleanup",
+                json={"text": "hello world"},
+            )
+
+        assert resp.status_code == 502
+        assert "temporarily unavailable" in resp.json()["detail"]
+
+    def test_cleanup_empty_llm_response_returns_original(self, client):
+        mock_response = AsyncMock()
+        mock_response.text = ""
+
+        with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
+            instance = mock_router_cls.return_value
+            instance.generate = AsyncMock(return_value=mock_response)
+
+            resp = client.post(
+                "/api/v1/voice/cleanup",
+                json={"text": "original text"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["cleaned_text"] == "original text"
+
+    def test_cleanup_none_llm_response_returns_original(self, client):
+        mock_response = AsyncMock()
+        mock_response.text = None
+
+        with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
+            instance = mock_router_cls.return_value
+            instance.generate = AsyncMock(return_value=mock_response)
+
+            resp = client.post(
+                "/api/v1/voice/cleanup",
+                json={"text": "original text"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["cleaned_text"] == "original text"

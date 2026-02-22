@@ -66,6 +66,10 @@ export function ChatInput({
   const continuous = voiceSettings?.input_continuous?.value === "true"
   const autoSubmit = voiceSettings?.input_auto_submit?.value === "true"
 
+  // Track previous listening state for ARIA announcements
+  const wasListeningRef = React.useRef(false)
+  const [voiceAnnouncement, setVoiceAnnouncement] = React.useState("")
+
   const canSubmit = value.trim().length > 0 && !isLoading && !disabled
 
   // Auto-resize helper
@@ -126,7 +130,7 @@ export function ChatInput({
         }
 
         setValue((prev) => {
-          const updated = prev ? `${prev} ${transcript}` : transcript
+          const updated = prev ? `${prev.trimEnd()} ${transcript}` : transcript
           // Auto-submit in single-utterance mode
           if (autoSubmit && !continuous && updated.trim().length > 0) {
             setTimeout(() => {
@@ -191,16 +195,21 @@ export function ChatInput({
     [maxLength]
   )
 
-  // Compose display value: show interim transcript with visual hint
-  const displayValue = voiceInput.interimTranscript
-    ? value + (value ? " " : "") + voiceInput.interimTranscript
-    : value
+  // Update ARIA announcement when listening state changes
+  React.useEffect(() => {
+    if (voiceInput.isListening && !wasListeningRef.current) {
+      setVoiceAnnouncement("Recording started")
+    } else if (!voiceInput.isListening && wasListeningRef.current) {
+      setVoiceAnnouncement("Recording stopped")
+    }
+    wasListeningRef.current = voiceInput.isListening
+  }, [voiceInput.isListening])
 
   return (
     <div className={cn("space-y-2", className)}>
       {/* ARIA live region for voice input state */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
-        {voiceInput.isListening ? "Recording started" : ""}
+        {voiceAnnouncement}
       </div>
 
       {/* Input area */}
@@ -208,9 +217,10 @@ export function ChatInput({
         <div className="relative flex-1">
           <Textarea
             ref={textareaRef}
-            value={displayValue}
+            value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            readOnly={voiceInput.isListening}
             placeholder={
               voiceInput.isListening
                 ? "Listening..."
@@ -221,10 +231,19 @@ export function ChatInput({
             className={cn(
               "min-h-[48px] max-h-[200px] resize-none pr-12",
               "scrollbar-thin scrollbar-thumb-muted",
-              voiceInput.interimTranscript && "text-muted-foreground italic"
             )}
             rows={1}
           />
+
+          {/* Interim transcript overlay (shown below textarea while listening) */}
+          {voiceInput.interimTranscript && (
+            <p
+              className="mt-1 px-3 text-sm text-muted-foreground italic truncate"
+              aria-live="polite"
+            >
+              {voiceInput.interimTranscript}
+            </p>
+          )}
 
           {/* Character count */}
           <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
