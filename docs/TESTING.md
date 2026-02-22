@@ -14,6 +14,7 @@ pytest --cov=src --cov-report=html
 # Run specific test categories
 pytest -m unit                    # Pure unit tests
 pytest -m integration             # Database integration tests
+pytest -m hoverfly                # Hoverfly HTTP simulation tests
 pytest -m "not slow"              # Skip slow tests
 pytest -m live_api                # Tests calling real APIs (costs money!)
 
@@ -30,6 +31,7 @@ Tests are organized by category using pytest markers:
 |--------|-------------|--------------|
 | `unit` | Pure unit tests | None |
 | `integration` | Database integration | PostgreSQL test database |
+| `hoverfly` | HTTP simulation tests | Hoverfly (`make hoverfly-up`) |
 | `e2e` | End-to-end API tests | PostgreSQL, may mock external APIs |
 | `slow` | Tests > 1 second | Varies |
 | `live_api` | Calls real external APIs | API keys, costs money |
@@ -441,6 +443,109 @@ ModuleNotFoundError: No module named 'src'
 ```bash
 uv sync --all-extras
 ```
+
+---
+
+## Integration Test Fixtures
+
+Integration test fixtures live in `tests/integration/fixtures/` and share configuration patterns.
+
+### Configuration via Settings
+
+**All integration test fixtures must access environment configuration through `get_settings()`**, not `os.getenv()` or `os.environ.get()`. This ensures fixtures honor the full Settings precedence chain (env vars > profiles > `.secrets.yaml` > `.env` > defaults).
+
+```python
+# ✅ Correct: Use Settings
+from src.config.settings import get_settings
+
+settings = get_settings()
+url = settings.hoverfly_admin_url  # Respects profiles, .env, defaults
+
+# ❌ Wrong: Direct env var access
+import os
+url = os.getenv("HOVERFLY_ADMIN_URL", "http://localhost:8888")  # Bypasses profiles
+```
+
+### Available Fixture Modules
+
+| Module | Purpose | Skip Condition |
+|--------|---------|----------------|
+| `fixtures/hoverfly.py` | HTTP API simulation via Hoverfly | Hoverfly not running |
+| `fixtures/neon.py` | Ephemeral Neon database branches | `NEON_API_KEY` not set |
+| `fixtures/opik.py` | Opik observability provider testing | Opik stack not running |
+| `fixtures/supabase.py` | Supabase database connection testing | Supabase credentials not set |
+
+All fixture modules are imported in `tests/integration/conftest.py` and available to all integration tests.
+
+### Adding New Fixture Modules
+
+1. Create `tests/integration/fixtures/my_service.py`
+2. Use `get_settings()` for all configuration (add Settings fields if needed)
+3. Provide an `available` fixture (session-scoped bool) and a `requires_*` skip marker
+4. Import fixtures in `tests/integration/conftest.py`
+
+---
+
+## Hoverfly API Simulation
+
+Hoverfly provides HTTP-level integration testing by acting as a simulated webserver. Unlike unit test mocks that patch at the Python level, Hoverfly tests real HTTP behavior: headers, content negotiation, status codes, and response formats.
+
+### Quick Start
+
+```bash
+make hoverfly-up       # Start Hoverfly in webserver mode
+make test-hoverfly     # Run Hoverfly tests
+make hoverfly-down     # Stop Hoverfly
+```
+
+### Architecture
+
+Hoverfly runs in **webserver mode** (`-webserver` flag in `docker-compose.yml`):
+- It IS the HTTP destination — no upstream server needed
+- Admin API on port 8888 (simulation management)
+- Webserver on port 8500 (handles test requests)
+- Docker image pinned to `spectolabs/hoverfly:v1.10.5`
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `tests/helpers/hoverfly.py` | `HoverflyClient` — admin API wrapper (import/reset/export simulations) |
+| `tests/helpers/test_hoverfly.py` | Unit tests for HoverflyClient (uses `responses` library, no Hoverfly needed) |
+| `tests/integration/fixtures/hoverfly.py` | Pytest fixtures (`hoverfly`, `hoverfly_url`, `hoverfly_available`, `requires_hoverfly`) |
+| `tests/integration/fixtures/simulations/` | JSON simulation files (Hoverfly v5 schema) |
+| `tests/integration/test_hoverfly_rss.py` | Integration tests for RSS feed simulation |
+
+### Writing Tests
+
+```python
+from pathlib import Path
+import httpx
+import pytest
+
+SIMULATIONS_DIR = Path(__file__).parent / "fixtures" / "simulations"
+
+@pytest.mark.hoverfly
+@pytest.mark.integration
+def test_feed_returns_xml(hoverfly, hoverfly_url):
+    hoverfly.import_simulation(SIMULATIONS_DIR / "rss_feed.json")
+    response = httpx.get(f"{hoverfly_url}/feed")
+    assert response.status_code == 200
+    assert "application/rss+xml" in response.headers["content-type"]
+```
+
+### Creating Simulations
+
+Simulations are JSON files in `tests/integration/fixtures/simulations/`. See `tests/integration/README.md` for the full guide including capture mode instructions.
+
+### Gotchas
+
+| Issue | Solution |
+|-------|----------|
+| Webserver mode has no capture | Must restart in proxy mode (remove `-webserver` flag) for capture — see integration README |
+| Tests must not depend on execution order | Each test should load its own simulation; fixture teardown resets simulations |
+| HoverflyClient uses `Connection: close` header | Prevents connection pooling issues with httpx in test contexts |
+| Settings fields have real defaults | `hoverfly_proxy_url` defaults to `http://localhost:8500`, `hoverfly_admin_url` to `http://localhost:8888` |
 
 ---
 

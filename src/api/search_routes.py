@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 
+from src.api.dependencies import verify_admin_key
 from src.models.search import (
     ChunkContentInfo,
     ChunkDetail,
@@ -26,7 +27,11 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/search", tags=["search"])
+router = APIRouter(
+    prefix="/api/v1/search",
+    tags=["search"],
+    dependencies=[Depends(verify_admin_key)],
+)
 
 
 @router.get("", response_model=SearchResponse)

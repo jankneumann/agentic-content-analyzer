@@ -57,6 +57,18 @@ services:
     profiles:
       - test  # Only start with --profile test or when explicitly specified
 
+  hoverfly:
+    image: spectolabs/hoverfly:v1.10.5
+    container_name: newsletter-hoverfly
+    ports:
+      - "8500:8500"  # Proxy/webserver port
+      - "8888:8888"  # Admin API port
+    command: ["-webserver"]  # Webserver mode: acts as destination server, not proxy
+    volumes:
+      - ./tests/integration/fixtures/simulations:/simulations:ro
+    profiles:
+      - test  # Only start with --profile test or when explicitly specified
+
 volumes:
   postgres_data:
   neo4j_data:

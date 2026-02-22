@@ -1,17 +1,21 @@
 # api-security Specification
 
 ## Purpose
-TBD - created by archiving change add-api-security-hardening. Update Purpose after archive.
+Define the authentication, authorization, and input validation security model for the API. Covers owner authentication (session cookies + API keys), rate limiting, CORS policy, file upload validation, and production security configuration.
 ## Requirements
 ### Requirement: Authenticated access for protected APIs
-The system SHALL require authenticated access for non-public API endpoints in production environments.
+The system SHALL require authenticated access for non-public API endpoints in production environments. Authentication is enforced via middleware that checks both session cookies (browser) and `X-Admin-Key` headers (CLI/extensions).
 
 #### Scenario: Production request without credentials
 - **WHEN** a client calls a protected endpoint without valid credentials in production
 - **THEN** the API returns a 401 Unauthorized response
 
-#### Scenario: Production request with valid credentials
-- **WHEN** a client calls a protected endpoint with valid credentials in production
+#### Scenario: Production request with valid session cookie
+- **WHEN** a client calls a protected endpoint with a valid JWT session cookie in production
+- **THEN** the API returns the requested resource
+
+#### Scenario: Production request with valid X-Admin-Key
+- **WHEN** a client calls a protected endpoint with a valid `X-Admin-Key` header in production
 - **THEN** the API returns the requested resource
 
 #### Scenario: Development request without credentials
@@ -29,12 +33,20 @@ The system SHALL validate security-critical configuration at startup in producti
 - **WHEN** the application starts with `ENVIRONMENT=production` and `ADMIN_API_KEY` is not set
 - **THEN** the system logs a security warning identifying the missing configuration
 
+#### Scenario: Production startup without APP_SECRET_KEY
+- **WHEN** the application starts with `ENVIRONMENT=production` and `APP_SECRET_KEY` is not set
+- **THEN** the system logs a security warning identifying the missing configuration
+
+#### Scenario: Production startup with weak APP_SECRET_KEY
+- **WHEN** the application starts with `ENVIRONMENT=production` and `APP_SECRET_KEY` is less than 32 characters
+- **THEN** the system logs a security warning about insufficient key length
+
 #### Scenario: Production startup with dev-default CORS origins
 - **WHEN** the application starts with `ENVIRONMENT=production` and `ALLOWED_ORIGINS` contains only localhost origins
 - **THEN** the system logs a security warning about permissive CORS defaults
 
 #### Scenario: Production startup with valid security configuration
-- **WHEN** the application starts with `ENVIRONMENT=production`, `ADMIN_API_KEY` is set, and `ALLOWED_ORIGINS` contains explicit non-localhost origins
+- **WHEN** the application starts with `ENVIRONMENT=production`, both `ADMIN_API_KEY` and `APP_SECRET_KEY` are set, and `ALLOWED_ORIGINS` contains explicit non-localhost origins
 - **THEN** the system starts without security warnings
 
 ### Requirement: Environment-configured CORS policy
@@ -56,20 +68,104 @@ The system SHALL load allowed CORS origins from configuration and apply restrict
 - **WHEN** a browser sends an OPTIONS preflight request from an origin in the configured allowlist
 - **THEN** the API responds with appropriate `Access-Control-Allow-*` headers and 200 status
 
-### Requirement: Explicit public endpoint allowlist
-The system SHALL maintain a documented list of endpoints that are intentionally accessible without authentication, distinguishing between system endpoints (health, config) and application endpoints (content, digests) that are unauthenticated due to the single-user deployment model.
+### Requirement: Owner authentication via session cookie
+The system SHALL support password-based authentication for browser/mobile access using HttpOnly session cookies with JWT tokens.
 
-#### Scenario: System endpoint listed as public
-- **WHEN** a client calls a system endpoint listed in the public allowlist (e.g., `/health`, `/ready`, `/api/v1/system/config`)
+#### Scenario: Login with correct password
+- **WHEN** a client sends `POST /api/v1/auth/login` with the correct `APP_SECRET_KEY` password
+- **THEN** the API returns 200 with `Set-Cookie: session=<JWT>` (HttpOnly, Secure in production, SameSite per configuration, Max-Age=604800, Path=/)
+
+#### Scenario: Login with incorrect password
+- **WHEN** a client sends `POST /api/v1/auth/login` with an incorrect password
+- **THEN** the API returns 401 and logs a WARNING with the client IP address
+
+#### Scenario: Logout
+- **WHEN** a client sends `POST /api/v1/auth/logout`
+- **THEN** the API clears the session cookie (Set-Cookie with Max-Age=0)
+
+#### Scenario: Session check with valid cookie
+- **WHEN** a client sends `GET /api/v1/auth/session` with a valid session cookie
+- **THEN** the API returns `{ "authenticated": true }`
+
+#### Scenario: Session check without cookie
+- **WHEN** a client sends `GET /api/v1/auth/session` without a session cookie
+- **THEN** the API returns `{ "authenticated": false }` (no 401 — safe to call without auth)
+
+#### Scenario: JWT signing key derivation
+- **WHEN** the system creates or verifies a JWT
+- **THEN** the signing key is HMAC-derived from `APP_SECRET_KEY` via `hmac.new(key, b"jwt-signing-key", "sha256")` — the raw password is never used as a signing key
+
+### Requirement: Dual authentication paths (session cookie + API key)
+The system SHALL support both session cookies (browser) and `X-Admin-Key` headers (CLI/extensions) for authentication, with middleware enforcing auth on all non-exempt endpoints.
+
+#### Scenario: Request with valid session cookie
+- **WHEN** a client sends a request with a valid JWT session cookie
+- **THEN** the middleware allows the request to proceed
+
+#### Scenario: Request with valid X-Admin-Key header
+- **WHEN** a client sends a request with a valid `X-Admin-Key` header (no cookie)
+- **THEN** the middleware allows the request to proceed (backward compatibility)
+
+#### Scenario: Request with neither credential in production
+- **WHEN** a client sends a request without a session cookie or `X-Admin-Key` header in production
+- **THEN** the middleware returns 401 Unauthorized (JSON format matching error handler)
+
+#### Scenario: Sliding window token refresh
+- **WHEN** a request has a valid session cookie whose `iat` claim is older than 1 day
+- **THEN** the response includes an updated `Set-Cookie` with a refreshed JWT (new `iat` and `exp`)
+
+#### Scenario: Token refresh skipped for fresh tokens
+- **WHEN** a request has a valid session cookie whose `iat` claim is less than 1 day old
+- **THEN** the response does NOT include a `Set-Cookie` header (avoids unnecessary cookie writes)
+
+### Requirement: Auth-exempt endpoint allowlist
+The system SHALL maintain a list of endpoints that are accessible without authentication for system health, telemetry, and the auth flow itself.
+
+#### Scenario: System endpoint listed as exempt
+- **WHEN** a client calls a system endpoint in the exempt list (`/health`, `/ready`, `/api/v1/system/config`, `/api/v1/otel/v1/traces`)
 - **THEN** the API returns the response without requiring authentication
 
-#### Scenario: Application endpoint in single-user mode
-- **WHEN** a client calls a content API endpoint (e.g., `/api/v1/content`, `/api/v1/digests`) without credentials
-- **THEN** the API returns the response without requiring authentication (single-user model — instance is the security boundary)
+#### Scenario: Auth endpoint accessible without auth
+- **WHEN** a client calls any `/api/v1/auth/*` endpoint (login, logout, session)
+- **THEN** the API processes the request without requiring prior authentication (no redirect loop)
 
 #### Scenario: Protected endpoint without credentials in production
-- **WHEN** a client calls a settings/admin endpoint (e.g., `/api/v1/settings/prompts`) without valid credentials in production
+- **WHEN** a client calls any non-exempt endpoint without valid credentials in production
 - **THEN** the API returns a 401 Unauthorized response
+
+#### Scenario: OpenAPI docs behind auth
+- **WHEN** a client calls `/docs`, `/redoc`, or `/openapi.json` without authentication in production
+- **THEN** the API returns 401 (API schema is intentionally protected)
+
+### Requirement: Login rate limiting
+The system SHALL rate-limit login attempts per client IP to mitigate brute-force attacks.
+
+#### Scenario: Rate limit triggered
+- **WHEN** a client IP has 5 failed login attempts within a 15-minute window
+- **THEN** subsequent login attempts from that IP return 429 with a `Retry-After` header and human-readable message
+
+#### Scenario: Different IPs tracked independently
+- **WHEN** two different client IPs make login attempts
+- **THEN** rate limiting is applied independently per IP (one IP's failures don't affect another)
+
+#### Scenario: Rate limit window expiry
+- **WHEN** a client IP's oldest failed attempt is older than 15 minutes
+- **THEN** expired entries are pruned and the IP may attempt login again
+
+#### Scenario: Successful login does not reset counter
+- **WHEN** a client IP successfully logs in after previous failures
+- **THEN** the failure counter is NOT reset (prevents timing attacks)
+
+### Requirement: Cross-origin cookie support
+The system SHALL support cross-origin cookie delivery for split deployments (e.g., Railway frontend and backend on different domains).
+
+#### Scenario: Same-origin deployment (default)
+- **WHEN** `AUTH_COOKIE_CROSS_ORIGIN` is `false` (default)
+- **THEN** session cookies use `SameSite=Lax`
+
+#### Scenario: Cross-origin deployment
+- **WHEN** `AUTH_COOKIE_CROSS_ORIGIN` is `true`
+- **THEN** session cookies use `SameSite=None` (requires `Secure=true`)
 
 ### Requirement: File upload signature validation
 The system SHALL validate document uploads by checking file signatures (magic bytes) against the declared file extension.

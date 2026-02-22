@@ -58,7 +58,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
     settings = profile_data.get("settings", {})
 
     # Top-level settings (environment, log_level, etc.)
-    for key in ["environment", "log_level", "allowed_origins"]:
+    for key in ["environment", "log_level", "allowed_origins", "auth_cookie_cross_origin"]:
         if key in settings:
             result[key] = settings[key]
 
@@ -429,6 +429,10 @@ class Settings(BaseSettings):
     tavily_api_key: str | None = None
     admin_api_key: str | None = None  # Protects sensitive endpoints
 
+    # Owner Authentication (Phase 1)
+    app_secret_key: str | None = None  # Login password for browser/mobile access
+    auth_cookie_cross_origin: bool = False  # SameSite=None for cross-origin deployments
+
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
     gmail_token_file: str = "token.json"
@@ -587,6 +591,8 @@ class Settings(BaseSettings):
     opik_api_key: str | None = None  # Comet Cloud API key
     opik_workspace: str | None = None  # Comet Cloud workspace
     opik_project_name: str = "newsletter-aggregator"  # Opik project name
+    opik_base_url: str = "http://localhost:5174"  # Opik UI/nginx proxy URL
+    opik_backend_url: str = "http://localhost:8080"  # Opik backend (health check)
 
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key
@@ -622,6 +628,12 @@ class Settings(BaseSettings):
     voyage_api_key: str | None = None
     cohere_api_key: str | None = None
     jina_api_key: str | None = None
+
+    # Test / Hoverfly API Simulation Configuration
+    # Set these to route HTTP clients through Hoverfly during integration tests.
+    # When hoverfly_admin_url is set, test fixtures can upload simulations automatically.
+    hoverfly_proxy_url: str = "http://localhost:8500"  # Hoverfly webserver URL
+    hoverfly_admin_url: str = "http://localhost:8888"  # Hoverfly admin API URL
 
     @model_validator(mode="after")
     def validate_search_config(self) -> Settings:
@@ -852,6 +864,23 @@ class Settings(BaseSettings):
             logger.warning(
                 "ADMIN_API_KEY is not set in production. "
                 "Settings and prompt management endpoints will reject all requests."
+            )
+
+        if not self.app_secret_key and not self.admin_api_key:
+            logger.warning(
+                "Neither APP_SECRET_KEY nor ADMIN_API_KEY is set in production. "
+                "All protected endpoints will be inaccessible."
+            )
+        elif not self.app_secret_key:
+            logger.warning(
+                "APP_SECRET_KEY is not set in production. "
+                "Browser/mobile login will not be available. "
+                "Only X-Admin-Key header authentication will work."
+            )
+        elif self.app_secret_key and len(self.app_secret_key) < 32:
+            logger.warning(
+                "APP_SECRET_KEY is shorter than 32 characters. "
+                "Consider using a stronger key: aca manage generate-secret"
             )
 
         if self._is_dev_default_origins():

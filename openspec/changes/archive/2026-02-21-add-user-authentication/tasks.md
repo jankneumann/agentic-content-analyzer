@@ -12,15 +12,15 @@ Add `app_secret_key` and `auth_cookie_cross_origin` fields to the Settings model
 
 ### Acceptance Criteria
 
-- [ ] `app_secret_key: str | None` field added to `Settings` in `src/config/settings.py`
-- [ ] `auth_cookie_cross_origin: bool = False` field added to `Settings`
-- [ ] `app_secret_key: "${APP_SECRET_KEY:-}"` added to `profiles/base.yaml` under `settings`
-- [ ] `auth_cookie_cross_origin: "${AUTH_COOKIE_CROSS_ORIGIN:-false}"` added to `profiles/base.yaml`
-- [ ] Startup validator logs warning if `APP_SECRET_KEY` not set in production (like `admin_api_key`)
-- [ ] Startup validator logs warning if key is < 32 characters
-- [ ] `aca manage generate-secret` command prints a cryptographically random 64-char key (uses `secrets.token_urlsafe(48)`)
-- [ ] Existing `ADMIN_API_KEY` behavior unchanged
-- [ ] Tests pass with `_env_file=None` (no pickup from `.env`)
+- [x] `app_secret_key: str | None` field added to `Settings` in `src/config/settings.py`
+- [x] `auth_cookie_cross_origin: bool = False` field added to `Settings`
+- [x] `app_secret_key: "${APP_SECRET_KEY:-}"` added to `profiles/base.yaml` under `settings`
+- [x] `auth_cookie_cross_origin: "${AUTH_COOKIE_CROSS_ORIGIN:-false}"` added to `profiles/base.yaml`
+- [x] Startup validator logs warning if `APP_SECRET_KEY` not set in production (like `admin_api_key`)
+- [x] Startup validator logs warning if key is < 32 characters
+- [x] `aca manage generate-secret` command prints a cryptographically random 64-char key (uses `secrets.token_urlsafe(48)`)
+- [x] Existing `ADMIN_API_KEY` behavior unchanged
+- [x] Tests pass with `_env_file=None` (no pickup from `.env`)
 
 ### Files Changed
 
@@ -54,19 +54,19 @@ Create `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and `GET /api/v1/a
 
 ### Acceptance Criteria
 
-- [ ] `POST /api/v1/auth/login` accepts `{ "password": "..." }`
-- [ ] Password verified with `secrets.compare_digest()` against `APP_SECRET_KEY`
-- [ ] JWT signing key derived via `hmac.new(key, b"jwt-signing-key", "sha256").digest()` — never use raw password as signing key
-- [ ] On success: returns 200 with `Set-Cookie: session=<JWT>` (HttpOnly, Secure in production, SameSite per `auth_cookie_cross_origin` setting, Max-Age=604800, Path=/)
-- [ ] On failure: returns 401 `{ "error": "Invalid credentials", "detail": "...", "trace_id": "..." }` (matches existing error handler format — see `src/api/middleware/error_handler.py`)
-- [ ] Failed login logged at WARNING with client IP: `"Failed login attempt from %s"`
-- [ ] Successful login logged at INFO: `"Successful login from %s"`
-- [ ] JWT payload: `{ "iss": "newsletter-aggregator", "iat": <unix>, "exp": <unix+7d> }`
-- [ ] `POST /api/v1/auth/logout` clears the session cookie (Set-Cookie with Max-Age=0)
-- [ ] `GET /api/v1/auth/session` returns `{ "authenticated": true/false }` based on valid cookie
-- [ ] SameSite determined by `settings.auth_cookie_cross_origin`: `False` → `Lax` (default), `True` → `None` (for Railway split deployments)
-- [ ] Auth router registered in `src/api/app.py`
-- [ ] `PyJWT` added to `pyproject.toml` dependencies
+- [x] `POST /api/v1/auth/login` accepts `{ "password": "..." }`
+- [x] Password verified with `secrets.compare_digest()` against `APP_SECRET_KEY`
+- [x] JWT signing key derived via `hmac.new(key, b"jwt-signing-key", "sha256").digest()` — never use raw password as signing key
+- [x] On success: returns 200 with `Set-Cookie: session=<JWT>` (HttpOnly, Secure in production, SameSite per `auth_cookie_cross_origin` setting, Max-Age=604800, Path=/)
+- [x] On failure: returns 401 `{ "error": "Invalid credentials", "detail": "...", "trace_id": "..." }` (matches existing error handler format — see `src/api/middleware/error_handler.py`)
+- [x] Failed login logged at WARNING with client IP: `"Failed login attempt from %s"`
+- [x] Successful login logged at INFO: `"Successful login from %s"`
+- [x] JWT payload: `{ "iss": "newsletter-aggregator", "iat": <unix>, "exp": <unix+7d> }`
+- [x] `POST /api/v1/auth/logout` clears the session cookie (Set-Cookie with Max-Age=0)
+- [x] `GET /api/v1/auth/session` returns `{ "authenticated": true/false }` based on valid cookie
+- [x] SameSite determined by `settings.auth_cookie_cross_origin`: `False` → `Lax` (default), `True` → `None` (for Railway split deployments)
+- [x] Auth router registered in `src/api/app.py`
+- [x] `PyJWT` added to `pyproject.toml` dependencies
 
 ### Request/Response Formats
 
@@ -133,15 +133,15 @@ In-memory rate limiter for the login endpoint. No Redis or external dependencies
 
 ### Acceptance Criteria
 
-- [ ] 5 failed login attempts per IP within 15 minutes triggers lockout
-- [ ] Locked-out IPs receive 429 with `Retry-After` header and human-readable message
-- [ ] Successful login does NOT reset the counter (prevents timing attacks)
-- [ ] Counter entries expire after 15 minutes (TTL-based cleanup)
-- [ ] Cleanup runs periodically (e.g., every 100 requests) to prevent unbounded memory growth
-- [ ] Rate limiter is a standalone module (reusable for Phase 2 if needed)
-- [ ] Thread-safe (FastAPI may use multiple workers — per-process is acceptable for Phase 1)
-- [ ] Uses `request.client.host` for client IP (proxy headers resolved by uvicorn `--proxy-headers` from Task 1.1)
-- [ ] Resets rate limiter state on process restart (acceptable for Phase 1 — in-memory only)
+- [x] 5 failed login attempts per IP within 15 minutes triggers lockout
+- [x] Locked-out IPs receive 429 with `Retry-After` header and human-readable message
+- [x] Successful login does NOT reset the counter (prevents timing attacks)
+- [x] Counter entries expire after 15 minutes (TTL-based cleanup)
+- [x] Cleanup runs periodically (e.g., every 100 requests) to prevent unbounded memory growth
+- [x] Rate limiter is a standalone module (reusable for Phase 2 if needed)
+- [x] Thread-safe (FastAPI may use multiple workers — per-process is acceptable for Phase 1)
+- [x] Uses `request.client.host` for client IP (proxy headers resolved by uvicorn `--proxy-headers` from Task 1.1)
+- [x] Resets rate limiter state on process restart (acceptable for Phase 1 — in-memory only)
 
 ### Implementation Notes
 
@@ -195,16 +195,16 @@ Create FastAPI middleware that enforces authentication on all endpoints except e
 
 ### Acceptance Criteria
 
-- [ ] Middleware checks for `session` cookie first, then `X-Admin-Key` header
-- [ ] Valid JWT in cookie: request proceeds. If token `iat` is > 1 day old, cookie refreshed with new JWT (sliding window with threshold — avoids rewriting on every request)
-- [ ] Valid `X-Admin-Key` header: request proceeds (backward compat)
-- [ ] Neither present in production: returns 401
-- [ ] Exempted paths skip auth entirely: `/health`, `/ready`, `/api/v1/system/config`, `/api/v1/otel/v1/traces`, `/api/v1/auth/*`
-- [ ] Development mode (`ENVIRONMENT=development`): all requests pass (unchanged behavior)
-- [ ] Middleware registered in `src/api/app.py` (before route registration)
-- [ ] Existing `verify_admin_key` dependency on settings/prompts/contents routes unchanged (defense in depth)
-- [ ] `ENDPOINT_AUTH_MAP` in `dependencies.py` updated to reflect new auth model
-- [ ] SSE/streaming endpoints: auth checked before generator starts (no data leaks to unauthenticated clients)
+- [x] Middleware checks for `session` cookie first, then `X-Admin-Key` header
+- [x] Valid JWT in cookie: request proceeds. If token `iat` is > 1 day old, cookie refreshed with new JWT (sliding window with threshold — avoids rewriting on every request)
+- [x] Valid `X-Admin-Key` header: request proceeds (backward compat)
+- [x] Neither present in production: returns 401
+- [x] Exempted paths skip auth entirely: `/health`, `/ready`, `/api/v1/system/config`, `/api/v1/otel/v1/traces`, `/api/v1/auth/*`
+- [x] Development mode (`ENVIRONMENT=development`): all requests pass (unchanged behavior)
+- [x] Middleware registered in `src/api/app.py` (before route registration)
+- [x] Existing `verify_admin_key` dependency on settings/prompts/contents routes unchanged (defense in depth)
+- [x] `ENDPOINT_AUTH_MAP` in `dependencies.py` updated to reflect new auth model
+- [x] SSE/streaming endpoints: auth checked before generator starts (no data leaks to unauthenticated clients)
 
 ### Exempted Paths
 
@@ -272,18 +272,18 @@ Create a `/login` route in the React frontend with a password-only form.
 
 ### Acceptance Criteria
 
-- [ ] `/login` route registered in TanStack Router
-- [ ] Password input field (type="password") with submit button
-- [ ] Form submits `POST /api/v1/auth/login` with `{ password }` body
-- [ ] On success (200): redirect to `/` (or `returnTo` query param if present)
-- [ ] On failure (401): show "Invalid password" error message
-- [ ] On rate limit (429): show "Too many attempts" with retry countdown
-- [ ] Loading state during submission (disabled button, spinner)
-- [ ] Responsive layout (works on mobile)
-- [ ] Accessible (label, aria attributes, keyboard submit with Enter)
-- [ ] Matches existing app visual style (Tailwind CSS)
-- [ ] No email/username field — password only
-- [ ] In development mode (auth disabled): visiting `/login` redirects to `/`
+- [x] `/login` route registered in TanStack Router
+- [x] Password input field (type="password") with submit button
+- [x] Form submits `POST /api/v1/auth/login` with `{ password }` body
+- [x] On success (200): redirect to `/` (or `returnTo` query param if present)
+- [x] On failure (401): show "Invalid password" error message
+- [x] On rate limit (429): show "Too many attempts" with retry countdown
+- [x] Loading state during submission (disabled button, spinner)
+- [x] Responsive layout (works on mobile)
+- [x] Accessible (label, aria attributes, keyboard submit with Enter)
+- [x] Matches existing app visual style (Tailwind CSS)
+- [x] No email/username field — password only
+- [x] In development mode (auth disabled): visiting `/login` redirects to `/`
 
 ### Component Structure
 
@@ -323,15 +323,15 @@ Add a session check using TanStack Router's `beforeLoad` hook that redirects una
 
 ### Acceptance Criteria
 
-- [ ] `beforeLoad` hook on root route calls `GET /api/v1/auth/session`
-- [ ] If `{ authenticated: false }`: redirect to `/login?returnTo=<current_path>`
-- [ ] If `{ authenticated: true }`: render app normally
-- [ ] TanStack Router's pending state shown while checking session (no flash-of-content)
-- [ ] `/login` route itself does NOT trigger the session check (avoid redirect loop)
-- [ ] Session check result cached via TanStack Query (staleTime: 5 min)
-- [ ] If session check fails (network error): show retry option, not login redirect
-- [ ] When `VITE_AUTH_ENABLED` is `false` (or unset in dev): skip session check entirely
-- [ ] API client adds `credentials: "include"` when `VITE_API_URL` is set (cross-origin deployments)
+- [x] `beforeLoad` hook on root route calls `GET /api/v1/auth/session`
+- [x] If `{ authenticated: false }`: redirect to `/login?returnTo=<current_path>`
+- [x] If `{ authenticated: true }`: render app normally
+- [x] TanStack Router's pending state shown while checking session (no flash-of-content)
+- [x] `/login` route itself does NOT trigger the session check (avoid redirect loop)
+- [x] Session check result cached via TanStack Query (staleTime: 5 min)
+- [x] If session check fails (network error): show retry option, not login redirect
+- [x] When `VITE_AUTH_ENABLED` is `false` (or unset in dev): skip session check entirely
+- [x] API client adds `credentials: "include"` when `VITE_API_URL` is set (cross-origin deployments)
 
 ### Implementation Notes
 
@@ -392,10 +392,10 @@ Write comprehensive backend tests for auth endpoints, middleware, rate limiter, 
 
 ### Acceptance Criteria
 
-- [ ] `tests/api/test_auth_routes.py` — endpoint tests
-- [ ] `tests/api/test_auth_middleware.py` — middleware tests
-- [ ] `tests/api/test_rate_limiter.py` — rate limiter tests
-- [ ] `tests/security/test_owner_auth.py` — security-specific tests
+- [x] `tests/api/test_auth_routes.py` — endpoint tests
+- [x] `tests/api/test_auth_middleware.py` — middleware tests
+- [x] `tests/api/test_rate_limiter.py` — rate limiter tests
+- [x] `tests/security/test_owner_auth.py` — security-specific tests
 
 ### Test Cases
 
@@ -461,9 +461,9 @@ Write Playwright E2E tests for the login flow and protected routes.
 
 ### Acceptance Criteria
 
-- [ ] E2E test file: `web/tests/e2e/auth/login.spec.ts`
-- [ ] Uses mock API routes (no real backend needed, consistent with existing E2E approach)
-- [ ] Import custom `test` from `../fixtures` (not `@playwright/test`)
+- [x] E2E test file: `web/tests/e2e/auth/login.spec.ts`
+- [x] Uses mock API routes (no real backend needed, consistent with existing E2E approach)
+- [x] Import custom `test` from `../fixtures` (not `@playwright/test`)
 
 ### Test Cases
 
@@ -497,14 +497,14 @@ Update the OpenSpec API security specification to reflect the new authentication
 
 ### Acceptance Criteria
 
-- [ ] `openspec/specs/api-security/spec.md` updated with owner auth model
-- [ ] Document coexistence of session cookie + X-Admin-Key
-- [ ] Document exempted paths
-- [ ] Document configuration (APP_SECRET_KEY)
-- [ ] Document cross-origin cookie strategy (`AUTH_COOKIE_CROSS_ORIGIN` setting)
-- [ ] Document rate limiting behavior
-- [ ] Document dev mode bypass
-- [ ] Document login auditing (log levels and format)
+- [x] `openspec/specs/api-security/spec.md` updated with owner auth model
+- [x] Document coexistence of session cookie + X-Admin-Key
+- [x] Document exempted paths
+- [x] Document configuration (APP_SECRET_KEY)
+- [x] Document cross-origin cookie strategy (`AUTH_COOKIE_CROSS_ORIGIN` setting)
+- [x] Document rate limiting behavior
+- [x] Document dev mode bypass
+- [x] Document login auditing (log levels and format)
 
 ### Files Changed
 

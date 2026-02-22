@@ -9,9 +9,9 @@ Usage:
             result = conn.execute(text("SELECT 1"))
             assert result.scalar() == 1
 
-Requirements:
-    - SUPABASE_PROJECT_REF environment variable must be set
-    - SUPABASE_DB_PASSWORD environment variable must be set
+Requirements (via Settings / env vars):
+    - SUPABASE_PROJECT_REF must be set
+    - SUPABASE_DB_PASSWORD must be set
     - Optional: SUPABASE_REGION, SUPABASE_AZ, SUPABASE_POOLER_MODE
 
 Note:
@@ -19,26 +19,23 @@ Note:
     This allows running other tests without Supabase access.
 """
 
-import os
 from collections.abc import Iterator
 
 import pytest
 from sqlalchemy import Engine, create_engine
 
-# Load environment variables from .env file for tests
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass  # dotenv not installed, rely on environment variables
-
+from src.config.settings import get_settings
 from src.storage.providers.supabase import SupabaseProvider
 
-# Check if Supabase is configured (after loading .env)
-SUPABASE_CONFIGURED = bool(
-    os.environ.get("SUPABASE_PROJECT_REF") and os.environ.get("SUPABASE_DB_PASSWORD")
-)
+
+def _supabase_is_configured() -> bool:
+    """Check if Supabase credentials are configured via Settings."""
+    settings = get_settings()
+    return bool(settings.supabase_project_ref and settings.supabase_db_password)
+
+
+# Check if Supabase is configured (evaluated at import time via Settings)
+SUPABASE_CONFIGURED = _supabase_is_configured()
 
 # Skip reason for when Supabase is not configured
 SKIP_REASON = (
@@ -48,11 +45,11 @@ SKIP_REASON = (
 
 @pytest.fixture(scope="session")
 def supabase_provider() -> SupabaseProvider | None:
-    """Create a SupabaseProvider configured from environment.
+    """Create a SupabaseProvider configured from Settings.
 
     Returns None if Supabase is not configured, allowing tests to be skipped.
 
-    The provider uses environment variables:
+    Configuration is read from Settings (env vars):
     - SUPABASE_PROJECT_REF: Project reference ID
     - SUPABASE_DB_PASSWORD: Database password
     - SUPABASE_REGION: AWS region (default: us-east-1)
@@ -62,12 +59,13 @@ def supabase_provider() -> SupabaseProvider | None:
     if not SUPABASE_CONFIGURED:
         return None
 
+    settings = get_settings()
     return SupabaseProvider(
-        project_ref=os.environ["SUPABASE_PROJECT_REF"],
-        db_password=os.environ["SUPABASE_DB_PASSWORD"],
-        region=os.environ.get("SUPABASE_REGION", "us-east-1"),
-        az=os.environ.get("SUPABASE_AZ", "0"),
-        pooler_mode=os.environ.get("SUPABASE_POOLER_MODE", "transaction"),  # type: ignore
+        project_ref=settings.supabase_project_ref,  # type: ignore[arg-type]
+        db_password=settings.supabase_db_password,  # type: ignore[arg-type]
+        region=settings.supabase_region,
+        az=settings.supabase_az,
+        pooler_mode=settings.supabase_pooler_mode,  # type: ignore[arg-type]
     )
 
 
