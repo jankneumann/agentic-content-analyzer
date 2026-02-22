@@ -404,13 +404,15 @@ async def get_content_stats() -> ContentStats:
     from src.models.summary import Summary
 
     with get_db() as db:
-        total = db.query(Content).count()
-
         # Count by status
         status_counts = (
             db.query(Content.status, func.count(Content.id)).group_by(Content.status).all()
         )
         by_status = {status.value: count for status, count in status_counts}
+
+        # OPTIMIZATION: Calculate total from status counts instead of separate count query
+        # Since status is non-nullable, the sum of status counts equals the total count
+        total = sum(by_status.values())
 
         # Count by source
         source_counts = (
