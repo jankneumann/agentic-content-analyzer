@@ -1,0 +1,33 @@
+{% extends "shared/base.html" %}
+
+{% block body %}
+<div class="header">
+    <h1>{{ title }}</h1>
+    <div class="meta">
+        {% if digest_type %}<span>{{ digest_type | capitalize }} Digest</span>{% endif %}
+        {% if period %}<span>{{ period }}</span>{% endif %}
+        {% if newsletter_count %}<span>{{ newsletter_count }} sources</span>{% endif %}
+    </div>
+</div>
+
+{% if audio_url %}
+<div class="audio-player">
+    <div class="label">Listen to this digest</div>
+    <audio controls preload="metadata">
+        <source src="{{ audio_url }}" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+</div>
+{% endif %}
+
+<div class="content">
+    {% if executive_overview %}
+    <h2>Overview</h2>
+    <p>{{ executive_overview }}</p>
+    {% endif %}
+
+    {% if markdown_html %}
+    {{ markdown_html | safe }}
+    {% endif %}
+</div>
+{% endblock %}

@@ -34,6 +34,7 @@ AUTH_EXEMPT_PREFIXES = (
     "/api/v1/otel/v1/traces",
     "/api/v1/auth/",
     "/api/v1/auth",  # Exact match for /api/v1/auth without trailing slash
+    "/shared/",  # Public shared content (token-gated, rate-limited)
 )
 
 

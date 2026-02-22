@@ -1,0 +1,15 @@
+{% extends "shared/base.html" %}
+
+{% block body %}
+<div class="header">
+    <h1>{{ title }}</h1>
+    <div class="meta">
+        {% if author %}<span>{{ author }}</span>{% endif %}
+        {% if publication %}<span>{{ publication }}</span>{% endif %}
+        {% if published_date %}<span>{{ published_date }}</span>{% endif %}
+    </div>
+</div>
+<div class="content">
+    {{ content_html | safe }}
+</div>
+{% endblock %}

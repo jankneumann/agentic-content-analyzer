@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
@@ -40,6 +40,10 @@ class Summary(Base):
     # Unified content model fields (Phase 4)
     markdown_content = Column(Text, nullable=True)  # Full markdown representation
     theme_tags = Column(JSON, nullable=True)  # List[str] - Extracted theme tags
+
+    # Sharing
+    is_public = Column(Boolean, nullable=False, default=False, server_default="false")
+    share_token = Column(String(36), nullable=True, unique=True, index=True)
 
     # Metadata
     agent_framework = Column(String(100), nullable=False)  # claude, openai, google, microsoft

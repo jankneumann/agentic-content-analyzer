@@ -76,6 +76,10 @@ class Digest(Base):
     completed_at = Column(DateTime, nullable=True)
     delivered_at = Column(DateTime, nullable=True)
 
+    # Sharing
+    is_public = Column(Boolean, nullable=False, default=False, server_default="false")
+    share_token = Column(String(36), nullable=True, unique=True, index=True)
+
     # Generation metadata
     agent_framework = Column(String(100), nullable=False)
     model_used = Column(String(100), nullable=False)  # General model ID
