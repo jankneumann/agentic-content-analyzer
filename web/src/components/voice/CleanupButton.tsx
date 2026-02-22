@@ -28,6 +28,9 @@ interface CleanupButtonProps {
   className?: string
 }
 
+const isMac =
+  typeof navigator !== "undefined" && navigator.platform.includes("Mac")
+
 export function CleanupButton({
   isLoading,
   hasText,
@@ -57,7 +60,9 @@ export function CleanupButton({
         </TooltipTrigger>
         <TooltipContent>
           <p className="text-xs">Clean up text with AI</p>
-          <p className="text-xs text-muted-foreground">Ctrl+Shift+C</p>
+          <p className="text-xs text-muted-foreground">
+            {isMac ? "⌘" : "Ctrl"}+Shift+C
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

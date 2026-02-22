@@ -11,7 +11,7 @@ export interface SearchInputProps extends React.ComponentProps<"input"> {
 }
 
 const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
-  ({ className, value, onChange, onClear, ...props }, ref) => {
+  ({ className, value, onChange, onClear, disabled, ...props }, ref) => {
     // Voice settings from backend
     const { data: voiceSettings } = useVoiceSettings()
     const lang = voiceSettings?.input_language?.value ?? "en-US"
@@ -66,6 +66,7 @@ const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
           value={value}
           onChange={onChange}
           onKeyDown={handleKeyDown}
+          disabled={disabled}
           className={cn("pl-9 pr-16", className)}
           {...props}
         />
@@ -85,6 +86,7 @@ const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
               isListening={voiceInput.isListening}
               isSupported={voiceInput.isSupported}
               error={voiceInput.error}
+              disabled={disabled}
               onToggle={voiceInput.toggleListening}
               className="h-7 w-7"
             />

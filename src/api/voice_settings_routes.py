@@ -188,7 +188,8 @@ async def get_voice_settings() -> VoiceSettingsResponse:
 async def update_voice_setting(field: str, request: VoiceUpdateRequest) -> dict:
     """Update a voice configuration setting.
 
-    Valid fields: provider, default_voice, speed
+    Valid fields: provider, default_voice, speed, input_language,
+    input_continuous, input_auto_submit
     """
     if field not in _VOICE_SETTINGS:
         raise HTTPException(
