@@ -269,6 +269,8 @@ export function RevisionChatPanel({
   if (!isExpanded) {
     return (
       <button
+        type="button"
+        aria-expanded={isExpanded}
         onClick={onToggle}
         className={cn(
           "flex w-full items-center justify-between rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50",
@@ -327,6 +329,8 @@ export function RevisionChatPanel({
             </Tooltip>
           )}
           <button
+            type="button"
+            aria-expanded={isExpanded}
             onClick={onToggle}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
@@ -511,7 +515,10 @@ export function RevisionChatPanel({
                     value={selectedModel}
                     onValueChange={onModelChange}
                   >
-                    <SelectTrigger className="h-8 w-[160px] text-xs">
+                    <SelectTrigger
+                      className="h-8 w-[160px] text-xs"
+                      aria-label="Select AI Model"
+                    >
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
@@ -535,7 +542,15 @@ export function RevisionChatPanel({
                   <Search className="h-3.5 w-3.5" />
                   Web Search
                 </Toggle>
-                <span className="text-xs text-muted-foreground">
+                <span
+                  className={cn(
+                    "text-xs text-muted-foreground transition-colors",
+                    input.length > maxMessageLength * 0.9 &&
+                      "font-medium text-amber-500",
+                    input.length >= maxMessageLength && "text-destructive"
+                  )}
+                  aria-label={`${input.length} of ${maxMessageLength} characters`}
+                >
                   {input.length}/{maxMessageLength}
                 </span>
               </div>
