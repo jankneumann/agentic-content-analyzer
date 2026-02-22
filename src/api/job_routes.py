@@ -8,7 +8,7 @@ background processing tasks.
 import re
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 
 from src.models.jobs import (
     JobHistoryResponse,
@@ -31,7 +31,7 @@ _SINCE_SHORTHAND = re.compile(r"^(\d+)d$")
 async def list_all_jobs(
     status: JobStatus | None = Query(None, description="Filter by job status"),
     entrypoint: str | None = Query(None, description="Filter by task entrypoint"),
-    page: int = Query(1, ge=1, description="Page number"),
+    page: int = Query(1, ge=1, le=10000, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
 ) -> JobListResponse:
     """
@@ -73,7 +73,7 @@ async def get_job_history(
     ),
     status: JobStatus | None = Query(None, description="Filter by job status"),
     entrypoint: str | None = Query(None, description="Filter by task entrypoint"),
-    page: int = Query(1, ge=1, description="Page number"),
+    page: int = Query(1, ge=1, le=10000, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
 ) -> JobHistoryResponse:
     """
@@ -123,7 +123,7 @@ async def get_job_history(
 
 
 @router.get("/{job_id}", response_model=JobRecord)
-async def get_job(job_id: int) -> JobRecord:
+async def get_job(job_id: int = Path(ge=1, le=9223372036854775807)) -> JobRecord:
     """
     Get job details by ID.
 
@@ -143,7 +143,7 @@ async def get_job(job_id: int) -> JobRecord:
 
 
 @router.post("/{job_id}/retry", response_model=JobRetryResponse)
-async def retry_job(job_id: int) -> JobRetryResponse:
+async def retry_job(job_id: int = Path(ge=1, le=9223372036854775807)) -> JobRetryResponse:
     """
     Retry a failed job.
 

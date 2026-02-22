@@ -299,7 +299,7 @@ async def regenerate_script(
 async def list_scripts(
     status: PodcastStatus | None = Query(None, description="Filter by status"),
     digest_id: int | None = Query(None, description="Filter by digest ID"),
-    limit: int = Query(50, le=100, description="Maximum results"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum results"),
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[ScriptSummary]:

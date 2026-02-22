@@ -223,3 +223,6 @@ def pytest_configure(config):
         "markers", "hoverfly: Tests requiring Hoverfly API simulator (make hoverfly-up)"
     )
     config.addinivalue_line("markers", "crawl4ai: Tests requiring Crawl4AI setup")
+    config.addinivalue_line(
+        "markers", "contract: API contract and fuzz tests (require test database)"
+    )

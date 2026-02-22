@@ -414,8 +414,8 @@ async def regenerate_digest(
 async def list_digests(
     status: str | None = Query(None, description="Filter by status"),
     digest_type: str | None = Query(None, description="Filter by type"),
-    limit: int = Query(50, le=100, description="Maximum results"),
-    offset: int = Query(0, description="Offset for pagination"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ) -> list[DigestSummary]:
@@ -573,7 +573,7 @@ async def get_digest(
 @router.get("/{digest_id}/sources")
 async def get_digest_sources(
     digest_id: int,
-    limit: int = Query(100, le=200, description="Maximum results"),
+    limit: int = Query(100, ge=1, le=200, description="Maximum results"),
 ) -> list[dict]:
     """Get all source summaries used to create a digest.
 
