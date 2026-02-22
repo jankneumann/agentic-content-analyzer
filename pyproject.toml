@@ -245,4 +245,5 @@ markers = [
     "crawl4ai: Tests requiring Crawl4AI browser setup",
     "smoke: Smoke tests against a live API server (require running backend)",
     "contract: API contract and fuzz tests (require test database)",
+    "neon: marks tests that require Neon database credentials (deselect with '-m not neon')",
 ]

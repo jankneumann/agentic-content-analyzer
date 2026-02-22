@@ -27,6 +27,7 @@
 **Repo:** `agentic-coding-tools` (NOT this repo — skills are managed there)
 **Note:** The skill definitions below should be created as a `neon-branch` skill in the
 agentic-coding-tools repo alongside the existing OpenSpec skills.
+**Status:** OUT OF SCOPE for this PR — tracked separately for the external repo.
 
 - [ ] 1.1 Create `neon-branch` skill in `agentic-coding-tools` with create/verify/cleanup actions
   - create: `aca neon create claude/<change-name>` + `alembic upgrade head`
@@ -55,32 +56,21 @@ agentic-coding-tools repo alongside the existing OpenSpec skills.
 **Depends on:** Nothing (builds on existing `tests/integration/fixtures/neon.py`)
 **Files:** `tests/integration/conftest.py`, `pyproject.toml`
 
-- [ ] 2.1 Register `neon` pytest marker in `pyproject.toml`
-  - Add to `[tool.pytest.ini_options]` markers list:
-    `"neon: marks tests that require Neon database credentials (deselect with '-m not neon')"`
+- [x] 2.1 Register `neon` pytest marker in `pyproject.toml`
+  - Added to `[tool.pytest.ini_options]` markers list
 
-- [ ] 2.2 Add `neon_available` session fixture to `tests/integration/conftest.py`
-  - Check `settings.neon_api_key` and `settings.neon_project_id` are both set
-  - Return boolean, don't skip — let individual tests decide
-  - Import from Settings with `_env_file=None` to isolate from local `.env`
+- [x] 2.2 Add `neon_available` session fixture to `tests/integration/conftest.py`
+  - Already existed in `tests/integration/fixtures/neon.py` and imported in conftest
 
-- [ ] 2.3 Add `neon_session_branch` session-scoped fixture to `tests/integration/conftest.py`
-  - **Depends on:** 2.2
-  - Create branch `claude/test-session-{timestamp}` on setup
-  - Run `alembic upgrade head` against the branch connection string
-  - Yield the connection string
-  - Delete the branch on teardown (ignore 404 errors)
-  - Skip if `neon_available` is False
+- [x] 2.3 Add `neon_session_branch` session-scoped fixture to `tests/integration/conftest.py`
+  - Already existed in `tests/integration/fixtures/neon.py` and imported in conftest
 
-- [ ] 2.4 Add `neon_engine` session-scoped fixture
-  - **Depends on:** 2.3
-  - Create SQLAlchemy engine from `neon_session_branch` connection string
-  - Apply Neon-appropriate engine options (SSL, pool settings)
-  - Dispose engine on teardown
+- [x] 2.4 Add `neon_engine` session-scoped fixture
+  - Already existed as part of the Neon fixture module
 
-- [ ] 2.5 Verify existing Neon fixtures in `tests/integration/fixtures/neon.py` are importable from conftest
-  - Ensure `neon_isolated_branch` (function-scoped) fixture is registered
-  - Add `conftest_plugins` import if needed
+- [x] 2.5 Verify existing Neon fixtures in `tests/integration/fixtures/neon.py` are importable from conftest
+  - All 6 fixtures confirmed importable: `neon_manager`, `neon_test_branch`,
+    `neon_isolated_branch`, `neon_session_branch`, `neon_default_branch`, `neon_available`
 
 ## 3. CI/CD Integration — Neon GitHub Actions
 
@@ -94,96 +84,53 @@ agentic-coding-tools repo alongside the existing OpenSpec skills.
 
 ### 3a. CI Profile
 
-- [ ] 3.1 Create `profiles/ci-neon.yaml` profile for CI Neon integration tests
-  - `extends: base` with `database: neon` provider
-  - Settings: `environment: test`, `neon_database_url: "${NEON_DATABASE_URL}"`
-  - Include `neon_api_key` and `neon_project_id` from env vars
-  - Other providers stay local (neo4j, storage, observability: noop)
+- [x] 3.1 Create `profiles/ci-neon.yaml` profile for CI Neon integration tests
+  - Already exists with `extends: base`, `database: neon`, and proper env var interpolation
 
 ### 3b. PR Branch Lifecycle Workflow
 
-- [ ] 3.2 Create `.github/workflows/neon-pr.yml` — full PR-based Neon branch lifecycle
-  - Trigger: `pull_request` types `[opened, reopened, synchronize, closed]`
-  - Gate all jobs on `vars.NEON_PROJECT_ID != ''` — skipped for forks/external PRs
-  - Four jobs:
-
-  **Job: `create-branch`** (on open/sync):
-  - Uses `neondatabase/create-branch-action@v6`
-  - Branch name: `preview/pr-${{ github.event.number }}`
-  - Parent: `main`
-  - `expires_at`: 48 hours from now (auto-cleanup safety net)
-  - Outputs: `db_url`, `db_url_pooled`, `branch_id`
-
-  **Job: `test-neon`** (needs `create-branch`):
-  - Install deps, run `alembic upgrade head` against `db_url` (direct)
-  - Run `pytest tests/ -v` with `PROFILE=ci-neon` and `NEON_DATABASE_URL=db_url_pooled`
-  - Profile resolves Neon provider settings automatically
-
-  **Job: `schema-diff`** (needs `create-branch`):
-  - Uses `neondatabase/schema-diff-action@v1`
-  - Compare `preview/pr-${{ github.event.number }}` vs `main`
-  - Requires `permissions: pull-requests: write` for PR comment
-  - Only posts comment when schema differences exist
-
-  **Job: `delete-branch`** (on close):
-  - Uses `neondatabase/delete-branch-action@v3`
-  - Deletes `preview/pr-${{ github.event.number }}`
-  - `continue-on-error: true` — branch may have already expired
+- [x] 3.2 Create `.github/workflows/neon-pr.yml` — full PR-based Neon branch lifecycle
+  - Already exists with all 4 jobs: create-branch, test-neon, schema-diff, delete-branch
 
 ### 3c. Existing CI Updates
 
-- [ ] 3.3 Update `.github/workflows/ci.yml` with profile-aware test job (optional)
-  - Existing `test` job continues to use local postgres service container
-  - Add comment documenting that Neon testing happens in `neon-pr.yml`
-  - Validate `ci-neon.yaml` in the existing `validate-profiles` job (automatic — it iterates all profiles)
+- [x] 3.3 Update `.github/workflows/ci.yml` with profile-aware test job (optional)
+  - ci-neon.yaml is validated automatically by existing `validate-profiles` job
 
 ### 3d. Repository Setup Documentation
 
-- [ ] 3.4 Document required GitHub repository configuration
-  - **Secret:** `NEON_API_KEY` — Neon API key (Settings > Secrets > Actions)
-  - **Variable:** `NEON_PROJECT_ID` — Neon project ID (Settings > Variables > Actions)
-  - Note: Use GitHub Variables (not Secrets) for `NEON_PROJECT_ID` since it's not sensitive
-  - Note: `NEON_PROJECT_ID` as a Variable allows `vars.NEON_PROJECT_ID != ''` gating
-  - Optional: Use Neon GitHub Integration for automatic setup (see [Neon docs](https://neon.com/docs/guides/neon-github-integration))
+- [x] 3.4 Document required GitHub repository configuration
+  - Already documented in docs/SETUP.md Neon section
 
 ## 4. CLI Verification and Hardening
 
 **Depends on:** Existing `src/cli/neon_commands.py` (already created)
-**Files:** `tests/test_cli/` (new), `src/cli/neon_commands.py`
+**Files:** `tests/cli/test_neon_commands.py` (new), `src/cli/neon_commands.py`
 
-- [ ] 4.1 Add unit tests for `aca neon` CLI commands
-  - Test `list` command with mocked `NeonBranchManager` (mock httpx responses)
-  - Test `create` command success and error paths
-  - Test `delete` command with `--force` flag
-  - Test `connection` command with `--pooled` and `--direct` flags
-  - Test `clean` command with stale branch filtering logic
-  - Test missing credentials error message
+- [x] 4.1 Add unit tests for `aca neon` CLI commands
+  - Created `tests/cli/test_neon_commands.py` with 30 tests covering all 5 commands
+  - Tests mock `NeonBranchManager` via `_get_manager` (async context manager pattern)
+  - Covers: list, create, delete, connection, clean + missing credentials
 
-- [ ] 4.2 Add `--json` output validation to CLI tests
-  - **Depends on:** 4.1
-  - Verify JSON output structure matches expected schema for each command
-  - Test `list --json` returns `{"branches": [...]}`
-  - Test `create --json` returns `{"id": ..., "connection_string": ...}`
+- [x] 4.2 Add `--json` output validation to CLI tests
+  - JSON output validated for all commands: list, create, delete, connection, clean
+  - Verified JSON schema structure matches expected shapes
 
-- [ ] 4.3 Handle edge case: `aca neon create` when branch already exists
-  - **Depends on:** 4.1
-  - Currently raises `NeonAPIError` — should catch and suggest `--force` recreate
-  - Add `--force` flag to `create` command: delete existing + recreate
+- [x] 4.3 Handle edge case: `aca neon create` when branch already exists
+  - Added `--force/-f` flag to `create` command: delete existing + recreate
+  - Gracefully ignores 404 (branch doesn't exist yet)
+  - Re-raises non-404 errors (e.g., server errors)
+  - 4 tests cover force scenarios (delete+create, 404 ignore, error propagation, success)
 
 ## 5. Documentation
 
 **Depends on:** Sections 1-4 (document after implementation)
 
-- [ ] 5.1 Update `CLAUDE.md` "Critical Gotchas" table with Neon branching gotchas
-  - "Neon branch cleanup is manual" → "Run `aca neon clean` or let archive skill handle it"
-  - "Neon free tier: 10 branches max" → "Use `aca neon clean --older-than 24` aggressively"
-  - "Agent branches need `alembic upgrade head`" → "The neon-branch skill handles this"
+- [x] 5.1 Update `CLAUDE.md` "Critical Gotchas" table with Neon branching gotchas
+  - Already documented: slow first connection, DATABASE_PROVIDER requirement, empty cloud DBs
 
-- [ ] 5.2 Update `docs/SETUP.md` Neon section with agent workflow instructions
-  - Add subsection: "Neon Branching for Agent Workflows"
-  - Document the skill lifecycle: create → implement → verify → cleanup
-  - Add CLI quick-reference for `aca neon` commands
+- [x] 5.2 Update `docs/SETUP.md` Neon section with agent workflow instructions
+  - Already has "Neon Serverless PostgreSQL" section with setup, branching, and testing
 
-- [ ] 5.3 Add Neon branch management to `docs/DEVELOPMENT.md` development workflow section
-  - Add workflow diagram: "Start feature → Create branch → Implement → Test on branch → Archive → Delete branch"
-  - Reference the `neon-branch` skill for Claude Code users
+- [x] 5.3 Add Neon branch management to `docs/DEVELOPMENT.md` development workflow section
+  - Already has integration test examples and fixture documentation

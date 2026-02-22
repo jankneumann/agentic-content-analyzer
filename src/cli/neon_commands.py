@@ -12,15 +12,19 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import typer
 
 from src.cli.output import is_json_mode, output_result
 
+if TYPE_CHECKING:
+    from src.storage.providers.neon_branch import NeonBranch, NeonBranchManager
+
 app = typer.Typer(help="Neon database branch management for agent workflows.")
 
 
-def _get_manager():
+def _get_manager() -> NeonBranchManager:
     """Create a NeonBranchManager from current settings."""
     from src.config import settings
     from src.storage.providers.neon_branch import NeonBranchManager
@@ -48,7 +52,7 @@ def _get_manager():
 def list_branches() -> None:
     """List all Neon branches in the configured project."""
 
-    async def _list():
+    async def _list() -> list[NeonBranch]:
         manager = _get_manager()
         async with manager:
             return await manager.list_branches()
@@ -86,16 +90,29 @@ def list_branches() -> None:
 def create_branch(
     name: str = typer.Argument(..., help="Branch name (e.g., claude/feature-xyz)"),
     parent: str = typer.Option("main", "--parent", "-p", help="Parent branch name"),
+    force: bool = typer.Option(False, "--force", "-f", help="Delete existing branch and recreate"),
 ) -> None:
     """Create a new Neon database branch.
 
     Creates a copy-on-write branch from the parent (default: main).
     The branch gets its own read-write endpoint and connection string.
+
+    Use --force to delete an existing branch with the same name and recreate it.
     """
 
-    async def _create():
+    async def _create() -> NeonBranch:
+        from src.storage.providers.neon_branch import NeonAPIError
+
         manager = _get_manager()
         async with manager:
+            if force:
+                try:
+                    await manager.delete_branch(name)
+                    if not is_json_mode():
+                        typer.echo(f"Deleted existing branch: {name}")
+                except NeonAPIError as e:
+                    if e.status_code != 404:
+                        raise
             return await manager.create_branch(name, parent=parent)
 
     branch = asyncio.run(_create())
@@ -135,7 +152,7 @@ def delete_branch(
         if not confirm:
             raise typer.Abort()
 
-    async def _delete():
+    async def _delete() -> None:
         manager = _get_manager()
         async with manager:
             await manager.delete_branch(name)
@@ -158,7 +175,7 @@ def connection_string(
     Use --direct for migrations (bypasses PgBouncer).
     """
 
-    async def _get_conn():
+    async def _get_conn() -> str:
         manager = _get_manager()
         async with manager:
             return await manager.get_connection_string(name, pooled=pooled)
@@ -188,7 +205,7 @@ def clean_branches(
     Useful for removing orphaned branches from crashed agent sessions.
     """
 
-    async def _clean():
+    async def _clean() -> list[str]:
         manager = _get_manager()
         cutoff = datetime.now(UTC) - timedelta(hours=older_than)
 
