@@ -284,6 +284,18 @@ class TestDeleteBranch:
         data = json.loads(result.output)
         assert data["deleted"] == "claude/gone"
 
+    def test_delete_json_mode_skips_confirmation(self):
+        """Test JSON mode skips confirmation prompt (no --force needed)."""
+        mgr = _mock_manager()
+
+        with patch("src.cli.neon_commands._get_manager", return_value=mgr):
+            result = runner.invoke(app, ["--json", "neon", "delete", "claude/auto"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["deleted"] == "claude/auto"
+        mgr.delete_branch.assert_awaited_once_with("claude/auto")
+
     def test_delete_not_found_error(self):
         """Test delete handles branch not found."""
         mgr = _mock_manager(
@@ -481,6 +493,33 @@ class TestCleanBranches:
         assert data["count"] == 2
         assert "claude/old-one" in data["deleted"]
         assert "claude/old-two" in data["deleted"]
+
+    def test_clean_json_dry_run(self):
+        """Test JSON output includes dry_run flag when --dry-run is used."""
+        branches = self._make_stale_branches()
+        mgr = _mock_manager(list_branches=AsyncMock(return_value=branches))
+
+        with patch("src.cli.neon_commands._get_manager", return_value=mgr):
+            result = runner.invoke(app, ["--json", "neon", "clean", "--dry-run"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["dry_run"] is True
+        assert data["count"] == 2
+        assert "claude/old-one" in data["deleted"]
+        mgr.delete_branch.assert_not_awaited()
+
+    def test_clean_json_no_dry_run(self):
+        """Test JSON output omits dry_run field when not in dry-run mode."""
+        branches = self._make_stale_branches()
+        mgr = _mock_manager(list_branches=AsyncMock(return_value=branches))
+
+        with patch("src.cli.neon_commands._get_manager", return_value=mgr):
+            result = runner.invoke(app, ["--json", "neon", "clean", "--force"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "dry_run" not in data
 
     def test_clean_partial_failure(self):
         """Test clean continues when individual deletes fail."""

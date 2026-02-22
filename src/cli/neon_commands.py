@@ -147,7 +147,7 @@ def delete_branch(
 
     This permanently destroys the branch and its data.
     """
-    if not force:
+    if not force and not is_json_mode():
         confirm = typer.confirm(f"Delete branch '{name}'? This cannot be undone")
         if not confirm:
             raise typer.Abort()
@@ -249,4 +249,7 @@ def clean_branches(
     deleted = asyncio.run(_clean())
 
     if is_json_mode():
-        output_result({"deleted": deleted, "count": len(deleted)})
+        result: dict = {"deleted": deleted, "count": len(deleted)}
+        if dry_run:
+            result["dry_run"] = True
+        output_result(result)
