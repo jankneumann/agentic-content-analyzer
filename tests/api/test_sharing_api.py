@@ -5,6 +5,7 @@ and the public shared content endpoints (GET /shared/{type}/{token}).
 """
 
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # ============================================================================
 # Share Management API Tests
@@ -278,6 +279,130 @@ class TestSharedAudioEndpoint:
             follow_redirects=False,
         )
         assert response.status_code == 404
+
+    def test_shared_audio_serves_file_directly(self, client, sample_digest, db_session):
+        """Audio is served directly via storage provider, not via auth-requiring redirect."""
+        from datetime import UTC, datetime
+
+        from src.models.audio_digest import AudioDigest
+
+        # Create an audio digest record
+        audio = AudioDigest(
+            digest_id=sample_digest.id,
+            voice="nova",
+            speed=1.0,
+            provider="openai",
+            status="completed",
+            audio_url="/data/audio-digests/test-audio.mp3",
+            created_at=datetime.now(UTC),
+        )
+        db_session.add(audio)
+        db_session.flush()
+
+        # Enable sharing
+        resp = client.post(f"/api/v1/digests/{sample_digest.id}/share")
+        token = resp.json()["share_token"]
+
+        # Mock storage provider to simulate local file
+        mock_storage = MagicMock()
+        mock_storage.provider_name = "local"
+        mock_storage.get_local_path.return_value = None  # No local file exists
+
+        with patch("src.api.shared_routes.get_storage", return_value=mock_storage):
+            response = client.get(
+                f"/shared/audio/{token}",
+                headers={"X-Admin-Key": ""},
+                follow_redirects=False,
+            )
+
+        # Should get 404 (file not found on disk) rather than 401 (auth required)
+        # This verifies the endpoint serves directly instead of redirecting to /api/v1/files/
+        assert response.status_code == 404
+        assert "Audio file not available" in response.json()["detail"]
+
+    def test_shared_audio_local_file(self, client, sample_digest, db_session, tmp_path):
+        """Audio endpoint serves local files directly."""
+        from datetime import UTC, datetime
+
+        from src.models.audio_digest import AudioDigest
+
+        # Create a test audio file
+        audio_file = tmp_path / "test-audio.mp3"
+        audio_file.write_bytes(b"fake-mp3-data")
+
+        # Create an audio digest record
+        audio = AudioDigest(
+            digest_id=sample_digest.id,
+            voice="nova",
+            speed=1.0,
+            provider="openai",
+            status="completed",
+            audio_url=str(audio_file),
+            created_at=datetime.now(UTC),
+        )
+        db_session.add(audio)
+        db_session.flush()
+
+        # Enable sharing
+        resp = client.post(f"/api/v1/digests/{sample_digest.id}/share")
+        token = resp.json()["share_token"]
+
+        # Mock storage to return the real temp file path
+        mock_storage = MagicMock()
+        mock_storage.provider_name = "local"
+        mock_storage.get_local_path.return_value = audio_file
+
+        with patch("src.api.shared_routes.get_storage", return_value=mock_storage):
+            response = client.get(
+                f"/shared/audio/{token}",
+                headers={"X-Admin-Key": ""},
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 200
+        assert "audio/mpeg" in response.headers["content-type"]
+
+    def test_shared_audio_cloud_redirect(self, client, sample_digest, db_session):
+        """Audio endpoint redirects to signed URL for cloud storage."""
+        from datetime import UTC, datetime
+
+        from src.models.audio_digest import AudioDigest
+
+        # Create an audio digest record
+        audio = AudioDigest(
+            digest_id=sample_digest.id,
+            voice="nova",
+            speed=1.0,
+            provider="openai",
+            status="completed",
+            audio_url="/data/audio-digests/test-audio.mp3",
+            created_at=datetime.now(UTC),
+        )
+        db_session.add(audio)
+        db_session.flush()
+
+        # Enable sharing
+        resp = client.post(f"/api/v1/digests/{sample_digest.id}/share")
+        token = resp.json()["share_token"]
+
+        # Mock cloud storage with signed URL
+        mock_storage = MagicMock()
+        mock_storage.provider_name = "s3"
+        mock_storage.get_signed_url = AsyncMock(
+            return_value="https://bucket.s3.amazonaws.com/audio/test.mp3?signed=1"
+        )
+
+        with patch("src.api.shared_routes.get_storage", return_value=mock_storage):
+            response = client.get(
+                f"/shared/audio/{token}",
+                headers={"X-Admin-Key": ""},
+                follow_redirects=False,
+            )
+
+        # Should redirect to signed URL (not to /api/v1/files/ which requires auth)
+        assert response.status_code == 302
+        assert "s3.amazonaws.com" in response.headers["location"]
+        assert "/api/v1/files/" not in response.headers["location"]
 
 
 # ============================================================================

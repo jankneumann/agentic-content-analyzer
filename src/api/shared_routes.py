@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from markdown_it import MarkdownIt
 
@@ -19,6 +19,7 @@ from src.api.share_rate_limiter import share_rate_limiter
 from src.models.content import Content
 from src.models.digest import Digest
 from src.models.summary import Summary
+from src.services.file_storage import get_storage
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -190,7 +191,7 @@ async def get_shared_digest(token: str, request: Request):
             latest_audio = max(
                 record.audio_digests, key=lambda a: a.created_at or datetime.min.replace(tzinfo=UTC)
             )
-            if latest_audio.audio_file_path:
+            if latest_audio.audio_url:
                 # Build audio URL relative to the API
                 audio_url = f"/shared/audio/{token}"
 
@@ -234,7 +235,12 @@ async def get_shared_digest(token: str, request: Request):
 
 @router.get("/audio/{token}")
 async def get_shared_audio(token: str, request: Request):
-    """Stream or redirect to audio for a shared digest."""
+    """Stream audio for a shared digest.
+
+    Serves the audio file directly instead of redirecting to the
+    authenticated files endpoint, so unauthenticated recipients
+    can play audio on shared digest pages.
+    """
     _check_rate_limit(request)
 
     with get_db() as db:
@@ -250,13 +256,31 @@ async def get_shared_audio(token: str, request: Request):
         latest_audio = max(
             record.audio_digests, key=lambda a: a.created_at or datetime.min.replace(tzinfo=UTC)
         )
-        if not latest_audio.audio_file_path:
+        if not latest_audio.audio_url:
             raise HTTPException(status_code=404, detail="Audio file not available")
 
-        # Redirect to the files endpoint for actual streaming
-        # The files route handles range requests and storage provider abstraction
-        audio_path = latest_audio.audio_file_path
-        return RedirectResponse(
-            url=f"/api/v1/files/audio-digests/{os.path.basename(audio_path)}",
-            status_code=302,
+        audio_filename = os.path.basename(latest_audio.audio_url)
+
+    # Serve directly via storage provider (no auth redirect needed)
+    storage = get_storage(bucket="audio-digests")
+    storage_path = f"audio-digests/{audio_filename}"
+
+    # Cloud providers: redirect to time-limited signed URL (no auth needed)
+    if hasattr(storage, "get_signed_url") and storage.provider_name in ("s3", "supabase"):
+        signed_url = await storage.get_signed_url(storage_path, expires_in=3600)
+        return RedirectResponse(url=signed_url, status_code=302)
+
+    # Local storage: serve file directly
+    local_path = storage.get_local_path(storage_path)
+    if local_path and local_path.exists():
+        return FileResponse(
+            path=local_path,
+            media_type="audio/mpeg",
+            filename=audio_filename,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            },
         )
+
+    raise HTTPException(status_code=404, detail="Audio file not available")

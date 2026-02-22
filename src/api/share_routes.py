@@ -66,12 +66,14 @@ async def enable_sharing(
             record.share_token = str(uuid4())
         record.is_public = True
 
-        share_url = _build_share_url(request, url_path, record.share_token)
+        # Capture values before session closes
+        token = record.share_token
+        share_url = _build_share_url(request, url_path, token)
 
     logger.info("Sharing enabled for %s/%s", resource, record_id)
     return ShareResponse(
         is_public=True,
-        share_token=record.share_token,
+        share_token=token,
         share_url=share_url,
     )
 
@@ -91,13 +93,16 @@ async def get_share_status(
     with get_db() as db:
         record = _get_record(db, model, record_id)
 
+        # Capture values before session closes
+        is_public = record.is_public
+        token = record.share_token
         share_url = None
-        if record.share_token:
-            share_url = _build_share_url(request, url_path, record.share_token)
+        if token:
+            share_url = _build_share_url(request, url_path, token)
 
     return ShareResponse(
-        is_public=record.is_public,
-        share_token=record.share_token,
+        is_public=is_public,
+        share_token=token,
         share_url=share_url,
     )
 
@@ -116,10 +121,12 @@ async def disable_sharing(
     with get_db() as db:
         record = _get_record(db, model, record_id)
         record.is_public = False
+        # Capture token before session closes
+        token = record.share_token
 
     logger.info("Sharing disabled for %s/%s", resource, record_id)
     return ShareResponse(
         is_public=False,
-        share_token=record.share_token,
+        share_token=token,
         share_url=None,
     )
