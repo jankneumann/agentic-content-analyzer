@@ -1,11 +1,12 @@
+from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
+
 from src.api.app import app
 from src.config.settings import Settings
-from unittest.mock import patch, MagicMock
 
 client = TestClient(app)
+
 
 @patch("src.api.dependencies.get_settings")
 def test_digest_routes_protected_in_production(mock_get_settings):
@@ -23,7 +24,10 @@ def test_digest_routes_protected_in_production(mock_get_settings):
     # Access without header
     # This should return 401 if protected
     response = client.get("/api/v1/digests/")
-    assert response.status_code in [401, 403], f"Digest routes should be protected, got {response.status_code}"
+    assert response.status_code in [401, 403], (
+        f"Digest routes should be protected, got {response.status_code}"
+    )
+
 
 @patch("src.api.dependencies.get_settings")
 def test_content_routes_protected_in_production(mock_get_settings):
@@ -41,4 +45,6 @@ def test_content_routes_protected_in_production(mock_get_settings):
     response = client.get("/api/v1/contents")
 
     # This MUST return 401/403
-    assert response.status_code in [401, 403], f"Content routes should be protected, got {response.status_code}"
+    assert response.status_code in [401, 403], (
+        f"Content routes should be protected, got {response.status_code}"
+    )

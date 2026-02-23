@@ -4,11 +4,13 @@ Tests the prompt testing feature which renders templates with variables
 and returns the rendered result.
 """
 
+from typing import Any
+
 
 class TestPromptTestEndpoint:
     """Tests for the prompt test endpoint."""
 
-    def test_test_prompt_renders_template(self, client):
+    def test_test_prompt_renders_template(self, client: Any) -> None:
         """Test rendering a prompt template with variables."""
         response = client.post(
             "/api/v1/settings/prompts/pipeline.podcast_script.length_brief/test",
@@ -25,7 +27,7 @@ class TestPromptTestEndpoint:
         # {period} should no longer appear as a placeholder
         assert "{period}" not in data["rendered_prompt"]
 
-    def test_test_prompt_returns_variable_names(self, client):
+    def test_test_prompt_returns_variable_names(self, client: Any) -> None:
         """Test that variable names are extracted from the template."""
         response = client.post(
             "/api/v1/settings/prompts/pipeline.podcast_script.length_brief/test",
@@ -40,7 +42,7 @@ class TestPromptTestEndpoint:
         # length_brief template should have a 'period' variable
         assert "period" in data["variable_names"]
 
-    def test_test_prompt_with_draft_value(self, client):
+    def test_test_prompt_with_draft_value(self, client: Any) -> None:
         """Test rendering with a draft value instead of saved template."""
         response = client.post(
             "/api/v1/settings/prompts/pipeline.summarization.system/test",
@@ -57,7 +59,7 @@ class TestPromptTestEndpoint:
         assert "title" in data["variable_names"]
         assert "author" in data["variable_names"]
 
-    def test_test_prompt_leaves_unset_variables(self, client):
+    def test_test_prompt_leaves_unset_variables(self, client: Any) -> None:
         """Test that unset variables remain as {placeholder}."""
         response = client.post(
             "/api/v1/settings/prompts/pipeline.summarization.system/test",
@@ -73,7 +75,7 @@ class TestPromptTestEndpoint:
         assert "My Title" in data["rendered_prompt"]
         assert "{author}" in data["rendered_prompt"]
 
-    def test_test_prompt_invalid_key(self, client):
+    def test_test_prompt_invalid_key(self, client: Any) -> None:
         """Test with an invalid key format."""
         response = client.post(
             "/api/v1/settings/prompts/invalid/test",
@@ -82,7 +84,7 @@ class TestPromptTestEndpoint:
 
         assert response.status_code == 400
 
-    def test_test_prompt_not_found(self, client):
+    def test_test_prompt_not_found(self, client: Any) -> None:
         """Test with a non-existent prompt key."""
         response = client.post(
             "/api/v1/settings/prompts/pipeline.nonexistent.system/test",
@@ -91,7 +93,7 @@ class TestPromptTestEndpoint:
 
         assert response.status_code == 404
 
-    def test_test_prompt_empty_variables(self, client):
+    def test_test_prompt_empty_variables(self, client: Any) -> None:
         """Test rendering with no variables provided."""
         response = client.post(
             "/api/v1/settings/prompts/pipeline.podcast_script.length_brief/test",
@@ -104,7 +106,7 @@ class TestPromptTestEndpoint:
         # Template should still be returned (with unresolved variables)
         assert len(data["rendered_prompt"]) > 0
 
-    def test_test_prompt_with_override_active(self, client, db_session):
+    def test_test_prompt_with_override_active(self, client: Any, db_session: Any) -> None:
         """Test that test endpoint uses the override when no draft_value given."""
         # Set an override
         client.put(
@@ -128,7 +130,7 @@ class TestPromptTestEndpoint:
 class TestListPromptsUpdated:
     """Tests for the updated list prompts endpoint."""
 
-    def test_list_prompts_includes_all_variants(self, client):
+    def test_list_prompts_includes_all_variants(self, client: Any) -> None:
         """Test that list now includes non-system prompt variants."""
         response = client.get("/api/v1/settings/prompts")
 
@@ -143,7 +145,9 @@ class TestListPromptsUpdated:
         assert "pipeline.podcast_script.length_standard" in keys
         assert "pipeline.summarization.user_template" in keys
 
-    def test_list_prompts_includes_version_and_description(self, client, db_session):
+    def test_list_prompts_includes_version_and_description(
+        self, client: Any, db_session: Any
+    ) -> None:
         """Test that version and description fields are returned."""
         # Set an override with description
         client.put(
@@ -159,7 +163,7 @@ class TestListPromptsUpdated:
         assert summary_prompt["version"] == 1
         assert summary_prompt["description"] == "Test change"
 
-    def test_get_prompt_includes_version(self, client, db_session):
+    def test_get_prompt_includes_version(self, client: Any, db_session: Any) -> None:
         """Test that get prompt returns version info."""
         # Set override
         client.put(
@@ -177,7 +181,7 @@ class TestListPromptsUpdated:
 
         assert data["version"] == 2
 
-    def test_update_prompt_returns_version(self, client, db_session):
+    def test_update_prompt_returns_version(self, client: Any, db_session: Any) -> None:
         """Test that update returns the new version."""
         response = client.put(
             "/api/v1/settings/prompts/chat.summary.system",

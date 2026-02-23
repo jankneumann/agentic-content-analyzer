@@ -46,13 +46,13 @@ def list_pending_newsletters(after_date=None, before_date=None):
             print("\nNo pending newsletters found.")
             return
 
-        print(f"\n{'='*120}")
+        print(f"\n{'=' * 120}")
         print(f"PENDING NEWSLETTERS ({len(newsletters)} total)")
-        print(f"{'='*120}")
+        print(f"{'=' * 120}")
         print(
             f"{'ID':<6} | {'Title':<50} | {'Publication':<25} | {'Published Date':<12} | {'Status'}"
         )
-        print(f"{'-'*120}")
+        print(f"{'-' * 120}")
 
         for n in newsletters:
             title = (n.title[:47] + "...") if len(n.title) > 50 else n.title
@@ -85,13 +85,13 @@ def list_summaries(newsletter_id=None, after_date=None, before_date=None, format
             print("\nNo summaries found.")
             return
 
-        print(f"\n{'='*140}")
+        print(f"\n{'=' * 140}")
         print(f"NEWSLETTER SUMMARIES ({len(results)} total)")
-        print(f"{'='*140}")
+        print(f"{'=' * 140}")
         print(
             f"{'ID':<6} | {'Title':<40} | {'Publication':<20} | {'Published':<12} | {'Key Themes'}"
         )
-        print(f"{'-'*140}")
+        print(f"{'-' * 140}")
 
         for summary, newsletter in results:
             title = (

@@ -50,16 +50,16 @@ async def main_async(args) -> None:
     )
 
     # Display results
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("THEME ANALYSIS RESULTS")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"\nDate Range: {start_date.date()} to {end_date.date()}")
     print(f"Newsletters Analyzed: {result.newsletter_count}")
     print(f"Total Themes Found: {result.total_themes}")
     print(f"Emerging Themes: {result.emerging_themes_count}")
     print(f"Processing Time: {result.processing_time_seconds:.2f}s")
     print(f"Model Used: {result.model_used}")
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
 
     if result.themes:
         print("\nTOP THEMES (sorted by relevance):\n")
@@ -142,9 +142,9 @@ async def main_async(args) -> None:
         print(f"✓ Results exported to {args.output}")
 
     # Performance metrics
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("PERFORMANCE METRICS")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"Processing Time: {result.processing_time_seconds:.2f}s")
     print(f"Newsletters/second: {result.newsletter_count / result.processing_time_seconds:.2f}")
     print(
