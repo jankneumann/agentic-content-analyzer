@@ -151,7 +151,7 @@ async def login(body: LoginRequest, request: Request) -> Response:
     if not settings.app_secret_key:
         logger.error("Login attempted but APP_SECRET_KEY is not configured")
         return _error_response(
-            500,
+            503,
             "Authentication not configured",
             "APP_SECRET_KEY is not set. Configure it to enable login.",
         )

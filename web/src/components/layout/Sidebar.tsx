@@ -59,6 +59,11 @@ function NavItemComponent({
 
   // In collapsed mode, wrap with tooltip
   if (isCollapsed) {
+    const baseClasses = cn(
+      "flex h-10 w-10 items-center justify-center rounded-md",
+      item.disabled && "pointer-events-none opacity-50"
+    )
+
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
@@ -66,19 +71,16 @@ function NavItemComponent({
             to={item.href}
             activeOptions={{ exact: item.href === "/" }}
             activeProps={{
-              className: "bg-primary text-primary-foreground",
+              className: cn(baseClasses, "bg-primary text-primary-foreground"),
               "aria-current": "page",
             }}
             inactiveProps={{
-              className:
-                "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+              className: cn(
+                baseClasses,
+                "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              ),
             }}
-            className={cn(
-              // Base styles
-              "flex h-10 w-10 items-center justify-center rounded-md",
-              // Disabled state
-              item.disabled && "pointer-events-none opacity-50"
-            )}
+            className={baseClasses}
           >
             <Icon className="h-5 w-5" />
             <span className="sr-only">{item.title}</span>
@@ -95,24 +97,26 @@ function NavItemComponent({
   }
 
   // Expanded mode - full navigation item
+  const baseClasses = cn(
+    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+    item.disabled && "pointer-events-none opacity-50"
+  )
+
   return (
     <Link
       to={item.href}
       activeOptions={{ exact: item.href === "/" }}
       activeProps={{
-        className: "bg-primary text-primary-foreground",
+        className: cn(baseClasses, "bg-primary text-primary-foreground"),
         "aria-current": "page",
       }}
       inactiveProps={{
-        className:
-          "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        className: cn(
+          baseClasses,
+          "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        ),
       }}
-      className={cn(
-        // Base styles
-        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
-        // Disabled state
-        item.disabled && "pointer-events-none opacity-50"
-      )}
+      className={baseClasses}
     >
       <Icon className="h-5 w-5 shrink-0" />
       <span className="truncate">{item.title}</span>
