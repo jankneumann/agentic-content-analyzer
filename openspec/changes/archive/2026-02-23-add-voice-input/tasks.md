@@ -85,3 +85,9 @@
 - [x] 10.6 Add backend tests for voice cleanup API endpoint
 - [ ] 10.7 Add E2E test for cleanup button rendering and click flow (deferred — no chat E2E page object yet)
 - [ ] 10.8 Add E2E test for cleanup keyboard shortcut (deferred — no chat E2E page object yet)
+
+## Migration Notes
+Open tasks migrated to beads issues on 2026-02-23:
+- 8.8 → aca-fyh (Add configurable voice cleanup key phrase, P3)
+- 10.1, 10.7, 10.8 → aca-gd0 (Add chat voice input E2E tests, P3)
+- 10.2, 10.4 → aca-qp8 (Add SpeechRecognition E2E tests with browser mock, P4)
