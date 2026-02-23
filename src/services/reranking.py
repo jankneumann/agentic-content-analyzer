@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from functools import lru_cache
 from typing import Protocol, runtime_checkable
 
 from src.config.settings import get_settings
@@ -219,11 +220,26 @@ class LLMRerankProvider:
         return results_list
 
 
+@lru_cache(maxsize=8)
+def _get_cached_rerank_provider(name: str, model_name: str | None) -> RerankProvider:
+    """Cached factory for reranking providers."""
+    if name == "cohere":
+        return CohereRerankProvider(model_name or "rerank-english-v3.0")
+    elif name == "jina":
+        return JinaRerankProvider(model_name or "jina-reranker-v2-base-multilingual")
+    elif name == "local":
+        return LocalCrossEncoderProvider(model_name or "cross-encoder/ms-marco-MiniLM-L-12-v2")
+    elif name == "llm":
+        return LLMRerankProvider(model_name)
+    else:
+        raise ValueError(f"Unknown rerank provider: {name}")
+
+
 def get_rerank_provider(
     provider_name: str | None = None,
     model: str | None = None,
 ) -> RerankProvider | None:
-    """Factory: create reranking provider if enabled.
+    """Factory: get the configured reranking provider (cached).
 
     Returns None if reranking is disabled (default).
 
@@ -242,13 +258,4 @@ def get_rerank_provider(
     name = (provider_name or settings.search_rerank_provider).lower()
     model_name = model or settings.search_rerank_model
 
-    if name == "cohere":
-        return CohereRerankProvider(model_name or "rerank-english-v3.0")
-    elif name == "jina":
-        return JinaRerankProvider(model_name or "jina-reranker-v2-base-multilingual")
-    elif name == "local":
-        return LocalCrossEncoderProvider(model_name or "cross-encoder/ms-marco-MiniLM-L-12-v2")
-    elif name == "llm":
-        return LLMRerankProvider(model_name)
-    else:
-        raise ValueError(f"Unknown rerank provider: {name}")
+    return _get_cached_rerank_provider(name, model_name)
