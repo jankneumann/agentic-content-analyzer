@@ -29,9 +29,9 @@ async def search_concepts(query: str, limit: int = 10) -> None:
             print(f"\nNo results found for: {query}")
             return
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Search results for: {query}")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         for i, result in enumerate(results, 1):
             print(f"{i}. {json.dumps(result, indent=2, default=str)}\n")
@@ -52,10 +52,7 @@ async def get_temporal_trends(
     start_date = end_date - timedelta(days=days_back)
 
     async with GraphitiClient() as graphiti:
-        logger.info(
-            f"Getting temporal context for {len(concepts)} concepts "
-            f"over {days_back} days"
-        )
+        logger.info(f"Getting temporal context for {len(concepts)} concepts over {days_back} days")
         results = await graphiti.get_temporal_context(
             concepts=concepts,
             start_date=start_date,
@@ -66,10 +63,10 @@ async def get_temporal_trends(
             print(f"\nNo temporal data found for: {', '.join(concepts)}")
             return
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Temporal trends for: {', '.join(concepts)}")
         print(f"Date range: {start_date.date()} to {end_date.date()}")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         for i, result in enumerate(results, 1):
             print(f"{i}. {json.dumps(result, indent=2, default=str)}\n")
@@ -77,9 +74,7 @@ async def get_temporal_trends(
 
 async def main() -> None:
     """Run knowledge graph queries."""
-    parser = argparse.ArgumentParser(
-        description="Query the Graphiti knowledge graph"
-    )
+    parser = argparse.ArgumentParser(description="Query the Graphiti knowledge graph")
     parser.add_argument(
         "--query",
         type=str,
@@ -123,6 +118,7 @@ async def main() -> None:
         logger.error(f"Query failed: {e}")
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return
 

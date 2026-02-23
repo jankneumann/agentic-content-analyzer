@@ -12,13 +12,14 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from src.api.dependencies import verify_admin_key
 from src.config import settings
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
@@ -31,7 +32,11 @@ from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
-router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+router = APIRouter(
+    prefix="/api/v1/chat",
+    tags=["chat"],
+    dependencies=[Depends(verify_admin_key)],
+)
 logger = get_logger(__name__)
 
 
