@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (
     JSON,
+    Boolean,
     Column,
     DateTime,
     Enum as SQLEnum,
@@ -140,6 +141,10 @@ class Content(Base):  # type: ignore[valid-type, misc]
     )
     error_message = Column(Text, nullable=True)
 
+    # Sharing
+    is_public = Column(Boolean, nullable=False, default=False, server_default="false")
+    share_token = Column(String(36), nullable=True, unique=True, index=True)
+
     # Timestamps
     ingested_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     parsed_at = Column(DateTime, nullable=True)
@@ -256,6 +261,9 @@ class ContentResponse(BaseModel):
     status: ContentStatus
     error_message: str | None = None
 
+    is_public: bool = False
+    share_token: str | None = None
+
     ingested_at: datetime
     parsed_at: datetime | None = None
     processed_at: datetime | None = None
@@ -286,3 +294,16 @@ class ContentListResponse(BaseModel):
     page_size: int
     has_next: bool = Field(default=False)
     has_prev: bool = Field(default=False)
+
+
+# --- Sharing Schemas ---
+
+
+class ShareResponse(BaseModel):
+    """Response for share enable/status endpoints."""
+
+    is_public: bool
+    share_token: str | None = None
+    share_url: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)

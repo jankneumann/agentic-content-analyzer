@@ -36,6 +36,12 @@ ENDPOINT_AUTH_MAP: dict[str, dict[str, str]] = {
     "/api/v1/sources/*": {"auth": "session_or_admin_key", "reason": "Protected by middleware"},
     "/api/v1/jobs/*": {"auth": "session_or_admin_key", "reason": "Protected by middleware"},
     "/api/v1/save/*": {"auth": "session_or_admin_key", "reason": "Content capture"},
+    "/api/v1/*/share": {
+        "auth": "session_or_admin_key",
+        "reason": "Share management (enable/disable/status)",
+    },
+    # Public — no auth required (token-gated, rate-limited)
+    "/shared/*": {"auth": "none", "reason": "Public shared content (token-gated, rate-limited)"},
     # Admin endpoints — session/admin_key (middleware) + verify_admin_key (defense-in-depth)
     "/api/v1/settings/*": {"auth": "admin_api_key", "reason": "Prompt/settings management"},
     "/api/v1/prompts/*": {"auth": "admin_api_key", "reason": "Prompt management"},

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Newsletter Aggregator</title>
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="{{ title }}">
+    <meta property="og:description" content="{{ description | default('Shared content from Newsletter Aggregator', true) }}">
+    <meta property="og:type" content="{{ og_type | default('article', true) }}">
+    {% if share_url %}
+    <meta property="og:url" content="{{ share_url }}">
+    {% endif %}
+    {% if audio_url %}
+    <meta property="og:audio" content="{{ audio_url }}">
+    {% endif %}
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ title }}">
+    <meta name="twitter:description" content="{{ description | default('Shared content from Newsletter Aggregator', true) }}">
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            line-height: 1.6;
+            color: #1a1a2e;
+            background: #f8f9fa;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 16px 0;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+
+        .meta {
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .meta span + span::before {
+            content: '\00b7';
+            margin: 0 8px;
+        }
+
+        .content {
+            background: #fff;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .content h2 { font-size: 1.25rem; margin: 24px 0 12px; color: #1e293b; }
+        .content h3 { font-size: 1.1rem; margin: 20px 0 10px; color: #334155; }
+        .content p { margin: 12px 0; }
+        .content ul, .content ol { margin: 12px 0; padding-left: 24px; }
+        .content li { margin: 4px 0; }
+        .content blockquote {
+            border-left: 3px solid #6366f1;
+            padding: 8px 16px;
+            margin: 16px 0;
+            color: #475569;
+            background: #f1f5f9;
+            border-radius: 0 4px 4px 0;
+        }
+        .content code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        .content pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+        .content pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+        .content a { color: #6366f1; text-decoration: none; }
+        .content a:hover { text-decoration: underline; }
+
+        .audio-player {
+            background: #f1f5f9;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 24px 0;
+        }
+        .audio-player audio { width: 100%; }
+        .audio-player .label {
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-bottom: 8px;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 24px 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            margin-top: 32px;
+        }
+
+        {% block extra_styles %}{% endblock %}
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% block body %}{% endblock %}
+
+        <div class="footer">
+            Shared via Newsletter Aggregator
+        </div>
+    </div>
+</body>
+</html>

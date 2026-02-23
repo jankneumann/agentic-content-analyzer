@@ -1,0 +1,49 @@
+{% extends "shared/base.html" %}
+
+{% block body %}
+<div class="header">
+    <h1>{{ title }}</h1>
+    <div class="meta">
+        {% if source_title %}<span>Summary of: {{ source_title }}</span>{% endif %}
+        {% if created_at %}<span>{{ created_at }}</span>{% endif %}
+    </div>
+</div>
+<div class="content">
+    {% if executive_summary %}
+    <h2>Executive Summary</h2>
+    <p>{{ executive_summary }}</p>
+    {% endif %}
+
+    {% if key_themes %}
+    <h2>Key Themes</h2>
+    <ul>
+        {% for theme in key_themes %}
+        <li>{{ theme }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if strategic_insights %}
+    <h2>Strategic Insights</h2>
+    <ul>
+        {% for insight in strategic_insights %}
+        <li>{{ insight }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if actionable_items %}
+    <h2>Actionable Items</h2>
+    <ul>
+        {% for item in actionable_items %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if markdown_html %}
+    <h2>Full Summary</h2>
+    {{ markdown_html | safe }}
+    {% endif %}
+</div>
+{% endblock %}

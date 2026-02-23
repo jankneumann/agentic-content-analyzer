@@ -30,6 +30,8 @@ from src.api.script_routes import router as script_router
 from src.api.search_routes import router as search_router
 from src.api.settings_override_routes import router as settings_override_router
 from src.api.settings_routes import router as settings_router
+from src.api.share_routes import router as share_router
+from src.api.shared_routes import router as shared_router
 from src.api.source_routes import router as source_router
 from src.api.summary_routes import router as summary_router
 from src.api.theme_routes import router as theme_router
@@ -154,6 +156,8 @@ app.include_router(source_router)
 app.include_router(health_router)  # Health and readiness probes
 app.include_router(job_router)  # Job queue management
 app.include_router(search_router)  # Hybrid document search
+app.include_router(share_router)  # Share management (enable/disable/status)
+app.include_router(shared_router)  # Public shared content (no auth)
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 
