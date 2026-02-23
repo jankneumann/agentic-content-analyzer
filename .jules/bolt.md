@@ -30,6 +30,10 @@
 **Learning:** Even with `defer()`, `db.query(Content)` hydrates full ORM objects which adds significant overhead (~38% slower) compared to explicitly selecting only the required columns for list views.
 **Action:** Prefer `db.query(Model.col1, Model.col2)` over `db.query(Model).options(defer(...))` when fetching data for list endpoints where only a subset of fields is needed.
 
+## 2026-02-15 - Redundant COUNT Queries
+**Learning:** The statistics endpoint was running a separate `COUNT(*)` query for the total, followed by a `GROUP BY status` query. Since `status` is non-nullable, the sum of the group counts equals the total count. Eliminating the explicit count query saves a full index/table scan.
+**Action:** When calculating statistics, derive the total count from the sum of categorical group counts (if the category column is mandatory) instead of running a separate query.
+
 ## 2026-02-27 - Caching Heavy Service Providers
 **Learning:** Service providers like `LocalEmbeddingProvider` were being re-instantiated on every request (via `get_embedding_provider`). This caused heavy ML models (SentenceTransformers) to be reloaded from disk/cache repeatedly, adding seconds of latency to search and ingestion operations.
 **Action:** Use `functools.lru_cache` for factory functions that create heavy or stateful service providers, ensuring they are initialized only once per configuration.
