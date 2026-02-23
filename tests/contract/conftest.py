@@ -82,6 +82,8 @@ def contract_test_env(monkeypatch):
     monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")
     monkeypatch.setenv("WORKER_ENABLED", "false")
     monkeypatch.setenv("ENVIRONMENT", "development")
+    # Set APP_SECRET_KEY so auth endpoints (login) don't return 500 "Not Configured"
+    monkeypatch.setenv("APP_SECRET_KEY", "test-app-secret-key-for-contracts")
 
     from src.config.settings import get_settings
 

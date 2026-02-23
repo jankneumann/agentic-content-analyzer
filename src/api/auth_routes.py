@@ -169,7 +169,7 @@ async def login(body: LoginRequest, request: Request) -> Response:
         return response
 
     # Verify password (timing-safe)
-    # compare_digest requires both inputs to be bytes to safely handle non-ASCII content
+    # Compare as bytes to handle non-ASCII passwords (fuzzing/security)
     if not secrets.compare_digest(
         body.password.encode("utf-8"), settings.app_secret_key.encode("utf-8")
     ):
