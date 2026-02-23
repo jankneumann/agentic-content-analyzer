@@ -423,7 +423,7 @@ class Settings(BaseSettings):
     test_neo4j_password: str | None = None
 
     # Agent Framework API Keys
-    anthropic_api_key: str
+    anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     google_api_key: str | None = None
     tavily_api_key: str | None = None
