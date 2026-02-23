@@ -19,6 +19,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from src.api.dependencies import verify_admin_key
 from src.config import settings
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
 from src.models.chat import ChatMessage, Conversation, MessageRole
@@ -27,7 +28,6 @@ from src.models.digest import Digest
 from src.models.podcast import PodcastScriptRecord
 from src.models.summary import Summary
 from src.services.chat_service import ChatService
-from src.api.dependencies import verify_admin_key
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
