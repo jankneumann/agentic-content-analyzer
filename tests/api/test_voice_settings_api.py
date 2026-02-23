@@ -15,8 +15,13 @@ class TestGetVoiceSettings:
         assert data["provider"]["source"] == "default"
         assert data["default_voice"]["value"] == "nova"
         assert data["speed"]["value"] == "1.0"
+        assert data["input_language"]["value"] == "en-US"
+        assert data["input_language"]["source"] == "default"
+        assert data["input_continuous"]["value"] == "false"
+        assert data["input_auto_submit"]["value"] == "false"
         assert len(data["presets"]) == 4  # professional, warm, energetic, calm
         assert data["valid_providers"] == ["openai", "elevenlabs"]
+        assert "en-US" in data["valid_input_languages"]
 
     def test_db_override_reflected(self, client):
         # Set override via settings override API
@@ -85,6 +90,51 @@ class TestUpdateVoiceSetting:
             json={"value": "onyx"},
         )
         assert resp.status_code == 200
+
+    def test_set_input_language(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/input_language",
+            json={"value": "fr-FR"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "fr-FR"
+
+    def test_set_invalid_input_language(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/input_language",
+            json={"value": "xx-XX"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid language" in resp.json()["detail"]
+
+    def test_set_input_continuous(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/input_continuous",
+            json={"value": "true"},
+        )
+        assert resp.status_code == 200
+
+    def test_set_invalid_input_continuous(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/input_continuous",
+            json={"value": "yes"},
+        )
+        assert resp.status_code == 400
+        assert "Must be 'true' or 'false'" in resp.json()["detail"]
+
+    def test_set_input_auto_submit(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/input_auto_submit",
+            json={"value": "true"},
+        )
+        assert resp.status_code == 200
+
+    def test_set_invalid_input_auto_submit(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/input_auto_submit",
+            json={"value": "maybe"},
+        )
+        assert resp.status_code == 400
 
     def test_set_invalid_field(self, client):
         resp = client.put(

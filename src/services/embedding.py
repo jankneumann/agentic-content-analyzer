@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from functools import lru_cache
 from typing import Protocol, runtime_checkable
 
 from src.config.settings import get_settings
@@ -326,11 +327,30 @@ class LocalEmbeddingProvider:
         return await asyncio.to_thread(_encode)
 
 
+@lru_cache(maxsize=8)
+def _get_cached_embedding_provider(name: str, model_name: str) -> EmbeddingProvider:
+    """Cached factory for embedding providers.
+
+    Prevents reloading heavy models (LocalEmbeddingProvider) or re-initializing
+    API clients on every request.
+    """
+    if name == "openai":
+        return OpenAIEmbeddingProvider(model_name)
+    elif name == "voyage":
+        return VoyageEmbeddingProvider(model_name)
+    elif name == "cohere":
+        return CohereEmbeddingProvider(model_name)
+    elif name == "local":
+        return LocalEmbeddingProvider(model_name)
+    else:
+        raise ValueError(f"Unknown embedding provider: {name}")
+
+
 def get_embedding_provider(
     provider_name: str | None = None,
     model: str | None = None,
 ) -> EmbeddingProvider:
-    """Factory function to create the configured embedding provider.
+    """Factory function to get the configured embedding provider (cached).
 
     Args:
         provider_name: Override provider name (default: from settings)
@@ -343,16 +363,7 @@ def get_embedding_provider(
     name = (provider_name or settings.embedding_provider).lower()
     model_name = model or settings.embedding_model
 
-    if name == "openai":
-        return OpenAIEmbeddingProvider(model_name)
-    elif name == "voyage":
-        return VoyageEmbeddingProvider(model_name)
-    elif name == "cohere":
-        return CohereEmbeddingProvider(model_name)
-    elif name == "local":
-        return LocalEmbeddingProvider(model_name)
-    else:
-        raise ValueError(f"Unknown embedding provider: {name}")
+    return _get_cached_embedding_provider(name, model_name)
 
 
 async def embed_chunks(

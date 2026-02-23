@@ -45,6 +45,7 @@ ENDPOINT_AUTH_MAP: dict[str, dict[str, str]] = {
     # Admin endpoints — session/admin_key (middleware) + verify_admin_key (defense-in-depth)
     "/api/v1/settings/*": {"auth": "admin_api_key", "reason": "Prompt/settings management"},
     "/api/v1/prompts/*": {"auth": "admin_api_key", "reason": "Prompt management"},
+    "/api/v1/voice/*": {"auth": "admin_api_key", "reason": "Voice cleanup (LLM cost)"},
 }
 
 # Define the API key header scheme

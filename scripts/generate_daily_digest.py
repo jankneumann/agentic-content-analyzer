@@ -47,14 +47,14 @@ async def main_async(args) -> None:
     digest = await creator.create_digest(request)
 
     # Display results
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("DAILY DIGEST GENERATED")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"\nDate: {period_start.date()}")
     print(f"Newsletters Analyzed: {digest.newsletter_count}")
     print(f"Processing Time: {digest.processing_time_seconds:.2f}s")
     print(f"Model Used: {digest.model_used}")
-    print(f"\n{'='*80}\n")
+    print(f"\n{'=' * 80}\n")
 
     # Display preview
     if not args.quiet:
@@ -135,9 +135,9 @@ async def main_async(args) -> None:
 
     # Performance summary
     if digest.newsletter_count > 0:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("PERFORMANCE METRICS")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"Processing Time: {digest.processing_time_seconds:.2f}s")
         print(
             f"Average per newsletter: {digest.processing_time_seconds / digest.newsletter_count:.2f}s"

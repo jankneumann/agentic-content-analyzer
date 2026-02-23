@@ -44,6 +44,10 @@ FILE_SIGNATURES: dict[str, list[bytes]] = {
     "gif": [b"GIF87a", b"GIF89a"],
     "html": [b"<!DOCTYPE", b"<!doctype", b"<html", b"<HTML"],
     "htm": [b"<!DOCTYPE", b"<!doctype", b"<html", b"<HTML"],
+    "wav": [b"RIFF"],
+    "mp3": [b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"],  # ID3v2 or MPEG 1/2/2.5 Layer 3
+    "epub": [b"PK\x03\x04"],  # EPUB is ZIP-based
+    "msg": [b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"],  # OLE CF
 }
 
 # Expected MIME types for file extensions.
@@ -73,6 +77,10 @@ EXTENSION_MIME_MAP: dict[str, set[str]] = {
     "txt": {"text/plain"},
     "md": {"text/plain", "text/markdown"},
     "csv": {"text/csv", "text/plain"},
+    "wav": {"audio/wav", "audio/x-wav", "audio/wave"},
+    "mp3": {"audio/mpeg", "audio/mp3"},
+    "epub": {"application/epub+zip"},
+    "msg": {"application/vnd.ms-outlook"},
 }
 
 # ============================================================================
@@ -304,6 +312,9 @@ async def upload_document(
             parser = parser_router.parsers[parser_name]
             supported.update(parser.supported_formats)
             supported.update(parser.fallback_formats)
+
+        # YouTube is not a file format
+        supported.discard("youtube")
 
         if format_ext not in supported:
             raise HTTPException(

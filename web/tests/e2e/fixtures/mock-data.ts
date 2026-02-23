@@ -970,6 +970,9 @@ export function createVoiceSettingsResponse(overrides: Record<string, unknown> =
     provider: createVoiceSettingInfo({ key: "voice.provider", value: "openai", source: "default" }),
     default_voice: createVoiceSettingInfo({ key: "voice.default_voice", value: "nova", source: "default" }),
     speed: createVoiceSettingInfo({ key: "voice.speed", value: "1.0", source: "default" }),
+    input_language: createVoiceSettingInfo({ key: "voice.input_language", value: "en-US", source: "default" }),
+    input_continuous: createVoiceSettingInfo({ key: "voice.input_continuous", value: "false", source: "default" }),
+    input_auto_submit: createVoiceSettingInfo({ key: "voice.input_auto_submit", value: "false", source: "default" }),
     presets: [
       { name: "professional", voices: { openai: "nova", elevenlabs: "Rachel" } },
       { name: "warm", voices: { openai: "shimmer", elevenlabs: "Domi" } },
@@ -977,6 +980,7 @@ export function createVoiceSettingsResponse(overrides: Record<string, unknown> =
       { name: "calm", voices: { openai: "fable", elevenlabs: "Elli" } },
     ],
     valid_providers: ["openai", "elevenlabs"],
+    valid_input_languages: ["en-US", "en-GB", "es-ES", "fr-FR", "de-DE", "ja-JP", "zh-CN"],
     ...overrides,
   }
 }

@@ -13,7 +13,7 @@
  */
 
 import { useState } from "react"
-import { RotateCcw, AlertCircle, RefreshCw, Lock, Volume2 } from "lucide-react"
+import { RotateCcw, AlertCircle, RefreshCw, Lock, Volume2, Mic } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -23,8 +23,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useVoiceSettings, useUpdateVoice, useResetVoice } from "@/hooks/use-settings"
 import type { VoiceSettingInfo } from "@/types/settings"
+
+/** Human-readable language labels */
+const LANGUAGE_LABELS: Record<string, string> = {
+  "en-US": "English (US)",
+  "en-GB": "English (UK)",
+  "es-ES": "Spanish",
+  "fr-FR": "French",
+  "de-DE": "German",
+  "ja-JP": "Japanese",
+  "zh-CN": "Chinese (Simplified)",
+}
 
 /** Badge color classes by source type */
 const SOURCE_BADGE_CLASSES: Record<string, string> = {
@@ -263,6 +275,87 @@ export function VoiceConfigurator() {
           </div>
         </div>
       )}
+
+      {/* Separator */}
+      <div className="border-t" />
+
+      {/* Voice Input section */}
+      <div className="flex items-center gap-2">
+        <Mic className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-sm font-medium">Voice Input</h3>
+      </div>
+
+      {/* Input Language */}
+      <SettingRow
+        label="Language"
+        setting={data.input_language}
+        onReset={() => handleReset("input_language")}
+      >
+        <EnvLockWrapper source={data.input_language.source}>
+          <Select
+            value={data.input_language.value}
+            onValueChange={(v) => handleUpdate("input_language", v)}
+            disabled={data.input_language.source === "env"}
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {data.valid_input_languages.map((lang) => (
+                <SelectItem key={lang} value={lang}>
+                  {LANGUAGE_LABELS[lang] ?? lang}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </EnvLockWrapper>
+      </SettingRow>
+
+      {/* Continuous Mode */}
+      <SettingRow
+        label="Continuous Mode"
+        setting={data.input_continuous}
+        onReset={() => handleReset("input_continuous")}
+      >
+        <EnvLockWrapper source={data.input_continuous.source}>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Keep listening after pauses instead of stopping after each utterance
+            </p>
+            <Switch
+              checked={data.input_continuous.value === "true"}
+              onCheckedChange={(checked) =>
+                handleUpdate("input_continuous", String(checked))
+              }
+              disabled={data.input_continuous.source === "env"}
+              aria-label="Toggle continuous mode"
+            />
+          </div>
+        </EnvLockWrapper>
+      </SettingRow>
+
+      {/* Auto-Submit */}
+      <SettingRow
+        label="Auto-Submit"
+        setting={data.input_auto_submit}
+        onReset={() => handleReset("input_auto_submit")}
+      >
+        <EnvLockWrapper source={data.input_auto_submit.source}>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Automatically send message when voice input ends (single-utterance mode only)
+            </p>
+            <Switch
+              checked={data.input_auto_submit.value === "true"}
+              onCheckedChange={(checked) =>
+                handleUpdate("input_auto_submit", String(checked))
+              }
+              disabled={data.input_auto_submit.source === "env"}
+              aria-label="Toggle auto-submit"
+            />
+          </div>
+        </EnvLockWrapper>
+      </SettingRow>
     </div>
   )
 }
