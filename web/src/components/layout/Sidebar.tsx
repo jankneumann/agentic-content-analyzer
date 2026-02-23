@@ -16,7 +16,7 @@
  * />
  */
 
-import { useNavigate, useLocation } from "@tanstack/react-router"
+import { Link } from "@tanstack/react-router"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -51,45 +51,40 @@ interface SidebarProps {
 function NavItemComponent({
   item,
   isCollapsed,
-  isActive,
 }: {
   item: NavItem
   isCollapsed: boolean
-  isActive: boolean
 }) {
   const Icon = item.icon
-  const navigate = useNavigate()
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault()
-    if (!item.disabled) {
-      navigate({ to: item.href })
-    }
-  }
 
   // In collapsed mode, wrap with tooltip
   if (isCollapsed) {
+    const baseClasses = cn(
+      "flex h-10 w-10 items-center justify-center rounded-md",
+      item.disabled && "pointer-events-none opacity-50"
+    )
+
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
-          <a
-            href={item.href}
-            onClick={handleClick}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              // Base styles
-              "flex h-10 w-10 items-center justify-center rounded-md",
-              // Hover and active states
-              isActive
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              // Disabled state
-              item.disabled && "pointer-events-none opacity-50"
-            )}
+          <Link
+            to={item.href}
+            activeOptions={{ exact: item.href === "/" }}
+            activeProps={{
+              className: cn(baseClasses, "bg-primary text-primary-foreground"),
+              "aria-current": "page",
+            }}
+            inactiveProps={{
+              className: cn(
+                baseClasses,
+                "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              ),
+            }}
+            className={baseClasses}
           >
             <Icon className="h-5 w-5" />
             <span className="sr-only">{item.title}</span>
-          </a>
+          </Link>
         </TooltipTrigger>
         <TooltipContent side="right" className="flex items-center gap-4">
           {item.title}
@@ -102,21 +97,26 @@ function NavItemComponent({
   }
 
   // Expanded mode - full navigation item
+  const baseClasses = cn(
+    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+    item.disabled && "pointer-events-none opacity-50"
+  )
+
   return (
-    <a
-      href={item.href}
-      onClick={handleClick}
-      aria-current={isActive ? "page" : undefined}
-      className={cn(
-        // Base styles
-        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
-        // Hover and active states
-        isActive
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-        // Disabled state
-        item.disabled && "pointer-events-none opacity-50"
-      )}
+    <Link
+      to={item.href}
+      activeOptions={{ exact: item.href === "/" }}
+      activeProps={{
+        className: cn(baseClasses, "bg-primary text-primary-foreground"),
+        "aria-current": "page",
+      }}
+      inactiveProps={{
+        className: cn(
+          baseClasses,
+          "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        ),
+      }}
+      className={baseClasses}
     >
       <Icon className="h-5 w-5 shrink-0" />
       <span className="truncate">{item.title}</span>
@@ -126,7 +126,7 @@ function NavItemComponent({
           {item.badge}
         </span>
       )}
-    </a>
+    </Link>
   )
 }
 
@@ -140,10 +140,6 @@ export function Sidebar({
   onToggleCollapse,
   className,
 }: SidebarProps) {
-  // Get current location for active state
-  const location = useLocation()
-  const currentPath = location.pathname
-
   return (
     <aside
       className={cn(
@@ -201,7 +197,6 @@ export function Sidebar({
                     key={item.href}
                     item={item}
                     isCollapsed={isCollapsed}
-                    isActive={currentPath === item.href}
                   />
                 ))}
               </div>
