@@ -115,7 +115,14 @@ export function ChatInput({
           />
 
           {/* Character count */}
-          <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
+          <div
+            className={cn(
+              "absolute bottom-2 right-2 text-xs text-muted-foreground transition-colors",
+              value.length > maxLength * 0.9 && "font-medium text-amber-500",
+              value.length >= maxLength && "text-destructive"
+            )}
+            aria-label={`${value.length} of ${maxLength} characters`}
+          >
             {value.length}/{maxLength}
           </div>
         </div>
