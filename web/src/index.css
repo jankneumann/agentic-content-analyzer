@@ -267,3 +267,25 @@
 .dark .prose {
   --tw-prose-links: hsl(210 40% 80%);
 }
+
+/**
+ * Voice Input Animations
+ *
+ * Pulsing ring animation for the active recording state.
+ * Uses a red ring with scale+fade to indicate live audio capture.
+ */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}

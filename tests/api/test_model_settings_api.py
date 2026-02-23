@@ -14,7 +14,7 @@ class TestGetModelSettings:
         assert "steps" in data
         assert "available_models" in data
         # Should have 11 steps (all ModelStep values)
-        assert len(data["steps"]) == 11
+        assert len(data["steps"]) == 12
 
     def test_steps_have_required_fields(self, client):
         resp = client.get("/api/v1/settings/models")

@@ -88,6 +88,7 @@ class ModelStep(StrEnum):
     ENTITY_EXTRACTION = "entity_extraction"  # Entity extraction for knowledge graph
     RERANKING = "reranking"  # Search result reranking (Graphiti)
     PODCAST_SCRIPT = "podcast_script"  # Podcast script generation from digest
+    VOICE_CLEANUP = "voice_cleanup"  # Voice transcript cleanup/polishing
 
 
 # Map of env var names per model step (e.g., MODEL_SUMMARIZATION)
@@ -256,6 +257,7 @@ class ModelConfig:
         entity_extraction: str | None = None,
         reranking: str | None = None,
         podcast_script: str | None = None,
+        voice_cleanup: str | None = None,
         # Provider configurations (in priority order for failover)
         providers: list[ProviderConfig] | None = None,
     ):
@@ -273,6 +275,7 @@ class ModelConfig:
             entity_extraction: Model for entity extraction (default from YAML)
             reranking: Model for search reranking (default from YAML)
             podcast_script: Model for podcast script generation (default from YAML)
+            voice_cleanup: Model for voice transcript cleanup (default from YAML)
             providers: List of provider configurations in priority order
         """
         # Use defaults from YAML if not specified
@@ -293,6 +296,8 @@ class ModelConfig:
             ModelStep.RERANKING: reranking or DEFAULT_MODELS["reranking"],
             ModelStep.PODCAST_SCRIPT: podcast_script
             or DEFAULT_MODELS.get("podcast_script", DEFAULT_MODELS["digest_creation"]),
+            ModelStep.VOICE_CLEANUP: voice_cleanup
+            or DEFAULT_MODELS.get("voice_cleanup", DEFAULT_MODELS["summarization"]),
         }
 
         # Validate all models exist

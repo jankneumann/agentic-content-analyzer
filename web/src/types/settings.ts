@@ -50,8 +50,12 @@ export interface VoiceSettingsResponse {
   provider: VoiceSettingInfo
   default_voice: VoiceSettingInfo
   speed: VoiceSettingInfo
+  input_language: VoiceSettingInfo
+  input_continuous: VoiceSettingInfo
+  input_auto_submit: VoiceSettingInfo
   presets: VoicePreset[]
   valid_providers: string[]
+  valid_input_languages: string[]
 }
 
 /** Health status for a single service */
