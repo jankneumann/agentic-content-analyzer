@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from src.config.sources import SourcesConfig
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -423,7 +423,7 @@ class Settings(BaseSettings):
     test_neo4j_password: str | None = None
 
     # Agent Framework API Keys
-    anthropic_api_key: str | None = Field(default=None, description="Anthropic API Key")
+    anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     google_api_key: str | None = None
     tavily_api_key: str | None = None

@@ -151,7 +151,7 @@ async def login(body: LoginRequest, request: Request) -> Response:
     if not settings.app_secret_key:
         logger.error("Login attempted but APP_SECRET_KEY is not configured")
         return _error_response(
-            500,
+            403,
             "Authentication not configured",
             "APP_SECRET_KEY is not set. Configure it to enable login.",
         )
@@ -169,7 +169,10 @@ async def login(body: LoginRequest, request: Request) -> Response:
         return response
 
     # Verify password (timing-safe)
-    if not secrets.compare_digest(body.password, settings.app_secret_key):
+    # Compare as bytes to handle non-ASCII passwords (fuzzing/security)
+    if not secrets.compare_digest(
+        body.password.encode("utf-8"), settings.app_secret_key.encode("utf-8")
+    ):
         login_rate_limiter.record_failure(client_ip)
         logger.warning("Failed login attempt from %s", client_ip)
         return _error_response(

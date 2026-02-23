@@ -1,4 +1,5 @@
-from src.services.search import _generate_highlight, SearchType
+from src.services.search import SearchType, _generate_highlight
+
 
 def test_generate_highlight_xss_protection():
     """

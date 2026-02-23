@@ -54,7 +54,7 @@ repos:
           - types-pytz
           - types-PyYAML
         args: [--ignore-missing-imports]
-        exclude: ^(tests/|alembic/|scripts/)
+        exclude: ^(tests/|alembic/|scripts/|\.claude/skills/.*/scripts/|\.codex/skills/.*/scripts/|\.gemini/skills/.*/scripts/|\.claude/skills/.*/tests/|\.codex/skills/.*/tests/|\.gemini/skills/.*/tests/)
 
 # Configuration
 default_language_version:

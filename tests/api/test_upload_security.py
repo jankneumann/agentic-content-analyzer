@@ -95,6 +95,10 @@ class TestValidateFileSignature:
             "gif",
             "html",
             "htm",
+            "wav",
+            "mp3",
+            "epub",
+            "msg",
         }
         assert expected == set(FILE_SIGNATURES.keys())
 

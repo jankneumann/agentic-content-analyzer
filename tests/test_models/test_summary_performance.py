@@ -1,8 +1,8 @@
 """Test Summary model performance optimizations."""
 
-from sqlalchemy import inspect, create_engine
+from sqlalchemy import create_engine, inspect
+
 from src.models.base import Base
-from src.models.summary import Summary
 
 
 def test_summary_model_used_index():
