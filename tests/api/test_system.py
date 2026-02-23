@@ -1,10 +1,12 @@
 """Tests for system endpoints (health check, config)."""
 
+from typing import Any
+
 
 class TestHealthCheck:
     """Tests for the /health endpoint."""
 
-    def test_health_check_returns_healthy(self, client):
+    def test_health_check_returns_healthy(self, client: Any) -> None:
         """Test that health check returns healthy status."""
         response = client.get("/health")
 
@@ -17,7 +19,7 @@ class TestHealthCheck:
 class TestSystemConfig:
     """Tests for the /api/v1/system/config endpoint."""
 
-    def test_system_config_returns_version(self, client):
+    def test_system_config_returns_version(self, client: Any) -> None:
         """Test that system config returns version info."""
         response = client.get("/api/v1/system/config")
 
@@ -26,7 +28,7 @@ class TestSystemConfig:
         assert "version" in data
         assert data["version"] == "0.1.0"
 
-    def test_system_config_returns_features(self, client):
+    def test_system_config_returns_features(self, client: Any) -> None:
         """Test that system config returns feature flags."""
         response = client.get("/api/v1/system/config")
 

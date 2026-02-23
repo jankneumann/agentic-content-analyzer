@@ -1,0 +1,180 @@
+{
+  "generated_at": "2026-02-23T01:22:37.048233+00:00",
+  "profile": {
+    "primary_profile": "mixed",
+    "profiles": [
+      "docker-api",
+      "mixed",
+      "node",
+      "python"
+    ],
+    "confidence": "high",
+    "signals": [
+      "docker-compose.yml",
+      "pnpm-lock.yaml",
+      "pyproject.toml",
+      "src/queue/setup.py",
+      "web/.vite/deps/package.json",
+      "web/package.json"
+    ],
+    "profile_signals": {
+      "python": [
+        "pyproject.toml",
+        "src/queue/setup.py"
+      ],
+      "node": [
+        "pnpm-lock.yaml",
+        "web/.vite/deps/package.json",
+        "web/package.json"
+      ],
+      "docker-api": [
+        "docker-compose.yml"
+      ]
+    }
+  },
+  "fail_on": "high",
+  "scanner_results": [
+    {
+      "scanner": "dependency-check",
+      "status": "error",
+      "findings": [],
+      "messages": [
+        "native dependency-check failed (exit 13); docker fallback failed (exit 13)"
+      ],
+      "metadata": {
+        "scanner": "dependency-check",
+        "status": "error",
+        "mode": "docker-fallback",
+        "runtime": "docker",
+        "report_path": "/Users/jankneumann/Coding/agentic-newsletter-aggregator/docs/security-review/gate.json",
+        "message": "native dependency-check failed (exit 13); docker fallback failed (exit 13)"
+      }
+    },
+    {
+      "scanner": "zap",
+      "status": "unavailable",
+      "findings": [],
+      "messages": [
+        "DAST profile requires --zap-target for ZAP execution"
+      ],
+      "metadata": {
+        "plan": {
+          "scanner": "zap",
+          "enabled": true,
+          "reason": "DAST-capable profile detected but no --zap-target provided",
+          "mode": "baseline",
+          "target": null,
+          "target_required": true,
+          "required_tools": [
+            "podman or docker-compatible runtime"
+          ],
+          "runner": "skills/security-review/scripts/run_zap_scan.sh"
+        }
+      }
+    }
+  ],
+  "findings": [],
+  "summary": {
+    "total_findings": 0,
+    "by_severity": {
+      "info": 0,
+      "low": 0,
+      "medium": 0,
+      "high": 0,
+      "critical": 0
+    }
+  },
+  "plan": {
+    "profile": {
+      "primary_profile": "mixed",
+      "profiles": [
+        "docker-api",
+        "mixed",
+        "node",
+        "python"
+      ],
+      "confidence": "high",
+      "signals": [
+        "docker-compose.yml",
+        "pnpm-lock.yaml",
+        "pyproject.toml",
+        "src/queue/setup.py",
+        "web/.vite/deps/package.json",
+        "web/package.json"
+      ],
+      "profile_signals": {
+        "python": [
+          "pyproject.toml",
+          "src/queue/setup.py"
+        ],
+        "node": [
+          "pnpm-lock.yaml",
+          "web/.vite/deps/package.json",
+          "web/package.json"
+        ],
+        "docker-api": [
+          "docker-compose.yml"
+        ]
+      }
+    },
+    "fail_on": "high",
+    "scanners": [
+      {
+        "scanner": "dependency-check",
+        "enabled": true,
+        "reason": "Ecosystem profile detected",
+        "required_tools": [
+          "java",
+          "dependency-check or podman/docker-compatible runtime"
+        ],
+        "runner": "skills/security-review/scripts/run_dependency_check.sh"
+      },
+      {
+        "scanner": "zap",
+        "enabled": true,
+        "reason": "DAST-capable profile detected but no --zap-target provided",
+        "mode": "baseline",
+        "target": null,
+        "target_required": true,
+        "required_tools": [
+          "podman or docker-compatible runtime"
+        ],
+        "runner": "skills/security-review/scripts/run_zap_scan.sh"
+      }
+    ]
+  },
+  "prereqs": {
+    "java": true,
+    "docker": true,
+    "podman": true,
+    "container_access": true,
+    "docker_access": true,
+    "dependency_check": true,
+    "zap_via_container": true,
+    "zap_via_docker": true,
+    "container_runtime": "docker",
+    "missing": []
+  },
+  "bootstrap": {
+    "attempted": false,
+    "mode": "auto",
+    "apply": false,
+    "requirements": [
+      "dependency-check",
+      "zap"
+    ]
+  },
+  "gate": {
+    "decision": "PASS",
+    "fail_on": "high",
+    "triggered_count": 0,
+    "reasons": [
+      "Degraded execution allowed by policy; no threshold findings detected"
+    ]
+  },
+  "run_context": {
+    "change_id": "add-voice-input",
+    "commit_sha": "d72a932a9c2e73da7c49c5fda75dc5c5caebe31c",
+    "timestamp": "2026-02-23T01:18:51.543197+00:00"
+  }
+}
