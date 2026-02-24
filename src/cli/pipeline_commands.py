@@ -5,9 +5,9 @@ Usage:
     aca pipeline weekly
 
 Parallel Ingestion:
-    All 5 ingestion sources (Gmail, RSS, YouTube, Podcast, Substack) run concurrently
-    via asyncio.gather(). Total ingestion time equals the slowest source,
-    not the sum of all sources.
+    All 7 ingestion sources (Gmail, RSS, YouTube Playlist, YouTube RSS, Podcast,
+    Substack, X Search) run concurrently via asyncio.gather(). Total ingestion
+    time equals the slowest source, not the sum of all sources.
 
 OpenTelemetry Instrumentation:
     Each pipeline stage creates an OTel span for observability:
@@ -193,11 +193,12 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         ingest_podcast,
         ingest_rss,
         ingest_substack,
+        ingest_xsearch,
         ingest_youtube_playlist,
         ingest_youtube_rss,
     )
 
-    source_count = 6
+    source_count = 7
     typer.echo(f"  Running parallel ingestion ({source_count} sources)...")
 
     # Define ingestion tasks — each orchestrator function is a plain
@@ -211,6 +212,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         _ingest_source("youtube-rss", ingest_youtube_rss),
         _ingest_source("podcast", ingest_podcast),
         _ingest_source("substack", ingest_substack),
+        _ingest_source("xsearch", ingest_xsearch),
     ]
 
     # Run all sources in parallel

@@ -460,6 +460,12 @@ class Settings(BaseSettings):
         None  # JSON string of OAuth token for headless cloud deployments
     )
 
+    # Grok X Search Configuration
+    xai_api_key: str | None = None  # xAI API key for Grok
+    grok_model: str = "grok-4-1-fast"  # Model for X search (optimized for tool calling)
+    grok_x_max_turns: int = 5  # Max tool calling turns per search
+    grok_x_max_threads: int = 50  # Max threads per search run
+
     # Podcast Ingestion Configuration
     podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"
     podcast_max_duration_minutes: int = 120  # Max episode duration to transcribe
