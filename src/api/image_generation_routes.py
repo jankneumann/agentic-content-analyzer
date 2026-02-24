@@ -188,11 +188,16 @@ async def suggest_images(request: SuggestRequest) -> SuggestResponse:
 
     with get_db() as db:
         generator = get_image_generator(db=db)
-        suggestions = await generator.suggest_images(
-            content=request.content,
-            content_type=request.content_type,
-            max_suggestions=request.max_suggestions,
-        )
+        try:
+            suggestions = await generator.suggest_images(
+                content=request.content,
+                content_type=request.content_type,
+                max_suggestions=request.max_suggestions,
+            )
+        except Exception:
+            logger.exception("Image suggestion failed")
+            # Graceful degradation — suggestions are advisory, not critical
+            return SuggestResponse(suggestions=[])
 
         return SuggestResponse(
             suggestions=[

@@ -110,6 +110,42 @@ class TestSuggestEndpoint:
 
         assert response.status_code == 422
 
+    def test_suggest_validates_content_type(self, client, mock_image_generator):
+        """content_type must be 'summary' or 'digest'."""
+        with patch(
+            "src.services.image_generator.get_image_generator",
+            return_value=mock_image_generator,
+        ):
+            response = client.post(
+                "/api/v1/images/suggest",
+                json={
+                    "content": "A" * 20,
+                    "content_type": "invalid_type",
+                },
+            )
+
+        assert response.status_code == 422
+
+    def test_suggest_returns_empty_on_llm_failure(self, client, mock_image_generator):
+        """LLM failures should return empty suggestions, not 500."""
+        mock_image_generator.suggest_images = AsyncMock(
+            side_effect=RuntimeError("LLM unavailable"),
+        )
+
+        with patch(
+            "src.services.image_generator.get_image_generator",
+            return_value=mock_image_generator,
+        ):
+            response = client.post(
+                "/api/v1/images/suggest",
+                json={
+                    "content": "AI agents are transforming software development with multi-step reasoning.",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["suggestions"] == []
+
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/images/generate
@@ -253,22 +289,6 @@ class TestGenerateEndpoint:
 
         assert response.status_code == 502
         assert "provider" in response.json()["detail"].lower()
-
-    def test_suggest_validates_content_type(self, client, mock_image_generator):
-        """content_type must be 'summary' or 'digest'."""
-        with patch(
-            "src.services.image_generator.get_image_generator",
-            return_value=mock_image_generator,
-        ):
-            response = client.post(
-                "/api/v1/images/suggest",
-                json={
-                    "content": "A" * 20,
-                    "content_type": "invalid_type",
-                },
-            )
-
-        assert response.status_code == 422
 
 
 # ---------------------------------------------------------------------------

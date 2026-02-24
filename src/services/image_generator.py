@@ -17,9 +17,10 @@ Architecture:
 Usage:
     from src.services.image_generator import ImageGenerator, get_image_generator
 
-    generator = get_image_generator()
-    suggestions = await generator.suggest_images(content_text)
-    image = await generator.generate_for_summary(summary, prompt="...")
+    with get_db() as db:
+        generator = get_image_generator(db=db)
+        suggestions = await generator.suggest_images(content_text)
+        image = await generator.generate_for_summary(summary, prompt="...")
 """
 
 from __future__ import annotations
@@ -68,15 +69,6 @@ class ImageSuggestion:
     rationale: str
     style: str = "professional"
     placement: str = "after_executive_summary"
-
-
-@dataclass
-class GenerationResult:
-    """Result of an image generation call."""
-
-    image_bytes: bytes
-    model_name: str
-    params: GenerationParams
 
 
 # ---------------------------------------------------------------------------
