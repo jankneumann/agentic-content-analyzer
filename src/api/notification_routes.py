@@ -213,38 +213,18 @@ async def mark_all_events_read() -> dict[str, Any]:
 # ============================================================================
 
 
-@router.get("/stream")
+@router.get("/stream", dependencies=[Depends(verify_admin_key)])
 async def event_stream(
     request: Request,
-    key: str | None = Query(None),
 ) -> StreamingResponse:
     """Server-Sent Events endpoint for real-time notification delivery.
 
-    Auth is via query param `key` since EventSource can't set headers.
+    Auth: handled by AuthMiddleware (session cookie) + verify_admin_key
+    (defense-in-depth). Browser EventSource sends cookies via
+    withCredentials:true so cookie-based auth works automatically.
+
     Supports Last-Event-ID for reconnection.
     """
-    # Validate auth — SSE uses query param since EventSource can't set headers
-    from src.config.settings import get_settings
-
-    settings = get_settings()
-    if not settings.is_development:
-        # Check query param key
-        if key and settings.admin_api_key:
-            import secrets
-
-            if not secrets.compare_digest(key, settings.admin_api_key):
-                raise HTTPException(status_code=403, detail="Invalid key")
-        elif not key:
-            # Check session cookie as fallback
-            if settings.app_secret_key:
-                from src.api.auth_routes import _COOKIE_NAME, _verify_jwt
-
-                token = request.cookies.get(_COOKIE_NAME)
-                if not token or _verify_jwt(token, settings.app_secret_key) is None:
-                    raise HTTPException(status_code=401, detail="Authentication required")
-            else:
-                raise HTTPException(status_code=401, detail="Authentication required")
-
     # Check for Last-Event-ID for reconnection support
     last_event_id = request.headers.get("Last-Event-ID")
 
@@ -282,7 +262,7 @@ async def event_stream(
                                     else "",
                                 }
                                 yield f"id: {event.id}\nevent: notification\ndata: {json.dumps(event_data)}\n\n"
-                except (ValueError, Exception):
+                except Exception:
                     logger.debug("Invalid Last-Event-ID, skipping replay", exc_info=True)
 
             # Stream new events with heartbeat

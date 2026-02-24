@@ -5,8 +5,6 @@ Revises: d364355a18ba
 Create Date: 2026-02-23
 """
 
-from typing import Union
-
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
@@ -14,9 +12,9 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "da8203070ef9"
-down_revision: Union[str, None] = "d364355a18ba"
-branch_labels: Union[str, tuple[str, ...], None] = None
-depends_on: Union[str, tuple[str, ...], None] = None
+down_revision: str | None = "d364355a18ba"
+branch_labels: str | tuple[str, ...] | None = None
+depends_on: str | tuple[str, ...] | None = None
 
 
 def upgrade() -> None:
@@ -24,10 +22,7 @@ def upgrade() -> None:
     conn = op.get_bind()
 
     exists = conn.execute(
-        sa.text(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_name = 'notification_events'"
-        )
+        sa.text("SELECT 1 FROM information_schema.tables WHERE table_name = 'notification_events'")
     ).scalar()
 
     if not exists:
@@ -80,10 +75,7 @@ def upgrade() -> None:
         )
 
     exists = conn.execute(
-        sa.text(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_name = 'device_registrations'"
-        )
+        sa.text("SELECT 1 FROM information_schema.tables WHERE table_name = 'device_registrations'")
     ).scalar()
 
     if not exists:
