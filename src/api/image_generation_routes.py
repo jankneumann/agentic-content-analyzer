@@ -120,7 +120,10 @@ async def generate_image(request: GenerateRequest) -> GenerateResponse:
     )
 
     with get_db() as db:
-        generator = get_image_generator(db=db)
+        try:
+            generator = get_image_generator(db=db)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
         params = GenerationParams(
             size=request.size,
@@ -187,7 +190,10 @@ async def suggest_images(request: SuggestRequest) -> SuggestResponse:
     from src.services.image_generator import get_image_generator
 
     with get_db() as db:
-        generator = get_image_generator(db=db)
+        try:
+            generator = get_image_generator(db=db)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         try:
             suggestions = await generator.suggest_images(
                 content=request.content,
@@ -240,7 +246,10 @@ async def regenerate_image(image_id: UUID, request: RegenerateRequest) -> Genera
                 detail="Image has no generation prompt (not AI-generated)",
             )
 
-        generator = get_image_generator(db=db)
+        try:
+            generator = get_image_generator(db=db)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
         prompt = request.prompt or existing.generation_prompt
         old_params = existing.generation_params or {}

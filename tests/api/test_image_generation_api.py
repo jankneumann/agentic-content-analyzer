@@ -318,14 +318,14 @@ class TestRegenerateEndpoint:
 
 class TestFeatureFlag:
     def test_generate_fails_when_disabled(self, client):
-        """When IMAGE_GENERATION_ENABLED=false, factory raises ValueError."""
+        """When IMAGE_GENERATION_ENABLED=false, returns 422 with message."""
         with patch(
             "src.services.image_generator.get_image_generator",
             side_effect=ValueError("Image generation is disabled"),
         ):
-            # ValueError propagates through TestClient — verify it raises
-            with pytest.raises(ValueError, match="disabled"):
-                client.post(
-                    "/api/v1/images/suggest",
-                    json={"content": "Test content for suggestions here"},
-                )
+            response = client.post(
+                "/api/v1/images/suggest",
+                json={"content": "Test content for suggestions here"},
+            )
+            assert response.status_code == 422
+            assert "disabled" in response.json()["detail"]
