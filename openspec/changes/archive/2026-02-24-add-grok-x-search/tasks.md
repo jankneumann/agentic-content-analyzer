@@ -2,28 +2,28 @@
 
 ## 1. Dependencies and Configuration
 
-- [ ] 1.1 Add `xai-sdk>=1.3.1` to project dependencies (pyproject.toml)
-- [ ] 1.2 Add configuration settings to `src/config/settings.py`:
+- [x] 1.1 Add `xai-sdk>=1.3.1` to project dependencies (pyproject.toml)
+- [x] 1.2 Add configuration settings to `src/config/settings.py`:
   - `XAI_API_KEY`: API key for xAI Grok
   - `GROK_MODEL`: Model to use (default: `grok-4-1-fast`)
   - `GROK_X_SEARCH_PROMPT`: Default search prompt template
   - `GROK_X_MAX_TURNS`: Max tool calling turns (default: 5)
   - `GROK_X_MAX_THREADS`: Max threads per search (default: 50)
-- [ ] 1.3 Document environment variables in `.env.example`
+- [x] 1.3 Document environment variables in `.env.example`
 
 ## 2. Database Schema
 
-- [ ] 2.1 Add `XSEARCH = "xsearch"` to `ContentSource` enum in `src/models/content.py`
-- [ ] 2.2 Create Alembic migration to add `xsearch` value to `content_source` enum type in PostgreSQL:
+- [x] 2.1 Add `XSEARCH = "xsearch"` to `ContentSource` enum in `src/models/content.py`
+- [x] 2.2 Create Alembic migration to add `xsearch` value to `content_source` enum type in PostgreSQL:
   ```sql
   ALTER TYPE content_source ADD VALUE 'xsearch';
   ```
-- [ ] 2.3 Run migration and verify enum update
+- [x] 2.3 Run migration and verify enum update
 
 ## 3. Client Implementation
 
-- [ ] 3.1 Create `src/ingestion/xsearch.py` module
-- [ ] 3.2 Implement `GrokXClient` class:
+- [x] 3.1 Create `src/ingestion/xsearch.py` module
+- [x] 3.2 Implement `GrokXClient` class:
   ```python
   class GrokXClient:
       """Client for searching X threads using Grok API."""
@@ -34,7 +34,7 @@
       def _parse_response(self, response) -> list[XThreadData]
       def close(self) -> None
   ```
-- [ ] 3.3 Implement `XThreadData` Pydantic model for parsed thread data:
+- [x] 3.3 Implement `XThreadData` Pydantic model for parsed thread data:
   ```python
   class XThreadData(BaseModel):
       root_post_id: str                    # First post ID (used as source_id)
@@ -47,14 +47,14 @@
       thread_length: int
       # ... engagement metrics, media, etc.
   ```
-- [ ] 3.4 Implement streaming response handling with tool call logging
-- [ ] 3.5 Add error handling for API failures, rate limits, authentication errors
-- [ ] 3.6 Add retry logic with exponential backoff
-- [ ] 3.7 Implement thread fetching: when a post is discovered, fetch its complete thread
+- [x] 3.4 Implement streaming response handling with tool call logging
+- [x] 3.5 Add error handling for API failures, rate limits, authentication errors
+- [x] 3.6 Add retry logic with exponential backoff
+- [x] 3.7 Implement thread fetching: when a post is discovered, fetch its complete thread
 
 ## 4. Service Implementation
 
-- [ ] 4.1 Implement `GrokXContentIngestionService` class:
+- [x] 4.1 Implement `GrokXContentIngestionService` class:
   ```python
   class GrokXContentIngestionService:
       """Service for ingesting X threads into the Content model."""
@@ -69,46 +69,45 @@
       ) -> int
       def close(self) -> None
   ```
-- [ ] 4.2 Implement thread-to-ContentData conversion with markdown formatting:
+- [x] 4.2 Implement thread-to-ContentData conversion with markdown formatting:
   - Use root_post_id as source_id
   - Format thread posts with numbered sections (### 1/5, ### 2/5, etc.)
   - Store complete thread in markdown_content for summarization
-- [ ] 4.3 Implement thread-aware deduplication:
+- [x] 4.3 Implement thread-aware deduplication:
   - Primary: Check if root_post_id exists as source_id
   - Secondary: Query metadata_json to check if ANY incoming post_id exists in stored thread_post_ids arrays
   - Fallback: Content hash for edge cases
-- [ ] 4.4 Add cost tracking in metadata_json (tool calls made, estimated cost)
+- [x] 4.4 Add cost tracking in metadata_json (tool calls made, estimated cost)
 
 ## 5. CLI Interface
 
-- [ ] 5.1 Create `src/ingestion/xsearch.py` `__main__` block for CLI usage:
+- [x] 5.1 Add `xsearch` command to `src/cli/ingest_commands.py` with Typer:
   ```bash
-  python -m src.ingestion.xsearch                      # Use default prompt
-  python -m src.ingestion.xsearch --prompt "..."       # Custom prompt
-  python -m src.ingestion.xsearch --max-threads 100    # Limit results
-  python -m src.ingestion.xsearch --force              # Reprocess existing
+  aca ingest xsearch                        # Use default/configured prompt
+  aca ingest xsearch --prompt "..."         # Custom prompt
+  aca ingest xsearch --max-threads 100      # Limit results
+  aca ingest xsearch --force                # Reprocess existing
   ```
-- [ ] 5.2 Add argument parsing with argparse
-- [ ] 5.3 Add progress output and summary statistics
+- [x] 5.2 Add `ingest_xsearch()` to `src/ingestion/orchestrator.py`
+- [x] 5.3 Wire xsearch into `_run_ingestion_stage_async()` in `src/cli/pipeline_commands.py`
 
 ## 6. Testing
 
-- [ ] 6.1 Create `tests/test_ingestion/test_xsearch.py`
-- [ ] 6.2 Write unit tests for `XThreadData` model validation
-- [ ] 6.3 Write unit tests for thread markdown content generation (numbered sections)
-- [ ] 6.4 Write unit tests for thread-aware deduplication:
+- [x] 6.1 Create `tests/test_ingestion/test_xsearch.py`
+- [x] 6.2 Write unit tests for `XThreadData` model validation
+- [x] 6.3 Write unit tests for thread markdown content generation (numbered sections)
+- [x] 6.4 Write unit tests for thread-aware deduplication:
   - Dedupe by root_post_id (source_id match)
   - Dedupe by thread member post_id (found in thread_post_ids array)
   - Verify different posts from same thread don't create duplicate Content records
-- [ ] 6.5 Write integration tests with mocked xAI SDK responses
-- [ ] 6.6 Add test fixtures for sample thread data (single post, multi-post threads)
+- [x] 6.5 Write integration tests with mocked xAI SDK responses
+- [x] 6.6 Add test fixtures for sample thread data (single post, multi-post threads)
 
 ## 7. Documentation
 
-- [ ] 7.1 Update `docs/ARCHITECTURE.md` with X search ingestion section
-- [ ] 7.2 Add X search to ingestion services table
-- [ ] 7.3 Update `CLAUDE.md` with X search commands
-- [ ] 7.4 Document prompt templates and best practices
+- [x] 7.1 Update `CLAUDE.md` with X search commands and gotchas
+- [x] 7.2 Add configurable prompt to `src/config/prompts.yaml` (pipeline.xsearch.search_prompt)
+- [x] 7.3 Wire `XAI_API_KEY` into `profiles/base.yaml`
 
 ## 8. Integration Verification
 
@@ -116,6 +115,10 @@
 - [ ] 8.2 Verify posts appear in Content table with correct structure
 - [ ] 8.3 Verify posts flow through summarization pipeline
 - [ ] 8.4 Verify posts appear in digest output
+
+## Migration Notes
+
+Open tasks (8.1–8.4) migrated to beads issue `aca-s9a` on 2026-02-24.
 
 ## Dependencies
 

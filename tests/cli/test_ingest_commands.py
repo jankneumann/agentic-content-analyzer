@@ -6,7 +6,7 @@ Tests mock at `src.ingestion.orchestrator.<func>` instead of individual service 
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -392,3 +392,81 @@ class TestIngestUrl:
         result = runner.invoke(app, ["ingest", "url", "--help"])
         assert result.exit_code == 0
         assert "Ingest a single URL" in result.output
+
+
+class TestIngestXSearch:
+    @patch("src.ingestion.orchestrator.ingest_xsearch")
+    def test_xsearch_success(self, mock_ingest):
+        mock_ingest.return_value = 5
+
+        result = runner.invoke(app, ["ingest", "xsearch"])
+        assert result.exit_code == 0
+        assert "5" in result.output
+        assert "X search ingestion complete" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_xsearch")
+    def test_xsearch_with_custom_prompt(self, mock_ingest):
+        mock_ingest.return_value = 3
+
+        result = runner.invoke(
+            app,
+            [
+                "ingest",
+                "xsearch",
+                "--prompt",
+                "Find AI model releases",
+                "--max-threads",
+                "20",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_ingest.assert_called_once_with(
+            prompt="Find AI model releases",
+            max_threads=20,
+            force_reprocess=False,
+            on_result=ANY,
+        )
+
+    @patch("src.ingestion.orchestrator.ingest_xsearch")
+    def test_xsearch_with_force(self, mock_ingest):
+        mock_ingest.return_value = 1
+
+        result = runner.invoke(app, ["ingest", "xsearch", "--force"])
+        assert result.exit_code == 0
+        mock_ingest.assert_called_once_with(
+            prompt=None,
+            max_threads=None,
+            force_reprocess=True,
+            on_result=ANY,
+        )
+
+    @patch("src.ingestion.orchestrator.ingest_xsearch")
+    def test_xsearch_failure(self, mock_ingest):
+        mock_ingest.side_effect = RuntimeError("API key invalid")
+
+        result = runner.invoke(app, ["ingest", "xsearch"])
+        assert result.exit_code == 1
+        assert "X search ingestion failed" in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_xsearch")
+    def test_xsearch_json_mode(self, mock_ingest):
+        mock_ingest.return_value = 2
+
+        result = runner.invoke(app, ["--json", "ingest", "xsearch"])
+        assert result.exit_code == 0
+        assert '"source": "xsearch"' in result.output
+        assert '"ingested": 2' in result.output
+
+    @patch("src.ingestion.orchestrator.ingest_xsearch")
+    def test_xsearch_json_mode_failure(self, mock_ingest):
+        mock_ingest.side_effect = RuntimeError("Rate limited")
+
+        result = runner.invoke(app, ["--json", "ingest", "xsearch"])
+        assert result.exit_code == 1
+        assert '"error"' in result.output
+        assert '"source": "xsearch"' in result.output
+
+    def test_xsearch_help(self):
+        result = runner.invoke(app, ["ingest", "xsearch", "--help"])
+        assert result.exit_code == 0
+        assert "Grok API" in result.output

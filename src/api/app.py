@@ -18,6 +18,7 @@ from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
 from src.api.files_routes import router as files_router
 from src.api.health_routes import router as health_router
+from src.api.image_generation_routes import router as image_generation_router
 from src.api.job_routes import router as job_router
 from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
@@ -166,6 +167,7 @@ app.include_router(source_router)
 app.include_router(health_router)  # Health and readiness probes
 app.include_router(job_router)  # Job queue management
 app.include_router(search_router)  # Hybrid document search
+app.include_router(image_generation_router)  # AI image generation
 app.include_router(share_router)  # Share management (enable/disable/status)
 app.include_router(shared_router)  # Public shared content (no auth)
 app.include_router(notification_router)  # Notification events and SSE stream

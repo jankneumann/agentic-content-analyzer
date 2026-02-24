@@ -460,6 +460,12 @@ class Settings(BaseSettings):
         None  # JSON string of OAuth token for headless cloud deployments
     )
 
+    # Grok X Search Configuration
+    xai_api_key: str | None = None  # xAI API key for Grok
+    grok_model: str = "grok-4-1-fast"  # Model for X search (optimized for tool calling)
+    grok_x_max_turns: int = 5  # Max tool calling turns per search
+    grok_x_max_threads: int = 50  # Max threads per search run
+
     # Podcast Ingestion Configuration
     podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"
     podcast_max_duration_minutes: int = 120  # Max episode duration to transcribe
@@ -496,6 +502,18 @@ class Settings(BaseSettings):
     image_max_size_mb: int = 10  # Maximum image file size
     enable_image_extraction: bool = True  # Enable extraction from HTML/PDF
     enable_youtube_keyframes: bool = False  # Enable YouTube keyframe extraction
+
+    # AI Image Generation
+    image_generation_enabled: bool = False  # Feature flag for AI image generation
+    image_generation_provider: str = "gemini"  # "gemini" (future: "openai", "stability")
+    image_generation_model: str = "imagen-3.0-generate-001"  # Default image generation model
+    image_generation_default_size: str = "1024x1024"  # Default dimensions
+    image_generation_default_quality: str = "standard"  # "standard" or "hd"
+    image_generation_default_style: str = "natural"  # Generation style guidance
+
+    # Google Cloud / Vertex AI (for Gemini Imagen provider)
+    google_cloud_project: str | None = None  # GCP project ID for Vertex AI
+    google_cloud_location: str = "us-central1"  # GCP region
 
     # S3 Storage Configuration (for image_storage_provider="s3")
     s3_endpoint_url: str | None = None  # Custom endpoint for S3-compatible services

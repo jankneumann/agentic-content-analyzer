@@ -270,6 +270,45 @@ def ingest_substack(
         service.close()
 
 
+def ingest_xsearch(
+    *,
+    prompt: str | None = None,
+    max_threads: int | None = None,
+    force_reprocess: bool = False,
+    on_result: Callable | None = None,
+) -> int:
+    """Ingest X posts/threads via Grok API search.
+
+    Uses the xAI SDK with the x_search tool to discover AI-relevant
+    content on X. The search prompt is configurable via the prompt
+    management system (pipeline.xsearch.search_prompt).
+
+    Args:
+        prompt: Override the default search prompt.
+        max_threads: Maximum threads to ingest (default from settings).
+        force_reprocess: Re-ingest threads that already exist.
+        on_result: Optional callback that receives the full XSearchResult
+                   (for rich result reporting in CLI).
+
+    Returns:
+        Number of items ingested.
+    """
+    from src.ingestion.xsearch import GrokXContentIngestionService
+
+    service = GrokXContentIngestionService()
+    try:
+        result = service.ingest_threads(
+            prompt=prompt,
+            max_threads=max_threads,
+            force_reprocess=force_reprocess,
+        )
+        if on_result is not None:
+            on_result(result)
+        return result.items_ingested
+    finally:
+        service.close()
+
+
 def ingest_url(
     *,
     url: str,

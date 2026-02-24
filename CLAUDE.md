@@ -29,7 +29,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 An agentic AI solution for aggregating and summarizing AI newsletters into daily and weekly digests.
 
 - **Purpose**: Help technical leaders and developers stay informed on AI/Data trends
-- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, file uploads, direct URLs
+- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, X/Twitter (via Grok), file uploads, direct URLs
 - **Output**: Structured digests with knowledge graph-powered historical context
 
 ## Key Commands
@@ -78,6 +78,8 @@ aca ingest youtube                     # YouTube (all: playlists + RSS)
 aca ingest youtube-playlist            # YouTube playlists only (OAuth)
 aca ingest youtube-rss                 # YouTube RSS feeds only
 aca ingest podcast                     # Podcast feeds
+aca ingest xsearch                     # X/Twitter via Grok API search
+aca ingest xsearch --prompt "..."      # Custom search prompt
 aca ingest files <path...>             # Local file ingestion
 aca ingest url <url>                   # Direct URL ingestion
 
@@ -476,6 +478,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | VitePWA manifest not in dev mode | `/manifest.webmanifest` returns HTML in dev; manifest only generated in production builds |
 | Route registration order is LIFO | Playwright matches last-registered route first; register specific routes after general ones |
 | Podcast transcription needs STT key | Set `OPENAI_API_KEY` for Whisper; `transcribe: false` in source to skip |
+| X search needs xAI API key | Set `XAI_API_KEY`; search prompt configurable via `aca prompts set pipeline.xsearch.search_prompt` |
 | Telemetry mock patch target | Patch `src.telemetry.get_provider` (source module), NOT `src.services.llm_router.get_provider` — local imports aren't module attrs |
 | Telemetry tests need anthropic_api_key | Pass `anthropic_api_key="test-key"` to `Settings(_env_file=None)` in observability tests |
 | `logging.basicConfig()` only works once | OTel log bridge uses `addHandler()` directly — never call `basicConfig()` after `setup_logging()` |

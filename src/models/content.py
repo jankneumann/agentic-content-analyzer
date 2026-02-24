@@ -11,6 +11,7 @@ Content Sources:
 - YOUTUBE: YouTube video transcripts
 - PODCAST: Podcast episode transcripts
 - SUBSTACK: Substack newsletters via Substack API
+- XSEARCH: X/Twitter posts via Grok API search
 - MANUAL: Manually created content via API
 """
 
@@ -55,6 +56,7 @@ class ContentSource(StrEnum):
     SUBSTACK = "substack"
     MANUAL = "manual"  # Manually created via API
     WEBPAGE = "webpage"  # Future: scraped web pages
+    XSEARCH = "xsearch"  # X/Twitter posts via Grok search
     OTHER = "other"
 
 

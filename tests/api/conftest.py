@@ -186,8 +186,8 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         """Return the test's db_session."""
         yield db_session
 
-    # All modules that import get_db and need to use the test session
-    get_db_targets = [
+    # All route/service modules that import get_db and need the test session
+    db_patch_targets = [
         "src.api.audio_digest_routes.get_db",
         "src.api.summary_routes.get_db",
         "src.api.digest_routes.get_db",
@@ -205,14 +205,16 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         "src.api.search_routes.get_db",
         "src.api.share_routes.get_db",
         "src.api.shared_routes.get_db",
+        "src.api.image_generation_routes.get_db",
         "src.api.notification_routes.get_db",
         "src.api.notification_preferences_routes.get_db",
         "src.services.script_review_service.get_db",
         "src.processors.theme_analyzer.get_db",
     ]
 
+    # Use ExitStack to avoid exceeding Python's static nesting limit (20)
     with ExitStack() as stack:
-        for target in get_db_targets:
+        for target in db_patch_targets:
             stack.enter_context(patch(target, mock_get_db))
         with TestClient(app) as test_client:
             yield AuthenticatedTestClient(test_client, "test-admin-key")

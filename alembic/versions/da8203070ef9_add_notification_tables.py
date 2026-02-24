@@ -1,7 +1,7 @@
 """Add notification_events and device_registrations tables.
 
-Revision ID: a1b2c3d4e5f6
-Revises: 33072a43b224
+Revision ID: da8203070ef9
+Revises: d364355a18ba
 Create Date: 2026-02-23
 """
 
@@ -13,8 +13,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "33072a43b224"
+revision: str = "da8203070ef9"
+down_revision: Union[str, None] = "d364355a18ba"
 branch_labels: Union[str, tuple[str, ...], None] = None
 depends_on: Union[str, tuple[str, ...], None] = None
 

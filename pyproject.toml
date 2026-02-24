@@ -46,6 +46,7 @@ dependencies = [
     "httpx>=0.26.0",
     "requests>=2.31.0",
     "substack-api>=1.1.3",  # Substack API client (uses Newsletter/Post/User classes)
+    "xai-sdk>=1.3.1",      # xAI Grok SDK (x_search tool for X/Twitter content)
 
     # Email Delivery
     "sendgrid>=6.11.0",
@@ -120,6 +121,9 @@ embeddings = [
     "sentence-transformers>=2.2.0",  # Local embedding models (CPU)
     "voyageai>=0.2.0",              # Voyage AI embeddings (retrieval-optimized)
     "cohere>=5.0.0",                # Cohere embeddings and reranking
+]
+image-generation = [
+    "google-cloud-aiplatform>=1.38.0",  # Vertex AI SDK for Imagen image generation
 ]
 
 [build-system]
