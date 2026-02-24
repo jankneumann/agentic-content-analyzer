@@ -131,11 +131,70 @@ Google's flagship model now supports native image generation...
 - Citation-based dedup catches this: "AI model releases" and "latest from Anthropic" may cite the same blog post
 - Threshold (50%) allows partial overlap without false positives
 
-### Decision 6: WebSearchProvider Protocol (Unified Abstraction)
+### Decision 6: Dual-Output Architecture (Ingestion vs Ad-Hoc)
 
-**What**: Create a `WebSearchProvider` protocol in `src/services/web_search.py` that Tavily, Perplexity, and Grok all implement. This serves two use cases:
-1. **Ad-hoc search**: Used by chat, podcast script generation, and digest review as an LLM tool
-2. **Ingestion source**: Used by the pipeline to run scheduled searches and persist results as Content records
+**What**: The same underlying search APIs (Perplexity, Grok) serve two fundamentally different consumers with different output contracts. These are separate code paths, not a shared abstraction.
+
+**Two output contracts**:
+
+| Aspect | Ingestion (pipeline) | Ad-hoc (chat/podcast/review) |
+|--------|---------------------|------------------------------|
+| **Output format** | Synthesized markdown narrative with citations | Structured `list[WebSearchResult]` with title/url/content |
+| **Storage** | Persisted as `Content` record in DB | Never stored — ephemeral LLM context |
+| **Downstream** | Summarization → digest pipeline | Injected into LLM tool response |
+| **Entry point** | Orchestrator → `*ContentIngestionService` | `WebSearchProvider.search()` → `format_results()` |
+| **Prompt source** | `sources.d/websearch.yaml` entry prompt | User's chat query or LLM-generated tool call |
+
+**How it works for Perplexity** (one API, two transformations):
+
+```
+Perplexity Sonar API → synthesized text + citations[]
+                       │
+                       ├─ Ingestion path (PerplexityContentIngestionService):
+                       │  → Full synthesized text → markdown_content
+                       │  → Citations as numbered links in markdown
+                       │  → metadata_json with search_query, citations, token_usage
+                       │  → Content record → summarization pipeline
+                       │
+                       └─ Ad-hoc path (PerplexityWebSearchProvider):
+                          → Each citation → WebSearchResult{title, url, content}
+                          → content = relevant excerpt from synthesis near that citation
+                          → format_results() → numbered list for LLM consumption
+                          → Returned to chat/podcast tool handler
+```
+
+**How it works for Grok** (same pattern):
+
+```
+xAI Grok API (x_search tool) → synthesized text with threads
+                                │
+                                ├─ Ingestion path (GrokXContentIngestionService):
+                                │  → Parse into XThreadData objects
+                                │  → format_thread_markdown() → rich markdown per thread
+                                │  → Thread-aware dedup, SAVEPOINT isolation
+                                │  → Content records (one per thread)
+                                │
+                                └─ Ad-hoc path (GrokWebSearchProvider):
+                                   → Parse into WebSearchResult objects
+                                   → title = "@handle: first line"
+                                   → url = x.com post link (if extractable)
+                                   → content = brief summary
+                                   → format_results() → numbered list
+```
+
+**Why separate paths (not a shared abstraction)**:
+- Ingestion needs rich metadata, deduplication, DB persistence, SAVEPOINT isolation — none of which applies to ad-hoc search
+- Ad-hoc needs brief, structured results with title/url — not full synthesized narratives
+- Forcing both through the same interface would require either: (a) the interface returns raw API responses (too low-level), or (b) the interface returns both formats (over-engineering)
+- The shared layer is the **client** (`PerplexityClient`, `GrokXClient`), not the consumer-facing output
+
+**Alternatives considered**:
+- Single `WebSearchProvider` with a `mode` parameter: couples ingestion concerns (DB, dedup) into an interface that consumers don't need
+- Having ingestion call `WebSearchProvider.search()` then re-synthesize: wasteful — the API already returns synthesized text, we'd be decomposing then recomposing it
+
+### Decision 7: WebSearchProvider Protocol (Ad-Hoc Search Only)
+
+**What**: Create a `WebSearchProvider` protocol in `src/services/web_search.py` that Tavily, Perplexity, and Grok all implement **for the ad-hoc search use case only**. This protocol is NOT used by the ingestion pipeline.
 
 ```python
 @runtime_checkable
@@ -146,39 +205,49 @@ class WebSearchProvider(Protocol):
         ...
 
     def search(self, query: str, max_results: int = 3) -> list[WebSearchResult]:
-        """Execute a web search and return structured results."""
+        """Execute a web search and return structured results.
+
+        Returns individual results (title/url/content), NOT synthesized narratives.
+        For ingestion (synthesized Content records), use the corresponding
+        *ContentIngestionService directly via the orchestrator.
+        """
         ...
 
     def format_results(self, results: list[WebSearchResult]) -> str:
-        """Format results as a string for LLM consumption."""
+        """Format results as a numbered list for LLM tool consumption."""
         ...
 
 @dataclass
 class WebSearchResult:
     title: str
     url: str
-    content: str
+    content: str  # Brief excerpt or snippet, NOT full synthesized narrative
     score: float | None = None
     citations: list[str] | None = None   # Perplexity-specific: source URLs
     metadata: dict[str, Any] | None = None  # Provider-specific extras
 
 def get_web_search_provider(provider: str | None = None) -> WebSearchProvider:
-    """Factory function. Uses settings.web_search_provider if provider not specified."""
+    """Factory function. Uses settings.web_search_provider if provider not specified.
+
+    This factory is for ad-hoc search consumers (chat, podcast, review).
+    Ingestion consumers use orchestrator functions directly.
+    """
 ```
 
 **Why**:
 - Follows the established Protocol pattern from `RerankProvider` and `BM25SearchStrategy`
 - `name` property enables logging/metrics per provider
 - `citations` field in `WebSearchResult` accommodates Perplexity's richer results without breaking Tavily/Grok
-- Factory accepts optional provider override for cases where a specific provider is needed (e.g., sources.d entries)
+- Factory accepts optional provider override for cases where a specific provider is needed
 - Future providers (Brave, Google Search, Bing) drop in without changing consumers
+- Explicitly NOT used by ingestion — avoids coupling two different output contracts into one interface
 
 **Provider implementations**:
 - `TavilyWebSearchProvider`: Wraps existing `TavilyService.search()` → maps to `WebSearchResult`
-- `PerplexityWebSearchProvider`: Uses `PerplexityClient` for API calls, maps citations to results
-- `GrokWebSearchProvider`: Adapts `GrokXClient` (see Decision 8)
+- `PerplexityWebSearchProvider`: Uses `PerplexityClient`, extracts per-citation results from synthesized response
+- `GrokWebSearchProvider`: Adapts `GrokXClient`, extracts per-thread results (see Decision 9)
 
-### Decision 7: Configurable Search Parameters
+### Decision 8: Configurable Search Parameters
 
 **What**: Expose Perplexity-specific parameters through Settings for fine-tuning.
 
@@ -200,7 +269,7 @@ web_search_provider: str = "tavily"          # tavily|perplexity|grok (for ad-ho
 - `web_search_provider` now supports all three providers
 - All configurable via env vars, profiles, or CLI flags
 
-### Decision 8: Grok Ad-Hoc Search Adapter
+### Decision 9: Grok Ad-Hoc Search Adapter
 
 **What**: Create a `GrokWebSearchProvider` that adapts the existing `GrokXClient` for ad-hoc search use in the `WebSearchProvider` protocol.
 
@@ -236,7 +305,7 @@ class GrokWebSearchProvider:
 - Making `GrokXContentIngestionService` implement `WebSearchProvider` directly: too much coupling, the ingestion service manages DB persistence and dedup which is irrelevant for ad-hoc search
 - Skipping Grok from the ad-hoc abstraction: leaves the architecture incomplete and means chat can't use X search results
 
-### Decision 9: Scheduled Web Search Sources (`sources.d/websearch.yaml`)
+### Decision 10: Scheduled Web Search Sources (`sources.d/websearch.yaml`)
 
 **What**: Add a new source configuration file for defining scheduled web searches that run during the pipeline.
 
@@ -281,9 +350,17 @@ sources:
 - Easy to add/remove searches without code changes
 
 **Source loading**:
-- `SourceLoader` gets a new `load_websearch_sources()` method
-- Returns `list[WebSearchSource]` dataclass with `name`, `provider`, `prompt`, `tags`, `enabled`, plus provider-specific overrides
+- `src/config/sources.py` gets a new `WebSearchSource` model (alongside existing `RSSSource`, `PodcastSource`, etc.)
+- Loaded via existing `load_sources_config()` → `get_sources_by_type("websearch")`
 - Pipeline iterates entries and calls `ingest_perplexity_search()` or `ingest_xsearch()` per provider
+
+**Prompt precedence** (highest to lowest):
+1. **CLI `--prompt` flag**: Manual runs only (`aca ingest perplexity-search --prompt "..."`)
+2. **`sources.d/websearch.yaml` entry `prompt:` field**: Per-source prompt for scheduled pipeline runs — this is where the user's daily search prompts live
+3. **`PromptService` DB override**: Runtime overrides via `aca prompts set pipeline.perplexity_search.search_prompt`
+4. **`prompts.yaml` default template**: System default, used when a sources.d entry omits its `prompt` field
+
+The key design: `prompts.yaml` holds one default per provider (system-level), while `websearch.yaml` holds N entries per provider (topic-level). Each sources.d entry carries its own prompt because different searches need different prompts ("AI model releases" vs "data engineering tools"). The prompts.yaml default is the fallback for entries that omit their prompt.
 
 **Alternatives considered**:
 - Separate files per provider (`xsearch.yaml`, `perplexity.yaml`): loses the unified view of all web search sources
