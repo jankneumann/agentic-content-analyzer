@@ -603,6 +603,20 @@ pipeline:
       - All relevant links with context
       - Competitor and industry analysis
 
+  xsearch:
+    search_prompt: |
+      Search X for AI and technology news from the past 24 hours. Focus on:
+      - New model releases and announcements from OpenAI, Anthropic, Google, Meta, xAI, and other AI labs
+      - Research paper announcements with links to papers
+      - Technical discussions about LLMs, RAG, AI agents, and machine learning
+      - AI startup funding announcements and acquisitions
+      - Significant technical insights and architectural discussions
+      - Developer tool releases and framework updates
+
+      Return detailed information including author handles and engagement metrics.
+      Prioritize high-signal posts from verified researchers, company accounts, and recognized AI thought leaders.
+      Include complete thread content when a post is part of a thread.
+
   script_revision:
     system: |
       You are revising a section of a podcast script based on reviewer feedback.

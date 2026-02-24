@@ -193,11 +193,12 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         ingest_podcast,
         ingest_rss,
         ingest_substack,
+        ingest_xsearch,
         ingest_youtube_playlist,
         ingest_youtube_rss,
     )
 
-    source_count = 6
+    source_count = 7
     typer.echo(f"  Running parallel ingestion ({source_count} sources)...")
 
     # Define ingestion tasks — each orchestrator function is a plain
@@ -211,6 +212,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         _ingest_source("youtube-rss", ingest_youtube_rss),
         _ingest_source("podcast", ingest_podcast),
         _ingest_source("substack", ingest_substack),
+        _ingest_source("xsearch", ingest_xsearch),
     ]
 
     # Run all sources in parallel

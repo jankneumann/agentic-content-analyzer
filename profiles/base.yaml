@@ -112,6 +112,7 @@ settings:
     voyage_api_key: "${VOYAGE_API_KEY:-}"
     cohere_api_key: "${COHERE_API_KEY:-}"
     jina_api_key: "${JINA_API_KEY:-}"
+    xai_api_key: "${XAI_API_KEY:-}"
 
   # ---------------------------------------------------------------------------
   # Digest Settings

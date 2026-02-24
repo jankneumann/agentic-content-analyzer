@@ -499,6 +499,52 @@ def podcast(
 
 
 # ---------------------------------------------------------------------------
+# aca ingest xsearch
+# ---------------------------------------------------------------------------
+
+
+@app.command("xsearch")
+def xsearch(
+    prompt: Annotated[
+        str | None,
+        typer.Option("--prompt", "-p", help="Custom search prompt (overrides configured default)."),
+    ] = None,
+    max_threads: Annotated[
+        int | None,
+        typer.Option("--max-threads", "-m", help="Maximum threads to ingest."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+) -> None:
+    """Search X via Grok API and ingest AI-relevant posts/threads."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from src.ingestion.orchestrator import ingest_xsearch
+
+        count = ingest_xsearch(
+            prompt=prompt,
+            max_threads=max_threads,
+            force_reprocess=force,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "xsearch"}, success=False)
+        else:
+            console.print(f"[red]X search ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "xsearch", "ingested": count})
+    else:
+        console.print(f"[green]X search ingestion complete.[/green] {count} item(s) ingested.")
+
+
+# ---------------------------------------------------------------------------
 # aca ingest files
 # ---------------------------------------------------------------------------
 
