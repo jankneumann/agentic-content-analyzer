@@ -12,6 +12,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def run_async(coro: Any) -> Any:
     """Run an async coroutine synchronously.
@@ -23,6 +27,30 @@ def run_async(coro: Any) -> Any:
         The coroutine's return value
     """
     return asyncio.run(coro)
+
+
+def _emit_notification_sync(
+    event_type: str,
+    title: str,
+    summary: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    """Best-effort sync notification emission for CLI adapters."""
+    try:
+        from src.models.notification import NotificationEventType
+        from src.services.notification_service import get_dispatcher
+
+        dispatcher = get_dispatcher()
+        run_async(
+            dispatcher.emit(
+                event_type=NotificationEventType(event_type),
+                title=title,
+                summary=summary,
+                payload=payload or {},
+            )
+        )
+    except Exception:
+        logger.debug("Failed to emit notification from CLI adapter", exc_info=True)
 
 
 # --- Digest Creation ---
@@ -40,7 +68,21 @@ def create_digest_sync(request: Any) -> Any:
     from src.processors.digest_creator import DigestCreator
 
     creator = DigestCreator()
-    return run_async(creator.create_digest(request))
+    result = run_async(creator.create_digest(request))
+
+    if result:
+        digest_type = getattr(request, "digest_type", "daily")
+        _emit_notification_sync(
+            event_type="digest_creation",
+            title=f"{digest_type.capitalize()} Digest Created",
+            summary=f"Your {digest_type} digest is ready.",
+            payload={
+                "digest_type": str(digest_type),
+                "url": "/digests",
+            },
+        )
+
+    return result
 
 
 # --- Theme Analysis ---
@@ -59,9 +101,23 @@ def analyze_themes_sync(request: Any, include_historical: bool = True) -> Any:
     from src.processors.theme_analyzer import ThemeAnalyzer
 
     analyzer = ThemeAnalyzer()
-    return run_async(
+    result = run_async(
         analyzer.analyze_themes(request, include_historical_context=include_historical)
     )
+
+    if result:
+        theme_count = len(getattr(result, "themes", []))
+        _emit_notification_sync(
+            event_type="theme_analysis",
+            title="Theme Analysis Complete",
+            summary=f"Identified {theme_count} themes across recent content.",
+            payload={
+                "theme_count": theme_count,
+                "url": "/themes",
+            },
+        )
+
+    return result
 
 
 # --- Podcast ---
@@ -79,7 +135,21 @@ def generate_podcast_script_sync(request: Any) -> Any:
     from src.processors.podcast_creator import PodcastCreator
 
     creator = PodcastCreator()
-    return run_async(creator.generate_script(request))
+    result = run_async(creator.generate_script(request))
+
+    if result:
+        script_id = getattr(result, "id", None)
+        _emit_notification_sync(
+            event_type="script_generation",
+            title="Podcast Script Generated",
+            summary="A new podcast script is ready for review.",
+            payload={
+                "script_id": script_id,
+                "url": f"/scripts/{script_id}" if script_id else "/scripts",
+            },
+        )
+
+    return result
 
 
 # --- Review Service ---

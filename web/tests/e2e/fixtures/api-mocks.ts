@@ -44,6 +44,9 @@ export class ApiMocks {
       this.mockVoiceSettings(),
       this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
+      this.mockNotificationEvents(),
+      this.mockNotificationUnreadCount(),
+      this.mockNotificationPreferences(),
     ])
   }
 
@@ -71,6 +74,9 @@ export class ApiMocks {
       this.mockVoiceSettings(),
       this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
+      this.mockNotificationEventsEmpty(),
+      this.mockNotificationUnreadCountEmpty(),
+      this.mockNotificationPreferences(),
     ])
   }
 
@@ -943,6 +949,86 @@ export class ApiMocks {
         contentType: "application/json",
         body: JSON.stringify(mockData.createLoginRateLimitedResponse()),
       })
+    )
+  }
+
+  // ─── Notification Endpoints ─────────────────────────────
+
+  async mockNotificationEvents(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/notifications/events*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          data ?? mockData.createNotificationEventListResponse()
+        ),
+      })
+    )
+  }
+
+  async mockNotificationEventsEmpty(): Promise<void> {
+    await this.mockNotificationEvents(
+      mockData.createEmptyNotificationEventListResponse()
+    )
+  }
+
+  async mockNotificationUnreadCount(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/notifications/unread-count*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createUnreadCountResponse()),
+      })
+    )
+  }
+
+  async mockNotificationUnreadCountEmpty(): Promise<void> {
+    await this.mockNotificationUnreadCount(
+      mockData.createEmptyUnreadCountResponse()
+    )
+  }
+
+  async mockNotificationPreferences(data?: unknown): Promise<void> {
+    await this.page.route(
+      "**/api/v1/settings/notifications*",
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            data ?? mockData.createNotificationPreferencesResponse()
+          ),
+        })
+    )
+  }
+
+  async mockNotificationPreferencesEmpty(): Promise<void> {
+    await this.mockNotificationPreferences(
+      mockData.createEmptyNotificationPreferencesResponse()
+    )
+  }
+
+  async mockNotificationMarkRead(): Promise<void> {
+    await this.page.route(
+      "**/api/v1/notifications/events/*/read*",
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ status: "ok" }),
+        })
+    )
+  }
+
+  async mockNotificationMarkAllRead(): Promise<void> {
+    await this.page.route(
+      "**/api/v1/notifications/events/read-all*",
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ status: "ok", marked_read: 2 }),
+        })
     )
   }
 

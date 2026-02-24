@@ -128,6 +128,26 @@ async def _generate_audio_digest_task(
             f"{len(audio_bytes) / 1024:.1f} KB, ~{estimated_duration:.0f}s"
         )
 
+        # Emit notification on success
+        try:
+            from src.models.notification import NotificationEventType
+            from src.services.notification_service import get_dispatcher
+
+            dispatcher = get_dispatcher()
+            await dispatcher.emit(
+                event_type=NotificationEventType.AUDIO_GENERATION,
+                title="Audio Digest Ready",
+                summary=f"Audio digest generated (~{estimated_duration:.0f}s).",
+                payload={
+                    "audio_digest_id": audio_digest_id,
+                    "digest_id": digest_id,
+                    "duration_seconds": estimated_duration,
+                    "url": f"/audio-digests/{audio_digest_id}",
+                },
+            )
+        except Exception:
+            logger.debug("Failed to emit audio digest notification", exc_info=True)
+
     except Exception as e:
         logger.error(f"Audio digest {audio_digest_id} generation failed: {e}")
         # Update record with failure status
@@ -137,6 +157,26 @@ async def _generate_audio_digest_task(
                 audio_digest.status = AudioDigestStatus.FAILED
                 audio_digest.error_message = str(e)
                 db.commit()
+
+        # Emit failure notification
+        try:
+            from src.models.notification import NotificationEventType
+            from src.services.notification_service import get_dispatcher
+
+            dispatcher = get_dispatcher()
+            await dispatcher.emit(
+                event_type=NotificationEventType.JOB_FAILURE,
+                title="Audio Digest Failed",
+                summary=str(e)[:200],
+                payload={
+                    "audio_digest_id": audio_digest_id,
+                    "digest_id": digest_id,
+                    "error": str(e)[:500],
+                    "url": "/audio-digests",
+                },
+            )
+        except Exception:
+            logger.debug("Failed to emit audio digest failure notification", exc_info=True)
 
 
 @router.post("/digests/{digest_id}/audio", response_model=AudioDigestResponse)

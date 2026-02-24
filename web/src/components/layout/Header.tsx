@@ -11,7 +11,7 @@
  */
 
 import { useNavigate, useLocation } from "@tanstack/react-router"
-import { Menu, ChevronRight, Bell, Moon, Sun } from "lucide-react"
+import { Menu, ChevronRight, Moon, Sun } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import { cn } from "@/lib/utils"
@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 
 /**
  * Props for the Header component
@@ -198,26 +199,8 @@ export function Header({ onMenuClick, className }: HeaderProps) {
 
       {/* Right side actions */}
       <div className="flex items-center gap-2">
-        {/* Notifications - placeholder for future */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {/*
-              Note: TooltipTrigger normally forwards props to the child.
-              Since Button is disabled, it might not emit events properly for tooltips.
-              However, radix-ui tooltip usually works if we wrap it, but pointer-events: none on disabled button blocks hover.
-              We keep the button disabled but maybe wrap in span if needed?
-              Radix UI Tooltip trigger on disabled button requires wrapping in a span/div usually.
-              Let's try wrapping in a span to ensure tooltip works.
-            */}
-            <span tabIndex={0} role="button" aria-label="Notifications (Coming soon)" aria-disabled="true" className="inline-block cursor-not-allowed rounded-md">
-              <Button variant="ghost" size="icon" disabled className="pointer-events-none">
-                <Bell className="h-5 w-5" />
-                <span className="sr-only">Notifications</span>
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>Notifications (Coming soon)</TooltipContent>
-        </Tooltip>
+        {/* Notifications */}
+        <NotificationBell />
 
         {/* Theme toggle */}
         <ThemeToggle />

@@ -281,6 +281,25 @@ export const settingsKeys = {
 }
 
 /**
+ * Query keys for notifications
+ */
+export const notificationKeys = {
+  /** Base key for all notification queries */
+  all: ["notifications"] as const,
+
+  /** Key for event lists */
+  events: () => [...notificationKeys.all, "events"] as const,
+  eventList: (filters?: { type?: string; since?: string; page?: number }) =>
+    [...notificationKeys.events(), filters] as const,
+
+  /** Key for unread count */
+  unreadCount: () => [...notificationKeys.all, "unread-count"] as const,
+
+  /** Key for notification preferences */
+  preferences: () => [...notificationKeys.all, "preferences"] as const,
+}
+
+/**
  * Combined query keys export
  *
  * Use this for easy access to all query key factories.
@@ -297,4 +316,5 @@ export const queryKeys = {
   system: systemKeys,
   prompts: promptKeys,
   settings: settingsKeys,
+  notifications: notificationKeys,
 }

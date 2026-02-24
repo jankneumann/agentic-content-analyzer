@@ -23,6 +23,8 @@ from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.telemetry import TraceIdMiddleware
 from src.api.model_settings_routes import router as model_settings_router
+from src.api.notification_preferences_routes import router as notification_preferences_router
+from src.api.notification_routes import router as notification_router
 from src.api.otel_proxy_routes import router as otel_proxy_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.save_routes import router as save_router
@@ -68,6 +70,14 @@ async def lifespan(app: FastAPI):
                 db.close()
         except Exception:
             logger.debug("Embedding config check skipped", exc_info=True)
+
+    # Auto-cleanup old notification events (>90 days)
+    try:
+        from src.services.notification_cleanup import auto_cleanup_notifications
+
+        auto_cleanup_notifications()
+    except Exception:
+        logger.debug("Notification cleanup skipped", exc_info=True)
 
     # Start embedded queue worker if enabled
     worker_task: asyncio.Task | None = None
@@ -158,6 +168,8 @@ app.include_router(job_router)  # Job queue management
 app.include_router(search_router)  # Hybrid document search
 app.include_router(share_router)  # Share management (enable/disable/status)
 app.include_router(shared_router)  # Public shared content (no auth)
+app.include_router(notification_router)  # Notification events and SSE stream
+app.include_router(notification_preferences_router)  # Notification preferences
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 
