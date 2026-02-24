@@ -15,18 +15,18 @@ The system SHALL recognize `perplexity` as a valid content source type for web c
 
 ### Requirement: Pipeline Ingestion Sources
 
-The system SHALL include Perplexity search as a parallel ingestion source in daily and weekly pipelines.
+The system SHALL include web search sources (Perplexity, Grok) in daily and weekly pipelines via `sources.d/websearch.yaml` configuration.
 
-#### Scenario: Perplexity included in daily pipeline
-
-- **WHEN** the daily pipeline runs ingestion
-- **AND** `PERPLEXITY_API_KEY` is configured
-- **THEN** Perplexity search runs concurrently with Gmail, RSS, YouTube, Podcast, Substack, and X search
-- **AND** total ingestion time is the slowest source (not sum)
-
-#### Scenario: Perplexity skipped when not configured
+#### Scenario: Web search sources included in daily pipeline
 
 - **WHEN** the daily pipeline runs ingestion
-- **AND** `PERPLEXITY_API_KEY` is not configured
-- **THEN** Perplexity search is silently skipped
+- **AND** `sources.d/websearch.yaml` contains enabled entries with configured provider API keys
+- **THEN** each websearch source runs concurrently with Gmail, RSS, YouTube, Podcast, and Substack ingestion
+- **AND** total ingestion time is bounded by the slowest source (not sum)
+
+#### Scenario: Web search sources skipped when not configured
+
+- **WHEN** the daily pipeline runs ingestion
+- **AND** `sources.d/websearch.yaml` does not exist, has no enabled entries, or no provider API keys are configured
+- **THEN** web search ingestion is silently skipped
 - **AND** other sources are unaffected

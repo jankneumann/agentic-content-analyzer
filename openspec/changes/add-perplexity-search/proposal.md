@@ -55,10 +55,9 @@ This proposal addresses both problems:
 - `web-search-provider`: Unified web search abstraction for ad-hoc and ingestion use cases across Tavily, Perplexity, and Grok
 
 ### Modified Capabilities
-- `content-ingestion`: Add perplexity as a new ingestion source
+- `content-ingestion`: Add perplexity as a new ingestion source, migrate pipeline to sources.d-driven web search
 - `source-configuration`: Add `websearch.yaml` source type for scheduled search sources
-- `pipeline`: Include web search sources in daily/weekly pipeline
-- `cli-interface`: Add `aca ingest perplexity-search` command
+- `pipeline`: Include web search sources in daily/weekly pipeline via sources.d, remove hardcoded xsearch
 
 ## Impact
 
@@ -74,7 +73,7 @@ This proposal addresses both problems:
   - `src/api/chat_routes.py`: Update `web_search_enabled` to check any configured provider
   - `src/config/settings.py`: Add Perplexity settings, `web_search_provider` setting
   - `src/config/prompts.yaml`: Add default Perplexity search prompt
-  - `src/config/source_loader.py`: Support `websearch` source type
+  - `src/config/sources.py`: Add `WebSearchSource` model, support `websearch` source type
   - `src/processors/podcast_script_generator.py`: Use web search provider abstraction
   - `sources.d/websearch.yaml`: New source configuration file
   - `alembic/`: Migration to add `perplexity` enum value
