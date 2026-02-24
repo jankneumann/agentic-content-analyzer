@@ -88,6 +88,7 @@ export function useNotificationSSE(
   const queryClient = useQueryClient()
   const eventSourceRef = useRef<EventSource | null>(null)
   const onEventRef = useRef(onEvent)
+  const backoffRef = useRef(5_000)
   onEventRef.current = onEvent
 
   const connect = useCallback(() => {
@@ -115,11 +116,17 @@ export function useNotificationSSE(
         }
       })
 
+      es.onopen = () => {
+        // Reset backoff on successful connection
+        backoffRef.current = 5_000
+      }
+
       es.onerror = () => {
         es.close()
         eventSourceRef.current = null
-        // Reconnect after 5 seconds
-        setTimeout(connect, 5000)
+        // Reconnect with exponential backoff (5s → 10s → 20s → ... → 60s max)
+        setTimeout(connect, backoffRef.current)
+        backoffRef.current = Math.min(backoffRef.current * 2, 60_000)
       }
 
       eventSourceRef.current = es

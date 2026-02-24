@@ -247,6 +247,7 @@ async def event_stream(
                                 db.query(NotificationEvent)
                                 .filter(NotificationEvent.created_at > last_event.created_at)
                                 .order_by(NotificationEvent.created_at)
+                                .limit(100)  # Cap replay to prevent unbounded queries
                                 .all()
                             )
                             for event in missed:
