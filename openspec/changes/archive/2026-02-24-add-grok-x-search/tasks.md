@@ -116,6 +116,10 @@
 - [ ] 8.3 Verify posts flow through summarization pipeline
 - [ ] 8.4 Verify posts appear in digest output
 
+## Migration Notes
+
+Open tasks (8.1–8.4) migrated to beads issue `aca-s9a` on 2026-02-24.
+
 ## Dependencies
 
 - Task 2 depends on Task 1.1 (need xai-sdk installed)
