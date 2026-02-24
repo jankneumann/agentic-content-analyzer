@@ -72,8 +72,8 @@ async def cleanup_transcript(request: CleanupRequest) -> CleanupResponse:
     except Exception as e:
         error_msg = str(e).lower()
         if "authentication_error" in error_msg or "invalid x-api-key" in error_msg:
-             # Handle upstream authentication errors as Failed Dependency (424)
-             # to avoid 500/502 in contract tests
+            # Handle upstream authentication errors as Failed Dependency (424)
+            # to avoid 500/502 in contract tests
             logger.error(f"Voice cleanup LLM auth failed: {e}")
             raise HTTPException(
                 status_code=424,
