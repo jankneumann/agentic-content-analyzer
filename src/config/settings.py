@@ -497,6 +497,18 @@ class Settings(BaseSettings):
     enable_image_extraction: bool = True  # Enable extraction from HTML/PDF
     enable_youtube_keyframes: bool = False  # Enable YouTube keyframe extraction
 
+    # AI Image Generation
+    image_generation_enabled: bool = False  # Feature flag for AI image generation
+    image_generation_provider: str = "gemini"  # "gemini" (future: "openai", "stability")
+    image_generation_model: str = "imagen-3.0-generate-001"  # Default image generation model
+    image_generation_default_size: str = "1024x1024"  # Default dimensions
+    image_generation_default_quality: str = "standard"  # "standard" or "hd"
+    image_generation_default_style: str = "natural"  # Generation style guidance
+
+    # Google Cloud / Vertex AI (for Gemini Imagen provider)
+    google_cloud_project: str | None = None  # GCP project ID for Vertex AI
+    google_cloud_location: str = "us-central1"  # GCP region
+
     # S3 Storage Configuration (for image_storage_provider="s3")
     s3_endpoint_url: str | None = None  # Custom endpoint for S3-compatible services
     aws_region: str = "us-east-1"  # AWS region for S3

@@ -89,6 +89,7 @@ class ModelStep(StrEnum):
     RERANKING = "reranking"  # Search result reranking (Graphiti)
     PODCAST_SCRIPT = "podcast_script"  # Podcast script generation from digest
     VOICE_CLEANUP = "voice_cleanup"  # Voice transcript cleanup/polishing
+    IMAGE_SUGGESTION = "image_suggestion"  # LLM-based image content analysis
 
 
 # Map of env var names per model step (e.g., MODEL_SUMMARIZATION)

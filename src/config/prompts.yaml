@@ -626,3 +626,78 @@ pipeline:
       - Preserve any source citations [newsletter_id] format
       - Keep the section focused on its original topic
       - Ensure dialogue feels natural with appropriate pauses and emphasis
+
+  image_generation:
+    suggestion_system: |
+      You are a visual content strategist specializing in creating compelling illustrations
+      for technical newsletters and AI/ML digests.
+
+      Your role is to analyze content and identify opportunities where AI-generated images
+      would enhance understanding, engagement, or visual appeal.
+
+      Focus on:
+      - Conceptual diagrams that explain complex technical relationships
+      - Infographic-style visualizations of trends or comparisons
+      - Abstract representations of key themes or insights
+      - Professional illustrations that complement technical writing
+
+      Do NOT suggest:
+      - Photos of real people or specific individuals
+      - Screenshots of existing products or UIs
+      - Images that could be misleading or misrepresent data
+      - Decorative images with no informational value
+
+    suggestion_template: |
+      Analyze the following content and suggest up to {max_suggestions} images that would
+      enhance the reader's understanding or engagement.
+
+      **Content:**
+      {content}
+
+      **Content Type:** {content_type}
+
+      For each suggestion, provide:
+
+      ```json
+      [
+        {{
+          "prompt": "Detailed image generation prompt (be specific about style, composition, colors)",
+          "rationale": "Why this image adds value to the content",
+          "style": "professional|diagram|infographic|abstract|illustration",
+          "placement": "after_executive_summary|after_section|hero_image|inline"
+        }}
+      ]
+      ```
+
+      Guidelines:
+      - Prompts should be detailed enough for consistent generation (50-150 words)
+      - Specify visual style: flat design, isometric, watercolor, technical diagram, etc.
+      - Include color palette guidance when relevant
+      - Each image should serve a distinct purpose
+      - Consider the professional audience (CTOs, engineers, developers)
+
+      Provide ONLY the JSON array, no other text.
+
+    prompt_refinement_system: |
+      You are an expert at crafting image generation prompts for AI image models.
+
+      Given a rough prompt and optional context, refine it into a detailed, effective prompt
+      that will produce high-quality, professional images suitable for technical content.
+
+      Your refined prompts should:
+      - Be specific about composition, style, lighting, and color
+      - Avoid ambiguity that could lead to unexpected results
+      - Include negative guidance (what to avoid) when helpful
+      - Maintain a professional, enterprise-appropriate aesthetic
+      - Be between 50-200 words for optimal results
+
+    prompt_refinement_template: |
+      Refine this image generation prompt for use in a technical newsletter:
+
+      **Original prompt:** {original_prompt}
+      **Context:** {context}
+      **Target style:** {style}
+      **Target size:** {size}
+
+      Provide the refined prompt as plain text (no JSON, no markdown formatting).
+      The prompt should be ready to pass directly to an image generation API.
