@@ -20,6 +20,13 @@ The system SHALL recognize `websearch` as a valid source type in `sources.d/` di
 - **THEN** all entries inherit the defaults unless explicitly overridden
 - **AND** the cascading defaults pattern matches other source types (global defaults → file defaults → per-entry fields)
 
+#### Scenario: Invalid websearch source entry
+
+- **WHEN** a websearch source entry is missing the required `prompt` field or has an invalid `provider` value
+- **THEN** the source loader logs a warning identifying the entry
+- **AND** the entry is excluded from the loaded sources
+- **AND** valid entries in the same file are still loaded
+
 #### Scenario: Provider-specific source fields
 
 - **WHEN** a websearch source entry includes provider-specific fields:

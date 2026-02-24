@@ -158,6 +158,13 @@ The system SHALL provide a pluggable `WebSearchProvider` protocol used by chat, 
 - **THEN** the system logs a warning
 - **AND** returns empty results instead of raising an error
 
+#### Scenario: Formatted results include source attribution
+
+- **WHEN** any `WebSearchProvider` implementation's `format_results()` is called with non-empty results
+- **THEN** the output string includes the URL for each result (when available)
+- **AND** results are numbered sequentially
+- **AND** the format is suitable for LLM context injection (plain text with markdown links)
+
 #### Scenario: Factory with explicit provider override
 
 - **WHEN** a caller requests a specific provider via `get_web_search_provider(provider="perplexity")`
@@ -189,6 +196,20 @@ The system SHALL support configuring scheduled web searches as ingestion sources
 - **WHEN** a websearch source entry specifies a provider whose API key is not configured
 - **THEN** the pipeline silently skips that entry
 - **AND** other entries with configured providers still execute
+
+#### Scenario: Malformed websearch source entry
+
+- **WHEN** a websearch source entry is missing required fields (`provider` or `prompt`)
+- **THEN** the system logs a warning identifying the malformed entry by name or index
+- **AND** skips the malformed entry
+- **AND** continues processing remaining valid entries
+
+#### Scenario: Unrecognized websearch provider value
+
+- **WHEN** a websearch source entry has a `provider` value other than `perplexity` or `grok`
+- **THEN** the system logs a warning with the unrecognized provider name
+- **AND** skips the entry
+- **AND** continues processing remaining valid entries
 
 #### Scenario: Empty or missing websearch configuration
 

@@ -175,7 +175,7 @@
 ## 9. Grok WebSearchProvider Adapter
 
 > `[depends: 1.1]` — needs the protocol definition. Does NOT modify xsearch.py internals.
-> **File scope**: `src/services/web_search.py` (or `src/services/grok_search_adapter.py`)
+> **File scope**: `src/services/web_search.py`
 
 - [ ] 9.1 Create `GrokWebSearchProvider` implementing `WebSearchProvider`:
   - Instantiates `GrokXClient` internally
@@ -230,7 +230,7 @@
 
 ## 12. Wire WebSearchProvider into Consumers
 
-> `[depends: 2.1, 8.1, 9.1]` — needs all three provider adapters registered.
+> `[depends: 1.1, 2.1]` — needs protocol definition and Tavily adapter (the default). Perplexity/Grok adapters can be added independently without re-touching consumers.
 > **File scope**: `src/processors/podcast_script_generator.py`, `src/api/chat_routes.py`
 
 - [ ] 12.1 Update `src/processors/podcast_script_generator.py`:
@@ -245,7 +245,7 @@
 ## 13. Scheduled Web Search Sources (sources.d)
 
 > `[depends: 10.1]` — needs orchestrator functions for perplexity and xsearch.
-> **File scope**: `sources.d/websearch.yaml`, `src/config/source_loader.py`, `src/cli/pipeline_commands.py`
+> **File scope**: `sources.d/websearch.yaml`, `src/config/sources.py`, `src/cli/pipeline_commands.py`
 
 - [ ] 13.1 Create `sources.d/websearch.yaml` with example entries:
   ```yaml
@@ -259,147 +259,149 @@
       prompt: "Latest AI model releases, research breakthroughs, and industry news"
       tags: [ai, weekly]
 
+    - name: "AI Infrastructure & Tools"
+      provider: perplexity
+      prompt: "New developer tools, frameworks, and infrastructure for AI/ML engineering"
+      tags: [ai, tools]
+
     - name: "AI Twitter Pulse"
       provider: grok
       prompt: "Find AI research announcements, model releases, and technical discussions on X"
       tags: [ai, social]
       max_threads: 30
   ```
-- [ ] 13.2 Add `WebSearchSource` dataclass and `load_websearch_sources()` to source loader:
+- [ ] 13.2 Add `WebSearchSource` Pydantic model to `src/config/sources.py` (alongside existing `RSSSource`, `PodcastSource`, etc.):
   ```python
-  @dataclass
-  class WebSearchSource:
-      name: str
-      provider: str  # "perplexity" | "grok"
+  class WebSearchSource(SourceBase):
+      type: Literal["websearch"] = "websearch"
+      provider: Literal["perplexity", "grok"]
       prompt: str
-      enabled: bool = True
-      tags: list[str] = field(default_factory=list)
       # Provider-specific overrides
       max_results: int | None = None       # perplexity
       max_threads: int | None = None       # grok
       recency_filter: str | None = None    # perplexity
       context_size: str | None = None      # perplexity
+      domain_filter: list[str] | None = None  # perplexity
   ```
+  - Add `"websearch"` to the `Source` union type discriminator
+  - Update `SourcesConfig.get_sources_by_type()` to handle websearch entries
 - [ ] 13.3 Update pipeline `_run_ingestion_stage_async()` to read websearch sources:
-  - Load enabled entries from `sources.d/websearch.yaml`
+  - Load enabled websearch entries via `load_sources_config()` → `get_sources_by_type("websearch")`
   - For each entry, dispatch to `ingest_perplexity_search()` or `ingest_xsearch()` with entry's prompt and options
   - Run all websearch sources as parallel tasks alongside existing ingestion sources
   - Guard each provider: skip if API key not configured
+- [ ] 13.4 **Migrate hardcoded xsearch out of pipeline**: Remove the hardcoded `_ingest_source("xsearch", ingest_xsearch)` from the pipeline task list. X search is now driven exclusively by `sources.d/websearch.yaml` entries with `provider: grok`. This prevents double-execution when both hardcoded and sources.d entries exist.
+  - Users who had xsearch in the pipeline get it back by adding a grok entry to `websearch.yaml`
+  - The `aca ingest xsearch` CLI command remains available for manual use
 
-## 14. Pipeline Integration (Perplexity standalone)
-
-> `[depends: 10.1]` — needs orchestrator function.
-> **File scope**: `src/cli/pipeline_commands.py`
-
-- [ ] 14.1 Add `ingest_perplexity_search` to `_run_ingestion_stage_async()` in `src/cli/pipeline_commands.py`
-- [ ] 14.2 Register as parallel source alongside existing sources
-- [ ] 14.3 Guard with `settings.perplexity_api_key` — skip silently if not configured
-
-## 15. Tests — WebSearchProvider Protocol and Adapters
+## 14. Tests — WebSearchProvider Protocol and Adapters
 
 > `[depends: 1.1, 2.1, 8.1, 9.1]` — needs all provider implementations.
 > **File scope**: `tests/test_services/test_web_search.py`
 
-- [ ] 15.1 Create `tests/test_services/test_web_search.py`:
+- [ ] 14.1 Create `tests/test_services/test_web_search.py`:
   - Test `get_web_search_provider()` factory with each setting value (`tavily`, `perplexity`, `grok`)
   - Test factory raises/warns for unknown provider values
   - Test factory with explicit `provider` parameter override
-- [ ] 15.2 Test `TavilyWebSearchProvider`:
+- [ ] 14.2 Test `TavilyWebSearchProvider`:
   - Mock `TavilyClient`, verify `search()` returns `WebSearchResult` objects
-  - Test `format_results()` output format
+  - Test `format_results()` output includes URLs for each result
   - Test graceful handling when API key not configured
-- [ ] 15.3 Test `PerplexityWebSearchProvider`:
+- [ ] 14.3 Test `PerplexityWebSearchProvider`:
   - Mock `openai.OpenAI` client
   - Verify `extra_body` contains Perplexity-specific params
   - Test citation mapping to `WebSearchResult.citations`
   - Test `format_results()` includes numbered citation links
-- [ ] 15.4 Test `GrokWebSearchProvider`:
+- [ ] 14.4 Test `GrokWebSearchProvider`:
   - Mock `GrokXClient.search()` response
   - Verify synthesized text is parsed into `WebSearchResult` objects
   - Test handling when Grok returns no extractable URLs (empty `url` field)
   - Test `max_results` limiting
 
-## 16. Tests — Perplexity Ingestion
+## 15. Tests — Perplexity Ingestion
 
 > `[depends: 5.2, 6.1]` — needs client and service implementations.
 > **File scope**: `tests/test_ingestion/test_perplexity_search.py`
 
-- [ ] 16.1 Create `tests/test_ingestion/test_perplexity_search.py`:
+- [ ] 15.1 Create `tests/test_ingestion/test_perplexity_search.py`:
   - Test `PerplexityResponse` model creation and validation
   - Test ContentData conversion (markdown formatting, metadata)
   - Test source_id generation from citation hashes
   - Test deduplication: exact match, citation overlap, content hash
-- [ ] 16.2 Test `PerplexityClient`:
+- [ ] 15.2 Test `PerplexityClient`:
   - Mock `openai.OpenAI` client
   - Verify `extra_body` contains Perplexity-specific params
   - Test error handling (auth error, rate limit, network error)
   - Test response parsing with citations array
-- [ ] 16.3 Test `PerplexityContentIngestionService`:
+- [ ] 15.3 Test `PerplexityContentIngestionService`:
   - Mock client, mock DB
   - Test full ingestion flow: search → parse → dedup → persist
   - Test SAVEPOINT isolation for partial failures
   - Test prompt retrieval from PromptService
   - Test `close()` called even on error
 
-## 17. Tests — Orchestrator and CLI
+## 16. Tests — Orchestrator and CLI
 
 > `[depends: 10.1, 11.1]` — needs orchestrator and CLI implementations.
 > **File scope**: `tests/test_ingestion/test_perplexity_search.py`, `tests/cli/test_ingest_commands.py`
 
-- [ ] 17.1 Add orchestrator tests:
+- [ ] 16.1 Add orchestrator tests:
   - Mock at `src.ingestion.perplexity_search.PerplexityContentIngestionService`
   - Verify `on_result` callback receives full result
   - Verify `service.close()` called in all paths
-- [ ] 17.2 Add CLI tests to `tests/cli/test_ingest_commands.py`:
+- [ ] 16.2 Add CLI tests to `tests/cli/test_ingest_commands.py`:
   - Test success path with default options
   - Test with custom prompt and options
   - Test with --force flag
   - Test failure path
   - Test JSON mode output
   - Test help text
-- [ ] 17.3 Test pipeline integration:
-  - Verify perplexity-search included in pipeline sources
+- [ ] 16.3 Test pipeline integration:
+  - Verify websearch sources dispatched correctly
   - Verify graceful skip when API key not configured
 
-## 18. Tests — Scheduled Web Search Sources
+## 17. Tests — Scheduled Web Search Sources
 
-> `[depends: 13.2]` — needs source loader implementation.
-> **File scope**: `tests/test_config/test_source_loader.py` (or new file)
+> `[depends: 13.2]` — needs source model and loader implementation.
+> **File scope**: `tests/test_config/test_sources.py`
 
-- [ ] 18.1 Test `load_websearch_sources()`:
+- [ ] 17.1 Test `WebSearchSource` model validation:
   - Test loading valid `websearch.yaml` with mixed providers
   - Test disabled entries are filtered out
   - Test defaults applied correctly
   - Test provider-specific fields (max_threads, recency_filter) parsed
   - Test empty/missing file returns empty list
-- [ ] 18.2 Test pipeline dispatch:
+  - Test malformed entries (missing prompt, invalid provider) are rejected with warnings
+- [ ] 17.2 Test pipeline dispatch:
   - Mock orchestrator functions
   - Verify correct provider called per source entry
   - Verify provider-specific options passed through
   - Verify sources with unconfigured API keys are skipped
+  - Verify hardcoded xsearch removed from pipeline (no double-execution)
 
-## 19. Tests — Consumer Wiring
+## 18. Tests — Consumer Wiring
 
 > `[depends: 12.1]` — needs consumer updates.
 > **File scope**: `tests/test_processors/`, `tests/api/`
 
-- [ ] 19.1 Test podcast script generator uses `get_web_search_provider()`:
+- [ ] 18.1 Test podcast script generator uses `get_web_search_provider()`:
   - Mock provider factory
   - Verify `_handle_web_search()` delegates to configured provider
-- [ ] 19.2 Test chat routes `web_search_enabled` reflects any configured provider:
+- [ ] 18.2 Test chat routes `web_search_enabled` reflects any configured provider:
   - Test with only Tavily configured → enabled
   - Test with only Perplexity configured → enabled
   - Test with only Grok configured → enabled
   - Test with none configured → disabled
 
-## 20. Documentation
+## 19. Documentation
 
 > `[depends: 11.1, 13.1]` — needs CLI and source config implementations.
 
-- [ ] 20.1 Update CLAUDE.md:
+- [ ] 19.1 Update CLAUDE.md:
   - Add `aca ingest perplexity-search` to CLI commands section
   - Add `PERPLEXITY_API_KEY`, `PERPLEXITY_MODEL`, `WEB_SEARCH_PROVIDER` to configuration
   - Add `sources.d/websearch.yaml` to source configuration section
   - Add gotcha: "Perplexity citations may contain inline `[N]` markers — always use `citations` response field, not inline URLs"
   - Add gotcha: "`WEB_SEARCH_PROVIDER` controls ad-hoc search only — ingestion uses provider from `sources.d/websearch.yaml` entries"
-- [ ] 20.2 Update `docs/SETUP.md` with Perplexity API key setup instructions
+  - Add gotcha: "xsearch removed from hardcoded pipeline — add grok entries to `sources.d/websearch.yaml` instead"
+- [ ] 19.2 Update `docs/SETUP.md` with Perplexity API key setup instructions

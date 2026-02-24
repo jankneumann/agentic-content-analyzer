@@ -47,6 +47,7 @@ This proposal addresses both problems:
 - Pipeline reads websearch sources and dispatches to the appropriate provider's ingestion service
 - Replaces manual 2-prompt external workflow with in-app scheduled ingestion
 - X-Grok's existing prompt-based ingestion (`aca ingest xsearch --prompt`) becomes one source entry alongside Perplexity entries
+- **Migrate xsearch out of hardcoded pipeline**: Remove the hardcoded `ingest_xsearch` from `_run_ingestion_stage_async()` — X search is now driven exclusively by `sources.d/websearch.yaml` entries. This prevents double-execution. The `aca ingest xsearch` CLI command remains for manual use.
 
 ## Capabilities
 
