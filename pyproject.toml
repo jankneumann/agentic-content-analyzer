@@ -122,6 +122,9 @@ embeddings = [
     "voyageai>=0.2.0",              # Voyage AI embeddings (retrieval-optimized)
     "cohere>=5.0.0",                # Cohere embeddings and reranking
 ]
+image-generation = [
+    "google-cloud-aiplatform>=1.38.0",  # Vertex AI SDK for Imagen image generation
+]
 
 [build-system]
 requires = ["hatchling"]

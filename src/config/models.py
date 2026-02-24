@@ -89,6 +89,7 @@ class ModelStep(StrEnum):
     RERANKING = "reranking"  # Search result reranking (Graphiti)
     PODCAST_SCRIPT = "podcast_script"  # Podcast script generation from digest
     VOICE_CLEANUP = "voice_cleanup"  # Voice transcript cleanup/polishing
+    IMAGE_SUGGESTION = "image_suggestion"  # LLM-based image content analysis
 
 
 # Map of env var names per model step (e.g., MODEL_SUMMARIZATION)
@@ -258,6 +259,7 @@ class ModelConfig:
         reranking: str | None = None,
         podcast_script: str | None = None,
         voice_cleanup: str | None = None,
+        image_suggestion: str | None = None,
         # Provider configurations (in priority order for failover)
         providers: list[ProviderConfig] | None = None,
     ):
@@ -276,6 +278,7 @@ class ModelConfig:
             reranking: Model for search reranking (default from YAML)
             podcast_script: Model for podcast script generation (default from YAML)
             voice_cleanup: Model for voice transcript cleanup (default from YAML)
+            image_suggestion: Model for image suggestion analysis (default from YAML)
             providers: List of provider configurations in priority order
         """
         # Use defaults from YAML if not specified
@@ -298,6 +301,8 @@ class ModelConfig:
             or DEFAULT_MODELS.get("podcast_script", DEFAULT_MODELS["digest_creation"]),
             ModelStep.VOICE_CLEANUP: voice_cleanup
             or DEFAULT_MODELS.get("voice_cleanup", DEFAULT_MODELS["summarization"]),
+            ModelStep.IMAGE_SUGGESTION: image_suggestion
+            or DEFAULT_MODELS.get("image_suggestion", DEFAULT_MODELS["summarization"]),
         }
 
         # Validate all models exist

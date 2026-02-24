@@ -316,6 +316,7 @@ default_models:
   reranking: gpt-5-nano  # Fast, cheap for simple ranking
   podcast_script: gemini-2.5-flash  # Conversational dialogue, tool use, high rate limits
   voice_cleanup: claude-haiku-4-5  # Fast, cheap for transcript polishing
+  image_suggestion: claude-haiku-4-5  # Fast, cheap for image suggestion analysis
 
 # Notes on provider tiers and pricing:
 # - Anthropic: Base pricing, direct API access
