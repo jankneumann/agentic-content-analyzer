@@ -403,7 +403,7 @@ class GrokXContentIngestionService:
         prompt: str | None = None,
         max_threads: int | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> XSearchResult:
         """Search X and ingest discovered threads.
 
         Args:
@@ -412,8 +412,9 @@ class GrokXContentIngestionService:
             force_reprocess: Re-ingest threads that already exist.
 
         Returns:
-            Number of items ingested.
+            XSearchResult with ingestion stats and error details.
         """
+        result = XSearchResult()
         search_prompt = prompt or self._get_search_prompt()
         max_threads = max_threads or settings.grok_x_max_threads
 
@@ -423,13 +424,15 @@ class GrokXContentIngestionService:
         response_text, tool_calls = self.client.search(
             search_prompt, max_turns=settings.grok_x_max_turns
         )
+        result.tool_calls_made = tool_calls
 
         if not response_text.strip():
             logger.warning("Grok returned empty response")
-            return 0
+            return result
 
         # Parse threads
         threads = self.client.parse_threads_from_response(response_text)
+        result.threads_found = len(threads)
         logger.info(f"Parsed {len(threads)} thread(s) from Grok response")
 
         # Limit
@@ -440,7 +443,6 @@ class GrokXContentIngestionService:
         # Each thread (including its dedup check) is wrapped in a SAVEPOINT
         # (begin_nested) so a failure on one thread doesn't corrupt the
         # session or roll back previously flushed items.
-        ingested = 0
         with get_db() as db:
             for thread in threads:
                 try:
@@ -448,6 +450,7 @@ class GrokXContentIngestionService:
 
                     if not force_reprocess and self._is_duplicate(db, thread):
                         logger.debug(f"Skipping duplicate: {thread.root_post_id}")
+                        result.items_skipped += 1
                         continue
 
                     content_data = thread_to_content_data(thread, search_prompt, tool_calls)
@@ -467,22 +470,23 @@ class GrokXContentIngestionService:
                     )
                     db.add(content)
                     db.flush()
-                    ingested += 1
+                    result.items_ingested += 1
                     logger.info(
                         f"Ingested X content: id={content.id}, source_id={content_data.source_id}"
                     )
-                except Exception:
+                except Exception as exc:
                     db.rollback()  # rolls back to SAVEPOINT, not entire transaction
+                    result.errors.append(f"{thread.root_post_id}: {exc}")
                     logger.warning(
                         f"Failed to ingest thread {thread.root_post_id}",
                         exc_info=True,
                     )
 
-            if ingested > 0:
+            if result.items_ingested > 0:
                 db.commit()
-                logger.info(f"Committed {ingested} X content item(s)")
+                logger.info(f"Committed {result.items_ingested} X content item(s)")
 
-        return ingested
+        return result
 
     def _is_duplicate(self, db: Any, thread: XThreadData) -> bool:
         """Check if a thread already exists using multi-level dedup.

@@ -6,7 +6,7 @@ Tests mock at `src.ingestion.orchestrator.<func>` instead of individual service 
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -424,6 +424,7 @@ class TestIngestXSearch:
             prompt="Find AI model releases",
             max_threads=20,
             force_reprocess=False,
+            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_xsearch")
@@ -436,6 +437,7 @@ class TestIngestXSearch:
             prompt=None,
             max_threads=None,
             force_reprocess=True,
+            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_xsearch")

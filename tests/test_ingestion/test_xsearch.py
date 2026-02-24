@@ -9,6 +9,7 @@ from src.ingestion.xsearch import (
     GrokXClient,
     GrokXContentIngestionService,
     XPostContent,
+    XSearchResult,
     XThreadData,
     build_metadata,
     format_thread_markdown,
@@ -296,8 +297,9 @@ class TestGrokXContentIngestionService:
         service = GrokXContentIngestionService(api_key="key")
         service.client = mock_client
 
-        count = service.ingest_threads(prompt="Custom AI search")
-        assert count == 0
+        result = service.ingest_threads(prompt="Custom AI search")
+        assert isinstance(result, XSearchResult)
+        assert result.items_ingested == 0
         mock_client.search.assert_called_once()
         call_args = mock_client.search.call_args
         assert call_args[0][0] == "Custom AI search"
@@ -313,8 +315,10 @@ class TestGrokXContentIngestionService:
         service = GrokXContentIngestionService(api_key="key")
         service.client = mock_client
 
-        count = service.ingest_threads(prompt="test")
-        assert count == 0
+        result = service.ingest_threads(prompt="test")
+        assert isinstance(result, XSearchResult)
+        assert result.items_ingested == 0
+        assert result.tool_calls_made == 0
 
     @patch("src.ingestion.xsearch.get_db")
     @patch("src.ingestion.xsearch.GrokXClient")
@@ -363,10 +367,13 @@ class TestGrokXContentIngestionService:
         service = GrokXContentIngestionService(api_key="key")
         service.client = mock_client
 
-        count = service.ingest_threads(prompt="test")
+        result = service.ingest_threads(prompt="test")
 
         # Good thread should succeed even though bad thread failed
-        assert count == 1
+        assert result.items_ingested == 1
+        assert result.threads_found == 2
+        assert len(result.errors) == 1
+        assert "bbb" in result.errors[0]
         # rollback should have been called for the bad thread
         mock_db.rollback.assert_called_once()
         # commit for the good thread
@@ -413,7 +420,9 @@ class TestOrchestratorIntegration:
         from src.ingestion.orchestrator import ingest_xsearch
 
         mock_service = MagicMock()
-        mock_service.ingest_threads.return_value = 3
+        mock_service.ingest_threads.return_value = XSearchResult(
+            items_ingested=3, threads_found=5, tool_calls_made=2
+        )
         mock_service_cls.return_value = mock_service
 
         count = ingest_xsearch(prompt="test", max_threads=10)
@@ -424,6 +433,25 @@ class TestOrchestratorIntegration:
             force_reprocess=False,
         )
         mock_service.close.assert_called_once()
+
+    @patch("src.ingestion.xsearch.GrokXContentIngestionService")
+    def test_ingest_xsearch_on_result_callback(self, mock_service_cls):
+        """Orchestrator passes XSearchResult to on_result callback."""
+        from src.ingestion.orchestrator import ingest_xsearch
+
+        mock_service = MagicMock()
+        result_obj = XSearchResult(
+            items_ingested=2, threads_found=4, tool_calls_made=3, items_skipped=1
+        )
+        mock_service.ingest_threads.return_value = result_obj
+        mock_service_cls.return_value = mock_service
+
+        captured = []
+        count = ingest_xsearch(on_result=captured.append)
+        assert count == 2
+        assert len(captured) == 1
+        assert captured[0] is result_obj
+        assert captured[0].tool_calls_made == 3
 
     @patch("src.ingestion.xsearch.GrokXContentIngestionService")
     def test_ingest_xsearch_closes_on_error(self, mock_service_cls):

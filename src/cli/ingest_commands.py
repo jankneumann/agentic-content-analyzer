@@ -519,9 +519,18 @@ def xsearch(
     ] = False,
 ) -> None:
     """Search X via Grok API and ingest AI-relevant posts/threads."""
+    from dataclasses import asdict
+
     from rich.console import Console
 
+    from src.ingestion.xsearch import XSearchResult
+
     console = Console()
+    xsearch_result: XSearchResult | None = None
+
+    def _capture_result(result: XSearchResult) -> None:
+        nonlocal xsearch_result
+        xsearch_result = result
 
     try:
         from src.ingestion.orchestrator import ingest_xsearch
@@ -530,6 +539,7 @@ def xsearch(
             prompt=prompt,
             max_threads=max_threads,
             force_reprocess=force,
+            on_result=_capture_result,
         )
     except Exception as exc:
         if is_json_mode():
@@ -539,9 +549,24 @@ def xsearch(
         raise typer.Exit(1)
 
     if is_json_mode():
-        output_result({"source": "xsearch", "ingested": count})
+        data: dict = {"source": "xsearch", "ingested": count}
+        if xsearch_result is not None:
+            data.update(asdict(xsearch_result))
+        output_result(data)
     else:
         console.print(f"[green]X search ingestion complete.[/green] {count} item(s) ingested.")
+        if xsearch_result is not None:
+            details = []
+            if xsearch_result.threads_found:
+                details.append(f"{xsearch_result.threads_found} thread(s) found")
+            if xsearch_result.items_skipped:
+                details.append(f"{xsearch_result.items_skipped} skipped (duplicates)")
+            if xsearch_result.tool_calls_made:
+                details.append(f"{xsearch_result.tool_calls_made} Grok tool call(s)")
+            if xsearch_result.errors:
+                details.append(f"{len(xsearch_result.errors)} error(s)")
+            if details:
+                console.print(f"  [dim]{' | '.join(details)}[/dim]")
 
 
 # ---------------------------------------------------------------------------

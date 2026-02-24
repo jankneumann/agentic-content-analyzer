@@ -275,6 +275,7 @@ def ingest_xsearch(
     prompt: str | None = None,
     max_threads: int | None = None,
     force_reprocess: bool = False,
+    on_result: Callable | None = None,
 ) -> int:
     """Ingest X posts/threads via Grok API search.
 
@@ -286,6 +287,8 @@ def ingest_xsearch(
         prompt: Override the default search prompt.
         max_threads: Maximum threads to ingest (default from settings).
         force_reprocess: Re-ingest threads that already exist.
+        on_result: Optional callback that receives the full XSearchResult
+                   (for rich result reporting in CLI).
 
     Returns:
         Number of items ingested.
@@ -294,11 +297,14 @@ def ingest_xsearch(
 
     service = GrokXContentIngestionService()
     try:
-        return service.ingest_threads(
+        result = service.ingest_threads(
             prompt=prompt,
             max_threads=max_threads,
             force_reprocess=force_reprocess,
         )
+        if on_result is not None:
+            on_result(result)
+        return result.items_ingested
     finally:
         service.close()
 
