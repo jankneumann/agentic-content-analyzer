@@ -437,17 +437,19 @@ class GrokXContentIngestionService:
             threads = threads[:max_threads]
 
         # Deduplicate and store.
-        # Each thread is wrapped in a SAVEPOINT (begin_nested) so a failed
-        # flush on one thread doesn't corrupt the session for subsequent ones.
+        # Each thread (including its dedup check) is wrapped in a SAVEPOINT
+        # (begin_nested) so a failure on one thread doesn't corrupt the
+        # session or roll back previously flushed items.
         ingested = 0
         with get_db() as db:
             for thread in threads:
                 try:
+                    db.begin_nested()  # SAVEPOINT — wraps dedup + insert
+
                     if not force_reprocess and self._is_duplicate(db, thread):
                         logger.debug(f"Skipping duplicate: {thread.root_post_id}")
                         continue
 
-                    db.begin_nested()  # SAVEPOINT
                     content_data = thread_to_content_data(thread, search_prompt, tool_calls)
                     content = Content(
                         source_type=content_data.source_type,
