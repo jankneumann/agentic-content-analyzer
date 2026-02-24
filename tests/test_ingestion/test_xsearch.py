@@ -225,6 +225,24 @@ class TestGrokXClient:
         assert "openai" in threads[0].mentions
         assert any("openai.com" in u for u in threads[0].linked_urls)
 
+    def test_parse_synthesised_strips_trailing_punctuation_from_urls(self):
+        """URLs in prose text should not include trailing punctuation."""
+        client = GrokXClient(api_key="key")
+        text = (
+            "Check out https://example.com/page. "
+            "Also see (https://other.com/path) "
+            "and https://third.com/foo;"
+        )
+        threads = client.parse_threads_from_response(text)
+        assert len(threads) == 1
+        urls = threads[0].linked_urls + threads[0].media_urls
+        # None of the captured URLs should end with punctuation
+        assert any("example.com/page" in u for u in urls)
+        for url in urls:
+            assert not url.endswith(".")
+            assert not url.endswith(")")
+            assert not url.endswith(";")
+
     def test_parse_empty_response(self):
         client = GrokXClient(api_key="key")
         threads = client.parse_threads_from_response("")
@@ -297,6 +315,62 @@ class TestGrokXContentIngestionService:
 
         count = service.ingest_threads(prompt="test")
         assert count == 0
+
+    @patch("src.ingestion.xsearch.get_db")
+    @patch("src.ingestion.xsearch.GrokXClient")
+    def test_ingest_single_failure_does_not_block_others(self, mock_client_cls, mock_get_db):
+        """One thread failing to flush should not prevent other threads from ingesting.
+
+        Verifies the SAVEPOINT (begin_nested) isolation pattern: each thread is
+        wrapped in a nested transaction so a flush failure rolls back only that
+        thread, not the entire batch.
+        """
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.search.return_value = ("two threads", 1)
+
+        good_thread = XThreadData(
+            root_post_id="aaa",
+            thread_post_ids=["aaa"],
+            author_handle="good",
+            posts=[XPostContent(text="Good post", post_id="aaa")],
+        )
+        bad_thread = XThreadData(
+            root_post_id="bbb",
+            thread_post_ids=["bbb"],
+            author_handle="bad",
+            posts=[XPostContent(text="Bad post", post_id="bbb")],
+        )
+        mock_client.parse_threads_from_response.return_value = [bad_thread, good_thread]
+
+        # Set up mock DB session — bad_thread causes flush to raise, good_thread succeeds
+        mock_db = MagicMock()
+        flush_call_count = 0
+
+        def side_effect_flush():
+            nonlocal flush_call_count
+            flush_call_count += 1
+            if flush_call_count == 1:
+                raise Exception("Unique constraint violation")
+
+        mock_db.flush.side_effect = side_effect_flush
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.execute.return_value.first.return_value = None
+
+        mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
+        mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        service = GrokXContentIngestionService(api_key="key")
+        service.client = mock_client
+
+        count = service.ingest_threads(prompt="test")
+
+        # Good thread should succeed even though bad thread failed
+        assert count == 1
+        # rollback should have been called for the bad thread
+        mock_db.rollback.assert_called_once()
+        # commit for the good thread
+        mock_db.commit.assert_called_once()
 
     @patch("src.ingestion.xsearch.get_db")
     @patch("src.ingestion.xsearch.GrokXClient")

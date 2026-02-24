@@ -5,9 +5,9 @@ Usage:
     aca pipeline weekly
 
 Parallel Ingestion:
-    All 5 ingestion sources (Gmail, RSS, YouTube, Podcast, Substack) run concurrently
-    via asyncio.gather(). Total ingestion time equals the slowest source,
-    not the sum of all sources.
+    All 7 ingestion sources (Gmail, RSS, YouTube Playlist, YouTube RSS, Podcast,
+    Substack, X Search) run concurrently via asyncio.gather(). Total ingestion
+    time equals the slowest source, not the sum of all sources.
 
 OpenTelemetry Instrumentation:
     Each pipeline stage creates an OTel span for observability:

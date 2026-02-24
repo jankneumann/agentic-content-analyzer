@@ -353,8 +353,10 @@ class GrokXClient:
         handles = re.findall(r"@(\w{1,15})", text)
         mentions = list(dict.fromkeys(handles))  # dedupe, preserve order
 
-        # Extract URLs
-        urls = re.findall(r"https?://\S+", text)
+        # Extract URLs and strip trailing punctuation that gets captured
+        # from prose text (e.g., "Check https://example.com." or "(https://example.com)")
+        raw_urls = re.findall(r"https?://\S+", text)
+        urls = [re.sub(r"[.,;:!?\)\]\}>]+$", "", u) for u in raw_urls]
         x_urls = [u for u in urls if "x.com/" in u or "twitter.com/" in u]
         other_urls = [u for u in urls if u not in x_urls]
 
@@ -434,7 +436,9 @@ class GrokXContentIngestionService:
         if len(threads) > max_threads:
             threads = threads[:max_threads]
 
-        # Deduplicate and store
+        # Deduplicate and store.
+        # Each thread is wrapped in a SAVEPOINT (begin_nested) so a failed
+        # flush on one thread doesn't corrupt the session for subsequent ones.
         ingested = 0
         with get_db() as db:
             for thread in threads:
@@ -443,6 +447,7 @@ class GrokXContentIngestionService:
                         logger.debug(f"Skipping duplicate: {thread.root_post_id}")
                         continue
 
+                    db.begin_nested()  # SAVEPOINT
                     content_data = thread_to_content_data(thread, search_prompt, tool_calls)
                     content = Content(
                         source_type=content_data.source_type,
@@ -465,6 +470,7 @@ class GrokXContentIngestionService:
                         f"Ingested X content: id={content.id}, source_id={content_data.source_id}"
                     )
                 except Exception:
+                    db.rollback()  # rolls back to SAVEPOINT, not entire transaction
                     logger.warning(
                         f"Failed to ingest thread {thread.root_post_id}",
                         exc_info=True,
@@ -481,8 +487,10 @@ class GrokXContentIngestionService:
 
         1. Check source_id match (root_post_id)
         2. Check if any thread post IDs overlap with stored threads
-        3. Content hash as final fallback
+           using JSONB containment (@>) for exact array element matching
         """
+        from sqlalchemy import text
+
         source_id = f"xpost:{thread.root_post_id}"
 
         # Level 1: exact source_id match
@@ -490,18 +498,22 @@ class GrokXContentIngestionService:
         if existing:
             return True
 
-        # Level 2: check thread_post_ids overlap via metadata_json
-        # This catches cases where a different post from the same thread
-        # was discovered in a previous run.
+        # Level 2: check thread_post_ids overlap via JSONB containment.
+        # Uses @> operator for exact array element matching (not substring).
+        # CAST() avoids psycopg2 :param::type misparsing.
         for post_id in thread.thread_post_ids:
-            existing = (
-                db.query(Content)
-                .filter(
-                    Content.source_type == ContentSource.XSEARCH,
-                    Content.metadata_json["thread_post_ids"].astext.contains(post_id),
-                )
-                .first()
-            )
+            existing = db.execute(
+                text(
+                    "SELECT 1 FROM content "
+                    "WHERE CAST(source_type AS text) = :source_type "
+                    "AND metadata_json->'thread_post_ids' @> CAST(:post_id_json AS jsonb) "
+                    "LIMIT 1"
+                ),
+                {
+                    "source_type": ContentSource.XSEARCH.value,
+                    "post_id_json": json.dumps([post_id]),
+                },
+            ).first()
             if existing:
                 return True
 
