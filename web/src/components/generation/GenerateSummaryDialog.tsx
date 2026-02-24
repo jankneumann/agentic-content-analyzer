@@ -124,15 +124,26 @@ export function GenerateSummaryDialog({
               {failedCount > 0 && (
                 <div className="flex items-center justify-between rounded-lg border p-3 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
                   <div className="space-y-0.5">
-                    <Label className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                    <Label
+                      htmlFor="retry-failed-switch"
+                      className="flex items-center gap-2 text-amber-800 dark:text-amber-200"
+                    >
                       <RefreshCw className="h-4 w-4" />
                       Retry {failedCount} Failed Items
                     </Label>
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                    <p
+                      id="retry-failed-desc"
+                      className="text-xs text-amber-600 dark:text-amber-400"
+                    >
                       Reset failed content and attempt summarization again
                     </p>
                   </div>
-                  <Switch checked={retryFailed} onCheckedChange={setRetryFailed} />
+                  <Switch
+                    id="retry-failed-switch"
+                    aria-describedby="retry-failed-desc"
+                    checked={retryFailed}
+                    onCheckedChange={setRetryFailed}
+                  />
                 </div>
               )}
             </div>
@@ -161,15 +172,26 @@ export function GenerateSummaryDialog({
           {/* Force Toggle */}
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div className="space-y-0.5">
-              <Label className="flex items-center gap-2">
+              <Label
+                htmlFor="force-summarize-switch"
+                className="flex items-center gap-2"
+              >
                 <RefreshCw className="h-4 w-4" />
                 Force Re-summarize
               </Label>
-              <p className="text-xs text-muted-foreground">
+              <p
+                id="force-summarize-desc"
+                className="text-xs text-muted-foreground"
+              >
                 Regenerate even if summary already exists
               </p>
             </div>
-            <Switch checked={force} onCheckedChange={setForce} />
+            <Switch
+              id="force-summarize-switch"
+              aria-describedby="force-summarize-desc"
+              checked={force}
+              onCheckedChange={setForce}
+            />
           </div>
         </div>
 
