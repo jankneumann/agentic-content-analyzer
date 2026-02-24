@@ -434,12 +434,15 @@ class ImageGenerator:
     def _parse_suggestions(text: str) -> list[ImageSuggestion]:
         """Parse LLM response into ImageSuggestion objects."""
         try:
-            # Strip markdown code fences if present
+            # Strip markdown code fences if present (first and last lines only)
             cleaned = text.strip()
             if cleaned.startswith("```"):
                 lines = cleaned.split("\n")
-                # Remove first line (```json) and last line (```)
-                lines = [ln for ln in lines[1:] if not ln.strip().startswith("```")]
+                # Remove opening fence (first line, e.g. ```json)
+                lines = lines[1:]
+                # Remove closing fence (last line, if it's ```)
+                if lines and lines[-1].strip().startswith("```"):
+                    lines = lines[:-1]
                 cleaned = "\n".join(lines)
 
             data = json.loads(cleaned)
@@ -470,13 +473,13 @@ class ImageGenerator:
 
 
 def get_image_generator(
-    db: Session | None = None,
+    db: Session,
     provider: ImageGeneratorProvider | None = None,
 ) -> ImageGenerator:
     """Factory function for creating an ImageGenerator.
 
     Args:
-        db: Optional DB session (auto-opens if None).
+        db: DB session (caller manages lifecycle — typically ``with get_db() as db:``).
         provider: Optional explicit provider (defaults to settings-based selection).
 
     Returns:
@@ -487,7 +490,6 @@ def get_image_generator(
     """
     from src.config import settings
     from src.services.file_storage import get_storage
-    from src.storage.database import get_db
 
     if not settings.image_generation_enabled:
         raise ValueError(
@@ -500,13 +502,6 @@ def get_image_generator(
 
     # Storage
     storage = get_storage(bucket="images")
-
-    # DB session
-    if db is None:
-        ctx = get_db()
-        db = ctx.__enter__()
-        # Note: caller is responsible for committing/closing the session.
-        # In API routes, the session lifecycle is managed by the route.
 
     return ImageGenerator(provider=provider, storage=storage, db=db)
 

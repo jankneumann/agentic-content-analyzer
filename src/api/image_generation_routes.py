@@ -62,7 +62,9 @@ class SuggestRequest(BaseModel):
     """Request for LLM-powered image suggestions."""
 
     content: str = Field(..., min_length=10, max_length=50000, description="Content to analyze")
-    content_type: str = Field(default="summary", description="Type of content")
+    content_type: Literal["summary", "digest"] = Field(
+        default="summary", description="Type of content"
+    )
     max_suggestions: int = Field(default=3, ge=1, le=10, description="Maximum suggestions")
 
 
@@ -138,12 +140,26 @@ async def generate_image(request: GenerateRequest) -> GenerateResponse:
             summary = db.query(Summary).filter(Summary.id == request.source_id).first()
             if not summary:
                 raise HTTPException(status_code=404, detail="Summary not found")
-            image = await generator.generate_for_summary(summary, prompt, params)
+            try:
+                image = await generator.generate_for_summary(summary, prompt, params)
+            except Exception:
+                logger.exception("Image generation failed for summary %d", request.source_id)
+                raise HTTPException(
+                    status_code=502,
+                    detail="Image generation failed. The provider may be unavailable.",
+                )
         else:
             digest = db.query(Digest).filter(Digest.id == request.source_id).first()
             if not digest:
                 raise HTTPException(status_code=404, detail="Digest not found")
-            image = await generator.generate_for_digest(request.source_id, prompt, params)
+            try:
+                image = await generator.generate_for_digest(request.source_id, prompt, params)
+            except Exception:
+                logger.exception("Image generation failed for digest %d", request.source_id)
+                raise HTTPException(
+                    status_code=502,
+                    detail="Image generation failed. The provider may be unavailable.",
+                )
 
         db.commit()
 
@@ -200,7 +216,11 @@ async def regenerate_image(image_id: UUID, request: RegenerateRequest) -> Genera
     """Regenerate an existing image with the same or modified prompt.
 
     If no new prompt is provided, uses the original generation prompt.
+    The old storage file is cleaned up after the new image is stored.
     """
+    from dataclasses import asdict
+    from uuid import uuid4
+
     from src.models.image import Image
     from src.services.image_generator import GenerationParams, get_image_generator
 
@@ -226,14 +246,26 @@ async def regenerate_image(image_id: UUID, request: RegenerateRequest) -> Genera
         )
 
         # Generate new image bytes
-        image_bytes = await generator.provider.generate(prompt, params)
+        try:
+            image_bytes = await generator.provider.generate(prompt, params)
+        except Exception:
+            logger.exception("Image regeneration failed for image %s", image_id)
+            raise HTTPException(
+                status_code=502,
+                detail="Image generation failed. The provider may be unavailable.",
+            )
 
         # Store new image
-        from dataclasses import asdict
-        from uuid import uuid4
-
         filename = f"regen_{uuid4().hex[:8]}.png"
         storage_path = await generator.storage.save(image_bytes, filename, "image/png")
+
+        # Clean up old storage file (best-effort)
+        old_path = existing.storage_path
+        if old_path:
+            try:
+                await generator.storage.delete(old_path)
+            except Exception:
+                logger.warning("Failed to delete old image file: %s", old_path)
 
         # Update existing record
         existing.storage_path = storage_path

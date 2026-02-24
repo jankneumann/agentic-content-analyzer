@@ -327,6 +327,13 @@ class TestParseSuggestions:
         assert len(result) == 1
         assert result[0].prompt == "test"
 
+    def test_code_fence_only_strips_outer_fences(self):
+        """Only first/last fence lines should be stripped, not inner content."""
+        text = '```json\n[{"prompt": "use ```code``` here", "rationale": "r"}]\n```'
+        result = ImageGenerator._parse_suggestions(text)
+        assert len(result) == 1
+        assert "```code```" in result[0].prompt
+
 
 # ---------------------------------------------------------------------------
 # Factory function
@@ -342,7 +349,7 @@ class TestGetImageGenerator:
         with patch("src.config.settings") as mock_settings:
             mock_settings.image_generation_enabled = False
             with pytest.raises(ValueError, match="disabled"):
-                get_image_generator()
+                get_image_generator(db=MagicMock())
 
     def test_raises_for_unknown_provider(self):
         """Unknown provider name should raise ValueError."""

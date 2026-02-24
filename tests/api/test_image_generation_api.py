@@ -223,6 +223,53 @@ class TestGenerateEndpoint:
 
         assert response.status_code == 200
 
+    def test_generate_returns_502_on_provider_failure(
+        self, client, db_session, mock_image_generator
+    ):
+        """Provider failures should return 502 with meaningful message."""
+        from tests.factories.content import ContentFactory
+        from tests.factories.summary import SummaryFactory
+
+        content = ContentFactory()
+        summary = SummaryFactory(content=content)
+        db_session.flush()
+
+        mock_image_generator.generate_for_summary = AsyncMock(
+            side_effect=RuntimeError("Provider API unavailable"),
+        )
+
+        with patch(
+            "src.services.image_generator.get_image_generator",
+            return_value=mock_image_generator,
+        ):
+            response = client.post(
+                "/api/v1/images/generate",
+                json={
+                    "prompt": "Test prompt for generation",
+                    "source_type": "summary",
+                    "source_id": summary.id,
+                },
+            )
+
+        assert response.status_code == 502
+        assert "provider" in response.json()["detail"].lower()
+
+    def test_suggest_validates_content_type(self, client, mock_image_generator):
+        """content_type must be 'summary' or 'digest'."""
+        with patch(
+            "src.services.image_generator.get_image_generator",
+            return_value=mock_image_generator,
+        ):
+            response = client.post(
+                "/api/v1/images/suggest",
+                json={
+                    "content": "A" * 20,
+                    "content_type": "invalid_type",
+                },
+            )
+
+        assert response.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/images/{id}/regenerate
