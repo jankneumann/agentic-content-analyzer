@@ -1,6 +1,6 @@
 # settings-management Delta Spec
 
-## NEW Requirements
+## ADDED Requirements
 
 ### Requirement: Notification Preferences UI
 
