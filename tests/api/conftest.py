@@ -25,6 +25,10 @@ from src.api.app import app
 from src.models.audio_digest import AudioDigest  # noqa: F401 - registers with Base.metadata
 from src.models.base import Base
 from src.models.content import ContentStatus
+from src.models.notification import (  # noqa: F401 - registers with Base.metadata
+    DeviceRegistration,
+    NotificationEvent,
+)
 from src.models.podcast import (
     Podcast,
     PodcastScriptRecord,
@@ -171,6 +175,8 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
     ensuring all API operations use the test database with transaction rollback.
 
     PUT, DELETE, and PATCH requests automatically include the X-Admin-Key header.
+
+    Uses ExitStack because CPython limits statically nested context managers.
     """
     from contextlib import ExitStack
     from unittest.mock import patch
@@ -200,6 +206,8 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         "src.api.share_routes.get_db",
         "src.api.shared_routes.get_db",
         "src.api.image_generation_routes.get_db",
+        "src.api.notification_routes.get_db",
+        "src.api.notification_preferences_routes.get_db",
         "src.services.script_review_service.get_db",
         "src.processors.theme_analyzer.get_db",
     ]

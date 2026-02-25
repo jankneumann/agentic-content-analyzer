@@ -18,6 +18,7 @@ from src.models.content import Content, ContentSource, ContentStatus
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
 from src.models.image import Image, ImageSource
+from src.models.notification import DeviceRegistration, NotificationEvent, NotificationEventType
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
 from src.models.search import (
@@ -98,6 +99,10 @@ __all__ = [
     "RevisionContext",
     "RevisionResult",
     "RevisionTurn",
+    # Notification
+    "NotificationEvent",
+    "NotificationEventType",
+    "DeviceRegistration",
     # Settings
     "PromptOverride",
     # YouTube

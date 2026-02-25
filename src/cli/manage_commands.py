@@ -293,6 +293,37 @@ def check_profile_secrets() -> None:
         )
 
 
+@app.command("cleanup-notifications")
+def cleanup_notifications_cmd(
+    older_than: str = typer.Option(
+        "90d", "--older-than", help="Delete events older than this duration (e.g. 30d, 7d)"
+    ),
+) -> None:
+    """Delete old notification events.
+
+    Duration format: <number>d for days (e.g. 30d, 90d, 7d).
+    """
+    # Parse duration
+    match = re.match(r"^(\d+)d$", older_than)
+    if not match:
+        typer.echo(f"Error: Invalid duration format '{older_than}'. Use format like '30d'.")
+        raise typer.Exit(1)
+
+    days = int(match.group(1))
+    if days < 1:
+        typer.echo("Error: Duration must be at least 1 day.")
+        raise typer.Exit(1)
+
+    from src.services.notification_cleanup import cleanup_notifications
+
+    count = cleanup_notifications(days)
+
+    if is_json_mode():
+        output_result({"deleted": count, "older_than_days": days})
+    else:
+        typer.echo(f"Deleted {count} notification events older than {days} days.")
+
+
 @app.command("switch-embeddings")
 def switch_embeddings_cmd(
     provider: str | None = typer.Option(

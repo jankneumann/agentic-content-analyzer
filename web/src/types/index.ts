@@ -143,6 +143,17 @@ export type {
 // Job History types (Task Audit Log)
 export type { JobHistoryItem, JobHistoryResponse, JobHistoryFilters } from "./job-history"
 
+// Notification types
+export type {
+  NotificationEventType,
+  NotificationEvent,
+  NotificationEventListResponse,
+  UnreadCountResponse,
+  DeviceRegistration,
+  NotificationPreference,
+  NotificationPreferencesResponse,
+} from "./notification"
+
 /**
  * Common API response wrapper
  *

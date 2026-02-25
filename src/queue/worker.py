@@ -95,6 +95,90 @@ async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
     )
 
 
+async def _emit_job_notification(
+    job_id: int,
+    entrypoint: str,
+    payload: dict[str, Any],
+    *,
+    error: str | None = None,
+) -> None:
+    """Emit a notification event for a completed or failed job.
+
+    Maps entrypoints to notification event types and generates
+    human-readable titles and summaries.
+    """
+    try:
+        from src.models.notification import NotificationEventType
+        from src.services.notification_service import get_dispatcher
+
+        dispatcher = get_dispatcher()
+
+        if error:
+            await dispatcher.emit(
+                event_type=NotificationEventType.JOB_FAILURE,
+                title=f"Job failed: {entrypoint}",
+                summary=error[:200],
+                payload={
+                    "job_id": job_id,
+                    "entrypoint": entrypoint,
+                    "error": error[:500],
+                    "url": "/jobs",
+                },
+            )
+            return
+
+        # Map entrypoints to event types
+        entrypoint_event_map: dict[str, tuple[NotificationEventType, str]] = {
+            "summarize_content": (
+                NotificationEventType.BATCH_SUMMARY,
+                "Content summarized",
+            ),
+            "process_content": (
+                NotificationEventType.BATCH_SUMMARY,
+                "Content processed",
+            ),
+            "ingest_content": (
+                NotificationEventType.BATCH_SUMMARY,
+                "Content ingested",
+            ),
+            "scan_newsletters": (
+                NotificationEventType.BATCH_SUMMARY,
+                "Newsletter scan complete",
+            ),
+            "extract_url_content": (
+                NotificationEventType.BATCH_SUMMARY,
+                "URL content extracted",
+            ),
+        }
+
+        event_type, default_title = entrypoint_event_map.get(
+            entrypoint,
+            (NotificationEventType.BATCH_SUMMARY, f"Job completed: {entrypoint}"),
+        )
+
+        content_id = payload.get("content_id")
+        source = payload.get("source", "")
+        url = "/jobs"
+        if content_id:
+            url = f"/content/{content_id}"
+
+        await dispatcher.emit(
+            event_type=event_type,
+            title=default_title,
+            summary=f"Job {job_id} ({entrypoint}) completed successfully"
+            + (f" for source '{source}'" if source else ""),
+            payload={
+                "job_id": job_id,
+                "entrypoint": entrypoint,
+                "content_id": content_id,
+                "url": url,
+            },
+        )
+    except Exception:
+        # Notification emission is best-effort — never fail the job
+        logger.debug("Failed to emit job notification", exc_info=True)
+
+
 async def _process_job(
     conn: asyncpg.Connection,
     job: dict[str, Any],
@@ -127,9 +211,11 @@ async def _process_job(
         await handler(job_id, payload)
         await _complete_job(conn, job_id)
         logger.info(f"Job {job_id} ({entrypoint}) completed")
+        await _emit_job_notification(job_id, entrypoint, payload)
     except Exception as e:
         logger.error(f"Job {job_id} ({entrypoint}) failed: {e}")
         await _fail_job(conn, job_id, str(e))
+        await _emit_job_notification(job_id, entrypoint, payload, error=str(e))
     finally:
         heartbeat_task.cancel()
         await asyncio.gather(heartbeat_task, return_exceptions=True)
