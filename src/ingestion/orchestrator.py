@@ -309,6 +309,50 @@ def ingest_xsearch(
         service.close()
 
 
+def ingest_perplexity_search(
+    *,
+    prompt: str | None = None,
+    max_results: int | None = None,
+    force_reprocess: bool = False,
+    recency_filter: str | None = None,
+    context_size: str | None = None,
+    on_result: Callable | None = None,
+) -> int:
+    """Ingest web content via Perplexity Sonar API search.
+
+    Uses Perplexity's AI-powered web search to discover articles with
+    citations. The search prompt is configurable via the prompt management
+    system (pipeline.perplexity_search.search_prompt).
+
+    Args:
+        prompt: Override the default search prompt.
+        max_results: Maximum results to ingest (default from settings).
+        force_reprocess: Re-ingest content that already exists.
+        recency_filter: Override recency filter (hour/day/week/month).
+        context_size: Override context size (low/medium/high).
+        on_result: Optional callback that receives the full PerplexitySearchResult.
+
+    Returns:
+        Number of items ingested.
+    """
+    from src.ingestion.perplexity_search import PerplexityContentIngestionService
+
+    service = PerplexityContentIngestionService()
+    try:
+        result = service.ingest_content(
+            prompt=prompt,
+            max_results=max_results,
+            force_reprocess=force_reprocess,
+            recency_filter=recency_filter,
+            context_size=context_size,
+        )
+        if on_result is not None:
+            on_result(result)
+        return result.items_ingested
+    finally:
+        service.close()
+
+
 def ingest_url(
     *,
     url: str,

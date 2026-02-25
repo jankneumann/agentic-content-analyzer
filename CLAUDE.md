@@ -29,7 +29,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 An agentic AI solution for aggregating and summarizing AI newsletters into daily and weekly digests.
 
 - **Purpose**: Help technical leaders and developers stay informed on AI/Data trends
-- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, X/Twitter (via Grok), file uploads, direct URLs
+- **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, X/Twitter (via Grok), Perplexity Sonar API, file uploads, direct URLs
 - **Output**: Structured digests with knowledge graph-powered historical context
 
 ## Key Commands
@@ -80,6 +80,10 @@ aca ingest youtube-rss                 # YouTube RSS feeds only
 aca ingest podcast                     # Podcast feeds
 aca ingest xsearch                     # X/Twitter via Grok API search
 aca ingest xsearch --prompt "..."      # Custom search prompt
+aca ingest perplexity-search           # Perplexity Sonar API search
+aca ingest perplexity-search -p "..."  # Custom search prompt
+aca ingest perplexity-search -m 20     # Limit results
+aca ingest perplexity-search --recency week  # Recency filter
 aca ingest files <path...>             # Local file ingestion
 aca ingest url <url>                   # Direct URL ingestion
 
@@ -177,6 +181,7 @@ sources.d/
   youtube_rss.yaml       # YouTube RSS feeds (public, no OAuth)
   podcasts.yaml          # Podcast feeds (with transcript settings)
   gmail.yaml             # Gmail query sources
+  websearch.yaml         # Web search sources (Perplexity, Grok)
 ```
 
 Each source supports: `name`, `url`/`id`, `tags`, `enabled`, `max_entries`.
@@ -196,6 +201,14 @@ Each source supports: `name`, `url`/`id`, `tags`, `enabled`, `max_entries`.
 1. Feed-embedded text (>=500 chars)
 2. Linked transcript page (regex URL detection)
 3. Audio transcription via STT (gated by `transcribe: true`)
+
+**Web search sources** (`websearch.yaml`) support two providers:
+- `provider: perplexity` — Perplexity Sonar API for AI-powered web search with citations
+  - `prompt` (required), `max_results`, `recency_filter` (day/week/month), `context_size` (low/medium/high), `domain_filter`
+- `provider: grok` — X/Twitter search via xAI Grok API
+  - `prompt` (required), `max_threads`
+- Both support: `name`, `tags`, `enabled`
+- Used by `aca pipeline daily` for scheduled ingestion from `sources.d/websearch.yaml`
 
 **Migration from legacy config:**
 ```bash
@@ -479,6 +492,9 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Route registration order is LIFO | Playwright matches last-registered route first; register specific routes after general ones |
 | Podcast transcription needs STT key | Set `OPENAI_API_KEY` for Whisper; `transcribe: false` in source to skip |
 | X search needs xAI API key | Set `XAI_API_KEY`; search prompt configurable via `aca prompts set pipeline.xsearch.search_prompt` |
+| Perplexity search needs API key | Set `PERPLEXITY_API_KEY`; model defaults to `sonar`; search prompt configurable via `aca prompts set perplexity_search.search_prompt` |
+| Perplexity uses OpenAI SDK | Zero new dependencies — `openai.OpenAI(base_url="https://api.perplexity.ai")` with `extra_body` for vendor params |
+| WebSearchProvider lazy imports | Adapters use lazy imports in `__init__` and `search()` — mock at SOURCE module, not `src.services.web_search` |
 | Telemetry mock patch target | Patch `src.telemetry.get_provider` (source module), NOT `src.services.llm_router.get_provider` — local imports aren't module attrs |
 | Telemetry tests need anthropic_api_key | Pass `anthropic_api_key="test-key"` to `Settings(_env_file=None)` in observability tests |
 | `logging.basicConfig()` only works once | OTel log bridge uses `addHandler()` directly — never call `basicConfig()` after `setup_logging()` |

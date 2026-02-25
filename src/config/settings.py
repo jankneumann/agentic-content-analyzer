@@ -466,6 +466,17 @@ class Settings(BaseSettings):
     grok_x_max_turns: int = 5  # Max tool calling turns per search
     grok_x_max_threads: int = 50  # Max threads per search run
 
+    # Perplexity Search Configuration
+    perplexity_api_key: str | None = None  # Perplexity API key
+    perplexity_model: str = "sonar"  # sonar or sonar-pro
+    perplexity_search_context_size: str = "medium"  # low, medium, high
+    perplexity_search_recency_filter: str = "week"  # hour, day, week, month
+    perplexity_max_results: int = 30  # Max articles per search run
+    perplexity_domain_filter: list[str] = []  # Domain allow/deny list
+
+    # Unified Web Search Provider (for ad-hoc search: chat, podcast, review)
+    web_search_provider: str = "tavily"  # tavily, perplexity, grok
+
     # Podcast Ingestion Configuration
     podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"
     podcast_max_duration_minutes: int = 120  # Max episode duration to transcribe
