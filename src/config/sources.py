@@ -4,7 +4,7 @@ Loads ingestion source definitions from YAML config files in sources.d/
 directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
-Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch
 """
 
 import logging
@@ -115,6 +115,25 @@ class SubstackSource(SourceBase):
     url: str
 
 
+class WebSearchSource(SourceBase):
+    """Scheduled web search source for pipeline ingestion.
+
+    Each entry defines a named search with a specific provider (perplexity or grok)
+    and a custom prompt. Provider-specific options are passed through to the
+    corresponding ingestion service.
+    """
+
+    type: Literal["websearch"] = "websearch"
+    provider: Literal["perplexity", "grok"]
+    prompt: str
+    # Provider-specific overrides
+    max_results: int | None = None  # perplexity
+    max_threads: int | None = None  # grok
+    recency_filter: str | None = None  # perplexity
+    context_size: str | None = None  # perplexity
+    domain_filter: list[str] | None = None  # perplexity
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -123,7 +142,8 @@ Source = Annotated[
     | YouTubeRSSSource
     | PodcastSource
     | GmailSource
-    | SubstackSource,
+    | SubstackSource
+    | WebSearchSource,
     Field(discriminator="type"),
 ]
 
@@ -166,6 +186,10 @@ class SourcesConfig(BaseModel):
     def get_substack_sources(self) -> list[SubstackSource]:
         """Get all enabled Substack sources."""
         return [s for s in self.sources if isinstance(s, SubstackSource) and s.enabled]
+
+    def get_websearch_sources(self) -> list[WebSearchSource]:
+        """Get all enabled web search sources."""
+        return [s for s in self.sources if isinstance(s, WebSearchSource) and s.enabled]
 
 
 # --- Source File Model (per-file schema) ---

@@ -570,6 +570,89 @@ def xsearch(
 
 
 # ---------------------------------------------------------------------------
+# aca ingest perplexity-search
+# ---------------------------------------------------------------------------
+
+
+@app.command("perplexity-search")
+def perplexity_search(
+    prompt: Annotated[
+        str | None,
+        typer.Option("--prompt", "-p", help="Custom search prompt (overrides configured default)."),
+    ] = None,
+    max_results: Annotated[
+        int | None,
+        typer.Option("--max-results", "-m", help="Maximum results to ingest."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+    recency: Annotated[
+        str | None,
+        typer.Option("--recency", help="Recency filter (hour/day/week/month)."),
+    ] = None,
+    context_size: Annotated[
+        str | None,
+        typer.Option("--context-size", help="Search context size (low/medium/high)."),
+    ] = None,
+) -> None:
+    """Search the web via Perplexity Sonar API and ingest AI-relevant articles."""
+    from dataclasses import asdict
+
+    from rich.console import Console
+
+    from src.ingestion.perplexity_search import PerplexitySearchResult
+
+    console = Console()
+    search_result: PerplexitySearchResult | None = None
+
+    def _capture_result(result: PerplexitySearchResult) -> None:
+        nonlocal search_result
+        search_result = result
+
+    try:
+        from src.ingestion.orchestrator import ingest_perplexity_search
+
+        count = ingest_perplexity_search(
+            prompt=prompt,
+            max_results=max_results,
+            force_reprocess=force,
+            recency_filter=recency,
+            context_size=context_size,
+            on_result=_capture_result,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "perplexity"}, success=False)
+        else:
+            console.print(f"[red]Perplexity search ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        data: dict = {"source": "perplexity", "ingested": count}
+        if search_result is not None:
+            data.update(asdict(search_result))
+        output_result(data)
+    else:
+        console.print(
+            f"[green]Perplexity search ingestion complete.[/green] {count} item(s) ingested."
+        )
+        if search_result is not None:
+            details = []
+            if search_result.queries_made:
+                details.append(f"{search_result.queries_made} query(ies) made")
+            if search_result.citations_found:
+                details.append(f"{search_result.citations_found} citation(s) found")
+            if search_result.items_skipped:
+                details.append(f"{search_result.items_skipped} skipped (duplicates)")
+            if search_result.errors:
+                details.append(f"{len(search_result.errors)} error(s)")
+            if details:
+                console.print(f"  [dim]{' | '.join(details)}[/dim]")
+
+
+# ---------------------------------------------------------------------------
 # aca ingest files
 # ---------------------------------------------------------------------------
 

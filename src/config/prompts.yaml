@@ -603,6 +603,19 @@ pipeline:
       - All relevant links with context
       - Competitor and industry analysis
 
+  perplexity_search:
+    search_prompt: |
+      Search for the latest AI and technology news from the past week. Focus on:
+      - New model releases and capabilities from major AI labs
+      - Research paper announcements with links to papers or blog posts
+      - Technical deep dives on LLMs, RAG, AI agents, and machine learning engineering
+      - AI startup funding rounds, acquisitions, and partnerships
+      - Developer tool releases, framework updates, and infrastructure changes
+      - Industry analysis and trend reports from reputable sources
+
+      Return comprehensive coverage with detailed summaries and always cite your sources.
+      Prioritize content from established tech publications, company blogs, and research institutions.
+
   xsearch:
     search_prompt: |
       Search X for AI and technology news from the past 24 hours. Focus on:
