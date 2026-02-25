@@ -540,6 +540,26 @@ def daily(
         f"Digest: {digest_info['title']}"
     )
 
+    # Emit pipeline_completion notification
+    from src.cli.adapters import _emit_notification_sync
+
+    _emit_notification_sync(
+        event_type="pipeline_completion",
+        title="Daily Pipeline Complete",
+        summary=(
+            f"Ingested {total_ingested} items, summarized {summarized_count}, "
+            f"created digest: {digest_info['title']}"
+        ),
+        payload={
+            "pipeline_type": "daily",
+            "date": target_date.strftime("%Y-%m-%d"),
+            "total_ingested": total_ingested,
+            "summarized_count": summarized_count,
+            "digest_title": digest_info["title"],
+            "url": "/digests",
+        },
+    )
+
     if is_json_mode():
         output_result(pipeline_result)
 
@@ -665,6 +685,26 @@ def weekly(
         f"  Ingested: {total_ingested} items | "
         f"Summarized: {summarized_count} | "
         f"Digest: {digest_info['title']}"
+    )
+
+    # Emit pipeline_completion notification
+    from src.cli.adapters import _emit_notification_sync
+
+    _emit_notification_sync(
+        event_type="pipeline_completion",
+        title="Weekly Pipeline Complete",
+        summary=(
+            f"Ingested {total_ingested} items, summarized {summarized_count}, "
+            f"created digest: {digest_info['title']}"
+        ),
+        payload={
+            "pipeline_type": "weekly",
+            "week_start": week_start.strftime("%Y-%m-%d"),
+            "total_ingested": total_ingested,
+            "summarized_count": summarized_count,
+            "digest_title": digest_info["title"],
+            "url": "/digests",
+        },
     )
 
     if is_json_mode():
