@@ -39,6 +39,7 @@ class ModelOption(BaseModel):
     family: str
     supports_vision: bool
     supports_video: bool
+    supports_audio: bool
     cost_per_mtok_input: float | None = None
     cost_per_mtok_output: float | None = None
     providers: list[str] = []
@@ -135,6 +136,7 @@ async def get_model_settings() -> ModelSettingsResponse:
                     family=info.family.value,
                     supports_vision=info.supports_vision,
                     supports_video=info.supports_video,
+                    supports_audio=info.supports_audio,
                     cost_per_mtok_input=cost_input,
                     cost_per_mtok_output=cost_output,
                     providers=sorted(providers),

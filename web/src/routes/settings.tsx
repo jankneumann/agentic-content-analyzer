@@ -60,6 +60,7 @@ function SettingsPage() {
         </Card>
       </PageSection>
 
+      <div id="model-configuration">
       <PageSection title="Model Configuration">
         <Card>
           <CardHeader>
@@ -78,6 +79,7 @@ function SettingsPage() {
           </CardContent>
         </Card>
       </PageSection>
+      </div>
 
       <PageSection title="Voice Configuration">
         <Card>

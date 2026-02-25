@@ -23,6 +23,22 @@ class TestGetVoiceSettings:
         assert data["valid_providers"] == ["openai", "elevenlabs"]
         assert "en-US" in data["valid_input_languages"]
 
+    def test_get_cloud_stt_defaults(self, client):
+        """Cloud STT: response should include cloud STT settings."""
+        resp = client.get("/api/v1/settings/voice")
+        data = resp.json()
+        assert data["cloud_stt_language"]["value"] == "auto"
+        assert data["cloud_stt_language"]["source"] == "default"
+        assert data["engine_preference_order"]["value"] == "cloud,native,browser,on-device"
+        assert data["engine_preference_order"]["source"] == "default"
+        assert "cloud_stt_model" in data
+        assert "valid_cloud_stt_languages" in data
+        assert "auto" in data["valid_cloud_stt_languages"]
+        assert "en-US" in data["valid_cloud_stt_languages"]
+        assert "valid_engine_names" in data
+        assert "cloud" in data["valid_engine_names"]
+        assert "browser" in data["valid_engine_names"]
+
     def test_db_override_reflected(self, client):
         # Set override via settings override API
         client.put(
@@ -135,6 +151,54 @@ class TestUpdateVoiceSetting:
             json={"value": "maybe"},
         )
         assert resp.status_code == 400
+
+    def test_set_cloud_stt_language(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/cloud_stt_language",
+            json={"value": "en-US"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "en-US"
+
+    def test_set_cloud_stt_language_auto(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/cloud_stt_language",
+            json={"value": "auto"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "auto"
+
+    def test_set_invalid_cloud_stt_language(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/cloud_stt_language",
+            json={"value": "klingon"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid cloud STT language" in resp.json()["detail"]
+
+    def test_set_engine_preference_order(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/engine_preference_order",
+            json={"value": "browser,cloud"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "browser,cloud"
+
+    def test_set_invalid_engine_preference_order(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/engine_preference_order",
+            json={"value": "cloud,invalid_engine"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid engine" in resp.json()["detail"]
+
+    def test_set_empty_engine_preference_order(self, client):
+        resp = client.put(
+            "/api/v1/settings/voice/engine_preference_order",
+            json={"value": ""},
+        )
+        # Empty string may be caught by route handler (400) or Pydantic (422)
+        assert resp.status_code in (400, 422)
 
     def test_set_invalid_field(self, client):
         resp = client.put(

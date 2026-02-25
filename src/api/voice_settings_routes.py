@@ -51,9 +51,14 @@ class VoiceSettingsResponse(BaseModel):
     input_language: VoiceSettingInfo
     input_continuous: VoiceSettingInfo
     input_auto_submit: VoiceSettingInfo
+    cloud_stt_language: VoiceSettingInfo
+    engine_preference_order: VoiceSettingInfo
+    cloud_stt_model: str  # Read-only: current CLOUD_STT pipeline step model
     presets: list[VoicePreset]
     valid_providers: list[str]
     valid_input_languages: list[str]
+    valid_cloud_stt_languages: list[str]
+    valid_engine_names: list[str]
 
 
 class VoiceUpdateRequest(BaseModel):
@@ -98,6 +103,16 @@ _VOICE_SETTINGS = {
         "settings_field": "voice_input_auto_submit",
         "default": "false",
     },
+    "cloud_stt_language": {
+        "env_var": "CLOUD_STT_LANGUAGE",
+        "settings_field": "cloud_stt_language",
+        "default": "auto",
+    },
+    "engine_preference_order": {
+        "env_var": "ENGINE_PREFERENCE_ORDER",
+        "settings_field": "engine_preference_order",
+        "default": "cloud,native,browser,on-device",
+    },
 }
 
 # Valid BCP-47 language tags for voice input
@@ -112,6 +127,21 @@ VALID_INPUT_LANGUAGES = [
 ]
 
 VALID_BOOLEANS = ["true", "false"]
+
+# Valid cloud STT language values (includes "auto" for auto-detection)
+VALID_CLOUD_STT_LANGUAGES = [
+    "auto",
+    "en-US",
+    "en-GB",
+    "es-ES",
+    "fr-FR",
+    "de-DE",
+    "ja-JP",
+    "zh-CN",
+]
+
+# Valid engine names for preference order
+VALID_ENGINE_NAMES = ["cloud", "native", "browser", "on-device"]
 
 
 def _resolve_voice_setting(field: str, service: SettingsService) -> tuple[str, str]:
@@ -152,6 +182,17 @@ async def get_voice_settings() -> VoiceSettingsResponse:
         lang_val, lang_src = _resolve_voice_setting("input_language", service)
         cont_val, cont_src = _resolve_voice_setting("input_continuous", service)
         auto_val, auto_src = _resolve_voice_setting("input_auto_submit", service)
+        cloud_lang_val, cloud_lang_src = _resolve_voice_setting("cloud_stt_language", service)
+        engine_val, engine_src = _resolve_voice_setting("engine_preference_order", service)
+
+        # Resolve current CLOUD_STT model (read-only)
+        try:
+            from src.config.models import ModelStep, get_model_config
+
+            config = get_model_config()
+            cloud_stt_model = config.get_model_for_step(ModelStep.CLOUD_STT)
+        except Exception:
+            cloud_stt_model = "unknown"
 
         presets = [
             VoicePreset(name=name, voices=voices)
@@ -175,9 +216,18 @@ async def get_voice_settings() -> VoiceSettingsResponse:
             input_auto_submit=VoiceSettingInfo(
                 key="voice.input_auto_submit", value=auto_val, source=auto_src
             ),
+            cloud_stt_language=VoiceSettingInfo(
+                key="voice.cloud_stt_language", value=cloud_lang_val, source=cloud_lang_src
+            ),
+            engine_preference_order=VoiceSettingInfo(
+                key="voice.engine_preference_order", value=engine_val, source=engine_src
+            ),
+            cloud_stt_model=cloud_stt_model,
             presets=presets,
             valid_providers=VALID_PROVIDERS,
             valid_input_languages=VALID_INPUT_LANGUAGES,
+            valid_cloud_stt_languages=VALID_CLOUD_STT_LANGUAGES,
+            valid_engine_names=VALID_ENGINE_NAMES,
         )
 
 
@@ -236,6 +286,22 @@ async def update_voice_setting(field: str, request: VoiceUpdateRequest) -> dict:
             status_code=400,
             detail=f"Invalid value for {field}: {request.value}. Must be 'true' or 'false'.",
         )
+
+    if field == "cloud_stt_language" and request.value not in VALID_CLOUD_STT_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid cloud STT language: {request.value}. "
+            f"Valid languages: {VALID_CLOUD_STT_LANGUAGES}",
+        )
+
+    if field == "engine_preference_order":
+        engines = [e.strip() for e in request.value.split(",")]
+        invalid = [e for e in engines if e not in VALID_ENGINE_NAMES]
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid engine names: {invalid}. Valid engines: {VALID_ENGINE_NAMES}",
+            )
 
     with get_db() as db:
         service = SettingsService(db)

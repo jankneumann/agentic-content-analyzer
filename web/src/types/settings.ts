@@ -12,6 +12,7 @@ export interface ModelOption {
   family: string
   supports_vision: boolean
   supports_video: boolean
+  supports_audio: boolean
   cost_per_mtok_input: number | null
   cost_per_mtok_output: number | null
   providers: string[]
@@ -53,9 +54,14 @@ export interface VoiceSettingsResponse {
   input_language: VoiceSettingInfo
   input_continuous: VoiceSettingInfo
   input_auto_submit: VoiceSettingInfo
+  cloud_stt_language: VoiceSettingInfo
+  engine_preference_order: VoiceSettingInfo
+  cloud_stt_model: string
   presets: VoicePreset[]
   valid_providers: string[]
   valid_input_languages: string[]
+  valid_cloud_stt_languages: string[]
+  valid_engine_names: string[]
 }
 
 /** Health status for a single service */

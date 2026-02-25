@@ -13,7 +13,7 @@
  */
 
 import { useState } from "react"
-import { RotateCcw, AlertCircle, RefreshCw, Lock, Volume2, Mic } from "lucide-react"
+import { RotateCcw, AlertCircle, RefreshCw, Lock, Volume2, Mic, Cloud, ChevronUp, ChevronDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -36,6 +36,14 @@ const LANGUAGE_LABELS: Record<string, string> = {
   "de-DE": "German",
   "ja-JP": "Japanese",
   "zh-CN": "Chinese (Simplified)",
+}
+
+/** Human-readable engine labels */
+const ENGINE_LABELS: Record<string, string> = {
+  cloud: "Cloud STT",
+  native: "Native (OS-level)",
+  browser: "Browser (Web Speech API)",
+  "on-device": "On-device (local model)",
 }
 
 /** Badge color classes by source type */
@@ -356,6 +364,143 @@ export function VoiceConfigurator() {
           </div>
         </EnvLockWrapper>
       </SettingRow>
+
+      {/* Separator */}
+      <div className="border-t" />
+
+      {/* Cloud STT section */}
+      <div className="flex items-center gap-2">
+        <Cloud className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-sm font-medium">Cloud Speech-to-Text</h3>
+      </div>
+
+      {/* Cloud STT Model (read-only badge linking to Model Config section) */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Model</Label>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className="cursor-pointer hover:bg-accent transition-colors"
+            onClick={() => {
+              document.getElementById("model-configuration")?.scrollIntoView({ behavior: "smooth" })
+            }}
+          >
+            {data.cloud_stt_model}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            Change in Model Configuration above
+          </span>
+        </div>
+      </div>
+
+      {/* Cloud STT Language */}
+      <SettingRow
+        label="Cloud STT Language"
+        setting={data.cloud_stt_language}
+        onReset={() => handleReset("cloud_stt_language")}
+      >
+        <EnvLockWrapper source={data.cloud_stt_language.source}>
+          <Select
+            value={data.cloud_stt_language.value}
+            onValueChange={(v) => handleUpdate("cloud_stt_language", v)}
+            disabled={data.cloud_stt_language.source === "env"}
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {data.valid_cloud_stt_languages.map((lang) => (
+                <SelectItem key={lang} value={lang}>
+                  {lang === "auto" ? "Auto-detect" : (LANGUAGE_LABELS[lang] ?? lang)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </EnvLockWrapper>
+      </SettingRow>
+
+      {/* Engine Preference Order */}
+      <SettingRow
+        label="Engine Preference"
+        setting={data.engine_preference_order}
+        onReset={() => handleReset("engine_preference_order")}
+      >
+        <EnvLockWrapper source={data.engine_preference_order.source}>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Priority order for speech-to-text engines. Higher entries are preferred.
+            </p>
+            <EnginePreferenceList
+              value={data.engine_preference_order.value}
+              disabled={data.engine_preference_order.source === "env"}
+              onChange={(newOrder) => handleUpdate("engine_preference_order", newOrder)}
+            />
+          </div>
+        </EnvLockWrapper>
+      </SettingRow>
+    </div>
+  )
+}
+
+/** Engine preference order list with up/down reordering */
+function EnginePreferenceList({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string
+  disabled: boolean
+  onChange: (newValue: string) => void
+}) {
+  const engines = value.split(",").map((e) => e.trim())
+
+  const moveUp = (index: number) => {
+    if (index === 0) return
+    const newOrder = [...engines]
+    ;[newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]]
+    onChange(newOrder.join(","))
+  }
+
+  const moveDown = (index: number) => {
+    if (index === engines.length - 1) return
+    const newOrder = [...engines]
+    ;[newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]
+    onChange(newOrder.join(","))
+  }
+
+  return (
+    <div className="space-y-1">
+      {engines.map((engine, index) => (
+        <div
+          key={engine}
+          className="flex items-center gap-2 rounded-md border bg-card px-3 py-2"
+        >
+          <span className="text-xs text-muted-foreground w-4">{index + 1}.</span>
+          <span className="text-sm flex-1">{ENGINE_LABELS[engine] ?? engine}</span>
+          <div className="flex gap-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              disabled={disabled || index === 0}
+              onClick={() => moveUp(index)}
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+              <span className="sr-only">Move up</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              disabled={disabled || index === engines.length - 1}
+              onClick={() => moveDown(index)}
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+              <span className="sr-only">Move down</span>
+            </Button>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

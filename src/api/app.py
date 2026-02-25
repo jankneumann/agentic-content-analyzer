@@ -39,6 +39,7 @@ from src.api.theme_routes import router as theme_router
 from src.api.upload_routes import router as upload_router
 from src.api.voice_cleanup_routes import router as voice_cleanup_router
 from src.api.voice_settings_routes import router as voice_settings_router
+from src.api.voice_stream_routes import router as voice_stream_router
 from src.config import settings
 
 
@@ -149,6 +150,7 @@ app.include_router(settings_override_router)
 app.include_router(model_settings_router)
 app.include_router(voice_settings_router)
 app.include_router(voice_cleanup_router)
+app.include_router(voice_stream_router)  # WebSocket voice streaming (cloud STT)
 app.include_router(connection_status_router)
 app.include_router(upload_router)
 app.include_router(files_router)
