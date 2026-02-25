@@ -237,10 +237,12 @@ class TestHybridSearchService:
 
         # Mock Vector results: chunk 3 (doc 102), chunk 4 (doc 102)
         # We need to mock _vector_search carefully as it's an async method
-        self.service._vector_search = AsyncMock(return_value=[
-            (3, 0.95, 102),
-            (4, 0.90, 102),
-        ])
+        self.service._vector_search = AsyncMock(
+            return_value=[
+                (3, 0.95, 102),
+                (4, 0.90, 102),
+            ]
+        )
 
         # Mock _aggregate_to_documents to avoid DB calls and verify arguments
         self.service._aggregate_to_documents = MagicMock(return_value=[])
