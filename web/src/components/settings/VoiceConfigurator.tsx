@@ -172,14 +172,23 @@ export function VoiceConfigurator() {
       </div>
 
       {/* Provider */}
-      <SettingRow label="Provider" setting={data.provider} onReset={() => handleReset("provider")}>
+      <SettingRow
+        label="Provider"
+        setting={data.provider}
+        onReset={() => handleReset("provider")}
+        controlId="voice-provider"
+      >
         <EnvLockWrapper source={data.provider.source}>
           <Select
             value={data.provider.value}
             onValueChange={(v) => handleUpdate("provider", v)}
             disabled={data.provider.source === "env"}
           >
-            <SelectTrigger size="sm" className="w-full">
+            <SelectTrigger
+              size="sm"
+              className="w-full"
+              aria-labelledby="voice-provider-label"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -198,9 +207,11 @@ export function VoiceConfigurator() {
         label="Default Voice"
         setting={data.default_voice}
         onReset={() => handleReset("default_voice")}
+        controlId="default-voice"
       >
         <EnvLockWrapper source={data.default_voice.source}>
           <input
+            id="default-voice"
             type="text"
             value={localVoice ?? data.default_voice.value}
             onChange={(e) => setLocalVoice(e.target.value)}
@@ -218,7 +229,12 @@ export function VoiceConfigurator() {
       </SettingRow>
 
       {/* Speed */}
-      <SettingRow label="Speed" setting={data.speed} onReset={() => handleReset("speed")}>
+      <SettingRow
+        label="Speed"
+        setting={data.speed}
+        onReset={() => handleReset("speed")}
+        controlId="voice-speed"
+      >
         <EnvLockWrapper source={data.speed.source}>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -234,6 +250,7 @@ export function VoiceConfigurator() {
               max={2.0}
               step={0.1}
               disabled={data.speed.source === "env"}
+              aria-labelledby="voice-speed-label"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>0.5x</span>
@@ -298,6 +315,7 @@ export function VoiceConfigurator() {
         label="Language"
         setting={data.input_language}
         onReset={() => handleReset("input_language")}
+        controlId="input-language"
       >
         <EnvLockWrapper source={data.input_language.source}>
           <Select
@@ -305,7 +323,11 @@ export function VoiceConfigurator() {
             onValueChange={(v) => handleUpdate("input_language", v)}
             disabled={data.input_language.source === "env"}
           >
-            <SelectTrigger size="sm" className="w-full">
+            <SelectTrigger
+              size="sm"
+              className="w-full"
+              aria-labelledby="input-language-label"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -324,19 +346,21 @@ export function VoiceConfigurator() {
         label="Continuous Mode"
         setting={data.input_continuous}
         onReset={() => handleReset("input_continuous")}
+        controlId="continuous-mode"
       >
         <EnvLockWrapper source={data.input_continuous.source}>
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground" id="continuous-mode-desc">
               Keep listening after pauses instead of stopping after each utterance
             </p>
             <Switch
+              id="continuous-mode"
               checked={data.input_continuous.value === "true"}
               onCheckedChange={(checked) =>
                 handleUpdate("input_continuous", String(checked))
               }
               disabled={data.input_continuous.source === "env"}
-              aria-label="Toggle continuous mode"
+              aria-describedby="continuous-mode-desc"
             />
           </div>
         </EnvLockWrapper>
@@ -347,19 +371,21 @@ export function VoiceConfigurator() {
         label="Auto-Submit"
         setting={data.input_auto_submit}
         onReset={() => handleReset("input_auto_submit")}
+        controlId="auto-submit"
       >
         <EnvLockWrapper source={data.input_auto_submit.source}>
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground" id="auto-submit-desc">
               Automatically send message when voice input ends (single-utterance mode only)
             </p>
             <Switch
+              id="auto-submit"
               checked={data.input_auto_submit.value === "true"}
               onCheckedChange={(checked) =>
                 handleUpdate("input_auto_submit", String(checked))
               }
               disabled={data.input_auto_submit.source === "env"}
-              aria-label="Toggle auto-submit"
+              aria-describedby="auto-submit-desc"
             />
           </div>
         </EnvLockWrapper>
@@ -398,6 +424,7 @@ export function VoiceConfigurator() {
         label="Cloud STT Language"
         setting={data.cloud_stt_language}
         onReset={() => handleReset("cloud_stt_language")}
+        controlId="cloud-stt-language"
       >
         <EnvLockWrapper source={data.cloud_stt_language.source}>
           <Select
@@ -405,7 +432,11 @@ export function VoiceConfigurator() {
             onValueChange={(v) => handleUpdate("cloud_stt_language", v)}
             disabled={data.cloud_stt_language.source === "env"}
           >
-            <SelectTrigger size="sm" className="w-full">
+            <SelectTrigger
+              size="sm"
+              className="w-full"
+              aria-labelledby="cloud-stt-language-label"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -511,16 +542,24 @@ function SettingRow({
   setting,
   onReset,
   children,
+  controlId,
 }: {
   label: string
   setting: VoiceSettingInfo
   onReset: () => void
   children: React.ReactNode
+  controlId?: string
 }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label className="text-sm font-medium">{label}</Label>
+        <Label
+          className="text-sm font-medium"
+          htmlFor={controlId}
+          id={controlId ? `${controlId}-label` : undefined}
+        >
+          {label}
+        </Label>
         <SourceBadge source={setting.source} />
         {setting.source === "db" && (
           <Button
