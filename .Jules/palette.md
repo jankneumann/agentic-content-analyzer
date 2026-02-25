@@ -5,3 +5,11 @@
 ## 2025-05-20 - Accessible Form Controls in Custom Wrappers
 **Learning:** Custom form row wrappers (like `SettingRow`) often break implicit label associations. Radix UI components (Select, Slider, Switch) need explicit `aria-labelledby` or `id` matching to be accessible, especially when the label is rendered by the wrapper.
 **Action:** Always pass a unique `controlId` to custom form wrappers and explicitly associate it with the inner control using `htmlFor`, `id`, `aria-labelledby`, or `aria-describedby`.
+
+## 2025-05-20 - Manual TanStack Router Configuration
+**Learning:** When using TanStack Router in manual mode (without the Vite plugin),  can cause type errors if the route tree is not perfectly synced. It's safer to use  for manually defined routes to avoid dependency on generated types.
+**Action:** Use  for manual route definitions and ensure all routes are explicitly added to .
+
+## 2025-05-20 - Manual TanStack Router Configuration
+**Learning:** When using TanStack Router in manual mode (without the Vite plugin), `createFileRoute` can cause type errors if the route tree is not perfectly synced. It's safer to use `createRoute` for manually defined routes to avoid dependency on generated types.
+**Action:** Use `createRoute` for manual route definitions and ensure all routes are explicitly added to `routeTree.gen.ts`.

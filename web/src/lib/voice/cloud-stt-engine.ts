@@ -32,7 +32,6 @@ export interface CloudSTTConfig {
 
 const MAX_RECONNECT_RETRIES = 3
 const INITIAL_RECONNECT_DELAY = 1000 // 1 second
-const AUDIO_CHUNK_INTERVAL = 200 // ms between audio chunk sends
 
 export class CloudSTTEngine implements STTEngine {
   readonly id = "cloud" as const
@@ -47,7 +46,7 @@ export class CloudSTTEngine implements STTEngine {
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private language = "auto"
-  private continuous = false
+  // private continuous = false
 
   constructor(config: CloudSTTConfig = {}) {
     this.config = config
@@ -66,7 +65,7 @@ export class CloudSTTEngine implements STTEngine {
   start(options: STTStartOptions): void {
     this.events = options.events
     this.language = options.language ?? "auto"
-    this.continuous = options.continuous ?? false
+    // this.continuous = options.continuous ?? false
     this.reconnectAttempts = 0
     this.connect()
   }

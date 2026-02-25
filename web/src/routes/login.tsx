@@ -7,13 +7,16 @@
  * In development mode (auth disabled), redirects to /.
  */
 
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router"
+import { createRoute, useNavigate, useSearch } from "@tanstack/react-router"
 import { useState, type FormEvent } from "react"
+import { Route as rootRoute } from "./__root"
 
 import { isAuthEnabled, login } from "@/lib/api"
 import { isApiError } from "@/lib/api/client"
 
-export const Route = createFileRoute("/login")({
+export const Route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "login",
   validateSearch: (search: Record<string, unknown>) => ({
     returnTo: (search.returnTo as string) || "/",
   }),
@@ -22,7 +25,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate()
-  const { returnTo } = useSearch({ from: "/login" })
+  const { returnTo } = useSearch({ from: Route.fullPath })
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)

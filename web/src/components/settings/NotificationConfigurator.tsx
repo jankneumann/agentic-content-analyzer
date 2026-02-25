@@ -13,7 +13,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   useNotificationPreferences,
   useUpdateNotificationPreference,
-  useResetNotificationPreference,
 } from "@/hooks/use-notifications"
 import type { NotificationPreference } from "@/types"
 
@@ -37,7 +36,7 @@ const SOURCE_COLORS: Record<string, string> = {
 
 function PreferenceRow({ preference }: { preference: NotificationPreference }) {
   const updatePref = useUpdateNotificationPreference()
-  const resetPref = useResetNotificationPreference()
+  // const resetPref = useResetNotificationPreference()
 
   const isEnvControlled = preference.source === "env"
 

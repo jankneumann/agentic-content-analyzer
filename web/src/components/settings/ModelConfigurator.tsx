@@ -71,7 +71,7 @@ function groupByFamily(models: ModelOption[]): Record<string, ModelOption[]> {
 }
 
 /** Capability requirements per pipeline step — filters model dropdown to eligible models */
-const STEP_CAPABILITY_FILTERS: Record<string, (model: ModelOption) => boolean> = {
+const STEP_CAPABILITY_FILTERS: Record<string, ((model: ModelOption) => boolean) | undefined> = {
   cloud_stt: (m) => m.supports_audio,
 }
 
