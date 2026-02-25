@@ -13,8 +13,8 @@ class TestGetModelSettings:
         data = resp.json()
         assert "steps" in data
         assert "available_models" in data
-        # Should have 11 steps (all ModelStep values)
-        assert len(data["steps"]) == 12
+        # Should have 14 steps (all ModelStep values including cloud_stt)
+        assert len(data["steps"]) == 14
 
     def test_steps_have_required_fields(self, client):
         resp = client.get("/api/v1/settings/models")
@@ -43,6 +43,30 @@ class TestGetModelSettings:
             assert "cost_per_mtok_output" in model
             assert "providers" in model
             assert "family" in model
+
+    def test_available_models_include_supports_audio(self, client):
+        """Cloud STT: models should include supports_audio capability flag."""
+        resp = client.get("/api/v1/settings/models")
+        data = resp.json()
+        for model in data["available_models"]:
+            assert "supports_audio" in model
+            assert isinstance(model["supports_audio"], bool)
+
+    def test_cloud_stt_step_present(self, client):
+        """Cloud STT: CLOUD_STT step should be in the steps list."""
+        resp = client.get("/api/v1/settings/models")
+        data = resp.json()
+        step_names = [s["step"] for s in data["steps"]]
+        assert "cloud_stt" in step_names
+
+    def test_cloud_stt_has_audio_capable_default(self, client):
+        """Cloud STT: default model for CLOUD_STT should support audio."""
+        resp = client.get("/api/v1/settings/models")
+        data = resp.json()
+        cloud_stt_step = next(s for s in data["steps"] if s["step"] == "cloud_stt")
+        # The default model should be a known audio-capable model
+        audio_models = {m["id"] for m in data["available_models"] if m["supports_audio"]}
+        assert cloud_stt_step["current_model"] in audio_models
 
     def test_db_override_reflected_in_source(self, client):
         # Set a model override via the settings override API
