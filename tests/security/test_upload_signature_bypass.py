@@ -1,9 +1,12 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
+
 from src.api.app import app
 from src.api.dependencies import verify_admin_key
 from src.models.content import Content, ContentStatus
+
 
 @pytest.mark.security
 class TestUploadSecurityFix:

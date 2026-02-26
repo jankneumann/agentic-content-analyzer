@@ -1,6 +1,6 @@
 """Tests for podcast API endpoints."""
-import pytest
-from src.models.podcast import PodcastStatus, Podcast
+from src.models.podcast import Podcast, PodcastStatus
+
 
 class TestListPodcasts:
     """Tests for GET /api/v1/podcasts/ endpoint."""
