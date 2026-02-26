@@ -83,3 +83,29 @@ class SlidingWindowRateLimiter:
             oldest = min(requests)
             remaining = self._window - (monotonic() - oldest)
             return max(1, int(remaining))
+
+
+class EndpointRateLimiter(SlidingWindowRateLimiter):
+    """Standard rate limiter for API endpoints.
+
+    Combines check and record logic: if limit not reached, records the request.
+    """
+
+    def is_limited(self, ip: str) -> bool:
+        """Check if an IP has exceeded the rate limit.
+
+        Also records the current request if not limited.
+
+        Args:
+            ip: Client IP address.
+
+        Returns:
+            True if the IP should be rate-limited.
+        """
+        with self._lock:
+            self._prune(ip)
+            self._maybe_cleanup()
+            if self._is_limit_reached(ip):
+                return True
+            self._add_timestamp(ip)
+            return False
