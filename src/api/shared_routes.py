@@ -32,7 +32,8 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 # Markdown renderer
-_md = MarkdownIt()
+# Disable HTML rendering to prevent XSS in shared content
+_md = MarkdownIt("commonmark", {"html": False})
 
 
 def _get_client_ip(request: Request) -> str:
