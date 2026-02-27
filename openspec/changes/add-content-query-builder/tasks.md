@@ -25,6 +25,8 @@ Phase 7: [7.1–7.4] Documentation (depends on all above)
 **File overlap**: `src/api/content_routes.py` modified by 1.4 then 5.1–5.2 (must be sequential).
 **File overlap**: `src/processors/summarizer.py` modified by 3.2 and 3.3 (same phase, done atomically).
 
+**Note**: Task groups below are numbered by area (1=model, 2=CLI options, 3=CLI commands, 4=frontend, 5=API, 6=E2E, 7=docs). Execution order follows the dependency graph above, not the numbering.
+
 ---
 
 ## 1. ContentQuery Model & Query Service

@@ -8,7 +8,7 @@ Placing the shared query model in `src/models/` alongside `content.py`, `summary
 
 ```python
 # src/models/query.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from src.models.content import ContentSource, ContentStatus
 
