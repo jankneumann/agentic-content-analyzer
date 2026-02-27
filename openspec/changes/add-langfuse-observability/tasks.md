@@ -50,7 +50,7 @@
 
 ### Task 2.1: Docker Compose for self-hosted Langfuse
 - [ ] Create `docker-compose.langfuse.yml`
-- [ ] Add `langfuse-postgres` service (postgres:17, internal only, port 5433 if needed for debug)
+- [ ] Add `langfuse-postgres` service (postgres:17, internal only — no host port)
 - [ ] Add `langfuse-clickhouse` service (clickhouse/clickhouse-server, internal only)
 - [ ] Add `langfuse-redis` service (redis:7-alpine, internal only)
 - [ ] Add `langfuse-minio` service (minio/minio, internal only) with auto-bucket creation

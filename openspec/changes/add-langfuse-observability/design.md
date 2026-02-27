@@ -280,7 +280,7 @@ Tests:
 2. LLM call tracing with gen_ai.* attributes
 3. Span creation and nesting
 4. Flush and shutdown lifecycle
-5. Traces visible in Langfuse API (verify via REST API polling)
+5. Traces visible in Langfuse API (verify via `GET /api/public/traces` with Basic Auth, polling until traces appear)
 
 ## Documentation Updates
 

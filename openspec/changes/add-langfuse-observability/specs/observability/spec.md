@@ -48,6 +48,7 @@ The system SHALL support Langfuse as an LLM observability provider, using OpenTe
 - **THEN** the provider SHALL create an `llm.completion` span
 - **AND** the span SHALL include attributes: `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`
 - **AND** when `otel_log_prompts` is true, the span SHALL include `gen_ai.prompt` and `gen_ai.completion` (truncated to 1000 chars)
+- **AND** when `otel_log_prompts` is false, the span SHALL NOT include `gen_ai.prompt` or `gen_ai.completion`
 
 #### Scenario: Pipeline span creation
 - **WHEN** `start_span()` is called with a name and attributes
