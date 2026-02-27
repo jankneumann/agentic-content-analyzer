@@ -1,0 +1,182 @@
+# =============================================================================
+# Langfuse Self-Hosted Stack — Local Development
+# =============================================================================
+#
+# Run alongside the main docker-compose.yml without port conflicts:
+#
+#   docker compose up -d                                        # our stack
+#   docker compose -f docker-compose.langfuse.yml -p langfuse up -d  # langfuse stack
+#
+# Or use Make targets (recommended):
+#   make langfuse-up      # Start Langfuse stack with health check
+#   make langfuse-down    # Stop Langfuse stack
+#   make dev-langfuse     # Start API with Langfuse tracing enabled
+#
+# Then configure profile or .env:
+#   export PROFILE=local-langfuse   # Uses profiles/local-langfuse.yaml
+#
+# Or manually in .env:
+#   OBSERVABILITY_PROVIDER=langfuse
+#   OTEL_ENABLED=true
+#   LANGFUSE_BASE_URL=http://localhost:3100
+#   LANGFUSE_PUBLIC_KEY=pk-lf-...    # From Langfuse Settings → API Keys
+#   LANGFUSE_SECRET_KEY=sk-lf-...    # From Langfuse Settings → API Keys
+#
+# UIs:
+#   Langfuse: http://localhost:3100
+#
+# First start: Create account at http://localhost:3100, then get API keys
+# from Settings → API Keys.
+#
+# Tear down:
+#   docker compose -f docker-compose.langfuse.yml -p langfuse down
+#   # or: make langfuse-down
+#
+# =============================================================================
+
+x-langfuse-common-env: &langfuse-common-env
+  DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+  NEXTAUTH_URL: http://localhost:3100
+  NEXTAUTH_SECRET: dev-nextauth-secret-do-not-use-in-production
+  SALT: dev-salt-do-not-use-in-production
+  ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+  CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+  CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+  CLICKHOUSE_USER: default
+  CLICKHOUSE_PASSWORD: langfuse
+  REDIS_HOST: langfuse-redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_ENABLED: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: langfuse123
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+
+services:
+  # ---------------------------------------------------------------------------
+  # Infrastructure (no host ports — internal only)
+  # ---------------------------------------------------------------------------
+  langfuse-postgres:
+    image: postgres:17
+    hostname: langfuse-postgres
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "langfuse"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    # NOTE: No host port — avoids conflict with our PostgreSQL on 5432
+    volumes:
+      - langfuse_postgres:/var/lib/postgresql/data
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server
+    hostname: langfuse-clickhouse
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: langfuse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    # NOTE: No host port — avoids conflict with Opik ClickHouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+
+  langfuse-redis:
+    image: redis:7-alpine
+    hostname: langfuse-redis
+    command: redis-server --requirepass langfuse
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "langfuse", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    # NOTE: No host port — avoids conflict with our Redis
+    volumes:
+      - langfuse_redis:/data
+
+  langfuse-minio:
+    image: minio/minio
+    hostname: langfuse-minio
+    environment:
+      MINIO_ROOT_USER: langfuse
+      MINIO_ROOT_PASSWORD: langfuse123
+    command: server --console-address ":9090" /data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    # NOTE: No host port — internal only for Langfuse event storage
+    volumes:
+      - langfuse_minio:/data
+
+  langfuse-minio-init:
+    image: minio/mc
+    depends_on:
+      langfuse-minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set langfuse http://langfuse-minio:9000 langfuse langfuse123 --api S3v4 ;
+      /usr/bin/mc mb --ignore-existing langfuse/langfuse-events ;
+      "
+
+  # ---------------------------------------------------------------------------
+  # Langfuse Application
+  # ---------------------------------------------------------------------------
+  langfuse-web:
+    image: langfuse/langfuse:3
+    hostname: langfuse-web
+    environment:
+      <<: *langfuse-common-env
+    ports:
+      - "3100:3000"    # Langfuse UI + API (port 3100 to avoid conflict with frontend on 3000)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-minio-init:
+        condition: service_completed_successfully
+
+  langfuse-worker:
+    image: langfuse/langfuse:3
+    hostname: langfuse-worker
+    environment:
+      <<: *langfuse-common-env
+      LANGFUSE_WORKER_PASSWORD: dev-worker-password
+      LANGFUSE_WORKER_HOST: langfuse-web
+    # NOTE: No host port — worker processes events internally
+    depends_on:
+      langfuse-web:
+        condition: service_healthy
+
+volumes:
+  langfuse_postgres:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_redis:
+  langfuse_minio:

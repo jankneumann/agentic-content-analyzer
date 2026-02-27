@@ -391,6 +391,16 @@ from tests.integration.fixtures.hoverfly import (  # noqa: E402, F401
     requires_hoverfly,
 )
 
+# Import Langfuse fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/langfuse.py
+from tests.integration.fixtures.langfuse import (  # noqa: E402, F401
+    langfuse_available,
+    langfuse_provider,
+    langfuse_test_helpers,
+    requires_langfuse,
+    unique_langfuse_project_name,
+)
+
 # Import Neon fixtures to make them available to all integration tests
 # These fixtures are defined in tests/integration/fixtures/neon.py
 from tests.integration.fixtures.neon import (  # noqa: E402, F401

@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react"
-import { Bell, Check, CheckCheck, AlertTriangle, FileText, Mic, BarChart3, Zap, XCircle } from "lucide-react"
+import { Bell, CheckCheck, FileText, Mic, BarChart3, Zap, XCircle } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { formatDistanceToNow } from "date-fns"
 
@@ -16,7 +16,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {

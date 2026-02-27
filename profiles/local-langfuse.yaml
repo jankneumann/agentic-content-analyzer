@@ -1,0 +1,35 @@
+# Local Development Profile with Langfuse Observability
+# =====================================================
+# Extends local profile with Langfuse self-hosted LLM tracing enabled.
+# Requires Langfuse stack running via `make langfuse-up`.
+#
+# Usage:
+#   make langfuse-up      # Start Langfuse stack (waits for health)
+#   export PROFILE=local-langfuse
+#   make api              # or: make dev-langfuse
+#
+# UIs:
+#   Langfuse: http://localhost:3100
+#   API:      http://localhost:8000
+#   Vite:     http://localhost:5173  (runs simultaneously, no conflict)
+#
+# Note: Langfuse public/secret keys are generated on first startup.
+#       Retrieve from Langfuse UI: Settings → API Keys.
+#       Store in .secrets.yaml:
+#         LANGFUSE_PUBLIC_KEY: pk-lf-...
+#         LANGFUSE_SECRET_KEY: sk-lf-...
+
+name: local-langfuse
+extends: local
+description: Local development with Langfuse self-hosted LLM tracing
+
+# Override observability provider
+providers:
+  observability: langfuse
+
+# Langfuse-specific settings
+settings:
+  observability:
+    otel_enabled: true
+    otel_service_name: newsletter-aggregator
+    langfuse_base_url: "http://localhost:3100"
