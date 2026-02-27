@@ -138,6 +138,8 @@ def upgrade() -> None:
     """)
 
     # 5. Conditionally create BM25 index if pg_search extension is available
+    # Wrapped in EXCEPTION handler because pg_search syntax varies across providers
+    # (e.g., Neon's pg_search version may not support the same WITH options)
     op.execute("""
         DO $$
         BEGIN
@@ -145,6 +147,8 @@ def upgrade() -> None:
                 CREATE INDEX IF NOT EXISTS ix_document_chunks_bm25
                 ON document_chunks USING bm25 (chunk_text) WITH (key_field='id');
             END IF;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'BM25 index creation skipped: %', SQLERRM;
         END $$
     """)
 
