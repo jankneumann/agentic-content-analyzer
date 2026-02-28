@@ -138,14 +138,21 @@ def upgrade() -> None:
     """)
 
     # 5. Conditionally create BM25 index if pg_search extension is available
-    # Wrapped in EXCEPTION handler because pg_search syntax varies across providers
-    # (e.g., Neon's pg_search version may not support the same WITH options)
+    # Strategy: check pg_available_extensions (system catalog) rather than pg_extension
+    # (installed), then try CREATE EXTENSION + CREATE INDEX. This works across all
+    # providers (local Docker, Neon PG17, Railway) without version checks — extension
+    # availability is what matters, not PG version.
     op.execute("""
         DO $$
         BEGIN
-            IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_search') THEN
+            -- Check if pg_search is available on this server (not just installed)
+            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_search') THEN
+                CREATE EXTENSION IF NOT EXISTS pg_search;
                 CREATE INDEX IF NOT EXISTS ix_document_chunks_bm25
                 ON document_chunks USING bm25 (chunk_text) WITH (key_field='id');
+                RAISE NOTICE 'BM25 index created successfully';
+            ELSE
+                RAISE NOTICE 'pg_search extension not available on this server — BM25 index skipped';
             END IF;
         EXCEPTION WHEN OTHERS THEN
             RAISE NOTICE 'BM25 index creation skipped: %', SQLERRM;
