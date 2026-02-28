@@ -7,6 +7,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 
 | Doc | Purpose |
 |-----|---------|
+| [**User Guide**](docs/USER_GUIDE.md) | **End-user documentation: setup, features, workflows, deployment** |
 | [Setup](docs/SETUP.md) | Environment setup, configuration |
 | [Profiles](docs/PROFILES.md) | Profile-based configuration, inheritance, migration |
 | [Architecture](docs/ARCHITECTURE.md) | System design, ingestion, parsers, data models |
