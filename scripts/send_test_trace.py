@@ -13,9 +13,14 @@ Examples:
 
     # With custom service name
     python scripts/send_test_trace.py --service my-test-service
+
+    # With Basic Auth (for Langfuse)
+    python scripts/send_test_trace.py --endpoint http://localhost:3100/api/public/otel/v1/traces \\
+        --basic-auth pk-lf-xxx:sk-lf-yyy
 """
 
 import argparse
+import base64
 import sys
 
 from opentelemetry import trace
@@ -29,7 +34,7 @@ DEFAULT_ENDPOINT = "http://localhost:5174/api/v1/private/otel/v1/traces"
 DEFAULT_SERVICE = "test-trace-sender"
 
 
-def send_test_trace(endpoint: str, service_name: str) -> bool:
+def send_test_trace(endpoint: str, service_name: str, basic_auth: str | None = None) -> bool:
     """Send a test trace to the specified OTLP endpoint.
 
     Returns True if successful, False otherwise.
@@ -39,8 +44,14 @@ def send_test_trace(endpoint: str, service_name: str) -> bool:
         resource = Resource.create({"service.name": service_name})
         provider = TracerProvider(resource=resource)
 
+        # Build headers (e.g., Basic Auth for Langfuse)
+        headers: dict[str, str] = {}
+        if basic_auth:
+            encoded = base64.b64encode(basic_auth.encode()).decode()
+            headers["Authorization"] = f"Basic {encoded}"
+
         # Configure OTLP HTTP exporter
-        exporter = OTLPSpanExporter(endpoint=endpoint)
+        exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
         provider.add_span_processor(BatchSpanProcessor(exporter))
 
         # Set as global provider
@@ -75,6 +86,10 @@ def main() -> int:
         help=f"Service name for the trace (default: {DEFAULT_SERVICE})",
     )
     parser.add_argument(
+        "--basic-auth",
+        help="Basic auth credentials (user:password) for OTLP endpoint",
+    )
+    parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
@@ -83,7 +98,7 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    success = send_test_trace(args.endpoint, args.service)
+    success = send_test_trace(args.endpoint, args.service, args.basic_auth)
 
     if success:
         if not args.quiet:

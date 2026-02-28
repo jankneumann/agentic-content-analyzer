@@ -577,7 +577,13 @@ verify-langfuse:  ## Verify Langfuse tracing works E2E (requires: PROFILE=local-
 	@echo "   ✓ Langfuse is healthy"
 	@echo ""
 	@echo "2. Sending test trace..."
-	@python scripts/send_test_trace.py --endpoint http://localhost:3100/api/public/otel/v1/traces --service verify-langfuse-test 2>&1 && \
+	@AUTH_FLAG=""; \
+	if [ -n "$$LANGFUSE_PUBLIC_KEY" ] && [ -n "$$LANGFUSE_SECRET_KEY" ]; then \
+		AUTH_FLAG="--basic-auth $$LANGFUSE_PUBLIC_KEY:$$LANGFUSE_SECRET_KEY"; \
+	else \
+		echo "   Note: LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY not set — trace sent without auth"; \
+	fi; \
+	python scripts/send_test_trace.py --endpoint http://localhost:3100/api/public/otel/v1/traces --service verify-langfuse-test $$AUTH_FLAG 2>&1 && \
 		echo "   ✓ Test trace sent successfully" || \
 		echo "   ✗ Failed to send test trace"
 	@echo ""
