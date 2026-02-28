@@ -17,6 +17,23 @@ triggers:
 
 Manage the production deployment stack: Railway (compute + storage), Neon (PostgreSQL with branching), and Neo4j AuraDB (knowledge graph). This skill wraps existing CLIs (`aca`, `railway`, `neonctl`, `aura`) and integrates with the profile system.
 
+## Relationship to Railway Skills (`use-railway`)
+
+This skill and the `use-railway` skill are **complementary**:
+
+| Use this skill (`aca-deployment`) for | Use `use-railway` for |
+|---|---|
+| Multi-provider stack orchestration | General Railway platform operations |
+| Neon branch management | Railway project/service creation |
+| AuraDB instance management | Build/deploy troubleshooting |
+| Cross-provider health checks (`stack:verify`) | Domain and networking configuration |
+| Profile-aware deployments | Environment/variable management |
+| ACA-specific deploy pipeline | Railway metrics and resource monitoring |
+| | Railway database provisioning |
+| | Railway GraphQL API queries |
+
+**Rule of thumb**: Use `aca-deployment` for stack-level operations (deploy the whole stack, verify all providers, manage Neon/AuraDB). Use `use-railway` when you need deeper Railway-specific operations (build config, domain setup, monorepo watch patterns, Railway-managed databases, or troubleshooting Railway-specific failures).
+
 ## Arguments
 
 `$ARGUMENTS` - Action name (required), optionally followed by action-specific arguments.

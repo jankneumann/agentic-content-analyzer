@@ -333,6 +333,33 @@ SELECT cron.schedule(
 );
 ```
 
+## Agent Skills for Deployment
+
+Two complementary agent skills provide deployment automation:
+
+### `aca-deployment` — Stack Orchestration
+
+Custom skill for multi-provider stack management (Railway + Neon + AuraDB). Profile-aware.
+
+```bash
+/aca-deployment stack:verify           # Full-stack health check
+/aca-deployment railway:deploy         # Deploy via Railway CLI
+/aca-deployment neon:create claude/xyz # Create Neon branch
+/aca-deployment auradb:status          # Check AuraDB instance
+```
+
+Location: `skills/aca-deployment/`
+
+### `use-railway` — Railway Platform Operations
+
+Official Railway Skills ([railwayapp/railway-skills](https://github.com/railwayapp/railway-skills)). Provides deeper Railway-specific knowledge: project/service creation, build troubleshooting, domain/networking, environment variables, metrics, and Railway GraphQL API access.
+
+Location: `.agents/skills/use-railway/` (symlinked to `.claude/skills/use-railway`)
+
+**When to use which**:
+- Stack-level ops (deploy all, verify providers, Neon/AuraDB) → `aca-deployment`
+- Railway-specific ops (build config, domains, troubleshooting, metrics) → `use-railway`
+
 ## Deployment Lessons Learned
 
 Collected during the initial Railway deployment (January 2026).
