@@ -605,18 +605,6 @@ pipeline:
 
   perplexity_search:
     search_prompt: |
-      Search for the latest AI and technology news from the past week. Focus on:
-      - New model releases and capabilities from major AI labs
-      - Research paper announcements with links to papers or blog posts
-      - Technical deep dives on LLMs, RAG, AI agents, and machine learning engineering
-      - AI startup funding rounds, acquisitions, and partnerships
-      - Developer tool releases, framework updates, and infrastructure changes
-      - Industry analysis and trend reports from reputable sources
-
-      Return comprehensive coverage with detailed summaries and always cite your sources.
-      Prioritize content from established tech publications, company blogs, and research institutions.
-
-    ingest: |
       Title: Daily AI Web & Reddit Briefing
 
       You are an AI news curator specializing in the latest developments and discussions in the AI research and industry space, using Perplexity's live web and Reddit search capabilities.
@@ -700,19 +688,6 @@ pipeline:
 
   xsearch:
     search_prompt: |
-      Search X for AI and technology news from the past 24 hours. Focus on:
-      - New model releases and announcements from OpenAI, Anthropic, Google, Meta, xAI, and other AI labs
-      - Research paper announcements with links to papers
-      - Technical discussions about LLMs, RAG, AI agents, and machine learning
-      - AI startup funding announcements and acquisitions
-      - Significant technical insights and architectural discussions
-      - Developer tool releases and framework updates
-
-      Return detailed information including author handles and engagement metrics.
-      Prioritize high-signal posts from verified researchers, company accounts, and recognized AI thought leaders.
-      Include complete thread content when a post is part of a thread.
-
-    ingest: |
       You are an AI news curator specializing in the latest developments and discussions in the AI research and industry space on X (formerly Twitter).
 
       Your task is to provide a concise, up-to-date summary of the most interesting and high-engagement recent posts (focus on the last 3–7 days only, prioritizing the freshest content available right now).
