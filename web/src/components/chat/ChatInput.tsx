@@ -227,6 +227,7 @@ export function ChatInput({
                 : placeholder
             }
             aria-label="Chat message"
+            aria-describedby="chat-input-char-count"
             disabled={disabled || isLoading}
             className={cn(
               "min-h-[48px] max-h-[200px] resize-none pr-12",
@@ -247,12 +248,14 @@ export function ChatInput({
 
           {/* Character count */}
           <div
+            id="chat-input-char-count"
             className={cn(
               "absolute bottom-2 right-2 text-xs text-muted-foreground transition-colors",
               value.length > maxLength * 0.9 && "font-medium text-amber-500",
               value.length >= maxLength && "text-destructive"
             )}
             aria-label={`${value.length} of ${maxLength} characters`}
+            aria-live="polite"
           >
             {value.length}/{maxLength}
           </div>
