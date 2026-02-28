@@ -20,6 +20,7 @@ import { DigestReviewRoute } from "./routes/review/digest.$id"
 import { ScriptReviewRoute } from "./routes/review/script.$id"
 import { SettingsRoute } from "./routes/settings"
 import { TaskHistoryRoute } from "./routes/task-history"
+import { LoginRoute } from "./routes/login"
 
 /**
  * Build the route tree by connecting children to root
@@ -48,6 +49,7 @@ export const routeTree = rootRoute.addChildren([
   ReviewRouteWithChildren,
   TaskHistoryRoute,
   SettingsRoute,
+  LoginRoute,
 ])
 
 /**

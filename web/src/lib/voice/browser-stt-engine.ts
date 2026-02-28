@@ -5,7 +5,7 @@
  * interface. Returns raw transcripts (cleaned=false).
  */
 
-import type { STTEngine, STTEngineState, STTStartOptions } from "./engine"
+import type { STTEngine, STTStartOptions } from "./engine"
 
 // Web Speech API types
 interface SpeechRecognitionEvent extends Event {

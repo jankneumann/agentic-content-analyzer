@@ -23,7 +23,7 @@ providers:
   database: local      # local, supabase, neon, railway
   neo4j: local         # local, auradb
   storage: local       # local, s3, supabase, railway
-  observability: noop  # noop, opik, braintrust, otel
+  observability: noop  # noop, opik, braintrust, otel, langfuse
 
 # =============================================================================
 # Settings
@@ -114,6 +114,8 @@ settings:
     jina_api_key: "${JINA_API_KEY:-}"
     xai_api_key: "${XAI_API_KEY:-}"
     perplexity_api_key: "${PERPLEXITY_API_KEY:-}"
+    langfuse_public_key: "${LANGFUSE_PUBLIC_KEY:-}"
+    langfuse_secret_key: "${LANGFUSE_SECRET_KEY:-}"
     web_search_provider: "${WEB_SEARCH_PROVIDER:-tavily}"
 
   # ---------------------------------------------------------------------------

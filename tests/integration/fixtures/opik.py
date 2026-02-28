@@ -164,6 +164,7 @@ def opik_provider(unique_project_name: str) -> Generator:
     # Cleanup: flush any remaining spans
     provider.flush()
     provider.shutdown()
+    _reset_otel_tracer_provider()
 
     # Give Opik time to process, then delete test project
     time.sleep(1)

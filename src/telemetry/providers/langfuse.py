@@ -1,15 +1,16 @@
-"""Opik observability provider.
+"""Langfuse observability provider.
 
 Uses OpenTelemetry with gen_ai.* semantic conventions to export traces
-to Opik (Comet Cloud or self-hosted). Opik provides LLM-specific
-visualization, evaluation, and hallucination detection.
+to Langfuse (Cloud or self-hosted). Langfuse provides LLM-specific
+tracing, prompt management, and evaluation.
 
-Comet Cloud: https://www.comet.com/opik/api/v1/private/otel
-Self-hosted: Configurable OTLP HTTP endpoint
+Cloud: https://cloud.langfuse.com/api/public/otel
+Self-hosted: {base_url}/api/public/otel
 """
 
 from __future__ import annotations
 
+import base64
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -32,35 +33,31 @@ GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 GEN_AI_PROMPT = "gen_ai.prompt"
 GEN_AI_COMPLETION = "gen_ai.completion"
 
-# Default OTLP endpoint for Comet Cloud
-# Follows the pattern: {base}/api/v1/private/otel (OTLPSpanExporter appends /v1/traces)
-COMET_CLOUD_OTLP_ENDPOINT = "https://www.comet.com/opik/api/v1/private/otel"
+# Default Langfuse Cloud base URL
+LANGFUSE_CLOUD_BASE_URL = "https://cloud.langfuse.com"
 
 
-class OpikProvider:
-    """Opik observability provider using OTel with gen_ai.* attributes.
+class LangfuseProvider:
+    """Langfuse observability provider using OTel with gen_ai.* attributes.
 
-    Supports both Comet Cloud and self-hosted Opik deployments.
+    Supports both Langfuse Cloud and self-hosted deployments.
+    Authentication uses HTTP Basic Auth with public_key:secret_key.
     All LLM calls are traced with gen_ai semantic conventions that
-    Opik recognizes for LLM-specific visualization.
+    Langfuse recognizes for LLM-specific visualization.
     """
 
     def __init__(
         self,
         *,
-        endpoint: str | None = None,
-        headers: str | None = None,
-        api_key: str | None = None,
-        workspace: str | None = None,
-        project_name: str = "newsletter-aggregator",
+        public_key: str | None = None,
+        secret_key: str | None = None,
+        base_url: str = LANGFUSE_CLOUD_BASE_URL,
         service_name: str = "newsletter-aggregator",
         log_prompts: bool = False,
     ) -> None:
-        self._endpoint = endpoint
-        self._headers = headers
-        self._api_key = api_key
-        self._workspace = workspace
-        self._project_name = project_name
+        self._public_key = public_key
+        self._secret_key = secret_key
+        self._base_url = base_url
         self._service_name = service_name
         self._log_prompts = log_prompts
         self._tracer: Any = None
@@ -69,51 +66,31 @@ class OpikProvider:
 
     @property
     def name(self) -> str:
-        return "opik"
+        return "langfuse"
 
-    def _build_headers(self) -> dict[str, str]:
-        """Build OTLP headers for Opik.
+    def _build_auth_header(self) -> dict[str, str]:
+        """Build HTTP Basic Auth header for Langfuse.
 
-        For Comet Cloud, constructs Authorization + project headers.
-        For self-hosted, parses user-provided header string.
+        Constructs Authorization: Basic base64(public_key:secret_key).
+        Returns empty dict if either key is missing.
         """
-        headers: dict[str, str] = {}
+        if not self._public_key or not self._secret_key:
+            return {}
 
-        # If explicit headers are provided, parse them
-        if self._headers:
-            for pair in self._headers.split(","):
-                pair = pair.strip()
-                if "=" in pair:
-                    key, value = pair.split("=", 1)
-                    headers[key.strip()] = value.strip()
-            return headers
+        credentials = f"{self._public_key}:{self._secret_key}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        return {"Authorization": f"Basic {encoded}"}
 
-        # Construct Comet Cloud headers from individual settings
-        if self._api_key:
-            headers["Authorization"] = self._api_key
-        if self._project_name:
-            headers["projectName"] = self._project_name
-        if self._workspace:
-            headers["Comet-Workspace"] = self._workspace
-
-        return headers
-
-    def _get_endpoint(self) -> str | None:
+    def _get_endpoint(self) -> str:
         """Get the OTLP endpoint URL.
 
-        Returns the configured endpoint, defaulting to Comet Cloud if
-        API key is set. For self-hosted Opik, the endpoint must be
-        configured via profile (no hardcoded fallback).
+        Always constructs from base_url + /api/public/otel.
+        Never returns None since base_url has a default.
         """
-        if self._endpoint:
-            return self._endpoint
-        if self._api_key:
-            return COMET_CLOUD_OTLP_ENDPOINT
-        # Self-hosted requires explicit endpoint configuration
-        return None
+        return f"{self._base_url.rstrip('/')}/api/public/otel"
 
     def setup(self, app: FastAPI | None = None) -> None:
-        """Initialize OTel SDK with OTLP exporter pointing to Opik."""
+        """Initialize OTel SDK with OTLP exporter pointing to Langfuse."""
         if self._setup_complete:
             return
 
@@ -125,17 +102,28 @@ class OpikProvider:
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-            # Validate endpoint is configured for self-hosted
-            endpoint = self._get_endpoint()
-            if endpoint is None:
-                logger.error(
-                    "Opik provider requires endpoint configuration for self-hosted. "
-                    "Set otel_exporter_otlp_endpoint in your profile or use OPIK_API_KEY for Comet Cloud."
+            # Warn about partial or missing auth configuration
+            has_public = bool(self._public_key)
+            has_secret = bool(self._secret_key)
+
+            if has_public != has_secret:
+                logger.warning(
+                    "Langfuse provider has partial auth configuration: "
+                    f"public_key={'set' if has_public else 'missing'}, "
+                    f"secret_key={'set' if has_secret else 'missing'}. "
+                    "Both are required for authentication."
                 )
-                return
+            elif not has_public and not has_secret:
+                logger.warning(
+                    "Langfuse provider initialized without authentication keys. "
+                    "This is acceptable for self-hosted instances without auth, "
+                    "but Langfuse Cloud requires public_key and secret_key."
+                )
 
             resource = Resource.create({"service.name": self._service_name})
             self._tracer_provider = TracerProvider(resource=resource)
+
+            endpoint = self._get_endpoint()
 
             # Ensure endpoint includes /v1/traces path
             if not endpoint.endswith("/v1/traces"):
@@ -143,7 +131,7 @@ class OpikProvider:
 
             exporter = OTLPSpanExporter(
                 endpoint=endpoint,
-                headers=self._build_headers(),
+                headers=self._build_auth_header(),
             )
             self._tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
 
@@ -153,7 +141,7 @@ class OpikProvider:
             self._tracer = self._tracer_provider.get_tracer(__name__)
             self._setup_complete = True
 
-            logger.info(f"Opik provider initialized (endpoint: {endpoint})")
+            logger.info(f"Langfuse provider initialized (endpoint: {endpoint})")
         except ImportError:
             logger.error(
                 "OpenTelemetry packages not installed. "
@@ -217,7 +205,7 @@ class OpikProvider:
             try:
                 self._tracer_provider.force_flush()
             except Exception as e:
-                logger.debug(f"Error flushing Opik provider: {e}")
+                logger.debug(f"Error flushing Langfuse provider: {e}")
 
     def shutdown(self) -> None:
         """Shut down the OTel tracer provider."""
@@ -225,7 +213,7 @@ class OpikProvider:
             try:
                 self._tracer_provider.shutdown()
             except Exception as e:
-                logger.debug(f"Error shutting down Opik provider: {e}")
+                logger.debug(f"Error shutting down Langfuse provider: {e}")
         self._tracer_provider = None
         self._tracer = None
         self._setup_complete = False
