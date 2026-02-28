@@ -190,13 +190,12 @@ class TestSetup:
     def _run_setup_with_mocked_otel(provider: LangfuseProvider):
         """Run setup() with mocked OTel imports.
 
-        Returns tuple: (mock_resource, mock_tp_cls, mock_exporter_cls, mock_bsp, mock_trace)
+        Returns tuple: (mock_resource, mock_tp_cls, mock_exporter_cls, mock_bsp)
         """
         mock_resource = MagicMock()
         mock_tp_cls = MagicMock()
         mock_exporter_cls = MagicMock()
         mock_bsp = MagicMock()
-        mock_trace = MagicMock()
 
         with (
             patch("opentelemetry.sdk.resources.Resource", mock_resource),
@@ -206,11 +205,10 @@ class TestSetup:
                 mock_exporter_cls,
             ),
             patch("opentelemetry.sdk.trace.export.BatchSpanProcessor", mock_bsp),
-            patch("opentelemetry.trace", mock_trace),
         ):
             provider.setup()
 
-        return mock_resource, mock_tp_cls, mock_exporter_cls, mock_bsp, mock_trace
+        return mock_resource, mock_tp_cls, mock_exporter_cls, mock_bsp
 
     def test_setup_with_full_auth(self):
         """Verify setup initializes OTel with auth headers."""
@@ -219,12 +217,34 @@ class TestSetup:
             secret_key="sk-lf-test",
             base_url="http://localhost:3100",
         )
-        _, _mock_tp_cls, _mock_exporter_cls, _, _mock_trace = self._run_setup_with_mocked_otel(
-            provider
-        )
+        self._run_setup_with_mocked_otel(provider)
 
         assert provider._setup_complete is True
         assert provider._tracer_provider is not None
+
+    def test_setup_does_not_set_global_tracer_provider(self):
+        """Verify setup uses local TracerProvider, not the global one.
+
+        This prevents overwriting infrastructure OTel (otel_setup.py).
+        """
+        provider = LangfuseProvider(
+            public_key="pk-lf-test",
+            secret_key="sk-lf-test",
+            base_url="http://localhost:3100",
+        )
+        mock_tp_cls = MagicMock()
+        mock_tp_instance = mock_tp_cls.return_value
+
+        with (
+            patch("opentelemetry.sdk.resources.Resource"),
+            patch("opentelemetry.sdk.trace.TracerProvider", mock_tp_cls),
+            patch("opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"),
+            patch("opentelemetry.sdk.trace.export.BatchSpanProcessor"),
+        ):
+            provider.setup()
+
+        # Tracer obtained from local provider, not global trace.get_tracer()
+        mock_tp_instance.get_tracer.assert_called_once()
 
     def test_setup_without_keys_warns_but_succeeds(self):
         """Verify setup works without keys (self-hosted)."""
@@ -244,7 +264,7 @@ class TestSetup:
         provider = LangfuseProvider(
             public_key="pk", secret_key="sk", base_url="http://localhost:3100"
         )
-        _, _, mock_exporter_cls, _, _ = self._run_setup_with_mocked_otel(provider)
+        _, _, mock_exporter_cls, _ = self._run_setup_with_mocked_otel(provider)
         call_kwargs = mock_exporter_cls.call_args
         endpoint = call_kwargs.kwargs.get("endpoint") or call_kwargs[1].get("endpoint")
         assert endpoint.endswith("/v1/traces")
@@ -429,17 +449,16 @@ class TestStartSpan:
         mock_tracer.start_as_current_span.assert_called_once_with("test.operation")
         mock_span.set_attribute.assert_not_called()
 
-    def test_span_works_without_setup(self):
-        """When setup() hasn't been called, start_span still works safely.
+    def test_span_yields_none_without_setup(self):
+        """When setup() hasn't been called, start_span yields None.
 
-        If OTel is installed, _get_tracer() lazy-imports a no-op tracer
-        which yields a NonRecordingSpan. If OTel is NOT installed, yields None.
-        Either way, no exception is raised.
+        Without _get_tracer() lazy fallback, self._tracer stays None,
+        so start_span correctly yields None rather than accidentally
+        creating a non-recording span from the global OTel provider.
         """
         provider = LangfuseProvider()
         with provider.start_span("test") as span:
-            # span may be NonRecordingSpan (OTel installed) or None (OTel absent)
-            pass  # main assertion: no exception raised
+            assert span is None
 
 
 # ---------------------------------------------------------------------------

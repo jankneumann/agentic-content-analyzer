@@ -95,7 +95,6 @@ class LangfuseProvider:
             return
 
         try:
-            from opentelemetry import trace
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
                 OTLPSpanExporter,
             )
@@ -135,29 +134,20 @@ class LangfuseProvider:
                 headers=self._build_auth_header(),
             )
             self._tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
-            trace.set_tracer_provider(self._tracer_provider)
 
-            self._tracer = trace.get_tracer(__name__)
+            # Get tracer from our own provider — don't overwrite the global
+            # OTel tracer provider, which may be used by infrastructure
+            # auto-instrumentation (otel_setup.py).
+            self._tracer = self._tracer_provider.get_tracer(__name__)
             self._setup_complete = True
 
-            logger.info(f"Langfuse provider initialized (endpoint: {self._get_endpoint()})")
+            logger.info(f"Langfuse provider initialized (endpoint: {endpoint})")
         except ImportError:
             logger.error(
                 "OpenTelemetry packages not installed. "
                 "Install with: pip install opentelemetry-api opentelemetry-sdk "
                 "opentelemetry-exporter-otlp-proto-http"
             )
-
-    def _get_tracer(self) -> Any:
-        """Get the OTel tracer, initializing if needed."""
-        if self._tracer is None:
-            try:
-                from opentelemetry import trace
-
-                self._tracer = trace.get_tracer(__name__)
-            except ImportError:
-                return None
-        return self._tracer
 
     def trace_llm_call(
         self,
@@ -174,11 +164,10 @@ class LangfuseProvider:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Record an LLM call with gen_ai.* semantic conventions."""
-        tracer = self._get_tracer()
-        if tracer is None:
+        if self._tracer is None:
             return
 
-        with tracer.start_as_current_span("llm.completion") as span:
+        with self._tracer.start_as_current_span("llm.completion") as span:
             span.set_attribute(GEN_AI_SYSTEM, provider)
             span.set_attribute(GEN_AI_REQUEST_MODEL, model)
             span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
@@ -200,12 +189,11 @@ class LangfuseProvider:
         self, name: str, attributes: dict[str, Any] | None = None
     ) -> Generator[Any, None, None]:
         """Start a named OTel span."""
-        tracer = self._get_tracer()
-        if tracer is None:
+        if self._tracer is None:
             yield None
             return
 
-        with tracer.start_as_current_span(name) as span:
+        with self._tracer.start_as_current_span(name) as span:
             if attributes:
                 for key, value in attributes.items():
                     span.set_attribute(key, str(value))

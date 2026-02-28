@@ -119,6 +119,7 @@ def langfuse_provider(unique_langfuse_project_name: str) -> Generator:
 
     provider.flush()
     provider.shutdown()
+    _reset_otel_tracer_provider()
 
 
 class LangfuseTestHelpers:
