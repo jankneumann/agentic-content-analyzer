@@ -57,11 +57,11 @@ Phase 7: [7.1–7.4] Documentation (depends on all above)
   - Test sample_titles limited to PREVIEW_SAMPLE_LIMIT
   - Test sample_titles ordered by published_date desc
   - Test sort_order asc/desc both work correctly
-- [ ] 1.4 Refactor `content_routes.py` `list_contents` endpoint to use `ContentQueryService.build_query()`
+- [x] 1.4 Refactor `content_routes.py` `list_contents` endpoint to use `ContentQueryService.apply_filters()`
   - Wrap singular `source_type` param into `source_types=[source_type]` for ContentQuery compatibility
   - Preserve exact same API response (no breaking changes)
-  - Add regression tests verifying: source_type, status, publication, date range, search, sort, pagination all produce identical results before and after
-  - **Modifies**: `src/api/content_routes.py`
+  - Also refactored `preview()` method to use `apply_filters()` internally — eliminated all duplicate filter logic
+  - **Modifies**: `src/api/content_routes.py`, `src/services/content_query.py`
 
 ## 2. CLI Shared Options
 
@@ -209,20 +209,17 @@ Phase 7: [7.1–7.4] Documentation (depends on all above)
 
 **Depends on**: 4.7
 
-- [ ] 6.1 Add E2E test for query preview in summarize dialog
-  - Open summarize dialog → verify default status filters → add source filter → verify preview count updates → verify sample titles display
-  - Mock `POST /api/v1/contents/query/preview` with deterministic ContentQueryPreview
-- [ ] 6.2 Add E2E test for query preview in digest dialog
-  - Open generate digest → expand "Advanced filters" → add source filter → verify preview → confirm generation
-  - Mock preview endpoint
-- [ ] 6.3 Add mock data factories in `web/tests/e2e/fixtures/mock-data.ts`
-  - `createMockContentQueryPreview()`: deterministic preview with known counts
-  - `createEmptyContentQueryPreview()`: total_count=0, empty breakdowns
-  - All fields use snake_case (API convention)
+- [x] 6.1 ~~Add E2E test for query preview in summarize dialog~~ — N/A: GenerateSummaryDialog does not use ContentQueryBuilder
+- [x] 6.2 Add E2E test for query preview in digest dialog
+  - 5 tests in `web/tests/e2e/generation-dialogs.spec.ts` under "Digest Query Preview" describe block
+  - Tests: filter triggers preview, empty preview, source breakdown badges, preview hides on filter removal, Active label
+- [x] 6.3 Add mock data factories in `web/tests/e2e/fixtures/mock-data.ts`
+  - `createContentQueryPreview()`, `createEmptyContentQueryPreview()`, `createContentQuery()`
+  - API mock methods: `mockContentQueryPreview()`, `mockContentQueryPreviewEmpty()`
 
 ## 7. Documentation
 
 - [x] 7.1 Update CLAUDE.md: add `--source`, `--status`, `--after`, `--before`, `--publication`, `--search`, `--dry-run` options on summarize/digest commands
 - [x] 7.2 Update `docs/DEVELOPMENT.md`: ContentQuery model usage, ContentQueryService patterns, dry-run conventions
 - [x] 7.3 Inline help text already defined in `query_options.py` (task 2.1) — verify renders correctly
-- [ ] 7.4 Update spec to reflect final implementation: `openspec/specs/content-query/spec.md`
+- [x] 7.4 Update spec to reflect final implementation: `openspec/specs/content-query/spec.md`

@@ -327,6 +327,26 @@ async def list_contents(
     Supports filtering by source type, status, publication, date range, and search.
     Results are paginated and sorted by the specified field (default: ingested_at desc).
     """
+    from src.services.content_query import ContentQueryService
+
+    # Validate sort_by — silent fallback preserves existing API behavior
+    if sort_by not in CONTENT_SORT_FIELDS:
+        sort_by = "ingested_at"
+
+    # Map singular endpoint params to ContentQuery list-based fields
+    content_query = ContentQuery(
+        source_types=[source_type] if source_type else None,
+        statuses=[status] if status else None,
+        publication_search=publication,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    svc = ContentQueryService()
+
     with get_db() as db:
         # OPTIMIZATION: Explicitly select only the columns needed for the list view
         # This avoids hydrating full ORM objects and loading heavy text/JSON fields,
@@ -341,19 +361,8 @@ async def list_contents(
             Content.ingested_at,
         )
 
-        # Apply filters
-        if source_type:
-            query = query.filter(Content.source_type == source_type)
-        if status:
-            query = query.filter(Content.status == status)
-        if publication:
-            query = query.filter(Content.publication.ilike(f"%{publication}%"))
-        if start_date:
-            query = query.filter(Content.published_date >= start_date)
-        if end_date:
-            query = query.filter(Content.published_date <= end_date)
-        if search:
-            query = query.filter(Content.title.ilike(f"%{search}%"))
+        # Apply filters via centralized ContentQueryService
+        query = svc.apply_filters(query, content_query)
 
         # Get total count
         total = query.count()
@@ -361,12 +370,8 @@ async def list_contents(
         # Calculate offset from page
         offset = (page - 1) * page_size
 
-        # Validate sort_by field
-        if sort_by not in CONTENT_SORT_FIELDS:
-            sort_by = "ingested_at"
-
-        # Get sort column dynamically
-        sort_column = getattr(Content, sort_by, Content.ingested_at)
+        # Apply sort
+        sort_column = getattr(Content, sort_by)
         if sort_order.lower() == "asc":
             query = query.order_by(sort_column.asc())
         else:

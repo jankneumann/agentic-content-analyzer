@@ -20,20 +20,20 @@ logger = get_logger(__name__)
 class ContentQueryService:
     """Translates ContentQuery models into SQLAlchemy queries."""
 
-    def build_query(self, db: Session, query: ContentQuery) -> Query:
-        """Build SQLAlchemy query from ContentQuery filters.
+    def apply_filters(self, q: Query, query: ContentQuery) -> Query:
+        """Apply ContentQuery filter clauses to an existing query.
 
-        Empty lists are treated as None (no filter).
+        Only applies WHERE conditions — does NOT apply sort or limit.
+        Use this when you need custom column selection or pagination
+        (e.g., the list_contents endpoint).
 
         Args:
-            db: SQLAlchemy session
+            q: Existing SQLAlchemy Query to add filters to
             query: Content query filters
 
         Returns:
-            SQLAlchemy Query object (not yet executed)
+            Query with filter conditions applied
         """
-        q = db.query(Content)
-
         if query.source_types:
             q = q.filter(Content.source_type.in_(query.source_types))
         if query.statuses:
@@ -48,6 +48,21 @@ class ContentQueryService:
             q = q.filter(Content.published_date <= query.end_date)
         if query.search:
             q = q.filter(Content.title.ilike(f"%{query.search}%"))
+        return q
+
+    def build_query(self, db: Session, query: ContentQuery) -> Query:
+        """Build SQLAlchemy query from ContentQuery filters with sort and limit.
+
+        Empty lists are treated as None (no filter).
+
+        Args:
+            db: SQLAlchemy session
+            query: Content query filters
+
+        Returns:
+            SQLAlchemy Query object (not yet executed)
+        """
+        q = self.apply_filters(db.query(Content), query)
 
         # Sort_by is already validated by Pydantic
         sort_col = getattr(Content, query.sort_by)
@@ -72,22 +87,7 @@ class ContentQueryService:
         """
         with get_db() as db:
             # Build a base query without sort/limit for aggregation
-            base_q = db.query(Content)
-
-            if query.source_types:
-                base_q = base_q.filter(Content.source_type.in_(query.source_types))
-            if query.statuses:
-                base_q = base_q.filter(Content.status.in_(query.statuses))
-            if query.publications:
-                base_q = base_q.filter(Content.publication.in_(query.publications))
-            if query.publication_search:
-                base_q = base_q.filter(Content.publication.ilike(f"%{query.publication_search}%"))
-            if query.start_date:
-                base_q = base_q.filter(Content.published_date >= query.start_date)
-            if query.end_date:
-                base_q = base_q.filter(Content.published_date <= query.end_date)
-            if query.search:
-                base_q = base_q.filter(Content.title.ilike(f"%{query.search}%"))
+            base_q = self.apply_filters(db.query(Content), query)
 
             if query.limit:
                 # When limit is set, we need to apply it to the base query
