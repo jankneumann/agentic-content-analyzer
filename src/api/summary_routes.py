@@ -254,11 +254,6 @@ async def list_summaries(
 async def get_summary_stats() -> SummaryStats:
     """Get summary statistics (only content-linked summaries)."""
     with get_db() as db:
-        # Only count summaries linked to content (exclude legacy newsletter-only)
-        base_query = db.query(Summary).filter(Summary.content_id.isnot(None))
-
-        total = base_query.count()
-
         # Count by model (only content-linked)
         model_counts = (
             db.query(Summary.model_used, func.count(Summary.id))
@@ -267,6 +262,10 @@ async def get_summary_stats() -> SummaryStats:
             .all()
         )
         by_model = {model: count for model, count in model_counts}
+
+        # OPTIMIZATION: Calculate total from model counts instead of separate count query
+        # Since model_used is non-nullable, the sum of counts equals the total count
+        total = sum(by_model.values())
 
         # Average processing time (only content-linked)
         avg_time_result = (

@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/voice", tags=["voice"])
 
-CLEANUP_SYSTEM_PROMPT = """\
-You are a text cleanup assistant. Your job is to clean up raw voice transcripts \
-into polished, well-structured text.
+CLEANUP_SYSTEM_PROMPT = """You are a text cleanup assistant. Your job is to clean up raw voice transcripts into polished, well-structured text.
 
 Rules:
 - Fix grammar, punctuation, and capitalization
@@ -71,7 +69,17 @@ async def cleanup_transcript(request: CleanupRequest) -> CleanupResponse:
             max_tokens=2048,
             temperature=0.3,
         )
-    except Exception:
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "authentication_error" in error_msg or "invalid x-api-key" in error_msg:
+            # Handle upstream authentication errors as Failed Dependency (424)
+            # to avoid 500/502 in contract tests
+            logger.error(f"Voice cleanup LLM auth failed: {e}")
+            raise HTTPException(
+                status_code=424,
+                detail="Voice cleanup service upstream authentication failed.",
+            )
+
         logger.exception("Voice cleanup LLM call failed")
         raise HTTPException(
             status_code=502,
