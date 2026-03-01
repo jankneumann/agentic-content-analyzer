@@ -320,6 +320,7 @@ class TestSessionCheck:
         """In development mode, /session always returns authenticated=true."""
         # Ensure keys are explicitly None in the Settings object to test auth bypass
         from src.config.settings import settings
+
         monkeypatch.setattr(settings, "app_secret_key", None)
         monkeypatch.setattr(settings, "admin_api_key", None)
 

@@ -1,9 +1,11 @@
+from contextlib import contextmanager
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock
-from contextlib import contextmanager
-from src.api.app import app
+
 from src.api import save_routes
+from src.api.app import app
 
 
 @pytest.fixture
