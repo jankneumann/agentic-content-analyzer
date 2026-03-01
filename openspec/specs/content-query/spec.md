@@ -218,7 +218,7 @@ The API SHALL expose a preview endpoint and extend existing summarize/digest end
 
 ### Requirement: Frontend Query Builder Component
 
-The frontend SHALL provide a composable query builder component for the digest generation dialog.
+The frontend SHALL provide a composable query builder component for batch operation dialogs (digest generation and summarization).
 
 Components:
 - `ContentQueryBuilder` — main composable component with filter sections and preview
@@ -253,7 +253,16 @@ Components:
 - **THEN** the query builder SHALL display a preview with count and source breakdown
 - **AND** the "Generate" button SHALL submit the digest with the content_query attached
 
-Note: The summarize dialog does NOT integrate the ContentQueryBuilder component. Summarize uses CLI/API filter options directly without a frontend query builder.
+#### Scenario: Summarize dialog integration with Advanced Filters
+- **GIVEN** the generate summaries dialog is open in "All Pending" mode and the user expands "Advanced Filters"
+- **WHEN** the user applies source or search filters
+- **THEN** the query builder SHALL display a preview of matching content
+- **AND** the "Summarize" button SHALL submit with the content_query attached
+
+#### Scenario: Summarize dialog hides filters in Specific IDs mode
+- **GIVEN** the generate summaries dialog is open
+- **WHEN** the user switches to "Specific IDs" mode
+- **THEN** the "Advanced Filters" section SHALL NOT be visible
 
 ### Requirement: Content Listing Refactored to Use ContentQueryService
 

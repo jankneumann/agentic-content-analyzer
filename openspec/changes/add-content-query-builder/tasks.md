@@ -209,7 +209,9 @@ Phase 7: [7.1–7.4] Documentation (depends on all above)
 
 **Depends on**: 4.7
 
-- [x] 6.1 ~~Add E2E test for query preview in summarize dialog~~ — N/A: GenerateSummaryDialog does not use ContentQueryBuilder
+- [x] 6.1 Add E2E test for query preview in summarize dialog
+  - 6 tests in `web/tests/e2e/generation-dialogs.spec.ts` under "Summary Query Preview" describe block
+  - Tests: filter triggers preview, empty preview, source breakdown badges, preview hides on filter removal, Active label, filters hidden in Specific IDs mode
 - [x] 6.2 Add E2E test for query preview in digest dialog
   - 5 tests in `web/tests/e2e/generation-dialogs.spec.ts` under "Digest Query Preview" describe block
   - Tests: filter triggers preview, empty preview, source breakdown badges, preview hides on filter removal, Active label
