@@ -684,8 +684,10 @@ async def get_digest_navigation(
 ) -> dict:
     """Get navigation info for prev/next digest within a filtered list."""
     with get_db() as db:
-        # Build base query with same filters as list view
-        query = db.query(Digest)
+        # OPTIMIZATION: explicitly select only Digest.id instead of fetching full
+        # ORM objects. This prevents hydrating large text/JSON columns into memory,
+        # avoiding O(N) memory allocation and excess database I/O for navigation.
+        query = db.query(Digest.id)
         query = query.filter(Digest.digest_type.in_([DigestType.DAILY, DigestType.WEEKLY]))
 
         if status:
@@ -705,7 +707,7 @@ async def get_digest_navigation(
         # Order by created_at descending (matching list view)
         ordered_query = query.order_by(Digest.created_at.desc())
         all_digests = ordered_query.all()
-        digest_ids = [d.id for d in all_digests]
+        digest_ids = [d[0] for d in all_digests]
         total = len(digest_ids)
 
         # Find current position
