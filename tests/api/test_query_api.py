@@ -237,6 +237,37 @@ class TestSummarizeWithQuery:
         assert data["queued_count"] == 0
         assert data["content_ids"] == []
 
+    def test_summarize_dry_run_without_query_returns_preview(self, client, sample_contents):
+        """Summarize dry_run without query returns preview (not real execution)."""
+        response = client.post(
+            "/api/v1/contents/summarize",
+            json={"dry_run": True},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Should return preview, not a SummarizeContentResponse
+        assert "total_count" in data
+        assert "by_source" in data
+        assert "sample_titles" in data
+        # Should NOT have task_id (which would indicate real execution)
+        assert "task_id" not in data
+
+    def test_summarize_dry_run_with_retry_failed_includes_failed(self, client, sample_contents):
+        """Summarize dry_run with retry_failed includes FAILED items in preview."""
+        response = client.post(
+            "/api/v1/contents/summarize",
+            json={
+                "dry_run": True,
+                "query": {},
+                "retry_failed": True,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # query echo should include failed status in the defaults
+        echoed_statuses = data.get("query", {}).get("statuses", [])
+        assert "failed" in echoed_statuses
+
 
 class TestDigestGenerateWithQuery:
     """Tests for POST /api/v1/digests/generate with content_query and dry_run."""

@@ -74,7 +74,9 @@ def build_query_from_options(
     end_date = None
     if before:
         try:
-            end_date = datetime.strptime(before, "%Y-%m-%d").replace(tzinfo=UTC)
+            end_date = datetime.strptime(before, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, microsecond=999999, tzinfo=UTC
+            )
         except ValueError:
             raise typer.BadParameter(f"Invalid date format '{before}'. Use YYYY-MM-DD.")
 

@@ -745,14 +745,17 @@ async def trigger_content_summarization(
     from src.models.summary import Summary
     from src.services.content_query import ContentQueryService
 
-    # Handle dry_run with query
-    if request.dry_run and request.query:
+    # Build default statuses for the summarize operation
+    default_statuses = [ContentStatus.PENDING, ContentStatus.PARSED]
+    if request.retry_failed:
+        default_statuses.append(ContentStatus.FAILED)
+
+    # Handle dry_run — return preview without executing
+    if request.dry_run:
         svc = ContentQueryService()
-        query = request.query
+        query = request.query or ContentQuery()
         if not query.statuses:
-            query = query.model_copy(
-                update={"statuses": [ContentStatus.PENDING, ContentStatus.PARSED]}
-            )
+            query = query.model_copy(update={"statuses": default_statuses})
         return svc.preview(query)
 
     # When query is provided, use ContentQueryService to resolve IDs
@@ -760,9 +763,7 @@ async def trigger_content_summarization(
         svc = ContentQueryService()
         query = request.query
         if not query.statuses:
-            query = query.model_copy(
-                update={"statuses": [ContentStatus.PENDING, ContentStatus.PARSED]}
-            )
+            query = query.model_copy(update={"statuses": default_statuses})
         content_ids = svc.resolve(query)
     else:
         # Original behavior

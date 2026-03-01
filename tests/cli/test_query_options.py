@@ -162,6 +162,27 @@ class TestBuildQueryFromOptionsDates:
         assert q.end_date is not None
         assert q.end_date.month == 2
 
+    def test_before_date_is_end_of_day(self):
+        """--before parses as end-of-day to include the full specified day."""
+        q = build_query_from_options(
+            source=None, status=None, after=None, before="2026-01-31", publication=None, search=None
+        )
+        assert q.end_date is not None
+        assert q.end_date.hour == 23
+        assert q.end_date.minute == 59
+        assert q.end_date.second == 59
+        assert q.end_date.microsecond == 999999
+
+    def test_after_date_is_start_of_day(self):
+        """--after parses as start-of-day (midnight)."""
+        q = build_query_from_options(
+            source=None, status=None, after="2026-01-15", before=None, publication=None, search=None
+        )
+        assert q.start_date is not None
+        assert q.start_date.hour == 0
+        assert q.start_date.minute == 0
+        assert q.start_date.second == 0
+
     def test_invalid_after_date_format(self):
         with pytest.raises(typer.BadParameter, match="Invalid date format"):
             build_query_from_options(
