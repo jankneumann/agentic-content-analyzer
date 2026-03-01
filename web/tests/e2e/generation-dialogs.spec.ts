@@ -94,6 +94,86 @@ test.describe("Digest Generation Dialog", () => {
   })
 })
 
+test.describe("Digest Query Preview", () => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
+    await apiMocks.mockContentQueryPreview()
+    await apiMocks.mockGenerateDigest()
+    await page.goto("/digests")
+    // Open dialog and expand Advanced Filters
+    await page.click('button:has-text("Generate")')
+    await expect(page.getByRole("dialog")).toBeVisible()
+    await page.getByRole("dialog").getByText("Advanced Filters").click()
+  })
+
+  test("shows query preview when filter is applied", async ({ page }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Expand Source Types and select Gmail
+    await dialog.getByText("Source Types").click()
+    await dialog.locator("label").filter({ hasText: "Gmail" }).click()
+
+    // Preview should appear with count
+    await expect(dialog.getByText(/\d+ items? match/)).toBeVisible()
+    await expect(dialog.getByText("Sample titles:")).toBeVisible()
+  })
+
+  test("shows empty preview when no content matches", async ({ apiMocks, page }) => {
+    // Override with empty preview
+    await apiMocks.mockContentQueryPreviewEmpty()
+
+    const dialog = page.getByRole("dialog")
+
+    // Type in search to trigger a filter
+    await dialog.getByPlaceholder("Search titles...").fill("nonexistent-xyz")
+
+    // Empty preview message should appear
+    await expect(
+      dialog.getByText("No content matches the current filters.")
+    ).toBeVisible()
+  })
+
+  test("preview shows source breakdown badges", async ({ page }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Apply a filter to trigger preview
+    await dialog.getByPlaceholder("Search titles...").fill("AI")
+
+    // Source breakdown badges should appear
+    await expect(dialog.getByText("gmail: 5")).toBeVisible()
+    await expect(dialog.getByText("rss: 3")).toBeVisible()
+  })
+
+  test("preview hides when all filters are removed", async ({ page }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Add a filter
+    await dialog.getByPlaceholder("Search titles...").fill("AI")
+    await expect(dialog.getByText(/\d+ items? match/)).toBeVisible()
+
+    // Clear the filter
+    await dialog.getByPlaceholder("Search titles...").fill("")
+
+    // Preview should disappear (no filters active)
+    await expect(dialog.getByText(/\d+ items? match/)).not.toBeVisible()
+  })
+
+  test("Advanced Filters button shows Active label when filters set", async ({
+    page,
+  }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Apply a filter
+    await dialog.getByPlaceholder("Search titles...").fill("LLM")
+
+    // Collapse the filters section
+    await dialog.getByText("Advanced Filters").click()
+
+    // "Active" label should be visible on the collapsed button
+    await expect(dialog.getByText("Active")).toBeVisible()
+  })
+})
+
 test.describe("Summary Generation Dialog", () => {
   test.beforeEach(async ({ apiMocks, page }) => {
     await apiMocks.mockAllDefaults()
@@ -104,6 +184,96 @@ test.describe("Summary Generation Dialog", () => {
     await page.click('button:has-text("Generate")')
 
     await expect(page.getByRole("dialog")).toBeVisible()
+  })
+})
+
+test.describe("Summary Query Preview", () => {
+  test.beforeEach(async ({ apiMocks, page }) => {
+    await apiMocks.mockAllDefaults()
+    await apiMocks.mockContentQueryPreview()
+    await apiMocks.mockSummarizeContents()
+    await page.goto("/summaries")
+    // Open dialog and expand Advanced Filters
+    await page.click('button:has-text("Generate")')
+    await expect(page.getByRole("dialog")).toBeVisible()
+    await page.getByRole("dialog").getByText("Advanced Filters").click()
+  })
+
+  test("shows query preview when filter is applied", async ({ page }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Expand Source Types and select Gmail
+    await dialog.getByText("Source Types").click()
+    await dialog.locator("label").filter({ hasText: "Gmail" }).click()
+
+    // Preview should appear with count
+    await expect(dialog.getByText(/\d+ items? match/)).toBeVisible()
+    await expect(dialog.getByText("Sample titles:")).toBeVisible()
+  })
+
+  test("shows empty preview when no content matches", async ({ apiMocks, page }) => {
+    // Override with empty preview
+    await apiMocks.mockContentQueryPreviewEmpty()
+
+    const dialog = page.getByRole("dialog")
+
+    // Type in search to trigger a filter
+    await dialog.getByPlaceholder("Search titles...").fill("nonexistent-xyz")
+
+    // Empty preview message should appear
+    await expect(
+      dialog.getByText("No content matches the current filters.")
+    ).toBeVisible()
+  })
+
+  test("preview shows source breakdown badges", async ({ page }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Apply a filter to trigger preview
+    await dialog.getByPlaceholder("Search titles...").fill("AI")
+
+    // Source breakdown badges should appear
+    await expect(dialog.getByText("gmail: 5")).toBeVisible()
+    await expect(dialog.getByText("rss: 3")).toBeVisible()
+  })
+
+  test("preview hides when all filters are removed", async ({ page }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Add a filter
+    await dialog.getByPlaceholder("Search titles...").fill("AI")
+    await expect(dialog.getByText(/\d+ items? match/)).toBeVisible()
+
+    // Clear the filter
+    await dialog.getByPlaceholder("Search titles...").fill("")
+
+    // Preview should disappear (no filters active)
+    await expect(dialog.getByText(/\d+ items? match/)).not.toBeVisible()
+  })
+
+  test("Advanced Filters button shows Active label when filters set", async ({
+    page,
+  }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Apply a filter
+    await dialog.getByPlaceholder("Search titles...").fill("LLM")
+
+    // Collapse the filters section
+    await dialog.getByText("Advanced Filters").click()
+
+    // "Active" label should be visible on the collapsed button
+    await expect(dialog.getByText("Active")).toBeVisible()
+  })
+
+  test("Advanced Filters hidden in Specific IDs mode", async ({ page }) => {
+    const dialog = page.getByRole("dialog")
+
+    // Switch to Specific IDs mode
+    await dialog.getByText("Specific IDs").click()
+
+    // Advanced Filters should not be visible
+    await expect(dialog.getByText("Advanced Filters")).not.toBeVisible()
   })
 })
 

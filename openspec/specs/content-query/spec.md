@@ -1,10 +1,25 @@
-# Content Query Builder Spec Delta
+# content-query Specification
 
-## ADDED Requirements
+## Purpose
+
+Provides a unified content selection and filtering system for batch operations. Enables users to express targeted content selections (by source, date range, status, publication, search) with dry-run preview before executing summarization or digest generation. Works across CLI, API, and frontend.
+
+## Requirements
 
 ### Requirement: ContentQuery Model for Structured Content Selection
 
 The system SHALL provide a `ContentQuery` model that encapsulates filter criteria for selecting content items across CLI, API, and frontend. All fields SHALL be optional (None means "no filter").
+
+Fields:
+- `source_types`: list of ContentSource values (e.g., gmail, rss, youtube)
+- `statuses`: list of ContentStatus values (e.g., pending, parsed, completed)
+- `publications`: list of exact publication names
+- `publication_search`: ILIKE pattern for publication name
+- `start_date`, `end_date`: datetime range filter on published_date
+- `search`: title ILIKE pattern
+- `limit`: positive integer cap on results (gt=0)
+- `sort_by`: validated against CONTENT_SORT_FIELDS (default: "published_date")
+- `sort_order`: "asc" or "desc" (default: "desc")
 
 #### Scenario: Filter content by source types
 - **GIVEN** a ContentQuery with `source_types: [youtube, rss]`
@@ -45,6 +60,22 @@ The system SHALL provide a `ContentQuery` model that encapsulates filter criteri
 - **GIVEN** a ContentQuery with `limit: 0` or `limit: -1`
 - **WHEN** the query is validated
 - **THEN** the system SHALL reject the query with a validation error
+
+### Requirement: ContentQueryService for Query Execution
+
+The system SHALL provide a `ContentQueryService` with three methods:
+
+- `apply_filters(q, query)` — Apply WHERE clauses to an existing SQLAlchemy query without sort/limit. Used by callers needing custom column selection or pagination.
+- `build_query(db, query)` — Build a complete query with filters, sort, and limit.
+- `preview(query)` — COUNT + GROUP BY for breakdowns, sample titles (up to PREVIEW_SAMPLE_LIMIT=10). Returns total_count=0 with empty dicts/lists when no match.
+- `resolve(query)` — Return matching content IDs (bounded by limit).
+
+The `apply_filters()` method SHALL be the single source of truth for filter logic, used internally by `build_query()` and `preview()`, and externally by the content listing endpoint.
+
+#### Scenario: apply_filters reused across all query paths
+- **GIVEN** the content listing API, the preview method, and the build_query method
+- **WHEN** any of them apply content filters
+- **THEN** they SHALL all use `apply_filters()` as the single source of filter logic
 
 ### Requirement: Query Preview (Dry-Run) Without Execution
 
@@ -98,6 +129,8 @@ When a ContentQuery is passed to an operation without explicit statuses, each op
 
 The `aca summarize pending` command SHALL accept optional filter options to target specific content.
 
+Options: `--source`/`-s`, `--status`, `--after`, `--before`, `--publication`/`-p`, `--search`/`-q`, `--dry-run`
+
 #### Scenario: Summarize with source filter
 - **GIVEN** the command `aca summarize pending --source youtube,rss`
 - **WHEN** executed
@@ -129,6 +162,8 @@ The `aca summarize pending` command SHALL accept optional filter options to targ
 ### Requirement: CLI Filter Options on Digest Command
 
 The `aca create-digest` command SHALL accept optional filter options to control which content is included.
+
+Options: `--source`/`-s`, `--publication`/`-p`, `--search`/`-q`, `--dry-run` (date options NOT added — handled by existing period_start/period_end)
 
 #### Scenario: Digest with source filter
 - **GIVEN** the command `aca create-digest daily --source gmail,rss`
@@ -183,7 +218,16 @@ The API SHALL expose a preview endpoint and extend existing summarize/digest end
 
 ### Requirement: Frontend Query Builder Component
 
-The frontend SHALL provide a composable query builder component for batch operations.
+The frontend SHALL provide a composable query builder component for batch operation dialogs (digest generation and summarization).
+
+Components:
+- `ContentQueryBuilder` — main composable component with filter sections and preview
+- `FilterChip` — chip with label, value, and remove button
+- `SourceFilter` — multi-select source type picker with checkboxes
+- `StatusFilter` — multi-select status picker with badge colors
+- `DateRangeFilter` — presets (Today, Last 3 days, Last week, Last month) + custom inputs
+- `PublicationFilter` — publication search input
+- `QueryPreview` — count, source/status breakdown, sample titles with loading/error/empty states
 
 #### Scenario: Filter chips UI
 - **GIVEN** the query builder is rendered
@@ -220,6 +264,15 @@ The frontend SHALL provide a composable query builder component for batch operat
 - **WHEN** the user switches to "Specific IDs" mode
 - **THEN** the "Advanced Filters" section SHALL NOT be visible
 
+### Requirement: Content Listing Refactored to Use ContentQueryService
+
+The existing `GET /api/v1/contents` listing endpoint SHALL be refactored to use `ContentQueryService.apply_filters()` for filter logic, eliminating duplicate filter code.
+
+#### Scenario: Existing content listing API unchanged
+- **GIVEN** a GET request to `/api/v1/contents` with existing query parameters
+- **WHEN** processed after the ContentQueryService refactoring
+- **THEN** the response SHALL be identical to the pre-refactoring response
+
 ### Requirement: Backward Compatibility
 
 All existing commands and API endpoints SHALL continue to work identically without any filter parameters.
@@ -233,8 +286,3 @@ All existing commands and API endpoints SHALL continue to work identically witho
 - **GIVEN** the command `aca create-digest daily` or API call without content_query field
 - **WHEN** executed
 - **THEN** behavior SHALL be identical to pre-change behavior
-
-#### Scenario: Existing content listing API
-- **GIVEN** a GET request to `/api/v1/contents` with existing query parameters
-- **WHEN** processed after the ContentQueryService refactoring
-- **THEN** the response SHALL be identical to the pre-refactoring response

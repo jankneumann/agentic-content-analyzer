@@ -27,6 +27,7 @@ import type {
   SummaryFilters,
   DigestFilters,
   AudioDigestFilters,
+  ContentQuery,
 } from "@/types"
 
 /**
@@ -51,6 +52,10 @@ export const contentKeys = {
 
   /** Key for content statistics */
   stats: () => [...contentKeys.all, "stats"] as const,
+
+  /** Key for content query preview */
+  queryPreview: (query?: ContentQuery) =>
+    [...contentKeys.all, "query-preview", query] as const,
 
   /** Key for content duplicates */
   duplicates: (id: string | number) =>

@@ -1,10 +1,16 @@
 """Digest generator for creating multi-audience content digests."""
 
+from __future__ import annotations
+
 import json
 import time
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from anthropic import Anthropic
+
+if TYPE_CHECKING:
+    from src.models.query import ContentQuery
 
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
@@ -119,7 +125,11 @@ class DigestCreator:
         )
 
         # 2. Get content items for source references
-        contents = await self._fetch_contents(request.period_start, request.period_end)
+        contents = await self._fetch_contents(
+            request.period_start,
+            request.period_end,
+            content_query=request.content_query,
+        )
 
         logger.info(f"Found {len(contents)} content items")
 
@@ -1014,21 +1024,55 @@ Output only the JSON object, no additional text.
         start_date: datetime,
         end_date: datetime,
         status_filter: list[ContentStatus] | None = None,
+        content_query: ContentQuery | None = None,
     ) -> list[dict]:
         """
         Fetch content records for the time period.
 
         Uses the unified Content model instead of Newsletter.
+        When content_query is provided, uses ContentQueryService for
+        filtered selection with merge semantics for dates and statuses.
 
         Args:
             start_date: Period start date
             end_date: Period end date
             status_filter: Optional list of content statuses to include
                           (default: COMPLETED only)
+            content_query: Optional ContentQuery for content selection override
 
         Returns:
             List of content dicts with standard fields
         """
+        if content_query is not None:
+            from src.services.content_query import ContentQueryService
+
+            # Merge semantics: period dates as fallbacks, COMPLETED as default status
+            if not content_query.start_date:
+                content_query = content_query.model_copy(update={"start_date": start_date})
+            if not content_query.end_date:
+                content_query = content_query.model_copy(update={"end_date": end_date})
+            if not content_query.statuses:
+                content_query = content_query.model_copy(
+                    update={"statuses": [ContentStatus.COMPLETED]}
+                )
+
+            svc = ContentQueryService()
+            with get_db() as db:
+                query = svc.build_query(db, content_query)
+                contents = query.all()
+
+                return [
+                    {
+                        "id": c.id,
+                        "title": c.title,
+                        "publication": c.publication,
+                        "published_date": c.published_date,
+                        "url": c.source_url,
+                        "source_type": c.source_type.value,
+                    }
+                    for c in contents
+                ]
+
         if status_filter is None:
             status_filter = [ContentStatus.COMPLETED]
 

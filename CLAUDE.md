@@ -95,8 +95,16 @@ aca ingest url <url>                   # Direct URL ingestion
 
 # Processing
 aca summarize pending                  # Summarize pending content
+aca summarize pending --source gmail,rss  # Filter by source type
+aca summarize pending --status pending    # Filter by status
+aca summarize pending --after 2025-01-01 --before 2025-01-31  # Date range
+aca summarize pending --publication "AI Weekly"  # Filter by publication
+aca summarize pending --search "LLM"     # Search by title
+aca summarize pending --dry-run          # Preview without executing
 aca create-digest daily                # Create daily digest
 aca create-digest weekly               # Create weekly digest
+aca create-digest daily --source gmail   # Filter content by source
+aca create-digest daily --dry-run        # Preview matching content
 aca pipeline daily                     # Full daily pipeline (ingest → summarize → digest)
 
 # Review & Delivery
