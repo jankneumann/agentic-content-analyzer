@@ -129,8 +129,7 @@ class DeepgramSTTProvider(CloudSTTProvider):
     async def _result_iterator(self) -> AsyncIterator[TranscriptResult]:
         while self._running or not self._results_queue.empty():
             try:
-                result = await asyncio.wait_for(self._results_queue.get(), timeout=0.1)
-                yield result
+                yield await asyncio.wait_for(self._results_queue.get(), timeout=0.1)
             except TimeoutError:
                 continue
 
