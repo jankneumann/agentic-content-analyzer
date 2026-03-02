@@ -37,3 +37,7 @@
 ## 2026-02-27 - Caching Heavy Service Providers
 **Learning:** Service providers like `LocalEmbeddingProvider` were being re-instantiated on every request (via `get_embedding_provider`). This caused heavy ML models (SentenceTransformers) to be reloaded from disk/cache repeatedly, adding seconds of latency to search and ingestion operations.
 **Action:** Use `functools.lru_cache` for factory functions that create heavy or stateful service providers, ensuring they are initialized only once per configuration.
+
+## 2024-05-19 - Single query optimization for API statistics
+**Learning:** Found N+1 query patterns when grouping counts by different statuses and types in statistics API routes. By using `func.count()` with `group_by()` on the required columns and summing up the results in Python, we can drastically reduce DB queries (e.g. from 9 down to 1 query).
+**Action:** When calculating statistics across multiple statuses or types, always look for opportunities to compute the counts programmatically using a single `GROUP BY` query, avoiding looping or multiple DB calls.
