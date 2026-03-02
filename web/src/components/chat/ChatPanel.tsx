@@ -173,6 +173,8 @@ export function CollapsibleChatPanel({
   if (!isExpanded) {
     return (
       <button
+        type="button"
+        aria-expanded={isExpanded}
         onClick={onToggle}
         className="flex w-full items-center justify-between rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
       >
@@ -203,6 +205,8 @@ export function CollapsibleChatPanel({
           <h3 className="font-medium">{title}</h3>
         </div>
         <button
+          type="button"
+          aria-expanded={isExpanded}
           onClick={onToggle}
           className="text-sm text-muted-foreground hover:text-foreground"
         >
