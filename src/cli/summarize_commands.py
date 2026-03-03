@@ -2,6 +2,7 @@
 
 Usage:
     aca summarize pending --limit N
+    aca summarize pending --source youtube,rss --after 2026-02-20 --dry-run
     aca summarize id <content-id>
     aca summarize list --limit N
 """
@@ -36,18 +37,106 @@ def summarize_pending(
             help="Run synchronously instead of enqueuing to job queue.",
         ),
     ] = False,
+    source: Annotated[
+        str | None,
+        typer.Option(
+            "--source",
+            "-s",
+            help="Comma-separated source types (gmail,rss,youtube,...)",
+        ),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            help="Comma-separated statuses (pending,parsed,...)",
+        ),
+    ] = None,
+    after: Annotated[
+        str | None,
+        typer.Option(
+            "--after",
+            help="Content published after this date (YYYY-MM-DD)",
+        ),
+    ] = None,
+    before: Annotated[
+        str | None,
+        typer.Option(
+            "--before",
+            help="Content published before this date (YYYY-MM-DD)",
+        ),
+    ] = None,
+    publication: Annotated[
+        str | None,
+        typer.Option(
+            "--publication",
+            "-p",
+            help="Filter by publication name",
+        ),
+    ] = None,
+    search: Annotated[
+        str | None,
+        typer.Option(
+            "--search",
+            "-q",
+            help="Search in title",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview matching content without executing",
+        ),
+    ] = False,
 ) -> None:
     """Summarize all pending content items.
 
     By default, enqueues summarization jobs to the queue for concurrent
     processing by the embedded worker (or standalone aca worker).
     Use --sync for sequential in-process summarization.
+
+    Filter options (--source, --status, --after, --before, --publication, --search)
+    narrow which content items are selected. Use --dry-run to preview without executing.
     """
     import asyncio
 
     from src.cli.output import is_json_mode, output_result
 
+    has_filters = any([source, status, after, before, publication, search])
+
     try:
+        # Build ContentQuery when filters are provided
+        query = None
+        if has_filters or dry_run:
+            from src.cli.query_options import build_query_from_options
+            from src.models.content import ContentStatus
+
+            query = build_query_from_options(
+                source=source,
+                status=status,
+                after=after,
+                before=before,
+                publication=publication,
+                search=search,
+                limit=limit,
+                default_statuses=[ContentStatus.PENDING, ContentStatus.PARSED],
+            )
+
+        # Handle dry-run: preview only
+        if dry_run:
+            from src.cli.query_options import display_preview
+            from src.services.content_query import ContentQueryService
+
+            svc = ContentQueryService()
+            preview = svc.preview(query)  # type: ignore[arg-type]
+
+            if is_json_mode():
+                output_result({"preview": preview.model_dump(mode="json")})
+            else:
+                display_preview(preview, action_name="summarize")
+            return
+
         if sync:
             from src.processors.summarizer import ContentSummarizer
 
@@ -60,7 +149,7 @@ def summarize_pending(
                 msg += "..."
                 console.print(msg)
 
-            count = summarizer.summarize_pending_contents(limit=limit)
+            count = summarizer.summarize_pending_contents(limit=limit, query=query)
 
             if is_json_mode():
                 output_result({"summarized_count": count, "limit": limit, "mode": "sync"})
@@ -78,7 +167,7 @@ def summarize_pending(
                 msg += "..."
                 console.print(msg)
 
-            result = asyncio.run(summarizer.enqueue_pending_contents(limit=limit))
+            result = asyncio.run(summarizer.enqueue_pending_contents(limit=limit, query=query))
 
             enqueued: int = result["enqueued_count"]  # type: ignore[assignment]
             skipped: int = result["skipped_count"]  # type: ignore[assignment]
@@ -104,6 +193,8 @@ def summarize_pending(
                         "(WORKER_CONCURRENCY controls parallelism).[/dim]"
                     )
 
+    except typer.BadParameter:
+        raise
     except Exception as e:
         if is_json_mode():
             output_result({"error": str(e)}, success=False)

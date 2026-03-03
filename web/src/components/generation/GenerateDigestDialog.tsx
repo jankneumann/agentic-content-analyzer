@@ -10,7 +10,7 @@
 
 import * as React from "react"
 import { format, subDays, startOfDay, endOfDay } from "date-fns"
-import { Calendar, Loader2, FileText, Lightbulb, Cpu, TrendingUp } from "lucide-react"
+import { Calendar, Loader2, FileText, Lightbulb, Cpu, TrendingUp, Filter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -31,6 +31,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { ContentQueryBuilder } from "@/components/query"
+import type { ContentQuery } from "@/types/query"
 
 interface GenerateDigestDialogProps {
   open: boolean
@@ -46,6 +49,7 @@ export interface DigestGenerationParams {
   max_strategic_insights?: number
   max_technical_developments?: number
   max_emerging_trends?: number
+  content_query?: ContentQuery
 }
 
 export function GenerateDigestDialog({
@@ -62,6 +66,8 @@ export function GenerateDigestDialog({
   const [maxStrategic, setMaxStrategic] = React.useState(5)
   const [maxTechnical, setMaxTechnical] = React.useState(5)
   const [maxTrends, setMaxTrends] = React.useState(3)
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
+  const [contentQuery, setContentQuery] = React.useState<ContentQuery | undefined>(undefined)
 
   // Set default dates based on digest type
   React.useEffect(() => {
@@ -90,8 +96,17 @@ export function GenerateDigestDialog({
       params.period_end = new Date(periodEnd + "T23:59:59").toISOString()
     }
 
+    // Include content query if filters are active
+    if (contentQuery && Object.keys(contentQuery).length > 0) {
+      params.content_query = contentQuery
+    }
+
     onGenerate(params)
   }
+
+  const handleQueryChange = React.useCallback((query: ContentQuery) => {
+    setContentQuery(Object.keys(query).length > 0 ? query : undefined)
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -237,6 +252,25 @@ export function GenerateDigestDialog({
             </div>
           </div>
         </div>
+
+        {/* Advanced Filters */}
+        <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-start text-sm">
+              <Filter className="h-4 w-4 mr-2" />
+              Advanced Filters
+              {contentQuery && Object.keys(contentQuery).length > 0 && (
+                <span className="ml-auto text-xs text-muted-foreground">Active</span>
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2 pb-4">
+            <ContentQueryBuilder
+              onChange={handleQueryChange}
+              showPreview
+            />
+          </CollapsibleContent>
+        </Collapsible>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
