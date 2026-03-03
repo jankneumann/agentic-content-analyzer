@@ -1,4 +1,5 @@
 """Tests for podcast API endpoints."""
+from src.models.podcast import Podcast, PodcastStatus
 
 
 class TestListPodcasts:
@@ -110,8 +111,6 @@ class TestGenerateAudio:
     def test_generate_audio_with_approved_script(self, client, sample_script, db_session):
         """Test generating audio from approved script returns queued status."""
         # Ensure script is approved
-        from src.models.podcast import PodcastStatus
-
         sample_script.status = PodcastStatus.SCRIPT_APPROVED.value
         db_session.commit()
 
@@ -149,8 +148,6 @@ class TestGenerateAudio:
     def test_generate_audio_script_not_approved(self, client, sample_script, db_session):
         """Test generating audio for non-approved script returns 400."""
         # Set script status to pending
-        from src.models.podcast import PodcastStatus
-
         sample_script.status = PodcastStatus.SCRIPT_PENDING_REVIEW.value
         db_session.commit()
 
@@ -169,8 +166,6 @@ class TestGenerateAudio:
 
     def test_generate_audio_invalid_voice_provider(self, client, sample_script, db_session):
         """Test generating audio with invalid voice provider returns 400."""
-        from src.models.podcast import PodcastStatus
-
         sample_script.status = PodcastStatus.SCRIPT_APPROVED.value
         db_session.commit()
 
@@ -199,8 +194,6 @@ class TestStreamAudio:
 
     def test_stream_audio_not_completed(self, client, sample_script, db_session):
         """Test streaming audio for non-completed podcast returns 400."""
-        from src.models.podcast import Podcast, PodcastStatus
-
         # Ensure script is approved
         sample_script.status = PodcastStatus.SCRIPT_APPROVED.value
 
