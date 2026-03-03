@@ -101,6 +101,14 @@ async def verify_admin_key(
 
     # No header provided (or no key configured) — check environment
     if settings.is_development:
+        # Check if keys are configured. If so, fail auth instead of bypassing.
+        # This ensures that if a user sets a password, it is enforced even in dev.
+        if settings.app_secret_key or settings.admin_api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required",
+            )
+
         # Dev mode: allow access without auth for local UI
         return "dev-no-auth"
 

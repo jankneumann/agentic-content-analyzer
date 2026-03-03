@@ -27,6 +27,7 @@ import type {
   ContentSource,
   Summary,
 } from "@/types"
+import type { ContentQuery } from "@/types/query"
 
 /**
  * Parameters for content ingestion
@@ -225,6 +226,8 @@ export async function saveUrl(
 export interface SummarizeContentParams {
   /** Specific content IDs to summarize (empty = all pending) */
   content_ids?: number[]
+  /** Content query filter (alternative to content_ids; takes precedence) */
+  query?: ContentQuery
   /** Force re-summarization even if summary exists */
   force?: boolean
   /** Include failed content items (reset to PARSED and retry) */

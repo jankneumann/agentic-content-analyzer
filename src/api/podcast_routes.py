@@ -11,10 +11,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from src.api.dependencies import verify_admin_key
 from src.models.podcast import (
     Podcast,
     PodcastScriptRecord,
@@ -27,7 +28,10 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/podcasts", tags=["podcasts"])
+router = APIRouter(
+    prefix="/api/v1/podcasts",
+    tags=["podcasts"],
+)
 
 # Allowed sort fields for podcast listing
 PODCAST_SORT_FIELDS = {
@@ -243,33 +247,39 @@ async def list_podcasts(
 @router.get("/statistics", response_model=PodcastStatistics)
 async def get_podcast_statistics() -> PodcastStatistics:
     """Get statistics about podcasts."""
+    from sqlalchemy import func
+
     with get_db() as db:
-        total = db.query(Podcast).count()
+        # Group by status to get counts in a single query
+        status_counts = (
+            db.query(Podcast.status, func.count(Podcast.id)).group_by(Podcast.status).all()
+        )
+        status_map = {status: count for status, count in status_counts}
 
-        def count_by_status(status: str) -> int:
-            return db.query(Podcast).filter(Podcast.status == status).count()
+        # Calculate total from status counts (status is non-nullable)
+        total = sum(status_map.values())
 
-        # Calculate total duration
-        from sqlalchemy import func
+        # Group by voice provider for provider counts
+        provider_counts = (
+            db.query(Podcast.voice_provider, func.count(Podcast.id))
+            .filter(Podcast.voice_provider.isnot(None))
+            .group_by(Podcast.voice_provider)
+            .all()
+        )
+        by_provider = {provider: count for provider, count in provider_counts}
 
+        # Calculate total duration (single scalar query)
         total_duration = (
             db.query(func.sum(Podcast.duration_seconds))
             .filter(Podcast.status == "completed")
             .scalar()
         ) or 0
 
-        # Count by voice provider
-        by_provider = {}
-        for provider in VoiceProvider:
-            count = db.query(Podcast).filter(Podcast.voice_provider == provider.value).count()
-            if count > 0:
-                by_provider[provider.value] = count
-
         return PodcastStatistics(
             total=total,
-            generating=count_by_status("generating"),
-            completed=count_by_status("completed"),
-            failed=count_by_status("failed"),
+            generating=status_map.get("generating", 0),
+            completed=status_map.get("completed", 0),
+            failed=status_map.get("failed", 0),
             total_duration_seconds=total_duration,
             by_voice_provider=by_provider,
         )
@@ -341,7 +351,7 @@ async def get_podcast(podcast_id: int) -> PodcastDetail:
         )
 
 
-@router.post("/generate", response_model=dict)
+@router.post("/generate", response_model=dict, dependencies=[Depends(verify_admin_key)])
 async def generate_audio(
     request: GenerateAudioRequest,
     background_tasks: BackgroundTasks,

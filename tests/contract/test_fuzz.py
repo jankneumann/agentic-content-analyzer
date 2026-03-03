@@ -34,6 +34,8 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     # TTS generation
     r"/api/v1/podcasts/generate$",
     r"/api/v1/audio-digests$",
+    # Voice Cleanup (LLM)
+    r"/api/v1/voice/cleanup",
     # External URL/file fetching
     r"/api/v1/content/save-url$",
     r"/api/v1/content/save-page$",

@@ -14,6 +14,7 @@
  *   })
  */
 
+/* eslint-disable react-hooks/rules-of-hooks */
 import { test as base, expect } from "@playwright/test"
 import { ApiMocks } from "./api-mocks"
 import { BasePage } from "./base.page"

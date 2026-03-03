@@ -1,6 +1,6 @@
 """Add perplexity to content_source enum.
 
-Revision ID: b1b2c3d4e5f6
+Revision ID: 22d53edb2933
 Revises: d364355a18ba
 Create Date: 2026-02-24
 
@@ -9,7 +9,7 @@ Create Date: 2026-02-24
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "b1b2c3d4e5f6"
+revision = "22d53edb2933"
 down_revision = "d364355a18ba"
 branch_labels = None
 depends_on = None
