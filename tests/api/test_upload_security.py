@@ -102,6 +102,6 @@ class TestUploadContentSecurity:
 
             assert mock_instance.ingest_file.called
             # Verify arguments
-            _args, kwargs = mock_instance.ingest_file.call_args
+            _, kwargs = mock_instance.ingest_file.call_args
             assert str(kwargs["file_path"]).endswith(".txt")
             assert kwargs["format_hint"] == "txt"

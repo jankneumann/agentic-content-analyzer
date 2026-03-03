@@ -22,6 +22,7 @@ def get_observability_provider() -> ObservabilityProvider:
     - "opik": OTel-based with gen_ai.* semantic conventions
     - "braintrust": Native Braintrust SDK for rich LLM tracing
     - "otel": Generic OpenTelemetry OTLP export to any backend
+    - "langfuse": OTel-based with Basic Auth for Langfuse Cloud/self-hosted
 
     Returns:
         ObservabilityProvider implementation
@@ -61,6 +62,17 @@ def get_observability_provider() -> ObservabilityProvider:
             return OTelProvider(
                 endpoint=settings.otel_exporter_otlp_endpoint,
                 headers=settings.otel_exporter_otlp_headers,
+                service_name=settings.otel_service_name,
+                log_prompts=settings.otel_log_prompts,
+            )
+
+        case "langfuse":
+            from src.telemetry.providers.langfuse import LangfuseProvider
+
+            return LangfuseProvider(
+                public_key=settings.langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                base_url=settings.langfuse_base_url,
                 service_name=settings.otel_service_name,
                 log_prompts=settings.otel_log_prompts,
             )

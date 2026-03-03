@@ -56,8 +56,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         settings = get_settings()
 
-        # Dev mode: no auth required (unchanged from pre-auth behavior)
-        if settings.is_development:
+        # Dev mode: no auth required (legacy behavior), BUT respect keys if configured.
+        # If a user sets APP_SECRET_KEY, they expect auth to work, even in dev.
+        keys_configured = settings.app_secret_key or settings.admin_api_key
+        if settings.is_development and not keys_configured:
             return await call_next(request)
 
         # CORS preflight: let OPTIONS through so CORSMiddleware can respond

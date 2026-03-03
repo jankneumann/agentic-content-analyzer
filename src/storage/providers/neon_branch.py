@@ -560,8 +560,7 @@ class NeonBranchManager:
             if branch.connection_string:
                 yield branch.connection_string
             else:
-                conn_str = await self.get_connection_string(name)
-                yield conn_str
+                yield await self.get_connection_string(name)
         finally:
             try:
                 await self.delete_branch(name)

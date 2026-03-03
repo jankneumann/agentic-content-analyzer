@@ -2,16 +2,20 @@
 
 Usage:
     aca create-digest daily --date YYYY-MM-DD
+    aca create-digest daily --source gmail,rss --publication "The Batch" --dry-run
     aca create-digest weekly --week YYYY-MM-DD
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from src.models.query import ContentQuery
 
 app = typer.Typer(help="Create daily or weekly digests.")
 
@@ -49,6 +53,38 @@ def _monday_of_week(dt: datetime) -> datetime:
     return dt - timedelta(days=dt.weekday())
 
 
+def _build_digest_query(
+    source: str | None,
+    publication: str | None,
+    search: str | None,
+    period_start: datetime,
+    period_end: datetime,
+) -> ContentQuery:
+    """Build ContentQuery for digest commands with period fallbacks.
+
+    Dates from period_start/period_end are used as fallbacks when
+    the ContentQuery doesn't specify its own date filters.
+    """
+    from src.cli.query_options import build_query_from_options
+    from src.models.content import ContentStatus
+
+    query = build_query_from_options(
+        source=source,
+        status=None,
+        after=None,
+        before=None,
+        publication=publication,
+        search=search,
+        default_statuses=[ContentStatus.COMPLETED],
+    )
+    # Use period dates as fallbacks
+    if not query.start_date:
+        query = query.model_copy(update={"start_date": period_start})
+    if not query.end_date:
+        query = query.model_copy(update={"end_date": period_end})
+    return query
+
+
 @app.command("daily")
 def create_daily_digest(
     date: Annotated[
@@ -59,15 +95,51 @@ def create_daily_digest(
             help="Date for the digest in YYYY-MM-DD format (default: today).",
         ),
     ] = None,
+    source: Annotated[
+        str | None,
+        typer.Option(
+            "--source",
+            "-s",
+            help="Comma-separated source types (gmail,rss,youtube,...)",
+        ),
+    ] = None,
+    publication: Annotated[
+        str | None,
+        typer.Option(
+            "--publication",
+            "-p",
+            help="Filter by publication name",
+        ),
+    ] = None,
+    search: Annotated[
+        str | None,
+        typer.Option(
+            "--search",
+            "-q",
+            help="Search in title",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview matching content without creating digest",
+        ),
+    ] = False,
 ) -> None:
     """Create a daily digest for the specified date.
 
     Aggregates all summarized content from the given day into a single digest.
     If no date is provided, defaults to today.
+
+    Filter options (--source, --publication, --search) narrow which content
+    items are included. Use --dry-run to preview without creating.
     """
     from src.cli.adapters import create_digest_sync
     from src.cli.output import is_json_mode, output_result
     from src.models.digest import DigestRequest, DigestType
+
+    has_filters = any([source, publication, search])
 
     try:
         if date is not None:
@@ -78,6 +150,27 @@ def create_daily_digest(
 
         period_end = period_start + timedelta(days=1)
 
+        # Build content query when filters are provided
+        content_query = None
+        if has_filters or dry_run:
+            content_query = _build_digest_query(
+                source, publication, search, period_start, period_end
+            )
+
+        # Handle dry-run: preview only
+        if dry_run:
+            from src.cli.query_options import display_preview
+            from src.services.content_query import ContentQueryService
+
+            svc = ContentQueryService()
+            preview = svc.preview(content_query)  # type: ignore[arg-type]
+
+            if is_json_mode():
+                output_result({"preview": preview.model_dump(mode="json")})
+            else:
+                display_preview(preview, action_name="include in digest")
+            return
+
         if not is_json_mode():
             console.print(
                 f"Creating daily digest for [cyan]{period_start.strftime('%Y-%m-%d')}[/cyan]..."
@@ -87,6 +180,7 @@ def create_daily_digest(
             digest_type=DigestType.DAILY,
             period_start=period_start,
             period_end=period_end,
+            content_query=content_query,
         )
 
         result = create_digest_sync(request)
@@ -139,15 +233,51 @@ def create_weekly_digest(
             ),
         ),
     ] = None,
+    source: Annotated[
+        str | None,
+        typer.Option(
+            "--source",
+            "-s",
+            help="Comma-separated source types (gmail,rss,youtube,...)",
+        ),
+    ] = None,
+    publication: Annotated[
+        str | None,
+        typer.Option(
+            "--publication",
+            "-p",
+            help="Filter by publication name",
+        ),
+    ] = None,
+    search: Annotated[
+        str | None,
+        typer.Option(
+            "--search",
+            "-q",
+            help="Search in title",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview matching content without creating digest",
+        ),
+    ] = False,
 ) -> None:
     """Create a weekly digest for the week containing the specified date.
 
     The week is defined as Monday 00:00 UTC through the following Monday 00:00 UTC.
     If no date is provided, defaults to the current week.
+
+    Filter options (--source, --publication, --search) narrow which content
+    items are included. Use --dry-run to preview without creating.
     """
     from src.cli.adapters import create_digest_sync
     from src.cli.output import is_json_mode, output_result
     from src.models.digest import DigestRequest, DigestType
+
+    has_filters = any([source, publication, search])
 
     try:
         if week is not None:
@@ -157,6 +287,27 @@ def create_weekly_digest(
 
         period_start = _monday_of_week(reference_date)
         period_end = period_start + timedelta(days=7)
+
+        # Build content query when filters are provided
+        content_query = None
+        if has_filters or dry_run:
+            content_query = _build_digest_query(
+                source, publication, search, period_start, period_end
+            )
+
+        # Handle dry-run: preview only
+        if dry_run:
+            from src.cli.query_options import display_preview
+            from src.services.content_query import ContentQueryService
+
+            svc = ContentQueryService()
+            preview = svc.preview(content_query)  # type: ignore[arg-type]
+
+            if is_json_mode():
+                output_result({"preview": preview.model_dump(mode="json")})
+            else:
+                display_preview(preview, action_name="include in digest")
+            return
 
         if not is_json_mode():
             console.print(
@@ -169,6 +320,7 @@ def create_weekly_digest(
             digest_type=DigestType.WEEKLY,
             period_start=period_start,
             period_end=period_end,
+            content_query=content_query,
         )
 
         result = create_digest_sync(request)

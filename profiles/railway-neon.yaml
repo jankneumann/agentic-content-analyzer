@@ -85,9 +85,9 @@ settings:
   # Storage: Railway MinIO (S3-compatible)
   # ---------------------------------------------------------------------------
   storage:
-    storage_provider: railway
-    minio_root_user: "${MINIO_ROOT_USER}"
-    minio_root_password: "${MINIO_ROOT_PASSWORD}"
+    storage_provider: "${STORAGE_PROVIDER:-railway}"
+    minio_root_user: "${MINIO_ROOT_USER:-}"
+    minio_root_password: "${MINIO_ROOT_PASSWORD:-}"
     railway_minio_endpoint: "${RAILWAY_MINIO_ENDPOINT:-}"
     railway_minio_bucket: "${RAILWAY_MINIO_BUCKET:-newsletter-files}"
 

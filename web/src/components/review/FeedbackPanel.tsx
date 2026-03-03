@@ -110,8 +110,19 @@ export function FeedbackPanel({
               isPreviewMode && "bg-muted/50"
             )}
             maxLength={maxFeedbackLength}
+            aria-describedby="feedback-char-count"
           />
-          <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
+          <div
+            id="feedback-char-count"
+            className={cn(
+              "absolute bottom-2 right-2 text-xs transition-colors",
+              feedbackLength > maxFeedbackLength * 0.9
+                ? "font-medium text-amber-500"
+                : "text-muted-foreground",
+              feedbackLength >= maxFeedbackLength && "text-destructive"
+            )}
+            aria-label={`${feedbackLength} of ${maxFeedbackLength} characters`}
+          >
             {feedbackLength} / {maxFeedbackLength}
           </div>
         </div>

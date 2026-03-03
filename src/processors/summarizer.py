@@ -27,6 +27,8 @@ from src.utils.summary_markdown import (
 if TYPE_CHECKING:
     from opentelemetry.trace import Span
 
+    from src.models.query import ContentQuery
+
 logger = get_logger(__name__)
 
 
@@ -290,27 +292,44 @@ class ContentSummarizer:
             "skipped_count": skipped_count,
         }
 
-    def summarize_pending_contents(self, limit: int | None = None) -> int:
+    def summarize_pending_contents(
+        self,
+        limit: int | None = None,
+        query: ContentQuery | None = None,
+    ) -> int:
         """
         Summarize all pending content records.
 
         Args:
             limit: Maximum number to process (None = all)
+            query: Optional ContentQuery for filtered selection
 
         Returns:
             Number of content records successfully summarized
         """
-        # Query for IDs of pending/parsed content
-        with get_db() as db:
-            query = db.query(Content.id).filter(
-                Content.status.in_([ContentStatus.PENDING, ContentStatus.PARSED])
-            )
+        if query:
+            from src.services.content_query import ContentQueryService
 
-            if limit:
-                query = query.limit(limit)
+            # Merge default status constraint if not specified
+            if not query.statuses:
+                query = query.model_copy(
+                    update={"statuses": [ContentStatus.PENDING, ContentStatus.PARSED]}
+                )
+            svc = ContentQueryService()
+            pending_ids = svc.resolve(query)
+        else:
+            # Original behavior — unchanged
+            with get_db() as db:
+                q = db.query(Content.id).filter(
+                    Content.status.in_([ContentStatus.PENDING, ContentStatus.PARSED])
+                )
 
-            pending_ids = [row[0] for row in query.all()]
-            logger.info(f"Found {len(pending_ids)} pending content records to summarize")
+                if limit:
+                    q = q.limit(limit)
+
+                pending_ids = [row[0] for row in q.all()]
+
+        logger.info(f"Found {len(pending_ids)} pending content records to summarize")
 
         # Use batch summarization method
         result = self.summarize_contents(pending_ids)
@@ -321,7 +340,9 @@ class ContentSummarizer:
         return int(created_count)  # type: ignore[arg-type]
 
     async def enqueue_pending_contents(
-        self, limit: int | None = None
+        self,
+        limit: int | None = None,
+        query: ContentQuery | None = None,
     ) -> dict[str, int | list[int]]:
         """
         Enqueue pending content for summarization via job queue.
@@ -331,6 +352,7 @@ class ContentSummarizer:
 
         Args:
             limit: Maximum number to enqueue (None = all)
+            query: Optional ContentQuery for filtered selection
 
         Returns:
             Dictionary with:
@@ -340,17 +362,29 @@ class ContentSummarizer:
         """
         from src.queue.setup import enqueue_summarization_job
 
-        # Query for IDs of pending/parsed content
-        with get_db() as db:
-            query = db.query(Content.id).filter(
-                Content.status.in_([ContentStatus.PENDING, ContentStatus.PARSED])
-            )
+        if query:
+            from src.services.content_query import ContentQueryService
 
-            if limit:
-                query = query.limit(limit)
+            # Merge default status constraint if not specified
+            if not query.statuses:
+                query = query.model_copy(
+                    update={"statuses": [ContentStatus.PENDING, ContentStatus.PARSED]}
+                )
+            svc = ContentQueryService()
+            pending_ids = svc.resolve(query)
+        else:
+            # Original behavior — unchanged
+            with get_db() as db:
+                q = db.query(Content.id).filter(
+                    Content.status.in_([ContentStatus.PENDING, ContentStatus.PARSED])
+                )
 
-            pending_ids = [row[0] for row in query.all()]
-            logger.info(f"Found {len(pending_ids)} pending content records to enqueue")
+                if limit:
+                    q = q.limit(limit)
+
+                pending_ids = [row[0] for row in q.all()]
+
+        logger.info(f"Found {len(pending_ids)} pending content records to enqueue")
 
         enqueued_count = 0
         skipped_count = 0

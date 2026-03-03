@@ -11,10 +11,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from src.api.dependencies import verify_admin_key
 from src.models.podcast import (
     Podcast,
     PodcastScriptRecord,
@@ -27,7 +28,10 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/podcasts", tags=["podcasts"])
+router = APIRouter(
+    prefix="/api/v1/podcasts",
+    tags=["podcasts"],
+)
 
 # Allowed sort fields for podcast listing
 PODCAST_SORT_FIELDS = {
@@ -347,7 +351,7 @@ async def get_podcast(podcast_id: int) -> PodcastDetail:
         )
 
 
-@router.post("/generate", response_model=dict)
+@router.post("/generate", response_model=dict, dependencies=[Depends(verify_admin_key)])
 async def generate_audio(
     request: GenerateAudioRequest,
     background_tasks: BackgroundTasks,
