@@ -7,7 +7,7 @@ description: >
   this skill whenever the user mentions Railway, deployments, services,
   environments, build failures, or infrastructure operations, even if they don't
   say "Railway" explicitly.
-allowed-tools: Bash(railway:*), Bash(which:*), Bash(command:*), Bash(npm:*), Bash(npx:*), Bash(curl:*)
+allowed-tools: Bash(railway:*), Bash(which:*), Bash(command:*), Bash(npm:*), Bash(npx:*), Bash(curl:*), Bash(bash:*)
 ---
 
 # Use Railway
@@ -35,7 +35,7 @@ railway --version                 # check CLI version
 railway status --json             # linked project/environment/service
 ```
 
-If the CLI is missing, guide the user to install it. 
+If the CLI is missing, guide the user to install it.
 
 ```bash
 bash <(curl -fsSL cli.new) # Shell script (macOS, Linux, Windows via WSL)
@@ -82,7 +82,7 @@ If the request spans two areas (for example, "deploy and then check if it's heal
 
 ## Execution rules
 
-1. Prefer Railway CLI. Fall back to `scripts/railway-api.sh` for operations the CLI doesn't expose.
+1. Prefer Railway CLI. Fall back to `.agents/skills/use-railway/scripts/railway-api.sh` for operations the CLI doesn't expose.
 2. Use `--json` output where available for reliable parsing.
 3. Resolve context before mutation. Know which project, environment, and service you're acting on.
 4. For destructive actions (delete service, remove deployment, drop database), confirm intent and state impact before executing.
