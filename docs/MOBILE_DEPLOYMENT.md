@@ -333,6 +333,50 @@ SELECT cron.schedule(
 );
 ```
 
+## Agent Skills for Deployment
+
+Four complementary agent skills provide deployment and infrastructure automation:
+
+### `aca-deployment` — Stack Orchestration
+
+Custom skill for multi-provider stack management (Railway + Neon + AuraDB). Profile-aware.
+
+```bash
+/aca-deployment stack:verify           # Full-stack health check
+/aca-deployment railway:deploy         # Deploy via Railway CLI
+/aca-deployment neon:create claude/xyz # Create Neon branch
+/aca-deployment auradb:status          # Check AuraDB instance
+```
+
+Location: `skills/aca-deployment/`
+
+### `use-railway` — Railway Platform Operations
+
+Official Railway Skills ([railwayapp/railway-skills](https://github.com/railwayapp/railway-skills)). Provides deeper Railway-specific knowledge: project/service creation, build troubleshooting, domain/networking, environment variables, metrics, and Railway GraphQL API access.
+
+Location: `.agents/skills/use-railway/`
+
+### `neon-postgres` — Neon Platform Knowledge
+
+Official Neon Skills ([neondatabase/agent-skills](https://github.com/neondatabase/agent-skills)). Comprehensive Neon Serverless Postgres guidance: connection methods and drivers, branching strategies, autoscaling, scale-to-zero, Neon CLI/API reference, and SDK integration.
+
+Location: `.agents/skills/neon-postgres/`
+
+### `claimable-postgres` — Instant Throwaway Databases
+
+Also from `neondatabase/agent-skills`. Provisions instant temporary Postgres databases via `pg.new` (no account required, 72h expiry). Useful for prototyping and ephemeral test environments.
+
+Location: `.agents/skills/claimable-postgres/`
+
+### When to use which
+
+| Scenario | Skill |
+|---|---|
+| Deploy the stack, verify providers, manage AuraDB | `aca-deployment` |
+| Railway build config, domains, troubleshooting, metrics | `use-railway` |
+| Neon connection methods, branching strategies, SDK docs | `neon-postgres` |
+| Quick throwaway database for prototyping | `claimable-postgres` |
+
 ## Deployment Lessons Learned
 
 Collected during the initial Railway deployment (January 2026).

@@ -603,6 +603,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 
 ### Deployment
 - Railway deployment guide: [docs/MOBILE_DEPLOYMENT.md#deployment](docs/MOBILE_DEPLOYMENT.md#deployment)
+- Agent skills for deployment: [docs/MOBILE_DEPLOYMENT.md#agent-skills-for-deployment](docs/MOBILE_DEPLOYMENT.md#agent-skills-for-deployment)
 - Deployment lessons learned: [docs/MOBILE_DEPLOYMENT.md#deployment-lessons-learned](docs/MOBILE_DEPLOYMENT.md#deployment-lessons-learned)
 - Docker entrypoint pattern: [docs/MOBILE_DEPLOYMENT.md#docker-entrypoint-pattern](docs/MOBILE_DEPLOYMENT.md#docker-entrypoint-pattern)
 

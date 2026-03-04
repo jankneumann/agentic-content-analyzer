@@ -17,6 +17,28 @@ triggers:
 
 Manage the production deployment stack: Railway (compute + storage), Neon (PostgreSQL with branching), and Neo4j AuraDB (knowledge graph). This skill wraps existing CLIs (`aca`, `railway`, `neonctl`, `aura`) and integrates with the profile system.
 
+## Relationship to Vendor Skills
+
+This skill and the vendor-provided skills are **complementary**:
+
+| Use this skill (`aca-deployment`) for | Use `use-railway` for | Use `neon-postgres` for |
+|---|---|---|
+| Multi-provider stack orchestration | Railway project/service creation | Neon platform docs and best practices |
+| Neon branch lifecycle (create/cleanup) | Build/deploy troubleshooting | Connection methods and drivers |
+| AuraDB instance management | Domain and networking config | Branching strategies and workflows |
+| Cross-provider health checks (`stack:verify`) | Environment/variable management | Autoscaling, scale-to-zero tuning |
+| Profile-aware deployments | Railway metrics and monitoring | Neon CLI and API reference |
+| ACA-specific deploy pipeline | Railway database provisioning | Read replicas, connection pooling |
+| | Railway GraphQL API queries | Neon Auth and SDK integration |
+
+A third skill, `claimable-postgres`, provisions instant throwaway Neon databases via `pg.new` — useful for prototyping and ephemeral test environments.
+
+**Rule of thumb**:
+- `aca-deployment` → Stack-level operations (deploy all, verify providers, manage Neon branches/AuraDB)
+- `use-railway` → Railway-specific operations (build config, domains, troubleshooting, metrics)
+- `neon-postgres` → Neon platform knowledge (connection methods, branching strategies, SDK/API docs)
+- `claimable-postgres` → Quick throwaway databases for prototyping (no account needed, 72h expiry)
+
 ## Arguments
 
 `$ARGUMENTS` - Action name (required), optionally followed by action-specific arguments.
