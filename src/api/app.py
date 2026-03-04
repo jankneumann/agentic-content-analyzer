@@ -124,8 +124,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Auth middleware — enforces session cookie or X-Admin-Key on all non-exempt endpoints
+app.add_middleware(AuthMiddleware)
+
 # CORS configuration - configurable via ALLOWED_ORIGINS env var
 # Use "*" for iOS Shortcuts and other mobile clients
+# Must be added AFTER AuthMiddleware so CORS wraps Auth (Starlette LIFO order).
+# This ensures 401/403 responses from AuthMiddleware still get CORS headers.
 allowed_origins = settings.get_allowed_origins_list()
 app.add_middleware(
     CORSMiddleware,
@@ -134,10 +139,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Auth middleware — enforces session cookie or X-Admin-Key on all non-exempt endpoints
-# Added before telemetry so auth errors still get trace IDs
-app.add_middleware(AuthMiddleware)
 
 # Telemetry middleware — adds X-Trace-Id header to responses
 app.add_middleware(TraceIdMiddleware)

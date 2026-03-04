@@ -55,6 +55,12 @@ make opik-up       # Start Opik stack (waits for health)
 make opik-down     # Stop Opik stack
 make opik-logs     # Tail Opik logs
 
+# Langfuse observability stack
+make langfuse-up       # Start Langfuse stack (waits for health)
+make langfuse-down     # Stop Langfuse stack
+make langfuse-logs     # Tail Langfuse logs
+make dev-langfuse      # Start with PROFILE=local-langfuse (requires: make langfuse-up)
+
 # Local Supabase stack (alternative to core postgres)
 make supabase-up   # Start Supabase stack (DB + storage)
 make supabase-down # Stop Supabase stack
@@ -90,8 +96,16 @@ aca ingest url <url>                   # Direct URL ingestion
 
 # Processing
 aca summarize pending                  # Summarize pending content
+aca summarize pending --source gmail,rss  # Filter by source type
+aca summarize pending --status pending    # Filter by status
+aca summarize pending --after 2025-01-01 --before 2025-01-31  # Date range
+aca summarize pending --publication "AI Weekly"  # Filter by publication
+aca summarize pending --search "LLM"     # Search by title
+aca summarize pending --dry-run          # Preview without executing
 aca create-digest daily                # Create daily digest
 aca create-digest weekly               # Create weekly digest
+aca create-digest daily --source gmail   # Filter content by source
+aca create-digest daily --dry-run        # Preview matching content
 aca pipeline daily                     # Full daily pipeline (ingest → summarize → digest)
 
 # Review & Delivery
@@ -409,14 +423,20 @@ Two-layer architecture: **LLM observability** (provider-abstracted) + **infrastr
 | Noop | `noop` (default) | None | Zero overhead, disabled state |
 | Opik | `opik` | OTel + gen_ai.* | Self-hosted or Comet Cloud |
 | Braintrust | `braintrust` | Native SDK | Evaluations, scoring, prompt mgmt |
+| Langfuse | `langfuse` | OTel + gen_ai.* | Open-source LLM tracing (self-hosted or cloud) |
 | OTel | `otel` | Pure OTel | Generic OTLP backend (Jaeger, Grafana, etc.) |
 
 ```bash
 # .env - Enable observability
-OBSERVABILITY_PROVIDER=braintrust   # or "opik", "otel", "noop"
+OBSERVABILITY_PROVIDER=braintrust   # or "opik", "langfuse", "otel", "noop"
 BRAINTRUST_API_KEY=sk-xxx           # Required for Braintrust
 OTEL_ENABLED=true                   # Enable infrastructure auto-instrumentation
 OTEL_EXPORTER_OTLP_ENDPOINT=https://api.braintrust.dev/otel/v1/traces
+
+# Langfuse (Cloud or self-hosted)
+# LANGFUSE_PUBLIC_KEY=pk-lf-...           # From Langfuse Settings → API Keys
+# LANGFUSE_SECRET_KEY=sk-lf-...           # From Langfuse Settings → API Keys
+# LANGFUSE_BASE_URL=https://cloud.langfuse.com  # Override for self-hosted
 
 # Frontend OTel (in web/.env or passed at build time)
 VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vitals
@@ -425,6 +445,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 **Key files (backend):**
 - `src/telemetry/__init__.py` — `setup_telemetry()`, `get_provider()`, `shutdown_telemetry()`
 - `src/telemetry/providers/` — Provider implementations (factory pattern)
+- `src/telemetry/providers/langfuse.py` — Langfuse provider (OTel + Basic Auth)
 - `src/telemetry/otel_setup.py` — OTel infrastructure (FastAPI, SQLAlchemy, httpx)
 - `src/telemetry/log_setup.py` — OTel log bridge (trace-log correlation, OTLP log export)
 - `src/telemetry/metrics.py` — OTel meters (LLM requests, tokens, duration)
@@ -540,6 +561,10 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Contract tests excluded by default | `contract` marker excluded in `addopts` — run explicitly with `pytest tests/contract/ -m contract --no-cov` |
 | Schemathesis NUL byte skip | Schemathesis generates `%00` in query params causing psycopg2 `ValueError` — contract tests skip these via try/except, tracked as separate input validation issue |
 | Contract test savepoints | `tests/contract/conftest.py` uses `begin_nested()` (SAVEPOINTs) so failed API calls don't abort the entire test transaction |
+| Langfuse keys are auto-generated | First start Langfuse, create account, get keys from Settings → API Keys |
+| Langfuse self-hosted is resource-heavy | 6 services (PG, ClickHouse, Redis, MinIO, web, worker); use `make langfuse-up` only when needed |
+| Langfuse uses Basic Auth for OTLP | `Authorization: Basic base64(public_key:secret_key)` — different from Opik/Braintrust auth |
+| Langfuse port 3100 | Avoids conflict with web frontend (3000), Vite (5173), Opik (5174) |
 
 ## Quick Links by Task
 

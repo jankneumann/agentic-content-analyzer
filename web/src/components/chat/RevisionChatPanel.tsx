@@ -52,6 +52,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { ChatMessage, StreamingMessage, TypingIndicator } from "./ChatMessage"
+import { CopyButton } from "@/components/ui/copy-button"
 import { ContextChipList } from "@/components/review/ContextChip"
 import { useReviewContext } from "@/contexts/ReviewContext"
 import { REVIEW_LIMITS } from "@/types/review"
@@ -609,15 +610,21 @@ export function RevisionChatPanel({
                       Type: {debugContext.artifact_type} | ID: {debugContext.artifact_id} | Messages: {debugContext.message_count}
                     </div>
                   </div>
-                  <div>
+                  <div className="group relative">
                     <h4 className="text-sm font-medium mb-2">System Prompt</h4>
-                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono">
+                    <div className="absolute top-8 right-2 opacity-0 transition-opacity group-hover:opacity-100 z-10">
+                      <CopyButton content={debugContext.system_prompt} size="sm" />
+                    </div>
+                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono relative">
                       {debugContext.system_prompt}
                     </pre>
                   </div>
-                  <div>
+                  <div className="group relative">
                     <h4 className="text-sm font-medium mb-2">Artifact Content</h4>
-                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-[40vh] overflow-y-auto">
+                    <div className="absolute top-8 right-2 opacity-0 transition-opacity group-hover:opacity-100 z-10">
+                      <CopyButton content={debugContext.artifact_content} size="sm" />
+                    </div>
+                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-[40vh] overflow-y-auto relative">
                       {debugContext.artifact_content}
                     </pre>
                   </div>

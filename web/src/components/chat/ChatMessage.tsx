@@ -8,14 +8,10 @@
  * - Metadata (model, tokens, etc.)
  */
 
-import { memo, useState, useCallback } from "react"
-import { User, Bot, Clock, Zap, Globe, Copy, Check } from "lucide-react"
+import { memo } from "react"
+import { User, Bot, Clock, Zap, Globe } from "lucide-react"
 import { cn } from "@/lib/utils"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { CopyButton } from "@/components/ui/copy-button"
 import type { ChatMessage as ChatMessageType } from "@/types"
 
 interface ChatMessageProps {
@@ -46,43 +42,6 @@ function formatTimestamp(timestamp: string): string {
     hour: "numeric",
     minute: "2-digit",
   })
-}
-
-/**
- * Copy button component with visual feedback
- */
-function CopyButton({ content, className }: { content: string; className?: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error("Failed to copy:", err)
-    }
-  }, [content])
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={handleCopy}
-          className={cn(
-            "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            className
-          )}
-          aria-label={copied ? "Copied" : "Copy message"}
-        >
-          {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>
-        {copied ? "Copied!" : "Copy message"}
-      </TooltipContent>
-    </Tooltip>
-  )
 }
 
 /**
@@ -174,7 +133,7 @@ export const ChatMessage = memo(function ChatMessage({ message, isStreaming, cla
 
           {/* Copy Button */}
           {!isStreaming && (
-            <CopyButton content={message.content} />
+            <CopyButton content={message.content} className="h-6 w-6" />
           )}
         </div>
       </div>

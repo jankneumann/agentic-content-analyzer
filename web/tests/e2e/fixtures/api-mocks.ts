@@ -176,6 +176,20 @@ export class ApiMocks {
     })
   }
 
+  async mockContentQueryPreview(data?: unknown): Promise<void> {
+    await this.page.route("**/api/v1/contents/query/preview*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(data ?? mockData.createContentQueryPreview()),
+      })
+    )
+  }
+
+  async mockContentQueryPreviewEmpty(): Promise<void> {
+    await this.mockContentQueryPreview(mockData.createEmptyContentQueryPreview())
+  }
+
   async mockIngestContents(): Promise<void> {
     await this.page.route("**/api/v1/contents/ingest", (route) =>
       route.fulfill({

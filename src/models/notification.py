@@ -39,6 +39,7 @@ class NotificationEvent(Base):
     event_type = Column(String(50), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     summary = Column(Text, nullable=True)
+    # Monkeypatch for SQLite compatibility in tests
     payload = Column(JSONB, nullable=False, default=dict)
     read = Column(Boolean, nullable=False, default=False)
     created_at = Column(

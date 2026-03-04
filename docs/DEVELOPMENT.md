@@ -729,6 +729,64 @@ def get_rss_feed_urls(self) -> list[str]:
     return list(dict.fromkeys(feeds))
 ```
 
+### Content Query Builder Pattern
+
+Use `ContentQuery` + `ContentQueryService` for batch operations that filter content:
+
+**Model** (`src/models/query.py`):
+```python
+from src.models.query import ContentQuery, ContentQueryPreview
+
+# Build a query with filters — None means "no filter"
+query = ContentQuery(
+    source_types=["gmail", "rss"],
+    statuses=["pending", "parsed"],
+    start_date=datetime(2025, 1, 1),
+    search="AI",
+    limit=50,
+)
+```
+
+**Service** (`src/services/content_query.py`):
+```python
+from src.services.content_query import ContentQueryService
+
+svc = ContentQueryService()
+
+# Preview: get counts + breakdowns without loading records
+preview = svc.preview(query)  # Returns ContentQueryPreview
+
+# Resolve: get matching content IDs for batch processing
+ids = svc.resolve(query)  # Returns list[int]
+
+# Build query: get SQLAlchemy Query for custom operations
+with get_db() as db:
+    q = svc.build_query(db, query)
+```
+
+**Dry-run convention**: CLI commands and API endpoints accept `--dry-run` / `dry_run` to preview without executing:
+```python
+# CLI: display preview and exit
+if dry_run:
+    preview = ContentQueryService().preview(query)
+    display_preview(preview, json_mode=is_json_mode())
+    raise typer.Exit()
+
+# API: return ContentQueryPreview as response
+if request.dry_run and request.query:
+    return ContentQueryService().preview(query)
+```
+
+**Operation-specific defaults**: Each operation sets appropriate default statuses:
+- Summarize: `default_statuses=[ContentStatus.PENDING, ContentStatus.PARSED]`
+- Digest: `default_statuses=[ContentStatus.COMPLETED]`
+
+Use `model_copy(update=...)` to merge defaults without mutating the original:
+```python
+if not query.statuses:
+    query = query.model_copy(update={"statuses": [ContentStatus.PENDING]})
+```
+
 ## React/Frontend Patterns
 
 ### Component Reset with Key Prop

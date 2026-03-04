@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs dev-local dev-opik dev-supabase dev-staging full-up full-down verify-profile verify-opik verify-staging hoverfly-up hoverfly-down hoverfly-status test-hoverfly neon-list neon-create neon-delete neon-clean test-neon
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -53,6 +53,13 @@ test-opik:  ## Run Opik integration tests (requires: make opik-up)
 		exit 1; \
 	fi
 	pytest tests/integration/test_opik_integration.py -v
+
+test-langfuse:  ## Run Langfuse integration tests (requires: make langfuse-up)
+	@if ! curl -sf http://localhost:3100/api/public/health >/dev/null 2>&1; then \
+		echo "✗ Langfuse is not running! Start with: make langfuse-up"; \
+		exit 1; \
+	fi
+	pytest tests/integration/test_langfuse_integration.py -v
 
 test-integration:  ## Run integration tests (requires test services)
 	pytest tests/integration/ -v
@@ -292,6 +299,44 @@ supabase-logs:  ## Tail Supabase stack logs
 	@docker compose -f docker-compose.supabase.yml -p supabase logs -f
 
 # =============================================================================
+# Langfuse Observability Stack
+# =============================================================================
+
+langfuse-up:  ## Start Langfuse observability stack (LLM tracing)
+	@echo "Starting Langfuse stack..."
+	@docker compose -f docker-compose.langfuse.yml -p langfuse up -d
+	@echo "Waiting for Langfuse to be healthy..."
+	@timeout=120; \
+	elapsed=0; \
+	while ! curl -sf http://localhost:3100/api/public/health >/dev/null 2>&1; do \
+		if [ $$elapsed -ge $$timeout ]; then \
+			echo "✗ Timeout waiting for Langfuse to start"; \
+			docker compose -f docker-compose.langfuse.yml -p langfuse logs langfuse-web --tail 20; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
+		printf "\r  Waiting... %ds / %ds" $$elapsed $$timeout; \
+	done
+	@echo ""
+	@echo "✓ Langfuse is running!"
+	@echo ""
+	@echo "  Langfuse UI:     http://localhost:3100"
+	@echo "  OTLP Endpoint:   http://localhost:3100/api/public/otel"
+	@echo ""
+	@echo "  Create account on first visit, then get API keys from Settings → API Keys."
+	@echo ""
+	@echo "Or use: make dev-langfuse"
+
+langfuse-down:  ## Stop Langfuse observability stack
+	@echo "Stopping Langfuse stack..."
+	@docker compose -f docker-compose.langfuse.yml -p langfuse down
+	@echo "✓ Langfuse stack stopped"
+
+langfuse-logs:  ## Tail Langfuse stack logs
+	@docker compose -f docker-compose.langfuse.yml -p langfuse logs -f
+
+# =============================================================================
 # Neon Database Branching
 # =============================================================================
 
@@ -388,6 +433,21 @@ dev-staging:  ## Start dev servers with staging profile (remote backends + Brain
 	@echo "Verify connectivity:"
 	@echo "  make verify-staging"
 
+dev-langfuse:  ## Start dev servers with Langfuse tracing (requires: make langfuse-up)
+	@echo "Checking if Langfuse is running..."
+	@if ! curl -sf http://localhost:3100/api/public/health >/dev/null 2>&1; then \
+		echo ""; \
+		echo "✗ Langfuse is not running!"; \
+		echo ""; \
+		echo "  Start it with:"; \
+		echo "  make langfuse-up"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "✓ Langfuse is healthy"
+	@echo "Starting development with PROFILE=local-langfuse..."
+	PROFILE=local-langfuse $(MAKE) dev-bg
+
 # =============================================================================
 # Hoverfly API Simulation (integration tests)
 # =============================================================================
@@ -441,6 +501,8 @@ full-down:  ## Stop all services (Supabase + Opik + core)
 	@docker compose -f docker-compose.supabase.yml -p supabase down 2>/dev/null || true
 	@echo "Stopping Opik stack..."
 	@docker compose -f docker-compose.opik.yml -p opik down 2>/dev/null || true
+	@echo "Stopping Langfuse stack..."
+	@docker compose -f docker-compose.langfuse.yml -p langfuse down 2>/dev/null || true
 	@echo "Stopping core services..."
 	@docker compose down
 	@echo "✓ All services stopped"
@@ -502,6 +564,32 @@ verify-opik:  ## Verify Opik tracing works E2E (requires: PROFILE=local-opik, Op
 	@echo "✓ Opik verification complete!"
 	@echo ""
 	@echo "View traces at: http://localhost:5174"
+
+verify-langfuse:  ## Verify Langfuse tracing works E2E (requires: PROFILE=local-langfuse, Langfuse running)
+	@echo "Verifying Langfuse tracing..."
+	@echo ""
+	@echo "1. Checking Langfuse is running..."
+	@if ! curl -sf http://localhost:3100/api/public/health >/dev/null 2>&1; then \
+		echo "✗ Langfuse is not running!"; \
+		echo "  Start it with: make langfuse-up"; \
+		exit 1; \
+	fi
+	@echo "   ✓ Langfuse is healthy"
+	@echo ""
+	@echo "2. Sending test trace..."
+	@AUTH_FLAG=""; \
+	if [ -n "$$LANGFUSE_PUBLIC_KEY" ] && [ -n "$$LANGFUSE_SECRET_KEY" ]; then \
+		AUTH_FLAG="--basic-auth $$LANGFUSE_PUBLIC_KEY:$$LANGFUSE_SECRET_KEY"; \
+	else \
+		echo "   Note: LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY not set — trace sent without auth"; \
+	fi; \
+	python scripts/send_test_trace.py --endpoint http://localhost:3100/api/public/otel/v1/traces --service verify-langfuse-test $$AUTH_FLAG 2>&1 && \
+		echo "   ✓ Test trace sent successfully" || \
+		echo "   ✗ Failed to send test trace"
+	@echo ""
+	@echo "✓ Langfuse verification complete!"
+	@echo ""
+	@echo "  View traces at: http://localhost:3100"
 
 verify-staging:  ## Verify staging profile connectivity (health + readiness)
 	@echo "Verifying staging profile..."

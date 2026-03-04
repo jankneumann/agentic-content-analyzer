@@ -185,8 +185,7 @@ class OpenAITTSProvider(TTSProvider):
         Note: OpenAI TTS doesn't support true streaming,
         so we synthesize and yield the full result.
         """
-        audio = await self.synthesize(text, voice_id, **kwargs)
-        yield audio
+        yield await self.synthesize(text, voice_id, **kwargs)
 
     def get_voice_id(self, persona: VoicePersona) -> str:
         """Get OpenAI voice ID for a persona."""
@@ -689,7 +688,6 @@ class TTSService:
                 f"Streaming chunk {i + 1}/{len(chunks)}: "
                 f"{len(chunk.text)} chars, est. {chunk.estimated_duration:.1f}s"
             )
-            audio_bytes = await self.synthesize(chunk.text, speaker, **kwargs)
-            yield audio_bytes
+            yield await self.synthesize(chunk.text, speaker, **kwargs)
 
         logger.debug(f"Stream synthesis complete: {len(chunks)} chunks")

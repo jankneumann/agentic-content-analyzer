@@ -30,7 +30,7 @@ class TestSummarizePending:
 
         result = runner.invoke(app, ["summarize", "pending", "--sync", "--limit", "5"])
         assert result.exit_code == 0
-        mock_summarizer.summarize_pending_contents.assert_called_once_with(limit=5)
+        mock_summarizer.summarize_pending_contents.assert_called_once_with(limit=5, query=None)
 
     @patch("src.processors.summarizer.ContentSummarizer")
     def test_pending_sync_failure(self, mock_cls):
@@ -71,7 +71,130 @@ class TestSummarizePending:
 
         result = runner.invoke(app, ["summarize", "pending", "--limit", "3"])
         assert result.exit_code == 0
-        mock_summarizer.enqueue_pending_contents.assert_called_once_with(limit=3)
+        mock_summarizer.enqueue_pending_contents.assert_called_once_with(limit=3, query=None)
+
+
+class TestSummarizePendingWithFilters:
+    """Tests for summarize pending with content query filters."""
+
+    @patch("src.processors.summarizer.ContentSummarizer")
+    def test_source_filter_builds_query(self, mock_cls):
+        mock_summarizer = MagicMock()
+        mock_summarizer.summarize_pending_contents.return_value = 2
+        mock_cls.return_value = mock_summarizer
+
+        result = runner.invoke(app, ["summarize", "pending", "--sync", "--source", "gmail"])
+        assert result.exit_code == 0
+        call_kwargs = mock_summarizer.summarize_pending_contents.call_args[1]
+        assert call_kwargs["query"] is not None
+        assert call_kwargs["query"].source_types is not None
+
+    @patch("src.processors.summarizer.ContentSummarizer")
+    def test_combined_filters(self, mock_cls):
+        mock_summarizer = MagicMock()
+        mock_summarizer.summarize_pending_contents.return_value = 1
+        mock_cls.return_value = mock_summarizer
+
+        result = runner.invoke(
+            app,
+            [
+                "summarize",
+                "pending",
+                "--sync",
+                "--source",
+                "gmail,rss",
+                "--publication",
+                "The Batch",
+                "--search",
+                "transformer",
+            ],
+        )
+        assert result.exit_code == 0
+        call_kwargs = mock_summarizer.summarize_pending_contents.call_args[1]
+        q = call_kwargs["query"]
+        assert q is not None
+        assert len(q.source_types) == 2
+        assert q.publication_search == "The Batch"
+        assert q.search == "transformer"
+
+    def test_invalid_source_exits_with_error(self):
+        result = runner.invoke(app, ["summarize", "pending", "--sync", "--source", "badvalue"])
+        assert result.exit_code != 0
+
+    @patch("src.services.content_query.ContentQueryService")
+    def test_dry_run_shows_preview(self, mock_svc_cls):
+        from src.models.query import ContentQuery, ContentQueryPreview
+
+        preview = ContentQueryPreview(
+            total_count=5,
+            by_source={"gmail": 3, "rss": 2},
+            by_status={"PENDING": 5},
+            date_range={"earliest": "2026-01-01", "latest": "2026-02-28"},
+            sample_titles=["Title A", "Title B"],
+            query=ContentQuery(),
+        )
+        mock_svc_cls.return_value.preview.return_value = preview
+
+        result = runner.invoke(app, ["summarize", "pending", "--dry-run"])
+        assert result.exit_code == 0
+        assert "5" in result.output
+        assert "Preview" in result.output or "Matching" in result.output
+
+    @patch("src.services.content_query.ContentQueryService")
+    def test_dry_run_no_summarize_called(self, mock_svc_cls):
+        from src.models.query import ContentQuery, ContentQueryPreview
+
+        preview = ContentQueryPreview(
+            total_count=0,
+            by_source={},
+            by_status={},
+            date_range={},
+            sample_titles=[],
+            query=ContentQuery(),
+        )
+        mock_svc_cls.return_value.preview.return_value = preview
+
+        with patch("src.processors.summarizer.ContentSummarizer") as mock_sum_cls:
+            result = runner.invoke(app, ["summarize", "pending", "--dry-run"])
+            assert result.exit_code == 0
+            mock_sum_cls.assert_not_called()
+
+    @patch("src.processors.summarizer.ContentSummarizer")
+    def test_date_filters(self, mock_cls):
+        mock_summarizer = MagicMock()
+        mock_summarizer.summarize_pending_contents.return_value = 1
+        mock_cls.return_value = mock_summarizer
+
+        result = runner.invoke(
+            app,
+            [
+                "summarize",
+                "pending",
+                "--sync",
+                "--after",
+                "2026-01-01",
+                "--before",
+                "2026-02-01",
+            ],
+        )
+        assert result.exit_code == 0
+        call_kwargs = mock_summarizer.summarize_pending_contents.call_args[1]
+        q = call_kwargs["query"]
+        assert q.start_date is not None
+        assert q.end_date is not None
+
+    @patch("src.processors.summarizer.ContentSummarizer")
+    def test_queue_mode_with_filters(self, mock_cls):
+        mock_summarizer = MagicMock()
+        mock_summarizer.enqueue_pending_contents = AsyncMock(
+            return_value={"enqueued_count": 2, "skipped_count": 0, "job_ids": [1, 2]}
+        )
+        mock_cls.return_value = mock_summarizer
+
+        result = runner.invoke(app, ["summarize", "pending", "--source", "rss"])
+        assert result.exit_code == 0
+        call_kwargs = mock_summarizer.enqueue_pending_contents.call_args[1]
+        assert call_kwargs["query"] is not None
 
 
 class TestSummarizeById:

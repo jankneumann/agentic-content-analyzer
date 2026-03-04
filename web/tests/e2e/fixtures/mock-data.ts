@@ -41,6 +41,7 @@ import type {
   NotificationPreferencesResponse,
 } from "../../../src/types"
 
+import type { ContentQuery, ContentQueryPreview } from "../../../src/types/query"
 import type { ScriptDetail, ScriptSection } from "../../../src/types/review"
 
 // ─── Content ───────────────────────────────────────────────
@@ -142,6 +143,53 @@ export function createContentStats(
     completed_count: 28,
     failed_count: 3,
     needs_summarization_count: 8,
+    ...overrides,
+  }
+}
+
+// ─── Content Query Preview ────────────────────────────────
+
+export function createContentQueryPreview(
+  overrides: Partial<ContentQueryPreview> = {}
+): ContentQueryPreview {
+  return {
+    total_count: 8,
+    by_source: { gmail: 5, rss: 3 },
+    by_status: { pending: 3, parsed: 5 },
+    date_range: {
+      earliest: "2025-01-10T00:00:00Z",
+      latest: "2025-01-15T23:59:59Z",
+    },
+    sample_titles: [
+      "AI Weekly: GPT-5 Announced",
+      "ML Ops Digest: Kubernetes for ML",
+      "Data Engineering Weekly",
+    ],
+    query: createContentQuery(),
+    ...overrides,
+  }
+}
+
+export function createEmptyContentQueryPreview(
+  overrides: Partial<ContentQueryPreview> = {}
+): ContentQueryPreview {
+  return {
+    total_count: 0,
+    by_source: {},
+    by_status: {},
+    date_range: { earliest: undefined, latest: undefined },
+    sample_titles: [],
+    query: createContentQuery(),
+    ...overrides,
+  }
+}
+
+export function createContentQuery(
+  overrides: Partial<ContentQuery> = {}
+): ContentQuery {
+  return {
+    sort_by: "published_date",
+    sort_order: "desc",
     ...overrides,
   }
 }
