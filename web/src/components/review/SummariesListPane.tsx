@@ -283,7 +283,11 @@ const CollapsibleSubSection = React.memo(function CollapsibleSubSection({
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
-        <button className="flex items-center gap-1.5 w-full text-left hover:text-foreground/80">
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          className="flex items-center gap-1.5 w-full text-left hover:text-foreground/80"
+        >
           {isOpen ? (
             <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
           ) : (
