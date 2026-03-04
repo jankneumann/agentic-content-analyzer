@@ -325,7 +325,7 @@ MODEL_CAPTION_PROOFREADING=gemini-2.5-flash-lite  # Caption cleanup
 Models can also be changed at runtime via the web UI Settings page or CLI:
 
 ```bash
-aca settings set model_summarization claude-sonnet-4-5
+aca settings set model.summarization claude-sonnet-4-5
 ```
 
 ---
@@ -636,8 +636,8 @@ aca review view 15
 # Start interactive revision session
 aca review revise 15
 
-# Mark as reviewed and ready
-aca review finalize 15
+# Finalization happens automatically when you exit the revision session
+# Type "done" or press Ctrl-D to finalize
 ```
 
 ### Analyzing Themes
@@ -675,19 +675,19 @@ aca prompts list
 aca prompts list --category pipeline
 
 # View a specific prompt
-aca prompts show summarization.system_prompt
+aca prompts show pipeline.summarization.system
 
 # Override a prompt
-aca prompts set summarization.system_prompt --value "You are a technical analyst..."
+aca prompts set pipeline.summarization.system --value "You are a technical analyst..."
 
 # Or load from a file
-aca prompts set summarization.system_prompt --file my-prompt.txt
+aca prompts set pipeline.summarization.system --file my-prompt.txt
 
 # Test a prompt with variables
 aca prompts test digest.daily_prompt --var date=2026-02-28 --var count=15
 
 # Reset to default
-aca prompts reset summarization.system_prompt
+aca prompts reset pipeline.summarization.system
 
 # Export/import for backup
 aca prompts export --output my-prompts.yaml
@@ -701,13 +701,13 @@ aca prompts import --file my-prompts.yaml
 aca settings list
 
 # Get a specific setting
-aca settings get model_summarization
+aca settings get model.summarization
 
 # Change a setting
-aca settings set model_summarization claude-sonnet-4-5
+aca settings set model.summarization claude-sonnet-4-5
 
 # Reset to default
-aca settings reset model_summarization
+aca settings reset model.summarization
 ```
 
 ### Job Queue Management
@@ -1029,7 +1029,7 @@ aca ingest rss
 ```bash
 # 1. Make sure you have an approved digest
 aca review list
-aca review finalize 15               # If not yet approved
+aca review revise 15                 # Type "done" to approve
 
 # 2. Generate the podcast script
 aca podcast generate --digest-id 15 --length standard
@@ -1062,7 +1062,7 @@ aca manage backfill-chunks
 
 ```bash
 # Use Haiku for summarization (cheaper, faster)
-aca settings set model_summarization claude-haiku-4-5
+aca settings set model.summarization claude-haiku-4-5
 
 # Use Sonnet for digests (higher quality, customer-facing)
 aca settings set model_digest_creation claude-sonnet-4-5
@@ -1075,7 +1075,7 @@ aca settings set model_digest_creation claude-sonnet-4-5
 aca sync export backup.jsonl --from-profile local
 
 # Import to staging
-aca sync import backup.jsonl --to-profile staging --upsert
+aca sync import backup.jsonl --to-profile staging --mode replace
 
 # Or push directly
 aca sync push --from-profile local --to-profile staging
@@ -1088,13 +1088,13 @@ aca sync push --from-profile local --to-profile staging
 aca prompts list
 
 # View the current summarization prompt
-aca prompts show summarization.system_prompt
+aca prompts show pipeline.summarization.system
 
 # Override it
-aca prompts set summarization.system_prompt --file my-custom-prompt.txt
+aca prompts set pipeline.summarization.system --file my-custom-prompt.txt
 
 # Test it
-aca prompts test summarization.system_prompt --var content="Sample article text"
+aca prompts test pipeline.summarization.system --var content="Sample article text"
 ```
 
 ---
