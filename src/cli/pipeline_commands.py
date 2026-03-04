@@ -188,8 +188,11 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     Raises:
         RuntimeError: If all ingestion sources fail.
     """
+    from src.config import settings as app_settings
+    from src.config.sources import WebSearchSource, load_sources_config
     from src.ingestion.orchestrator import (
         ingest_gmail,
+        ingest_perplexity_search,
         ingest_podcast,
         ingest_rss,
         ingest_substack,
@@ -198,13 +201,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         ingest_youtube_rss,
     )
 
-    source_count = 7
-    typer.echo(f"  Running parallel ingestion ({source_count} sources)...")
-
-    # Define ingestion tasks — each orchestrator function is a plain
-    # synchronous function, wrapped in asyncio.to_thread by _ingest_source.
-    # YouTube playlists and RSS are separate tasks so rate limits on RSS
-    # don't block higher-priority playlist ingestion.
+    # Core ingestion tasks (always run)
     tasks = [
         _ingest_source("gmail", ingest_gmail),
         _ingest_source("rss", ingest_rss),
@@ -212,8 +209,58 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
         _ingest_source("youtube-rss", ingest_youtube_rss),
         _ingest_source("podcast", ingest_podcast),
         _ingest_source("substack", ingest_substack),
-        _ingest_source("xsearch", ingest_xsearch),
     ]
+
+    # Dynamic web search tasks from sources.d/websearch.yaml
+    # Replaces the hardcoded xsearch entry — X search is now driven
+    # by websearch.yaml entries with provider: grok.
+    try:
+        sources_config = load_sources_config(sources_dir=app_settings.sources_config_dir)
+        websearch_sources: list[WebSearchSource] = sources_config.get_websearch_sources()  # type: ignore[assignment]
+    except Exception as e:
+        logger.warning(f"Failed to load websearch sources: {e}")
+        websearch_sources = []
+
+    for ws_source in websearch_sources:
+        if ws_source.provider == "perplexity":
+            if not app_settings.perplexity_api_key:
+                logger.info(f"Skipping websearch '{ws_source.name}': PERPLEXITY_API_KEY not set")
+                continue
+            # Create a closure to capture source-specific parameters
+            source_name = f"websearch:{ws_source.name or 'perplexity'}"
+
+            def _make_perplexity_func(src: WebSearchSource) -> Any:
+                def _func() -> int:
+                    return ingest_perplexity_search(
+                        prompt=src.prompt,
+                        max_results=src.max_results,
+                        recency_filter=src.recency_filter,
+                        context_size=src.context_size,
+                    )
+
+                return _func
+
+            tasks.append(_ingest_source(source_name, _make_perplexity_func(ws_source)))
+
+        elif ws_source.provider == "grok":
+            if not app_settings.xai_api_key:
+                logger.info(f"Skipping websearch '{ws_source.name}': XAI_API_KEY not set")
+                continue
+            source_name = f"websearch:{ws_source.name or 'grok'}"
+
+            def _make_grok_func(src: WebSearchSource) -> Any:
+                def _func() -> int:
+                    return ingest_xsearch(
+                        prompt=src.prompt,
+                        max_threads=src.max_threads,
+                    )
+
+                return _func
+
+            tasks.append(_ingest_source(source_name, _make_grok_func(ws_source)))
+
+    source_count = len(tasks)
+    typer.echo(f"  Running parallel ingestion ({source_count} sources)...")
 
     # Run all sources in parallel
     results_list = await asyncio.gather(*tasks, return_exceptions=True)
@@ -540,6 +587,26 @@ def daily(
         f"Digest: {digest_info['title']}"
     )
 
+    # Emit pipeline_completion notification
+    from src.cli.adapters import _emit_notification_sync
+
+    _emit_notification_sync(
+        event_type="pipeline_completion",
+        title="Daily Pipeline Complete",
+        summary=(
+            f"Ingested {total_ingested} items, summarized {summarized_count}, "
+            f"created digest: {digest_info['title']}"
+        ),
+        payload={
+            "pipeline_type": "daily",
+            "date": target_date.strftime("%Y-%m-%d"),
+            "total_ingested": total_ingested,
+            "summarized_count": summarized_count,
+            "digest_title": digest_info["title"],
+            "url": "/digests",
+        },
+    )
+
     if is_json_mode():
         output_result(pipeline_result)
 
@@ -665,6 +732,26 @@ def weekly(
         f"  Ingested: {total_ingested} items | "
         f"Summarized: {summarized_count} | "
         f"Digest: {digest_info['title']}"
+    )
+
+    # Emit pipeline_completion notification
+    from src.cli.adapters import _emit_notification_sync
+
+    _emit_notification_sync(
+        event_type="pipeline_completion",
+        title="Weekly Pipeline Complete",
+        summary=(
+            f"Ingested {total_ingested} items, summarized {summarized_count}, "
+            f"created digest: {digest_info['title']}"
+        ),
+        payload={
+            "pipeline_type": "weekly",
+            "week_start": week_start.strftime("%Y-%m-%d"),
+            "total_ingested": total_ingested,
+            "summarized_count": summarized_count,
+            "digest_title": digest_info["title"],
+            "url": "/digests",
+        },
     )
 
     if is_json_mode():

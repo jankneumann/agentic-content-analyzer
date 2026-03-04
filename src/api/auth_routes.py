@@ -209,8 +209,9 @@ async def check_session(request: Request) -> dict[str, bool]:
     """
     settings = get_settings()
 
-    # In dev mode, always authenticated
-    if settings.is_development:
+    # In dev mode, always authenticated UNLESS keys are configured
+    keys_configured = settings.app_secret_key or settings.admin_api_key
+    if settings.is_development and not keys_configured:
         return {"authenticated": True}
 
     # No APP_SECRET_KEY configured

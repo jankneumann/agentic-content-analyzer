@@ -23,6 +23,7 @@ from src.models.content import (
     ContentStatus,
 )
 from src.models.jobs import JobStatus
+from src.models.query import ContentQuery, ContentQueryPreview
 from src.services.content_service import ContentService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -326,6 +327,26 @@ async def list_contents(
     Supports filtering by source type, status, publication, date range, and search.
     Results are paginated and sorted by the specified field (default: ingested_at desc).
     """
+    from src.services.content_query import ContentQueryService
+
+    # Validate sort_by — silent fallback preserves existing API behavior
+    if sort_by not in CONTENT_SORT_FIELDS:
+        sort_by = "ingested_at"
+
+    # Map singular endpoint params to ContentQuery list-based fields
+    content_query = ContentQuery(
+        source_types=[source_type] if source_type else None,
+        statuses=[status] if status else None,
+        publication_search=publication,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    svc = ContentQueryService()
+
     with get_db() as db:
         # OPTIMIZATION: Explicitly select only the columns needed for the list view
         # This avoids hydrating full ORM objects and loading heavy text/JSON fields,
@@ -340,19 +361,8 @@ async def list_contents(
             Content.ingested_at,
         )
 
-        # Apply filters
-        if source_type:
-            query = query.filter(Content.source_type == source_type)
-        if status:
-            query = query.filter(Content.status == status)
-        if publication:
-            query = query.filter(Content.publication.ilike(f"%{publication}%"))
-        if start_date:
-            query = query.filter(Content.published_date >= start_date)
-        if end_date:
-            query = query.filter(Content.published_date <= end_date)
-        if search:
-            query = query.filter(Content.title.ilike(f"%{search}%"))
+        # Apply filters via centralized ContentQueryService
+        query = svc.apply_filters(query, content_query)
 
         # Get total count
         total = query.count()
@@ -360,12 +370,8 @@ async def list_contents(
         # Calculate offset from page
         offset = (page - 1) * page_size
 
-        # Validate sort_by field
-        if sort_by not in CONTENT_SORT_FIELDS:
-            sort_by = "ingested_at"
-
-        # Get sort column dynamically
-        sort_column = getattr(Content, sort_by, Content.ingested_at)
+        # Apply sort
+        sort_column = getattr(Content, sort_by)
         if sort_order.lower() == "asc":
             query = query.order_by(sort_column.asc())
         else:
@@ -642,6 +648,28 @@ async def merge_duplicate(content_id: int, duplicate_id: int) -> ContentResponse
 
 
 # ============================================================================
+# Content Query Preview
+# ============================================================================
+
+
+@router.post("/query/preview")
+async def preview_content_query(
+    query: "ContentQuery",
+) -> "ContentQueryPreview":
+    """Preview what content matches a query.
+
+    Returns count, breakdown by source/status, date range, and sample titles.
+    Does not execute any batch operation.
+
+    Returns 200 with total_count=0 when no content matches (not 204 or error).
+    """
+    from src.services.content_query import ContentQueryService
+
+    svc = ContentQueryService()
+    return svc.preview(query)
+
+
+# ============================================================================
 # Content Summarization Endpoints
 # ============================================================================
 
@@ -653,6 +681,10 @@ class SummarizeContentRequest(BaseModel):
         default_factory=list,
         description="Specific content IDs to summarize (empty = all pending/parsed)",
     )
+    query: "ContentQuery | None" = Field(
+        default=None,
+        description="Content query filter (alternative to content_ids; takes precedence)",
+    )
     force: bool = Field(
         default=False,
         description="Force re-summarization even if summary exists",
@@ -660,6 +692,10 @@ class SummarizeContentRequest(BaseModel):
     retry_failed: bool = Field(
         default=False,
         description="Include failed content items (reset to PARSED and retry)",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Return preview without executing (requires query)",
     )
 
 
@@ -693,72 +729,84 @@ async def _enqueue_summarization_batch_job(
     return await enqueue_summarization_batch(content_ids, force=force)
 
 
-@router.post("/summarize", response_model=SummarizeContentResponse)
+@router.post("/summarize")
 async def trigger_content_summarization(
     request: SummarizeContentRequest,
-) -> SummarizeContentResponse:
+) -> SummarizeContentResponse | ContentQueryPreview:
     """
     Trigger summarization for content records.
 
-    If content_ids is empty, summarizes all pending/parsed content.
+    If content_ids is empty and no query, summarizes all pending/parsed content.
+    When query is provided, it takes precedence over content_ids.
+    When dry_run is true, returns ContentQueryPreview without executing.
     Enqueues jobs to pgqueuer_jobs table for worker processing.
     Use the /summarize/status/{task_id} endpoint to get real-time progress via SSE.
     """
     from src.models.summary import Summary
+    from src.services.content_query import ContentQueryService
 
-    # Get content to process
-    with get_db() as db:
-        query = db.query(Content)
+    # Build default statuses for the summarize operation
+    default_statuses = [ContentStatus.PENDING, ContentStatus.PARSED]
+    if request.retry_failed:
+        default_statuses.append(ContentStatus.FAILED)
 
-        if request.content_ids:
-            # Filter specific content IDs
-            query = query.filter(Content.id.in_(request.content_ids))
+    # Handle dry_run — return preview without executing
+    if request.dry_run:
+        svc = ContentQueryService()
+        query = request.query or ContentQuery()
+        if not query.statuses:
+            query = query.model_copy(update={"statuses": default_statuses})
+        return svc.preview(query)
 
-            if not request.force:
-                # Exclude content that already has summaries or is completed
-                # OPTIMIZATION: Use LEFT JOIN ... WHERE IS NULL instead of fetching all summary IDs
-                query = query.outerjoin(Summary, Content.id == Summary.content_id)
-                query = query.filter(
-                    Content.status != ContentStatus.COMPLETED,
-                    Summary.id.is_(None),
+    # When query is provided, use ContentQueryService to resolve IDs
+    if request.query:
+        svc = ContentQueryService()
+        query = request.query
+        if not query.statuses:
+            query = query.model_copy(update={"statuses": default_statuses})
+        content_ids = svc.resolve(query)
+    else:
+        # Original behavior
+        with get_db() as db:
+            q = db.query(Content)
+
+            if request.content_ids:
+                q = q.filter(Content.id.in_(request.content_ids))
+
+                if not request.force:
+                    q = q.outerjoin(Summary, Content.id == Summary.content_id)
+                    q = q.filter(
+                        Content.status != ContentStatus.COMPLETED,
+                        Summary.id.is_(None),
+                    )
+                contents = q.all()
+            else:
+                statuses_to_include = [ContentStatus.PENDING, ContentStatus.PARSED]
+                if request.retry_failed:
+                    statuses_to_include.append(ContentStatus.FAILED)
+
+                q = q.filter(Content.status.in_(statuses_to_include))
+                q = q.outerjoin(Summary, Content.id == Summary.content_id)
+                q = q.filter(Summary.id.is_(None))
+                q = q.options(
+                    defer(Content.markdown_content),
+                    defer(Content.tables_json),
+                    defer(Content.links_json),
+                    defer(Content.metadata_json),
+                    defer(Content.raw_content),
+                    defer(Content.error_message),
                 )
-            contents = query.all()
-        else:
-            # Determine which statuses to include
-            statuses_to_include = [ContentStatus.PENDING, ContentStatus.PARSED]
-            if request.retry_failed:
-                statuses_to_include.append(ContentStatus.FAILED)
 
-            # Get content in eligible statuses that doesn't have a summary
-            query = query.filter(Content.status.in_(statuses_to_include))
+                contents = q.all()
 
-            # OPTIMIZATION: Use LEFT JOIN ... WHERE IS NULL instead of fetching all summary IDs
-            query = query.outerjoin(Summary, Content.id == Summary.content_id)
-            query = query.filter(Summary.id.is_(None))
+                if request.retry_failed:
+                    for content in contents:
+                        if content.status == ContentStatus.FAILED:
+                            content.status = ContentStatus.PARSED
+                            content.error_message = None
+                    db.commit()
 
-            # OPTIMIZATION: Defer heavy columns when checking for summarization candidates
-            # We only need ID and status (and error_message for updates), so we avoid
-            # loading the full markdown content and JSON fields.
-            query = query.options(
-                defer(Content.markdown_content),
-                defer(Content.tables_json),
-                defer(Content.links_json),
-                defer(Content.metadata_json),
-                defer(Content.raw_content),
-                defer(Content.error_message),
-            )
-
-            contents = query.all()
-
-            # Reset failed content to PARSED so it can be retried
-            if request.retry_failed:
-                for content in contents:
-                    if content.status == ContentStatus.FAILED:
-                        content.status = ContentStatus.PARSED
-                        content.error_message = None
-                db.commit()
-
-        content_ids = [c.id for c in contents]
+            content_ids = [c.id for c in contents]
 
     if not content_ids:
         return SummarizeContentResponse(

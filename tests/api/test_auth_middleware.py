@@ -83,7 +83,9 @@ def dev_client(monkeypatch):
     """TestClient in development mode (auth middleware bypassed)."""
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setenv("ADMIN_API_KEY", _ADMIN_KEY)
+    # Ensure no auth keys are set, otherwise dev mode enforces auth
+    monkeypatch.setenv("APP_SECRET_KEY", "")
+    monkeypatch.setenv("ADMIN_API_KEY", "")
     monkeypatch.setenv("WORKER_ENABLED", "false")
 
     from src.config.settings import get_settings

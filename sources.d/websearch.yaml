@@ -1,0 +1,32 @@
+# Web Search Sources — scheduled web search for pipeline ingestion
+#
+# Each entry defines a named search with a specific provider:
+#   - perplexity: AI-powered web search with citations (requires PERPLEXITY_API_KEY)
+#   - grok: X/Twitter social signal via Grok API (requires XAI_API_KEY)
+#
+# Provider-specific options:
+#   Perplexity: max_results, recency_filter (hour/day/week/month), context_size (low/medium/high)
+#   Grok: max_threads
+
+defaults:
+  type: websearch
+  enabled: true
+
+sources:
+  # Perplexity: broad AI/tech web search
+  - name: "AI Weekly Roundup"
+    provider: perplexity
+    prompt: "Latest AI model releases, research breakthroughs, and industry news this week"
+    tags: [ai, weekly]
+
+  - name: "AI Infrastructure & Tools"
+    provider: perplexity
+    prompt: "New developer tools, frameworks, and infrastructure for AI/ML engineering"
+    tags: [ai, tools]
+
+  # Grok: X/Twitter social signal
+  - name: "AI Twitter Pulse"
+    provider: grok
+    prompt: "Find AI research announcements, model releases, and technical discussions on X"
+    tags: [ai, social]
+    max_threads: 30

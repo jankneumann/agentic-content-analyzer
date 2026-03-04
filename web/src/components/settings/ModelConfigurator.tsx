@@ -70,6 +70,11 @@ function groupByFamily(models: ModelOption[]): Record<string, ModelOption[]> {
   return groups
 }
 
+/** Capability requirements per pipeline step — filters model dropdown to eligible models */
+const STEP_CAPABILITY_FILTERS: Partial<Record<string, (model: ModelOption) => boolean>> = {
+  cloud_stt: (m) => m.supports_audio,
+}
+
 /** Badge color classes by source type */
 const SOURCE_BADGE_CLASSES: Record<StepConfig["source"], string> = {
   env: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
@@ -245,14 +250,23 @@ export function ModelConfigurator() {
 
   return (
     <div className="space-y-2">
-      {data.steps.map((step) => (
-        <StepRow
-          key={step.step}
-          step={step}
-          modelsByFamily={modelsByFamily}
-          families={families}
-        />
-      ))}
+      {data.steps.map((step) => {
+        const filter = STEP_CAPABILITY_FILTERS[step.step]
+        const stepModelsByFamily = filter
+          ? groupByFamily(data.available_models.filter(filter))
+          : modelsByFamily
+        const stepFamilies = filter
+          ? Object.keys(stepModelsByFamily).sort()
+          : families
+        return (
+          <StepRow
+            key={step.step}
+            step={step}
+            modelsByFamily={stepModelsByFamily}
+            families={stepFamilies}
+          />
+        )
+      })}
     </div>
   )
 }

@@ -143,6 +143,20 @@ export type {
 // Job History types (Task Audit Log)
 export type { JobHistoryItem, JobHistoryResponse, JobHistoryFilters } from "./job-history"
 
+// Content Query types
+export type { ContentQuery, ContentQueryPreview } from "./query"
+
+// Notification types
+export type {
+  NotificationEventType,
+  NotificationEvent,
+  NotificationEventListResponse,
+  UnreadCountResponse,
+  DeviceRegistration,
+  NotificationPreference,
+  NotificationPreferencesResponse,
+} from "./notification"
+
 /**
  * Common API response wrapper
  *

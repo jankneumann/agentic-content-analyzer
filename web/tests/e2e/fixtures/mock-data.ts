@@ -34,8 +34,14 @@ import type {
   PromptListResponse,
   PromptTestResponse,
   PromptUpdateResponse,
+  NotificationEvent,
+  NotificationEventListResponse,
+  UnreadCountResponse,
+  NotificationPreference,
+  NotificationPreferencesResponse,
 } from "../../../src/types"
 
+import type { ContentQuery, ContentQueryPreview } from "../../../src/types/query"
 import type { ScriptDetail, ScriptSection } from "../../../src/types/review"
 
 // ─── Content ───────────────────────────────────────────────
@@ -137,6 +143,53 @@ export function createContentStats(
     completed_count: 28,
     failed_count: 3,
     needs_summarization_count: 8,
+    ...overrides,
+  }
+}
+
+// ─── Content Query Preview ────────────────────────────────
+
+export function createContentQueryPreview(
+  overrides: Partial<ContentQueryPreview> = {}
+): ContentQueryPreview {
+  return {
+    total_count: 8,
+    by_source: { gmail: 5, rss: 3 },
+    by_status: { pending: 3, parsed: 5 },
+    date_range: {
+      earliest: "2025-01-10T00:00:00Z",
+      latest: "2025-01-15T23:59:59Z",
+    },
+    sample_titles: [
+      "AI Weekly: GPT-5 Announced",
+      "ML Ops Digest: Kubernetes for ML",
+      "Data Engineering Weekly",
+    ],
+    query: createContentQuery(),
+    ...overrides,
+  }
+}
+
+export function createEmptyContentQueryPreview(
+  overrides: Partial<ContentQueryPreview> = {}
+): ContentQueryPreview {
+  return {
+    total_count: 0,
+    by_source: {},
+    by_status: {},
+    date_range: { earliest: undefined, latest: undefined },
+    sample_titles: [],
+    query: createContentQuery(),
+    ...overrides,
+  }
+}
+
+export function createContentQuery(
+  overrides: Partial<ContentQuery> = {}
+): ContentQuery {
+  return {
+    sort_by: "published_date",
+    sort_order: "desc",
     ...overrides,
   }
 }
@@ -1048,4 +1101,100 @@ export function createLoginRateLimitedResponse(
     detail: "Too many attempts. Please try again later.",
     ...overrides,
   }
+}
+
+// ─── Notifications ────────────────────────────────────────
+
+export function createNotificationEvent(
+  overrides: Partial<NotificationEvent> = {}
+): NotificationEvent {
+  return {
+    id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    event_type: "digest_creation",
+    title: "Daily Digest Created",
+    summary: "Your daily AI digest is ready with 12 articles.",
+    payload: { digest_id: 42, url: "/digests/42" },
+    read: false,
+    created_at: "2025-01-15T12:00:00Z",
+    ...overrides,
+  }
+}
+
+export function createNotificationEventListResponse(
+  overrides: Partial<NotificationEventListResponse> = {}
+): NotificationEventListResponse {
+  return {
+    events: [
+      createNotificationEvent(),
+      createNotificationEvent({
+        id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        event_type: "pipeline_completion",
+        title: "Pipeline Completed",
+        summary: "Daily pipeline finished successfully.",
+        payload: { url: "/jobs" },
+        read: true,
+        created_at: "2025-01-15T10:00:00Z",
+      }),
+      createNotificationEvent({
+        id: "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        event_type: "job_failure",
+        title: "Summarization Failed",
+        summary: "Batch summarization job failed after 3 retries.",
+        payload: { job_id: 99 },
+        read: false,
+        created_at: "2025-01-14T18:00:00Z",
+      }),
+    ],
+    total: 3,
+    page: 1,
+    page_size: 50,
+    ...overrides,
+  }
+}
+
+export function createEmptyNotificationEventListResponse(): NotificationEventListResponse {
+  return { events: [], total: 0, page: 1, page_size: 50 }
+}
+
+export function createUnreadCountResponse(
+  overrides: Partial<UnreadCountResponse> = {}
+): UnreadCountResponse {
+  return { count: 2, ...overrides }
+}
+
+export function createEmptyUnreadCountResponse(): UnreadCountResponse {
+  return { count: 0 }
+}
+
+export function createNotificationPreference(
+  overrides: Partial<NotificationPreference> = {}
+): NotificationPreference {
+  return {
+    event_type: "batch_summary",
+    description: "Batch summarization completed",
+    enabled: true,
+    source: "default",
+    ...overrides,
+  }
+}
+
+export function createNotificationPreferencesResponse(
+  overrides: Partial<NotificationPreferencesResponse> = {}
+): NotificationPreferencesResponse {
+  return {
+    preferences: [
+      createNotificationPreference({ event_type: "batch_summary", description: "Batch summarization completed" }),
+      createNotificationPreference({ event_type: "theme_analysis", description: "Theme analysis completed" }),
+      createNotificationPreference({ event_type: "digest_creation", description: "Daily or weekly digest created" }),
+      createNotificationPreference({ event_type: "script_generation", description: "Podcast script generated" }),
+      createNotificationPreference({ event_type: "audio_generation", description: "Audio digest or podcast generated" }),
+      createNotificationPreference({ event_type: "pipeline_completion", description: "Full pipeline run completed" }),
+      createNotificationPreference({ event_type: "job_failure", description: "Background job failed" }),
+    ],
+    ...overrides,
+  }
+}
+
+export function createEmptyNotificationPreferencesResponse(): NotificationPreferencesResponse {
+  return { preferences: [] }
 }

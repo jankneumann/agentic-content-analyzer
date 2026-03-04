@@ -196,9 +196,9 @@ class TestLogin:
         assert resp.status_code == 401
 
     def test_login_no_app_secret_key(self, production_client_no_secret):
-        """Login when APP_SECRET_KEY is not set returns 500."""
+        """Login when APP_SECRET_KEY is not set returns 403."""
         resp = _login(production_client_no_secret, password="anything")
-        assert resp.status_code == 500
+        assert resp.status_code == 403
         body = resp.json()
         assert (
             "not configured" in body["error"].lower() or "not configured" in body["detail"].lower()
@@ -316,8 +316,14 @@ class TestSessionCheck:
         assert resp.status_code == 200
         assert resp.json() == {"authenticated": False}
 
-    def test_session_dev_mode_always_authenticated(self, dev_client):
+    def test_session_dev_mode_always_authenticated(self, dev_client, monkeypatch):
         """In development mode, /session always returns authenticated=true."""
+        # Ensure keys are explicitly None in the Settings object to test auth bypass
+        from src.config.settings import settings
+
+        monkeypatch.setattr(settings, "app_secret_key", None)
+        monkeypatch.setattr(settings, "admin_api_key", None)
+
         resp = dev_client.get("/api/v1/auth/session")
         assert resp.status_code == 200
         assert resp.json() == {"authenticated": True}

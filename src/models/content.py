@@ -57,6 +57,7 @@ class ContentSource(StrEnum):
     MANUAL = "manual"  # Manually created via API
     WEBPAGE = "webpage"  # Future: scraped web pages
     XSEARCH = "xsearch"  # X/Twitter posts via Grok search
+    PERPLEXITY = "perplexity"  # Web articles via Perplexity search
     OTHER = "other"
 
 

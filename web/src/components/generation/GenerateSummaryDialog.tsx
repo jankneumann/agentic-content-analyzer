@@ -8,7 +8,7 @@
  */
 
 import * as React from "react"
-import { Loader2, FileText, RefreshCw, ListChecks } from "lucide-react"
+import { Loader2, FileText, RefreshCw, ListChecks, Filter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,9 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { ContentQueryBuilder } from "@/components/query"
+import type { ContentQuery } from "@/types/query"
 
 interface GenerateSummaryDialogProps {
   open: boolean
@@ -39,6 +42,8 @@ export interface SummaryGenerationParams {
   newsletter_ids: number[]
   force: boolean
   retry_failed: boolean
+  /** Optional content query filter for targeted summarization */
+  content_query?: ContentQuery
 }
 
 export function GenerateSummaryDialog({
@@ -54,6 +59,8 @@ export function GenerateSummaryDialog({
   const [contentIds, setContentIds] = React.useState("")
   const [force, setForce] = React.useState(false)
   const [retryFailed, setRetryFailed] = React.useState(false)
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
+  const [contentQuery, setContentQuery] = React.useState<ContentQuery | undefined>(undefined)
 
   const parsedIds = React.useMemo(() => {
     if (!contentIds.trim()) return []
@@ -63,11 +70,16 @@ export function GenerateSummaryDialog({
       .filter((n) => !isNaN(n))
   }, [contentIds])
 
+  const handleQueryChange = React.useCallback((query: ContentQuery) => {
+    setContentQuery(Object.keys(query).length > 0 ? query : undefined)
+  }, [])
+
   const handleGenerate = () => {
     onGenerate({
       newsletter_ids: mode === "specific" ? parsedIds : [],
       force,
       retry_failed: retryFailed,
+      content_query: mode === "pending" ? contentQuery : undefined,
     })
   }
 
@@ -78,7 +90,7 @@ export function GenerateSummaryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -194,6 +206,27 @@ export function GenerateSummaryDialog({
             />
           </div>
         </div>
+
+        {/* Advanced Filters (only in pending mode) */}
+        {mode === "pending" && (
+          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-start text-sm">
+                <Filter className="h-4 w-4 mr-2" />
+                Advanced Filters
+                {contentQuery && Object.keys(contentQuery).length > 0 && (
+                  <span className="ml-auto text-xs text-muted-foreground">Active</span>
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2 pb-4">
+              <ContentQueryBuilder
+                onChange={handleQueryChange}
+                showPreview
+              />
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

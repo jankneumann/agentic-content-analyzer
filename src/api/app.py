@@ -24,6 +24,8 @@ from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.telemetry import TraceIdMiddleware
 from src.api.model_settings_routes import router as model_settings_router
+from src.api.notification_preferences_routes import router as notification_preferences_router
+from src.api.notification_routes import router as notification_router
 from src.api.otel_proxy_routes import router as otel_proxy_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.save_routes import router as save_router
@@ -39,6 +41,7 @@ from src.api.theme_routes import router as theme_router
 from src.api.upload_routes import router as upload_router
 from src.api.voice_cleanup_routes import router as voice_cleanup_router
 from src.api.voice_settings_routes import router as voice_settings_router
+from src.api.voice_stream_routes import router as voice_stream_router
 from src.config import settings
 
 
@@ -69,6 +72,14 @@ async def lifespan(app: FastAPI):
                 db.close()
         except Exception:
             logger.debug("Embedding config check skipped", exc_info=True)
+
+    # Auto-cleanup old notification events (>90 days)
+    try:
+        from src.services.notification_cleanup import auto_cleanup_notifications
+
+        auto_cleanup_notifications()
+    except Exception:
+        logger.debug("Notification cleanup skipped", exc_info=True)
 
     # Start embedded queue worker if enabled
     worker_task: asyncio.Task | None = None
@@ -113,8 +124,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Auth middleware — enforces session cookie or X-Admin-Key on all non-exempt endpoints
+app.add_middleware(AuthMiddleware)
+
 # CORS configuration - configurable via ALLOWED_ORIGINS env var
 # Use "*" for iOS Shortcuts and other mobile clients
+# Must be added AFTER AuthMiddleware so CORS wraps Auth (Starlette LIFO order).
+# This ensures 401/403 responses from AuthMiddleware still get CORS headers.
 allowed_origins = settings.get_allowed_origins_list()
 app.add_middleware(
     CORSMiddleware,
@@ -123,10 +139,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Auth middleware — enforces session cookie or X-Admin-Key on all non-exempt endpoints
-# Added before telemetry so auth errors still get trace IDs
-app.add_middleware(AuthMiddleware)
 
 # Telemetry middleware — adds X-Trace-Id header to responses
 app.add_middleware(TraceIdMiddleware)
@@ -149,6 +161,7 @@ app.include_router(settings_override_router)
 app.include_router(model_settings_router)
 app.include_router(voice_settings_router)
 app.include_router(voice_cleanup_router)
+app.include_router(voice_stream_router)  # WebSocket voice streaming (cloud STT)
 app.include_router(connection_status_router)
 app.include_router(upload_router)
 app.include_router(files_router)
@@ -160,6 +173,8 @@ app.include_router(search_router)  # Hybrid document search
 app.include_router(image_generation_router)  # AI image generation
 app.include_router(share_router)  # Share management (enable/disable/status)
 app.include_router(shared_router)  # Public shared content (no auth)
+app.include_router(notification_router)  # Notification events and SSE stream
+app.include_router(notification_preferences_router)  # Notification preferences
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 

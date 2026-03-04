@@ -12,13 +12,14 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from src.api.chat_rate_limiter import chat_rate_limiter
 from src.api.dependencies import verify_admin_key
 from src.config import settings
 from src.config.models import DEFAULT_MODELS, MODEL_REGISTRY, get_model_config
@@ -874,7 +875,9 @@ async def get_chat_config() -> ChatConfigResponse:
     return ChatConfigResponse(
         available_models=available_models,
         default_model=default_model,
-        web_search_enabled=bool(settings.tavily_api_key),
+        web_search_enabled=bool(
+            settings.tavily_api_key or settings.perplexity_api_key or settings.xai_api_key
+        ),
         max_message_length=2000,
         max_history_length=50,
     )
@@ -925,8 +928,20 @@ async def get_conversation(conversation_id: str) -> ConversationResponse:
 
 
 @router.post("/conversations", response_model=ConversationResponse)
-async def create_conversation(request: CreateConversationRequest) -> ConversationResponse:
+async def create_conversation(
+    body: CreateConversationRequest, request: Request
+) -> ConversationResponse:
     """Create a new conversation."""
+    # Rate limit check for new conversations to prevent spam
+    client_ip = request.client.host if request.client else "unknown"
+    if chat_rate_limiter.is_limited(client_ip):
+        retry_after = chat_rate_limiter.get_retry_after(client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     with get_db() as db:
         # Generate conversation ID
         conv_id = str(uuid.uuid4())
@@ -934,27 +949,27 @@ async def create_conversation(request: CreateConversationRequest) -> Conversatio
         # Create conversation
         conversation = Conversation(
             id=conv_id,
-            artifact_type=request.artifact_type,
-            artifact_id=int(request.artifact_id),
-            title=request.title or f"Revision for {request.artifact_type} #{request.artifact_id}",
+            artifact_type=body.artifact_type,
+            artifact_id=int(body.artifact_id),
+            title=body.title or f"Revision for {body.artifact_type} #{body.artifact_id}",
             is_active=True,
         )
         db.add(conversation)
 
         # Add initial message if provided
-        if request.initial_message:
+        if body.initial_message:
             user_msg = ChatMessage(
                 id=str(uuid.uuid4()),
                 conversation_id=conv_id,
                 role=MessageRole.USER.value,
-                content=request.initial_message,
+                content=body.initial_message,
             )
             db.add(user_msg)
 
             # Generate initial response
             response_content, metadata = await generate_ai_response(
                 conversation,
-                request.initial_message,
+                body.initial_message,
                 db=db,
             )
 
@@ -992,8 +1007,20 @@ async def delete_conversation(conversation_id: str) -> dict[str, str]:
 
 
 @router.post("/conversations/{conversation_id}/messages")
-async def send_message(conversation_id: str, request: SendMessageRequest) -> StreamingResponse:
+async def send_message(
+    conversation_id: str, body: SendMessageRequest, request: Request
+) -> StreamingResponse:
     """Send a message and stream the response via SSE."""
+
+    # Rate limit check
+    client_ip = request.client.host if request.client else "unknown"
+    if chat_rate_limiter.is_limited(client_ip):
+        retry_after = chat_rate_limiter.get_retry_after(client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         with get_db() as db:
@@ -1008,7 +1035,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest) -> Str
                 id=str(uuid.uuid4()),
                 conversation_id=conversation_id,
                 role=MessageRole.USER.value,
-                content=request.content,
+                content=body.content,
             )
             db.add(user_msg)
             db.commit()
@@ -1025,9 +1052,9 @@ async def send_message(conversation_id: str, request: SendMessageRequest) -> Str
 
             async for chunk, metadata in generate_ai_response_streaming(
                 conversation,
-                request.content,
-                enable_web_search=request.enable_web_search,
-                model=request.model,
+                body.content,
+                enable_web_search=body.enable_web_search,
+                model=body.model,
                 db=db,
             ):
                 if metadata:
@@ -1042,9 +1069,9 @@ async def send_message(conversation_id: str, request: SendMessageRequest) -> Str
             # Ensure we have metadata
             if final_metadata is None:
                 final_metadata = MessageMetadata(
-                    model=request.model or "claude-sonnet-4-5",
+                    model=body.model or "claude-sonnet-4-5",
                     token_usage=0,
-                    web_search_used=request.enable_web_search,
+                    web_search_used=body.enable_web_search,
                     processing_time_ms=0,
                 )
 
@@ -1080,8 +1107,18 @@ async def send_message(conversation_id: str, request: SendMessageRequest) -> Str
 
 
 @router.post("/conversations/{conversation_id}/regenerate")
-async def regenerate_last_message(conversation_id: str) -> StreamingResponse:
+async def regenerate_last_message(conversation_id: str, request: Request) -> StreamingResponse:
     """Regenerate the last assistant message."""
+
+    # Rate limit check
+    client_ip = request.client.host if request.client else "unknown"
+    if chat_rate_limiter.is_limited(client_ip):
+        retry_after = chat_rate_limiter.get_retry_after(client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         with get_db() as db:

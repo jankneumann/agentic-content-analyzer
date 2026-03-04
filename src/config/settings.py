@@ -181,7 +181,7 @@ PoolerModeType = Literal["transaction", "session"]
 Neo4jProviderType = Literal["local", "auradb"]
 
 # Type alias for observability provider
-ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel"]
+ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel", "langfuse"]
 
 # Audio digest voice presets (maps friendly names to provider-specific voice IDs)
 AUDIO_DIGEST_VOICE_PRESETS: dict[str, dict[str, str]] = {
@@ -466,6 +466,17 @@ class Settings(BaseSettings):
     grok_x_max_turns: int = 5  # Max tool calling turns per search
     grok_x_max_threads: int = 50  # Max threads per search run
 
+    # Perplexity Search Configuration
+    perplexity_api_key: str | None = None  # Perplexity API key
+    perplexity_model: str = "sonar"  # sonar or sonar-pro
+    perplexity_search_context_size: str = "medium"  # low, medium, high
+    perplexity_search_recency_filter: str = "week"  # hour, day, week, month
+    perplexity_max_results: int = 30  # Max articles per search run
+    perplexity_domain_filter: list[str] = []  # Domain allow/deny list
+
+    # Unified Web Search Provider (for ad-hoc search: chat, podcast, review)
+    web_search_provider: str = "tavily"  # tavily, perplexity, grok
+
     # Podcast Ingestion Configuration
     podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"
     podcast_max_duration_minutes: int = 120  # Max episode duration to transcribe
@@ -611,6 +622,11 @@ class Settings(BaseSettings):
     opik_project_name: str = "newsletter-aggregator"  # Opik project name
     opik_base_url: str = "http://localhost:5174"  # Opik UI/nginx proxy URL
     opik_backend_url: str = "http://localhost:8080"  # Opik backend (health check)
+
+    # Langfuse Configuration (Cloud or self-hosted)
+    langfuse_public_key: str | None = None  # Langfuse public key (pk-lf-...)
+    langfuse_secret_key: str | None = None  # Langfuse secret key (sk-lf-...)
+    langfuse_base_url: str = "https://cloud.langfuse.com"  # Base URL (override for self-hosted)
 
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key
@@ -860,6 +876,20 @@ class Settings(BaseSettings):
                 if not self.otel_exporter_otlp_endpoint:
                     raise ValueError(
                         "OBSERVABILITY_PROVIDER=otel requires OTEL_EXPORTER_OTLP_ENDPOINT to be set."
+                    )
+            case "langfuse":
+                has_public = bool(self.langfuse_public_key)
+                has_secret = bool(self.langfuse_secret_key)
+                if has_public != has_secret:
+                    logger.warning(
+                        "Langfuse provider has only one of public/secret key. "
+                        "Both are required for authentication. Auth header will not be sent."
+                    )
+                elif not has_public and not has_secret:
+                    logger.warning(
+                        "Langfuse provider configured without API keys. "
+                        "Traces will not be authenticated. "
+                        "Get keys from Langfuse Settings → API Keys."
                     )
             case "noop":
                 pass

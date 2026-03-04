@@ -718,7 +718,7 @@ Source: {content.source_type.value if content.source_type else "unknown"}
     async def _handle_web_search(self, query: str) -> str:
         """Tool handler: Perform web search.
 
-        Uses Tavily for web search.
+        Uses the configured web search provider (Tavily, Perplexity, or Grok).
 
         Args:
             query: Search query
@@ -726,15 +726,15 @@ Source: {content.source_type.value if content.source_type else "unknown"}
         Returns:
             Search results or placeholder
         """
-        from src.services.tavily_service import get_tavily_service
+        from src.services.web_search import get_web_search_provider
 
         logger.debug(f"Web search requested for query: {query}")
         self.web_search_queries.append(query)
 
-        tavily = get_tavily_service()
-        results = tavily.search(query)
+        provider = get_web_search_provider()
+        results = provider.search(query)
 
-        return tavily.format_results(results)
+        return provider.format_results(results)
 
     def _build_user_prompt(
         self,

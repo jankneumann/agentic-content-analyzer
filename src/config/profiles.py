@@ -28,7 +28,7 @@ DEFAULT_PROFILES_DIR = "profiles"
 DatabaseProviderType = Literal["local", "supabase", "neon", "railway"]
 Neo4jProviderType = Literal["local", "auradb"]
 StorageProviderType = Literal["local", "s3", "supabase", "railway"]
-ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel"]
+ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel", "langfuse"]
 
 
 # =============================================================================
@@ -696,6 +696,7 @@ PROVIDER_REQUIREMENTS: dict[str, dict[str, list[str]]] = {
         "opik": [],  # Works without key for self-hosted
         "braintrust": ["braintrust_api_key"],
         "otel": ["otel_exporter_otlp_endpoint"],
+        "langfuse": [],  # Works without keys for self-hosted
     },
 }
 

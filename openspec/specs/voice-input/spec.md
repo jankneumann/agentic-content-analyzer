@@ -4,66 +4,78 @@
 TBD - created by archiving change add-voice-input. Update Purpose after archive.
 ## Requirements
 ### Requirement: Voice Input Hook
-The system SHALL provide a `useVoiceInput` React hook that wraps the Web Speech API and exposes recording state, transcript, and control methods.
+The system SHALL provide a `useVoiceInput` React hook that wraps the Web Speech API, on-device Whisper engine, native Capacitor speech recognition, or cloud STT streaming, and exposes recording state, transcript, and control methods.
 
 #### Scenario: Start listening
 - **WHEN** `startListening()` is called
-- **THEN** the hook SHALL request microphone access via `SpeechRecognition.start()`
+- **THEN** the hook SHALL activate the configured STT engine
 - **AND** set `isListening` to `true`
 
 #### Scenario: Stop listening
 - **WHEN** `stopListening()` is called
-- **THEN** the hook SHALL call `SpeechRecognition.stop()`
+- **THEN** the hook SHALL stop the active STT engine
 - **AND** set `isListening` to `false`
 - **AND** emit the final transcript via `onResult` callback
 
-#### Scenario: Toggle listening
-- **WHEN** `toggleListening()` is called while not listening
-- **THEN** the hook SHALL start listening
-- **WHEN** `toggleListening()` is called while listening
-- **THEN** the hook SHALL stop listening
+#### Scenario: Cloud engine option
+- **WHEN** the `engine` option is set to `"cloud"`
+- **THEN** the hook SHALL use the WebSocket-based cloud STT engine
+- **AND** stream audio to the backend in real-time
+- **AND** display interim transcripts as they arrive via WebSocket
 
-#### Scenario: Interim results
-- **WHEN** the SpeechRecognition `result` event fires with `isFinal === false`
-- **THEN** the hook SHALL update `interimTranscript` with the current in-progress text
-- **AND** `interimTranscript` SHALL be visually distinct from final text
+#### Scenario: Auto engine preference order
+- **WHEN** the `engine` option is set to `"auto"`
+- **THEN** the hook SHALL select an engine based on a configurable preference order
+- **AND** the default preference order SHALL be: `cloud` → `native` → `browser` → `on-device`
+- **AND** the first available engine in the preference order SHALL be used
 
-#### Scenario: Final results
-- **WHEN** the SpeechRecognition `result` event fires with `isFinal === true`
+#### Scenario: Auto engine preference customization
+- **WHEN** the user configures the engine preference order in settings
+- **THEN** the `"auto"` engine SHALL follow the user's custom preference order
+
+#### Scenario: Interim results (cloud)
+- **WHEN** the cloud STT WebSocket returns a message with `type: "interim"`
+- **THEN** the hook SHALL update `interimTranscript` with the interim text
+
+#### Scenario: Final results (cloud)
+- **WHEN** the cloud STT WebSocket returns a message with `type: "final"` and `cleaned: true`
 - **THEN** the hook SHALL append the result to `transcript`
 - **AND** clear `interimTranscript`
+- **AND** set `transcriptCleaned` to `true` (signaling that the separate cleanup step can be skipped)
+
+#### Scenario: Final results (cloud, uncleaned)
+- **WHEN** the cloud STT WebSocket returns a message with `type: "final"` and `cleaned: false`
+- **THEN** the hook SHALL append the result to `transcript`
+- **AND** clear `interimTranscript`
+- **AND** set `transcriptCleaned` to `false`
 
 #### Scenario: Continuous mode
 - **WHEN** `continuous` option is set to `true`
-- **THEN** SpeechRecognition SHALL remain active after each final result
-- **AND** continue accepting speech until explicitly stopped
-
-#### Scenario: Single-utterance mode
-- **WHEN** `continuous` option is set to `false` (default)
-- **THEN** SpeechRecognition SHALL stop after the first final result
+- **THEN** the active engine SHALL remain active after each final result
 
 #### Scenario: Language configuration
-- **WHEN** `lang` option is provided (e.g., `"en-US"`)
-- **THEN** the hook SHALL set `SpeechRecognition.lang` to that value
-- **AND** default to `"en-US"` if not specified
+- **WHEN** `lang` option is provided
+- **THEN** the hook SHALL configure the active engine with that language
 
 #### Scenario: Reset transcript
 - **WHEN** `resetTranscript()` is called
-- **THEN** `transcript` and `interimTranscript` SHALL both be cleared to empty strings
+- **THEN** `transcript` and `interimTranscript` SHALL both be cleared
 
 ### Requirement: Voice Input Feature Detection
-The system SHALL detect Web Speech API availability and disable voice input gracefully on unsupported browsers.
+The system SHALL detect all available STT engines and disable voice input only when no engine is available.
 
-#### Scenario: Supported browser
-- **WHEN** `window.SpeechRecognition` or `window.webkitSpeechRecognition` is available
+#### Scenario: Cloud engine available
+- **WHEN** a cloud STT provider is configured with a valid API key
+- **THEN** `cloudAvailable` SHALL be `true`
+
+#### Scenario: Cloud engine not configured
+- **WHEN** no cloud STT provider API key is configured
+- **THEN** `cloudAvailable` SHALL be `false`
+- **AND** the engine preference order SHALL skip `"cloud"`
+
+#### Scenario: At least one engine available
+- **WHEN** any of `browserSupported`, `onDeviceAvailable`, `cloudAvailable`, or native is available
 - **THEN** `isSupported` SHALL be `true`
-- **AND** the voice input button SHALL be enabled
-
-#### Scenario: Unsupported browser
-- **WHEN** neither `window.SpeechRecognition` nor `window.webkitSpeechRecognition` is available
-- **THEN** `isSupported` SHALL be `false`
-- **AND** the voice input button SHALL be rendered as disabled
-- **AND** a tooltip SHALL explain that the browser does not support speech recognition
 
 ### Requirement: Voice Input Error Handling
 The system SHALL handle all SpeechRecognition error events gracefully with user-facing feedback.

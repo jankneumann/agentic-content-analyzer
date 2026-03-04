@@ -35,6 +35,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { CopyButton } from "@/components/ui/copy-button"
 import { usePrompt, useUpdatePrompt, useResetPrompt, useTestPrompt } from "@/hooks/use-prompts"
 import type { PromptInfo } from "@/types/prompt"
 
@@ -231,7 +232,10 @@ export function PromptEditor({ promptKey, promptInfo, onClose }: PromptEditorPro
                 <Label className="text-sm font-medium text-muted-foreground">
                   Default Value
                 </Label>
-                <div className="mt-2 rounded-md border bg-muted/50 p-3">
+                <div className="group relative mt-2 rounded-md border bg-muted/50 p-3">
+                  <div className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
+                    <CopyButton content={activePrompt.default_value} size="sm" />
+                  </div>
                   <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground">
                     {activePrompt.default_value}
                   </pre>
@@ -299,7 +303,10 @@ export function PromptEditor({ promptKey, promptInfo, onClose }: PromptEditorPro
 
                   {/* Test result */}
                   {testMutation.data && (
-                    <div className="rounded-md border bg-muted/50 p-3">
+                    <div className="group relative rounded-md border bg-muted/50 p-3">
+                      <div className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
+                        <CopyButton content={testMutation.data.rendered_prompt} size="sm" />
+                      </div>
                       <Label className="text-xs font-medium text-muted-foreground mb-1 block">
                         Rendered Output
                       </Label>

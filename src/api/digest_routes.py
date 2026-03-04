@@ -20,6 +20,7 @@ from src.models.digest import (
     DigestStatus,
     DigestType,
 )
+from src.models.query import ContentQuery
 from src.processors.digest_creator import DigestCreator
 from src.storage.database import get_db
 from src.utils.digest_markdown import parse_markdown_digest
@@ -52,6 +53,10 @@ class GenerateDigestRequest(BaseModel):
     max_technical_developments: int = Field(default=5)
     max_emerging_trends: int = Field(default=3)
     include_historical_context: bool = Field(default=True)
+    content_query: "ContentQuery | None" = Field(
+        default=None, description="Optional content selection override"
+    )
+    dry_run: bool = Field(default=False, description="Return preview without generating digest")
 
 
 class DigestSummary(BaseModel):
@@ -322,6 +327,7 @@ async def generate_digest(
     """Generate a new digest (daily or weekly).
 
     Starts digest generation in background and returns immediately.
+    When dry_run is true, returns a preview of matching content without generating.
     Poll GET /digests/{digest_id} for status.
     """
     logger.info(f"Received digest generation request: {request.digest_type}")
@@ -350,6 +356,23 @@ async def generate_digest(
     else:
         period_start = request.period_start
 
+    # Handle dry_run: return preview without generating
+    if request.dry_run:
+        from src.models.content import ContentStatus
+        from src.models.query import ContentQuery
+        from src.services.content_query import ContentQueryService
+
+        query = request.content_query or ContentQuery()
+        if not query.start_date:
+            query = query.model_copy(update={"start_date": period_start})
+        if not query.end_date:
+            query = query.model_copy(update={"end_date": period_end})
+        if not query.statuses:
+            query = query.model_copy(update={"statuses": [ContentStatus.COMPLETED]})
+
+        svc = ContentQueryService()
+        return svc.preview(query).model_dump(mode="json")
+
     # Create digest request
     digest_request = DigestRequest(
         digest_type=digest_type,
@@ -359,6 +382,7 @@ async def generate_digest(
         max_technical_developments=request.max_technical_developments,
         max_emerging_trends=request.max_emerging_trends,
         include_historical_context=request.include_historical_context,
+        content_query=request.content_query,
     )
 
     # Queue background task
@@ -661,7 +685,8 @@ async def get_digest_navigation(
     """Get navigation info for prev/next digest within a filtered list."""
     with get_db() as db:
         # Build base query with same filters as list view
-        query = db.query(Digest)
+        # OPTIMIZATION: Only fetch IDs to avoid loading full Digest objects for navigation
+        query = db.query(Digest.id)
         query = query.filter(Digest.digest_type.in_([DigestType.DAILY, DigestType.WEEKLY]))
 
         if status:
@@ -681,7 +706,7 @@ async def get_digest_navigation(
         # Order by created_at descending (matching list view)
         ordered_query = query.order_by(Digest.created_at.desc())
         all_digests = ordered_query.all()
-        digest_ids = [d.id for d in all_digests]
+        digest_ids = [d[0] for d in all_digests]
         total = len(digest_ids)
 
         # Find current position

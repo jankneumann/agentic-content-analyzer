@@ -72,6 +72,8 @@ class ModelFamily(StrEnum):
     CLAUDE = "claude"
     GEMINI = "gemini"
     GPT = "gpt"
+    WHISPER = "whisper"  # OpenAI Whisper (STT-only)
+    DEEPGRAM = "deepgram"  # Deepgram (STT-only)
 
 
 class ModelStep(StrEnum):
@@ -90,6 +92,7 @@ class ModelStep(StrEnum):
     PODCAST_SCRIPT = "podcast_script"  # Podcast script generation from digest
     VOICE_CLEANUP = "voice_cleanup"  # Voice transcript cleanup/polishing
     IMAGE_SUGGESTION = "image_suggestion"  # LLM-based image content analysis
+    CLOUD_STT = "cloud_stt"  # Cloud speech-to-text transcription
 
 
 # Map of env var names per model step (e.g., MODEL_SUMMARIZATION)
@@ -141,6 +144,7 @@ class ModelInfo:
     # Capabilities (same across all providers)
     supports_vision: bool = False  # Whether model supports image inputs
     supports_video: bool = False  # Whether model supports video inputs (e.g., YouTube URLs)
+    supports_audio: bool = False  # Whether model supports audio inputs (e.g., cloud STT)
     default_version: str | None = None  # Default version date (e.g., "20250929")
 
 
@@ -210,7 +214,8 @@ def load_model_registry() -> tuple[
             name=model_data["name"],
             supports_vision=model_data.get("supports_vision", False),
             supports_video=model_data.get("supports_video", False),
-            default_version=model_data.get("default_version"),  # NEW
+            supports_audio=model_data.get("supports_audio", False),
+            default_version=model_data.get("default_version"),
         )
 
     # Parse provider-model configs (with provider-specific model IDs)
@@ -260,6 +265,7 @@ class ModelConfig:
         podcast_script: str | None = None,
         voice_cleanup: str | None = None,
         image_suggestion: str | None = None,
+        cloud_stt: str | None = None,
         # Provider configurations (in priority order for failover)
         providers: list[ProviderConfig] | None = None,
     ):
@@ -279,6 +285,7 @@ class ModelConfig:
             podcast_script: Model for podcast script generation (default from YAML)
             voice_cleanup: Model for voice transcript cleanup (default from YAML)
             image_suggestion: Model for image suggestion analysis (default from YAML)
+            cloud_stt: Model for cloud speech-to-text (default from YAML)
             providers: List of provider configurations in priority order
         """
         # Use defaults from YAML if not specified
@@ -303,6 +310,8 @@ class ModelConfig:
             or DEFAULT_MODELS.get("voice_cleanup", DEFAULT_MODELS["summarization"]),
             ModelStep.IMAGE_SUGGESTION: image_suggestion
             or DEFAULT_MODELS.get("image_suggestion", DEFAULT_MODELS["summarization"]),
+            ModelStep.CLOUD_STT: cloud_stt
+            or DEFAULT_MODELS.get("cloud_stt", DEFAULT_MODELS["youtube_processing"]),
         }
 
         # Validate all models exist

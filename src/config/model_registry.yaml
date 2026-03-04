@@ -54,6 +54,7 @@ models:
     name: "Gemini 3.0 Flash"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
+    supports_audio: true  # Native audio input for cloud STT
     default_version: "preview"
 
   gemini-3-pro:
@@ -61,6 +62,7 @@ models:
     name: "Gemini 3.0 Pro"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
+    supports_audio: true  # Native audio input for cloud STT
     default_version: "preview"
 
   gemini-2.5-flash:
@@ -68,6 +70,7 @@ models:
     name: "Gemini 2.5 Flash"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
+    supports_audio: true  # Native audio input for cloud STT
     default_version: ""
 
   gemini-2.5-flash-lite:
@@ -75,6 +78,7 @@ models:
     name: "Gemini 2.5 Flash Lite"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
+    supports_audio: true  # Native audio input for cloud STT
     default_version: ""
 
   gemini-2.0-flash:
@@ -82,6 +86,24 @@ models:
     name: "Gemini 2.0 Flash"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
+    supports_audio: true  # Native audio input for cloud STT
+    default_version: ""
+
+  # STT-specific models
+  whisper-1:
+    family: whisper
+    name: "OpenAI Whisper"
+    supports_vision: false
+    supports_video: false
+    supports_audio: true  # Audio transcription only
+    default_version: ""
+
+  deepgram-nova-3:
+    family: deepgram
+    name: "Deepgram Nova 3"
+    supports_vision: false
+    supports_video: false
+    supports_audio: true  # Audio transcription only
     default_version: ""
 
   # OpenAI GPT-4o Family
@@ -302,6 +324,24 @@ provider_model_configs:
     max_output_tokens: 65536
     tier: standard
 
+  # OpenAI Whisper (STT-only, priced per audio minute not tokens)
+  openai.whisper-1:
+    provider_model_id: "whisper-1"
+    cost_per_mtok_input: 0.006  # ~$0.006/min audio (not token-based)
+    cost_per_mtok_output: 0.00
+    context_window: 0  # Not applicable for STT
+    max_output_tokens: 0
+    tier: standard
+
+  # Deepgram Nova 3 (STT-only, priced per audio minute)
+  openai.deepgram-nova-3:
+    provider_model_id: "nova-3"
+    cost_per_mtok_input: 0.0043  # ~$0.0043/min audio
+    cost_per_mtok_output: 0.00
+    context_window: 0  # Not applicable for STT
+    max_output_tokens: 0
+    tier: standard
+
 # Default model selection per pipeline step (using family-based IDs)
 default_models:
   summarization: claude-haiku-4-5  # Fast, cheap for structured extraction
@@ -317,6 +357,7 @@ default_models:
   podcast_script: gemini-2.5-flash  # Conversational dialogue, tool use, high rate limits
   voice_cleanup: claude-haiku-4-5  # Fast, cheap for transcript polishing
   image_suggestion: claude-haiku-4-5  # Fast, cheap for image suggestion analysis
+  cloud_stt: gemini-2.5-flash  # Native audio + built-in cleanup in one API call
 
 # Notes on provider tiers and pricing:
 # - Anthropic: Base pricing, direct API access

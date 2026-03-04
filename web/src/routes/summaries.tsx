@@ -165,6 +165,7 @@ function SummariesPage() {
     summarizeMutation.mutate(
       {
         content_ids: contentIds,
+        query: params.content_query,
         force: params.force,
         retry_failed: params.retry_failed,
       },
