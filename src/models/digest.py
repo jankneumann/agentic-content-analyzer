@@ -9,6 +9,7 @@ from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer
 from sqlalchemy.orm import Mapped, relationship
 
 from src.models.base import Base
+from src.models.query import ContentQuery
 
 if TYPE_CHECKING:
     from src.models.audio_digest import AudioDigest
@@ -169,3 +170,6 @@ class DigestRequest(BaseModel):
     max_technical_developments: int = Field(default=5, description="Max technical developments")
     max_emerging_trends: int = Field(default=3, description="Max emerging trends")
     include_historical_context: bool = Field(default=True, description="Include historical context")
+    content_query: "ContentQuery | None" = Field(
+        default=None, description="Optional content selection override"
+    )

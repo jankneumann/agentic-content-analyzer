@@ -32,7 +32,14 @@ import os
 
 import pytest
 from pytest_factoryboy import register
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.types import JSON
+
+# Monkeypatch JSONB to JSON for SQLite compatibility in tests
+# This must happen BEFORE any models are imported
+if "sqlite" in os.environ.get("TEST_DATABASE_URL", ""):
+    postgresql.JSONB = JSON
 
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory

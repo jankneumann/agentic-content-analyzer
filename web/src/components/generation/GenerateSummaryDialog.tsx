@@ -8,7 +8,7 @@
  */
 
 import * as React from "react"
-import { Loader2, FileText, RefreshCw, ListChecks } from "lucide-react"
+import { Loader2, FileText, RefreshCw, ListChecks, Filter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,9 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { ContentQueryBuilder } from "@/components/query"
+import type { ContentQuery } from "@/types/query"
 
 interface GenerateSummaryDialogProps {
   open: boolean
@@ -39,6 +42,8 @@ export interface SummaryGenerationParams {
   newsletter_ids: number[]
   force: boolean
   retry_failed: boolean
+  /** Optional content query filter for targeted summarization */
+  content_query?: ContentQuery
 }
 
 export function GenerateSummaryDialog({
@@ -54,6 +59,8 @@ export function GenerateSummaryDialog({
   const [contentIds, setContentIds] = React.useState("")
   const [force, setForce] = React.useState(false)
   const [retryFailed, setRetryFailed] = React.useState(false)
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
+  const [contentQuery, setContentQuery] = React.useState<ContentQuery | undefined>(undefined)
 
   const parsedIds = React.useMemo(() => {
     if (!contentIds.trim()) return []
@@ -63,11 +70,16 @@ export function GenerateSummaryDialog({
       .filter((n) => !isNaN(n))
   }, [contentIds])
 
+  const handleQueryChange = React.useCallback((query: ContentQuery) => {
+    setContentQuery(Object.keys(query).length > 0 ? query : undefined)
+  }, [])
+
   const handleGenerate = () => {
     onGenerate({
       newsletter_ids: mode === "specific" ? parsedIds : [],
       force,
       retry_failed: retryFailed,
+      content_query: mode === "pending" ? contentQuery : undefined,
     })
   }
 
@@ -78,7 +90,7 @@ export function GenerateSummaryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -124,15 +136,26 @@ export function GenerateSummaryDialog({
               {failedCount > 0 && (
                 <div className="flex items-center justify-between rounded-lg border p-3 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
                   <div className="space-y-0.5">
-                    <Label className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                    <Label
+                      htmlFor="retry-failed-switch"
+                      className="flex items-center gap-2 text-amber-800 dark:text-amber-200"
+                    >
                       <RefreshCw className="h-4 w-4" />
                       Retry {failedCount} Failed Items
                     </Label>
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                    <p
+                      id="retry-failed-desc"
+                      className="text-xs text-amber-600 dark:text-amber-400"
+                    >
                       Reset failed content and attempt summarization again
                     </p>
                   </div>
-                  <Switch checked={retryFailed} onCheckedChange={setRetryFailed} />
+                  <Switch
+                    id="retry-failed-switch"
+                    aria-describedby="retry-failed-desc"
+                    checked={retryFailed}
+                    onCheckedChange={setRetryFailed}
+                  />
                 </div>
               )}
             </div>
@@ -161,17 +184,49 @@ export function GenerateSummaryDialog({
           {/* Force Toggle */}
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div className="space-y-0.5">
-              <Label className="flex items-center gap-2">
+              <Label
+                htmlFor="force-summarize-switch"
+                className="flex items-center gap-2"
+              >
                 <RefreshCw className="h-4 w-4" />
                 Force Re-summarize
               </Label>
-              <p className="text-xs text-muted-foreground">
+              <p
+                id="force-summarize-desc"
+                className="text-xs text-muted-foreground"
+              >
                 Regenerate even if summary already exists
               </p>
             </div>
-            <Switch checked={force} onCheckedChange={setForce} />
+            <Switch
+              id="force-summarize-switch"
+              aria-describedby="force-summarize-desc"
+              checked={force}
+              onCheckedChange={setForce}
+            />
           </div>
         </div>
+
+        {/* Advanced Filters (only in pending mode) */}
+        {mode === "pending" && (
+          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-start text-sm">
+                <Filter className="h-4 w-4 mr-2" />
+                Advanced Filters
+                {contentQuery && Object.keys(contentQuery).length > 0 && (
+                  <span className="ml-auto text-xs text-muted-foreground">Active</span>
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2 pb-4">
+              <ContentQueryBuilder
+                onChange={handleQueryChange}
+                showPreview
+              />
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
