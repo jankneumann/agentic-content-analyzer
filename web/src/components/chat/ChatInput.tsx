@@ -280,23 +280,50 @@ export function ChatInput({
           {/* Send button */}
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
-                  aria-label="Send message"
-                  className="h-9 w-9 shrink-0"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
+              {canSubmit ? (
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    onClick={handleSubmit}
+                    aria-label="Send message"
+                    className="h-9 w-9 shrink-0"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+              ) : (
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-block" aria-label="Send message (disabled)">
+                    <Button
+                      size="icon"
+                      onClick={(e) => e.preventDefault()}
+                      disabled
+                      aria-hidden="true"
+                      className="h-9 w-9 shrink-0 pointer-events-none"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+              )}
               <TooltipContent>
-                <p>Send message</p>
+                <p>
+                  {isLoading
+                    ? "Sending message..."
+                    : disabled
+                      ? "Chat is currently disabled"
+                      : value.trim().length === 0
+                        ? "Please enter a message"
+                        : "Send message"}
+                </p>
                 <p className="text-xs text-muted-foreground">Press Enter</p>
               </TooltipContent>
             </Tooltip>
