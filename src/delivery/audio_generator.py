@@ -8,6 +8,7 @@ Handles:
 - Progress tracking for long podcasts
 """
 
+import asyncio
 import io
 import time
 from collections.abc import Callable
@@ -38,6 +39,41 @@ class AudioMetadata:
     word_count: int
     turn_count: int
     generation_time_seconds: float
+
+
+def _create_audio_segment(audio_bytes: bytes):
+    from pydub import AudioSegment
+
+    return AudioSegment.from_mp3(io.BytesIO(audio_bytes))
+
+
+def _create_silence(duration_ms: int):
+    from pydub import AudioSegment
+
+    return AudioSegment.silent(duration=duration_ms)
+
+
+def _combine_and_export(
+    audio_segments: list, output_path: Path, output_format: str, sample_rate: int
+) -> int:
+    if not audio_segments:
+        raise RuntimeError("No audio segments generated")
+
+    final_audio = audio_segments[0]
+    for segment in audio_segments[1:]:
+        final_audio = final_audio + segment
+
+    # Ensure output directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Export to file
+    final_audio.export(
+        output_path,
+        format=output_format,
+        parameters=["-ar", str(sample_rate)],
+    )
+
+    return len(final_audio) // 1000
 
 
 class PodcastAudioGenerator:
@@ -108,8 +144,10 @@ class PodcastAudioGenerator:
         turn_count = 0
 
         try:
-            # Import pydub for audio manipulation
-            from pydub import AudioSegment
+            # Import pydub for audio manipulation to verify availability
+            import importlib.util
+            if importlib.util.find_spec("pydub") is None:
+                raise ImportError
         except ImportError:
             raise RuntimeError(
                 "pydub is required for audio generation. Install with: pip install pydub"
@@ -141,47 +179,39 @@ class PodcastAudioGenerator:
                         )
 
                         # Convert to AudioSegment
-                        segment = AudioSegment.from_mp3(io.BytesIO(audio_bytes))
+                        segment = await asyncio.to_thread(_create_audio_segment, audio_bytes)
                         audio_segments.append(segment)
 
                         # Add pause after turn
                         pause_ms = int(turn.pause_after * 1000)
                         if pause_ms > 0:
-                            audio_segments.append(AudioSegment.silent(duration=pause_ms))
+                            audio_segments.append(
+                                await asyncio.to_thread(_create_silence, pause_ms)
+                            )
 
                     except Exception as e:
                         logger.error(f"Failed to synthesize turn {current_turn}: {e}")
                         # Add a longer pause as fallback
-                        audio_segments.append(AudioSegment.silent(duration=2000))
+                        audio_segments.append(await asyncio.to_thread(_create_silence, 2000))
 
                 # Add section transition pause
-                audio_segments.append(AudioSegment.silent(duration=1000))
+                audio_segments.append(await asyncio.to_thread(_create_silence, 1000))
 
             if progress_callback:
                 progress_callback(total_turns, total_turns, "Combining audio segments...")
 
-            # Combine all segments
-            if not audio_segments:
-                raise RuntimeError("No audio segments generated")
-
-            final_audio = audio_segments[0]
-            for segment in audio_segments[1:]:
-                final_audio = final_audio + segment
-
-            # Ensure output directory exists
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Export to file
-            final_audio.export(
+            duration_seconds = await asyncio.to_thread(
+                _combine_and_export,
+                audio_segments,
                 output_path,
-                format=self.output_format,
-                parameters=["-ar", str(self.sample_rate)],
+                self.output_format,
+                self.sample_rate,
             )
 
             generation_time = time.time() - start_time
 
             metadata = AudioMetadata(
-                duration_seconds=len(final_audio) // 1000,
+                duration_seconds=duration_seconds,
                 file_size_bytes=output_path.stat().st_size,
                 format=self.output_format,
                 sample_rate=self.sample_rate,
