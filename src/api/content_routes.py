@@ -410,23 +410,27 @@ async def get_content_stats() -> ContentStats:
     from src.models.summary import Summary
 
     with get_db() as db:
-        # Count by status
-        status_counts = (
-            db.query(Content.status, func.count(Content.id)).group_by(Content.status).all()
+        # OPTIMIZATION: Count by status and source type in a single multi-dimensional group by query
+        stats = (
+            db.query(
+                Content.status,
+                Content.source_type,
+                func.count(Content.id),
+            )
+            .group_by(Content.status, Content.source_type)
+            .all()
         )
-        by_status = {status.value: count for status, count in status_counts}
+
+        by_status = {}
+        by_source = {}
+
+        for status, source, count in stats:
+            by_status[status.value] = by_status.get(status.value, 0) + count
+            by_source[source.value] = by_source.get(source.value, 0) + count
 
         # OPTIMIZATION: Calculate total from status counts instead of separate count query
         # Since status is non-nullable, the sum of status counts equals the total count
         total = sum(by_status.values())
-
-        # Count by source
-        source_counts = (
-            db.query(Content.source_type, func.count(Content.id))
-            .group_by(Content.source_type)
-            .all()
-        )
-        by_source = {source.value: count for source, count in source_counts}
 
         # Count content items that don't have summaries yet
         # Use LEFT JOIN to find content without summaries (more efficient than NOT IN subquery)

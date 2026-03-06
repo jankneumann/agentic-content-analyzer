@@ -45,3 +45,6 @@
 ## 2026-03-04 - Optimize audio digest statistics query
 **Learning:** Multiple separate database count queries were executed to aggregate counts (total, and individual status counts) in `get_audio_digest_statistics` which causes performance bottlenecks via redundant database round-trips.
 **Action:** When calculating statistics that encompass the whole table partitioned by a specific property (like status), execute a single query using `func.count()` alongside `GROUP BY`, and compute derived values (like the total count or specific status values) within the application logic. This pattern minimizes the DB connection overhead.
+## 2026-03-05 - Multi-Dimensional GROUP BY for Statistics
+**Learning:** Even after optimizing individual statistics queries to use `GROUP BY` instead of querying categories one by one, fetching different statistics (like status, provider, voice) across multiple queries still incurs redundant database round-trips.
+**Action:** When an API endpoint needs counts across multiple orthogonal categorical columns (e.g. status, voice, provider), combine them into a single query using a multi-dimensional `GROUP BY (col1, col2, col3)` and sum up the marginal counts and continuous values (like `duration_seconds`) in Python. This reduces 3-4 full table scans down to exactly 1.

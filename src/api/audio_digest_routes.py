@@ -315,13 +315,32 @@ async def get_audio_digest_statistics() -> AudioDigestStatistics:
         AudioDigestStatistics with counts and aggregations
     """
     with get_db() as db:
-        # Group by status to get counts in a single query
-        status_counts = (
-            db.query(AudioDigest.status, func.count(AudioDigest.id))
-            .group_by(AudioDigest.status)
+        # OPTIMIZATION: Calculate all statistics in a single query using multiple GROUP BY columns.
+        # This replaces 4 separate database queries with 1 query, reducing DB round-trips.
+        stats = (
+            db.query(
+                AudioDigest.status,
+                AudioDigest.voice,
+                AudioDigest.provider,
+                func.count(AudioDigest.id),
+                func.sum(AudioDigest.duration_seconds),
+            )
+            .group_by(AudioDigest.status, AudioDigest.voice, AudioDigest.provider)
             .all()
         )
-        status_map = {status: count for status, count in status_counts}
+
+        status_map = {}
+        by_voice = {}
+        by_provider = {}
+        total_duration = 0.0
+
+        for status, voice, provider, count, duration_sum in stats:
+            status_map[status] = status_map.get(status, 0) + count
+            by_voice[voice] = by_voice.get(voice, 0) + count
+            by_provider[provider] = by_provider.get(provider, 0) + count
+
+            if status == AudioDigestStatus.COMPLETED and duration_sum is not None:
+                total_duration += duration_sum
 
         # Calculate total from status counts (status is non-nullable)
         total = sum(status_map.values())
@@ -331,30 +350,6 @@ async def get_audio_digest_statistics() -> AudioDigestStatistics:
         )
         completed = status_map.get(AudioDigestStatus.COMPLETED, 0)
         failed = status_map.get(AudioDigestStatus.FAILED, 0)
-
-        # Total duration
-        total_duration = (
-            db.query(func.sum(AudioDigest.duration_seconds))
-            .filter(AudioDigest.status == AudioDigestStatus.COMPLETED)
-            .scalar()
-            or 0.0
-        )
-
-        # Count by voice
-        voice_counts = (
-            db.query(AudioDigest.voice, func.count(AudioDigest.id))
-            .group_by(AudioDigest.voice)
-            .all()
-        )
-        by_voice = {voice: count for voice, count in voice_counts}
-
-        # Count by provider
-        provider_counts = (
-            db.query(AudioDigest.provider, func.count(AudioDigest.id))
-            .group_by(AudioDigest.provider)
-            .all()
-        )
-        by_provider = {provider: count for provider, count in provider_counts}
 
         return AudioDigestStatistics(
             total=total,
