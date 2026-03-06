@@ -16,10 +16,12 @@ import re
 import time
 from collections import defaultdict
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from src.config.settings import get_settings
+from src.models.chunk import DocumentChunk
+from src.models.content import Content
 from src.models.search import (
     ChunkResult,
     SearchMeta,
@@ -277,55 +279,33 @@ class HybridSearchService:
         if not has_filter:
             return None
 
-        # Build dynamic WHERE clause
-        conditions: list[str] = []
-        params: dict = {}
+        # Build query using SQLAlchemy Core/ORM to enable index usage (avoiding text casts)
+        stmt = select(Content.id)
 
+        # Apply filters on Content
         if f.source_types:
-            conditions.append("c.source_type::text = ANY(:source_types)")
-            params["source_types"] = f.source_types
+            stmt = stmt.where(Content.source_type.in_(f.source_types))
+
         if f.date_from:
-            conditions.append("c.published_date >= :date_from")
-            params["date_from"] = f.date_from
+            stmt = stmt.where(Content.published_date >= f.date_from)
+
         if f.date_to:
-            conditions.append("c.published_date <= :date_to")
-            params["date_to"] = f.date_to
+            stmt = stmt.where(Content.published_date <= f.date_to)
+
         if f.publications:
-            conditions.append("c.publication = ANY(:publications)")
-            params["publications"] = f.publications
+            stmt = stmt.where(Content.publication.in_(f.publications))
+
         if f.statuses:
-            conditions.append("c.status::text = ANY(:statuses)")
-            params["statuses"] = f.statuses
+            stmt = stmt.where(Content.status.in_(f.statuses))
 
-        # chunk_types filter is applied directly on chunks, not via content pre-filter
-        # But we still need content_ids for the BM25/vector queries
-        if f.chunk_types and not conditions:
-            # Only chunk_type filter — need to get content_ids from chunks
-            chunk_stmt = text("""
-                SELECT DISTINCT content_id FROM document_chunks
-                WHERE chunk_type = ANY(:chunk_types)
-            """)
-            result = self._session.execute(chunk_stmt, {"chunk_types": f.chunk_types})
-            return [row.content_id for row in result]
-
-        if not conditions:
-            return None
-
-        # conditions contains only hardcoded column comparisons — safe to join
-        where = " AND ".join(conditions)
+        # Apply chunk type filter
         if f.chunk_types:
-            # Join through chunks to also apply chunk_type filter
-            stmt = text(
-                f"SELECT DISTINCT c.id FROM contents c"  # noqa: S608
-                f" JOIN document_chunks dc ON dc.content_id = c.id"
-                f" WHERE {where} AND dc.chunk_type = ANY(:chunk_types)"
-            )
-            params["chunk_types"] = f.chunk_types
-        else:
-            stmt = text(f"SELECT c.id FROM contents c WHERE {where}")  # noqa: S608
+            # Join with DocumentChunk
+            stmt = stmt.join(DocumentChunk).where(DocumentChunk.chunk_type.in_(f.chunk_types))
+            stmt = stmt.distinct()
 
-        result = self._session.execute(stmt, params)
-        return [row.id for row in result]
+        result = self._session.execute(stmt)
+        return [row[0] for row in result]
 
     def _calculate_rrf(
         self,

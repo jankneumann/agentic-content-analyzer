@@ -1,6 +1,5 @@
-
-import pytest
 from src.api.shared_routes import _md_to_html
+
 
 def test_markdown_xss_raw_html():
     """Test that raw HTML tags are escaped."""
@@ -12,6 +11,7 @@ def test_markdown_xss_raw_html():
     assert "<script>" not in rendered
     assert "&lt;script&gt;" in rendered
 
+
 def test_markdown_xss_javascript_link():
     """Test that javascript: links are not rendered as clickable links."""
     js_link = "[click me](javascript:alert('xss'))"
@@ -21,6 +21,7 @@ def test_markdown_xss_javascript_link():
     # MarkdownIt default behavior for javascript: links seems to be ignoring them as links?
     # But let's ensure no <a href="javascript:..."> is generated.
     assert 'href="javascript:' not in rendered
+
 
 def test_markdown_xss_data_uri():
     """Test that data: URIs are not rendered as clickable links if dangerous."""

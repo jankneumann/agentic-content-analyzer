@@ -16,7 +16,13 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.types import JSON
+
+# Monkeypatch JSONB to JSON for SQLite compatibility in tests
+if "sqlite" in os.environ.get("TEST_DATABASE_URL", ""):
+    postgresql.JSONB = JSON
 
 # Ensure API tests never boot embedded worker during app import/lifespan.
 os.environ.setdefault("WORKER_ENABLED", "false")

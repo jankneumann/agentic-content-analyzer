@@ -315,30 +315,22 @@ async def get_audio_digest_statistics() -> AudioDigestStatistics:
         AudioDigestStatistics with counts and aggregations
     """
     with get_db() as db:
-        # Total count
-        total = db.query(func.count(AudioDigest.id)).scalar() or 0
+        # Group by status to get counts in a single query
+        status_counts = (
+            db.query(AudioDigest.status, func.count(AudioDigest.id))
+            .group_by(AudioDigest.status)
+            .all()
+        )
+        status_map = {status: count for status, count in status_counts}
 
-        # Count by status
-        generating = (
-            db.query(func.count(AudioDigest.id))
-            .filter(
-                AudioDigest.status.in_([AudioDigestStatus.PENDING, AudioDigestStatus.PROCESSING])
-            )
-            .scalar()
-            or 0
+        # Calculate total from status counts (status is non-nullable)
+        total = sum(status_map.values())
+
+        generating = status_map.get(AudioDigestStatus.PENDING, 0) + status_map.get(
+            AudioDigestStatus.PROCESSING, 0
         )
-        completed = (
-            db.query(func.count(AudioDigest.id))
-            .filter(AudioDigest.status == AudioDigestStatus.COMPLETED)
-            .scalar()
-            or 0
-        )
-        failed = (
-            db.query(func.count(AudioDigest.id))
-            .filter(AudioDigest.status == AudioDigestStatus.FAILED)
-            .scalar()
-            or 0
-        )
+        completed = status_map.get(AudioDigestStatus.COMPLETED, 0)
+        failed = status_map.get(AudioDigestStatus.FAILED, 0)
 
         # Total duration
         total_duration = (

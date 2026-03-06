@@ -79,8 +79,10 @@ class PGExporter:
         # Create parent directories
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Pre-flight: count rows per table
+        # Pre-flight: count rows per table (skips missing tables)
         row_counts = self._count_rows(export_tables)
+        # Narrow export list to tables that actually exist
+        export_tables = [t for t in export_tables if t in row_counts]
         total_rows = sum(row_counts.values())
         logger.info(
             "Export plan: %d tables, ~%d total rows",
@@ -154,10 +156,28 @@ class PGExporter:
         return resolved
 
     def _count_rows(self, tables: list[str]) -> dict[str, int]:
-        """Count rows per table for the manifest and progress reporting."""
+        """Count rows per table for the manifest and progress reporting.
+
+        Skips tables that don't exist in the database (e.g., model-defined
+        but never migrated) with a warning.
+        """
         counts: dict[str, int] = {}
         with self._engine.connect() as conn:
+            # Check which tables actually exist
+            existing = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+                )
+            )
+            existing_tables = {row[0] for row in existing}
+
             for table_name in tables:
+                if table_name not in existing_tables:
+                    logger.warning(
+                        "Table %s is in SYNC_TABLES but does not exist in database, skipping",
+                        table_name,
+                    )
+                    continue
                 result = conn.execute(
                     text(f"SELECT COUNT(*) FROM {table_name}")  # noqa: S608
                 )

@@ -270,7 +270,11 @@ function CollapsibleListItem({ content, index: _index }: CollapsibleListItemProp
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <li className="border-l-2 border-muted/50 pl-2">
         <CollapsibleTrigger asChild>
-          <button className="w-full text-left text-sm leading-relaxed hover:text-foreground/80">
+          <button
+            type="button"
+            aria-expanded={isOpen}
+            className="w-full text-left text-sm leading-relaxed hover:text-foreground/80"
+          >
             <span>{isOpen ? content : preview}</span>
             <span className="ml-1 text-xs text-muted-foreground">
               {isOpen ? "(less)" : "(more)"}
