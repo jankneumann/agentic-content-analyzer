@@ -10,18 +10,19 @@ from time import monotonic
 
 import pytest
 
-from src.api.chat_rate_limiter import chat_rate_limiter
 from src.api.rate_limiter import LoginRateLimiter
-from src.api.rate_limiter_base import EndpointRateLimiter, SlidingWindowRateLimiter
-from src.api.share_rate_limiter import share_rate_limiter
+from src.api.rate_limiter_base import EndpointRateLimiter
 
 
 @pytest.fixture
 def limiter_factory():
     """Factory to create fresh limiter instances for testing."""
+
     def _create(cls, **kwargs):
         return cls(**kwargs)
+
     return _create
+
 
 @pytest.fixture(
     params=[
