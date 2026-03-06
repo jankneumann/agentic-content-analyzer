@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { DigestListItem } from "@/types"
 
 interface GenerateScriptDialogProps {
@@ -238,20 +239,34 @@ export function GenerateScriptDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleGenerate}
-            disabled={!digestId}
-            isLoading={isGenerating}
-          >
-            {isGenerating ? (
-              "Generating..."
-            ) : (
-              <>
-                <Mic className="mr-2 h-4 w-4" />
-                Generate Script
-              </>
-            )}
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-not-allowed">
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={!digestId || isGenerating}
+                    isLoading={isGenerating}
+                    className="w-full sm:w-auto"
+                  >
+                    {isGenerating ? (
+                      "Generating..."
+                    ) : (
+                      <>
+                        <Mic className="mr-2 h-4 w-4" />
+                        Generate Script
+                      </>
+                    )}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!digestId && (
+                <TooltipContent>
+                  <p>Please select a source digest to generate a script</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </DialogFooter>
       </DialogContent>
     </Dialog>
