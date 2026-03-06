@@ -497,32 +497,39 @@ async def list_digests(
 @router.get("/statistics", response_model=DigestStatistics)
 async def get_digest_statistics() -> DigestStatistics:
     """Get statistics about digests."""
+    from sqlalchemy import func
+
     with get_db() as db:
         # Only count daily and weekly digests
         main_types = [DigestType.DAILY, DigestType.WEEKLY]
-        total = db.query(Digest).filter(Digest.digest_type.in_(main_types)).count()
 
-        def count_by_status(status: DigestStatus) -> int:
-            return (
-                db.query(Digest)
-                .filter(Digest.status == status)
-                .filter(Digest.digest_type.in_(main_types))
-                .count()
-            )
+        # OPTIMIZATION: Calculate all statistics in a single query using GROUP BY
+        # Instead of executing 9 individual COUNT() queries (1 total + 6 statuses + 2 types),
+        # we group by type and status and sum them up in Python.
+        counts = (
+            db.query(Digest.digest_type, Digest.status, func.count(Digest.id))
+            .filter(Digest.digest_type.in_(main_types))
+            .group_by(Digest.digest_type, Digest.status)
+            .all()
+        )
 
-        # Count by type
-        by_type = {}
-        for dtype in [DigestType.DAILY, DigestType.WEEKLY]:
-            by_type[dtype.value] = db.query(Digest).filter(Digest.digest_type == dtype).count()
+        total = 0
+        by_type = {dtype.value: 0 for dtype in main_types}
+        status_counts = dict.fromkeys(DigestStatus, 0)
+
+        for digest_type, status, count in counts:
+            total += count
+            by_type[digest_type.value] += count
+            status_counts[status] += count
 
         return DigestStatistics(
             total=total,
-            pending=count_by_status(DigestStatus.PENDING),
-            generating=count_by_status(DigestStatus.GENERATING),
-            completed=count_by_status(DigestStatus.COMPLETED),
-            pending_review=count_by_status(DigestStatus.PENDING_REVIEW),
-            approved=count_by_status(DigestStatus.APPROVED),
-            delivered=count_by_status(DigestStatus.DELIVERED),
+            pending=status_counts[DigestStatus.PENDING],
+            generating=status_counts[DigestStatus.GENERATING],
+            completed=status_counts[DigestStatus.COMPLETED],
+            pending_review=status_counts[DigestStatus.PENDING_REVIEW],
+            approved=status_counts[DigestStatus.APPROVED],
+            delivered=status_counts[DigestStatus.DELIVERED],
             by_type=by_type,
         )
 
