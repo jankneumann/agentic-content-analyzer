@@ -436,33 +436,23 @@ class ScriptReviewService:
         Returns:
             Dict with review statistics
         """
+        from sqlalchemy import func
+
         with get_db() as db:
-            # Count by status
-            pending = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value)
-                .count()
+            # OPTIMIZATION: Count by status in a single query
+            counts = (
+                db.query(PodcastScriptRecord.status, func.count(PodcastScriptRecord.id))
+                .group_by(PodcastScriptRecord.status)
+                .all()
             )
-            revision_requested = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_REVISION_REQUESTED.value)
-                .count()
-            )
-            approved = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED.value)
-                .count()
-            )
-            completed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.COMPLETED.value)
-                .count()
-            )
-            failed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.FAILED.value)
-                .count()
-            )
+
+            status_counts = {status: count for status, count in counts}
+
+            pending = status_counts.get(PodcastStatus.SCRIPT_PENDING_REVIEW.value, 0)
+            revision_requested = status_counts.get(PodcastStatus.SCRIPT_REVISION_REQUESTED.value, 0)
+            approved = status_counts.get(PodcastStatus.SCRIPT_APPROVED.value, 0)
+            completed = status_counts.get(PodcastStatus.COMPLETED.value, 0)
+            failed = status_counts.get(PodcastStatus.FAILED.value, 0)
 
             return {
                 "pending_review": pending,
