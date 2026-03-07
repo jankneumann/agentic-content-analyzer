@@ -222,8 +222,9 @@ export function GenerateScriptDialog({
                   <Badge key={topic} variant="secondary" className="gap-1">
                     {topic}
                     <button
+                      type="button"
                       onClick={() => handleRemoveTopic(topic)}
-                      className="ml-1 hover:text-destructive"
+                      className="ml-1 rounded-sm opacity-70 transition-opacity hover:opacity-100 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label={`Remove topic ${topic}`}
                     >
                       <X className="h-3 w-3" />

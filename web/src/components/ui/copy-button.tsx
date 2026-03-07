@@ -45,6 +45,7 @@ export function CopyButton({ content, className, size = "default" }: CopyButtonP
       <Tooltip>
         <TooltipTrigger asChild>
           <button
+            type="button"
             onClick={handleCopy}
             className={cn(
               "inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
