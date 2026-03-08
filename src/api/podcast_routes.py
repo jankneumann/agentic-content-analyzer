@@ -250,23 +250,28 @@ async def get_podcast_statistics() -> PodcastStatistics:
     from sqlalchemy import func
 
     with get_db() as db:
-        # Group by status to get counts in a single query
-        status_counts = (
-            db.query(Podcast.status, func.count(Podcast.id)).group_by(Podcast.status).all()
+        # OPTIMIZATION: Combine counts for status and voice provider into a single
+        # multi-dimensional GROUP BY query to avoid 2 separate full table scans.
+        counts = (
+            db.query(
+                Podcast.status,
+                Podcast.voice_provider,
+                func.count(Podcast.id),
+            )
+            .group_by(Podcast.status, Podcast.voice_provider)
+            .all()
         )
-        status_map = {status: count for status, count in status_counts}
+
+        status_map = {}
+        by_provider = {}
+
+        for status, provider, count in counts:
+            status_map[status] = status_map.get(status, 0) + count
+            if provider is not None:
+                by_provider[provider] = by_provider.get(provider, 0) + count
 
         # Calculate total from status counts (status is non-nullable)
         total = sum(status_map.values())
-
-        # Group by voice provider for provider counts
-        provider_counts = (
-            db.query(Podcast.voice_provider, func.count(Podcast.id))
-            .filter(Podcast.voice_provider.isnot(None))
-            .group_by(Podcast.voice_provider)
-            .all()
-        )
-        by_provider = {provider: count for provider, count in provider_counts}
 
         # Calculate total duration (single scalar query)
         total_duration = (
