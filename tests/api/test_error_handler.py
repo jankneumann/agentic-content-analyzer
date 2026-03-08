@@ -86,3 +86,45 @@ class TestStructuredErrorHandler:
         data = response.json()
         assert data["error"] == "Internal Server Error"
         # trace_id should be absent (OTel not configured in test)
+
+    def test_data_error_does_not_leak_details(self):
+        """DataError should not leak original exception details to the client."""
+        from sqlalchemy.exc import DataError
+
+        app = self._make_app()
+
+        @app.get("/data-error")
+        async def data_error_endpoint():
+            raise DataError(
+                "SELECT * FROM users",
+                {},
+                Exception("sensitive database details: user_id=123"),
+            )
+
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/data-error")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "Unprocessable Entity"
+        assert data["detail"] == "Invalid parameter value"
+        assert "sensitive database details" not in data["detail"]
+
+    def test_asyncpg_data_error_does_not_leak_details(self):
+        """AsyncpgDataError should not leak exception details to the client."""
+        from asyncpg.exceptions import DataError as AsyncpgDataError
+
+        app = self._make_app()
+
+        @app.get("/asyncpg-error")
+        async def asyncpg_error_endpoint():
+            raise AsyncpgDataError("sensitive asyncpg detail leak")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/asyncpg-error")
+
+        assert response.status_code == 422
+        data = response.json()
+        assert data["error"] == "Unprocessable Entity"
+        assert data["detail"] == "Invalid parameter value"
+        assert "sensitive asyncpg detail" not in data["detail"]
