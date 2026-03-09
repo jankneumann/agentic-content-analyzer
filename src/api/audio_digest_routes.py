@@ -315,13 +315,35 @@ async def get_audio_digest_statistics() -> AudioDigestStatistics:
         AudioDigestStatistics with counts and aggregations
     """
     with get_db() as db:
-        # Group by status to get counts in a single query
-        status_counts = (
-            db.query(AudioDigest.status, func.count(AudioDigest.id))
-            .group_by(AudioDigest.status)
+        # Group by status, voice, and provider to get all counts in a single query
+        # This replaces three separate GROUP BY queries with one multi-dimensional grouping
+        counts = (
+            db.query(
+                AudioDigest.status,
+                AudioDigest.voice,
+                AudioDigest.provider,
+                func.count(AudioDigest.id),
+            )
+            .group_by(AudioDigest.status, AudioDigest.voice, AudioDigest.provider)
             .all()
         )
-        status_map = {status: count for status, count in status_counts}
+
+        # Aggregate the marginal counts in Python
+        status_map = {}
+        by_voice = {}
+        by_provider = {}
+
+        for status, voice, provider, count in counts:
+            # Aggregate status
+            status_map[status] = status_map.get(status, 0) + count
+
+            # Aggregate voice (ignore None if applicable)
+            if voice:
+                by_voice[voice] = by_voice.get(voice, 0) + count
+
+            # Aggregate provider (ignore None if applicable)
+            if provider:
+                by_provider[provider] = by_provider.get(provider, 0) + count
 
         # Calculate total from status counts (status is non-nullable)
         total = sum(status_map.values())
@@ -339,22 +361,6 @@ async def get_audio_digest_statistics() -> AudioDigestStatistics:
             .scalar()
             or 0.0
         )
-
-        # Count by voice
-        voice_counts = (
-            db.query(AudioDigest.voice, func.count(AudioDigest.id))
-            .group_by(AudioDigest.voice)
-            .all()
-        )
-        by_voice = {voice: count for voice, count in voice_counts}
-
-        # Count by provider
-        provider_counts = (
-            db.query(AudioDigest.provider, func.count(AudioDigest.id))
-            .group_by(AudioDigest.provider)
-            .all()
-        )
-        by_provider = {provider: count for provider, count in provider_counts}
 
         return AudioDigestStatistics(
             total=total,
