@@ -41,13 +41,21 @@ class ContentQueryService:
         if query.publications:
             q = q.filter(Content.publication.in_(query.publications))
         if query.publication_search:
-            q = q.filter(Content.publication.ilike(f"%{query.publication_search}%"))
+            # Escape wildcards to prevent SQL wildcard injection
+            search_term = (
+                query.publication_search.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            q = q.filter(Content.publication.ilike(f"%{search_term}%", escape="\\"))
         if query.start_date:
             q = q.filter(Content.published_date >= query.start_date)
         if query.end_date:
             q = q.filter(Content.published_date <= query.end_date)
         if query.search:
-            q = q.filter(Content.title.ilike(f"%{query.search}%"))
+            # Escape wildcards to prevent SQL wildcard injection
+            search_term = query.search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            q = q.filter(Content.title.ilike(f"%{search_term}%", escape="\\"))
         return q
 
     def build_query(self, db: Session, query: ContentQuery) -> Query:
