@@ -55,7 +55,7 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=422,
             content={
                 "error": "Unprocessable Entity",
-                "detail": f"Invalid parameter value: {exc.orig}",
+                "detail": "Invalid parameter value provided.",
             },
         )
 
@@ -95,7 +95,7 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=422,
             content={
                 "error": "Unprocessable Entity",
-                "detail": f"Invalid parameter value: {exc}",
+                "detail": "Invalid parameter value provided.",
             },
         )
 
