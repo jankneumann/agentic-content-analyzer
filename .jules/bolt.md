@@ -45,3 +45,6 @@
 ## 2026-03-04 - Optimize audio digest statistics query
 **Learning:** Multiple separate database count queries were executed to aggregate counts (total, and individual status counts) in `get_audio_digest_statistics` which causes performance bottlenecks via redundant database round-trips.
 **Action:** When calculating statistics that encompass the whole table partitioned by a specific property (like status), execute a single query using `func.count()` alongside `GROUP BY`, and compute derived values (like the total count or specific status values) within the application logic. This pattern minimizes the DB connection overhead.
+## 2026-03-04 - Optimize script review statistics query
+**Learning:** The `get_review_statistics` endpoint in the podcast script review workflow was executing 5 separate `COUNT()` queries, leading to redundant database scans.
+**Action:** Replaced the independent counting queries with a single `func.count()` call combined with a `GROUP BY` clause over the status field, extracting the individual status counts programmatically. This condenses the workload from 5 queries to 1, effectively reducing connection overhead and DB load.
