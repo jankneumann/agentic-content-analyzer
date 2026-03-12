@@ -155,7 +155,9 @@ async def _generate_audio_digest_task(
             audio_digest = db.query(AudioDigest).filter(AudioDigest.id == audio_digest_id).first()
             if audio_digest:
                 audio_digest.status = AudioDigestStatus.FAILED
-                audio_digest.error_message = str(e)
+                audio_digest.error_message = (
+                    "Audio digest generation failed due to an internal error."
+                )
                 db.commit()
 
         # Emit failure notification

@@ -213,7 +213,7 @@ class ContentSummarizer:
                         return True
 
                     content.status = ContentStatus.FAILED
-                    content.error_message = str(e)
+                    content.error_message = "Content summarization failed due to an internal error."
                     db.commit()
                     logger.error(f"Error summarizing content {content_id}: {e}")
                     return False

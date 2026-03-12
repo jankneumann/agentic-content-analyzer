@@ -41,20 +41,25 @@ class DigestFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     # Time period
     period_start = factory.LazyFunction(
-        lambda: datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        - timedelta(days=1)
+        lambda: (
+            datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        )
     )
     period_end = factory.LazyFunction(
-        lambda: datetime.now(UTC).replace(hour=23, minute=59, second=59, microsecond=0)
-        - timedelta(days=1)
+        lambda: (
+            datetime.now(UTC).replace(hour=23, minute=59, second=59, microsecond=0)
+            - timedelta(days=1)
+        )
     )
 
     # Content
     title = factory.Sequence(lambda n: f"AI & Data Daily Digest #{n}")
     executive_overview = factory.Sequence(
-        lambda n: f"Digest #{n}: Key developments in AI and data technology. "
-        f"This digest covers major announcements, technical breakthroughs, "
-        f"and strategic implications for technology leaders."
+        lambda n: (
+            f"Digest #{n}: Key developments in AI and data technology. "
+            f"This digest covers major announcements, technical breakthroughs, "
+            f"and strategic implications for technology leaders."
+        )
     )
 
     strategic_insights = factory.LazyFunction(
@@ -124,9 +129,11 @@ class DigestFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     # Unified content model fields
     markdown_content = factory.LazyAttribute(
-        lambda o: f"# {o.title}\n\n{o.executive_overview}\n\n"
-        f"## Strategic Insights\n\n"
-        + "\n".join(f"### {i['title']}\n{i['summary']}" for i in o.strategic_insights)
+        lambda o: (
+            f"# {o.title}\n\n{o.executive_overview}\n\n"
+            f"## Strategic Insights\n\n"
+            + "\n".join(f"### {i['title']}\n{i['summary']}" for i in o.strategic_insights)
+        )
     )
     theme_tags = factory.LazyFunction(lambda: ["ai", "enterprise", "data", "models"])
     source_content_ids = None
@@ -169,8 +176,10 @@ class DigestFactory(factory.alchemy.SQLAlchemyModelFactory):
             digest_type=DigestType.WEEKLY,
             title=factory.Sequence(lambda n: f"AI & Data Weekly Digest #{n}"),
             period_start=factory.LazyFunction(
-                lambda: datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-                - timedelta(days=7)
+                lambda: (
+                    datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+                    - timedelta(days=7)
+                )
             ),
             newsletter_count=factory.Faker("random_int", min=15, max=50),
         )

@@ -125,7 +125,7 @@ async def process_client_html(
     except Exception as e:
         # Mark as failed
         content.status = ContentStatus.FAILED
-        content.error_message = str(e)[:1000]  # Truncate long errors
+        content.error_message = "Content processing failed due to an internal error."
         db.commit()
         logger.error(f"Failed to process client HTML for content_id={content_id}: {e}")
         raise
