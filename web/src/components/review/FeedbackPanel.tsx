@@ -64,7 +64,12 @@ export function FeedbackPanel({
   // Handle keyboard shortcut (Cmd/Ctrl + Enter to generate)
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && hasContent && !isGenerating) {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key === "Enter" &&
+        hasContent &&
+        !isGenerating
+      ) {
         e.preventDefault()
         onGeneratePreview?.()
       }
@@ -76,7 +81,7 @@ export function FeedbackPanel({
     <div className="space-y-3 px-4 py-3">
       {/* Error message */}
       {error && (
-        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
           {error}
         </div>
       )}
@@ -102,7 +107,9 @@ export function FeedbackPanel({
                 : "What should be improved in this summary? (optional)"
             }
             value={feedback}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFeedback(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+              setFeedback(e.target.value)
+            }
             onKeyDown={handleKeyDown}
             disabled={isGenerating || isPreviewMode}
             className={cn(
@@ -115,33 +122,37 @@ export function FeedbackPanel({
           <div
             id="feedback-char-count"
             className={cn(
-              "absolute bottom-2 right-2 text-xs transition-colors",
+              "absolute right-2 bottom-2 text-xs transition-colors",
               feedbackLength > maxFeedbackLength * 0.9
                 ? "font-medium text-amber-500"
                 : "text-muted-foreground",
               feedbackLength >= maxFeedbackLength && "text-destructive"
             )}
             aria-label={`${feedbackLength} of ${maxFeedbackLength} characters`}
+            aria-live="polite"
           >
             {feedbackLength} / {maxFeedbackLength}
           </div>
         </div>
 
         {/* Hint text */}
-        {!isPreviewMode && contextItems.length === 0 && feedback.length === 0 && (
-          <p className="text-xs text-muted-foreground">
-            Select text from either pane to add context, or type feedback directly.
-          </p>
-        )}
+        {!isPreviewMode &&
+          contextItems.length === 0 &&
+          feedback.length === 0 && (
+            <p className="text-muted-foreground text-xs">
+              Select text from either pane to add context, or type feedback
+              directly.
+            </p>
+          )}
       </div>
 
       {/* Action buttons */}
       <div className="flex items-center justify-between">
-        <div className="text-xs text-muted-foreground">
+        <div className="text-muted-foreground text-xs">
           {!isPreviewMode && hasContent && (
             <span className="hidden sm:inline">
-              Press <kbd className="rounded bg-muted px-1">⌘</kbd>+
-              <kbd className="rounded bg-muted px-1">Enter</kbd> to generate
+              Press <kbd className="bg-muted rounded px-1">⌘</kbd>+
+              <kbd className="bg-muted rounded px-1">Enter</kbd> to generate
             </span>
           )}
         </div>
