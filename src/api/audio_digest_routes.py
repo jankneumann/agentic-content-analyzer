@@ -315,46 +315,53 @@ async def get_audio_digest_statistics() -> AudioDigestStatistics:
         AudioDigestStatistics with counts and aggregations
     """
     with get_db() as db:
-        # Group by status to get counts in a single query
-        status_counts = (
-            db.query(AudioDigest.status, func.count(AudioDigest.id))
-            .group_by(AudioDigest.status)
+        # OPTIMIZATION: Combine counts for status, voice, and provider into a single
+        # multi-dimensional query to avoid multiple database round-trips
+        results = (
+            db.query(
+                AudioDigest.status,
+                AudioDigest.voice,
+                AudioDigest.provider,
+                func.count(AudioDigest.id),
+                func.sum(AudioDigest.duration_seconds),
+            )
+            .group_by(
+                AudioDigest.status,
+                AudioDigest.voice,
+                AudioDigest.provider,
+            )
             .all()
         )
-        status_map = {status: count for status, count in status_counts}
 
-        # Calculate total from status counts (status is non-nullable)
-        total = sum(status_map.values())
+        status_map = {}
+        by_voice = {}
+        by_provider = {}
+        total = 0
+        total_duration = 0.0
+
+        for status, voice, provider, count, duration_sum in results:
+            total += count
+
+            # Status counts
+            status_map[status] = status_map.get(status, 0) + count
+
+            # Voice counts
+            if voice is not None:
+                by_voice[voice] = by_voice.get(voice, 0) + count
+
+            # Provider counts
+            if provider is not None:
+                by_provider[provider] = by_provider.get(provider, 0) + count
+
+            # Total duration (only for completed)
+            if status == AudioDigestStatus.COMPLETED and duration_sum is not None:
+                total_duration += duration_sum
 
         generating = status_map.get(AudioDigestStatus.PENDING, 0) + status_map.get(
             AudioDigestStatus.PROCESSING, 0
         )
         completed = status_map.get(AudioDigestStatus.COMPLETED, 0)
         failed = status_map.get(AudioDigestStatus.FAILED, 0)
-
-        # Total duration
-        total_duration = (
-            db.query(func.sum(AudioDigest.duration_seconds))
-            .filter(AudioDigest.status == AudioDigestStatus.COMPLETED)
-            .scalar()
-            or 0.0
-        )
-
-        # Count by voice
-        voice_counts = (
-            db.query(AudioDigest.voice, func.count(AudioDigest.id))
-            .group_by(AudioDigest.voice)
-            .all()
-        )
-        by_voice = {voice: count for voice, count in voice_counts}
-
-        # Count by provider
-        provider_counts = (
-            db.query(AudioDigest.provider, func.count(AudioDigest.id))
-            .group_by(AudioDigest.provider)
-            .all()
-        )
-        by_provider = {provider: count for provider, count in provider_counts}
 
         return AudioDigestStatistics(
             total=total,

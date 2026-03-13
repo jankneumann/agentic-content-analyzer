@@ -250,30 +250,40 @@ async def get_podcast_statistics() -> PodcastStatistics:
     from sqlalchemy import func
 
     with get_db() as db:
-        # Group by status to get counts in a single query
-        status_counts = (
-            db.query(Podcast.status, func.count(Podcast.id)).group_by(Podcast.status).all()
-        )
-        status_map = {status: count for status, count in status_counts}
-
-        # Calculate total from status counts (status is non-nullable)
-        total = sum(status_map.values())
-
-        # Group by voice provider for provider counts
-        provider_counts = (
-            db.query(Podcast.voice_provider, func.count(Podcast.id))
-            .filter(Podcast.voice_provider.isnot(None))
-            .group_by(Podcast.voice_provider)
+        # OPTIMIZATION: Combine counts for status and voice provider into a single
+        # multi-dimensional query to avoid multiple database round-trips
+        results = (
+            db.query(
+                Podcast.status,
+                Podcast.voice_provider,
+                func.count(Podcast.id),
+                func.sum(Podcast.duration_seconds),
+            )
+            .group_by(
+                Podcast.status,
+                Podcast.voice_provider,
+            )
             .all()
         )
-        by_provider = {provider: count for provider, count in provider_counts}
 
-        # Calculate total duration (single scalar query)
-        total_duration = (
-            db.query(func.sum(Podcast.duration_seconds))
-            .filter(Podcast.status == "completed")
-            .scalar()
-        ) or 0
+        status_map = {}
+        by_provider = {}
+        total = 0
+        total_duration = 0
+
+        for status, provider, count, duration_sum in results:
+            total += count
+
+            # Status counts
+            status_map[status] = status_map.get(status, 0) + count
+
+            # Provider counts
+            if provider is not None:
+                by_provider[provider] = by_provider.get(provider, 0) + count
+
+            # Total duration (only for completed)
+            if status == "completed" and duration_sum is not None:
+                total_duration += duration_sum
 
         return PodcastStatistics(
             total=total,

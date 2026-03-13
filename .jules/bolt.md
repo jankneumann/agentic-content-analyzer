@@ -45,3 +45,7 @@
 ## 2026-03-04 - Optimize audio digest statistics query
 **Learning:** Multiple separate database count queries were executed to aggregate counts (total, and individual status counts) in `get_audio_digest_statistics` which causes performance bottlenecks via redundant database round-trips.
 **Action:** When calculating statistics that encompass the whole table partitioned by a specific property (like status), execute a single query using `func.count()` alongside `GROUP BY`, and compute derived values (like the total count or specific status values) within the application logic. This pattern minimizes the DB connection overhead.
+
+## 2026-03-05 - N+1 Optimization in Audio Digest and Podcast Statistics
+**Learning:** The `get_audio_digest_statistics` and `get_podcast_statistics` endpoints were executing separate `COUNT` and `SUM` queries for each grouping (e.g., status, voice, provider, duration sum). This led to 4 round-trips for audio digests and 3 for podcasts, creating unneeded overhead.
+**Action:** When calculating stats across multiple attributes in the same table, consolidate them into a single query using `db.query(..., func.count(...), func.sum(...)).group_by(...)` and aggregate the marginal totals in Python. This reduces multiple O(N) database queries into a single constant-time query.
