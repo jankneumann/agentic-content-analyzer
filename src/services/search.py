@@ -557,14 +557,20 @@ def _generate_highlight(
     # Try to find and mark query terms (case-insensitive)
     marked = escaped
     found_any = False
-    for term in query_terms:
-        # Use word boundary matching for cleaner highlights
-        pattern = re.compile(rf"(\b{re.escape(html.escape(term))}\w*)", re.IGNORECASE)
+
+    if query_terms:
+        # Performance Optimization: Combine all terms into a single regex with alternation
+        # This reduces an O(M*N) operation (M terms * N chars) to an O(N) single pass
+        # avoiding recompilation and multiple string allocations inside a loop.
+        escaped_terms = [re.escape(html.escape(term)) for term in query_terms]
+        combined_pattern = rf"(\b(?:{'|'.join(escaped_terms)})\w*)"
+        pattern = re.compile(combined_pattern, re.IGNORECASE)
+
         replacement = r"<mark>\1</mark>"
-        new_marked, count = pattern.subn(replacement, marked)
+        marked, count = pattern.subn(replacement, escaped)
+
         if count > 0:
             found_any = True
-            marked = new_marked
 
     if found_any:
         return marked[:600]  # Allow extra space for <mark> tags
