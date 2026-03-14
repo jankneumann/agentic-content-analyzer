@@ -46,10 +46,21 @@ export function CleanupButton({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={onClick}
-            disabled={disabled || !hasText || isLoading}
+            onClick={(e) => {
+              if (disabled || !hasText || isLoading) {
+                e.preventDefault()
+                return
+              }
+              onClick()
+            }}
+            aria-disabled={disabled || !hasText || isLoading}
             aria-label="Clean up text with AI"
-            className={cn("h-9 w-9 shrink-0", className)}
+            className={cn(
+              "h-9 w-9 shrink-0",
+              (disabled || !hasText || isLoading) &&
+                "cursor-not-allowed opacity-50",
+              className
+            )}
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -60,7 +71,7 @@ export function CleanupButton({
         </TooltipTrigger>
         <TooltipContent>
           <p className="text-xs">Clean up text with AI</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             {isMac ? "⌘" : "Ctrl"}+Shift+C
           </p>
         </TooltipContent>

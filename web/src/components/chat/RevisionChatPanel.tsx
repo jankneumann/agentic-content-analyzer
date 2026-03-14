@@ -87,7 +87,10 @@ interface RevisionChatPanelProps {
   /** Error to display */
   error?: Error | null
   /** Callback when user sends a chat message (for questions, NOT regeneration) */
-  onSendMessage: (content: string, options?: { enableWebSearch?: boolean; model?: string }) => void
+  onSendMessage: (
+    content: string,
+    options?: { enableWebSearch?: boolean; model?: string }
+  ) => void
   /** Callback when user clicks "Generate Preview" button */
   onGeneratePreview: () => void
   /** Whether preview generation is in progress */
@@ -151,7 +154,8 @@ export function RevisionChatPanel({
 
   // Debug context state
   const [debugDialogOpen, setDebugDialogOpen] = React.useState(false)
-  const [debugContext, setDebugContext] = React.useState<DebugContextData | null>(null)
+  const [debugContext, setDebugContext] =
+    React.useState<DebugContextData | null>(null)
   const [isLoadingDebug, setIsLoadingDebug] = React.useState(false)
 
   // Get context from ReviewContext
@@ -274,39 +278,40 @@ export function RevisionChatPanel({
         aria-expanded={isExpanded}
         onClick={onToggle}
         className={cn(
-          "flex w-full items-center justify-between rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50",
+          "bg-card hover:bg-muted/50 flex w-full items-center justify-between rounded-lg border p-4 text-left transition-colors",
           className
         )}
       >
         <div className="flex items-center gap-3">
-          <div className="rounded-full bg-primary/10 p-2">
-            <MessageSquare className="h-4 w-4 text-primary" />
+          <div className="bg-primary/10 rounded-full p-2">
+            <MessageSquare className="text-primary h-4 w-4" />
           </div>
           <div>
             <h3 className="font-medium">AI Assistant</h3>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               {messages.length > 0
                 ? `${messages.length} message${messages.length !== 1 ? "s" : ""}`
                 : "Ask questions or generate revisions"}
-              {contextItems.length > 0 && ` · ${contextItems.length} selection${contextItems.length !== 1 ? "s" : ""}`}
+              {contextItems.length > 0 &&
+                ` · ${contextItems.length} selection${contextItems.length !== 1 ? "s" : ""}`}
             </p>
           </div>
         </div>
-        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        <ChevronDown className="text-muted-foreground h-4 w-4" />
       </button>
     )
   }
 
   // Expanded state
   return (
-    <div className={cn("flex flex-col rounded-lg border bg-card", className)}>
+    <div className={cn("bg-card flex flex-col rounded-lg border", className)}>
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-primary" />
+          <MessageSquare className="text-primary h-4 w-4" />
           <h3 className="font-medium">AI Assistant</h3>
           {messages.length > 0 && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               ({messages.length} message{messages.length !== 1 ? "s" : ""})
             </span>
           )}
@@ -322,7 +327,7 @@ export function RevisionChatPanel({
                   onClick={handleFetchDebugContext}
                   className="h-7 w-7 p-0"
                 >
-                  <Bug className="h-4 w-4 text-muted-foreground" />
+                  <Bug className="text-muted-foreground h-4 w-4" />
                   <span className="sr-only">View LLM context</span>
                 </Button>
               </TooltipTrigger>
@@ -333,7 +338,7 @@ export function RevisionChatPanel({
             type="button"
             aria-expanded={isExpanded}
             onClick={onToggle}
-            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
           >
             Collapse
             <ChevronUp className="h-4 w-4" />
@@ -358,26 +363,32 @@ export function RevisionChatPanel({
       {isPreviewMode ? (
         <>
           <div className="px-4 py-6 text-center">
-            <div className="mx-auto mb-3 rounded-full bg-primary/10 p-3 w-fit">
-              <Sparkles className="h-5 w-5 text-primary" />
+            <div className="bg-primary/10 mx-auto mb-3 w-fit rounded-full p-3">
+              <Sparkles className="text-primary h-5 w-5" />
             </div>
             <h4 className="font-medium">Preview Generated</h4>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               {messages.length > 0 && (
-                <span>{messages.length} message{messages.length !== 1 ? "s" : ""} used as context</span>
+                <span>
+                  {messages.length} message{messages.length !== 1 ? "s" : ""}{" "}
+                  used as context
+                </span>
               )}
               {messages.length > 0 && contextItems.length > 0 && " · "}
               {contextItems.length > 0 && (
-                <span>{contextItems.length} text selection{contextItems.length !== 1 ? "s" : ""}</span>
+                <span>
+                  {contextItems.length} text selection
+                  {contextItems.length !== 1 ? "s" : ""}
+                </span>
               )}
             </p>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-2 text-sm">
               Review the changes in the right pane.
             </p>
           </div>
 
           {/* Preview actions */}
-          <div className="border-t bg-muted/30 px-4 py-3">
+          <div className="bg-muted/30 border-t px-4 py-3">
             <div className="flex items-center justify-center gap-2">
               <Button
                 variant="outline"
@@ -423,19 +434,19 @@ export function RevisionChatPanel({
               {/* Loading state */}
               {isLoading && (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
                 </div>
               )}
 
               {/* Empty state */}
               {!isLoading && messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-                  <div className="rounded-full bg-muted p-3">
-                    <Sparkles className="h-5 w-5 text-muted-foreground" />
+                <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
+                  <div className="bg-muted rounded-full p-3">
+                    <Sparkles className="text-muted-foreground h-5 w-5" />
                   </div>
-                  <p className="mt-3 text-sm text-muted-foreground max-w-xs">
-                    Select text from the panes to add context, then ask questions
-                    or click "Generate Preview" to create a revision.
+                  <p className="text-muted-foreground mt-3 max-w-xs text-sm">
+                    Select text from the panes to add context, then ask
+                    questions or click "Generate Preview" to create a revision.
                   </p>
                 </div>
               )}
@@ -460,13 +471,13 @@ export function RevisionChatPanel({
 
           {/* Error message */}
           {error && (
-            <div className="border-t bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            <div className="bg-destructive/10 text-destructive border-t px-4 py-2 text-sm">
               {error.message || "An error occurred"}
             </div>
           )}
 
           {/* Chat input area */}
-          <div className="border-t p-3 space-y-3">
+          <div className="space-y-3 border-t p-3">
             <div className="relative">
               <Textarea
                 ref={textareaRef}
@@ -475,33 +486,39 @@ export function RevisionChatPanel({
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 disabled={isStreaming}
-                className="min-h-[60px] max-h-[120px] resize-none pr-12 text-sm"
+                className="max-h-[120px] min-h-[60px] resize-none pr-12 text-sm"
                 rows={2}
               />
-              <div className="absolute bottom-2 right-2">
+              <div className="absolute right-2 bottom-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {/* Wrap in span to ensure tooltip works when button is disabled (pointer-events-none) */}
-                    <span tabIndex={canSubmit ? -1 : 0} className="inline-block outline-none">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleSubmit}
-                        disabled={!canSubmit}
-                        className={cn("h-7 w-7 p-0", !canSubmit && "pointer-events-none")}
-                        aria-label="Send message"
-                      >
-                        {isStreaming ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <MessageSquare className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        if (!canSubmit) {
+                          e.preventDefault()
+                          return
+                        }
+                        handleSubmit()
+                      }}
+                      aria-disabled={!canSubmit}
+                      className={cn(
+                        "h-7 w-7 p-0",
+                        !canSubmit && "cursor-not-allowed opacity-50"
+                      )}
+                      aria-label="Send message"
+                    >
+                      {isStreaming ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MessageSquare className="h-4 w-4" />
+                      )}
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Send message</p>
-                    <p className="text-xs text-muted-foreground">Press Enter</p>
+                    <p className="text-muted-foreground text-xs">Press Enter</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -512,10 +529,7 @@ export function RevisionChatPanel({
               <div className="flex items-center gap-2">
                 {/* Model selector */}
                 {availableModels && availableModels.length > 0 && (
-                  <Select
-                    value={selectedModel}
-                    onValueChange={onModelChange}
-                  >
+                  <Select value={selectedModel} onValueChange={onModelChange}>
                     <SelectTrigger
                       className="h-8 w-[160px] text-xs"
                       aria-label="Select AI Model"
@@ -537,7 +551,7 @@ export function RevisionChatPanel({
                   pressed={webSearchEnabled}
                   onPressedChange={setWebSearchEnabled}
                   size="sm"
-                  className="gap-1.5 h-8 px-2 text-xs"
+                  className="h-8 gap-1.5 px-2 text-xs"
                   aria-label="Toggle web search"
                 >
                   <Search className="h-3.5 w-3.5" />
@@ -545,7 +559,7 @@ export function RevisionChatPanel({
                 </Toggle>
                 <span
                   className={cn(
-                    "text-xs text-muted-foreground transition-colors",
+                    "text-muted-foreground text-xs transition-colors",
                     input.length > maxMessageLength * 0.9 &&
                       "font-medium text-amber-500",
                     input.length >= maxMessageLength && "text-destructive"
@@ -559,21 +573,28 @@ export function RevisionChatPanel({
               {/* Generate Preview button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span tabIndex={canGenerate ? -1 : 0} className="inline-block outline-none">
-                    <Button
-                      size="sm"
-                      onClick={onGeneratePreview}
-                      disabled={!canGenerate}
-                      className={cn("gap-1.5", !canGenerate && "pointer-events-none")}
-                    >
-                      {isGenerating ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-4 w-4" />
-                      )}
-                      Generate Preview
-                    </Button>
-                  </span>
+                  <Button
+                    size="sm"
+                    onClick={(e) => {
+                      if (!canGenerate) {
+                        e.preventDefault()
+                        return
+                      }
+                      onGeneratePreview()
+                    }}
+                    aria-disabled={!canGenerate}
+                    className={cn(
+                      "gap-1.5",
+                      !canGenerate && "cursor-not-allowed opacity-50"
+                    )}
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    Generate Preview
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>{generatePreviewTooltip}</p>
@@ -586,7 +607,7 @@ export function RevisionChatPanel({
 
       {/* Debug Context Dialog */}
       <Dialog open={debugDialogOpen} onOpenChange={setDebugDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="flex max-h-[80vh] max-w-4xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bug className="h-5 w-5" />
@@ -599,39 +620,49 @@ export function RevisionChatPanel({
           <div className="flex-1 overflow-hidden">
             {isLoadingDebug ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
               </div>
             ) : debugContext ? (
               <ScrollArea className="h-[60vh]">
                 <div className="space-y-4 p-1">
                   <div>
-                    <h4 className="text-sm font-medium mb-2">Artifact Info</h4>
-                    <div className="text-xs bg-muted p-2 rounded font-mono">
-                      Type: {debugContext.artifact_type} | ID: {debugContext.artifact_id} | Messages: {debugContext.message_count}
+                    <h4 className="mb-2 text-sm font-medium">Artifact Info</h4>
+                    <div className="bg-muted rounded p-2 font-mono text-xs">
+                      Type: {debugContext.artifact_type} | ID:{" "}
+                      {debugContext.artifact_id} | Messages:{" "}
+                      {debugContext.message_count}
                     </div>
                   </div>
                   <div className="group relative">
-                    <h4 className="text-sm font-medium mb-2">System Prompt</h4>
-                    <div className="absolute top-8 right-2 opacity-0 transition-opacity group-hover:opacity-100 z-10">
-                      <CopyButton content={debugContext.system_prompt} size="sm" />
+                    <h4 className="mb-2 text-sm font-medium">System Prompt</h4>
+                    <div className="absolute top-8 right-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
+                      <CopyButton
+                        content={debugContext.system_prompt}
+                        size="sm"
+                      />
                     </div>
-                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono relative">
+                    <pre className="bg-muted relative overflow-x-auto rounded p-3 font-mono text-xs break-words whitespace-pre-wrap">
                       {debugContext.system_prompt}
                     </pre>
                   </div>
                   <div className="group relative">
-                    <h4 className="text-sm font-medium mb-2">Artifact Content</h4>
-                    <div className="absolute top-8 right-2 opacity-0 transition-opacity group-hover:opacity-100 z-10">
-                      <CopyButton content={debugContext.artifact_content} size="sm" />
+                    <h4 className="mb-2 text-sm font-medium">
+                      Artifact Content
+                    </h4>
+                    <div className="absolute top-8 right-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
+                      <CopyButton
+                        content={debugContext.artifact_content}
+                        size="sm"
+                      />
                     </div>
-                    <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-[40vh] overflow-y-auto relative">
+                    <pre className="bg-muted relative max-h-[40vh] overflow-x-auto overflow-y-auto rounded p-3 font-mono text-xs break-words whitespace-pre-wrap">
                       {debugContext.artifact_content}
                     </pre>
                   </div>
                 </div>
               </ScrollArea>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
+              <div className="text-muted-foreground py-8 text-center">
                 Failed to load context. Make sure the conversation exists.
               </div>
             )}

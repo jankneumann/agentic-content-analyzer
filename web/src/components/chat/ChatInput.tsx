@@ -156,7 +156,14 @@ export function ChatInput({
           }
         }, 0)
       },
-      [continuous, autoSubmit, enableWebSearch, onSubmit, resizeTextarea, handleCleanup]
+      [
+        continuous,
+        autoSubmit,
+        enableWebSearch,
+        onSubmit,
+        resizeTextarea,
+        handleCleanup,
+      ]
     ),
     onError: React.useCallback((error: string) => {
       toast.error(error)
@@ -221,16 +228,12 @@ export function ChatInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             readOnly={voiceInput.isListening}
-            placeholder={
-              voiceInput.isListening
-                ? "Listening..."
-                : placeholder
-            }
+            placeholder={voiceInput.isListening ? "Listening..." : placeholder}
             aria-label="Chat message"
             disabled={disabled || isLoading}
             className={cn(
-              "min-h-[48px] max-h-[200px] resize-none pr-12",
-              "scrollbar-thin scrollbar-thumb-muted",
+              "max-h-[200px] min-h-[48px] resize-none pr-12",
+              "scrollbar-thin scrollbar-thumb-muted"
             )}
             rows={1}
           />
@@ -238,7 +241,7 @@ export function ChatInput({
           {/* Interim transcript overlay (shown below textarea while listening) */}
           {voiceInput.interimTranscript && (
             <p
-              className="mt-1 px-3 text-sm text-muted-foreground italic truncate"
+              className="text-muted-foreground mt-1 truncate px-3 text-sm italic"
               aria-live="polite"
             >
               {voiceInput.interimTranscript}
@@ -248,7 +251,7 @@ export function ChatInput({
           {/* Character count */}
           <div
             className={cn(
-              "absolute bottom-2 right-2 text-xs text-muted-foreground transition-colors",
+              "text-muted-foreground absolute right-2 bottom-2 text-xs transition-colors",
               value.length > maxLength * 0.9 && "font-medium text-amber-500",
               value.length >= maxLength && "text-destructive"
             )}
@@ -283,10 +286,19 @@ export function ChatInput({
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
+                  onClick={(e) => {
+                    if (!canSubmit) {
+                      e.preventDefault()
+                      return
+                    }
+                    handleSubmit()
+                  }}
+                  aria-disabled={!canSubmit}
                   aria-label="Send message"
-                  className="h-9 w-9 shrink-0"
+                  className={cn(
+                    "h-9 w-9 shrink-0",
+                    !canSubmit && "cursor-not-allowed opacity-50"
+                  )}
                 >
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -297,7 +309,7 @@ export function ChatInput({
               </TooltipTrigger>
               <TooltipContent>
                 <p>Send message</p>
-                <p className="text-xs text-muted-foreground">Press Enter</p>
+                <p className="text-muted-foreground text-xs">Press Enter</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -325,14 +337,14 @@ export function ChatInput({
       )}
 
       {/* Helper text */}
-      <p className="px-1 text-xs text-muted-foreground">
+      <p className="text-muted-foreground px-1 text-xs">
         <span className="hidden sm:inline">
-          Press <kbd className="rounded bg-muted px-1">Enter</kbd> to send,{" "}
-          <kbd className="rounded bg-muted px-1">Shift+Enter</kbd> for new line
+          Press <kbd className="bg-muted rounded px-1">Enter</kbd> to send,{" "}
+          <kbd className="bg-muted rounded px-1">Shift+Enter</kbd> for new line
           {voiceInput.isSupported && (
             <>
               ,{" "}
-              <kbd className="rounded bg-muted px-1">
+              <kbd className="bg-muted rounded px-1">
                 {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Shift+C
               </kbd>{" "}
               to clean up
