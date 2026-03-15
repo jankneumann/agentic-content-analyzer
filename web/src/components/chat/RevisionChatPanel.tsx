@@ -481,14 +481,15 @@ export function RevisionChatPanel({
               <div className="absolute bottom-2 right-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {/* Wrap in span to ensure tooltip works when button is disabled (pointer-events-none) */}
-                    <span tabIndex={canSubmit ? -1 : 0} className="inline-block outline-none">
-                      <Button
+                    <Button
                         size="sm"
                         variant="ghost"
-                        onClick={handleSubmit}
-                        disabled={!canSubmit}
-                        className={cn("h-7 w-7 p-0", !canSubmit && "pointer-events-none")}
+                        onClick={canSubmit ? handleSubmit : undefined}
+                        aria-disabled={!canSubmit}
+                        className={cn(
+                          "h-7 w-7 p-0",
+                          !canSubmit && "opacity-50 cursor-not-allowed"
+                        )}
                         aria-label="Send message"
                       >
                         {isStreaming ? (
@@ -497,7 +498,6 @@ export function RevisionChatPanel({
                           <MessageSquare className="h-4 w-4" />
                         )}
                       </Button>
-                    </span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Send message</p>
@@ -559,12 +559,14 @@ export function RevisionChatPanel({
               {/* Generate Preview button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span tabIndex={canGenerate ? -1 : 0} className="inline-block outline-none">
-                    <Button
+                  <Button
                       size="sm"
-                      onClick={onGeneratePreview}
-                      disabled={!canGenerate}
-                      className={cn("gap-1.5", !canGenerate && "pointer-events-none")}
+                      onClick={canGenerate ? onGeneratePreview : undefined}
+                      aria-disabled={!canGenerate}
+                      className={cn(
+                        "gap-1.5",
+                        !canGenerate && "opacity-50 cursor-not-allowed"
+                      )}
                     >
                       {isGenerating ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -573,7 +575,6 @@ export function RevisionChatPanel({
                       )}
                       Generate Preview
                     </Button>
-                  </span>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>{generatePreviewTooltip}</p>

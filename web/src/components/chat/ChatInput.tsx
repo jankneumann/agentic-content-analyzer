@@ -283,10 +283,13 @@ export function ChatInput({
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
+                  onClick={canSubmit ? handleSubmit : undefined}
+                  aria-disabled={!canSubmit}
                   aria-label="Send message"
-                  className="h-9 w-9 shrink-0"
+                  className={cn(
+                    "h-9 w-9 shrink-0",
+                    !canSubmit && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
