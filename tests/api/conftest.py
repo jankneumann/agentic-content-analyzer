@@ -214,6 +214,7 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         "src.api.image_generation_routes.get_db",
         "src.api.notification_routes.get_db",
         "src.api.notification_preferences_routes.get_db",
+        "src.api.theme_routes.get_db",
         "src.services.script_review_service.get_db",
         "src.services.content_query.get_db",
         "src.processors.theme_analyzer.get_db",

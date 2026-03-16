@@ -454,7 +454,7 @@ def _run_digest_stage(
         typer.echo(f"  Digest created: {result.title}")
 
         ctx.set_attribute("digest_type", digest_type)
-        ctx.set_attribute("item_count", result.newsletter_count)
+        ctx.set_attribute("item_count", result.content_count)
         ctx.set_attribute("period_start", period_start.isoformat())
         ctx.set_attribute("period_end", period_end.isoformat())
 

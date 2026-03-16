@@ -9,9 +9,9 @@
 
 import { useState } from "react"
 import { createRoute } from "@tanstack/react-router"
-import { BarChart3, Network, Table2, RefreshCw, Loader2, CheckCircle } from "lucide-react"
+import { BarChart3, Network, Table2, RefreshCw, Loader2, CheckCircle, History, Clock } from "lucide-react"
 import { toast } from "sonner"
-import { formatDistanceToNow } from "date-fns"
+import { format, formatDistanceToNow } from "date-fns"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
-import { useAnalyzeThemes, useAnalysisStatus, useLatestAnalysis } from "@/hooks"
+import { useAnalyzeThemes, useAnalysisById, useAnalysisStatus, useLatestAnalysis, useAnalysesList } from "@/hooks"
 import {
   AnalyzeThemesDialog,
   type ThemeAnalysisParams,
@@ -40,14 +40,27 @@ export const ThemesRoute = createRoute({
 function ThemesPage() {
   const [showAnalyzeDialog, setShowAnalyzeDialog] = useState(false)
   const [currentAnalysisId, setCurrentAnalysisId] = useState<number | null>(null)
+  const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null)
 
   const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
   const analyzeMutation = useAnalyzeThemes()
   const { data: analysisStatus } = useAnalysisStatus(currentAnalysisId)
   const { data: latestAnalysis, refetch: refetchLatest } = useLatestAnalysis()
+  const { data: analysesList } = useAnalysesList(20)
+  const { data: selectedAnalysis } = useAnalysisById(selectedHistoryId)
+
+  // Use selected past analysis or latest
+  const displayAnalysis = selectedHistoryId && selectedAnalysis && "themes" in selectedAnalysis
+    ? selectedAnalysis
+    : latestAnalysis
 
   // Check if we have a valid analysis result
-  const hasAnalysis = latestAnalysis && "themes" in latestAnalysis
+  const hasAnalysis = displayAnalysis && "themes" in displayAnalysis
+
+  // History items: completed analyses excluding the currently displayed one
+  const historyItems = (analysesList ?? []).filter(
+    (a) => a.status === "completed" && a.id !== displayAnalysis?.id
+  )
 
   const handleAnalyze = (params: ThemeAnalysisParams) => {
     setShowAnalyzeDialog(false)
@@ -154,25 +167,25 @@ function ThemesPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Themes</CardDescription>
-              <CardTitle className="text-2xl">{latestAnalysis.total_themes}</CardTitle>
+              <CardTitle className="text-2xl">{displayAnalysis.total_themes}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Emerging</CardDescription>
-              <CardTitle className="text-2xl">{latestAnalysis.emerging_themes_count}</CardTitle>
+              <CardTitle className="text-2xl">{displayAnalysis.emerging_themes_count}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Content Items Analyzed</CardDescription>
-              <CardTitle className="text-2xl">{latestAnalysis.content_count}</CardTitle>
+              <CardTitle className="text-2xl">{displayAnalysis.content_count}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Top Theme</CardDescription>
-              <CardTitle className="text-lg truncate">{latestAnalysis.top_theme ?? "N/A"}</CardTitle>
+              <CardTitle className="text-lg truncate">{displayAnalysis.top_theme ?? "N/A"}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -186,10 +199,17 @@ function ThemesPage() {
               <CardTitle>Theme Analysis</CardTitle>
             </div>
             {hasAnalysis && (
-              <Badge variant="outline" className="gap-1">
-                <CheckCircle className="h-3 w-3" />
-                Last analyzed {formatDistanceToNow(new Date(latestAnalysis.analysis_date), { addSuffix: true })}
-              </Badge>
+              <div className="flex items-center gap-2">
+                {selectedHistoryId && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedHistoryId(null)}>
+                    Back to latest
+                  </Button>
+                )}
+                <Badge variant="outline" className="gap-1">
+                  <CheckCircle className="h-3 w-3" />
+                  {selectedHistoryId ? "Viewing past analysis" : `Last analyzed ${formatDistanceToNow(new Date(displayAnalysis.analysis_date), { addSuffix: true })}`}
+                </Badge>
+              </div>
             )}
           </div>
           <CardDescription>
@@ -209,9 +229,9 @@ function ThemesPage() {
                 </p>
               </div>
             </div>
-          ) : hasAnalysis && latestAnalysis.themes.length > 0 ? (
+          ) : hasAnalysis && displayAnalysis.themes.length > 0 ? (
             <div className="space-y-4">
-              {latestAnalysis.themes.slice(0, 10).map((theme, idx) => (
+              {displayAnalysis.themes.slice(0, 10).map((theme, idx) => (
                 <div key={idx} className="flex items-start gap-4 p-4 rounded-lg border">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -247,9 +267,9 @@ function ThemesPage() {
                   </div>
                 </div>
               ))}
-              {latestAnalysis.themes.length > 10 && (
+              {displayAnalysis.themes.length > 10 && (
                 <p className="text-center text-sm text-muted-foreground">
-                  + {latestAnalysis.themes.length - 10} more themes
+                  + {displayAnalysis.themes.length - 10} more themes
                 </p>
               )}
             </div>
@@ -276,6 +296,60 @@ function ThemesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Analysis history */}
+      {historyItems.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>Analysis History</CardTitle>
+            </div>
+            <CardDescription>
+              Previous theme analyses. Click to view.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {historyItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setSelectedHistoryId(item.id)}
+                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        {item.start_date && item.end_date
+                          ? `${format(new Date(item.start_date), "MMM d")} – ${format(new Date(item.end_date), "MMM d, yyyy")}`
+                          : `Analysis #${item.id}`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.created_at
+                          ? formatDistanceToNow(new Date(item.created_at), { addSuffix: true })
+                          : "Unknown date"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {item.total_themes != null && (
+                      <Badge variant="secondary" className="text-xs">
+                        {item.total_themes} themes
+                      </Badge>
+                    )}
+                    {item.content_count != null && (
+                      <Badge variant="outline" className="text-xs">
+                        {item.content_count} items
+                      </Badge>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Analyze themes dialog */}
       <AnalyzeThemesDialog

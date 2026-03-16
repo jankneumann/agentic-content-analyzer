@@ -2,16 +2,22 @@
 Theme Analysis API Routes
 
 Endpoints for analyzing themes across content items.
+Results are persisted to PostgreSQL for temporal evolution tracking.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.models.theme import ThemeAnalysisRequest, ThemeAnalysisResult
+from src.models.theme import (
+    AnalysisStatus,
+    ThemeAnalysis,
+    ThemeAnalysisRequest,
+)
 from src.processors.theme_analyzer import ThemeAnalyzer
+from src.storage.database import get_db
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -61,10 +67,31 @@ class AnalyzeThemesResponse(BaseModel):
     analysis_id: int | None = None
 
 
-# In-memory storage for analysis results (simplified - would use DB in production)
-_analysis_results: dict[int, ThemeAnalysisResult] = {}
-_analysis_counter = 0
-_analysis_status: dict[int, str] = {}
+def _orm_to_response(record: ThemeAnalysis) -> dict:
+    """Convert a ThemeAnalysis ORM record to an API response dict."""
+    return {
+        "id": record.id,
+        "status": record.status.value
+        if isinstance(record.status, AnalysisStatus)
+        else record.status,
+        "analysis_date": record.analysis_date.isoformat() if record.analysis_date else None,
+        "start_date": record.start_date.isoformat() if record.start_date else None,
+        "end_date": record.end_date.isoformat() if record.end_date else None,
+        "content_count": record.content_count,
+        "content_ids": record.content_ids or [],
+        "themes": record.themes or [],
+        "total_themes": record.total_themes,
+        "emerging_themes_count": record.emerging_themes_count,
+        "top_theme": record.top_theme,
+        "agent_framework": record.agent_framework,
+        "model_used": record.model_used,
+        "model_version": record.model_version,
+        "processing_time_seconds": record.processing_time_seconds,
+        "token_usage": record.token_usage,
+        "cross_theme_insights": record.cross_theme_insights or [],
+        "error_message": record.error_message,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+    }
 
 
 async def run_theme_analysis(
@@ -72,11 +99,17 @@ async def run_theme_analysis(
     request: ThemeAnalysisRequest,
     include_historical: bool,
 ) -> None:
-    """Background task to run theme analysis."""
-    global _analysis_results, _analysis_status
-
+    """Background task to run theme analysis and persist results to DB."""
     try:
-        _analysis_status[analysis_id] = "running"
+        # Mark as running
+        with get_db() as db:
+            record = db.query(ThemeAnalysis).filter(ThemeAnalysis.id == analysis_id).first()
+            if not record:
+                logger.error(f"Theme analysis {analysis_id} not found in DB")
+                return
+            record.status = AnalysisStatus.RUNNING
+            db.commit()
+
         logger.info(f"Starting theme analysis {analysis_id}")
 
         analyzer = ThemeAnalyzer()
@@ -85,14 +118,55 @@ async def run_theme_analysis(
             include_historical_context=include_historical,
         )
 
-        _analysis_results[analysis_id] = result
-        _analysis_status[analysis_id] = "completed"
+        # Persist completed result
+        with get_db() as db:
+            record = db.query(ThemeAnalysis).filter(ThemeAnalysis.id == analysis_id).first()
+            if not record:
+                logger.error(f"Theme analysis {analysis_id} disappeared from DB")
+                return
+
+            record.status = AnalysisStatus.COMPLETED
+            record.content_count = result.content_count
+            record.content_ids = result.content_ids
+            record.themes = [t.model_dump(mode="json") for t in result.themes]
+            record.total_themes = result.total_themes
+            record.emerging_themes_count = result.emerging_themes_count
+            record.top_theme = result.top_theme
+            record.agent_framework = result.agent_framework
+            record.model_used = result.model_used
+            record.model_version = result.model_version
+            record.processing_time_seconds = result.processing_time_seconds
+            record.token_usage = result.token_usage
+            record.cross_theme_insights = result.cross_theme_insights
+            record.analysis_date = result.analysis_date
+            db.commit()
 
         logger.info(f"Theme analysis {analysis_id} completed: {result.total_themes} themes found")
 
+        # Neo4j episode writeback (fail-safe)
+        try:
+            from src.storage.graphiti_client import GraphitiClient
+
+            client = GraphitiClient()
+            try:
+                await client.add_theme_analysis_episode(result)
+                logger.info(f"Theme analysis {analysis_id} written to Neo4j")
+            finally:
+                client.close()
+        except Exception as e:
+            logger.warning(f"Neo4j writeback failed for analysis {analysis_id}: {e}")
+
     except Exception as e:
         logger.error(f"Theme analysis {analysis_id} failed: {e}", exc_info=True)
-        _analysis_status[analysis_id] = f"failed: {e!s}"
+        try:
+            with get_db() as db:
+                record = db.query(ThemeAnalysis).filter(ThemeAnalysis.id == analysis_id).first()
+                if record:
+                    record.status = AnalysisStatus.FAILED
+                    record.error_message = str(e)[:1000]
+                    db.commit()
+        except Exception as db_err:
+            logger.error(f"Failed to record error for analysis {analysis_id}: {db_err}")
 
 
 @router.post("/analyze", response_model=AnalyzeThemesResponse)
@@ -106,10 +180,8 @@ async def analyze_themes(
     Analysis runs in the background. Use GET /themes/analysis/{id} to check status
     and retrieve results.
     """
-    global _analysis_counter
-
-    # Set default dates if not provided (use start/end of day)
-    now = datetime.utcnow()
+    # Set default dates if not provided
+    now = datetime.now(UTC)
     if request.end_date:
         end_date = request.end_date
     else:
@@ -138,9 +210,19 @@ async def analyze_themes(
         relevance_threshold=request.relevance_threshold,
     )
 
-    # Generate analysis ID
-    _analysis_counter += 1
-    analysis_id = _analysis_counter
+    # Create DB record with QUEUED status
+    with get_db() as db:
+        record = ThemeAnalysis(
+            status=AnalysisStatus.QUEUED,
+            analysis_date=now,
+            start_date=start_date,
+            end_date=end_date,
+            created_at=now,
+        )
+        db.add(record)
+        db.flush()
+        analysis_id = record.id
+        db.commit()
 
     # Queue background task
     background_tasks.add_task(
@@ -149,8 +231,6 @@ async def analyze_themes(
         analysis_request,
         request.include_historical_context,
     )
-
-    _analysis_status[analysis_id] = "queued"
 
     logger.info(f"Theme analysis {analysis_id} queued: {start_date.date()} to {end_date.date()}")
 
@@ -166,62 +246,78 @@ async def get_analysis_status(analysis_id: int):
     """
     Get the status and results of a theme analysis.
     """
-    if analysis_id not in _analysis_status:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Analysis {analysis_id} not found",
+    with get_db() as db:
+        record = db.query(ThemeAnalysis).filter(ThemeAnalysis.id == analysis_id).first()
+
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Analysis {analysis_id} not found",
+            )
+
+        status_value = (
+            record.status.value if isinstance(record.status, AnalysisStatus) else record.status
         )
 
-    status = _analysis_status[analysis_id]
+        if status_value == "completed":
+            return {
+                "status": status_value,
+                "result": _orm_to_response(record),
+            }
 
-    if status == "completed" and analysis_id in _analysis_results:
         return {
-            "status": status,
-            "result": _analysis_results[analysis_id],
+            "status": status_value,
+            "result": None,
+            "error_message": record.error_message if status_value == "failed" else None,
         }
-
-    return {
-        "status": status,
-        "result": None,
-    }
 
 
 @router.get("/latest")
-async def get_latest_analysis() -> ThemeAnalysisResult | dict:
+async def get_latest_analysis() -> dict:
     """
     Get the most recent completed theme analysis.
     """
-    # Find latest completed analysis
-    completed_ids = [aid for aid, status in _analysis_status.items() if status == "completed"]
+    with get_db() as db:
+        record = (
+            db.query(ThemeAnalysis)
+            .filter(ThemeAnalysis.status == AnalysisStatus.COMPLETED)
+            .order_by(ThemeAnalysis.created_at.desc())
+            .first()
+        )
 
-    if not completed_ids:
-        return {"message": "No completed analyses found"}
+        if not record:
+            return {"message": "No completed analyses found"}
 
-    latest_id = max(completed_ids)
-    return _analysis_results[latest_id]
+        return _orm_to_response(record)
 
 
 @router.get("")
 async def list_analyses(
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[dict]:
     """
-    List recent theme analyses.
+    List recent theme analyses with offset pagination.
     """
-    analyses = []
-
-    for aid in sorted(_analysis_status.keys(), reverse=True)[:limit]:
-        status = _analysis_status[aid]
-        result = _analysis_results.get(aid)
-
-        analyses.append(
-            {
-                "id": aid,
-                "status": status,
-                "newsletter_count": result.newsletter_count if result else None,
-                "total_themes": result.total_themes if result else None,
-                "analysis_date": result.analysis_date.isoformat() if result else None,
-            }
+    with get_db() as db:
+        records = (
+            db.query(ThemeAnalysis)
+            .order_by(ThemeAnalysis.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
         )
 
-    return analyses
+        return [
+            {
+                "id": r.id,
+                "status": r.status.value if isinstance(r.status, AnalysisStatus) else r.status,
+                "content_count": r.content_count,
+                "total_themes": r.total_themes,
+                "analysis_date": r.analysis_date.isoformat() if r.analysis_date else None,
+                "start_date": r.start_date.isoformat() if r.start_date else None,
+                "end_date": r.end_date.isoformat() if r.end_date else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in records
+        ]

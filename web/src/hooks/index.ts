@@ -65,6 +65,7 @@ export {
 // Theme hooks
 export {
   useAnalyzeThemes,
+  useAnalysisById,
   useAnalysisStatus,
   useLatestAnalysis,
   useAnalysesList,

@@ -7,6 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   analyzeThemes,
+  getAnalysisById,
   getAnalysisStatus,
   getLatestAnalysis,
   listAnalyses,
@@ -45,6 +46,17 @@ export function useAnalysisStatus(analysisId: number | null) {
       }
       return false
     },
+  })
+}
+
+/**
+ * Hook to get a single analysis by ID
+ */
+export function useAnalysisById(id: number | null) {
+  return useQuery({
+    queryKey: queryKeys.themes.analysis(id ?? 0),
+    queryFn: () => getAnalysisById(id!),
+    enabled: id !== null,
   })
 }
 
