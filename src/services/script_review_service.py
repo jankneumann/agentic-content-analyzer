@@ -436,41 +436,47 @@ class ScriptReviewService:
         Returns:
             Dict with review statistics
         """
+        from sqlalchemy import func
+
         with get_db() as db:
-            # Count by status
-            pending = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value)
-                .count()
-            )
-            revision_requested = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_REVISION_REQUESTED.value)
-                .count()
-            )
-            approved = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED.value)
-                .count()
-            )
-            completed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.COMPLETED.value)
-                .count()
-            )
-            failed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.FAILED.value)
-                .count()
+            # Count by status in a single query to optimize performance
+            # by avoiding multiple redundant count queries
+            status_counts_result = (
+                db.query(PodcastScriptRecord.status, func.count(PodcastScriptRecord.id))
+                .filter(
+                    PodcastScriptRecord.status.in_(
+                        [
+                            PodcastStatus.SCRIPT_PENDING_REVIEW.value,
+                            PodcastStatus.SCRIPT_REVISION_REQUESTED.value,
+                            PodcastStatus.SCRIPT_APPROVED.value,
+                            PodcastStatus.COMPLETED.value,
+                            PodcastStatus.FAILED.value,
+                        ]
+                    )
+                )
+                .group_by(PodcastScriptRecord.status)
+                .all()
             )
 
+            # Initialize with zeros
+            status_counts = {
+                PodcastStatus.SCRIPT_PENDING_REVIEW.value: 0,
+                PodcastStatus.SCRIPT_REVISION_REQUESTED.value: 0,
+                PodcastStatus.SCRIPT_APPROVED.value: 0,
+                PodcastStatus.COMPLETED.value: 0,
+                PodcastStatus.FAILED.value: 0,
+            }
+
+            for status, count in status_counts_result:
+                status_counts[status] = count
+
             return {
-                "pending_review": pending,
-                "revision_requested": revision_requested,
-                "approved_ready_for_audio": approved,
-                "completed_with_audio": completed,
-                "failed_rejected": failed,
-                "total": pending + revision_requested + approved + completed + failed,
+                "pending_review": status_counts[PodcastStatus.SCRIPT_PENDING_REVIEW.value],
+                "revision_requested": status_counts[PodcastStatus.SCRIPT_REVISION_REQUESTED.value],
+                "approved_ready_for_audio": status_counts[PodcastStatus.SCRIPT_APPROVED.value],
+                "completed_with_audio": status_counts[PodcastStatus.COMPLETED.value],
+                "failed_rejected": status_counts[PodcastStatus.FAILED.value],
+                "total": sum(status_counts.values()),
             }
 
     def calculate_revision_cost(self) -> float:
