@@ -54,7 +54,7 @@ export function useAnalysisStatus(analysisId: number | null) {
  */
 export function useAnalysisById(id: number | null) {
   return useQuery({
-    queryKey: queryKeys.themes.analysis(id ?? 0),
+    queryKey: queryKeys.themes.analysisResult(id ?? 0),
     queryFn: () => getAnalysisById(id!),
     enabled: id !== null,
   })

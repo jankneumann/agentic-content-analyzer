@@ -98,8 +98,11 @@ export const themeKeys = {
   details: () => [...themeKeys.all, "detail"] as const,
   detail: (id: string) => [...themeKeys.details(), id] as const,
 
-  /** Key for analysis status */
+  /** Key for analysis status (polling wrapper) */
   analysis: (id: number) => [...themeKeys.all, "analysis", id] as const,
+
+  /** Key for analysis result by ID (unwrapped ThemeAnalysisResult) */
+  analysisResult: (id: number) => [...themeKeys.all, "analysis-result", id] as const,
 
   /** Key for latest analysis */
   latest: [...["themes"], "latest"] as const,

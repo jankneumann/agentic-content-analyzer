@@ -7,7 +7,7 @@
  * Route: /themes
  */
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createRoute } from "@tanstack/react-router"
 import { BarChart3, Network, Table2, RefreshCw, Loader2, CheckCircle, History, Clock } from "lucide-react"
 import { toast } from "sonner"
@@ -41,6 +41,16 @@ function ThemesPage() {
   const [showAnalyzeDialog, setShowAnalyzeDialog] = useState(false)
   const [currentAnalysisId, setCurrentAnalysisId] = useState<number | null>(null)
   const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null)
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Clean up polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+      }
+    }
+  }, [])
 
   const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
   const analyzeMutation = useAnalyzeThemes()
@@ -90,7 +100,7 @@ function ThemesPage() {
             let pollCount = 0
             const maxPolls = 120 // 10 minutes max (5s intervals)
 
-            const pollInterval = setInterval(async () => {
+            pollIntervalRef.current = setInterval(async () => {
               pollCount++
               const progressPercent = Math.min(20 + pollCount * 0.6, 95)
               updateTask(taskId, {
@@ -112,7 +122,10 @@ function ThemesPage() {
               const completed = result.data && "themes" in result.data
 
               if (completed || pollCount >= maxPolls) {
-                clearInterval(pollInterval)
+                if (pollIntervalRef.current) {
+                  clearInterval(pollIntervalRef.current)
+                  pollIntervalRef.current = null
+                }
                 setCurrentAnalysisId(null)
 
                 if (completed && "themes" in result.data) {
