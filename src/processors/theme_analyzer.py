@@ -117,7 +117,7 @@ class ThemeAnalyzer:
                 return ThemeAnalysisResult(
                     start_date=request.start_date,
                     end_date=request.end_date,
-                    newsletter_count=0,
+                    content_count=0,
                     model_used=self.model,
                     agent_framework=self.framework,
                 )
@@ -164,8 +164,8 @@ class ThemeAnalyzer:
             result = ThemeAnalysisResult(
                 start_date=request.start_date,
                 end_date=request.end_date,
-                newsletter_count=len(contents),
-                newsletter_ids=[c["id"] for c in contents],  # Now content IDs
+                content_count=len(contents),
+                content_ids=[c["id"] for c in contents],
                 themes=themes,
                 total_themes=len(themes),
                 emerging_themes_count=len([t for t in themes if t.trend == ThemeTrend.EMERGING]),
@@ -505,7 +505,7 @@ class ThemeAnalyzer:
                     description=theme_dict["description"],
                     category=ThemeCategory(theme_dict["category"]),
                     mention_count=mention_count,
-                    newsletter_ids=content_ids,  # TODO: Rename field to content_ids in ThemeData
+                    content_ids=content_ids,
                     first_seen=first_date,
                     last_seen=last_date,
                     trend=ThemeTrend(theme_dict["trend"]),

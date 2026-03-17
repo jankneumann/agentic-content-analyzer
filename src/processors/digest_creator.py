@@ -115,12 +115,12 @@ class DigestCreator:
             include_historical_context=request.include_historical_context,
         )
 
-        if theme_result.newsletter_count == 0:
+        if theme_result.content_count == 0:
             logger.warning("No content found in period")
             return self._create_empty_digest(request)
 
         logger.info(
-            f"Analyzed {theme_result.newsletter_count} content items, "
+            f"Analyzed {theme_result.content_count} content items, "
             f"found {theme_result.total_themes} themes"
         )
 
@@ -221,7 +221,7 @@ class DigestCreator:
 
         logger.info(
             f"Digest created successfully in {processing_time:.2f}s "
-            f"({theme_result.newsletter_count} content items)"
+            f"({theme_result.content_count} content items)"
         )
 
         return digest

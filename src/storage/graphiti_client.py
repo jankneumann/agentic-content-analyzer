@@ -332,6 +332,93 @@ class GraphitiClient:
         logger.info(f"Found {len(results)} potential theme elements")
         return results
 
+    async def add_theme_analysis_episode(
+        self,
+        result: Any,
+    ) -> str | None:
+        """
+        Write a completed theme analysis to the knowledge graph as a Graphiti episode.
+
+        The episode contains a structured markdown summary of the themes, their
+        categories, trends, and key points so that Graphiti can auto-extract
+        theme entities and relationships for temporal evolution queries.
+
+        Args:
+            result: A ThemeAnalysisResult object (typed as Any to avoid circular imports)
+
+        Returns:
+            Episode ID if successful, None if no themes to write
+        """
+        if not result.themes:
+            logger.info("No themes to write to knowledge graph")
+            return None
+
+        # Build structured markdown episode body
+        lines = [
+            f"# Theme Analysis — {result.analysis_date.strftime('%Y-%m-%d')}",
+            "",
+            f"**Period:** {result.start_date.strftime('%Y-%m-%d')} to {result.end_date.strftime('%Y-%m-%d')}",
+            f"**Content Analyzed:** {result.content_count}",
+            f"**Total Themes:** {result.total_themes}",
+            f"**Emerging Themes:** {result.emerging_themes_count}",
+            "",
+        ]
+
+        for theme in result.themes:
+            t = (
+                theme
+                if isinstance(theme, dict)
+                else theme.model_dump()
+                if hasattr(theme, "model_dump")
+                else theme
+            )
+            name = (
+                t.get("name", "Unknown") if isinstance(t, dict) else getattr(t, "name", "Unknown")
+            )
+            category = t.get("category", "") if isinstance(t, dict) else getattr(t, "category", "")
+            trend = t.get("trend", "") if isinstance(t, dict) else getattr(t, "trend", "")
+            description = (
+                t.get("description", "") if isinstance(t, dict) else getattr(t, "description", "")
+            )
+            key_points = (
+                t.get("key_points", []) if isinstance(t, dict) else getattr(t, "key_points", [])
+            )
+            relevance = (
+                t.get("relevance_score", 0)
+                if isinstance(t, dict)
+                else getattr(t, "relevance_score", 0)
+            )
+
+            lines.append(f"## {name}")
+            lines.append(
+                f"**Category:** {category} | **Trend:** {trend} | **Relevance:** {relevance:.2f}"
+            )
+            lines.append(f"{description}")
+            if key_points:
+                lines.append("")
+                for point in key_points[:5]:
+                    lines.append(f"- {point}")
+            lines.append("")
+
+        if result.cross_theme_insights:
+            lines.append("## Cross-Theme Insights")
+            for insight in result.cross_theme_insights:
+                lines.append(f"- {insight}")
+            lines.append("")
+
+        episode_body = "\n".join(lines)
+
+        episode_id = await self.graphiti.add_episode(
+            name=f"Theme Analysis: {result.analysis_date.strftime('%Y-%m-%d')}",
+            episode_body=episode_body,
+            source_description="Automated theme analysis result",
+            reference_time=result.analysis_date,
+            source=EpisodeType.text,
+        )
+
+        logger.info(f"Added theme analysis episode {episode_id}")
+        return str(episode_id)
+
     async def get_entity_facts(
         self,
         entity_names: list[str],

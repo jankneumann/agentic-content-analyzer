@@ -28,9 +28,12 @@ export interface AnalysisStatusResponse {
 export interface AnalysisListItem {
   id: number
   status: string
-  newsletter_count: number | null
+  content_count: number | null
   total_themes: number | null
   analysis_date: string | null
+  start_date: string | null
+  end_date: string | null
+  created_at: string | null
 }
 
 /**
@@ -52,6 +55,16 @@ export async function getAnalysisStatus(
 }
 
 /**
+ * Get a single analysis by ID (extracts result from status wrapper)
+ */
+export async function getAnalysisById(
+  id: number
+): Promise<ThemeAnalysisResult | null> {
+  const response = await apiClient.get<AnalysisStatusResponse>(`/themes/analysis/${id}`)
+  return response.result
+}
+
+/**
  * Get the latest completed analysis
  */
 export async function getLatestAnalysis(): Promise<ThemeAnalysisResult | { message: string }> {
@@ -62,7 +75,8 @@ export async function getLatestAnalysis(): Promise<ThemeAnalysisResult | { messa
  * List recent analyses
  */
 export async function listAnalyses(
-  limit: number = 10
+  limit: number = 10,
+  offset: number = 0
 ): Promise<AnalysisListItem[]> {
-  return apiClient.get<AnalysisListItem[]>(`/themes?limit=${limit}`)
+  return apiClient.get<AnalysisListItem[]>(`/themes?limit=${limit}&offset=${offset}`)
 }

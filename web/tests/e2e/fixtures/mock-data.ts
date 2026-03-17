@@ -637,9 +637,11 @@ export function createThemeAnalysisResult(
   overrides: Partial<ThemeAnalysisResult> = {}
 ): ThemeAnalysisResult {
   return {
+    id: 1,
     analysis_date: "2025-01-16T00:00:00Z",
     start_date: "2025-01-01T00:00:00Z",
     end_date: "2025-01-15T23:59:59Z",
+    created_at: "2025-01-16T00:05:00Z",
     content_count: 25,
     content_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     themes: [

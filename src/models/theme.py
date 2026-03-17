@@ -1,10 +1,10 @@
 """Theme analysis data models."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
+from sqlalchemy import JSON, Column, DateTime, Enum, Float, Index, Integer, String, Text
 
 from src.models.base import Base
 
@@ -32,6 +32,15 @@ class ThemeTrend(StrEnum):
     ONE_OFF = "one_off"  # Single mention
 
 
+class AnalysisStatus(StrEnum):
+    """Theme analysis lifecycle status."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ThemeAnalysis(Base):
     """Theme analysis results database model."""
 
@@ -39,29 +48,49 @@ class ThemeAnalysis(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
+    # Lifecycle status
+    status = Column(
+        Enum(
+            AnalysisStatus,
+            name="analysisstatus",
+            create_constraint=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=AnalysisStatus.QUEUED,
+        index=True,
+    )
+
     # Time range for analysis
-    analysis_date = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    analysis_date = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
 
-    # Analysis scope
-    newsletter_count = Column(Integer, nullable=False)
-    newsletter_ids = Column(JSON, nullable=False)  # List[int]
+    # Analysis scope (renamed from newsletter_*)
+    content_count = Column(Integer, nullable=False, default=0)
+    content_ids = Column(JSON, nullable=False, default=list)  # List[int]
 
     # Detected themes
-    themes = Column(JSON, nullable=False)  # List[ThemeData dict]
+    themes = Column(JSON, nullable=False, default=list)  # List[ThemeData dict]
 
     # Summary statistics
-    total_themes = Column(Integer, nullable=False)
-    emerging_themes_count = Column(Integer, nullable=False)
+    total_themes = Column(Integer, nullable=False, default=0)
+    emerging_themes_count = Column(Integer, nullable=False, default=0)
     top_theme = Column(String(500), nullable=True)
 
     # Metadata
-    agent_framework = Column(String(100), nullable=False)  # claude, openai, google, gemini
-    model_used = Column(String(100), nullable=False)  # General model ID
-    model_version = Column(String(20), nullable=True)  # Version
+    agent_framework = Column(String(100), nullable=False, default="")
+    model_used = Column(String(100), nullable=False, default="")
+    model_version = Column(String(20), nullable=True)
     processing_time_seconds = Column(Float, nullable=True)
     token_usage = Column(Integer, nullable=True)
+
+    # New persistence fields
+    cross_theme_insights = Column(JSON, nullable=True)  # List[str]
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True)
+
+    __table_args__ = (Index("ix_theme_analyses_status_created", "status", "created_at"),)
 
 
 class HistoricalMention(BaseModel):
@@ -113,9 +142,9 @@ class ThemeData(BaseModel):
 
     # Frequency and recency
     mention_count: int = Field(..., description="Number of content items mentioning this theme")
-    newsletter_ids: list[int] = Field(
+    content_ids: list[int] = Field(
         default_factory=list,
-        description="IDs of content items mentioning theme (legacy field name)",
+        description="IDs of content items mentioning this theme",
     )
     first_seen: datetime = Field(..., description="First mention date")
     last_seen: datetime = Field(..., description="Most recent mention date")
@@ -138,12 +167,12 @@ class ThemeData(BaseModel):
         default_factory=list, description="Key points about this theme from content items"
     )
 
-    # Historical context (NEW)
+    # Historical context
     historical_context: ThemeEvolution | None = Field(
         None, description="Historical context and evolution of this theme"
     )
 
-    # Continuity text (NEW)
+    # Continuity text
     continuity_text: str | None = Field(
         None, description="Human-readable continuity statement (e.g., 'Previously discussed in...')"
     )
@@ -165,13 +194,14 @@ class ThemeAnalysisRequest(BaseModel):
 class ThemeAnalysisResult(BaseModel):
     """Complete theme analysis results."""
 
-    analysis_date: datetime = Field(default_factory=datetime.utcnow)
+    id: int | None = None
+    analysis_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
     start_date: datetime
     end_date: datetime
 
-    # Content items analyzed
-    newsletter_count: int  # Legacy field name, represents content count
-    newsletter_ids: list[int] = Field(default_factory=list)
+    # Content items analyzed (renamed from newsletter_*)
+    content_count: int = 0
+    content_ids: list[int] = Field(default_factory=list)
 
     # Themes
     themes: list[ThemeData] = Field(default_factory=list)

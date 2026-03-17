@@ -655,20 +655,30 @@ export class ApiMocks {
         body: JSON.stringify(data ?? mockData.createThemeAnalysisResult()),
       })
     )
-    await this.page.route("**/api/v1/themes/analyses*", (route) =>
-      route.fulfill({
+    // List endpoint: GET /api/v1/themes?limit=...&offset=...
+    await this.page.route(/\/api\/v1\/themes(\?|$)/, (route) => {
+      const url = route.request().url()
+      // Don't intercept sub-paths like /themes/latest or /themes/analyze
+      if (/\/themes\/(latest|analyze|analysis)/.test(url)) {
+        return route.fallback()
+      }
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify([
           {
-            id: "analysis-1",
+            id: 1,
+            status: "completed",
             analysis_date: "2025-01-16T00:00:00Z",
+            start_date: "2025-01-01T00:00:00Z",
+            end_date: "2025-01-15T23:59:59Z",
             total_themes: 3,
             content_count: 25,
+            created_at: "2025-01-16T00:05:00Z",
           },
         ]),
       })
-    )
+    })
   }
 
   async mockThemesEmpty(): Promise<void> {
@@ -679,13 +689,18 @@ export class ApiMocks {
         body: JSON.stringify({ message: "No analysis found" }),
       })
     )
-    await this.page.route("**/api/v1/themes/analyses*", (route) =>
-      route.fulfill({
+    // List endpoint: GET /api/v1/themes?limit=...&offset=...
+    await this.page.route(/\/api\/v1\/themes(\?|$)/, (route) => {
+      const url = route.request().url()
+      if (/\/themes\/(latest|analyze|analysis)/.test(url)) {
+        return route.fallback()
+      }
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify([]),
       })
-    )
+    })
   }
 
   async mockAnalyzeThemes(): Promise<void> {

@@ -113,7 +113,7 @@ def themes(
                 "description": theme.description,
                 "category": theme.category.value,
                 "trend": theme.trend.value,
-                "content_count": len(theme.newsletter_ids),
+                "content_count": len(theme.content_ids),
                 "relevance_score": theme.relevance_score,
             }
             for theme in result.themes
@@ -124,7 +124,7 @@ def themes(
                 "total": result.total_themes,
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),
-                "content_analyzed": result.newsletter_count,
+                "content_analyzed": result.content_count,
             },
             sys.stdout,
             default=str,
@@ -136,7 +136,7 @@ def themes(
     console.print()
     console.print(
         f"Found [bold]{result.total_themes}[/bold] themes "
-        f"across [bold]{result.newsletter_count}[/bold] content items."
+        f"across [bold]{result.content_count}[/bold] content items."
     )
     console.print()
 
@@ -154,7 +154,7 @@ def themes(
             theme.name,
             theme.category.value.replace("_", " ").title(),
             trend_display,
-            str(len(theme.newsletter_ids)),
+            str(len(theme.content_ids)),
         )
 
     console.print(table)

@@ -297,6 +297,7 @@ export interface ThemeData {
  * Result from theme analysis (matches backend ThemeAnalysisResult)
  */
 export interface ThemeAnalysisResult {
+  id: number
   analysis_date: string
   start_date: string
   end_date: string
@@ -312,4 +313,6 @@ export interface ThemeAnalysisResult {
   model_version: string | null
   agent_framework: string
   cross_theme_insights: string[]
+  error_message?: string
+  created_at?: string
 }
