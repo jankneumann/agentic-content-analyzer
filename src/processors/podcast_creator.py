@@ -159,7 +159,7 @@ class PodcastCreator:
                     .first()
                 )
                 script_record.status = PodcastStatus.FAILED
-                script_record.error_message = str(e)
+                script_record.error_message = "An internal error occurred during script generation."
                 db.commit()
             raise
 
@@ -321,7 +321,7 @@ class PodcastCreator:
             with get_db() as db:
                 podcast = db.query(Podcast).filter(Podcast.id == podcast_id).first()
                 podcast.status = "failed"
-                podcast.error_message = str(e)
+                podcast.error_message = "An internal error occurred during audio generation."
 
                 # Revert script status to approved (so user can retry)
                 script_record = (

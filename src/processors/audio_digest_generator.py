@@ -191,7 +191,7 @@ class AudioDigestGenerator:
                 )
                 if audio_digest:
                     audio_digest.status = AudioDigestStatus.FAILED
-                    audio_digest.error_message = str(e)
+                    audio_digest.error_message = "An internal error occurred during generation."
                     db.commit()
             raise RuntimeError(f"Audio digest generation failed: {e}") from e
 
