@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Theme analysis persists results
 The pipeline's theme analysis step SHALL persist analysis results to the PostgreSQL database and write a summary episode to the Neo4j knowledge graph, rather than storing results in ephemeral in-memory dicts.
