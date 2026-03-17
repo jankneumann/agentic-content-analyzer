@@ -45,3 +45,7 @@
 ## 2026-03-04 - Optimize audio digest statistics query
 **Learning:** Multiple separate database count queries were executed to aggregate counts (total, and individual status counts) in `get_audio_digest_statistics` which causes performance bottlenecks via redundant database round-trips.
 **Action:** When calculating statistics that encompass the whole table partitioned by a specific property (like status), execute a single query using `func.count()` alongside `GROUP BY`, and compute derived values (like the total count or specific status values) within the application logic. This pattern minimizes the DB connection overhead.
+
+## 2026-03-04 - Optimize regex for highlighting multiple search terms
+**Learning:** In the `_generate_highlight` function, creating a separate regex and calling `re.subn` for each term inside a loop forces python to re-scan the entire string multiple times. This scales poorly as the number of query terms increases.
+**Action:** Always combine multiple terms into a single regex with alternation `(?:term1|term2|...)` and execute a single `re.sub` pass when highlighting or extracting multiple static keywords from a text. This approach reduces time complexity from O(T*N) to O(N) where T is number of terms.

@@ -555,19 +555,17 @@ def _generate_highlight(
     escaped = html.escape(snippet)
 
     # Try to find and mark query terms (case-insensitive)
-    marked = escaped
-    found_any = False
-    for term in query_terms:
+    if query_terms:
+        # Combine all terms into a single regex for efficient substitution
+        escaped_terms = [re.escape(html.escape(term)) for term in query_terms]
         # Use word boundary matching for cleaner highlights
-        pattern = re.compile(rf"(\b{re.escape(html.escape(term))}\w*)", re.IGNORECASE)
-        replacement = r"<mark>\1</mark>"
-        new_marked, count = pattern.subn(replacement, marked)
-        if count > 0:
-            found_any = True
-            marked = new_marked
+        pattern_str = rf"(\b(?:{'|'.join(escaped_terms)})\w*)"
+        pattern = re.compile(pattern_str, re.IGNORECASE)
 
-    if found_any:
-        return marked[:600]  # Allow extra space for <mark> tags
+        marked, count = pattern.subn(r"<mark>\1</mark>", escaped)
+
+        if count > 0:
+            return marked[:600]  # Allow extra space for <mark> tags
 
     # Vector-only with no literal matches: plain snippet
     if search_type == SearchType.VECTOR:
