@@ -8,6 +8,7 @@ Create Date: 2026-03-16 19:42:49.638536
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -18,12 +19,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create the analysisstatus enum type
-    analysisstatus = sa.Enum(
-        "queued", "running", "completed", "failed",
-        name="analysisstatus",
-    )
-    analysisstatus.create(op.get_bind(), checkfirst=True)
+    # Create the analysisstatus enum type (idempotent via DO block)
+    op.execute(sa.text("""
+        DO $$ BEGIN
+            CREATE TYPE analysisstatus AS ENUM ('queued', 'running', 'completed', 'failed');
+        EXCEPTION WHEN duplicate_object THEN
+            NULL;
+        END $$;
+    """))
 
     # Check if table already exists (idempotent)
     conn = op.get_bind()
@@ -41,7 +44,11 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column(
             "status",
-            sa.Enum("queued", "running", "completed", "failed", name="analysisstatus"),
+            postgresql.ENUM(
+                "queued", "running", "completed", "failed",
+                name="analysisstatus",
+                create_type=False,
+            ),
             nullable=False,
             server_default="queued",
         ),

@@ -50,7 +50,12 @@ class ThemeAnalysis(Base):
 
     # Lifecycle status
     status = Column(
-        Enum(AnalysisStatus, name="analysisstatus", create_constraint=True),
+        Enum(
+            AnalysisStatus,
+            name="analysisstatus",
+            create_constraint=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=AnalysisStatus.QUEUED,
         index=True,
