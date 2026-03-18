@@ -134,9 +134,9 @@ More comprehensive coverage of the topic with additional context.
             # URL extraction returns too little content (< 200 chars)
             with patch(
                 "src.ingestion.rss.convert_html_to_markdown",
-                side_effect=lambda url=None, html=None: "Short"
-                if url
-                else "Feed content is longer and better",
+                side_effect=lambda url=None, html=None: (
+                    "Short" if url else "Feed content is longer and better"
+                ),
             ):
                 content_data = rss_client._parse_entry_content(
                     sample_feed_entry, "Test Publication", "https://example.com/feed"
