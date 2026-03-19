@@ -59,14 +59,21 @@ export function VoiceInputButton({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={onToggle}
-            disabled={isDisabled}
+            onClick={(e) => {
+              if (isDisabled) {
+                e.preventDefault()
+                return
+              }
+              onToggle()
+            }}
+            aria-disabled={isDisabled}
             aria-label={isListening ? "Stop voice input" : "Start voice input"}
             aria-pressed={isListening}
             className={cn(
               "relative h-9 w-9 shrink-0",
               isListening && "text-red-500 hover:text-red-600",
               error && !isListening && "text-destructive",
+              isDisabled && "opacity-50 cursor-not-allowed",
               className
             )}
           >
