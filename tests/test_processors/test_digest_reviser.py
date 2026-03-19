@@ -1,4 +1,7 @@
-"""Tests for DigestReviser processor."""
+"""Tests for DigestReviser processor.
+
+Updated to mock LLMRouter.generate_with_tools() instead of direct Anthropic SDK.
+"""
 
 import json
 from datetime import datetime
@@ -12,6 +15,7 @@ from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.revision import RevisionContext
 from src.models.summary import Summary
 from src.processors.digest_reviser import DigestReviser
+from src.services.llm_router import LLMResponse, ToolDefinition
 
 
 @pytest.fixture
@@ -51,7 +55,7 @@ def sample_digest():
         status=DigestStatus.PENDING_REVIEW,
         agent_framework="claude",
         model_used="claude-sonnet-4-5",
-        revision_count=0,  # Initialize revision count
+        revision_count=0,
     )
     digest.id = 1
     return digest
@@ -107,6 +111,7 @@ class TestDigestReviserInitialization:
 
         assert reviser.model_config == mock_model_config
         assert reviser.model == "claude-sonnet-4-5"
+        assert reviser.router is not None
         assert reviser.provider_used is None
         assert reviser.input_tokens == 0
         assert reviser.output_tokens == 0
@@ -135,11 +140,9 @@ class TestDigestReviserLoadContext:
     async def test_load_context_success(self, sample_digest, sample_summaries, sample_contents):
         """Test successful context loading."""
         with patch("src.processors.digest_reviser.get_db") as mock_get_db:
-            # Setup mock database session
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            # Create separate query mocks for Digest and Summary
             digest_query_mock = MagicMock()
             digest_query_mock.filter_by.return_value.first.return_value = sample_digest
 
@@ -150,7 +153,6 @@ class TestDigestReviserLoadContext:
             summary_query_mock.order_by.return_value = summary_query_mock
             summary_query_mock.all.return_value = sample_summaries
 
-            # Return different mocks based on which model is being queried
             def query_side_effect(model):
                 if model.__name__ == "Digest":
                     return digest_query_mock
@@ -175,7 +177,6 @@ class TestDigestReviserLoadContext:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            # Mock digest query returning None
             mock_db.query.return_value.filter_by.return_value.first.return_value = None
 
             reviser = DigestReviser()
@@ -187,24 +188,23 @@ class TestDigestReviserLoadContext:
 class TestDigestReviserToolDefinitions:
     """Tests for tool definitions."""
 
-    def test_get_tool_definitions(self):
-        """Test that tool definitions are properly formatted."""
+    def test_get_tool_definitions_returns_tool_definition_objects(self):
+        """Tool definitions should be ToolDefinition objects (not Anthropic dicts)."""
         reviser = DigestReviser()
         tools = reviser._get_tool_definitions()
 
         assert len(tools) == 2
+        assert all(isinstance(t, ToolDefinition) for t in tools)
 
         # Check fetch_content tool
         fetch_tool = tools[0]
-        assert fetch_tool["name"] == "fetch_content"
-        assert "input_schema" in fetch_tool
-        assert fetch_tool["input_schema"]["properties"]["content_id"]["type"] == "integer"
+        assert fetch_tool.name == "fetch_content"
+        assert fetch_tool.parameters["properties"]["content_id"]["type"] == "integer"
 
         # Check search_content tool
         search_tool = tools[1]
-        assert search_tool["name"] == "search_content"
-        assert "input_schema" in search_tool
-        assert search_tool["input_schema"]["properties"]["query"]["type"] == "string"
+        assert search_tool.name == "search_content"
+        assert search_tool.parameters["properties"]["query"]["type"] == "string"
 
 
 class TestDigestReviserToolHandlers:
@@ -217,7 +217,6 @@ class TestDigestReviserToolHandlers:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
 
-            # Mock content query
             content = sample_contents[0]
             mock_db.query.return_value.filter_by.return_value.first.return_value = content
 
@@ -291,6 +290,81 @@ class TestDigestReviserToolHandlers:
 
         assert "Error" in result
         assert "Unknown tool" in result
+
+
+class TestDigestReviserReviseSection:
+    """Tests for revise_section method using LLMRouter."""
+
+    @pytest.mark.asyncio
+    async def test_revise_section_calls_router(self, mock_model_config, sample_summaries):
+        """revise_section should delegate to LLMRouter.generate_with_tools()."""
+        revision_json = json.dumps(
+            {
+                "section_modified": "executive_overview",
+                "revised_content": "Improved overview text",
+                "explanation": "Made it more concise",
+                "confidence_score": 0.95,
+            }
+        )
+
+        mock_response = LLMResponse(
+            text=revision_json,
+            input_tokens=1000,
+            output_tokens=500,
+            provider=Provider.ANTHROPIC,
+        )
+
+        reviser = DigestReviser(model_config=mock_model_config)
+        context = RevisionContext(
+            digest=MagicMock(),
+            summaries=sample_summaries,
+            content_ids=[1, 2, 3],
+        )
+        context.to_llm_context = MagicMock(return_value="Mock context text")
+
+        with patch.object(
+            reviser.router, "generate_with_tools", return_value=mock_response
+        ) as mock_gen:
+            result = await reviser.revise_section(context, "Make it more concise")
+
+            mock_gen.assert_called_once()
+            call_kwargs = mock_gen.call_args.kwargs
+            assert call_kwargs["max_tokens"] == 8000
+            assert call_kwargs["temperature"] == 0.0
+            assert call_kwargs["max_iterations"] == 5
+            assert len(call_kwargs["tools"]) == 2
+            assert result.section_modified == "executive_overview"
+            assert result.revised_content == "Improved overview text"
+
+    @pytest.mark.asyncio
+    async def test_revise_section_tracks_tokens(self, mock_model_config, sample_summaries):
+        """Should accumulate token usage from the router response."""
+        mock_response = LLMResponse(
+            text=json.dumps(
+                {
+                    "section_modified": "title",
+                    "revised_content": "New Title",
+                    "explanation": "Shortened",
+                }
+            ),
+            input_tokens=800,
+            output_tokens=200,
+            provider=Provider.ANTHROPIC,
+        )
+
+        reviser = DigestReviser(model_config=mock_model_config)
+        context = RevisionContext(
+            digest=MagicMock(),
+            summaries=sample_summaries,
+        )
+        context.to_llm_context = MagicMock(return_value="Context")
+
+        with patch.object(reviser.router, "generate_with_tools", return_value=mock_response):
+            await reviser.revise_section(context, "Shorten the title")
+
+            assert reviser.input_tokens == 800
+            assert reviser.output_tokens == 200
+            assert reviser.provider_used == Provider.ANTHROPIC
 
 
 class TestDigestReviserApplyRevision:
@@ -370,14 +444,12 @@ class TestDigestReviserCostCalculation:
         """Test cost calculation with token usage."""
         reviser = DigestReviser(model_config=mock_model_config)
 
-        # Simulate token usage
         reviser.provider_used = Provider.ANTHROPIC
         reviser.input_tokens = 1000
         reviser.output_tokens = 500
 
         cost = reviser.calculate_cost()
 
-        # Should calculate based on model pricing
         assert cost > 0.0
 
 
