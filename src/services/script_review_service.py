@@ -12,6 +12,8 @@ Separates presentation layer from core review functionality.
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import func
+
 from src.config.models import ModelConfig
 from src.models.podcast import (
     PodcastScript,
@@ -437,32 +439,27 @@ class ScriptReviewService:
             Dict with review statistics
         """
         with get_db() as db:
-            # Count by status
-            pending = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value)
-                .count()
+            # Group counts by status in a single query to avoid multiple DB round-trips
+            results = (
+                db.query(PodcastScriptRecord.status, func.count(PodcastScriptRecord.id))
+                .group_by(PodcastScriptRecord.status)
+                .all()
             )
-            revision_requested = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_REVISION_REQUESTED.value)
-                .count()
-            )
-            approved = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED.value)
-                .count()
-            )
-            completed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.COMPLETED.value)
-                .count()
-            )
-            failed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.FAILED.value)
-                .count()
-            )
+
+            # Initialize counts dictionary
+            counts = {status: 0 for status in PodcastStatus}
+            for status_val, count in results:
+                try:
+                    status_enum = PodcastStatus(status_val)
+                    counts[status_enum] = count
+                except ValueError:
+                    pass  # Ignore unknown statuses
+
+            pending = counts[PodcastStatus.SCRIPT_PENDING_REVIEW]
+            revision_requested = counts[PodcastStatus.SCRIPT_REVISION_REQUESTED]
+            approved = counts[PodcastStatus.SCRIPT_APPROVED]
+            completed = counts[PodcastStatus.COMPLETED]
+            failed = counts[PodcastStatus.FAILED]
 
             return {
                 "pending_review": pending,
