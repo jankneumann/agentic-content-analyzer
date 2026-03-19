@@ -26,11 +26,11 @@
 
 ## 4. Reset failed content items
 
-- [ ] 4.1 Reset 1,568 failed content items to `pending` status — SQL: `UPDATE contents SET status='pending', error_message=NULL WHERE status='failed' AND error_message LIKE '%No Anthropic-compatible providers%'`
-- [ ] 4.2 Clean up associated failed jobs — SQL: `DELETE FROM pgqueuer_jobs WHERE status='failed'`
+- [x] 4.1 Reset 1,568 failed content items to `pending` status — Alembic data migration `203a8919b20b`
+- [x] 4.2 Clean up associated failed jobs — included in same Alembic migration
 
 ## 5. Verification
 
 - [x] 5.1 Run existing test suite — `pytest tests/test_agents/ tests/test_processors/test_summarizer.py tests/test_processors/test_digest_reviser.py -v`
-- [ ] 5.2 Run full test suite — `pytest` (ensure no regressions)
-- [ ] 5.3 Smoke test with Gemini model — set `MODEL_SUMMARIZATION=gemini-2.5-flash-lite`, run `aca summarize pending --limit 1`
+- [x] 5.2 Run full test suite — 2,975 passed, 70 pre-existing failures (0 in our modules), 5 skipped
+- [x] 5.3 Smoke test with Gemini model — `MODEL_SUMMARIZATION=gemini-2.5-flash-lite` successfully created summary #1161 via `gemini-2.5-flash-lite` with `agent_framework: llmsummarization`
