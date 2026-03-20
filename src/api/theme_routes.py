@@ -163,7 +163,7 @@ async def run_theme_analysis(
                 record = db.query(ThemeAnalysis).filter(ThemeAnalysis.id == analysis_id).first()
                 if record:
                     record.status = AnalysisStatus.FAILED
-                    record.error_message = str(e)[:1000]
+                    record.error_message = "Analysis failed due to an internal error"
                     db.commit()
         except Exception as db_err:
             logger.error(f"Failed to record error for analysis {analysis_id}: {db_err}")
