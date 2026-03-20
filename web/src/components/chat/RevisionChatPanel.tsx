@@ -475,6 +475,7 @@ export function RevisionChatPanel({
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 disabled={isStreaming}
+                aria-describedby="revision-chat-char-count"
                 className="min-h-[60px] max-h-[120px] resize-none pr-12 text-sm"
                 rows={2}
               />
@@ -544,6 +545,7 @@ export function RevisionChatPanel({
                   Web Search
                 </Toggle>
                 <span
+                  id="revision-chat-char-count"
                   className={cn(
                     "text-xs text-muted-foreground transition-colors",
                     input.length > maxMessageLength * 0.9 &&
