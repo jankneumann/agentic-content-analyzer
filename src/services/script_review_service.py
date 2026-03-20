@@ -12,6 +12,8 @@ Separates presentation layer from core review functionality.
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import func
+
 from src.config.models import ModelConfig
 from src.models.podcast import (
     PodcastScript,
@@ -437,32 +439,25 @@ class ScriptReviewService:
             Dict with review statistics
         """
         with get_db() as db:
-            # Count by status
-            pending = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_PENDING_REVIEW.value)
-                .count()
+            # OPTIMIZATION: Calculate all status counts in a single query using GROUP BY
+            # instead of executing 5 individual COUNT() queries.
+            counts = (
+                db.query(PodcastScriptRecord.status, func.count(PodcastScriptRecord.id))
+                .group_by(PodcastScriptRecord.status)
+                .all()
             )
-            revision_requested = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_REVISION_REQUESTED.value)
-                .count()
-            )
-            approved = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.SCRIPT_APPROVED.value)
-                .count()
-            )
-            completed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.COMPLETED.value)
-                .count()
-            )
-            failed = (
-                db.query(PodcastScriptRecord)
-                .filter(PodcastScriptRecord.status == PodcastStatus.FAILED.value)
-                .count()
-            )
+
+            status_map = {status: count for status, count in counts}
+
+            pending = status_map.get(PodcastStatus.SCRIPT_PENDING_REVIEW.value, 0)
+            revision_requested = status_map.get(PodcastStatus.SCRIPT_REVISION_REQUESTED.value, 0)
+            approved = status_map.get(PodcastStatus.SCRIPT_APPROVED.value, 0)
+            completed = status_map.get(PodcastStatus.COMPLETED.value, 0)
+            failed = status_map.get(PodcastStatus.FAILED.value, 0)
+
+            # Revert to explicitly summing the specific statuses to strictly preserve original behavior
+            # where other statuses in the enum (e.g. DRAFT) are excluded from the total.
+            total = pending + revision_requested + approved + completed + failed
 
             return {
                 "pending_review": pending,
@@ -470,7 +465,7 @@ class ScriptReviewService:
                 "approved_ready_for_audio": approved,
                 "completed_with_audio": completed,
                 "failed_rejected": failed,
-                "total": pending + revision_requested + approved + completed + failed,
+                "total": total,
             }
 
     def calculate_revision_cost(self) -> float:
