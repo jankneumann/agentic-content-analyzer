@@ -1,5 +1,5 @@
-"""Claude SDK agent implementation."""
+"""Provider-agnostic LLM summarization agent."""
 
-from src.agents.claude.summarizer import ClaudeAgent
+from src.agents.claude.summarizer import ClaudeAgent, LLMSummarizationAgent
 
-__all__ = ["ClaudeAgent"]
+__all__ = ["LLMSummarizationAgent", "ClaudeAgent"]

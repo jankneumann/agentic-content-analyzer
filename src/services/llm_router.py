@@ -436,6 +436,236 @@ class LLMRouter:
         return response
 
     # =========================================================================
+    # Synchronous Generation (for sync callers like SummarizationAgent)
+    # =========================================================================
+
+    def generate_sync(
+        self,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        provider: Provider | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> LLMResponse:
+        """Generate a simple text response synchronously (no tools).
+
+        This is the sync counterpart of generate(). It calls the underlying SDK
+        clients directly without async wrappers, avoiding nested event loop issues
+        when called from sync code running inside an async worker.
+
+        Args:
+            model: Model ID (e.g., "claude-sonnet-4-5", "gemini-2.5-flash")
+            system_prompt: System instructions
+            user_prompt: User message
+            provider: Optional explicit provider. If None, uses family default.
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+
+        Returns:
+            LLMResponse with generated text
+        """
+        import time
+
+        resolved_provider = self.resolve_provider(model, provider)
+        logger.info(f"Generating (sync) with model={model}, provider={resolved_provider.value}")
+
+        start_time = time.monotonic()
+
+        if resolved_provider == Provider.GOOGLE_AI:
+            response = self._generate_gemini_sync(
+                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        elif resolved_provider in (
+            Provider.ANTHROPIC,
+            Provider.AWS_BEDROCK,
+            Provider.GOOGLE_VERTEX,
+        ):
+            response = self._generate_anthropic_sync(
+                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
+            response = self._generate_openai_sync(
+                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {resolved_provider}")
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        self._trace_llm_call(
+            model=model,
+            provider=resolved_provider.value,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response=response,
+            duration_ms=duration_ms,
+            max_tokens=max_tokens,
+        )
+
+        return response
+
+    def _generate_anthropic_sync(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        """Generate synchronously with Anthropic-compatible API."""
+        client = self._get_anthropic_client(provider)
+        provider_model_id = self.get_provider_model_id(model, provider)
+
+        response = client.messages.create(
+            model=provider_model_id,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                text = block.text
+                break
+
+        return LLMResponse(
+            text=text,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            provider=provider,
+            model_version=self.model_config.get_model_version(model, provider),
+            raw_response=response,
+        )
+
+    def _generate_gemini_sync(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        """Generate synchronously with Google Gemini API."""
+        from google import genai
+        from google.genai import types
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+
+        client = genai.Client(api_key=api_key)
+        provider_model_id = self.get_provider_model_id(model, provider)
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        response = client.models.generate_content(
+            model=provider_model_id,
+            contents=user_prompt,
+            config=config,
+        )
+
+        text = ""
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text") and part.text:
+                    text = part.text
+                    break
+
+        input_tokens = response.usage_metadata.prompt_token_count if response.usage_metadata else 0
+        output_tokens = (
+            response.usage_metadata.candidates_token_count if response.usage_metadata else 0
+        )
+
+        return LLMResponse(
+            text=text,
+            input_tokens=input_tokens or 0,
+            output_tokens=output_tokens or 0,
+            provider=provider,
+            model_version=self.model_config.get_model_version(model, provider),
+            raw_response=response,
+        )
+
+    def _get_openai_sync_client(self, provider: Provider):
+        """Get synchronous OpenAI client configured for the specified provider.
+
+        Args:
+            provider: Provider to use (OPENAI or MICROSOFT_AZURE)
+
+        Returns:
+            Configured sync OpenAI client
+        """
+        from openai import AzureOpenAI, OpenAI
+
+        if provider == Provider.OPENAI:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise RuntimeError("OPENAI_API_KEY environment variable not set")
+            return OpenAI(api_key=api_key)
+
+        elif provider == Provider.MICROSOFT_AZURE:
+            api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+            endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+            api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            if not api_key or not endpoint:
+                raise RuntimeError(
+                    "AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT environment variables required"
+                )
+            return AzureOpenAI(
+                api_key=api_key,
+                azure_endpoint=endpoint,
+                api_version=api_version,
+            )
+
+        else:
+            raise ValueError(f"Provider {provider} not supported for OpenAI models")
+
+    def _generate_openai_sync(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        """Generate synchronously with OpenAI-compatible API."""
+        client = self._get_openai_sync_client(provider)
+        provider_model_id = self.get_provider_model_id(model, provider)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        response = client.chat.completions.create(
+            model=provider_model_id,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        text = response.choices[0].message.content or ""
+        input_tokens = response.usage.prompt_tokens if response.usage else 0
+        output_tokens = response.usage.completion_tokens if response.usage else 0
+
+        return LLMResponse(
+            text=text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            provider=provider,
+            model_version=self.model_config.get_model_version(model, provider),
+            raw_response=response,
+        )
+
+    # =========================================================================
     # Telemetry
     # =========================================================================
 

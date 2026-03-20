@@ -1,22 +1,25 @@
-"""Claude SDK implementation for content summarization."""
+"""Provider-agnostic LLM implementation for content summarization.
+
+Routes through LLMRouter to support any configured provider (Anthropic, Google AI,
+OpenAI, Bedrock, Vertex, Azure) instead of hardcoding Anthropic SDK calls.
+"""
 
 import json
 import time
 from typing import Any
 
-from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex
-
 from src.agents.base import AgentResponse, SummarizationAgent
 from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.content import Content
+from src.services.llm_router import LLMResponse, LLMRouter
 from src.services.prompt_service import PromptService
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-class ClaudeAgent(SummarizationAgent):
-    """Content summarization using Claude SDK."""
+class LLMSummarizationAgent(SummarizationAgent):
+    """Content summarization using any configured LLM provider via LLMRouter."""
 
     def __init__(
         self,
@@ -27,7 +30,7 @@ class ClaudeAgent(SummarizationAgent):
         prompt_service: PromptService | None = None,
     ) -> None:
         """
-        Initialize Claude agent.
+        Initialize summarization agent.
 
         Args:
             model_config: Model configuration instance (required unless api_key provided)
@@ -51,55 +54,15 @@ class ClaudeAgent(SummarizationAgent):
             api_key=api_key,
             prompt_service=prompt_service,
         )
-        logger.info(f"Initialized Claude agent with model: {self.model}")
 
-    def _get_client(self, provider_config: ProviderConfig) -> Any:
-        """
-        Create the appropriate Anthropic client based on the provider configuration.
+        # Create LLMRouter for provider-agnostic generation
+        self.router = LLMRouter(model_config)
 
-        Args:
-            provider_config: Provider configuration details
-
-        Returns:
-            Instantiated client (Anthropic, AnthropicBedrock, or AnthropicVertex)
-
-        Raises:
-            ValueError: If the provider is not supported
-        """
-        if provider_config.provider == Provider.ANTHROPIC:
-            return Anthropic(api_key=provider_config.api_key)
-
-        elif provider_config.provider == Provider.AWS_BEDROCK:
-            # For AWS Bedrock, credentials are typically handled via environment variables
-            # (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) or IAM roles.
-            # ProviderConfig might supply region if not in env.
-            kwargs: dict[str, str] = {}
-            if provider_config.region:
-                kwargs["aws_region"] = provider_config.region
-
-            return AnthropicBedrock(**kwargs)
-
-        elif provider_config.provider == Provider.GOOGLE_VERTEX:
-            # For Vertex AI, authentication is typically handled via Application Default Credentials (ADC)
-            # or 'gcloud auth application-default login'.
-            # Project ID and region are needed.
-            kwargs = {}
-            if provider_config.region:
-                kwargs["region"] = provider_config.region
-            if provider_config.project_id:
-                kwargs["project_id"] = provider_config.project_id
-
-            return AnthropicVertex(**kwargs)
-
-        else:
-            raise ValueError(f"Unsupported provider for ClaudeAgent: {provider_config.provider}")
+        logger.info(f"Initialized LLMSummarizationAgent with model: {self.model}")
 
     def summarize_content(self, content: Content) -> AgentResponse:
         """
-        Summarize content from the unified Content model using Claude SDK.
-
-        This method uses Content's markdown_content which is already in optimal
-        format for LLM consumption, improving summarization quality.
+        Summarize content using any configured LLM provider.
 
         Args:
             content: Content to summarize
@@ -109,125 +72,141 @@ class ClaudeAgent(SummarizationAgent):
         """
         source_type_str = content.source_type.value if content.source_type else "unknown"
         logger.info(f"Summarizing content: {content.title} (source: {source_type_str})")
+
+        prompt = self._create_content_prompt(content)
+        system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
+
+        return self._generate_summary(
+            system_prompt=system_prompt,
+            user_prompt=prompt,
+            content=content,
+            source_type_str=source_type_str,
+        )
+
+    def summarize_content_with_feedback(
+        self, content: Content, feedback_context: str | None
+    ) -> AgentResponse:
+        """
+        Regenerate a content summary with user feedback to guide improvements.
+
+        Args:
+            content: Content to summarize
+            feedback_context: Formatted feedback and context selections from user
+
+        Returns:
+            AgentResponse with SummaryData
+        """
+        source_type_str = content.source_type.value if content.source_type else "unknown"
+        logger.info(
+            f"Regenerating content with feedback: {content.title} (source: {source_type_str})"
+        )
+
+        prompt = self._create_content_feedback_prompt(content, feedback_context)
+        system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
+
+        return self._generate_summary(
+            system_prompt=system_prompt,
+            user_prompt=prompt,
+            content=content,
+            source_type_str=source_type_str,
+        )
+
+    def _generate_summary(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        content: Content,
+        source_type_str: str,
+    ) -> AgentResponse:
+        """Generate a summary via LLMRouter (shared logic for both methods).
+
+        Args:
+            system_prompt: System prompt for the LLM
+            user_prompt: User prompt with content
+            content: Content being summarized (for metadata)
+            source_type_str: Source type string for logging
+
+        Returns:
+            AgentResponse with SummaryData
+        """
         start_time = time.time()
 
-        # Get providers for this model (in priority order)
         try:
-            providers = self.model_config.get_providers_for_model(self.model)
-        except ValueError as e:
-            return AgentResponse(success=False, error=str(e))
-
-        # Filter for Anthropic-compatible providers
-        compatible_providers = [
-            p
-            for p in providers
-            if p.provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX)
-        ]
-
-        if not compatible_providers:
-            error_msg = f"No Anthropic-compatible providers configured for model {self.model}"
+            llm_response: LLMResponse = self.router.generate_sync(
+                model=self.model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=4096,
+                temperature=0.0,  # Deterministic for consistent summaries
+            )
+        except Exception as e:
+            error_msg = f"LLM generation failed: {e!s}"
             logger.error(error_msg)
             return AgentResponse(success=False, error=error_msg)
 
-        # Try each provider in order (failover support)
-        last_error = None
-        for provider_config in compatible_providers:
-            try:
-                logger.info(f"Trying provider: {provider_config.provider.value}")
+        # Track provider and token usage for cost calculation
+        self.provider_used = llm_response.provider
+        self.input_tokens = llm_response.input_tokens
+        self.output_tokens = llm_response.output_tokens
+        self.model_version = llm_response.model_version
 
-                # Create client for this provider
-                client = self._get_client(provider_config)
+        try:
+            # Parse JSON response
+            response_text = llm_response.text
+            logger.debug(f"LLM response: {response_text[:200]}...")
 
-                # Get provider-specific model ID for API call
-                provider_model_id = self.model_config.get_provider_model_id(
-                    self.model, provider_config.provider
-                )
+            summary_dict = self._extract_json_from_response(response_text)
 
-                # Create prompt using Content model
-                prompt = self._create_content_prompt(content)
+            # Validate and create SummaryData with content_id
+            summary_data = self._validate_summary_data(
+                summary_dict,
+                content_id=content.id,
+            )
 
-                # Get system prompt
-                system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
+            # Add processing metadata
+            processing_time = time.time() - start_time
+            summary_data.processing_time_seconds = processing_time
+            summary_data.token_usage = self.input_tokens + self.output_tokens
 
-                # Call Claude API with provider-specific model ID
-                response = client.messages.create(
-                    model=provider_model_id,
-                    max_tokens=4096,
-                    temperature=0.0,  # Deterministic for consistent summaries
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
-                )
+            # Calculate actual cost
+            cost = self.calculate_cost()
 
-                # Track provider and token usage for cost calculation
-                self.provider_used = provider_config.provider
-                self.input_tokens = response.usage.input_tokens
-                self.output_tokens = response.usage.output_tokens
-                self.model_version = self.model_config.get_model_version(
-                    self.model, self.provider_used
-                )
+            provider_name = self.provider_used.value if self.provider_used else "unknown"
+            logger.info(
+                f"Summarized content in {processing_time:.2f}s, "
+                f"tokens: {summary_data.token_usage}, "
+                f"cost: ${cost:.4f}, "
+                f"provider: {provider_name}"
+            )
 
-                # Extract response
-                response_text = response.content[0].text
-                logger.debug(f"Claude response: {response_text[:200]}...")
+            return AgentResponse(
+                success=True,
+                data=summary_data,
+                metadata={
+                    "input_tokens": self.input_tokens,
+                    "output_tokens": self.output_tokens,
+                    "processing_time": processing_time,
+                    "provider": provider_name,
+                    "cost_usd": cost,
+                    "content_id": content.id,
+                    "source_type": source_type_str,
+                },
+            )
 
-                # Parse JSON response
-                summary_dict = self._extract_json_from_response(response_text)
+        except json.JSONDecodeError as e:
+            error_msg = f"Failed to parse response as JSON: {e}"
+            logger.error(error_msg)
+            return AgentResponse(success=False, error=error_msg)
 
-                # Validate and create SummaryData with content_id
-                summary_data = self._validate_summary_data(
-                    summary_dict,
-                    content_id=content.id,
-                )
-
-                # Add processing metadata
-                processing_time = time.time() - start_time
-                summary_data.processing_time_seconds = processing_time
-                summary_data.token_usage = self.input_tokens + self.output_tokens
-
-                # Calculate actual cost
-                cost = self.calculate_cost()
-
-                logger.info(
-                    f"Summarized content in {processing_time:.2f}s, "
-                    f"tokens: {summary_data.token_usage}, "
-                    f"cost: ${cost:.4f}, "
-                    f"provider: {self.provider_used.value}"
-                )
-
-                return AgentResponse(
-                    success=True,
-                    data=summary_data,
-                    metadata={
-                        "input_tokens": self.input_tokens,
-                        "output_tokens": self.output_tokens,
-                        "processing_time": processing_time,
-                        "provider": self.provider_used.value,
-                        "cost_usd": cost,
-                        "content_id": content.id,
-                        "source_type": source_type_str,
-                    },
-                )
-
-            except json.JSONDecodeError as e:
-                error_msg = f"Failed to parse response as JSON: {e}"
-                logger.error(f"{error_msg} (provider: {provider_config.provider.value})")
-                last_error = error_msg
-                continue  # Try next provider
-
-            except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
-                logger.error(error_msg)
-                last_error = str(e)
-                continue  # Try next provider
-
-        # All providers failed
-        final_error = f"All providers failed. Last error: {last_error}"
-        logger.error(final_error)
-        return AgentResponse(success=False, error=final_error)
+        except Exception as e:
+            error_msg = f"Error processing LLM response: {e!s}"
+            logger.error(error_msg)
+            return AgentResponse(success=False, error=error_msg)
 
     def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
         """
-        Extract JSON from Claude response, handling markdown code blocks.
+        Extract JSON from LLM response, handling markdown code blocks.
 
         Args:
             response_text: Raw response text
@@ -255,144 +234,11 @@ class ClaudeAgent(SummarizationAgent):
 
         raise json.JSONDecodeError("Could not extract JSON from response", response_text, 0)
 
-    def summarize_content_with_feedback(
-        self, content: Content, feedback_context: str | None
-    ) -> AgentResponse:
-        """
-        Regenerate a content summary with user feedback to guide improvements.
-
-        Args:
-            content: Content to summarize
-            feedback_context: Formatted feedback and context selections from user
-
-        Returns:
-            AgentResponse with SummaryData
-        """
-        source_type_str = content.source_type.value if content.source_type else "unknown"
-        logger.info(
-            f"Regenerating content with feedback: {content.title} (source: {source_type_str})"
-        )
-        start_time = time.time()
-
-        # Get providers for this model (in priority order)
-        try:
-            providers = self.model_config.get_providers_for_model(self.model)
-        except ValueError as e:
-            return AgentResponse(success=False, error=str(e))
-
-        # Filter for Anthropic-compatible providers
-        compatible_providers = [
-            p
-            for p in providers
-            if p.provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX)
-        ]
-
-        if not compatible_providers:
-            error_msg = f"No Anthropic-compatible providers configured for model {self.model}"
-            logger.error(error_msg)
-            return AgentResponse(success=False, error=error_msg)
-
-        # Try each provider in order (failover support)
-        last_error = None
-        for provider_config in compatible_providers:
-            try:
-                logger.info(f"Trying provider: {provider_config.provider.value}")
-
-                # Create client for this provider
-                client = self._get_client(provider_config)
-
-                # Get provider-specific model ID for API call
-                provider_model_id = self.model_config.get_provider_model_id(
-                    self.model, provider_config.provider
-                )
-
-                # Create prompt with feedback
-                prompt = self._create_content_feedback_prompt(content, feedback_context)
-
-                # Get system prompt
-                system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
-
-                # Call Claude API with provider-specific model ID
-                response = client.messages.create(
-                    model=provider_model_id,
-                    max_tokens=4096,
-                    temperature=0.0,  # Deterministic for consistent summaries
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-                # Track provider and token usage for cost calculation
-                self.provider_used = provider_config.provider
-                self.input_tokens = response.usage.input_tokens
-                self.output_tokens = response.usage.output_tokens
-                self.model_version = self.model_config.get_model_version(
-                    self.model, self.provider_used
-                )
-
-                # Extract response
-                response_text = response.content[0].text
-                logger.debug(f"Claude response: {response_text[:200]}...")
-
-                # Parse JSON response
-                summary_dict = self._extract_json_from_response(response_text)
-
-                # Validate and create SummaryData with content_id
-                summary_data = self._validate_summary_data(
-                    summary_dict,
-                    content_id=content.id,
-                )
-
-                # Add processing metadata
-                processing_time = time.time() - start_time
-                summary_data.processing_time_seconds = processing_time
-                summary_data.token_usage = self.input_tokens + self.output_tokens
-
-                # Calculate actual cost
-                cost = self.calculate_cost()
-
-                logger.info(
-                    f"Regenerated content with feedback in {processing_time:.2f}s, "
-                    f"tokens: {summary_data.token_usage}, "
-                    f"cost: ${cost:.4f}, "
-                    f"provider: {self.provider_used.value}"
-                )
-
-                return AgentResponse(
-                    success=True,
-                    data=summary_data,
-                    metadata={
-                        "input_tokens": self.input_tokens,
-                        "output_tokens": self.output_tokens,
-                        "processing_time": processing_time,
-                        "provider": self.provider_used.value,
-                        "cost_usd": cost,
-                    },
-                )
-
-            except json.JSONDecodeError as e:
-                error_msg = f"Failed to parse response as JSON: {e}"
-                logger.error(f"{error_msg} (provider: {provider_config.provider.value})")
-                last_error = error_msg
-                continue  # Try next provider
-
-            except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
-                logger.error(error_msg)
-                last_error = str(e)
-                continue  # Try next provider
-
-        # All providers failed
-        final_error = f"All providers failed. Last error: {last_error}"
-        logger.error(final_error)
-        return AgentResponse(success=False, error=final_error)
-
     def _create_content_feedback_prompt(
         self, content: Content, feedback_context: str | None
     ) -> str:
         """
         Create the summarization prompt with user feedback incorporated for Content.
-
-        Loads the prompt template from PromptService for customizability.
 
         Args:
             content: Content to summarize
@@ -423,3 +269,7 @@ Please regenerate the summary incorporating this feedback.
             source_type=content.source_type.value if content.source_type else "Unknown",
             text_content=text_content[:15000],
         )
+
+
+# Backward-compatible alias
+ClaudeAgent = LLMSummarizationAgent

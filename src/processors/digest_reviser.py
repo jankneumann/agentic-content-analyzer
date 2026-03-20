@@ -1,9 +1,12 @@
-"""Digest revision processor with AI-powered interactive refinement."""
+"""Digest revision processor with AI-powered interactive refinement.
+
+Routes through LLMRouter to support any configured provider for digest revision,
+not just Anthropic.
+"""
 
 import json
 from typing import Any
 
-from anthropic import Anthropic
 from sqlalchemy.orm import joinedload
 
 from src.config.models import ModelConfig, ModelStep, Provider
@@ -12,6 +15,7 @@ from src.models.digest import Digest
 from src.models.revision import RevisionContext, RevisionResult
 from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis
+from src.services.llm_router import LLMResponse, LLMRouter, ToolDefinition
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -22,8 +26,8 @@ logger = get_logger(__name__)
 class DigestReviser:
     """AI agent for interactive digest refinement.
 
-    Uses Claude SDK with tool use for on-demand newsletter content fetching.
-    Designed for both CLI and future web UI integration.
+    Uses LLMRouter with tool use for on-demand newsletter content fetching.
+    Supports any configured LLM provider (Anthropic, Google AI, OpenAI, etc.).
     """
 
     def __init__(
@@ -51,6 +55,9 @@ class DigestReviser:
         # Use configured model for digest revision, or override
         self.model = model or self.model_config.get_model_for_step(ModelStep.DIGEST_REVISION)
         self.prompt_service = prompt_service or PromptService()
+
+        # Create LLMRouter for provider-agnostic generation
+        self.router = LLMRouter(model_config)
 
         # Provider tracking (for cost calculation)
         self.provider_used: Provider | None = None
@@ -140,7 +147,7 @@ class DigestReviser:
     ) -> RevisionResult:
         """Process revision request with LLM (with tool use).
 
-        Uses Anthropic SDK's tool use pattern to enable on-demand newsletter fetching.
+        Uses LLMRouter.generate_with_tools() for provider-agnostic tool use.
 
         Args:
             context: Revision context (digest + summaries + newsletter IDs)
@@ -151,126 +158,57 @@ class DigestReviser:
             RevisionResult with revised content and explanation
 
         Raises:
-            ValueError: If no Anthropic providers configured
-            Exception: If all providers fail
+            Exception: If generation fails
         """
         logger.info(f"Processing revision request: {user_request[:100]}...")
 
-        # Get providers for this model (in priority order)
+        # Build messages with context and conversation history
+        messages = self._build_messages(context, user_request, conversation_history)
+
+        # Get system prompt for digest revision
+        system_prompt = self.prompt_service.get_pipeline_prompt("digest_revision")
+
+        # Build the full user prompt from messages
+        # generate_with_tools expects a single user_prompt string
+        user_prompt = messages[-1]["content"] if messages else user_request
+
+        # Get provider-agnostic tool definitions
+        tools = self._get_tool_definitions()
+
+        # Create tool executor that captures context
+        async def tool_executor(name: str, args: dict[str, Any]) -> str:
+            return await self._handle_tool_call(name, args, context)
+
         try:
-            providers = self.model_config.get_providers_for_model(self.model)
-        except ValueError as e:
-            raise ValueError(f"No providers configured for model {self.model}: {e}")
+            llm_response: LLMResponse = await self.router.generate_with_tools(
+                model=self.model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                tools=tools,
+                tool_executor=tool_executor,
+                max_tokens=8000,
+                temperature=0.0,  # Deterministic for consistent revisions
+                max_iterations=5,
+            )
+        except Exception as e:
+            error_msg = f"LLM generation failed: {e!s}"
+            logger.error(error_msg)
+            raise
 
-        # Filter for Anthropic-compatible providers
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
+        # Track token usage
+        self.provider_used = llm_response.provider
+        self.input_tokens += llm_response.input_tokens
+        self.output_tokens += llm_response.output_tokens
 
-        if not anthropic_providers:
-            raise ValueError(f"No Anthropic-compatible providers configured for model {self.model}")
+        # Parse final response
+        result = self._parse_revision_result(llm_response)
 
-        # Try each provider in order (failover support)
-        last_error = None
-        for provider_config in anthropic_providers:
-            try:
-                logger.info(f"Trying provider: {provider_config.provider.value}")
+        logger.info(
+            f"Revision complete. Section: {result.section_modified}, "
+            f"Tokens: {self.input_tokens}/{self.output_tokens}"
+        )
 
-                # Create client for this provider
-                client = Anthropic(api_key=provider_config.api_key)
-
-                # Get provider-specific model ID for API call
-                provider_model_id = self.model_config.get_provider_model_id(
-                    self.model, provider_config.provider
-                )
-
-                # Build messages with context and conversation history
-                messages = self._build_messages(context, user_request, conversation_history)
-
-                # Define tools for on-demand fetching
-                tools = self._get_tool_definitions()
-
-                # Tool use loop (Anthropic SDK pattern)
-                tools_used = []
-                max_iterations = 5  # Prevent infinite loops
-                iteration = 0
-
-                while iteration < max_iterations:
-                    iteration += 1
-
-                    # Get system prompt for digest revision
-                    system_prompt = self.prompt_service.get_pipeline_prompt("digest_revision")
-
-                    # Call Claude API with tool use enabled
-                    response = client.messages.create(
-                        model=provider_model_id,
-                        max_tokens=8000,
-                        temperature=0.0,  # Deterministic for consistent revisions
-                        system=system_prompt,
-                        tools=tools,
-                        messages=messages,
-                    )
-
-                    # Track token usage
-                    self.provider_used = provider_config.provider
-                    self.input_tokens += response.usage.input_tokens
-                    self.output_tokens += response.usage.output_tokens
-
-                    # Check if tool use is needed
-                    if response.stop_reason != "tool_use":
-                        # Final response ready
-                        break
-
-                    # Process tool calls
-                    tool_results = []
-                    for block in response.content:
-                        if block.type == "tool_use":
-                            logger.info(f"LLM called tool: {block.name}")
-                            tools_used.append(block.name)
-
-                            # Handle tool call
-                            tool_output = await self._handle_tool_call(
-                                block.name, block.input, context
-                            )
-
-                            tool_results.append(
-                                {
-                                    "type": "tool_result",
-                                    "tool_use_id": block.id,
-                                    "content": tool_output,
-                                }
-                            )
-
-                    # Continue conversation with tool results (Anthropic SDK pattern)
-                    messages.append({"role": "assistant", "content": response.content})
-                    messages.append({"role": "user", "content": tool_results})
-
-                # Parse final response
-                result = self._parse_revision_result(response, context)
-                result.tools_used = tools_used
-
-                logger.info(
-                    f"Revision complete. Section: {result.section_modified}, "
-                    f"Tools used: {tools_used}, "
-                    f"Tokens: {self.input_tokens}/{self.output_tokens}"
-                )
-
-                return result
-
-            except json.JSONDecodeError as e:
-                error_msg = f"Failed to parse response as JSON: {e}"
-                logger.error(f"{error_msg} (provider: {provider_config.provider.value})")
-                last_error = error_msg
-                continue  # Try next provider
-
-            except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
-                logger.error(error_msg)
-                last_error = str(e)
-                continue  # Try next provider
-
-        # All providers failed
-        final_error = f"All providers failed. Last error: {last_error}"
-        logger.error(final_error)
-        raise Exception(final_error)
+        return result
 
     async def _handle_tool_call(
         self, tool_name: str, tool_input: dict[str, Any], context: RevisionContext
@@ -359,21 +297,21 @@ class DigestReviser:
         else:
             return f"Error: Unknown tool '{tool_name}'"
 
-    def _get_tool_definitions(self) -> list[dict[str, Any]]:
-        """Get tool definitions for Claude SDK.
+    def _get_tool_definitions(self) -> list[ToolDefinition]:
+        """Get provider-agnostic tool definitions.
 
         Returns:
-            List of tool definitions in Anthropic SDK format
+            List of ToolDefinition objects for LLMRouter
         """
         return [
-            {
-                "name": "fetch_content",
-                "description": (
+            ToolDefinition(
+                name="fetch_content",
+                description=(
                     "Retrieve full content of a specific item when you need "
                     "detailed information beyond the summary. Use when the user asks "
                     "for specific details, quotes, or technical information."
                 ),
-                "input_schema": {
+                parameters={
                     "type": "object",
                     "properties": {
                         "content_id": {
@@ -383,15 +321,15 @@ class DigestReviser:
                     },
                     "required": ["content_id"],
                 },
-            },
-            {
-                "name": "search_content",
-                "description": (
+            ),
+            ToolDefinition(
+                name="search_content",
+                description=(
                     "Search across all content for specific topics or keywords. "
                     "Use when you need to find which content items discuss a particular "
                     "topic or concept."
                 ),
-                "input_schema": {
+                parameters={
                     "type": "object",
                     "properties": {
                         "query": {
@@ -403,7 +341,7 @@ class DigestReviser:
                     },
                     "required": ["query"],
                 },
-            },
+            ),
         ]
 
     def _build_messages(
@@ -412,7 +350,7 @@ class DigestReviser:
         user_request: str,
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        """Build messages for Claude API with context and history.
+        """Build messages for LLM API with context and history.
 
         Args:
             context: Revision context
@@ -420,7 +358,7 @@ class DigestReviser:
             conversation_history: Previous turns (optional)
 
         Returns:
-            List of messages in Anthropic SDK format
+            List of messages
         """
         messages = []
 
@@ -443,22 +381,16 @@ class DigestReviser:
 
         return messages
 
-    def _parse_revision_result(self, response: Any, context: RevisionContext) -> RevisionResult:
-        """Parse Claude response into RevisionResult.
+    def _parse_revision_result(self, llm_response: LLMResponse) -> RevisionResult:
+        """Parse LLM response into RevisionResult.
 
         Args:
-            response: Claude API response
-            context: Revision context
+            llm_response: LLMResponse from the router
 
         Returns:
             RevisionResult with parsed data
         """
-        # Extract response text
-        response_text = ""
-        for block in response.content:
-            if block.type == "text":
-                response_text += block.text
-
+        response_text = llm_response.text
         logger.debug(f"Response text: {response_text[:500]}...")
 
         # Parse JSON response
@@ -478,7 +410,7 @@ class DigestReviser:
         )
 
     def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
-        """Extract JSON from Claude response, handling markdown code blocks.
+        """Extract JSON from LLM response, handling markdown code blocks.
 
         Args:
             response_text: Raw response text
