@@ -33,7 +33,7 @@ The pipeline SHALL execute all ingestion sources (Gmail, RSS, YouTube, Podcast, 
 
 ### Requirement: Queue-Based Summarization
 
-The pipeline SHALL enqueue content items for summarization and process them via a worker pool. Summarization prompts SHALL be loaded from the `PromptService` (database override, falling back to `prompts.yaml` defaults) rather than from hardcoded string constants.
+The pipeline SHALL enqueue content items for summarization and process them via a worker pool. Summarization prompts SHALL be loaded from the `PromptService` (database override, falling back to `prompts.yaml` defaults) rather than from hardcoded string constants. The summarization agent SHALL route LLM calls through `LLMRouter` to support any configured provider.
 
 #### Scenario: Batch summarization via queue
 - **WHEN** `aca summarize pending` is executed
@@ -48,7 +48,7 @@ The pipeline SHALL enqueue content items for summarization and process them via 
 - **AND** when the 6th job is enqueued, it remains in `queued` status until a running job completes
 
 #### Scenario: LLM rate limit during summarization
-- **WHEN** the Anthropic API returns HTTP 429 during summarization
+- **WHEN** any LLM provider API returns HTTP 429 during summarization
 - **THEN** the worker retries with exponential backoff (5s, 10s, 20s, max 3 retries)
 - **AND** if all retries fail, the job is marked `failed` with error `rate_limit_exceeded`
 - **AND** the worker continues processing other jobs
@@ -64,6 +64,20 @@ The pipeline SHALL enqueue content items for summarization and process them via 
 - **AND** the user prompt template SHALL be loaded via `PromptService.get_pipeline_prompt("summarization", "user_template")`
 - **AND** template variables (`{title}`, `{publication}`, `{author}`, `{date}`, `{source_type}`, `{content}`) SHALL be interpolated at runtime
 - **AND** if a database override exists for the prompt key, the override SHALL be used instead of the YAML default
+
+#### Scenario: Summarization with non-Anthropic model
+- **WHEN** `MODEL_SUMMARIZATION` is set to a non-Anthropic model (e.g., `gemini-2.5-flash-lite`)
+- **AND** the corresponding provider API key is configured (e.g., `GOOGLE_API_KEY`)
+- **THEN** the summarization agent SHALL route the LLM call through `LLMRouter.generate_sync()`
+- **AND** `LLMRouter` SHALL resolve the provider from the model family (e.g., GOOGLE_AI for Gemini)
+- **AND** the summarization SHALL complete successfully with the non-Anthropic model
+- **AND** cost tracking SHALL use the correct per-provider pricing
+
+#### Scenario: Summarization provider failover
+- **WHEN** the primary provider for a model fails (e.g., API error)
+- **AND** a fallback provider is configured for the same model
+- **THEN** `LLMRouter` SHALL retry with the fallback provider
+- **AND** the successful provider SHALL be recorded in the summary metadata
 
 ### Requirement: Pipeline Progress Tracking
 
@@ -140,3 +154,33 @@ The pipeline's theme analysis step SHALL persist analysis results to the Postgre
 #### Scenario: Pipeline theme analysis writes to Neo4j
 - **WHEN** `aca analyze themes` completes successfully
 - **THEN** a Graphiti episode containing the theme analysis summary SHALL be added to the knowledge graph
+
+### Requirement: Provider-agnostic digest revision
+
+The digest revision processor SHALL route LLM calls through `LLMRouter` to support any configured provider, not just Anthropic.
+
+#### Scenario: Digest revision with non-Anthropic model
+- **WHEN** `MODEL_DIGEST_REVISION` is set to a non-Anthropic model (e.g., `gemini-2.5-flash`)
+- **AND** the corresponding provider API key is configured
+- **THEN** `DigestReviser.revise_section()` SHALL route the LLM call through `LLMRouter.generate_with_tools()`
+- **AND** tool definitions (`fetch_content`, `search_content`) SHALL be converted to provider-agnostic `ToolDefinition` objects
+- **AND** the agentic tool-use loop SHALL work with any supported provider
+
+#### Scenario: Digest revision tool use with Gemini
+- **WHEN** the revision model is a Gemini model
+- **AND** the LLM requests the `fetch_content` tool during revision
+- **THEN** `LLMRouter` SHALL convert tool calls to the Gemini function-calling format
+- **AND** tool results SHALL be passed back in Gemini's `Part.from_function_response()` format
+- **AND** the revision loop SHALL continue until the model produces a final text response
+
+#### Scenario: Digest revision tool use with OpenAI
+- **WHEN** the revision model is an OpenAI model
+- **AND** the LLM requests the `search_content` tool during revision
+- **THEN** `LLMRouter` SHALL convert tool calls to OpenAI's function-calling format
+- **AND** tool results SHALL be passed back with the correct `tool_call_id`
+- **AND** the revision loop SHALL continue until the model produces a final text response
+
+#### Scenario: Backward-compatible digest revision
+- **WHEN** `MODEL_DIGEST_REVISION` is set to a Claude model (default)
+- **THEN** digest revision SHALL behave identically to the current Anthropic-only implementation
+- **AND** token usage, cost tracking, and telemetry SHALL be preserved
