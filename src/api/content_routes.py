@@ -614,8 +614,8 @@ async def merge_duplicate(content_id: int, duplicate_id: int) -> ContentResponse
 
         try:
             duplicate = service.merge_duplicates(content_id, duplicate_id)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid merge operation")
 
         if not duplicate:
             raise HTTPException(

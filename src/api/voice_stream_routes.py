@@ -83,9 +83,9 @@ async def voice_stream(
             model_id,
             model_info.family,
         )
-    except Exception as e:
+    except Exception:
         await websocket.send_json(
-            {"type": "error", "text": f"Model configuration error: {e}", "cleaned": False}
+            {"type": "error", "text": "Model configuration error", "cleaned": False}
         )
         await websocket.close(code=4002, reason="Configuration error")
         return
@@ -94,8 +94,10 @@ async def voice_stream(
     service = CloudSTTService()
     try:
         provider = service.create_provider()
-    except ValueError as e:
-        await websocket.send_json({"type": "error", "text": str(e), "cleaned": False})
+    except ValueError:
+        await websocket.send_json(
+            {"type": "error", "text": "Provider initialization failed", "cleaned": False}
+        )
         await websocket.close(code=4003, reason="Provider error")
         return
 
