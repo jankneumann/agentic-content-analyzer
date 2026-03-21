@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import stat
 import subprocess
 import sys
-from pathlib import Path
+
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 
@@ -201,9 +202,7 @@ exit 1
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     report_path = out_dir / "zap-report.json"
-    report_path.write_text(
-        '{"site":[{"name":"stale","alerts":[{"pluginid":"1"}]}]}', encoding="utf-8"
-    )
+    report_path.write_text('{"site":[{"name":"stale","alerts":[{"pluginid":"1"}]}]}', encoding="utf-8")
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"

@@ -70,7 +70,9 @@ class TestCorsPreflight:
         if not acam:
             pytest.skip("CORS not configured (no Allow-Methods header)")
         for method in ("GET", "POST"):
-            assert method in acam, f"CORS Allow-Methods missing {method}: {acam}"
+            assert method in acam, (
+                f"CORS Allow-Methods missing {method}: {acam}"
+            )
 
     def test_cors_allows_auth_header(
         self,
@@ -106,7 +108,9 @@ class TestCorsActualRequest:
         cors_origin: str,
     ) -> None:
         """GET with Origin header should get ACAO in response (if CORS configured)."""
-        response = authed_client.get(health_endpoint, headers={"Origin": cors_origin})
+        response = authed_client.get(
+            health_endpoint, headers={"Origin": cors_origin}
+        )
         acao = response.headers.get("access-control-allow-origin")
         if acao is None:
             pytest.skip("CORS not configured on actual requests")

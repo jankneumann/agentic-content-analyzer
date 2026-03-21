@@ -36,7 +36,8 @@ def fetch_origin_main(base_branch: str = "main") -> str | None:
         run_cmd(["git", "fetch", "origin", base_branch], check=True)
     except RuntimeError as e:
         warning = (
-            f"Could not fetch origin/{base_branch}: {e}. Staleness check may use stale local data."
+            f"Could not fetch origin/{base_branch}: {e}. "
+            f"Staleness check may use stale local data."
         )
         print(f"Warning: {warning}", file=sys.stderr)
         return warning
@@ -45,16 +46,10 @@ def fetch_origin_main(base_branch: str = "main") -> str | None:
 
 def get_pr_info(pr_number: int) -> dict:
     try:
-        raw = run_gh(
-            [
-                "pr",
-                "view",
-                str(pr_number),
-                "--json",
-                "headRefName,baseRefName,createdAt,files,body,title",
-            ],
-            timeout=GH_TIMEOUT,
-        )
+        raw = run_gh([
+            "pr", "view", str(pr_number), "--json",
+            "headRefName,baseRefName,createdAt,files,body,title",
+        ], timeout=GH_TIMEOUT)
     except RuntimeError as e:
         print(f"Error: Could not fetch PR #{pr_number}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -63,16 +58,9 @@ def get_pr_info(pr_number: int) -> dict:
 
 def get_pr_changed_files(pr_number: int) -> list[str]:
     try:
-        raw = run_gh(
-            [
-                "pr",
-                "view",
-                str(pr_number),
-                "--json",
-                "files",
-            ],
-            timeout=GH_TIMEOUT,
-        )
+        raw = run_gh([
+            "pr", "view", str(pr_number), "--json", "files",
+        ], timeout=GH_TIMEOUT)
     except RuntimeError as e:
         print(f"Error: Could not fetch files for PR #{pr_number}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -91,18 +79,9 @@ def get_main_changes_since(since_date: str, base_branch: str = "main") -> list[s
         return []
 
     result = subprocess.run(
-        [
-            "git",
-            "log",
-            f"--since={since_date}",
-            "--name-only",
-            "--pretty=format:",
-            f"origin/{base_branch}",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=GIT_TIMEOUT,
+        ["git", "log", f"--since={since_date}", "--name-only", "--pretty=format:",
+         f"origin/{base_branch}"],
+        capture_output=True, text=True, check=False, timeout=GIT_TIMEOUT,
     )
     if result.returncode != 0:
         print(
@@ -122,7 +101,8 @@ def get_main_changes_since(since_date: str, base_branch: str = "main") -> list[s
 
 def get_pr_diff_content(pr_number: int) -> str:
     """Get the actual diff of the PR to check if target code patterns still exist."""
-    return run_cmd(["gh", "pr", "diff", str(pr_number)], check=False, timeout=GH_TIMEOUT)
+    return run_cmd(["gh", "pr", "diff", str(pr_number)],
+                   check=False, timeout=GH_TIMEOUT)
 
 
 def normalize_pattern(s: str) -> str:
@@ -143,17 +123,21 @@ def parse_diff_file_path(diff_line: str) -> str | None:
     prefix = "diff --git "
     if not diff_line.startswith(prefix):
         return None
-    rest = diff_line[len(prefix) :]
+    rest = diff_line[len(prefix):]
     # Find ' b/' scanning from right to handle paths containing ' b/'
     idx = rest.rfind(" b/")
     if idx == -1:
         return None
-    return rest[idx + 3 :]  # everything after ' b/'
+    return rest[idx + 3:]  # everything after ' b/'
 
 
 def _is_significant_line(stripped: str) -> bool:
     """Check if a diff line is significant enough to use as a pattern."""
-    return bool(stripped) and len(stripped) > 10 and not re.match(r"^[\s{}()\[\];,]*$", stripped)
+    return (
+        bool(stripped)
+        and len(stripped) > 10
+        and not re.match(r"^[\s{}()\[\];,]*$", stripped)
+    )
 
 
 def _parse_diff_lines(diff_text: str) -> tuple[list[dict], list[dict]]:
@@ -194,10 +178,7 @@ def _read_file_from_ref(ref: str, path: str) -> str | None:
     """Read a file from a git ref, returns None if file doesn't exist."""
     result = subprocess.run(
         ["git", "show", f"{ref}:{path}"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=GIT_TIMEOUT,
+        capture_output=True, text=True, check=False, timeout=GIT_TIMEOUT,
     )
     if result.returncode != 0:
         return None
@@ -213,8 +194,7 @@ def _normalized_line_search(normalized_pattern: str, file_content: str) -> bool:
 
 
 def _check_pattern_in_file(
-    sample: dict,
-    base_branch: str,
+    sample: dict, base_branch: str,
 ) -> dict:
     """Check if a single pattern still exists in its file on the base branch."""
     if not sample["file"]:
@@ -226,8 +206,7 @@ def _check_pattern_in_file(
         }
 
     file_content = _read_file_from_ref(
-        f"origin/{base_branch}",
-        sample["file"],
+        f"origin/{base_branch}", sample["file"],
     )
     if file_content is None:
         return {
@@ -273,8 +252,7 @@ def _check_pattern_in_file(
 
 
 def check_pattern_exists_on_main(
-    diff_text: str,
-    base_branch: str = "main",
+    diff_text: str, base_branch: str = "main",
 ) -> dict:
     """Check if the 'before' state of the PR's changes still exists on main.
 
@@ -307,8 +285,7 @@ def check_pattern_exists_on_main(
 
 
 def _check_additions_already_present(
-    added_lines: list[dict],
-    base_branch: str,
+    added_lines: list[dict], base_branch: str,
 ) -> dict:
     """For add-only PRs, check if the added content already exists on main."""
     samples = _sample_patterns(added_lines)
@@ -323,7 +300,9 @@ def _check_additions_already_present(
             result["reason"] = "not_yet_present"
         checked.append(result)
 
-    all_present = all(c["found"] for c in checked) and len(checked) > 0
+    all_present = (
+        all(c["found"] for c in checked) and len(checked) > 0
+    )
     return {
         "patterns_found": not all_present,
         "add_only": True,
@@ -379,7 +358,10 @@ def check_staleness(pr_number: int, origin: str = "other") -> dict:
             reason = "code patterns this PR fixes no longer exist"
             if pattern_check.get("add_only"):
                 reason = "additions in this PR are already present"
-            result["summary"] = f"Jules/{origin} fix is obsolete — {reason} on {base_branch}."
+            result["summary"] = (
+                f"Jules/{origin} fix is obsolete — {reason} "
+                f"on {base_branch}."
+            )
             return result
 
     result["staleness"] = "stale"
@@ -404,10 +386,8 @@ def main():
 
     if args.dry_run:
         result["dry_run"] = True
-        print(
-            f"# Dry-run: Staleness check for PR #{args.pr_number}: {result['staleness']}",
-            file=sys.stderr,
-        )
+        print(f"# Dry-run: Staleness check for PR #{args.pr_number}: {result['staleness']}",
+              file=sys.stderr)
 
     print(json.dumps(result, indent=2))
 

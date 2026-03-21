@@ -29,15 +29,21 @@ SENSITIVE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 def _assert_no_sensitive_info(body: str, context: str) -> None:
     """Check that response body does not contain sensitive patterns."""
     for label, pattern in SENSITIVE_PATTERNS:
-        assert not pattern.search(body), f"{context}: response body contains {label}"
+        assert not pattern.search(body), (
+            f"{context}: response body contains {label}"
+        )
 
 
 class TestErrorSanitization:
     """Error responses must not leak sensitive server information."""
 
-    def test_404_no_sensitive_info(self, authed_client: httpx.Client) -> None:
+    def test_404_no_sensitive_info(
+        self, authed_client: httpx.Client
+    ) -> None:
         """404 response should not leak internals."""
-        response = authed_client.get("/nonexistent-path-smoke-test-xyz-404")
+        response = authed_client.get(
+            "/nonexistent-path-smoke-test-xyz-404"
+        )
         _assert_no_sensitive_info(response.text, "404 response")
 
     def test_auth_error_no_sensitive_info(
@@ -54,7 +60,9 @@ class TestErrorSanitization:
     ) -> None:
         """DELETE on health endpoint (likely 405) should not leak internals."""
         response = authed_client.delete(health_endpoint)
-        _assert_no_sensitive_info(response.text, f"DELETE {health_endpoint} response")
+        _assert_no_sensitive_info(
+            response.text, f"DELETE {health_endpoint} response"
+        )
 
     def test_malformed_body_no_sensitive_info(
         self, authed_client: httpx.Client, protected_endpoint: str
@@ -65,4 +73,6 @@ class TestErrorSanitization:
             content=b"this is not valid json {{{",
             headers={"Content-Type": "application/json"},
         )
-        _assert_no_sensitive_info(response.text, "Malformed JSON body response")
+        _assert_no_sensitive_info(
+            response.text, "Malformed JSON body response"
+        )

@@ -99,7 +99,12 @@ class TestMarkerDetection:
         _write_py(
             tmp_path,
             "multi.py",
-            ("# TODO: first item\nx = 1\n# FIXME: second item\n# HACK: third item\n"),
+            (
+                "# TODO: first item\n"
+                "x = 1\n"
+                "# FIXME: second item\n"
+                "# HACK: third item\n"
+            ),
         )
 
         with patch("collect_markers._git_available", return_value=False):
@@ -155,7 +160,9 @@ class TestSeverityClassification:
             ("HACK", "medium"),
         ],
     )
-    def test_severity_mapping(self, tmp_path: Path, marker: str, expected_severity: str) -> None:
+    def test_severity_mapping(
+        self, tmp_path: Path, marker: str, expected_severity: str
+    ) -> None:
         _write_py(tmp_path, "sev.py", f"# {marker}: some text\n")
 
         with patch("collect_markers._git_available", return_value=False):
@@ -229,7 +236,9 @@ class TestAgeEstimation:
 
     def test_age_days_empty_output(self, tmp_path: Path) -> None:
         """If git log returns empty output, age should be None."""
-        mock_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        mock_proc = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
 
         with patch("collect_markers.subprocess.run", return_value=mock_proc):
             age = _file_age_days(Path("new_file.py"), str(tmp_path))
@@ -247,7 +256,9 @@ class TestAgeEstimation:
 
         assert age is None
 
-    def test_collect_populates_age_when_git_available(self, tmp_path: Path) -> None:
+    def test_collect_populates_age_when_git_available(
+        self, tmp_path: Path
+    ) -> None:
         """When git is available, findings should carry age_days."""
         _write_py(tmp_path, "aged.py", "# TODO: old marker\n")
 
@@ -303,7 +314,9 @@ class TestGitUnavailable:
         ):
             assert _git_available(str(tmp_path)) is False
 
-    def test_git_available_false_on_called_process_error(self, tmp_path: Path) -> None:
+    def test_git_available_false_on_called_process_error(
+        self, tmp_path: Path
+    ) -> None:
         """_git_available returns False when not in a git repo."""
         with patch(
             "collect_markers.subprocess.run",
@@ -311,7 +324,9 @@ class TestGitUnavailable:
         ):
             assert _git_available(str(tmp_path)) is False
 
-    def test_file_age_days_returns_none_on_os_error(self, tmp_path: Path) -> None:
+    def test_file_age_days_returns_none_on_os_error(
+        self, tmp_path: Path
+    ) -> None:
         """_file_age_days returns None when subprocess raises OSError."""
         with patch(
             "collect_markers.subprocess.run",

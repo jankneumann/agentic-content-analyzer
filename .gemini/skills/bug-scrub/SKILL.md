@@ -27,6 +27,15 @@ This is a **read-only diagnostic skill** — it does not modify any code. Use `/
 
 Valid sources: `pytest`, `ruff`, `mypy`, `openspec`, `architecture`, `security`, `deferred`, `markers`
 
+## Script Location
+
+Scripts live in `<agent-skills-dir>/bug-scrub/scripts/`. Each agent runtime substitutes `<agent-skills-dir>` with its config directory:
+- **Claude**: `.claude/skills`
+- **Codex**: `.codex/skills`
+- **Gemini**: `.gemini/skills`
+
+If scripts are missing, run `skills/install.sh` to sync them from the canonical `skills/` source.
+
 ## Prerequisites
 
 - Python 3.11+
@@ -38,7 +47,7 @@ Valid sources: `pytest`, `ruff`, `mypy`, `openspec`, `architecture`, `security`,
 ### 1. Run Orchestrator
 
 ```bash
-python3 skills/bug-scrub/scripts/main.py \
+python3 <agent-skills-dir>/bug-scrub/scripts/main.py \
   --source <sources-or-omit-for-all> \
   --severity <level> \
   --project-dir <path> \
@@ -79,5 +88,5 @@ The orchestrator produces:
 ## Quality Checks
 
 ```bash
-python3 -m pytest skills/bug-scrub/tests -q
+python3 -m pytest <agent-skills-dir>/bug-scrub/tests -q
 ```

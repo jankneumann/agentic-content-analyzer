@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 import subprocess
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from models import Finding, SourceResult
@@ -31,7 +31,9 @@ SKIP_DIRS = {".venv", "node_modules", "__pycache__", ".git"}
 
 # Match comment lines containing a marker keyword with optional colon.
 # Group 1: marker type, Group 2: trailing text after the keyword (and colon).
-_MARKER_RE = re.compile(r"#\s*(TODO|FIXME|HACK|XXX)\s*:?\s*(.*)", re.IGNORECASE)
+_MARKER_RE = re.compile(
+    r"#\s*(TODO|FIXME|HACK|XXX)\s*:?\s*(.*)", re.IGNORECASE
+)
 
 _SEVERITY: dict[str, str] = {
     "todo": "low",
@@ -74,7 +76,7 @@ def _file_age_days(filepath: Path, project_dir: str) -> int | None:
 
     try:
         last_commit = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S %z")
-        delta = datetime.now(UTC) - last_commit
+        delta = datetime.now(timezone.utc) - last_commit
         return max(int(delta.total_seconds() / 86400), 0)
     except (ValueError, TypeError):
         return None
@@ -122,7 +124,9 @@ def collect(project_dir: str) -> SourceResult:
 
             # Determine file age (cached).
             if use_git and py_file not in age_cache:
-                age_cache[py_file] = _file_age_days(py_file.relative_to(root), project_dir)
+                age_cache[py_file] = _file_age_days(
+                    py_file.relative_to(root), project_dir
+                )
             age_days = age_cache.get(py_file)
 
             try:

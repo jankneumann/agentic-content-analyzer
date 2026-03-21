@@ -7,9 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import pytest
 
-from fix_models import ClassifiedFinding, Finding
-from plan_fixes import plan
+from fix_models import ClassifiedFinding, Finding, FixGroup, FixPlan  # noqa: E402
+from plan_fixes import plan  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -169,7 +171,11 @@ class TestTierSeparation:
         assert len(result.agent_groups) == 2  # b.py, d.py
         assert len(result.manual_findings) == 1  # c.py
 
-        auto_ids = [cf.finding.id for g in result.auto_groups for cf in g.classified_findings]
+        auto_ids = [
+            cf.finding.id
+            for g in result.auto_groups
+            for cf in g.classified_findings
+        ]
         assert sorted(auto_ids) == ["f-1", "f-4"]
 
 
@@ -190,7 +196,11 @@ class TestMaxAgentFixesLimit:
         ]
         result = plan(classified, max_agent_fixes=2)
 
-        agent_ids = [cf.finding.id for g in result.agent_groups for cf in g.classified_findings]
+        agent_ids = [
+            cf.finding.id
+            for g in result.agent_groups
+            for cf in g.classified_findings
+        ]
         # Critical and high should be selected (top 2 by severity)
         assert "f-cr" in agent_ids
         assert "f-hi" in agent_ids
@@ -203,7 +213,9 @@ class TestMaxAgentFixesLimit:
         ]
         result = plan(classified, max_agent_fixes=5)
 
-        agent_count = sum(len(g.classified_findings) for g in result.agent_groups)
+        agent_count = sum(
+            len(g.classified_findings) for g in result.agent_groups
+        )
         assert agent_count == 5
         assert len(result.manual_findings) == 0
 
@@ -248,7 +260,11 @@ class TestExcessAgentToManual:
         result = plan(classified, max_agent_fixes=1)
 
         # Only critical should be in agent groups
-        agent_ids = [cf.finding.id for g in result.agent_groups for cf in g.classified_findings]
+        agent_ids = [
+            cf.finding.id
+            for g in result.agent_groups
+            for cf in g.classified_findings
+        ]
         assert agent_ids == ["f-cr"]
 
         # High and low should be deferred to manual

@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fix_models import ClassifiedFinding, FixGroup, FixPlan, severity_rank
+from fix_models import ClassifiedFinding, FixGroup, FixPlan, severity_rank  # noqa: E402
 
 
 def plan(
@@ -45,7 +45,8 @@ def plan(
 
     # Build auto groups
     auto_groups = [
-        FixGroup(file_path=fp, classified_findings=cfs) for fp, cfs in sorted(auto_by_file.items())
+        FixGroup(file_path=fp, classified_findings=cfs)
+        for fp, cfs in sorted(auto_by_file.items())
     ]
 
     # Build agent groups with max limit
@@ -53,7 +54,9 @@ def plan(
     all_agent_cfs = []
     for cfs in agent_by_file.values():
         all_agent_cfs.extend(cfs)
-    all_agent_cfs.sort(key=lambda cf: -severity_rank(cf.finding.severity))
+    all_agent_cfs.sort(
+        key=lambda cf: -severity_rank(cf.finding.severity)
+    )
 
     # Take top max_agent_fixes
     selected_agent_cfs = all_agent_cfs[:max_agent_fixes]

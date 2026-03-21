@@ -20,8 +20,18 @@ Consume the bug-scrub report and apply fixes with clean separation from the diag
 - `--report <path>` (default: `docs/bug-scrub/bug-scrub-report.json`)
 - `--tier <list>` (comma-separated; default: `auto,agent`; values: `auto`, `agent`, `manual`)
 - `--severity <level>` (minimum severity; default: `medium`)
-- `--dry-run` (plan fixes without applying)
+- `--dry-run` (plan fixes without applying — skips branch creation)
 - `--max-agent-fixes <N>` (default: 10)
+- `--worktree` (create an isolated git worktree for the fix-scrub branch; auto-enabled when running inside an existing worktree)
+
+## Script Location
+
+Scripts live in `<agent-skills-dir>/fix-scrub/scripts/`. Each agent runtime substitutes `<agent-skills-dir>` with its config directory:
+- **Claude**: `.claude/skills`
+- **Codex**: `.codex/skills`
+- **Gemini**: `.gemini/skills`
+
+If scripts are missing, run `skills/install.sh` to sync them from the canonical `skills/` source.
 
 ## Prerequisites
 
@@ -31,10 +41,61 @@ Consume the bug-scrub report and apply fixes with clean separation from the diag
 
 ## Steps
 
+### 0. Branch Setup
+
+Skip this step if `--dry-run` is active.
+
+Create an isolated branch for fix-scrub changes. All fixes go through PR review before reaching main.
+
+```bash
+# Pull latest main
+git checkout main
+git pull origin main
+
+# Determine branch name (date-based, with collision suffix)
+BRANCH_DATE=$(date +%Y-%m-%d)
+BRANCH_NAME="fix-scrub/${BRANCH_DATE}"
+SUFFIX=1
+while git show-ref --verify --quiet "refs/heads/${BRANCH_NAME}"; do
+  SUFFIX=$((SUFFIX + 1))
+  BRANCH_NAME="fix-scrub/${BRANCH_DATE}-${SUFFIX}"
+done
+
+# Create and switch to the fix-scrub branch
+git checkout -b "$BRANCH_NAME"
+echo "Created branch: $BRANCH_NAME"
+```
+
+#### Optional: Worktree Isolation
+
+Create a worktree when `--worktree` is passed **or** when already inside a git worktree (auto-detection). This prevents fix-scrub from modifying an active implementation worktree.
+
+```bash
+# Detect if worktree isolation is needed
+eval "$(python3 scripts/worktree.py detect)"
+
+if [[ "$IN_WORKTREE" == "true" ]] || [[ "<--worktree flag passed>" == "true" ]]; then
+  # Agent-id for worktree disambiguation
+  FIX_AGENT_ID="${AGENT_ID:-fix-$(date +%s)}"
+
+  # Setup fix-scrub worktree (creates .git-worktrees/fix-scrub/<agent-id>/)
+  eval "$(python3 scripts/worktree.py setup "${BRANCH_DATE}" --branch "${BRANCH_NAME}" --prefix fix-scrub --agent-id "${FIX_AGENT_ID}")"
+  cd "$WORKTREE_PATH"
+  echo "Working directory: $(pwd)"
+fi
+```
+
+After the fix-scrub is complete and changes are pushed, tear down the worktree:
+
+```bash
+# Teardown fix-scrub worktree
+python3 scripts/worktree.py teardown "${BRANCH_DATE}" --prefix fix-scrub --agent-id "${FIX_AGENT_ID}"
+```
+
 ### 1. Load Report and Classify
 
 ```bash
-python3 skills/fix-scrub/scripts/main.py \
+python3 <agent-skills-dir>/fix-scrub/scripts/main.py \
   --report <report-path> \
   --tier <tiers> \
   --severity <level> \
@@ -46,7 +107,7 @@ Review the dry-run output before applying.
 ### 2. Apply Fixes
 
 ```bash
-python3 skills/fix-scrub/scripts/main.py \
+python3 <agent-skills-dir>/fix-scrub/scripts/main.py \
   --report <report-path> \
   --tier <tiers> \
   --severity <level> \
@@ -101,7 +162,43 @@ EOF
 )"
 ```
 
-### 6. Review Summary
+### 6. Push and Create PR
+
+Skip if no fixes were applied (dry-run or all findings were manual-only).
+
+```bash
+# Push the fix-scrub branch
+git push -u origin "$BRANCH_NAME"
+
+# Create PR with fix-scrub report as body
+gh pr create \
+  --title "fix(scrub): apply fixes from bug-scrub report $(date +%Y-%m-%d)" \
+  --body "$(cat <<'EOF'
+## Summary
+
+Automated fix-scrub remediation from bug-scrub report.
+
+### Fix Summary
+<!-- Paste from docs/bug-scrub/fix-scrub-report.md -->
+- Auto-fixes: <count> (ruff)
+- Agent-fixes: <count> (mypy, markers, deferred)
+- Manual-only: <count> (reported, not fixed)
+
+### Quality Checks
+- [ ] pytest passing
+- [ ] mypy passing
+- [ ] ruff passing
+- [ ] openspec validate passing
+
+Source report: `docs/bug-scrub/bug-scrub-report.json`
+
+---
+🤖 Generated with Claude Code
+EOF
+)"
+```
+
+### 7. Review Summary
 
 Check `docs/bug-scrub/fix-scrub-report.md` for the full summary including:
 - Fixes applied by tier
@@ -121,5 +218,5 @@ Check `docs/bug-scrub/fix-scrub-report.md` for the full summary including:
 ## Quality Checks
 
 ```bash
-python3 -m pytest skills/fix-scrub/tests -q
+python3 -m pytest <agent-skills-dir>/fix-scrub/tests -q
 ```

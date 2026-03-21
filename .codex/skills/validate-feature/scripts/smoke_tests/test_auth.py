@@ -12,7 +12,9 @@ import httpx
 class TestAuthRequired:
     """Protected endpoints must reject unauthenticated requests."""
 
-    def test_no_credentials_rejected(self, client: httpx.Client, protected_endpoint: str) -> None:
+    def test_no_credentials_rejected(
+        self, client: httpx.Client, protected_endpoint: str
+    ) -> None:
         """Request without auth credentials should get 401 or 403."""
         response = client.get(protected_endpoint)
         assert response.status_code in (401, 403), (
@@ -35,7 +37,9 @@ class TestAuthRequired:
         auth_header_name: str,
     ) -> None:
         """Auth header present but empty should be rejected."""
-        response = client.get(protected_endpoint, headers={auth_header_name: ""})
+        response = client.get(
+            protected_endpoint, headers={auth_header_name: ""}
+        )
         assert response.status_code in (401, 403), (
             f"Expected 401/403 with empty credential, got {response.status_code}"
         )
@@ -65,7 +69,9 @@ class TestAuthResponseShape:
         """401/403 should return a JSON body (not an HTML error page)."""
         response = client.get(protected_endpoint)
         ct = response.headers.get("content-type", "")
-        assert "json" in ct, f"Auth rejection should return JSON, got content-type: {ct}"
+        assert "json" in ct, (
+            f"Auth rejection should return JSON, got content-type: {ct}"
+        )
 
     def test_rejection_does_not_leak_valid_keys(
         self,

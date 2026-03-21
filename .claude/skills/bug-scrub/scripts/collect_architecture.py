@@ -24,9 +24,7 @@ SOURCE = "architecture"
 CATEGORY = "architecture"
 
 _DIAGNOSTICS_REL = os.path.join(
-    "docs",
-    "architecture-analysis",
-    "architecture.diagnostics.json",
+    "docs", "architecture-analysis", "architecture.diagnostics.json",
 )
 
 _STALENESS_THRESHOLD_DAYS = 7

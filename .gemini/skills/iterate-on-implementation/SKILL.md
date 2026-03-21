@@ -1,13 +1,14 @@
 ---
-name: iterate-on-implementation
+name: linear-iterate-on-implementation
 description: Iteratively refine a feature implementation by identifying and fixing bugs, edge cases, and improvements
 category: Git Workflow
-tags: [openspec, refinement, iteration, quality]
+tags: [openspec, refinement, iteration, quality, linear]
 triggers:
   - "iterate on implementation"
   - "refine implementation"
   - "improve implementation"
   - "improve and iterate"
+  - "linear iterate on implementation"
 ---
 
 # Iterate on Implementation
@@ -32,7 +33,35 @@ Use OpenSpec-generated runtime assets first, then CLI fallback:
 - Gemini: `.gemini/commands/opsx/*.toml` or `.gemini/skills/openspec-*/SKILL.md`
 - Fallback: direct `openspec` CLI commands
 
+## Coordinator Integration (Optional)
+
+Use `docs/coordination-detection-template.md` as the shared detection preamble.
+
+- Detect transport and capability flags at skill start
+- Execute hooks only when the matching `CAN_*` flag is `true`
+- If coordinator is unavailable, continue with standalone behavior
+
 ## Steps
+
+### 0. Detect Coordinator, Read Handoff, Recall Memory
+
+At skill start, run the coordination detection preamble and set:
+
+- `COORDINATOR_AVAILABLE`
+- `COORDINATION_TRANSPORT` (`mcp|http|none`)
+- `CAN_LOCK`, `CAN_QUEUE_WORK`, `CAN_HANDOFF`, `CAN_MEMORY`, `CAN_GUARDRAILS`
+
+If `CAN_HANDOFF=true`, read recent handoff context:
+
+- MCP path: `read_handoff`
+- HTTP path: `scripts/coordination_bridge.py` `try_handoff_read(...)`
+
+If `CAN_MEMORY=true`, recall relevant implementation-iteration memories:
+
+- MCP path: `recall`
+- HTTP path: `scripts/coordination_bridge.py` `try_recall(...)`
+
+On recall/handoff failure, continue with standalone iteration and log informationally.
 
 ### 1. Determine Change ID and Configuration
 
@@ -46,15 +75,11 @@ CHANGE_ID=${CHANGE_ID:-$(echo $BRANCH | sed 's/^openspec\///')}
 MAX_ITERATIONS=5
 THRESHOLD="medium"  # critical > high > medium > low
 
-# Detect if running in a worktree and resolve OpenSpec path
-GIT_COMMON=$(git rev-parse --git-common-dir)
-if [[ "$GIT_COMMON" == ".git" ]]; then
-  # In main repo
-  OPENSPEC_PATH="openspec"
-else
-  # In worktree — git-common-dir returns /path/to/main/.git or /path/to/main/.git/worktrees/<name>
-  MAIN_REPO="${GIT_COMMON%%/.git*}"
-  OPENSPEC_PATH="$MAIN_REPO/openspec"
+# Detect worktree context and resolve OpenSpec path
+# Note: detect auto-discovers context from the working directory;
+# agent-id information is available via the worktree registry if needed.
+eval "$(python3 scripts/worktree.py detect)"
+if [[ "$IN_WORKTREE" == "true" ]]; then
   echo "Running in worktree. OpenSpec path: $OPENSPEC_PATH"
 fi
 ```
@@ -278,6 +303,17 @@ ITERATION=$((ITERATION + 1))
 Present a summary of all iterations:
 
 ```
+
+If `CAN_MEMORY=true`, remember implementation iteration outcomes:
+
+- MCP path: `remember`
+- HTTP path: `scripts/coordination_bridge.py` `try_remember(...)`
+
+If `CAN_HANDOFF=true`, write a completion handoff containing:
+
+- Fixes applied and critical findings resolved
+- Remaining risks or manual follow-ups
+- Validation status and recommended next command
 ## Iteration Summary
 
 ### Iteration 1

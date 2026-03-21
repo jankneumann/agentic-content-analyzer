@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from fix_models import ClassifiedFinding, Finding, FindingOrigin
-from track_completions import (
+from fix_models import ClassifiedFinding, Finding, FindingOrigin  # noqa: E402
+from track_completions import (  # noqa: E402
     _update_deferred_tasks_md,
     _update_tasks_md,
     track_completions,
@@ -97,7 +99,9 @@ class TestCheckboxUpdate:
         tasks_file = tmp_path / "tasks.md"
         tasks_file.write_text(SAMPLE_TASKS_MD)
 
-        updated = _update_tasks_md(str(tasks_file), "Implement input sanitiser", FROZEN_DATE)
+        updated = _update_tasks_md(
+            str(tasks_file), "Implement input sanitiser", FROZEN_DATE
+        )
 
         assert updated is True
         content = tasks_file.read_text()
@@ -107,7 +111,9 @@ class TestCheckboxUpdate:
         tasks_file = tmp_path / "tasks.md"
         tasks_file.write_text(SAMPLE_TASKS_MD)
 
-        updated = _update_tasks_md(str(tasks_file), "Create schema definition", FROZEN_DATE)
+        updated = _update_tasks_md(
+            str(tasks_file), "Create schema definition", FROZEN_DATE
+        )
 
         assert updated is False
 
@@ -141,7 +147,8 @@ class TestDeferredTasksAnnotation:
         assert updated is True
         content = deferred_file.read_text()
         assert (
-            "- Refactor database connection pooling (resolved by fix-scrub 2026-02-21)" in content
+            "- Refactor database connection pooling (resolved by fix-scrub 2026-02-21)"
+            in content
         )
 
     def test_non_matching_entry_is_untouched(self, tmp_path: Path) -> None:
@@ -160,9 +167,13 @@ class TestDeferredTasksAnnotation:
 
     def test_already_resolved_entry_is_not_duplicated(self, tmp_path: Path) -> None:
         deferred_file = tmp_path / "deferred-tasks.md"
-        deferred_file.write_text("- Fix timeout (resolved by fix-scrub 2026-02-01)\n")
+        deferred_file.write_text(
+            "- Fix timeout (resolved by fix-scrub 2026-02-01)\n"
+        )
 
-        updated = _update_deferred_tasks_md(str(deferred_file), "Fix timeout", FROZEN_DATE)
+        updated = _update_deferred_tasks_md(
+            str(deferred_file), "Fix timeout", FROZEN_DATE
+        )
 
         assert updated is False
 
@@ -175,9 +186,13 @@ class TestDeferredTasksAnnotation:
 class TestPartialCompletionSkip:
     def test_task_with_numbered_sub_items_is_skipped(self, tmp_path: Path) -> None:
         tasks_file = tmp_path / "tasks.md"
-        tasks_file.write_text("- [ ] Implement validation 1. check input 2. check output\n")
+        tasks_file.write_text(
+            "- [ ] Implement validation 1. check input 2. check output\n"
+        )
 
-        updated = _update_tasks_md(str(tasks_file), "Implement validation", FROZEN_DATE)
+        updated = _update_tasks_md(
+            str(tasks_file), "Implement validation", FROZEN_DATE
+        )
 
         assert updated is False
         content = tasks_file.read_text()
@@ -185,17 +200,25 @@ class TestPartialCompletionSkip:
 
     def test_task_with_semicolons_is_skipped(self, tmp_path: Path) -> None:
         tasks_file = tmp_path / "tasks.md"
-        tasks_file.write_text("- [ ] Fix errors; handle edge cases; add logging\n")
+        tasks_file.write_text(
+            "- [ ] Fix errors; handle edge cases; add logging\n"
+        )
 
-        updated = _update_tasks_md(str(tasks_file), "Fix errors", FROZEN_DATE)
+        updated = _update_tasks_md(
+            str(tasks_file), "Fix errors", FROZEN_DATE
+        )
 
         assert updated is False
 
     def test_task_with_lettered_sub_items_is_skipped(self, tmp_path: Path) -> None:
         tasks_file = tmp_path / "tasks.md"
-        tasks_file.write_text("- [ ] Validate inputs a) strings b) numbers c) dates\n")
+        tasks_file.write_text(
+            "- [ ] Validate inputs a) strings b) numbers c) dates\n"
+        )
 
-        updated = _update_tasks_md(str(tasks_file), "Validate inputs", FROZEN_DATE)
+        updated = _update_tasks_md(
+            str(tasks_file), "Validate inputs", FROZEN_DATE
+        )
 
         assert updated is False
 
@@ -226,7 +249,7 @@ class TestDateFormatting:
             source="deferred:open-tasks",
         )
 
-        fake_now = datetime(2026, 7, 4, 12, 0, 0, tzinfo=UTC)
+        fake_now = datetime(2026, 7, 4, 12, 0, 0, tzinfo=timezone.utc)
         with patch(
             "track_completions.datetime",
         ) as mock_dt:
@@ -323,7 +346,9 @@ class TestReturnUpdatedPaths:
             source="deferred:tasks",
         )
 
-        updated = track_completions([cf_tasks, cf_deferred], project_dir="")
+        updated = track_completions(
+            [cf_tasks, cf_deferred], project_dir=""
+        )
 
         assert str(tasks_file) in updated
         assert str(deferred_file) in updated
@@ -331,7 +356,9 @@ class TestReturnUpdatedPaths:
 
     def test_no_duplicates_for_same_file(self, tmp_path: Path) -> None:
         tasks_file = tmp_path / "tasks.md"
-        tasks_file.write_text("- [ ] Fix bug A\n- [ ] Fix bug B\n")
+        tasks_file.write_text(
+            "- [ ] Fix bug A\n- [ ] Fix bug B\n"
+        )
 
         cf1 = _make_classified(
             finding_id="F-100",
@@ -355,7 +382,9 @@ class TestReturnUpdatedPaths:
 
         assert updated == []
 
-    def test_impl_findings_source_updates_deferred_file(self, tmp_path: Path) -> None:
+    def test_impl_findings_source_updates_deferred_file(
+        self, tmp_path: Path
+    ) -> None:
         impl_file = tmp_path / "impl-findings.md"
         impl_file.write_text("- Handle edge case in parser\n")
 

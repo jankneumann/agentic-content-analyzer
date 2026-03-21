@@ -23,11 +23,8 @@ def check_gh():
     """Verify gh CLI is installed and authenticated."""
     try:
         subprocess.run(
-            ["gh", "--version"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=GH_TIMEOUT,
+            ["gh", "--version"], capture_output=True, text=True,
+            check=True, timeout=GH_TIMEOUT,
         )
     except FileNotFoundError:
         print("Error: 'gh' CLI is not installed or not on PATH.", file=sys.stderr)
@@ -37,11 +34,8 @@ def check_gh():
         sys.exit(1)
 
     result = subprocess.run(
-        ["gh", "auth", "status"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=GH_TIMEOUT,
+        ["gh", "auth", "status"], capture_output=True, text=True,
+        check=False, timeout=GH_TIMEOUT,
     )
     if result.returncode != 0:
         print(
@@ -54,11 +48,8 @@ def check_gh():
 def run_gh(args: list[str], timeout: int = GH_TIMEOUT) -> str:
     """Run a gh command and return stdout, raising RuntimeError on failure."""
     result = subprocess.run(
-        ["gh"] + args,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
+        ["gh"] + args, capture_output=True, text=True,
+        check=False, timeout=timeout,
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -69,38 +60,29 @@ def run_gh(args: list[str], timeout: int = GH_TIMEOUT) -> str:
 
 
 def run_gh_unchecked(
-    args: list[str],
-    timeout: int = GH_TIMEOUT,
+    args: list[str], timeout: int = GH_TIMEOUT,
 ) -> subprocess.CompletedProcess:
     """Run a gh command and return the CompletedProcess without raising."""
     return subprocess.run(
-        ["gh"] + args,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
+        ["gh"] + args, capture_output=True, text=True,
+        check=False, timeout=timeout,
     )
 
 
 def run_cmd(
-    cmd: list[str],
-    check: bool = True,
-    timeout: int = GIT_TIMEOUT,
+    cmd: list[str], check: bool = True, timeout: int = GIT_TIMEOUT,
 ) -> str:
     """Run an arbitrary command and return stdout.
 
     When check=True (default), raises RuntimeError on non-zero exit.
     """
     result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
+        cmd, capture_output=True, text=True, check=False, timeout=timeout,
     )
     if check and result.returncode != 0:
         raise RuntimeError(
-            f"{_truncate_cmd(cmd)} failed (exit {result.returncode}): {result.stderr.strip()}"
+            f"{_truncate_cmd(cmd)} failed (exit {result.returncode}): "
+            f"{result.stderr.strip()}"
         )
     return result.stdout.strip()
 
@@ -173,10 +155,7 @@ def check_clean_worktree() -> bool:
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=GIT_TIMEOUT,
+            capture_output=True, text=True, check=False, timeout=GIT_TIMEOUT,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError):
         print(

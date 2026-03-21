@@ -8,15 +8,17 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from execute_auto import execute_auto_fixes
-from fix_models import ClassifiedFinding, Finding, FixGroup
+from execute_auto import execute_auto_fixes  # noqa: E402
+from fix_models import ClassifiedFinding, Finding, FixGroup  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _make_finding(
     finding_id: str,
@@ -50,7 +52,6 @@ def _classified(finding: Finding) -> ClassifiedFinding:
 # ---------------------------------------------------------------------------
 # 1. Test ruff --fix invocation
 # ---------------------------------------------------------------------------
-
 
 class TestRuffFixInvocation:
     """Verify that ruff check --fix is called with the correct arguments."""
@@ -104,7 +105,6 @@ class TestRuffFixInvocation:
 # 2. Test verification re-run after fix
 # ---------------------------------------------------------------------------
 
-
 class TestVerificationReRun:
     """After applying fixes, ruff is re-run with --output-format=json."""
 
@@ -129,7 +129,9 @@ class TestVerificationReRun:
         )
 
     @patch("execute_auto.subprocess.run")
-    def test_all_resolved_when_verification_returns_empty(self, mock_run: MagicMock) -> None:
+    def test_all_resolved_when_verification_returns_empty(
+        self, mock_run: MagicMock
+    ) -> None:
         """When re-run returns no violations, all findings are resolved."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="[]", stderr=""
@@ -148,7 +150,6 @@ class TestVerificationReRun:
 # ---------------------------------------------------------------------------
 # 3. Test handling when ruff not available (FileNotFoundError)
 # ---------------------------------------------------------------------------
-
 
 class TestRuffNotAvailable:
     """When ruff is not installed, all findings persist."""
@@ -182,25 +183,24 @@ class TestRuffNotAvailable:
 # 4. Test partial fix resolution
 # ---------------------------------------------------------------------------
 
-
 class TestPartialFixResolution:
     """Some findings are resolved by ruff --fix, others persist."""
 
     @patch("execute_auto.subprocess.run")
     def test_mixed_resolved_and_persisting(self, mock_run: MagicMock) -> None:
         """E501 persists (still reported), F401 is resolved (not reported)."""
-        remaining_json = json.dumps(
-            [
-                {
-                    "filename": "src/app.py",
-                    "location": {"row": 10},
-                    "code": "E501",
-                },
-            ]
-        )
+        remaining_json = json.dumps([
+            {
+                "filename": "src/app.py",
+                "location": {"row": 10},
+                "code": "E501",
+            },
+        ])
 
         # First call (--fix): success
-        fix_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        fix_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
         # Second call (--output-format=json): one remaining violation
         verify_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout=remaining_json, stderr=""
@@ -222,22 +222,22 @@ class TestPartialFixResolution:
     @patch("execute_auto.subprocess.run")
     def test_multiple_files_partial_resolution(self, mock_run: MagicMock) -> None:
         """Findings across multiple files: some resolved, some not."""
-        remaining_json = json.dumps(
-            [
-                {
-                    "filename": "src/a.py",
-                    "location": {"row": 5},
-                    "code": "E501",
-                },
-                {
-                    "filename": "src/b.py",
-                    "location": {"row": 3},
-                    "code": "W291",
-                },
-            ]
-        )
+        remaining_json = json.dumps([
+            {
+                "filename": "src/a.py",
+                "location": {"row": 5},
+                "code": "E501",
+            },
+            {
+                "filename": "src/b.py",
+                "location": {"row": 3},
+                "code": "W291",
+            },
+        ])
 
-        fix_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        fix_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
         verify_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout=remaining_json, stderr=""
         )
@@ -250,7 +250,9 @@ class TestPartialFixResolution:
         group_a = _make_fix_group("src/a.py", [f1, f2])
         group_b = _make_fix_group("src/b.py", [f3])
 
-        resolved, persisting = execute_auto_fixes([group_a, group_b], project_dir="/repo")
+        resolved, persisting = execute_auto_fixes(
+            [group_a, group_b], project_dir="/repo"
+        )
 
         persisting_ids = {cf.finding.id for cf in persisting}
         resolved_ids = {cf.finding.id for cf in resolved}
@@ -265,7 +267,9 @@ class TestPartialFixResolution:
     ) -> None:
         """If verification JSON is unparseable, remaining_violations is empty
         and all findings are treated as resolved."""
-        fix_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        fix_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
         verify_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="not valid json", stderr=""
         )
@@ -286,7 +290,6 @@ class TestPartialFixResolution:
 # 5. Test empty auto_groups
 # ---------------------------------------------------------------------------
 
-
 class TestEmptyAutoGroups:
     """An empty auto_groups list should short-circuit with empty results."""
 
@@ -296,14 +299,20 @@ class TestEmptyAutoGroups:
         assert persisting == []
 
     @patch("execute_auto.subprocess.run")
-    def test_subprocess_not_called_for_empty_groups(self, mock_run: MagicMock) -> None:
+    def test_subprocess_not_called_for_empty_groups(
+        self, mock_run: MagicMock
+    ) -> None:
         execute_auto_fixes([], project_dir="/repo")
         mock_run.assert_not_called()
 
     @patch("execute_auto.subprocess.run")
-    def test_no_file_groups_returns_all_persisting(self, mock_run: MagicMock) -> None:
+    def test_no_file_groups_returns_all_persisting(
+        self, mock_run: MagicMock
+    ) -> None:
         """Groups with __no_file__ sentinel have no files to fix."""
-        f1 = _classified(_make_finding("ruff-E501-__no_file__:0", file_path="__no_file__", line=0))
+        f1 = _classified(
+            _make_finding("ruff-E501-__no_file__:0", file_path="__no_file__", line=0)
+        )
         group = _make_fix_group("__no_file__", [f1])
 
         resolved, persisting = execute_auto_fixes([group], project_dir="/repo")

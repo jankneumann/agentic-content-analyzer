@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import pytest
 
 from collect_deferred import (
     _change_id_from_path,
@@ -25,6 +26,8 @@ from collect_deferred import (
     _severity_for,
     collect,
 )
+from models import Finding, FindingOrigin
+
 
 # ---------------------------------------------------------------------------
 # Helpers — create the openspec/changes/ directory tree inside tmp_path
@@ -72,7 +75,9 @@ class TestImplFindingsParsing:
 
         assert result.status == "ok"
         # Rows 2 and 4 contain "out of scope" or "deferred"
-        impl_findings = [f for f in result.findings if f.source == "deferred:impl-findings"]
+        impl_findings = [
+            f for f in result.findings if f.source == "deferred:impl-findings"
+        ]
         assert len(impl_findings) == 2
 
     def test_deferred_keyword_case_insensitive(self, tmp_path: Path) -> None:
@@ -86,7 +91,9 @@ class TestImplFindingsParsing:
         (change_dir / "impl-findings.md").write_text(content)
 
         result = collect(str(tmp_path))
-        impl_findings = [f for f in result.findings if f.source == "deferred:impl-findings"]
+        impl_findings = [
+            f for f in result.findings if f.source == "deferred:impl-findings"
+        ]
         assert len(impl_findings) == 2
 
     def test_out_of_scope_hyphenated(self, tmp_path: Path) -> None:
@@ -99,7 +106,9 @@ class TestImplFindingsParsing:
         (change_dir / "impl-findings.md").write_text(content)
 
         result = collect(str(tmp_path))
-        impl_findings = [f for f in result.findings if f.source == "deferred:impl-findings"]
+        impl_findings = [
+            f for f in result.findings if f.source == "deferred:impl-findings"
+        ]
         assert len(impl_findings) == 1
 
     def test_no_deferred_rows_produces_no_findings(self, tmp_path: Path) -> None:
@@ -112,7 +121,9 @@ class TestImplFindingsParsing:
         (change_dir / "impl-findings.md").write_text(content)
 
         result = collect(str(tmp_path))
-        impl_findings = [f for f in result.findings if f.source == "deferred:impl-findings"]
+        impl_findings = [
+            f for f in result.findings if f.source == "deferred:impl-findings"
+        ]
         assert len(impl_findings) == 0
 
 
@@ -300,7 +311,9 @@ class TestSeverityMapping:
         (change_dir / "impl-findings.md").write_text(content)
 
         result = collect(str(tmp_path))
-        impl_findings = [f for f in result.findings if f.source == "deferred:impl-findings"]
+        impl_findings = [
+            f for f in result.findings if f.source == "deferred:impl-findings"
+        ]
         assert len(impl_findings) >= 1
         assert impl_findings[0].severity == "low"
 
@@ -347,7 +360,9 @@ class TestMalformedArtifacts:
         result = collect(str(tmp_path))
         # Should not raise; no findings from a non-table file
         assert result.status == "ok"
-        impl_findings = [f for f in result.findings if f.source == "deferred:impl-findings"]
+        impl_findings = [
+            f for f in result.findings if f.source == "deferred:impl-findings"
+        ]
         assert len(impl_findings) == 0
 
     def test_unreadable_file_produces_warning(self, tmp_path: Path) -> None:
@@ -368,7 +383,9 @@ class TestMalformedArtifacts:
 
     def test_deferred_tasks_with_no_table(self, tmp_path: Path) -> None:
         change_dir = _make_active_change(tmp_path, "no-table")
-        (change_dir / "deferred-tasks.md").write_text("# Deferred Tasks\n\nNothing here yet.\n")
+        (change_dir / "deferred-tasks.md").write_text(
+            "# Deferred Tasks\n\nNothing here yet.\n"
+        )
 
         result = collect(str(tmp_path))
         deferred = [f for f in result.findings if f.source == "deferred:tasks"]
@@ -417,7 +434,9 @@ class TestFindingOriginMetadata:
         (change_dir / "impl-findings.md").write_text(content)
 
         result = collect(str(tmp_path))
-        impl_findings = [f for f in result.findings if f.source == "deferred:impl-findings"]
+        impl_findings = [
+            f for f in result.findings if f.source == "deferred:impl-findings"
+        ]
         assert len(impl_findings) == 1
 
         origin = impl_findings[0].origin
@@ -565,7 +584,10 @@ class TestHelpers:
         assert _change_id_from_path("openspec/changes/my-change/tasks.md") == "my-change"
 
     def test_change_id_from_path_archived(self) -> None:
-        assert _change_id_from_path("openspec/changes/archive/old-change/tasks.md") == "old-change"
+        assert (
+            _change_id_from_path("openspec/changes/archive/old-change/tasks.md")
+            == "old-change"
+        )
 
     def test_parse_table_rows_basic(self) -> None:
         table = """\

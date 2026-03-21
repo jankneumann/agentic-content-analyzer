@@ -7,8 +7,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from fix_models import ClassifiedFinding, Finding, FixGroup
-from generate_prompts import generate_prompts
+from fix_models import ClassifiedFinding, Finding, FixGroup  # noqa: E402
+
+from generate_prompts import generate_prompts  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -138,7 +140,9 @@ class TestFindingDetailsInPrompt:
 
     def test_prompt_includes_fix_strategy(self) -> None:
         group = _make_group(
-            classified_findings=[_make_classified(fix_strategy="Wrap call in try/except block")]
+            classified_findings=[
+                _make_classified(fix_strategy="Wrap call in try/except block")
+            ]
         )
         result = generate_prompts([group])
 
@@ -177,7 +181,10 @@ class TestSameFileBatching:
         assert "Add module docstring" in prompt_text
 
     def test_three_findings_all_present(self) -> None:
-        findings = [_make_finding(id=f"F{i}", title=f"Issue {i}", line=i * 10) for i in range(1, 4)]
+        findings = [
+            _make_finding(id=f"F{i}", title=f"Issue {i}", line=i * 10)
+            for i in range(1, 4)
+        ]
         group = _make_group(
             file_path="src/app.py",
             classified_findings=[

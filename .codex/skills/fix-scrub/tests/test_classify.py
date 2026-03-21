@@ -8,9 +8,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 # bug-scrub models are imported transitively via fix-scrub models
 
-import pytest
-from classify import classify, classify_finding
-from fix_models import Finding
+import pytest  # noqa: E402
+
+from classify import classify, classify_finding  # noqa: E402
+from fix_models import Finding  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -85,7 +87,7 @@ def test_agent_tier_mypy_type_error() -> None:
         severity="high",
         category="type-error",
         title="Incompatible return type",
-        detail="error: Incompatible return type [return-value]",
+        detail='error: Incompatible return type [return-value]',
     )
     result = classify_finding(finding)
     assert result.tier == "agent"
@@ -204,10 +206,7 @@ def test_manual_tier_architecture_source() -> None:
     )
     result = classify_finding(finding)
     assert result.tier == "manual"
-    assert (
-        "design decision" in result.fix_strategy.lower()
-        or "manual review" in result.fix_strategy.lower()
-    )
+    assert "design decision" in result.fix_strategy.lower() or "manual review" in result.fix_strategy.lower()
 
 
 def test_manual_tier_security_source() -> None:
@@ -254,10 +253,7 @@ def test_manual_tier_deferred_without_proposed_fix() -> None:
     )
     result = classify_finding(finding)
     assert result.tier == "manual"
-    assert (
-        "investigation" in result.fix_strategy.lower()
-        or "no clear proposed fix" in result.fix_strategy.lower()
-    )
+    assert "investigation" in result.fix_strategy.lower() or "no clear proposed fix" in result.fix_strategy.lower()
 
 
 # ---------------------------------------------------------------------------

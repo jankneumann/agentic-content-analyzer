@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # sys.path insertion so we can import collector modules from scripts/
 # ---------------------------------------------------------------------------
@@ -23,6 +25,7 @@ import collect_mypy
 import collect_openspec
 import collect_pytest
 import collect_ruff
+from models import Finding, SourceResult
 
 
 # ========================================================================
@@ -44,7 +47,9 @@ class TestCollectPytest:
 
     @patch("collect_pytest.shutil.which", return_value="/usr/bin/pytest")
     @patch("collect_pytest.subprocess.run")
-    def test_parse_failures(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_parse_failures(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Realistic failure output is parsed into Finding objects."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["pytest"],
@@ -100,7 +105,9 @@ class TestCollectPytest:
 
     @patch("collect_pytest.shutil.which", return_value="/usr/bin/pytest")
     @patch("collect_pytest.subprocess.run")
-    def test_no_failures(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_no_failures(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Exit code 0 (all tests pass) yields status ok with no findings."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["pytest"],
@@ -117,7 +124,9 @@ class TestCollectPytest:
 
     @patch("collect_pytest.shutil.which", return_value="/usr/bin/pytest")
     @patch("collect_pytest.subprocess.run")
-    def test_no_tests_collected(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_no_tests_collected(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Exit code 5 (no tests collected) yields ok with a message."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["pytest"],
@@ -137,7 +146,9 @@ class TestCollectPytest:
         "collect_pytest.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="pytest", timeout=300),
     )
-    def test_timeout(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_timeout(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """TimeoutExpired returns error status."""
         result = collect_pytest.collect("/fake/project")
 
@@ -146,7 +157,9 @@ class TestCollectPytest:
 
     @patch("collect_pytest.shutil.which", return_value="/usr/bin/pytest")
     @patch("collect_pytest.subprocess.run")
-    def test_nonzero_exit_no_failed_lines(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_nonzero_exit_no_failed_lines(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Non-zero exit with no FAILED lines yields error status."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["pytest"],
@@ -377,9 +390,9 @@ class TestCollectMypy:
     """Tests for collect_mypy.collect()."""
 
     SAMPLE_OUTPUT = (
-        "src/api/routes.py:42: error: Incompatible types in assignment "
+        'src/api/routes.py:42: error: Incompatible types in assignment '
         '(expression has type "str", variable has type "int") [assignment]\n'
-        "src/models/user.py:17: error: Missing return statement [return]\n"
+        'src/models/user.py:17: error: Missing return statement [return]\n'
         'src/utils/helpers.py:88: error: Argument 1 to "process" has '
         'incompatible type "None"; expected "dict[str, Any]" [arg-type]\n'
         "Found 3 errors in 3 files (checked 12 source files)\n"
@@ -387,7 +400,9 @@ class TestCollectMypy:
 
     @patch("collect_mypy.shutil.which", return_value="/usr/bin/mypy")
     @patch("collect_mypy.subprocess.run")
-    def test_parse_errors(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_parse_errors(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Realistic mypy output is parsed into Finding objects."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["mypy"],
@@ -449,7 +464,9 @@ class TestCollectMypy:
 
     @patch("collect_mypy.shutil.which", return_value="/usr/bin/mypy")
     @patch("collect_mypy.subprocess.run")
-    def test_no_errors(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_no_errors(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Clean mypy run yields ok with no findings."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["mypy"],
@@ -466,9 +483,13 @@ class TestCollectMypy:
 
     @patch("collect_mypy.shutil.which", return_value="/usr/bin/mypy")
     @patch("collect_mypy.subprocess.run")
-    def test_detail_is_raw_line(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_detail_is_raw_line(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """The detail field stores the raw mypy output line."""
-        single_error = 'src/foo.py:10: error: Name "bar" is not defined [name-defined]\n'
+        single_error = (
+            'src/foo.py:10: error: Name "bar" is not defined [name-defined]\n'
+        )
         mock_run.return_value = subprocess.CompletedProcess(
             args=["mypy"],
             returncode=1,
@@ -483,9 +504,13 @@ class TestCollectMypy:
 
     @patch("collect_mypy.shutil.which", return_value="/usr/bin/mypy")
     @patch("collect_mypy.subprocess.run")
-    def test_error_without_code(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_error_without_code(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Mypy lines without a [code] bracket get code='unknown'."""
-        no_code_output = "src/foo.py:5: error: Some generic error message\n"
+        no_code_output = (
+            "src/foo.py:5: error: Some generic error message\n"
+        )
         mock_run.return_value = subprocess.CompletedProcess(
             args=["mypy"],
             returncode=1,
@@ -517,7 +542,9 @@ class TestCollectOpenspec:
 
     @patch("collect_openspec.shutil.which", return_value="/usr/bin/openspec")
     @patch("collect_openspec.subprocess.run")
-    def test_parse_validation_output(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_parse_validation_output(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Realistic openspec validate output is parsed into findings."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["openspec", "validate"],
@@ -569,7 +596,9 @@ class TestCollectOpenspec:
     @patch("collect_openspec.shutil.which", return_value="/usr/bin/openspec")
     @patch(
         "collect_openspec.subprocess.run",
-        side_effect=FileNotFoundError("No such file or directory: 'openspec'"),
+        side_effect=FileNotFoundError(
+            "No such file or directory: 'openspec'"
+        ),
     )
     def test_tool_not_available_file_not_found(
         self, mock_run: MagicMock, mock_which: MagicMock
@@ -583,7 +612,9 @@ class TestCollectOpenspec:
 
     @patch("collect_openspec.shutil.which", return_value="/usr/bin/openspec")
     @patch("collect_openspec.subprocess.run")
-    def test_no_issues(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_no_issues(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Clean openspec validate yields ok with no findings."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["openspec", "validate"],
@@ -601,9 +632,13 @@ class TestCollectOpenspec:
     @patch("collect_openspec.shutil.which", return_value="/usr/bin/openspec")
     @patch(
         "collect_openspec.subprocess.run",
-        side_effect=subprocess.TimeoutExpired(cmd="openspec validate", timeout=120),
+        side_effect=subprocess.TimeoutExpired(
+            cmd="openspec validate", timeout=120
+        ),
     )
-    def test_timeout(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_timeout(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """TimeoutExpired returns error status."""
         result = collect_openspec.collect("/fake/project")
 
@@ -612,7 +647,9 @@ class TestCollectOpenspec:
 
     @patch("collect_openspec.shutil.which", return_value="/usr/bin/openspec")
     @patch("collect_openspec.subprocess.run")
-    def test_nonzero_exit_message(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_nonzero_exit_message(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Non-zero exit code is reported in messages."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["openspec", "validate"],
@@ -628,13 +665,16 @@ class TestCollectOpenspec:
 
     @patch("collect_openspec.shutil.which", return_value="/usr/bin/openspec")
     @patch("collect_openspec.subprocess.run")
-    def test_findings_from_stderr(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+    def test_findings_from_stderr(
+        self, mock_run: MagicMock, mock_which: MagicMock
+    ) -> None:
         """Findings in stderr are also parsed (combined output)."""
         mock_run.return_value = subprocess.CompletedProcess(
             args=["openspec", "validate"],
             returncode=1,
             stdout="",
-            stderr="error: Missing required field 'name' (spec: specs/manifest.yaml:3)\n",
+            stderr="error: Missing required field 'name' "
+            "(spec: specs/manifest.yaml:3)\n",
         )
 
         result = collect_openspec.collect("/fake/project")

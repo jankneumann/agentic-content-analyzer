@@ -27,6 +27,7 @@ from shared import (
     parse_pr_numbers,
     run_gh,
     run_gh_unchecked,
+    safe_author,
 )
 
 # Use a longer timeout for merge operations which can be slow
@@ -35,17 +36,11 @@ MERGE_TIMEOUT = 60
 
 def get_pr_status(pr_number: int) -> dict:
     try:
-        raw = run_gh(
-            [
-                "pr",
-                "view",
-                str(pr_number),
-                "--json",
-                "state,mergeable,statusCheckRollup,reviewDecision,"
-                "headRefName,title,isDraft,isCrossRepository,reviewRequests",
-            ],
-            timeout=GH_TIMEOUT,
-        )
+        raw = run_gh([
+            "pr", "view", str(pr_number), "--json",
+            "state,mergeable,statusCheckRollup,reviewDecision,"
+            "headRefName,title,isDraft,isCrossRepository,reviewRequests",
+        ], timeout=GH_TIMEOUT)
     except RuntimeError as e:
         print(f"Error: Could not fetch PR #{pr_number}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -60,16 +55,9 @@ def check_approval_freshness(pr_number: int) -> dict:
     but repos without that setting should still be warned.
     """
     try:
-        raw = run_gh(
-            [
-                "pr",
-                "view",
-                str(pr_number),
-                "--json",
-                "commits,reviews",
-            ],
-            timeout=GH_TIMEOUT,
-        )
+        raw = run_gh([
+            "pr", "view", str(pr_number), "--json", "commits,reviews",
+        ], timeout=GH_TIMEOUT)
     except RuntimeError as e:
         print(
             f"Warning: Could not verify approval freshness for PR #{pr_number}: {e}",
@@ -220,8 +208,7 @@ def validate_pr(pr_number: int) -> dict:
         "review_decision": review_decision,
         "approved": approved,
         "approval_may_be_stale": approval_freshness.get(
-            "approval_may_be_stale",
-            False,
+            "approval_may_be_stale", False,
         ),
         "pending_reviewers": pending_reviewers,
         "can_merge": (
@@ -234,8 +221,31 @@ def validate_pr(pr_number: int) -> dict:
     }
 
 
+def _has_merge_queue() -> bool:
+    """Check if the repository has a merge queue enabled."""
+    try:
+        raw = run_gh([
+            "repo", "view", "--json", "mergeCommitAllowed",
+        ], timeout=GH_TIMEOUT)
+        # If the repo has branch protection with merge queue, gh pr merge
+        # without --merge-queue will fail. Proactively use --merge-queue.
+        # Unfortunately gh doesn't expose merge queue config directly,
+        # so we try with --merge-queue first and fall back if it fails.
+        return True  # Optimistically try merge queue; fallback handles errors
+    except (RuntimeError, subprocess.TimeoutExpired):
+        return False
+
+
 def _try_merge(pr_number: int, strategy: str, is_fork: bool) -> dict:
     """Attempt the actual gh pr merge command, handling edge cases."""
+    # Try merge queue first if available
+    if _has_merge_queue():
+        result = _try_merge_queue(pr_number, strategy, is_fork)
+        if result.get("success"):
+            return result
+        # If merge queue attempt failed (e.g., queue not actually enabled),
+        # fall through to direct merge
+
     strategy_flag = f"--{strategy}"
     merge_args = ["pr", "merge", str(pr_number), strategy_flag]
 
@@ -341,7 +351,8 @@ def _try_merge_queue(pr_number: int, strategy: str, is_fork: bool) -> dict:
     }
 
 
-def merge_pr(pr_number: int, strategy: str = "squash", dry_run: bool = False) -> dict:
+def merge_pr(pr_number: int, strategy: str = "squash",
+             dry_run: bool = False) -> dict:
     validation = validate_pr(pr_number)
 
     if dry_run:
@@ -407,9 +418,7 @@ def merge_pr(pr_number: int, strategy: str = "squash", dry_run: bool = False) ->
         }
 
     result = _try_merge(
-        pr_number,
-        strategy,
-        validation.get("is_fork", False),
+        pr_number, strategy, validation.get("is_fork", False),
     )
 
     # Include stale approval warning on successful merges
@@ -417,7 +426,9 @@ def merge_pr(pr_number: int, strategy: str = "squash", dry_run: bool = False) ->
         result["warning"] = result.get("warning", "")
         if result["warning"]:
             result["warning"] += "; "
-        result["warning"] += "Approval may be stale — commits were pushed after the last approval"
+        result["warning"] += (
+            "Approval may be stale — commits were pushed after the last approval"
+        )
 
     return result
 
@@ -426,16 +437,9 @@ def rerun_failed_checks(pr_number: int, dry_run: bool = False) -> dict:
     """Re-run failed CI workflow runs for a PR."""
     # Get PR branch
     try:
-        raw = run_gh(
-            [
-                "pr",
-                "view",
-                str(pr_number),
-                "--json",
-                "headRefName",
-            ],
-            timeout=GH_TIMEOUT,
-        )
+        raw = run_gh([
+            "pr", "view", str(pr_number), "--json", "headRefName",
+        ], timeout=GH_TIMEOUT)
     except RuntimeError as e:
         return {
             "action": "rerun-checks",
@@ -455,21 +459,10 @@ def rerun_failed_checks(pr_number: int, dry_run: bool = False) -> dict:
 
     # Find failed workflow runs on this branch
     try:
-        raw = run_gh(
-            [
-                "run",
-                "list",
-                "--branch",
-                branch,
-                "--status",
-                "failure",
-                "--limit",
-                "10",
-                "--json",
-                "databaseId,name,conclusion",
-            ],
-            timeout=GH_TIMEOUT,
-        )
+        raw = run_gh([
+            "run", "list", "--branch", branch, "--status", "failure",
+            "--limit", "10", "--json", "databaseId,name,conclusion",
+        ], timeout=GH_TIMEOUT)
     except RuntimeError as e:
         return {
             "action": "rerun-checks",
@@ -493,7 +486,9 @@ def rerun_failed_checks(pr_number: int, dry_run: bool = False) -> dict:
             "action": "rerun-checks",
             "dry_run": True,
             "pr_number": pr_number,
-            "failed_runs": [{"id": r["databaseId"], "name": r["name"]} for r in runs],
+            "failed_runs": [
+                {"id": r["databaseId"], "name": r["name"]} for r in runs
+            ],
         }
 
     rerun_results = []
@@ -501,26 +496,21 @@ def rerun_failed_checks(pr_number: int, dry_run: bool = False) -> dict:
         run_id = run["databaseId"]
         try:
             rr = run_gh_unchecked(
-                ["run", "rerun", str(run_id), "--failed"],
-                timeout=GH_TIMEOUT,
+                ["run", "rerun", str(run_id), "--failed"], timeout=GH_TIMEOUT,
             )
-            rerun_results.append(
-                {
-                    "id": run_id,
-                    "name": run["name"],
-                    "rerun": rr.returncode == 0,
-                    "error": rr.stderr.strip() if rr.returncode != 0 else None,
-                }
-            )
+            rerun_results.append({
+                "id": run_id,
+                "name": run["name"],
+                "rerun": rr.returncode == 0,
+                "error": rr.stderr.strip() if rr.returncode != 0 else None,
+            })
         except subprocess.TimeoutExpired:
-            rerun_results.append(
-                {
-                    "id": run_id,
-                    "name": run["name"],
-                    "rerun": False,
-                    "error": "timeout",
-                }
-            )
+            rerun_results.append({
+                "id": run_id,
+                "name": run["name"],
+                "rerun": False,
+                "error": "timeout",
+            })
 
     return {
         "action": "rerun-checks",
@@ -531,7 +521,8 @@ def rerun_failed_checks(pr_number: int, dry_run: bool = False) -> dict:
     }
 
 
-def close_pr(pr_number: int, reason: str, dry_run: bool = False) -> dict:
+def close_pr(pr_number: int, reason: str,
+             dry_run: bool = False) -> dict:
     if dry_run:
         return {
             "action": "close",
@@ -542,7 +533,8 @@ def close_pr(pr_number: int, reason: str, dry_run: bool = False) -> dict:
 
     # Close first, then comment. If close fails we don't leave orphan comments.
     try:
-        close_result = run_gh_unchecked(["pr", "close", str(pr_number)], timeout=GH_TIMEOUT)
+        close_result = run_gh_unchecked(["pr", "close", str(pr_number)],
+                                        timeout=GH_TIMEOUT)
         if close_result.returncode != 0:
             return {
                 "action": "close",
@@ -561,18 +553,13 @@ def close_pr(pr_number: int, reason: str, dry_run: bool = False) -> dict:
     # Post the comment after successful close — failure here is non-fatal
     comment_warning = None
     try:
-        comment_result = run_gh_unchecked(
-            [
-                "pr",
-                "comment",
-                str(pr_number),
-                "--body",
-                reason,
-            ],
-            timeout=GH_TIMEOUT,
-        )
+        comment_result = run_gh_unchecked([
+            "pr", "comment", str(pr_number), "--body", reason,
+        ], timeout=GH_TIMEOUT)
         if comment_result.returncode != 0:
-            comment_warning = f"PR closed but comment failed: {comment_result.stderr.strip()}"
+            comment_warning = (
+                f"PR closed but comment failed: {comment_result.stderr.strip()}"
+            )
     except subprocess.TimeoutExpired:
         comment_warning = "PR closed but comment timed out"
 
@@ -587,7 +574,8 @@ def close_pr(pr_number: int, reason: str, dry_run: bool = False) -> dict:
     return result
 
 
-def batch_close(pr_numbers: list[int], reason: str, dry_run: bool = False) -> dict:
+def batch_close(pr_numbers: list[int], reason: str,
+                dry_run: bool = False) -> dict:
     results = []
     remaining = []
     for i, num in enumerate(pr_numbers):
@@ -595,7 +583,7 @@ def batch_close(pr_numbers: list[int], reason: str, dry_run: bool = False) -> di
         results.append(result)
         # Stop on first real failure (not dry-run)
         if not dry_run and not result.get("success"):
-            remaining = pr_numbers[i + 1 :]
+            remaining = pr_numbers[i + 1:]
             break
 
     succeeded = sum(1 for r in results if r.get("success") or r.get("dry_run"))
@@ -625,9 +613,7 @@ def main():
     merge_parser = subparsers.add_parser("merge", help="Merge a single PR")
     merge_parser.add_argument("pr_number", type=int, help="PR number to merge")
     merge_parser.add_argument(
-        "--strategy",
-        default="squash",
-        choices=["squash", "merge", "rebase"],
+        "--strategy", default="squash", choices=["squash", "merge", "rebase"],
         help="Merge strategy (default: squash)",
     )
     merge_parser.add_argument("--dry-run", action="store_true")
@@ -636,8 +622,7 @@ def main():
     close_parser = subparsers.add_parser("close", help="Close a single PR")
     close_parser.add_argument("pr_number", type=int, help="PR number to close")
     close_parser.add_argument(
-        "--reason",
-        default="Closed by merge-pull-requests skill.",
+        "--reason", default="Closed by merge-pull-requests skill.",
         help="Reason for closing",
     )
     close_parser.add_argument("--dry-run", action="store_true")
@@ -645,12 +630,10 @@ def main():
     # batch-close subcommand
     batch_parser = subparsers.add_parser("batch-close", help="Close multiple PRs")
     batch_parser.add_argument(
-        "pr_numbers",
-        help="Comma-separated PR numbers (e.g. 1,2,3)",
+        "pr_numbers", help="Comma-separated PR numbers (e.g. 1,2,3)",
     )
     batch_parser.add_argument(
-        "--reason",
-        default="Closed as obsolete by merge-pull-requests skill.",
+        "--reason", default="Closed as obsolete by merge-pull-requests skill.",
         help="Reason for closing",
     )
     batch_parser.add_argument("--dry-run", action="store_true")

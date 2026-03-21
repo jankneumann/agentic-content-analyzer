@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from verify import VerificationResult, verify
 
+
 # ---------------------------------------------------------------------------
 # VerificationResult
 # ---------------------------------------------------------------------------
@@ -259,7 +260,9 @@ class TestPassedFlagWithCheckFailures:
     """Verify that passed is False even without regression tracking when a tool fails."""
 
     @patch("verify.subprocess.run")
-    def test_passed_false_on_tool_failure_no_original(self, mock_run: MagicMock) -> None:
+    def test_passed_false_on_tool_failure_no_original(
+        self, mock_run: MagicMock
+    ) -> None:
         """Tool fails but no original_failures provided -- no regression tracking,
         but passed is still False because a check failed."""
 
@@ -282,7 +285,9 @@ class TestPassedFlagWithCheckFailures:
         assert result.regressions == []
 
     @patch("verify.subprocess.run")
-    def test_passed_false_when_multiple_tools_fail(self, mock_run: MagicMock) -> None:
+    def test_passed_false_when_multiple_tools_fail(
+        self, mock_run: MagicMock
+    ) -> None:
         def side_effect(cmd: list[str], **kwargs: object) -> MagicMock:
             if cmd[0] in ("pytest", "ruff"):
                 return MagicMock(returncode=1, stdout="failure\n", stderr="")

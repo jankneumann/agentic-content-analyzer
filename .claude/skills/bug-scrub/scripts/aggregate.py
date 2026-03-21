@@ -49,7 +49,9 @@ def _generate_recommendations(
     recs: list[str] = []
 
     if staleness_warnings:
-        recs.append("Refresh stale reports with /security-review or /refresh-architecture")
+        recs.append(
+            "Refresh stale reports with /security-review or /refresh-architecture"
+        )
 
     test_failures = [f for f in findings if f.category == "test-failure"]
     if len(test_failures) > 5:
@@ -60,12 +62,16 @@ def _generate_recommendations(
         recs.append("Run /fix-scrub --tier auto for quick lint fixes")
 
     deferred = [f for f in findings if f.category == "deferred-issue"]
-    deferred_changes = {f.origin.change_id for f in deferred if f.origin is not None}
+    deferred_changes = {
+        f.origin.change_id for f in deferred if f.origin is not None
+    }
     if len(deferred_changes) > 2:
         recs.append("Consolidate deferred items into a follow-up proposal")
 
     if len(findings) > 20:
-        recs.append("Consider running /fix-scrub --dry-run to preview remediation plan")
+        recs.append(
+            "Consider running /fix-scrub --dry-run to preview remediation plan"
+        )
 
     return recs[:5]
 
@@ -105,7 +111,9 @@ def aggregate(
                 filtered_out += 1
 
     # Sort by severity (descending) then age (descending, oldest first)
-    all_findings.sort(key=lambda f: (-severity_rank(f.severity), -(f.age_days or 0)))
+    all_findings.sort(
+        key=lambda f: (-severity_rank(f.severity), -(f.age_days or 0))
+    )
 
     # Group by proximity for deduplication awareness
     # (We keep all findings but mark clusters)

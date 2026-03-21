@@ -14,14 +14,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from classify import classify
-from execute_auto import execute_auto_fixes
-from fix_models import ClassifiedFinding, Finding, FindingOrigin
-from generate_prompts import generate_prompts
-from plan_fixes import plan
-from render_fix_report import render_fix_report, write_fix_report
-from track_completions import track_completions
-from verify import verify
+from classify import classify  # noqa: E402
+from execute_auto import execute_auto_fixes  # noqa: E402
+from generate_prompts import generate_prompts  # noqa: E402
+from fix_models import ClassifiedFinding, Finding, FindingOrigin  # noqa: E402
+from plan_fixes import plan  # noqa: E402
+from render_fix_report import render_fix_report, write_fix_report  # noqa: E402
+from track_completions import track_completions  # noqa: E402
+from verify import verify  # noqa: E402
 
 
 def _load_findings(report_path: str) -> list[Finding]:
@@ -102,7 +102,7 @@ def run(
 
     # Plan
     fix_plan = plan(classified, max_agent_fixes=max_agent_fixes, dry_run=dry_run)
-    print("\nFix Plan:")
+    print(f"\nFix Plan:")
     print(f"  Auto: {fix_plan.summary.get('auto', 0)}")
     print(f"  Agent: {fix_plan.summary.get('agent', 0)}")
     print(f"  Manual: {fix_plan.summary.get('manual', 0)}")

@@ -148,14 +148,10 @@ def main() -> int:
     json_out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     md_out.write_text(_render_markdown(report, run_context), encoding="utf-8")
 
-    print(
-        json.dumps(
-            {
-                "json_report": str(json_out),
-                "markdown_report": str(md_out),
-            }
-        )
-    )
+    print(json.dumps({
+        "json_report": str(json_out),
+        "markdown_report": str(md_out),
+    }))
     return 0
 
 

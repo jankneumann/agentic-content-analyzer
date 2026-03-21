@@ -68,18 +68,11 @@ def get_default_branch() -> str:
 def fetch_open_prs() -> list[dict]:
     """Fetch all open PRs."""
     try:
-        raw = run_gh(
-            [
-                "pr",
-                "list",
-                "--state",
-                "open",
-                "--json",
-                "number,title,author,headRefName,baseRefName,createdAt,labels,body,url,isDraft,isCrossRepository,autoMergeRequest",
-                "--limit",
-                "1000",
-            ]
-        )
+        raw = run_gh([
+            "pr", "list", "--state", "open", "--json",
+            "number,title,author,headRefName,baseRefName,createdAt,labels,body,url,isDraft,isCrossRepository,autoMergeRequest",
+            "--limit", "1000",
+        ])
     except RuntimeError as e:
         print(f"Error fetching PRs: {e}", file=sys.stderr)
         sys.exit(1)
@@ -116,11 +109,13 @@ def classify_pr(pr: dict) -> dict:
         return {"origin": "openspec", "change_id": match.group(1)}
 
     # Dependabot detection
-    if author.lower() in ("dependabot[bot]", "dependabot") or branch.startswith("dependabot/"):
+    if (author.lower() in ("dependabot[bot]", "dependabot")
+            or branch.startswith("dependabot/")):
         return {"origin": "dependabot", "change_id": None}
 
     # Renovate detection
-    if author.lower() in ("renovate[bot]", "renovate") or branch.startswith("renovate/"):
+    if (author.lower() in ("renovate[bot]", "renovate")
+            or branch.startswith("renovate/")):
         return {"origin": "renovate", "change_id": None}
 
     # Jules automation detection
@@ -135,7 +130,9 @@ def classify_pr(pr: dict) -> dict:
         if any(tok in branch.lower() for tok in patterns["branch"]):
             return {"origin": jules_type, "change_id": None}
         # Weak signal: title match requires author confirmation
-        if author_is_jules and any(re.search(p, title, re.IGNORECASE) for p in patterns["title"]):
+        if author_is_jules and any(
+            re.search(p, title, re.IGNORECASE) for p in patterns["title"]
+        ):
             return {"origin": jules_type, "change_id": None}
 
     # If author is Jules but no specific type matched, classify generically
@@ -176,26 +173,24 @@ def discover() -> list[dict]:
         is_stacked = base_branch != default_branch
         origin = classification["origin"]
 
-        results.append(
-            {
-                "number": pr["number"],
-                "title": pr["title"],
-                "author": safe_author(pr),
-                "branch": branch,
-                "base_branch": base_branch,
-                "default_branch": default_branch,
-                "created_at": pr.get("createdAt", ""),
-                "labels": [label.get("name", "") for label in pr.get("labels", [])],
-                "url": pr.get("url", ""),
-                "is_draft": is_draft,
-                "is_stacked": is_stacked,
-                "is_fork": pr.get("isCrossRepository", False),
-                "auto_merge_enabled": pr.get("autoMergeRequest") is not None,
-                "dep_ecosystem": detect_dep_ecosystem(branch, origin),
-                "origin": origin,
-                "change_id": classification.get("change_id"),
-            }
-        )
+        results.append({
+            "number": pr["number"],
+            "title": pr["title"],
+            "author": safe_author(pr),
+            "branch": branch,
+            "base_branch": base_branch,
+            "default_branch": default_branch,
+            "created_at": pr.get("createdAt", ""),
+            "labels": [label.get("name", "") for label in pr.get("labels", [])],
+            "url": pr.get("url", ""),
+            "is_draft": is_draft,
+            "is_stacked": is_stacked,
+            "is_fork": pr.get("isCrossRepository", False),
+            "auto_merge_enabled": pr.get("autoMergeRequest") is not None,
+            "dep_ecosystem": detect_dep_ecosystem(branch, origin),
+            "origin": origin,
+            "change_id": classification.get("change_id"),
+        })
     return results
 
 
@@ -238,7 +233,8 @@ def main():
             flags.append(f"{auto_merge} auto-merge")
         flag_str = f", {', '.join(flags)}" if flags else ""
         print(
-            f"# Dry-run: Found {len(results)} open PR(s) ({', '.join(summary_parts)}){flag_str}.",
+            f"# Dry-run: Found {len(results)} open PR(s) "
+            f"({', '.join(summary_parts)}){flag_str}.",
             file=sys.stderr,
         )
 

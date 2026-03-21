@@ -22,9 +22,7 @@ def render_markdown(report: BugScrubReport) -> str:
     lines.append(f"**Severity filter**: {report.severity_filter}")
     lines.append(f"**Total findings**: {len(report.findings)}")
     if report.filtered_out_count > 0:
-        lines.append(
-            f"**Filtered out**: {report.filtered_out_count} findings below '{report.severity_filter}' severity"
-        )
+        lines.append(f"**Filtered out**: {report.filtered_out_count} findings below '{report.severity_filter}' severity")
     lines.append("")
 
     # Summary table
@@ -84,7 +82,9 @@ def render_markdown(report: BugScrubReport) -> str:
         lines.append("")
 
     # Low/Info — counts only
-    low_info = [f for f in report.findings if severity_rank(f.severity) < severity_rank("medium")]
+    low_info = [
+        f for f in report.findings if severity_rank(f.severity) < severity_rank("medium")
+    ]
     if low_info:
         lines.append("## Low / Info Findings")
         lines.append("")

@@ -17,6 +17,7 @@ from models import (
     severity_rank,
 )
 
+
 # ---------------------------------------------------------------------------
 # FindingOrigin
 # ---------------------------------------------------------------------------
@@ -257,7 +258,9 @@ class TestBugScrubReport:
         sr_pytest = SourceResult(
             source="pytest", status="ok", findings=findings[:2], duration_ms=400
         )
-        sr_ruff = SourceResult(source="ruff", status="ok", findings=findings[2:], duration_ms=60)
+        sr_ruff = SourceResult(
+            source="ruff", status="ok", findings=findings[2:], duration_ms=60
+        )
         return BugScrubReport(
             timestamp="2026-02-21T12:00:00Z",
             sources_used=["pytest", "ruff"],
@@ -295,7 +298,9 @@ class TestBugScrubReport:
         assert summary == {"critical": 2, "high": 1, "low": 1}
 
     def test_summary_by_severity_empty(self) -> None:
-        report = BugScrubReport(timestamp="t", sources_used=[], severity_filter="info")
+        report = BugScrubReport(
+            timestamp="t", sources_used=[], severity_filter="info"
+        )
         assert report.summary_by_severity() == {}
 
     def test_summary_by_source(self) -> None:
@@ -304,7 +309,9 @@ class TestBugScrubReport:
         assert summary == {"pytest": 2, "ruff": 2}
 
     def test_summary_by_source_empty(self) -> None:
-        report = BugScrubReport(timestamp="t", sources_used=[], severity_filter="info")
+        report = BugScrubReport(
+            timestamp="t", sources_used=[], severity_filter="info"
+        )
         assert report.summary_by_source() == {}
 
     def test_to_dict(self) -> None:

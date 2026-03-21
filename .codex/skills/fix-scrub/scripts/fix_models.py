@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,7 +23,9 @@ _bug_scrub_models_path = str(
 if "bug_scrub_models" not in sys.modules:
     _spec = importlib.util.spec_from_file_location("bug_scrub_models", _bug_scrub_models_path)
     if _spec is None or _spec.loader is None:
-        raise ImportError(f"Cannot load bug-scrub models from {_bug_scrub_models_path}")
+        raise ImportError(
+            f"Cannot load bug-scrub models from {_bug_scrub_models_path}"
+        )
     _mod = importlib.util.module_from_spec(_spec)
     sys.modules["bug_scrub_models"] = _mod
     _spec.loader.exec_module(_mod)

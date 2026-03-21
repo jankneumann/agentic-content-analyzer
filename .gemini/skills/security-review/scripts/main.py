@@ -4,11 +4,11 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +16,6 @@ from aggregate_findings import aggregate
 from build_scan_plan import build_plan
 from detect_profile import detect_profiles
 from gate import evaluate_gate
-
 from models import ScannerResult
 
 
@@ -87,7 +86,9 @@ def _resolve_change_artifact_dir(
         change_dir = root / "changes" / change_id
         if change_dir.exists():
             return change_dir
-        raise RuntimeError(f"OpenSpec change directory not found for '{change_id}': {change_dir}")
+        raise RuntimeError(
+            f"OpenSpec change directory not found for '{change_id}': {change_dir}"
+        )
 
     candidates: list[Path] = [repo / "openspec"]
     git_root = _git_stdout(repo, "rev-parse", "--show-toplevel")
@@ -103,7 +104,8 @@ def _resolve_change_artifact_dir(
 
     searched = ", ".join(str(candidate / "changes" / change_id) for candidate in candidates)
     raise RuntimeError(
-        f"Unable to locate OpenSpec change directory for '{change_id}'. Searched: {searched}"
+        f"Unable to locate OpenSpec change directory for '{change_id}'. "
+        f"Searched: {searched}"
     )
 
 
@@ -337,7 +339,7 @@ def main() -> int:
         openspec_root=args.openspec_root,
     )
     commit_sha = _git_stdout(repo, "rev-parse", "HEAD") or "unknown"
-    timestamp = datetime.now(UTC).isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
 
     profile = _apply_profile_override(detect_profiles(repo), args.profile_override)
     plan = build_plan(
@@ -365,11 +367,7 @@ def main() -> int:
         bootstrap_metadata["missing"] = [str(item) for item in missing]
         bootstrap_metadata["components"] = components
         if components:
-            bootstrap_cmd = [
-                str(script_dir / "install_deps.sh"),
-                "--components",
-                ",".join(components),
-            ]
+            bootstrap_cmd = [str(script_dir / "install_deps.sh"), "--components", ",".join(components)]
             if args.apply_bootstrap:
                 bootstrap_cmd.append("--apply")
             bootstrap_metadata["attempted"] = True

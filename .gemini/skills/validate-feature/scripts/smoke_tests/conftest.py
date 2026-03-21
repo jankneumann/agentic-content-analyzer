@@ -25,10 +25,10 @@ import os
 import httpx
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Configuration from environment
 # ---------------------------------------------------------------------------
-
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
@@ -74,7 +74,6 @@ def cors_origin() -> str:
 # Derived fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture(scope="session")
 def auth_headers(auth_header_name: str, auth_header_value: str) -> dict[str, str]:
     """Headers dict with the configured auth credential."""
@@ -84,7 +83,6 @@ def auth_headers(auth_header_name: str, auth_header_value: str) -> dict[str, str
 # ---------------------------------------------------------------------------
 # Service availability — auto-skip when API is not reachable
 # ---------------------------------------------------------------------------
-
 
 def _is_api_running(url: str, path: str) -> bool:
     try:
@@ -107,7 +105,6 @@ def require_api(base_url: str, health_endpoint: str) -> None:
 # ---------------------------------------------------------------------------
 # HTTP clients (synchronous — smoke tests are simple request/response checks)
 # ---------------------------------------------------------------------------
-
 
 @pytest.fixture(scope="session")
 def client(base_url: str) -> httpx.Client:

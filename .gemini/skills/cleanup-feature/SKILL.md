@@ -1,14 +1,15 @@
 ---
-name: cleanup-feature
+name: linear-cleanup-feature
 description: Merge approved PR, migrate open tasks, archive OpenSpec proposal, and cleanup branches
 category: Git Workflow
-tags: [openspec, archive, cleanup, merge]
+tags: [openspec, archive, cleanup, merge, linear]
 triggers:
   - "cleanup feature"
   - "merge feature"
   - "finish feature"
   - "archive feature"
   - "close feature"
+  - "linear cleanup feature"
 ---
 
 # Cleanup Feature
@@ -34,7 +35,30 @@ Use OpenSpec-generated runtime assets first, then CLI fallback:
 - Gemini: `.gemini/commands/opsx/*.toml` or `.gemini/skills/openspec-*/SKILL.md`
 - Fallback: direct `openspec` CLI commands
 
+## Coordinator Integration (Optional)
+
+Use `docs/coordination-detection-template.md` as the shared detection preamble.
+
+- Detect transport and capability flags at skill start
+- Execute hooks only when the matching `CAN_*` flag is `true`
+- If coordinator is unavailable, continue with standalone behavior
+
 ## Steps
+
+### 0. Detect Coordinator and Read Handoff
+
+At skill start, run the coordination detection preamble and set:
+
+- `COORDINATOR_AVAILABLE`
+- `COORDINATION_TRANSPORT` (`mcp|http|none`)
+- `CAN_LOCK`, `CAN_QUEUE_WORK`, `CAN_HANDOFF`, `CAN_MEMORY`, `CAN_GUARDRAILS`
+
+If `CAN_HANDOFF=true`, read latest handoff context before merge/archive actions:
+
+- MCP path: `read_handoff`
+- HTTP path: `scripts/coordination_bridge.py` `try_handoff_read(...)`
+
+On handoff failure/unavailability, continue with standalone cleanup and log informationally.
 
 ### 1. Determine Change ID
 
@@ -184,35 +208,28 @@ git branch -d openspec/<change-id> 2>/dev/null || true
 git fetch --prune
 ```
 
+If `CAN_LOCK=true`, perform best-effort lock cleanup for files touched on the feature branch:
+
+- Compare `main...openspec/<change-id>` changed files
+- Attempt release for each lock owned by this agent/session
+- Treat release failures as warnings (do not block cleanup)
+
 ### 8.5. Remove Worktree
 
 If a worktree was created for this feature, remove it:
 
 ```bash
-# Determine worktree path — handle both main repo and worktree contexts
-GIT_COMMON=$(git rev-parse --git-common-dir)
-if [[ "$GIT_COMMON" == ".git" ]]; then
-  MAIN_REPO=$(git rev-parse --show-toplevel)
-else
-  MAIN_REPO="${GIT_COMMON%%/.git*}"
+# Pass --agent-id if AGENT_ID env var is set
+AGENT_FLAG=""
+if [[ -n "${AGENT_ID:-}" ]]; then
+  AGENT_FLAG="--agent-id ${AGENT_ID}"
 fi
-REPO_NAME=$(basename "$MAIN_REPO")
-WORKTREE_PATH="$(dirname "$MAIN_REPO")/${REPO_NAME}.worktrees/${CHANGE_ID}"
 
-# Check if worktree exists
-if [ -d "$WORKTREE_PATH" ]; then
-  echo "Removing worktree: $WORKTREE_PATH"
+# Garbage-collect stale peer worktrees before teardown
+python3 scripts/worktree.py gc
 
-  # Must be in main repo to remove worktree
-  cd "$MAIN_REPO"
-
-  # Remove worktree
-  git worktree remove "$WORKTREE_PATH"
-
-  echo "Worktree removed"
-else
-  echo "No worktree found for ${CHANGE_ID}"
-fi
+# Remove worktree (checks both .git-worktrees/ and legacy locations)
+python3 scripts/worktree.py teardown "${CHANGE_ID}" ${AGENT_FLAG}
 ```
 
 ### 9. Final Verification
@@ -229,6 +246,7 @@ pytest
 
 - Clear todo list
 - Document any lessons learned in `CLAUDE.md` if applicable
+- If `CAN_HANDOFF=true`, write a final handoff summary with merge status, migration notes, archive outcome, and follow-up references
 
 ## Output
 

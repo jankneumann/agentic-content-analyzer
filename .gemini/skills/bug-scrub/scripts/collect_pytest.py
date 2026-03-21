@@ -185,7 +185,8 @@ def collect(project_dir: str) -> SourceResult:
             status="error",
             duration_ms=duration_ms,
             messages=[
-                f"pytest exited with code {result.returncode} but no FAILED lines were parsed",
+                f"pytest exited with code {result.returncode} "
+                "but no FAILED lines were parsed",
                 result.stdout[-500:] if result.stdout else "",
                 result.stderr[-500:] if result.stderr else "",
             ],

@@ -6,7 +6,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import UTC, datetime
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Ensure scripts directory is on the path
@@ -21,9 +22,8 @@ from collect_openspec import collect as collect_openspec
 from collect_pytest import collect as collect_pytest
 from collect_ruff import collect as collect_ruff
 from collect_security import collect as collect_security
-from render_report import write_report
-
 from models import SourceResult
+from render_report import write_report
 
 ALL_SOURCES = {
     "pytest": collect_pytest,
@@ -81,7 +81,7 @@ def run(
         print(f"  {status_icon}: {finding_count} findings ({result.duration_ms}ms)")
 
     # Aggregate
-    timestamp = datetime.now(UTC).isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     report = aggregate(results, severity_filter=severity, timestamp=timestamp)
 
     # Report

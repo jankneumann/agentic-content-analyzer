@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 from detect_profile import detect_profiles
-
 from models import normalize_severity
 
 ECOSYSTEM_PROFILES = {"python", "node", "java", "mixed", "generic"}

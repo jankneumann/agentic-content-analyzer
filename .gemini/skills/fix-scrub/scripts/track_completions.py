@@ -5,18 +5,22 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fix_models import ClassifiedFinding
+from fix_models import ClassifiedFinding, Finding  # noqa: E402
 
 
 def _is_partial_task(line: str) -> bool:
     """Check if a task line contains numbered sub-items or semicolons indicating multi-part."""
     # e.g., "1. foo; 2. bar" or "a) foo b) bar"
-    return bool(re.search(r"\d+\.\s", line) or ";" in line or re.search(r"[a-z]\)\s", line))
+    return bool(
+        re.search(r"\d+\.\s", line)
+        or ";" in line
+        or re.search(r"[a-z]\)\s", line)
+    )
 
 
 def _update_tasks_md(
@@ -42,13 +46,10 @@ def _update_tasks_md(
             if _is_partial_task(line):
                 # Skip partial tasks
                 continue
-            lines[i] = (
-                line.replace(
-                    "- [ ]",
-                    "- [x]",
-                )
-                + f" (completed by fix-scrub {today})"
-            )
+            lines[i] = line.replace(
+                "- [ ]",
+                f"- [x]",
+            ) + f" (completed by fix-scrub {today})"
             updated = True
             break
 
@@ -101,7 +102,7 @@ def track_completions(
     Returns:
         List of file paths that were updated (for staging in commit).
     """
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     updated_files: list[str] = []
 
     for cf in resolved_findings:

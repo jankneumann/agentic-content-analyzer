@@ -1,14 +1,15 @@
 ---
-name: implement-feature
+name: linear-implement-feature
 description: Implement approved OpenSpec proposal through to PR creation
 category: Git Workflow
-tags: [openspec, implementation, pr]
+tags: [openspec, implementation, pr, linear]
 triggers:
   - "implement feature"
   - "build feature"
   - "start implementation"
   - "begin implementation"
   - "code feature"
+  - "linear implement feature"
 ---
 
 # Implement Feature
@@ -32,7 +33,30 @@ Use OpenSpec-generated runtime assets first, then CLI fallback:
 - Gemini: `.gemini/commands/opsx/*.toml` or `.gemini/skills/openspec-*/SKILL.md`
 - Fallback: direct `openspec` CLI commands
 
+## Coordinator Integration (Optional)
+
+Use `docs/coordination-detection-template.md` as the shared detection preamble.
+
+- Detect transport and capability flags at skill start
+- Execute hooks only when the matching `CAN_*` flag is `true`
+- If coordinator is unavailable, continue with standalone behavior
+
 ## Steps
+
+### 0. Detect Coordinator and Read Handoff
+
+At skill start, run the coordination detection preamble and set:
+
+- `COORDINATOR_AVAILABLE`
+- `COORDINATION_TRANSPORT` (`mcp|http|none`)
+- `CAN_LOCK`, `CAN_QUEUE_WORK`, `CAN_HANDOFF`, `CAN_MEMORY`, `CAN_GUARDRAILS`
+
+If `CAN_HANDOFF=true`, read recent handoff context before implementation:
+
+- MCP path: `read_handoff`
+- HTTP path: `scripts/coordination_bridge.py` `try_handoff_read(...)`
+
+On handoff failure/unavailability, continue with standalone implementation and log informationally.
 
 ### 1. Verify Proposal Exists
 
@@ -51,52 +75,19 @@ Confirm the proposal is approved before proceeding.
 Create an isolated worktree for this feature to avoid conflicts with other CLI sessions:
 
 ```bash
-# Determine paths — use git-common-dir to find the main repo even from a worktree
-CHANGE_ID="<change-id>"
-GIT_COMMON=$(git rev-parse --git-common-dir)
-if [[ "$GIT_COMMON" == ".git" ]]; then
-  # In main repo
-  MAIN_REPO=$(git rev-parse --show-toplevel)
-else
-  # In worktree — git-common-dir returns /path/to/main/.git or /path/to/main/.git/worktrees/<name>
-  MAIN_REPO="${GIT_COMMON%%/.git*}"
+# Pass --agent-id if AGENT_ID env var is set
+AGENT_FLAG=""
+if [[ -n "${AGENT_ID:-}" ]]; then
+  AGENT_FLAG="--agent-id ${AGENT_ID}"
 fi
-REPO_NAME=$(basename "$MAIN_REPO")
-WORKTREE_PARENT="$(dirname "$MAIN_REPO")/${REPO_NAME}.worktrees"
-WORKTREE_PATH="${WORKTREE_PARENT}/${CHANGE_ID}"
 
-# Check if already in the correct worktree
-CURRENT_TOPLEVEL=$(git rev-parse --show-toplevel)
-if [[ "$CURRENT_TOPLEVEL" == "$WORKTREE_PATH" ]]; then
-  echo "Already in worktree for ${CHANGE_ID}"
-else
-  # Create worktree parent directory
-  mkdir -p "$WORKTREE_PARENT"
-
-  # Ensure on main with latest
-  git checkout main
-  git pull origin main
-
-  # Create feature branch if it doesn't exist
-  if ! git show-ref --verify --quiet "refs/heads/openspec/${CHANGE_ID}"; then
-    git branch "openspec/${CHANGE_ID}" main
-  fi
-
-  # Create worktree (or reuse if exists)
-  if [ -d "$WORKTREE_PATH" ]; then
-    echo "Worktree already exists: $WORKTREE_PATH"
-  else
-    git worktree add "$WORKTREE_PATH" "openspec/${CHANGE_ID}"
-    echo "Worktree created: $WORKTREE_PATH"
-  fi
-
-  # Change to worktree
-  cd "$WORKTREE_PATH"
-  echo "Working directory changed to: $(pwd)"
-fi
+# Setup worktree for feature isolation (creates .git-worktrees/<change-id>/)
+eval "$(python3 scripts/worktree.py setup "<change-id>" ${AGENT_FLAG})"
+cd "$WORKTREE_PATH"
+echo "Working directory: $(pwd)"
 ```
 
-After this step, you are working in an isolated directory. Other terminal sessions can work on different features without conflict.
+After this step, you are working in an isolated directory at `.git-worktrees/<change-id>/`. Other terminal sessions can work on different features without conflict.
 
 ### 3. Verify Feature Branch
 
@@ -125,6 +116,14 @@ Execution expectations:
 - Work through tasks sequentially unless safely parallelizable
 - Keep edits minimal and focused
 - Mark completed tasks in `tasks.md` (`- [ ]` -> `- [x]`)
+
+Capability-gated coordinator hooks:
+
+- **Guardrails (`CAN_GUARDRAILS=true`)**: before running high-risk operations, run a guardrail pre-check and report violations informationally (phase 1 does not hard-block)
+- **File locking (`CAN_LOCK=true`)**: acquire locks before editing files and keep a local list of acquired locks for cleanup
+- **Work queue (`CAN_QUEUE_WORK=true`)**: for independent tasks, optionally submit/claim/complete via coordinator queue APIs; if unavailable or unclaimed, fall back to local `Task()` execution
+
+**Heartbeat:** During long-running implementation, periodically call `python3 scripts/worktree.py heartbeat "<change-id>" ${AGENT_FLAG}` to signal liveness to the worktree registry. This prevents stale-agent garbage collection from reclaiming the worktree.
 
 **TDD Approach:**
 - Write tests first that define expected behavior
@@ -170,6 +169,13 @@ Do NOT commit - the orchestrator will handle commits.",
 - Tasks with overlapping files MUST run sequentially
 - Collect all results via TaskOutput before committing
 - If an agent fails, use `Task(resume=<agent_id>)` to retry
+
+Locking behavior details (`CAN_LOCK=true`):
+
+- Acquire lock before editing each targeted file
+- If lock acquisition is blocked, report owner/expiry information and skip that file
+- Continue with unblocked files/tasks
+- On completion/failure, release all acquired locks (best effort; warn on release failure)
 
 **When to parallelize:**
 - 3+ independent tasks with no file overlap
@@ -291,6 +297,13 @@ Implements OpenSpec proposal: `<change-id>`
 EOF
 )"
 ```
+
+If `CAN_HANDOFF=true`, write a completion handoff after PR creation containing:
+
+- Completed tasks and major design/implementation decisions
+- Any blocked/skipped work (for example lock contention outcomes)
+- Validation/test status
+- Recommended next command (`/iterate-on-implementation`, `/validate-feature`, or `/cleanup-feature`)
 
 **STOP HERE - Wait for PR approval before proceeding to cleanup.**
 
