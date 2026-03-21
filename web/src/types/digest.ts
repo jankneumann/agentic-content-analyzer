@@ -71,6 +71,8 @@ export interface DigestSection {
    * How this section relates to previous digests
    */
   continuity?: string | null
+  /** Follow-up prompts for deeper LLM analysis */
+  followup_prompts?: string[]
 }
 
 /**
@@ -208,6 +210,8 @@ export interface GenerateDigestRequest {
   max_technical_developments?: number
   /** Max emerging trends */
   max_emerging_trends?: number
+  /** Max follow-up prompts per section */
+  max_followup_prompts?: number
   /** Include historical context from knowledge graph */
   include_historical_context?: boolean
 }

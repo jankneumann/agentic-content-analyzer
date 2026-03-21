@@ -175,6 +175,13 @@ def _format_digest_section(section_data: "dict[str, Any] | DigestSection | str")
     if continuity := _get_section_attr(section_data, "continuity"):
         lines.append(f"> *Historical context: {continuity}*\n")
 
+    # Follow-up prompts
+    if followup_prompts := _get_section_attr(section_data, "followup_prompts"):
+        lines.append(f"<details>\n<summary>Follow-up prompts ({len(followup_prompts)})</summary>\n")
+        for i, prompt in enumerate(followup_prompts, 1):
+            lines.append(f"**{i}.** {prompt}\n")
+        lines.append("</details>\n")
+
     return "\n".join(lines)
 
 

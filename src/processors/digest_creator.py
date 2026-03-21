@@ -1017,6 +1017,7 @@ Output only the JSON object, no additional text.
             max_strategic_insights=str(request.max_strategic_insights),
             max_technical_developments=str(request.max_technical_developments),
             max_emerging_trends=str(request.max_emerging_trends),
+            max_followup_prompts=str(request.max_followup_prompts),
         )
 
     async def _fetch_contents(

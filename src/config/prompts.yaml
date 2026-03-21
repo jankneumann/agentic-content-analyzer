@@ -266,6 +266,14 @@ pipeline:
       - Emerging Trends: New topics with context
       - Actionable Recommendations: Role-specific next steps
 
+      For each insight, development, and trend, generate follow-up prompts that readers
+      can paste into their own LLM tool for deeper analysis. Each prompt must be:
+      - Self-contained: includes enough context that the reader doesn't need the full digest
+      - Specific: references concrete technologies, companies, or patterns from that section
+      - Action-oriented: asks the LLM to analyze implications, compare alternatives, generate plans, or evaluate risks
+      - Audience-aware: assumes a technical leader or senior engineer reader
+      Mix prompt styles: analysis, comparison, strategic briefs, and implementation plans.
+
     user_template: |
       You are creating an AI/technology content digest for technical leaders at Comcast.
 
@@ -305,7 +313,11 @@ pipeline:
               "Strategic considerations [18][24]"
             ],
             "themes": ["Related Theme 1", "Related Theme 2"],
-            "continuity": "Historical context if available (from theme continuity)"
+            "continuity": "Historical context if available (from theme continuity)",
+            "followup_prompts": [
+              "Self-contained prompt for deeper analysis of this insight...",
+              "Another prompt exploring a different angle..."
+            ]
           }}
         ],
 
@@ -319,7 +331,11 @@ pipeline:
               "Tools, frameworks, or approaches mentioned [23][25]"
             ],
             "themes": ["Related Theme 1"],
-            "continuity": "Historical context if available"
+            "continuity": "Historical context if available",
+            "followup_prompts": [
+              "Self-contained prompt for deeper technical exploration...",
+              "Comparison or evaluation prompt..."
+            ]
           }}
         ],
 
@@ -333,7 +349,11 @@ pipeline:
               "What to watch for [24][26]"
             ],
             "themes": ["Related Theme 1"],
-            "continuity": "Historical context showing how this evolved"
+            "continuity": "Historical context showing how this evolved",
+            "followup_prompts": [
+              "Self-contained prompt to explore this trend further...",
+              "Strategic brief prompt for leadership..."
+            ]
           }}
         ],
 
@@ -383,6 +403,11 @@ pipeline:
         - Concrete tools, frameworks, techniques mentioned
         - Best practices and lessons learned
         - Add source citations [23][25] to summary and each detail point
+      - **Follow-Up Prompts**: Include up to {max_followup_prompts} per section
+        - Each prompt should be self-contained (usable without the full digest)
+        - Reference specific technologies, patterns, or companies from that section
+        - Mix styles: analysis, comparison, strategic brief, implementation plan
+        - Assume a technical leader or senior engineer audience
       - **Emerging Trends**: Limit to {max_emerging_trends} most noteworthy
         - New or rapidly evolving topics
         - MUST include historical continuity showing how they emerged

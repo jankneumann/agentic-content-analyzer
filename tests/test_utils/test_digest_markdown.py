@@ -347,3 +347,109 @@ class TestDigestSectionFormatting:
         data = {"emerging_trends": ["Trend 1", "Trend 2"]}
         md = generate_digest_markdown(data)
         assert "- Trend 1" in md or "Trend 1" in md
+
+    def test_section_with_followup_prompts(self):
+        """Section with follow-up prompts includes details block."""
+        data = {
+            "strategic_insights": [
+                {
+                    "title": "Test Insight",
+                    "summary": "Summary text.",
+                    "details": ["Detail 1"],
+                    "themes": ["Theme A"],
+                    "followup_prompts": [
+                        "Analyze the impact of X on enterprise AI adoption.",
+                        "Compare X and Y for production deployments.",
+                    ],
+                }
+            ]
+        }
+        md = generate_digest_markdown(data)
+        assert "<details>" in md
+        assert "Follow-up prompts (2)" in md
+        assert "**1.** Analyze the impact of X" in md
+        assert "**2.** Compare X and Y" in md
+        assert "</details>" in md
+
+    def test_section_without_followup_prompts(self):
+        """Section without follow-up prompts has no details block."""
+        data = {
+            "strategic_insights": [
+                {
+                    "title": "Test Insight",
+                    "summary": "Summary text.",
+                }
+            ]
+        }
+        md = generate_digest_markdown(data)
+        assert "<details>" not in md
+        assert "Follow-up prompts" not in md
+
+    def test_section_with_empty_followup_prompts(self):
+        """Section with empty follow-up prompts list has no details block."""
+        data = {
+            "strategic_insights": [
+                {
+                    "title": "Test Insight",
+                    "summary": "Summary text.",
+                    "followup_prompts": [],
+                }
+            ]
+        }
+        md = generate_digest_markdown(data)
+        assert "<details>" not in md
+
+
+class TestDigestSectionBackwardCompatibility:
+    """Tests for DigestSection backward compatibility with followup_prompts."""
+
+    def test_digest_section_without_followup_prompts(self):
+        """DigestSection from dict without followup_prompts defaults to empty list."""
+        from src.models.digest import DigestSection
+
+        section = DigestSection(
+            title="Test",
+            summary="Summary",
+            details=["Detail 1"],
+            themes=["Theme"],
+        )
+        assert section.followup_prompts == []
+
+    def test_digest_section_from_dict_without_followup_prompts(self):
+        """DigestSection deserialized from dict without followup_prompts yields empty list."""
+        from src.models.digest import DigestSection
+
+        data = {
+            "title": "Test",
+            "summary": "Summary",
+            "details": ["Detail 1"],
+            "themes": ["Theme"],
+            "continuity": None,
+        }
+        section = DigestSection.model_validate(data)
+        assert section.followup_prompts == []
+
+    def test_digest_section_with_followup_prompts(self):
+        """DigestSection with followup_prompts preserves them."""
+        from src.models.digest import DigestSection
+
+        data = {
+            "title": "Test",
+            "summary": "Summary",
+            "followup_prompts": ["Prompt 1", "Prompt 2"],
+        }
+        section = DigestSection.model_validate(data)
+        assert section.followup_prompts == ["Prompt 1", "Prompt 2"]
+
+    def test_digest_request_max_followup_prompts_default(self):
+        """DigestRequest defaults max_followup_prompts to 3."""
+        from datetime import datetime
+
+        from src.models.digest import DigestRequest, DigestType
+
+        request = DigestRequest(
+            digest_type=DigestType.DAILY,
+            period_start=datetime(2025, 1, 1),
+            period_end=datetime(2025, 1, 2),
+        )
+        assert request.max_followup_prompts == 3
