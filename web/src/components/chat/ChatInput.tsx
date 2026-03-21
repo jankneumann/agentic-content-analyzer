@@ -59,6 +59,8 @@ export function ChatInput({
   const [enableWebSearch, setEnableWebSearch] = React.useState(false)
   const [isCleaningUp, setIsCleaningUp] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const charCountId = React.useId()
+  const helperId = React.useId()
 
   // Voice settings from backend
   const { data: voiceSettings } = useVoiceSettings()
@@ -227,6 +229,7 @@ export function ChatInput({
                 : placeholder
             }
             aria-label="Chat message"
+            aria-describedby={`${charCountId} ${helperId}`}
             disabled={disabled || isLoading}
             className={cn(
               "min-h-[48px] max-h-[200px] resize-none pr-12",
@@ -247,6 +250,7 @@ export function ChatInput({
 
           {/* Character count */}
           <div
+            id={charCountId}
             className={cn(
               "absolute bottom-2 right-2 text-xs text-muted-foreground transition-colors",
               value.length > maxLength * 0.9 && "font-medium text-amber-500",
@@ -325,7 +329,7 @@ export function ChatInput({
       )}
 
       {/* Helper text */}
-      <p className="px-1 text-xs text-muted-foreground">
+      <p id={helperId} className="px-1 text-xs text-muted-foreground">
         <span className="hidden sm:inline">
           Press <kbd className="rounded bg-muted px-1">Enter</kbd> to send,{" "}
           <kbd className="rounded bg-muted px-1">Shift+Enter</kbd> for new line
