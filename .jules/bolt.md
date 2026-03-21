@@ -45,3 +45,7 @@
 ## 2026-03-04 - Optimize audio digest statistics query
 **Learning:** Multiple separate database count queries were executed to aggregate counts (total, and individual status counts) in `get_audio_digest_statistics` which causes performance bottlenecks via redundant database round-trips.
 **Action:** When calculating statistics that encompass the whole table partitioned by a specific property (like status), execute a single query using `func.count()` alongside `GROUP BY`, and compute derived values (like the total count or specific status values) within the application logic. This pattern minimizes the DB connection overhead.
+
+## $(date +%Y-%m-%d) - [Pre-compile regexes in Markdown parser]
+**Learning:** Calling `re.sub` or `re.match` repeatedly inside loops for a large chunk of text adds unnecessary overhead due to fetching regexes from internal cache.
+**Action:** Pre-compile frequently used regular expressions at the module scope using `re.compile()` and reuse them to eliminate repeated caching and fetching overhead during hot path string parsing.
