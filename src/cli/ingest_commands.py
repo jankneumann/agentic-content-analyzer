@@ -386,6 +386,14 @@ def _youtube_direct(
     from rich.console import Console
 
     console = Console()
+    # Human-readable label with proper capitalization
+    labels: dict[str, str] = {
+        "youtube": "YouTube",
+        "youtube-playlist": "YouTube playlist",
+        "youtube-rss": "YouTube RSS",
+    }
+    label = labels.get(source_name, source_name)
+
     try:
         import importlib
 
@@ -405,13 +413,13 @@ def _youtube_direct(
         if is_json_mode():
             output_result({"error": str(exc), "source": source_name}, success=False)
         else:
-            console.print(f"[red]{source_name} ingestion failed:[/red] {exc}")
+            console.print(f"[red]{label} ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
     if is_json_mode():
         output_result({"source": source_name, "ingested": total})
     else:
-        console.print(f"[green]{source_name} ingestion complete.[/green] {total} item(s) ingested.")
+        console.print(f"[green]{label} ingestion complete.[/green] {total} item(s) ingested.")
 
 
 @app.command("youtube-playlist")
