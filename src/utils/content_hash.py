@@ -8,6 +8,28 @@ consistent hashes for detecting duplicate content across different sources
 import hashlib
 import re
 
+# Pre-compile regex patterns for performance
+_HTML_TAGS_PATTERN = re.compile(r"<[^>]+>")
+_URL_PATTERN = re.compile(r"https?://\S+")
+_EMAIL_PATTERN = re.compile(r"\S+@\S+")
+
+# Combine email footer patterns into a single regex for better performance
+_FOOTER_PATTERNS = [
+    r"unsubscribe.*$",
+    r"view in browser.*$",
+    r"forward to a friend.*$",
+    r"update your preferences.*$",
+    r"manage your subscription.*$",
+    r"click here to.*$",
+    r"you received this email because.*$",
+    r"this email was sent to.*$",
+]
+_COMBINED_FOOTER_PATTERN = re.compile(
+    "|".join(_FOOTER_PATTERNS), flags=re.IGNORECASE | re.MULTILINE
+)
+
+_WHITESPACE_PATTERN = re.compile(r"\s+")
+
 
 def normalize_content(text: str) -> str:
     """
@@ -32,7 +54,7 @@ def normalize_content(text: str) -> str:
     text = text.lower()
 
     # Remove HTML tags
-    text = re.sub(r"<[^>]+>", "", text)
+    text = _HTML_TAGS_PATTERN.sub("", text)
 
     # Decode common HTML entities
     text = text.replace("&nbsp;", " ")
@@ -43,27 +65,16 @@ def normalize_content(text: str) -> str:
     text = text.replace("&#39;", "'")
 
     # Remove URLs (can vary between Gmail/RSS)
-    text = re.sub(r"https?://\S+", "", text)
+    text = _URL_PATTERN.sub("", text)
 
     # Remove email addresses
-    text = re.sub(r"\S+@\S+", "", text)
+    text = _EMAIL_PATTERN.sub("", text)
 
     # Remove common email footer patterns
-    footer_patterns = [
-        r"unsubscribe.*$",
-        r"view in browser.*$",
-        r"forward to a friend.*$",
-        r"update your preferences.*$",
-        r"manage your subscription.*$",
-        r"click here to.*$",
-        r"you received this email because.*$",
-        r"this email was sent to.*$",
-    ]
-    for pattern in footer_patterns:
-        text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE)
+    text = _COMBINED_FOOTER_PATTERN.sub("", text)
 
     # Normalize whitespace
-    text = re.sub(r"\s+", " ", text)
+    text = _WHITESPACE_PATTERN.sub(" ", text)
 
     # Remove leading/trailing whitespace
     text = text.strip()
@@ -137,6 +148,11 @@ def should_skip_duplicate(
 # --- Markdown-specific functions for unified Content model ---
 
 
+_MD_LIST_MARKER_PATTERN = re.compile(r"^(\s*)[*+](\s+)")
+_MD_MULTI_SPACE_PATTERN = re.compile(r"  +")
+_MD_MULTI_BLANK_LINE_PATTERN = re.compile(r"\n{3,}")
+
+
 def normalize_markdown(markdown: str) -> str:
     """
     Normalize markdown content for consistent hashing.
@@ -164,13 +180,13 @@ def normalize_markdown(markdown: str) -> str:
         line = line.rstrip()
 
         # Normalize list markers (-, *, +) to consistent format
-        line = re.sub(r"^(\s*)[*+](\s+)", r"\1-\2", line)
+        line = _MD_LIST_MARKER_PATTERN.sub(r"\1-\2", line)
 
         # Normalize multiple spaces in content (not indentation)
         if not line.startswith(" " * 4) and not line.startswith("\t"):
             # Preserve leading whitespace, normalize internal
             leading = len(line) - len(line.lstrip())
-            content = re.sub(r"  +", " ", line.lstrip())
+            content = _MD_MULTI_SPACE_PATTERN.sub(" ", line.lstrip())
             line = " " * leading + content
 
         normalized_lines.append(line)
@@ -179,7 +195,7 @@ def normalize_markdown(markdown: str) -> str:
     result = "\n".join(normalized_lines)
 
     # Collapse multiple blank lines into single
-    result = re.sub(r"\n{3,}", "\n\n", result)
+    result = _MD_MULTI_BLANK_LINE_PATTERN.sub("\n\n", result)
 
     # Strip leading/trailing whitespace
     return result.strip()

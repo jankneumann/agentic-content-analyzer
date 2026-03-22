@@ -51,8 +51,10 @@ class ContentFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     # Canonical content
     markdown_content = factory.LazyAttribute(
-        lambda o: f"# {o.title}\n\nThis is the markdown content for testing.\n\n"
-        f"## Key Points\n\n- Point 1\n- Point 2\n- Point 3\n"
+        lambda o: (
+            f"# {o.title}\n\nThis is the markdown content for testing.\n\n"
+            f"## Key Points\n\n- Point 1\n- Point 2\n- Point 3\n"
+        )
     )
 
     # Structured extractions
