@@ -36,10 +36,12 @@ _md = MarkdownIt("commonmark", {"html": False})
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP, respecting X-Forwarded-For behind a proxy."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Extract client IP from ASGI scope.
+
+    Uvicorn/Gunicorn should resolve proxy headers at the edge (for example via
+    `--proxy-headers` and trusted proxy configuration). Reading raw
+    X-Forwarded-For here would allow header spoofing and rate-limit bypass.
+    """
     return request.client.host if request.client else "unknown"
 
 

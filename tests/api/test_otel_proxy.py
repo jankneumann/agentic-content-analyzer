@@ -10,6 +10,7 @@ Tests validate:
 
 from __future__ import annotations
 
+from time import monotonic
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,6 +23,18 @@ from src.api.app import app
 def proxy_client() -> TestClient:
     """Create a TestClient without database fixtures (proxy doesn't need DB)."""
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _reset_otel_rate_limiter():
+    """Reset module-level OTLP rate limiter between tests."""
+    from src.api.otel_rate_limiter import otel_proxy_rate_limiter
+
+    otel_proxy_rate_limiter._requests.clear()
+    otel_proxy_rate_limiter._request_count = 0
+    yield
+    otel_proxy_rate_limiter._requests.clear()
+    otel_proxy_rate_limiter._request_count = 0
 
 
 class TestOtelProxyDisabled:
@@ -200,3 +213,21 @@ class TestOtelProxyEnabled:
         )
         assert response.status_code == 503
         assert "not configured" in response.json()["detail"]
+
+    def test_returns_429_when_rate_limited(self, proxy_client: TestClient):
+        """Proxy returns 429 when per-IP OTLP limit is exceeded."""
+        from src.api.otel_rate_limiter import otel_proxy_rate_limiter
+
+        ip = "testclient"
+        # Saturate limiter window for this IP.
+        with otel_proxy_rate_limiter._lock:
+            now = monotonic()
+            otel_proxy_rate_limiter._requests[ip] = [now] * 60
+
+        response = proxy_client.post(
+            "/api/v1/otel/v1/traces",
+            content=b'{"resourceSpans": []}',
+            headers={"content-type": "application/json"},
+        )
+        assert response.status_code == 429
+        assert "retry-after" in {k.lower() for k in response.headers.keys()}
