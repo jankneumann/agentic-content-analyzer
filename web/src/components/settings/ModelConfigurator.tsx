@@ -18,6 +18,7 @@ import { useMemo } from "react"
 import { RotateCcw, AlertCircle, RefreshCw, Lock } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -35,7 +36,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useModelSettings, useUpdateModel, useResetModel } from "@/hooks/use-settings"
+import {
+  useModelSettings,
+  useUpdateModel,
+  useResetModel,
+} from "@/hooks/use-settings"
 import type { StepConfig, ModelOption } from "@/types/settings"
 
 /** Format cost per million tokens for display */
@@ -71,7 +76,9 @@ function groupByFamily(models: ModelOption[]): Record<string, ModelOption[]> {
 }
 
 /** Capability requirements per pipeline step — filters model dropdown to eligible models */
-const STEP_CAPABILITY_FILTERS: Partial<Record<string, (model: ModelOption) => boolean>> = {
+const STEP_CAPABILITY_FILTERS: Partial<
+  Record<string, (model: ModelOption) => boolean>
+> = {
   cloud_stt: (m) => m.supports_audio,
 }
 
@@ -99,26 +106,26 @@ function StepRow({
   const isDbOverridden = step.source === "db"
 
   return (
-    <div className="flex items-center gap-3 rounded-md border bg-card px-3 py-3">
+    <div className="bg-card flex items-center gap-3 rounded-md border px-3 py-3">
       {/* Step name and env var */}
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">
             {formatStepName(step.step)}
           </span>
           <Badge
-            className={`text-[10px] px-1.5 py-0 ${SOURCE_BADGE_CLASSES[step.source]}`}
+            className={`px-1.5 py-0 text-[10px] ${SOURCE_BADGE_CLASSES[step.source]}`}
           >
             {step.source}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
+        <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
           {step.env_var}
         </p>
       </div>
 
       {/* Model selector */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
         {isEnvLocked ? (
           <TooltipProvider>
             <Tooltip>
@@ -130,11 +137,14 @@ function StepRow({
                     </SelectTrigger>
                     <SelectContent />
                   </Select>
-                  <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <Lock className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Set via environment variable. Remove {step.env_var} to configure here.</p>
+                <p>
+                  Set via environment variable. Remove {step.env_var} to
+                  configure here.
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -156,8 +166,9 @@ function StepRow({
                     <SelectItem key={model.id} value={model.id}>
                       <span className="flex items-center gap-2">
                         <span>{model.name}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatCost(model.cost_per_mtok_input)} in / {formatCost(model.cost_per_mtok_output)} out
+                        <span className="text-muted-foreground text-[10px]">
+                          {formatCost(model.cost_per_mtok_input)} in /{" "}
+                          {formatCost(model.cost_per_mtok_output)} out
                         </span>
                       </span>
                     </SelectItem>
@@ -176,9 +187,18 @@ function StepRow({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 shrink-0"
-                  onClick={() => resetModel.mutate(step.step)}
-                  disabled={resetModel.isPending}
+                  className={cn(
+                    "h-8 w-8 shrink-0 p-0",
+                    resetModel.isPending && "cursor-not-allowed opacity-50"
+                  )}
+                  onClick={(e) => {
+                    if (resetModel.isPending) {
+                      e.preventDefault()
+                      return
+                    }
+                    resetModel.mutate(step.step)
+                  }}
+                  aria-disabled={resetModel.isPending}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   <span className="sr-only">Reset to default</span>
@@ -224,11 +244,16 @@ export function ModelConfigurator() {
     return (
       <div className="flex h-48 items-center justify-center rounded-lg border border-dashed">
         <div className="text-center">
-          <AlertCircle className="mx-auto h-10 w-10 text-destructive/50" />
-          <p className="mt-2 text-sm text-muted-foreground">
+          <AlertCircle className="text-destructive/50 mx-auto h-10 w-10" />
+          <p className="text-muted-foreground mt-2 text-sm">
             Failed to load model settings: {error?.message}
           </p>
-          <Button className="mt-3" size="sm" variant="outline" onClick={() => refetch()}>
+          <Button
+            className="mt-3"
+            size="sm"
+            variant="outline"
+            onClick={() => refetch()}
+          >
             <RefreshCw className="mr-2 h-3.5 w-3.5" />
             Retry
           </Button>
@@ -241,7 +266,7 @@ export function ModelConfigurator() {
   if (!data?.steps?.length) {
     return (
       <div className="flex h-48 items-center justify-center rounded-lg border border-dashed">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           No pipeline steps configured
         </p>
       </div>
