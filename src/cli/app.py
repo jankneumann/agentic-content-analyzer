@@ -34,7 +34,13 @@ from src.cli.manage_commands import app as manage_app
 from src.cli.neon_commands import app as neon_app
 
 # Import output utilities from the shared module (avoids circular imports)
-from src.cli.output import _set_json_mode, is_json_mode, output_result  # noqa: F401
+from src.cli.output import (  # noqa: F401
+    _set_direct_mode,
+    _set_json_mode,
+    is_direct_mode,
+    is_json_mode,
+    output_result,
+)
 from src.cli.pipeline_commands import app as pipeline_app
 from src.cli.podcast_commands import app as podcast_app
 from src.cli.profile_commands import app as profile_app
@@ -108,6 +114,13 @@ def main_callback(
             help="Enable debug logging output.",
         ),
     ] = False,
+    direct: Annotated[
+        bool,
+        typer.Option(
+            "--direct",
+            help="Run commands directly without backend API (offline mode).",
+        ),
+    ] = False,
 ) -> None:
     """Agentic Content Aggregator CLI.
 
@@ -116,6 +129,9 @@ def main_callback(
     """
     if json_output:
         _set_json_mode(True)
+
+    if direct:
+        _set_direct_mode(True)
 
     if debug:
         from src.config import settings

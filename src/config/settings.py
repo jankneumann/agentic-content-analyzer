@@ -71,6 +71,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
         "api_keys",
         "digest",
         "search",
+        "api",
     ]
 
     for section in section_mappings:
@@ -662,6 +663,12 @@ class Settings(BaseSettings):
     voyage_api_key: str | None = None
     cohere_api_key: str | None = None
     jina_api_key: str | None = None
+
+    # CLI API Client Configuration
+    # Used by CLI commands to target the backend API (local dev or cloud).
+    # Override via profile settings.api.api_base_url or API_BASE_URL env var.
+    api_base_url: str = "http://localhost:8000"
+    api_timeout: int = 300  # seconds (5 min default for long-running ingestion)
 
     # Test / Hoverfly API Simulation Configuration
     # Set these to route HTTP clients through Hoverfly during integration tests.

@@ -36,16 +36,19 @@ class URLIngestResult:
 
 def ingest_gmail(
     *,
-    query: str = "label:newsletters-ai",
-    max_results: int = 10,
+    query: str | None = None,
+    max_results: int | None = None,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
 ) -> int:
     """Ingest newsletters from Gmail.
 
+    When query or max_results are None, reads defaults from
+    sources.d/gmail.yaml via get_gmail_sources().
+
     Args:
-        query: Gmail search query.
-        max_results: Maximum number of emails to fetch.
+        query: Gmail search query. None = use sources.d config.
+        max_results: Maximum number of emails to fetch. None = use sources.d config.
         after_date: Only fetch emails after this date.
         force_reprocess: Force reprocess existing content.
 
@@ -53,6 +56,26 @@ def ingest_gmail(
         Number of items ingested.
     """
     from src.ingestion.gmail import GmailContentIngestionService
+
+    # Apply sources.d/gmail.yaml defaults when params not explicitly set
+    if query is None or max_results is None:
+        try:
+            from src.config.sources import load_sources_config
+
+            config = load_sources_config()
+            gmail_sources = config.get_gmail_sources()
+            if gmail_sources:
+                source = gmail_sources[0]
+                if query is None:
+                    query = source.query
+                if max_results is None:
+                    max_results = source.max_results
+        except Exception:
+            logger.debug("Could not load gmail sources config, using defaults")
+
+    # Fallback defaults if config loading failed or no sources defined
+    query = query or "label:newsletters-ai"
+    max_results = max_results or 50
 
     service = GmailContentIngestionService()
     return service.ingest_content(

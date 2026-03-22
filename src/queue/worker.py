@@ -419,16 +419,20 @@ def _register_content_handlers() -> None:
 
         from src.ingestion.orchestrator import (
             ingest_gmail,
+            ingest_perplexity_search,
             ingest_podcast,
             ingest_rss,
             ingest_substack,
+            ingest_url,
+            ingest_xsearch,
             ingest_youtube,
             ingest_youtube_playlist,
             ingest_youtube_rss,
         )
 
         source = payload.get("source", "gmail")
-        max_results = payload.get("max_results", 50)
+        # max_results=None means "use sources.d config defaults"
+        max_results = payload.get("max_results")
         days_back = payload.get("days_back", 7)
         force_reprocess = payload.get("force_reprocess", False)
 
@@ -436,26 +440,103 @@ def _register_content_handlers() -> None:
 
         after_date = datetime.now(UTC) - timedelta(days=days_back)
 
+        # Build source-specific kwargs — only include max_results if explicitly set
         source_map: dict[str, tuple] = {
-            "gmail": (ingest_gmail, {"max_results": max_results}),
-            "rss": (ingest_rss, {"max_entries_per_feed": max_results}),
-            "youtube": (ingest_youtube, {"max_videos": max_results}),
-            "youtube-playlist": (ingest_youtube_playlist, {"max_videos": max_results}),
-            "youtube-rss": (ingest_youtube_rss, {"max_videos": max_results}),
-            "podcast": (ingest_podcast, {"max_entries_per_feed": max_results}),
-            "substack": (ingest_substack, {"max_entries_per_source": max_results}),
+            "gmail": (
+                ingest_gmail,
+                {
+                    **({"max_results": max_results} if max_results is not None else {}),
+                    **({"query": payload["query"]} if "query" in payload else {}),
+                },
+            ),
+            "rss": (
+                ingest_rss,
+                {**({"max_entries_per_feed": max_results} if max_results is not None else {})},
+            ),
+            "youtube": (
+                ingest_youtube,
+                {
+                    **({"max_videos": max_results} if max_results is not None else {}),
+                    "use_oauth": not payload.get("public_only"),
+                },
+            ),
+            "youtube-playlist": (
+                ingest_youtube_playlist,
+                {**({"max_videos": max_results} if max_results is not None else {})},
+            ),
+            "youtube-rss": (
+                ingest_youtube_rss,
+                {**({"max_videos": max_results} if max_results is not None else {})},
+            ),
+            "podcast": (
+                ingest_podcast,
+                {**({"max_entries_per_feed": max_results} if max_results is not None else {})},
+            ),
+            "substack": (
+                ingest_substack,
+                {
+                    **({"max_entries_per_source": max_results} if max_results is not None else {}),
+                    **(
+                        {"session_cookie": payload["session_cookie"]}
+                        if "session_cookie" in payload
+                        else {}
+                    ),
+                },
+            ),
+            "xsearch": (
+                ingest_xsearch,
+                {
+                    **({"prompt": payload["prompt"]} if "prompt" in payload else {}),
+                    **({"max_threads": payload["max_threads"]} if "max_threads" in payload else {}),
+                },
+            ),
+            "perplexity": (
+                ingest_perplexity_search,
+                {
+                    **({"prompt": payload["prompt"]} if "prompt" in payload else {}),
+                    **({"max_results": max_results} if max_results is not None else {}),
+                    **(
+                        {"recency_filter": payload["recency_filter"]}
+                        if "recency_filter" in payload
+                        else {}
+                    ),
+                    **(
+                        {"context_size": payload["context_size"]}
+                        if "context_size" in payload
+                        else {}
+                    ),
+                },
+            ),
+            "url": (
+                ingest_url,
+                {
+                    "url": payload.get("url", ""),
+                    **({"title": payload["title"]} if "title" in payload else {}),
+                    **({"tags": payload["tags"]} if "tags" in payload else {}),
+                    **({"notes": payload["notes"]} if "notes" in payload else {}),
+                },
+            ),
         }
 
         if source not in source_map:
             raise ValueError(f"Unsupported source: {source}")
 
         ingest_func, kwargs = source_map[source]
-        count = await _asyncio.to_thread(
-            lambda: ingest_func(
-                after_date=after_date,
-                force_reprocess=force_reprocess,
-                **kwargs,
+
+        # URL ingestion doesn't take after_date/force_reprocess
+        if source == "url":
+            count = await _asyncio.to_thread(lambda: ingest_func(**kwargs))
+        else:
+            count = await _asyncio.to_thread(
+                lambda: ingest_func(
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                    **kwargs,
+                )
             )
-        )
+
+        # ingest_url returns a result object, not a count
+        if source == "url":
+            count = 1 if count else 0
 
         await update_job_progress(job_id, 100, f"Ingested {count} items from {source}")

@@ -1,0 +1,306 @@
+openapi: 3.1.0
+info:
+  title: ACA API - CLI Thin Client Extensions
+  version: 1.1.0
+  description: >
+    New and extended endpoints required for the CLI thin HTTP client refactor.
+    Covers ingestion extensions, pipeline orchestration, and SSE progress streams.
+
+paths:
+  /api/v1/contents/ingest:
+    post:
+      operationId: triggerIngestion
+      summary: Trigger content ingestion (extended)
+      description: >
+        Enqueues an ingestion job. Extended to support all source types
+        with source-specific optional parameters.
+      tags: [contents]
+      security:
+        - adminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+            examples:
+              gmail:
+                summary: Gmail ingestion
+                value:
+                  source: gmail
+                  max_results: 50
+                  days_back: 7
+              xsearch:
+                summary: X/Twitter search
+                value:
+                  source: xsearch
+                  prompt: "latest AI agent frameworks"
+                  max_threads: 10
+              perplexity:
+                summary: Perplexity search
+                value:
+                  source: perplexity
+                  prompt: "LLM benchmarks 2026"
+                  max_results: 20
+                  recency_filter: week
+              url:
+                summary: URL ingestion
+                value:
+                  source: url
+                  url: "https://example.com/article"
+                  title: "Example Article"
+                  tags: ["ai", "llm"]
+              podcast_no_transcribe:
+                summary: Podcast without transcription
+                value:
+                  source: podcast
+                  max_results: 10
+                  transcribe: false
+      responses:
+        '200':
+          description: Ingestion job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+              example:
+                task_id: "42"
+                message: Content ingestion queued
+                source: gmail
+                max_results: 50
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /api/v1/pipeline/run:
+    post:
+      operationId: runPipeline
+      summary: Run full ingestion pipeline
+      description: >
+        Enqueues a pipeline job that executes ingestion, summarization,
+        and digest creation stages sequentially.
+      tags: [pipeline]
+      security:
+        - adminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineRequest'
+            examples:
+              daily:
+                summary: Daily pipeline
+                value:
+                  pipeline_type: daily
+              weekly_with_date:
+                summary: Weekly pipeline with date override
+                value:
+                  pipeline_type: weekly
+                  date: "2026-03-21"
+      responses:
+        '200':
+          description: Pipeline job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineResponse'
+              example:
+                job_id: 123
+                message: Pipeline queued
+                pipeline_type: daily
+
+  /api/v1/pipeline/status/{job_id}:
+    get:
+      operationId: getPipelineStatus
+      summary: Stream pipeline progress (SSE)
+      tags: [pipeline]
+      security:
+        - adminKey: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/PipelineStatusEvent'
+
+components:
+  securitySchemes:
+    adminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+
+  schemas:
+    IngestRequest:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [gmail, rss, youtube, youtube-playlist, youtube-rss, podcast, substack, xsearch, perplexity, url]
+          default: gmail
+        max_results:
+          type: integer
+          minimum: 1
+          maximum: 200
+          nullable: true
+          description: Maximum items to fetch. Null = use sources.d config defaults.
+        days_back:
+          type: integer
+          minimum: 1
+          maximum: 90
+          default: 7
+        force_reprocess:
+          type: boolean
+          default: false
+        # Source-specific optional fields
+        query:
+          type: string
+          nullable: true
+          description: Gmail label query (e.g., "label:newsletters-ai")
+        prompt:
+          type: string
+          nullable: true
+          description: Search prompt for xsearch/perplexity sources
+        max_threads:
+          type: integer
+          nullable: true
+          description: Maximum threads for xsearch
+        recency_filter:
+          type: string
+          enum: [day, week, month]
+          nullable: true
+          description: Perplexity recency filter
+        context_size:
+          type: string
+          enum: [low, medium, high]
+          nullable: true
+          description: Perplexity context size
+        transcribe:
+          type: boolean
+          default: true
+          description: Enable podcast transcription
+        session_cookie:
+          type: string
+          nullable: true
+          description: Substack session cookie override
+        public_only:
+          type: boolean
+          default: false
+          description: YouTube - skip private playlists
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: Target URL for url source
+        title:
+          type: string
+          nullable: true
+          description: Content title override (url/file)
+        tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: Content tags (url)
+        notes:
+          type: string
+          nullable: true
+          description: Content notes (url)
+
+    IngestResponse:
+      type: object
+      required: [task_id, message, source]
+      properties:
+        task_id:
+          type: string
+        message:
+          type: string
+        source:
+          type: string
+        max_results:
+          type: integer
+          nullable: true
+
+    PipelineRequest:
+      type: object
+      properties:
+        pipeline_type:
+          type: string
+          enum: [daily, weekly]
+          default: daily
+        date:
+          type: string
+          format: date
+          nullable: true
+          description: Override pipeline date (YYYY-MM-DD)
+        use_queue:
+          type: boolean
+          default: true
+
+    PipelineResponse:
+      type: object
+      required: [job_id, message, pipeline_type]
+      properties:
+        job_id:
+          type: integer
+        message:
+          type: string
+        pipeline_type:
+          type: string
+
+    PipelineStatusEvent:
+      type: object
+      description: SSE event payload for pipeline progress
+      properties:
+        status:
+          type: string
+          enum: [queued, ingestion, summarization, digest, completed, error]
+        stage:
+          type: string
+          enum: [ingestion, summarization, digest]
+          nullable: true
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        message:
+          type: string
+        sources_ingested:
+          type: object
+          additionalProperties:
+            type: integer
+          nullable: true
+        items_summarized:
+          type: integer
+          nullable: true
+        digest_id:
+          type: integer
+          nullable: true
+
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  type: string
+              msg:
+                type: string
+              type:
+                type: string
