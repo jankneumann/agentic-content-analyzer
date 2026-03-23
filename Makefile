@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -178,7 +178,37 @@ dev:  ## Start both frontend and backend for development (requires tmux or run i
 	@echo ""
 	uvicorn src.api.app:app --reload --reload-dir src --host 0.0.0.0 --port 8000 --proxy-headers
 
-dev-bg:  ## Start frontend and backend in background (logs to .dev-logs/)
+ensure-services:  ## Ensure PostgreSQL and Neo4j are running (starts them if needed)
+	@pg_running=true; neo4j_running=true; \
+	if ! docker inspect --format='{{.State.Status}}' newsletter-postgres 2>/dev/null | grep -q running; then \
+		pg_running=false; \
+	fi; \
+	if ! docker inspect --format='{{.State.Status}}' newsletter-neo4j 2>/dev/null | grep -q running; then \
+		neo4j_running=false; \
+	fi; \
+	if [ "$$pg_running" = false ] || [ "$$neo4j_running" = false ]; then \
+		echo "Starting Docker services (postgres, neo4j)..."; \
+		docker compose up -d postgres neo4j; \
+		echo "Waiting for services to be healthy..."; \
+		timeout=60; elapsed=0; \
+		while [ $$elapsed -lt $$timeout ]; do \
+			pg_ok=true; neo4j_ok=true; \
+			if ! docker inspect --format='{{.State.Health.Status}}' newsletter-postgres 2>/dev/null | grep -q healthy; then pg_ok=false; fi; \
+			if ! docker inspect --format='{{.State.Health.Status}}' newsletter-neo4j 2>/dev/null | grep -q healthy; then neo4j_ok=false; fi; \
+			if [ "$$pg_ok" = true ] && [ "$$neo4j_ok" = true ]; then break; fi; \
+			sleep 2; elapsed=$$((elapsed + 2)); \
+		done; \
+		if [ $$elapsed -ge $$timeout ]; then \
+			echo "✗ Timed out waiting for services to be healthy"; \
+			docker compose ps; \
+			exit 1; \
+		fi; \
+		echo "✓ PostgreSQL and Neo4j are healthy"; \
+	else \
+		echo "✓ Docker services already running"; \
+	fi
+
+dev-bg: ensure-services  ## Start frontend and backend in background (logs to .dev-logs/)
 	@mkdir -p .dev-logs
 	@echo "Starting backend API on http://localhost:8000..."
 	@nohup bash -c 'source .venv/bin/activate && PROFILE=$(PROFILE) uvicorn src.api.app:app --reload --reload-dir src --host 0.0.0.0 --port 8000 --proxy-headers' > .dev-logs/api.log 2>&1 & echo $$! > .dev-logs/api.pid
