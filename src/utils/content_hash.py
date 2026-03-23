@@ -9,6 +9,26 @@ import hashlib
 import re
 
 
+# Pre-compile combined regex patterns for significant performance improvement
+# during repeated deduplication calls
+FOOTER_PATTERN = re.compile(
+    r"(?:unsubscribe.*$|"
+    r"view in browser.*$|"
+    r"forward to a friend.*$|"
+    r"update your preferences.*$|"
+    r"manage your subscription.*$|"
+    r"click here to.*$|"
+    r"you received this email because.*$|"
+    r"this email was sent to.*$)",
+    flags=re.IGNORECASE | re.MULTILINE,
+)
+
+HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+URL_PATTERN = re.compile(r"https?://\S+")
+EMAIL_PATTERN = re.compile(r"\S+@\S+")
+WHITESPACE_PATTERN = re.compile(r"\s+")
+
+
 def normalize_content(text: str) -> str:
     """
     Normalize content for consistent hashing across sources.
@@ -32,7 +52,7 @@ def normalize_content(text: str) -> str:
     text = text.lower()
 
     # Remove HTML tags
-    text = re.sub(r"<[^>]+>", "", text)
+    text = HTML_TAG_PATTERN.sub("", text)
 
     # Decode common HTML entities
     text = text.replace("&nbsp;", " ")
@@ -43,27 +63,16 @@ def normalize_content(text: str) -> str:
     text = text.replace("&#39;", "'")
 
     # Remove URLs (can vary between Gmail/RSS)
-    text = re.sub(r"https?://\S+", "", text)
+    text = URL_PATTERN.sub("", text)
 
     # Remove email addresses
-    text = re.sub(r"\S+@\S+", "", text)
+    text = EMAIL_PATTERN.sub("", text)
 
-    # Remove common email footer patterns
-    footer_patterns = [
-        r"unsubscribe.*$",
-        r"view in browser.*$",
-        r"forward to a friend.*$",
-        r"update your preferences.*$",
-        r"manage your subscription.*$",
-        r"click here to.*$",
-        r"you received this email because.*$",
-        r"this email was sent to.*$",
-    ]
-    for pattern in footer_patterns:
-        text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE)
+    # Remove common email footer patterns (combined regex using alternation)
+    text = FOOTER_PATTERN.sub("", text)
 
     # Normalize whitespace
-    text = re.sub(r"\s+", " ", text)
+    text = WHITESPACE_PATTERN.sub(" ", text)
 
     # Remove leading/trailing whitespace
     text = text.strip()

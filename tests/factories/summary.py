@@ -37,8 +37,10 @@ class SummaryFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     # Summary content
     executive_summary = factory.Sequence(
-        lambda n: f"Executive summary {n}: This article discusses key developments in AI "
-        f"technology and their implications for enterprise adoption."
+        lambda n: (
+            f"Executive summary {n}: This article discusses key developments in AI "
+            f"technology and their implications for enterprise adoption."
+        )
     )
 
     key_themes = factory.LazyFunction(
@@ -100,8 +102,10 @@ class SummaryFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     # Unified content model fields
     markdown_content = factory.LazyAttribute(
-        lambda o: f"# Summary\n\n{o.executive_summary}\n\n"
-        f"## Key Themes\n\n" + "\n".join(f"- {t}" for t in o.key_themes)
+        lambda o: (
+            f"# Summary\n\n{o.executive_summary}\n\n"
+            f"## Key Themes\n\n" + "\n".join(f"- {t}" for t in o.key_themes)
+        )
     )
     theme_tags = factory.LazyFunction(lambda: ["ai", "ml", "enterprise", "automation"])
 

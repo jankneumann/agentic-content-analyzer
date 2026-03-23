@@ -45,3 +45,7 @@
 ## 2026-03-04 - Optimize audio digest statistics query
 **Learning:** Multiple separate database count queries were executed to aggregate counts (total, and individual status counts) in `get_audio_digest_statistics` which causes performance bottlenecks via redundant database round-trips.
 **Action:** When calculating statistics that encompass the whole table partitioned by a specific property (like status), execute a single query using `func.count()` alongside `GROUP BY`, and compute derived values (like the total count or specific status values) within the application logic. This pattern minimizes the DB connection overhead.
+
+## 2025-03-23 - Precompile Regex for Deduplication Performance
+**Learning:** Frequent loop-based regex replacement tasks, like stripping common footers, caused measurable delays in deduplication functions when dynamically defining patterns each run. Combining multiple match strings using alternation (`r"a|b"`) and precompiling via `re.compile()` drastically reduced CPU time and text-normalization overhead during bulk ingest operations.
+**Action:** Always precompile heavily-used regexes at the module level rather than calling `re.match` or `re.sub` dynamically inside repeatedly-called text-processing functions. Use single combined regex patterns (alternation) to replace iterating through arrays of individual patterns.
