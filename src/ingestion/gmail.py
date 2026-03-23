@@ -275,6 +275,9 @@ class GmailClient:
         """
         Fetch newsletters from Gmail as ContentData (unified Content model).
 
+        Paginates through Gmail API results using nextPageToken until
+        max_results messages are collected or no more pages remain.
+
         Args:
             query: Gmail search query (default: emails with 'newsletters' label)
             max_results: Maximum number of emails to fetch
@@ -292,23 +295,42 @@ class GmailClient:
 
             logger.info(f"Fetching content with query: {full_query}")
 
-            # List messages
-            results = (
-                self.service.users()
-                .messages()
-                .list(userId="me", q=full_query, maxResults=max_results)
-                .execute()
-            )
+            # Paginate through Gmail API results
+            # Gmail API maxResults per page is capped at 500, but we use
+            # min(max_results, 100) per page for reasonable batch sizes.
+            all_messages: list[dict] = []
+            page_token: str | None = None
+            page_size = min(max_results, 100)
 
-            messages = results.get("messages", [])
-            logger.info(f"Found {len(messages)} messages")
+            while len(all_messages) < max_results:
+                list_kwargs: dict = {
+                    "userId": "me",
+                    "q": full_query,
+                    "maxResults": min(page_size, max_results - len(all_messages)),
+                }
+                if page_token:
+                    list_kwargs["pageToken"] = page_token
 
-            if not messages:
+                results = self.service.users().messages().list(**list_kwargs).execute()
+
+                messages = results.get("messages", [])
+                if not messages:
+                    break
+
+                all_messages.extend(messages)
+                page_token = results.get("nextPageToken")
+
+                if not page_token:
+                    break
+
+            logger.info(f"Found {len(all_messages)} messages across API pages")
+
+            if not all_messages:
                 return []
 
             # Fetch and parse each message
             contents = []
-            for msg in messages:
+            for msg in all_messages:
                 try:
                     content_data = self._fetch_and_parse_content(msg["id"])
                     if content_data:
