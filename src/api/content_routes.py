@@ -138,12 +138,34 @@ class ContentStats(BaseModel):
 
 
 class IngestRequest(BaseModel):
-    """Request to trigger content ingestion."""
+    """Request to trigger content ingestion.
 
-    source: ContentSource = Field(default=ContentSource.GMAIL, description="Source to ingest from")
-    max_results: int = Field(default=50, ge=1, le=200, description="Maximum items to fetch")
+    Supports all source types with source-specific optional parameters.
+    When max_results is None, the server applies sources.d/*.yaml defaults.
+    """
+
+    source: str = Field(default="gmail", description="Source to ingest from")
+    max_results: int | None = Field(
+        default=None,
+        ge=1,
+        le=200,
+        description="Maximum items to fetch (None = source config default)",
+    )
     days_back: int = Field(default=7, ge=1, le=90, description="Days back to search")
     force_reprocess: bool = Field(default=False, description="Force reprocess existing content")
+    # Source-specific optional fields
+    query: str | None = Field(default=None, description="Gmail label query")
+    prompt: str | None = Field(default=None, description="Search prompt (xsearch/perplexity)")
+    max_threads: int | None = Field(default=None, description="Max threads (xsearch)")
+    recency_filter: str | None = Field(default=None, description="Recency filter (perplexity)")
+    context_size: str | None = Field(default=None, description="Context size (perplexity)")
+    transcribe: bool = Field(default=True, description="Enable podcast transcription")
+    session_cookie: str | None = Field(default=None, description="Substack session cookie")
+    public_only: bool = Field(default=False, description="YouTube: skip private playlists")
+    url: str | None = Field(default=None, description="Target URL (url source)")
+    title: str | None = Field(default=None, description="Content title override")
+    tags: list[str] | None = Field(default=None, description="Content tags (url)")
+    notes: str | None = Field(default=None, description="Content notes (url)")
 
 
 class IngestResponse(BaseModel):
@@ -151,8 +173,8 @@ class IngestResponse(BaseModel):
 
     task_id: str
     message: str
-    source: ContentSource
-    max_results: int
+    source: str
+    max_results: int | None
 
 
 # ============================================================================
@@ -160,28 +182,48 @@ class IngestResponse(BaseModel):
 # ============================================================================
 
 
-async def _enqueue_ingestion_job(
-    source: ContentSource,
-    max_results: int,
-    days_back: int,
-    force_reprocess: bool,
-) -> int:
+async def _enqueue_ingestion_job(request: IngestRequest) -> int:
     """Enqueue an ingestion job to pgqueuer_jobs table.
+
+    Passes all source-specific parameters through the job payload so the
+    worker handler can forward them to the appropriate orchestrator function.
 
     Returns the job ID for status tracking.
     """
     from src.queue.setup import enqueue_queue_job
 
-    job_id, _created = await enqueue_queue_job(
-        "ingest_content",
-        {
-            "source": source.value,
-            "max_results": max_results,
-            "days_back": days_back,
-            "force_reprocess": force_reprocess,
-        },
-    )
-    logger.info(f"Enqueued ingestion job {job_id} for source {source.value}")
+    # Build payload — include all non-None source-specific fields
+    payload: dict = {
+        "source": request.source,
+        "days_back": request.days_back,
+        "force_reprocess": request.force_reprocess,
+    }
+    # Only include max_results if explicitly set (None = use server-side defaults)
+    if request.max_results is not None:
+        payload["max_results"] = request.max_results
+    # Source-specific optional fields — only include if set
+    for field in (
+        "query",
+        "prompt",
+        "max_threads",
+        "recency_filter",
+        "context_size",
+        "session_cookie",
+        "url",
+        "title",
+        "tags",
+        "notes",
+    ):
+        value = getattr(request, field)
+        if value is not None:
+            payload[field] = value
+    if not request.transcribe:
+        payload["transcribe"] = False
+    if request.public_only:
+        payload["public_only"] = True
+
+    job_id, _created = await enqueue_queue_job("ingest_content", payload)
+    logger.info(f"Enqueued ingestion job {job_id} for source {request.source}")
     return job_id
 
 
@@ -217,12 +259,7 @@ async def trigger_content_ingestion(
     - podcast: Fetch transcripts from configured podcast feeds
     """
     # Enqueue job to pgqueuer_jobs table (persistent, survives restarts)
-    job_id = await _enqueue_ingestion_job(
-        source=request.source,
-        max_results=request.max_results,
-        days_back=request.days_back,
-        force_reprocess=request.force_reprocess,
-    )
+    job_id = await _enqueue_ingestion_job(request)
 
     return IngestResponse(
         task_id=str(job_id),

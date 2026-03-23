@@ -1,5 +1,9 @@
 """CLI commands for content ingestion.
 
+In HTTP mode (default), commands call the backend API via httpx and stream
+SSE progress. In direct mode (--direct flag or API unreachable), commands
+call orchestrator functions directly (legacy inline behavior).
+
 Usage:
     aca ingest gmail
     aca ingest rss
@@ -15,11 +19,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
+import httpx
 import typer
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(help="Ingest content from various sources.", no_args_is_help=True)
 
@@ -32,43 +37,57 @@ def _days_to_after_date(days: int | None) -> datetime | None:
 
 
 # ---------------------------------------------------------------------------
+# Shared HTTP ingestion helper
+# ---------------------------------------------------------------------------
+
+
+def _ingest_via_api(source: str, params: dict[str, Any], label: str) -> None:
+    """Ingest via the backend API with SSE progress streaming.
+
+    Calls POST /api/v1/contents/ingest, then streams progress until completion.
+    Falls back to direct mode on connection error.
+    """
+    from src.cli.api_client import get_api_client
+    from src.cli.progress import display_ingest_result, stream_job_progress
+
+    client = get_api_client()
+    try:
+        response = client.ingest(source=source, **params)
+    except httpx.ConnectError:
+        if not is_json_mode():
+            from rich.console import Console
+
+            Console(stderr=True).print(
+                f"[yellow]Backend unavailable — running {source} ingestion directly...[/yellow]"
+            )
+        raise  # Let caller handle fallback
+
+    task_id = response.get("task_id", "")
+    result = stream_job_progress(
+        client, task_id, label=label, stream_type="ingest", json_mode=is_json_mode()
+    )
+    display_ingest_result(result, source=source, json_mode=is_json_mode())
+
+    # Exit with error if job failed
+    if result.get("status") in ("error", "failed"):
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
 # aca ingest gmail
 # ---------------------------------------------------------------------------
 
 
-@app.command("gmail")
-def gmail(
-    query: Annotated[
-        str,
-        typer.Option("--query", "-q", help="Gmail search query."),
-    ] = "label:newsletters-ai",
-    max: Annotated[
-        int,
-        typer.Option("--max", "-m", help="Maximum number of emails to fetch."),
-    ] = 10,
-    days: Annotated[
-        int | None,
-        typer.Option("--days", "-d", help="Only fetch emails from the last N days."),
-    ] = None,
-    force: Annotated[
-        bool,
-        typer.Option("--force", "-f", help="Force reprocess existing content."),
-    ] = False,
-) -> None:
-    """Ingest newsletters from Gmail."""
+def _gmail_direct(query: str, max_results: int, after_date: datetime | None, force: bool) -> None:
+    """Direct Gmail ingestion (legacy inline path)."""
     from rich.console import Console
 
     console = Console()
-    after_date = _days_to_after_date(days)
-
     try:
         from src.ingestion.orchestrator import ingest_gmail
 
         count = ingest_gmail(
-            query=query,
-            max_results=max,
-            after_date=after_date,
-            force_reprocess=force,
+            query=query, max_results=max_results, after_date=after_date, force_reprocess=force
         )
     except Exception as exc:
         if is_json_mode():
@@ -83,36 +102,54 @@ def gmail(
         console.print(f"[green]Gmail ingestion complete.[/green] {count} item(s) ingested.")
 
 
-# ---------------------------------------------------------------------------
-# aca ingest rss
-# ---------------------------------------------------------------------------
-
-
-@app.command("rss")
-def rss(
+@app.command("gmail")
+def gmail(
+    query: Annotated[
+        str,
+        typer.Option("--query", "-q", help="Gmail search query."),
+    ] = "label:newsletters-ai",
     max: Annotated[
-        int,
-        typer.Option("--max", "-m", help="Maximum entries per feed."),
-    ] = 10,
+        int | None,
+        typer.Option("--max", "-m", help="Maximum number of emails to fetch."),
+    ] = None,
     days: Annotated[
         int | None,
-        typer.Option("--days", "-d", help="Only fetch entries from the last N days."),
+        typer.Option("--days", "-d", help="Only fetch emails from the last N days."),
     ] = None,
     force: Annotated[
         bool,
         typer.Option("--force", "-f", help="Force reprocess existing content."),
     ] = False,
 ) -> None:
-    """Ingest articles from configured RSS feeds."""
+    """Ingest newsletters from Gmail."""
+    after_date = _days_to_after_date(days)
+
+    if is_direct_mode():
+        return _gmail_direct(query, max or 10, after_date, force)
+
+    try:
+        params: dict[str, Any] = {"query": query, "force_reprocess": force}
+        if max is not None:
+            params["max_results"] = max
+        if days is not None:
+            params["days_back"] = days
+        _ingest_via_api("gmail", params, "Gmail ingestion")
+    except httpx.ConnectError:
+        _gmail_direct(query, max or 10, after_date, force)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest rss
+# ---------------------------------------------------------------------------
+
+
+def _rss_direct(max_results: int, after_date: datetime | None, force: bool) -> None:
+    """Direct RSS ingestion (legacy inline path)."""
     from rich.console import Console
 
     from src.ingestion.rss import IngestionResult
 
     console = Console()
-    after_date = _days_to_after_date(days)
-
-    # Capture the full IngestionResult via on_result callback
-    # so the CLI can display redirect/failure details.
     captured_result: IngestionResult | None = None
 
     def _capture_result(r: IngestionResult) -> None:
@@ -123,7 +160,7 @@ def rss(
         from src.ingestion.orchestrator import ingest_rss
 
         count = ingest_rss(
-            max_entries_per_feed=max,
+            max_entries_per_feed=max_results,
             after_date=after_date,
             force_reprocess=force,
             on_result=_capture_result,
@@ -149,9 +186,7 @@ def rss(
         output_result(result_data)
     else:
         console.print(f"[green]RSS ingestion complete.[/green] {count} item(s) ingested.")
-
         if captured_result:
-            # Show redirected sources — user should update their config
             if captured_result.redirected_sources:
                 console.print(
                     f"\n[yellow]Warning:[/yellow] {len(captured_result.redirected_sources)} "
@@ -161,8 +196,6 @@ def rss(
                     label = r.name or r.url
                     console.print(f"  [yellow]{label}[/yellow]")
                     console.print(f"    {r.url} -> {r.redirected_to}")
-
-            # Show failed sources — user should investigate or disable
             if captured_result.failed_sources:
                 console.print(
                     f"\n[red]Error:[/red] {len(captured_result.failed_sources)} source(s) failed:"
@@ -173,9 +206,68 @@ def rss(
                     console.print(f"    {r.error}")
 
 
+@app.command("rss")
+def rss(
+    max: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum entries per feed."),
+    ] = 10,
+    days: Annotated[
+        int | None,
+        typer.Option("--days", "-d", help="Only fetch entries from the last N days."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+) -> None:
+    """Ingest articles from configured RSS feeds."""
+    after_date = _days_to_after_date(days)
+
+    if is_direct_mode():
+        return _rss_direct(max, after_date, force)
+
+    try:
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        _ingest_via_api("rss", params, "RSS ingestion")
+    except httpx.ConnectError:
+        _rss_direct(max, after_date, force)
+
+
 # ---------------------------------------------------------------------------
 # aca ingest substack
 # ---------------------------------------------------------------------------
+
+
+def _substack_direct(
+    max_results: int, after_date: datetime | None, force: bool, session_cookie: str | None
+) -> None:
+    """Direct Substack ingestion."""
+    from rich.console import Console
+
+    console = Console()
+    try:
+        from src.ingestion.orchestrator import ingest_substack
+
+        count = ingest_substack(
+            max_entries_per_source=max_results,
+            after_date=after_date,
+            force_reprocess=force,
+            session_cookie=session_cookie,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "substack"}, success=False)
+        else:
+            console.print(f"[red]Substack ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "substack", "ingested": count})
+    else:
+        console.print(f"[green]Substack ingestion complete.[/green] {count} item(s) ingested.")
 
 
 @app.command("substack")
@@ -198,31 +290,25 @@ def substack(
     ] = None,
 ) -> None:
     """Ingest posts from Substack sources configured in sources.d/substack.yaml."""
-    from rich.console import Console
-
-    console = Console()
     after_date = _days_to_after_date(days)
 
+    if is_direct_mode():
+        return _substack_direct(max, after_date, force, session_cookie)
+
     try:
-        from src.ingestion.orchestrator import ingest_substack
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        if session_cookie:
+            params["session_cookie"] = session_cookie
+        _ingest_via_api("substack", params, "Substack ingestion")
+    except httpx.ConnectError:
+        _substack_direct(max, after_date, force, session_cookie)
 
-        count = ingest_substack(
-            max_entries_per_source=max,
-            after_date=after_date,
-            force_reprocess=force,
-            session_cookie=session_cookie,
-        )
-    except Exception as exc:
-        if is_json_mode():
-            output_result({"error": str(exc), "source": "substack"}, success=False)
-        else:
-            console.print(f"[red]Substack ingestion failed:[/red] {exc}")
-        raise typer.Exit(1)
 
-    if is_json_mode():
-        output_result({"source": "substack", "ingested": count})
-    else:
-        console.print(f"[green]Substack ingestion complete.[/green] {count} item(s) ingested.")
+# ---------------------------------------------------------------------------
+# aca ingest substack-sync (always direct — writes config files)
+# ---------------------------------------------------------------------------
 
 
 @app.command("substack-sync")
@@ -240,7 +326,10 @@ def substack_sync(
         typer.Option("--session-cookie", help="Override SUBSTACK_SESSION_COOKIE value."),
     ] = None,
 ) -> None:
-    """Sync Substack subscriptions: paid → substack.yaml, free → rss.yaml."""
+    """Sync Substack subscriptions: paid -> substack.yaml, free -> rss.yaml.
+
+    Always runs directly (writes local config files, not a job queue operation).
+    """
     from rich.console import Console
 
     console = Console()
@@ -273,9 +362,9 @@ def substack_sync(
             removed_msg = f", {result.rss_removed} removed (now in substack.yaml)"
         console.print(
             f"[green]Substack sync complete.[/green]\n"
-            f"  Paid → substack.yaml: {result.substack_added} added, "
+            f"  Paid -> substack.yaml: {result.substack_added} added, "
             f"{result.substack_existing} existing\n"
-            f"  Free → rss.yaml: {result.rss_added} added, "
+            f"  Free -> rss.yaml: {result.rss_added} added, "
             f"{result.rss_existing} already present{removed_msg}"
         )
 
@@ -283,6 +372,54 @@ def substack_sync(
 # ---------------------------------------------------------------------------
 # aca ingest youtube
 # ---------------------------------------------------------------------------
+
+
+def _youtube_direct(
+    source_name: str,
+    func_name: str,
+    max_videos: int,
+    after_date: datetime | None,
+    force: bool,
+    use_oauth: bool = True,
+) -> None:
+    """Direct YouTube ingestion (shared for all youtube variants)."""
+    from rich.console import Console
+
+    console = Console()
+    # Human-readable label with proper capitalization
+    labels: dict[str, str] = {
+        "youtube": "YouTube",
+        "youtube-playlist": "YouTube playlist",
+        "youtube-rss": "YouTube RSS",
+    }
+    label = labels.get(source_name, source_name)
+
+    try:
+        import importlib
+
+        mod = importlib.import_module("src.ingestion.orchestrator")
+        ingest_func = getattr(mod, func_name)
+
+        kwargs: dict[str, Any] = {
+            "max_videos": max_videos,
+            "after_date": after_date,
+            "force_reprocess": force,
+        }
+        if func_name in ("ingest_youtube", "ingest_youtube_playlist"):
+            kwargs["use_oauth"] = use_oauth
+
+        total = ingest_func(**kwargs)
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": source_name}, success=False)
+        else:
+            console.print(f"[red]{label} ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": source_name, "ingested": total})
+    else:
+        console.print(f"[green]{label} ingestion complete.[/green] {total} item(s) ingested.")
 
 
 @app.command("youtube-playlist")
@@ -305,33 +442,23 @@ def youtube_playlist(
     ] = False,
 ) -> None:
     """Ingest content from YouTube playlists and channels."""
-    from rich.console import Console
-
-    console = Console()
     after_date = _days_to_after_date(days)
-    use_oauth = not public_only
+
+    if is_direct_mode():
+        return _youtube_direct(
+            "youtube-playlist", "ingest_youtube_playlist", max, after_date, force, not public_only
+        )
 
     try:
-        from src.ingestion.orchestrator import ingest_youtube_playlist
-
-        total = ingest_youtube_playlist(
-            max_videos=max,
-            after_date=after_date,
-            force_reprocess=force,
-            use_oauth=use_oauth,
-        )
-    except Exception as exc:
-        if is_json_mode():
-            output_result({"error": str(exc), "source": "youtube-playlist"}, success=False)
-        else:
-            console.print(f"[red]YouTube playlist ingestion failed:[/red] {exc}")
-        raise typer.Exit(1)
-
-    if is_json_mode():
-        output_result({"source": "youtube-playlist", "ingested": total})
-    else:
-        console.print(
-            f"[green]YouTube playlist ingestion complete.[/green] {total} item(s) ingested."
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        if public_only:
+            params["public_only"] = True
+        _ingest_via_api("youtube-playlist", params, "YouTube playlist ingestion")
+    except httpx.ConnectError:
+        _youtube_direct(
+            "youtube-playlist", "ingest_youtube_playlist", max, after_date, force, not public_only
         )
 
 
@@ -351,30 +478,18 @@ def youtube_rss(
     ] = False,
 ) -> None:
     """Ingest content from YouTube RSS feeds."""
-    from rich.console import Console
-
-    console = Console()
     after_date = _days_to_after_date(days)
 
+    if is_direct_mode():
+        return _youtube_direct("youtube-rss", "ingest_youtube_rss", max, after_date, force)
+
     try:
-        from src.ingestion.orchestrator import ingest_youtube_rss
-
-        total = ingest_youtube_rss(
-            max_videos=max,
-            after_date=after_date,
-            force_reprocess=force,
-        )
-    except Exception as exc:
-        if is_json_mode():
-            output_result({"error": str(exc), "source": "youtube-rss"}, success=False)
-        else:
-            console.print(f"[red]YouTube RSS ingestion failed:[/red] {exc}")
-        raise typer.Exit(1)
-
-    if is_json_mode():
-        output_result({"source": "youtube-rss", "ingested": total})
-    else:
-        console.print(f"[green]YouTube RSS ingestion complete.[/green] {total} item(s) ingested.")
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        _ingest_via_api("youtube-rss", params, "YouTube RSS ingestion")
+    except httpx.ConnectError:
+        _youtube_direct("youtube-rss", "ingest_youtube_rss", max, after_date, force)
 
 
 @app.command("youtube")
@@ -397,37 +512,67 @@ def youtube(
     ] = False,
 ) -> None:
     """Ingest from all YouTube sources (playlists, channels, and RSS feeds)."""
-    from rich.console import Console
-
-    console = Console()
     after_date = _days_to_after_date(days)
-    use_oauth = not public_only
+
+    if is_direct_mode():
+        return _youtube_direct("youtube", "ingest_youtube", max, after_date, force, not public_only)
 
     try:
-        from src.ingestion.orchestrator import ingest_youtube
-
-        total = ingest_youtube(
-            max_videos=max,
-            after_date=after_date,
-            force_reprocess=force,
-            use_oauth=use_oauth,
-        )
-    except Exception as exc:
-        if is_json_mode():
-            output_result({"error": str(exc), "source": "youtube"}, success=False)
-        else:
-            console.print(f"[red]YouTube ingestion failed:[/red] {exc}")
-        raise typer.Exit(1)
-
-    if is_json_mode():
-        output_result({"source": "youtube", "ingested": total})
-    else:
-        console.print(f"[green]YouTube ingestion complete.[/green] {total} item(s) ingested.")
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        if public_only:
+            params["public_only"] = True
+        _ingest_via_api("youtube", params, "YouTube ingestion")
+    except httpx.ConnectError:
+        _youtube_direct("youtube", "ingest_youtube", max, after_date, force, not public_only)
 
 
 # ---------------------------------------------------------------------------
 # aca ingest podcast
 # ---------------------------------------------------------------------------
+
+
+def _podcast_direct(
+    max_results: int, after_date: datetime | None, force: bool, transcribe: bool
+) -> None:
+    """Direct podcast ingestion."""
+    from rich.console import Console
+
+    console = Console()
+    try:
+        if not transcribe:
+            from src.config import settings
+            from src.ingestion.podcast import PodcastContentIngestionService
+
+            service = PodcastContentIngestionService()
+            sources_config = settings.get_sources_config()
+            sources = sources_config.get_podcast_sources()
+            for source in sources:
+                source.transcribe = False
+            count = service.ingest_all_feeds(
+                sources=sources,
+                max_entries_per_feed=max_results,
+                after_date=after_date,
+                force_reprocess=force,
+            )
+        else:
+            from src.ingestion.orchestrator import ingest_podcast
+
+            count = ingest_podcast(
+                max_entries_per_feed=max_results, after_date=after_date, force_reprocess=force
+            )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "podcast"}, success=False)
+        else:
+            console.print(f"[red]Podcast ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "podcast", "ingested": count})
+    else:
+        console.print(f"[green]Podcast ingestion complete.[/green] {count} episode(s) ingested.")
 
 
 @app.command("podcast")
@@ -452,50 +597,20 @@ def podcast(
     ] = True,
 ) -> None:
     """Ingest episodes from configured podcast feeds."""
-    from rich.console import Console
-
-    console = Console()
     after_date = _days_to_after_date(days)
 
+    if is_direct_mode():
+        return _podcast_direct(max, after_date, force, transcribe)
+
     try:
-        # When --no-transcribe is passed, override per-source transcribe setting
-        # by providing explicit sources with transcribe toggled off.
-        # This requires calling the service directly (orchestrator doesn't
-        # handle custom source overrides).
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
         if not transcribe:
-            from src.config import settings
-            from src.ingestion.podcast import PodcastContentIngestionService
-
-            service = PodcastContentIngestionService()
-            sources_config = settings.get_sources_config()
-            sources = sources_config.get_podcast_sources()
-            for source in sources:
-                source.transcribe = False
-            count = service.ingest_all_feeds(
-                sources=sources,
-                max_entries_per_feed=max,
-                after_date=after_date,
-                force_reprocess=force,
-            )
-        else:
-            from src.ingestion.orchestrator import ingest_podcast
-
-            count = ingest_podcast(
-                max_entries_per_feed=max,
-                after_date=after_date,
-                force_reprocess=force,
-            )
-    except Exception as exc:
-        if is_json_mode():
-            output_result({"error": str(exc), "source": "podcast"}, success=False)
-        else:
-            console.print(f"[red]Podcast ingestion failed:[/red] {exc}")
-        raise typer.Exit(1)
-
-    if is_json_mode():
-        output_result({"source": "podcast", "ingested": count})
-    else:
-        console.print(f"[green]Podcast ingestion complete.[/green] {count} episode(s) ingested.")
+            params["transcribe"] = False
+        _ingest_via_api("podcast", params, "Podcast ingestion")
+    except httpx.ConnectError:
+        _podcast_direct(max, after_date, force, transcribe)
 
 
 # ---------------------------------------------------------------------------
@@ -503,22 +618,8 @@ def podcast(
 # ---------------------------------------------------------------------------
 
 
-@app.command("xsearch")
-def xsearch(
-    prompt: Annotated[
-        str | None,
-        typer.Option("--prompt", "-p", help="Custom search prompt (overrides configured default)."),
-    ] = None,
-    max_threads: Annotated[
-        int | None,
-        typer.Option("--max-threads", "-m", help="Maximum threads to ingest."),
-    ] = None,
-    force: Annotated[
-        bool,
-        typer.Option("--force", "-f", help="Force reprocess existing content."),
-    ] = False,
-) -> None:
-    """Search X via Grok API and ingest AI-relevant posts/threads."""
+def _xsearch_direct(prompt: str | None, max_threads: int | None, force: bool) -> None:
+    """Direct X search ingestion."""
     from dataclasses import asdict
 
     from rich.console import Console
@@ -536,10 +637,7 @@ def xsearch(
         from src.ingestion.orchestrator import ingest_xsearch
 
         count = ingest_xsearch(
-            prompt=prompt,
-            max_threads=max_threads,
-            force_reprocess=force,
-            on_result=_capture_result,
+            prompt=prompt, max_threads=max_threads, force_reprocess=force, on_result=_capture_result
         )
     except Exception as exc:
         if is_json_mode():
@@ -569,35 +667,49 @@ def xsearch(
                 console.print(f"  [dim]{' | '.join(details)}[/dim]")
 
 
-# ---------------------------------------------------------------------------
-# aca ingest perplexity-search
-# ---------------------------------------------------------------------------
-
-
-@app.command("perplexity-search")
-def perplexity_search(
+@app.command("xsearch")
+def xsearch(
     prompt: Annotated[
         str | None,
         typer.Option("--prompt", "-p", help="Custom search prompt (overrides configured default)."),
     ] = None,
-    max_results: Annotated[
+    max_threads: Annotated[
         int | None,
-        typer.Option("--max-results", "-m", help="Maximum results to ingest."),
+        typer.Option("--max-threads", "-m", help="Maximum threads to ingest."),
     ] = None,
     force: Annotated[
         bool,
         typer.Option("--force", "-f", help="Force reprocess existing content."),
     ] = False,
-    recency: Annotated[
-        str | None,
-        typer.Option("--recency", help="Recency filter (hour/day/week/month)."),
-    ] = None,
-    context_size: Annotated[
-        str | None,
-        typer.Option("--context-size", help="Search context size (low/medium/high)."),
-    ] = None,
 ) -> None:
-    """Search the web via Perplexity Sonar API and ingest AI-relevant articles."""
+    """Search X via Grok API and ingest AI-relevant posts/threads."""
+    if is_direct_mode():
+        return _xsearch_direct(prompt, max_threads, force)
+
+    try:
+        params: dict[str, Any] = {"force_reprocess": force}
+        if prompt is not None:
+            params["prompt"] = prompt
+        if max_threads is not None:
+            params["max_threads"] = max_threads
+        _ingest_via_api("xsearch", params, "X search ingestion")
+    except httpx.ConnectError:
+        _xsearch_direct(prompt, max_threads, force)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest perplexity-search
+# ---------------------------------------------------------------------------
+
+
+def _perplexity_direct(
+    prompt: str | None,
+    max_results: int | None,
+    force: bool,
+    recency: str | None,
+    context_size: str | None,
+) -> None:
+    """Direct Perplexity search ingestion."""
     from dataclasses import asdict
 
     from rich.console import Console
@@ -652,8 +764,50 @@ def perplexity_search(
                 console.print(f"  [dim]{' | '.join(details)}[/dim]")
 
 
+@app.command("perplexity-search")
+def perplexity_search(
+    prompt: Annotated[
+        str | None,
+        typer.Option("--prompt", "-p", help="Custom search prompt (overrides configured default)."),
+    ] = None,
+    max_results: Annotated[
+        int | None,
+        typer.Option("--max-results", "-m", help="Maximum results to ingest."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+    recency: Annotated[
+        str | None,
+        typer.Option("--recency", help="Recency filter (hour/day/week/month)."),
+    ] = None,
+    context_size: Annotated[
+        str | None,
+        typer.Option("--context-size", help="Search context size (low/medium/high)."),
+    ] = None,
+) -> None:
+    """Search the web via Perplexity Sonar API and ingest AI-relevant articles."""
+    if is_direct_mode():
+        return _perplexity_direct(prompt, max_results, force, recency, context_size)
+
+    try:
+        params: dict[str, Any] = {"force_reprocess": force}
+        if prompt is not None:
+            params["prompt"] = prompt
+        if max_results is not None:
+            params["max_results"] = max_results
+        if recency is not None:
+            params["recency_filter"] = recency
+        if context_size is not None:
+            params["context_size"] = context_size
+        _ingest_via_api("perplexity", params, "Perplexity search ingestion")
+    except httpx.ConnectError:
+        _perplexity_direct(prompt, max_results, force, recency, context_size)
+
+
 # ---------------------------------------------------------------------------
-# aca ingest files
+# aca ingest files (always direct — requires local file access)
 # ---------------------------------------------------------------------------
 
 
@@ -672,7 +826,10 @@ def files(
         typer.Option("--title", "-t", help="Title override (only for single file)."),
     ] = None,
 ) -> None:
-    """Ingest one or more local files into the content pipeline."""
+    """Ingest one or more local files into the content pipeline.
+
+    Always runs directly (requires local file system access).
+    """
     from rich.console import Console
     from rich.table import Table
 
@@ -696,17 +853,9 @@ def files(
         try:
             from src.cli.adapters import ingest_file_sync
 
-            content = ingest_file_sync(
-                file_path=file_path,
-                publication=publication,
-                title=title,
-            )
+            content = ingest_file_sync(file_path=file_path, publication=publication, title=title)
             results.append(
-                {
-                    "path": str(file_path),
-                    "content_id": content.id,
-                    "title": content.title,
-                }
+                {"path": str(file_path), "content_id": content.id, "title": content.title}
             )
         except Exception as exc:
             err = {"path": str(file_path), "error": str(exc)}
@@ -749,30 +898,13 @@ def files(
 # ---------------------------------------------------------------------------
 
 
-@app.command("url")
-def url(
-    target_url: Annotated[
-        str,
-        typer.Argument(help="URL to ingest."),
-    ],
-    title: Annotated[
-        str | None,
-        typer.Option("--title", "-t", help="Title override for the content."),
-    ] = None,
-    tags: Annotated[
-        list[str] | None,
-        typer.Option("--tag", help="Tag(s) to attach (repeatable)."),
-    ] = None,
-    notes: Annotated[
-        str | None,
-        typer.Option("--notes", "-n", help="Notes to attach to the content."),
-    ] = None,
+def _url_direct(
+    target_url: str, title: str | None, tags: list[str] | None, notes: str | None
 ) -> None:
-    """Ingest a single URL into the content pipeline."""
+    """Direct URL ingestion."""
     from rich.console import Console
 
     console = Console()
-
     try:
         from src.ingestion.orchestrator import ingest_url
 
@@ -800,3 +932,39 @@ def url(
             console.print(
                 f"[green]URL ingested.[/green] Content ID: {result.content_id} (extraction queued)"
             )
+
+
+@app.command("url")
+def url(
+    target_url: Annotated[
+        str,
+        typer.Argument(help="URL to ingest."),
+    ],
+    title: Annotated[
+        str | None,
+        typer.Option("--title", "-t", help="Title override for the content."),
+    ] = None,
+    tags: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="Tag(s) to attach (repeatable)."),
+    ] = None,
+    notes: Annotated[
+        str | None,
+        typer.Option("--notes", "-n", help="Notes to attach to the content."),
+    ] = None,
+) -> None:
+    """Ingest a single URL into the content pipeline."""
+    if is_direct_mode():
+        return _url_direct(target_url, title, tags, notes)
+
+    try:
+        params: dict[str, Any] = {"url": target_url}
+        if title is not None:
+            params["title"] = title
+        if tags is not None:
+            params["tags"] = tags
+        if notes is not None:
+            params["notes"] = notes
+        _ingest_via_api("url", params, "URL ingestion")
+    except httpx.ConnectError:
+        _url_direct(target_url, title, tags, notes)

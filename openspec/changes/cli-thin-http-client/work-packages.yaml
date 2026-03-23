@@ -1,0 +1,394 @@
+# Work Packages for CLI Thin HTTP Client
+# Schema: openspec/schemas/work-packages.schema.json
+
+change_id: cli-thin-http-client
+version: 1
+
+packages:
+  # ============================================================================
+  # Phase 1: Foundation (no behavior change, enables all subsequent packages)
+  # ============================================================================
+  wp-foundation-settings:
+    title: "Settings & Profile extensions for API URL"
+    description: >
+      Add api_base_url and api_timeout to Settings class and wire into profiles.
+      Add --direct flag and direct mode utilities to CLI output module.
+    tasks: [T1.1, T1.2, T1.3, T1.4, T1.5, T1.10]
+    depends_on: []
+    priority: 1
+    scope:
+      write_allow:
+        - "src/config/settings.py"
+        - "src/cli/output.py"
+        - "src/cli/app.py"
+        - "profiles/base.yaml"
+        - "profiles/railway.yaml"
+        - "tests/config/test_settings_api_url.py"
+      read_allow:
+        - "src/config/**"
+        - "profiles/**"
+      deny:
+        - "src/api/**"
+        - "src/queue/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/config/settings.py"
+        - "src/cli/output.py"
+        - "src/cli/app.py"
+        - "profiles/base.yaml"
+        - "profiles/railway.yaml"
+      keys:
+        - "config:settings:api_base_url"
+        - "config:settings:api_timeout"
+        - "cli:global:direct_flag"
+      ttl_minutes: 120
+      reason: "Foundation settings for CLI HTTP client"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/config/test_settings_api_url.py -v"
+        - "pytest tests/cli/test_output.py -v"
+
+  wp-foundation-client:
+    title: "ApiClient class and SSE progress utilities"
+    description: >
+      Create the shared httpx-based API client and SSE progress display.
+      These are new files with no existing code conflicts.
+    tasks: [T1.6, T1.7, T1.8, T1.9]
+    depends_on: [wp-foundation-settings]
+    priority: 1
+    scope:
+      write_allow:
+        - "src/cli/api_client.py"
+        - "src/cli/progress.py"
+        - "tests/cli/test_api_client.py"
+        - "tests/cli/test_progress.py"
+      read_allow:
+        - "src/config/settings.py"
+        - "src/cli/output.py"
+        - "src/models/**"
+      deny:
+        - "src/api/**"
+        - "src/queue/**"
+        - "src/ingestion/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/api_client.py"
+        - "src/cli/progress.py"
+      keys:
+        - "cli:api_client"
+        - "cli:progress_display"
+      ttl_minutes: 120
+      reason: "New shared CLI HTTP client module"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/cli/test_api_client.py -v"
+        - "pytest tests/cli/test_progress.py -v"
+
+  # ============================================================================
+  # Phase 2: API Extensions (backend-only, no CLI changes)
+  # ============================================================================
+  wp-api-ingest-extend:
+    title: "Extend IngestRequest and worker source map"
+    description: >
+      Add source-specific fields to IngestRequest, extend worker handler for
+      xsearch/perplexity/url, and wire Gmail orchestrator to sources.d config.
+    tasks: [T2.1, T2.2, T2.3, T2.4, T2.5, T2.6, T2.7, T2.8, T2.9]
+    depends_on: []
+    priority: 2
+    scope:
+      write_allow:
+        - "src/api/content_routes.py"
+        - "src/queue/worker.py"
+        - "src/queue/setup.py"
+        - "src/ingestion/orchestrator.py"
+        - "tests/api/test_ingest_extended.py"
+        - "tests/queue/test_worker_extended.py"
+        - "tests/ingestion/test_orchestrator_gmail_config.py"
+      read_allow:
+        - "src/ingestion/**"
+        - "src/config/**"
+        - "src/models/**"
+        - "sources.d/**"
+        - "contracts/openapi/v1.yaml"
+      deny:
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/api/content_routes.py"
+        - "src/queue/worker.py"
+        - "src/queue/setup.py"
+        - "src/ingestion/orchestrator.py"
+      keys:
+        - "api:POST /v1/contents/ingest"
+        - "queue:handler:ingest_content"
+        - "ingestion:orchestrator:ingest_gmail"
+      ttl_minutes: 120
+      reason: "Extend ingestion API for all source types"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/api/test_ingest_extended.py -v"
+        - "pytest tests/queue/test_worker_extended.py -v"
+        - "pytest tests/ingestion/test_orchestrator_gmail_config.py -v"
+        - "pytest tests/api/test_content_routes.py -v"
+
+  wp-api-pipeline:
+    title: "Pipeline API endpoint and runner extraction"
+    description: >
+      Create POST /api/v1/pipeline/run endpoint, extract pipeline runner
+      from CLI to shared module, add worker handler.
+    tasks: [T4.1, T4.2, T4.3, T4.4, T4.5, T4.7]
+    depends_on: []
+    priority: 2
+    scope:
+      write_allow:
+        - "src/api/pipeline_routes.py"
+        - "src/api/app.py"
+        - "src/pipeline/__init__.py"
+        - "src/pipeline/runner.py"
+        - "src/models/jobs.py"
+        - "tests/api/test_pipeline_routes.py"
+        - "tests/pipeline/test_runner.py"
+      read_allow:
+        - "src/cli/pipeline_commands.py"
+        - "src/ingestion/orchestrator.py"
+        - "src/processors/**"
+        - "src/queue/**"
+        - "contracts/openapi/v1.yaml"
+      deny:
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/api/pipeline_routes.py"
+        - "src/pipeline/runner.py"
+      keys:
+        - "api:POST /v1/pipeline/run"
+        - "api:GET /v1/pipeline/status"
+        - "queue:handler:run_pipeline"
+      ttl_minutes: 120
+      reason: "New pipeline API endpoint"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/api/test_pipeline_routes.py -v"
+        - "pytest tests/pipeline/test_runner.py -v"
+
+  # ============================================================================
+  # Phase 3: CLI Conversion (depends on foundation + API extensions)
+  # ============================================================================
+  wp-cli-ingest:
+    title: "Convert CLI ingest commands to HTTP client"
+    description: >
+      Refactor all aca ingest commands to use ApiClient by default,
+      with --direct fallback and auto-fallback on connection error.
+    tasks: [T3.1, T3.2, T3.3, T3.4, T3.5, T3.6, T3.7, T3.8]
+    depends_on: [wp-foundation-client, wp-api-ingest-extend]
+    priority: 3
+    scope:
+      write_allow:
+        - "src/cli/ingest_commands.py"
+        - "tests/cli/test_ingest_commands.py"
+        - "tests/cli/test_ingest_http.py"
+      read_allow:
+        - "src/cli/api_client.py"
+        - "src/cli/progress.py"
+        - "src/cli/output.py"
+        - "src/ingestion/**"
+        - "contracts/openapi/v1.yaml"
+      deny:
+        - "src/api/**"
+        - "src/queue/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/ingest_commands.py"
+      keys:
+        - "cli:ingest:gmail"
+        - "cli:ingest:rss"
+        - "cli:ingest:youtube"
+        - "cli:ingest:podcast"
+        - "cli:ingest:substack"
+        - "cli:ingest:xsearch"
+        - "cli:ingest:perplexity"
+        - "cli:ingest:url"
+      ttl_minutes: 180
+      reason: "Major CLI refactoring"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/cli/test_ingest_commands.py -v"
+        - "pytest tests/cli/test_ingest_http.py -v"
+
+  wp-cli-pipeline:
+    title: "Convert CLI pipeline commands to HTTP client"
+    description: >
+      Refactor aca pipeline daily/weekly to call POST /api/v1/pipeline/run.
+    tasks: [T4.6]
+    depends_on: [wp-foundation-client, wp-api-pipeline]
+    priority: 3
+    scope:
+      write_allow:
+        - "src/cli/pipeline_commands.py"
+        - "tests/cli/test_pipeline_commands.py"
+      read_allow:
+        - "src/cli/api_client.py"
+        - "src/cli/progress.py"
+        - "src/pipeline/runner.py"
+      deny:
+        - "src/api/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/pipeline_commands.py"
+      keys:
+        - "cli:pipeline:daily"
+        - "cli:pipeline:weekly"
+      ttl_minutes: 120
+      reason: "Pipeline CLI conversion"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/cli/test_pipeline_commands.py -v"
+
+  wp-cli-summarize-digest:
+    title: "Convert CLI summarize and digest commands to HTTP client"
+    description: >
+      Refactor aca summarize and aca create-digest to call existing API endpoints.
+    tasks: [T5.1, T5.2, T5.3, T5.4, T5.5, T5.6]
+    depends_on: [wp-foundation-client]
+    priority: 3
+    scope:
+      write_allow:
+        - "src/cli/summarize_commands.py"
+        - "src/cli/digest_commands.py"
+        - "src/cli/api_client.py"
+        - "tests/cli/test_summarize_http.py"
+        - "tests/cli/test_digest_http.py"
+      read_allow:
+        - "src/cli/progress.py"
+        - "src/cli/output.py"
+        - "src/api/content_routes.py"
+        - "src/api/digest_routes.py"
+      deny:
+        - "src/api/**"
+        - "src/queue/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/summarize_commands.py"
+        - "src/cli/digest_commands.py"
+      keys:
+        - "cli:summarize:pending"
+        - "cli:summarize:id"
+        - "cli:digest:daily"
+        - "cli:digest:weekly"
+      ttl_minutes: 120
+      reason: "Summarize and digest CLI conversion"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/cli/test_summarize_http.py -v"
+        - "pytest tests/cli/test_digest_http.py -v"
+
+  wp-cli-remaining:
+    title: "Convert remaining CLI commands to HTTP client"
+    description: >
+      Convert review, analyze, podcast, jobs, settings, prompts commands.
+    tasks: [T6.1, T6.2, T6.3, T6.4, T6.5, T6.6, T6.7]
+    depends_on: [wp-foundation-client]
+    priority: 4
+    scope:
+      write_allow:
+        - "src/cli/review_commands.py"
+        - "src/cli/analyze_commands.py"
+        - "src/cli/podcast_commands.py"
+        - "src/cli/job_commands.py"
+        - "src/cli/settings_commands.py"
+        - "src/cli/prompt_commands.py"
+        - "src/cli/api_client.py"
+        - "tests/cli/test_*_http.py"
+      read_allow:
+        - "src/cli/progress.py"
+        - "src/cli/output.py"
+        - "src/api/**"
+      deny:
+        - "src/api/**"
+        - "src/queue/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/review_commands.py"
+        - "src/cli/analyze_commands.py"
+        - "src/cli/podcast_commands.py"
+        - "src/cli/job_commands.py"
+        - "src/cli/settings_commands.py"
+        - "src/cli/prompt_commands.py"
+      keys:
+        - "cli:review"
+        - "cli:analyze"
+        - "cli:podcast"
+        - "cli:jobs"
+        - "cli:settings"
+        - "cli:prompts"
+      ttl_minutes: 180
+      reason: "Remaining CLI command conversions"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/cli/ -v"
+
+  # ============================================================================
+  # Integration (always last)
+  # ============================================================================
+  wp-integration:
+    title: "Integration testing and verification"
+    description: >
+      Merge all work packages, run full test suite, verify end-to-end
+      CLI → API → Worker → Service flow.
+    tasks: []
+    depends_on:
+      - wp-cli-ingest
+      - wp-cli-pipeline
+      - wp-cli-summarize-digest
+      - wp-cli-remaining
+    priority: 10
+    scope:
+      write_allow:
+        - "tests/**"
+        - "docs/**"
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "integration:full-suite"
+      ttl_minutes: 60
+      reason: "Integration verification"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/ -v --ignore=tests/contract --ignore=tests/security -x"
+        - "ruff check src/ tests/"
+        - "mypy src/"
+
+# DAG Visualization:
+#
+#   wp-foundation-settings ──▶ wp-foundation-client ──┬──▶ wp-cli-ingest ────────────┐
+#                                                     ├──▶ wp-cli-pipeline ──────────┤
+#   wp-api-ingest-extend ─────────────────────────────┤                              │
+#                                                     ├──▶ wp-cli-summarize-digest ──┤
+#   wp-api-pipeline ──────────────────────────────────┘                              │
+#                                                     └──▶ wp-cli-remaining ─────────┤
+#                                                                                    ▼
+#                                                                            wp-integration
+#
+# Parallel zones:
+#   - wp-api-ingest-extend ∥ wp-api-pipeline ∥ wp-foundation-settings  (all independent)
+#   - wp-cli-ingest ∥ wp-cli-pipeline ∥ wp-cli-summarize-digest ∥ wp-cli-remaining  (non-overlapping scopes)

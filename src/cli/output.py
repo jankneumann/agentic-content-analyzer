@@ -15,6 +15,9 @@ import typer
 # Module-level JSON output flag
 _json_mode = False
 
+# Module-level direct execution flag (bypass API, call services directly)
+_direct_mode = False
+
 
 def _set_json_mode(enabled: bool) -> None:
     global _json_mode
@@ -23,6 +26,15 @@ def _set_json_mode(enabled: bool) -> None:
 
 def is_json_mode() -> bool:
     return _json_mode
+
+
+def _set_direct_mode(enabled: bool) -> None:
+    global _direct_mode
+    _direct_mode = enabled
+
+
+def is_direct_mode() -> bool:
+    return _direct_mode
 
 
 def output_result(data: dict | list | str, success: bool = True) -> None:

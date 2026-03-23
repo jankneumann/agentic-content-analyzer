@@ -34,6 +34,10 @@ settings:
   # CORS - update with your Railway frontend URL
   allowed_origins: "${ALLOWED_ORIGINS:-https://your-app.up.railway.app}"
 
+  api:
+    api_base_url: "${API_BASE_URL:-https://your-app.up.railway.app}"
+    api_timeout: 300
+
   database:
     # Railway auto-injects DATABASE_URL or RAILWAY_DATABASE_URL
     railway_database_url: "${RAILWAY_DATABASE_URL:-${DATABASE_URL}}"
