@@ -8,7 +8,6 @@ consistent hashes for detecting duplicate content across different sources
 import hashlib
 import re
 
-
 # Pre-compile combined regex patterns for significant performance improvement
 # during repeated deduplication calls
 FOOTER_PATTERN = re.compile(
