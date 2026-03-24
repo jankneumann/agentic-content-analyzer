@@ -474,7 +474,7 @@ class TestClose:
         client = ApiClient(base_url="http://test")
         client.close()
         # After close, the client should be unusable
-        with pytest.raises(httpx.HTTPError):
+        with pytest.raises(RuntimeError, match="client has been closed"):
             client._client.get("/health")
 
 

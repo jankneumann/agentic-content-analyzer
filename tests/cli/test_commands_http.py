@@ -31,7 +31,7 @@ class TestReviewListHTTP:
         """review list calls client.list_digests with pending_review status."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_client.list_digests.return_value = []
+        mock_client.list_digests.return_value = {"digests": [], "total": 0}
 
         result = runner.invoke(app, ["review", "list"])
         assert result.exit_code == 0
@@ -42,19 +42,22 @@ class TestReviewListHTTP:
         """review list renders returned digests."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_client.list_digests.return_value = [
-            {
-                "id": 1,
-                "digest_type": "daily",
-                "title": "Test Digest",
-                "status": "pending_review",
-                "period_start": "2025-01-15",
-                "period_end": "2025-01-16",
-                "newsletter_count": 5,
-                "revision_count": 0,
-                "created_at": "2025-01-15 10:00",
-            }
-        ]
+        mock_client.list_digests.return_value = {
+            "digests": [
+                {
+                    "id": 1,
+                    "digest_type": "daily",
+                    "title": "Test Digest",
+                    "status": "pending_review",
+                    "period_start": "2025-01-15",
+                    "period_end": "2025-01-16",
+                    "newsletter_count": 5,
+                    "revision_count": 0,
+                    "created_at": "2025-01-15 10:00",
+                }
+            ],
+            "total": 1,
+        }
 
         result = runner.invoke(app, ["review", "list"])
         assert result.exit_code == 0
