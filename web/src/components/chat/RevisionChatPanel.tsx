@@ -151,6 +151,7 @@ export function RevisionChatPanel({
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const charCountId = React.useId()
 
   // Debug context state
   const [debugDialogOpen, setDebugDialogOpen] = React.useState(false)
@@ -492,6 +493,7 @@ export function RevisionChatPanel({
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
+                aria-describedby={charCountId}
                 disabled={isStreaming}
                 className="max-h-[120px] min-h-[60px] resize-none pr-12 text-sm"
                 rows={2}
@@ -565,6 +567,7 @@ export function RevisionChatPanel({
                   Web Search
                 </Toggle>
                 <span
+                  id={charCountId}
                   className={cn(
                     "text-muted-foreground text-xs transition-colors",
                     input.length > maxMessageLength * 0.9 &&
