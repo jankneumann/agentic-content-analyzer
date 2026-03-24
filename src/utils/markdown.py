@@ -59,6 +59,12 @@ HASHTAG_PATTERN = re.compile(r"#([a-zA-Z][a-zA-Z0-9_-]*)")
 # Pattern for relevance scores: **Category Name**: 0.85 or Category Name: 0.85
 SCORE_PATTERN = re.compile(r"(?:\*\*)?([A-Za-z][A-Za-z0-9 _-]+?)(?:\*\*)?:\s*(\d+\.?\d*)")
 
+# Patterns for text cleaning and normalization
+CLEAN_PATTERN = re.compile(r"[\*\`]+")
+KEBAB_CAMEL_PATTERN1 = re.compile(r"[-_]")
+KEBAB_CAMEL_PATTERN2 = re.compile(r"([a-z])([A-Z])")
+NORMALIZE_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
+
 
 def parse_sections(markdown: str) -> list[MarkdownSection]:
     """Parse markdown content into structured sections.
@@ -173,7 +179,7 @@ def extract_theme_tags(markdown: str) -> list[str]:
         if section.heading.lower() in ("key themes", "themes"):
             for item in section.items:
                 # Clean up item (remove markdown formatting)
-                clean = re.sub(r"\*\*|\*|`", "", item).strip()
+                clean = CLEAN_PATTERN.sub("", item).strip()
                 normalized = clean.lower()
                 if normalized and normalized not in seen:
                     themes.append(clean)
@@ -183,8 +189,8 @@ def extract_theme_tags(markdown: str) -> list[str]:
     for match in HASHTAG_PATTERN.finditer(markdown):
         tag = match.group(1)
         # Convert kebab-case or camelCase to spaces
-        tag_clean = re.sub(r"[-_]", " ", tag)
-        tag_clean = re.sub(r"([a-z])([A-Z])", r"\1 \2", tag_clean)
+        tag_clean = KEBAB_CAMEL_PATTERN1.sub(" ", tag)
+        tag_clean = KEBAB_CAMEL_PATTERN2.sub(r"\1 \2", tag_clean)
         normalized = tag_clean.lower()
         if normalized not in seen:
             themes.append(tag_clean)
@@ -439,7 +445,7 @@ def _normalize_key(text: str) -> str:
     removes special characters.
     """
     key = text.lower().strip()
-    key = re.sub(r"[^a-z0-9]+", "_", key)
+    key = NORMALIZE_KEY_PATTERN.sub("_", key)
     key = key.strip("_")
     return key
 
