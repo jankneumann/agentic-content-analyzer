@@ -1,94 +1,51 @@
 # Implementation Tasks
 
-## 1. Docker Configuration
+## Phase 1: ParadeDB Image Migration
 
-- [ ] 1.1 Create `Dockerfile` with multi-stage build:
-  - Stage 1: Install dependencies with uv
-  - Stage 2: Copy application code
-  - Stage 3: Runtime image (slim)
-- [ ] 1.2 Create `.dockerignore`:
-  - Exclude `.git`, `__pycache__`, `.venv`
-  - Exclude test files, docs, local data
-- [ ] 1.3 Test Docker build locally
-- [ ] 1.4 Verify image size is reasonable (<500MB)
+- [ ] **T1.1** Update `docker-compose.yml`: change `pgvector/pgvector:pg17` to `paradedb/paradedb:<pinned-tag>`
+- [ ] **T1.2** Update `.github/workflows/ci.yml`: change both service container images to `paradedb/paradedb:<pinned-tag>`
+- [ ] **T1.3** Verify all Alembic migrations pass against ParadeDB image locally
+- [ ] **T1.4** Verify pg_search BM25 index creation succeeds (currently conditional with IF EXISTS guard)
+- [ ] **T1.5** Verify pgvector extension and vector operations work identically
+- [ ] **T1.6** Verify pg_cron helper function creation in migrations
+- [ ] **T1.7** Update `CLAUDE.md` gotchas: replace pgvector/pgvector:pg17 references with ParadeDB
+- [ ] **T1.8** Update Railway Dockerfile if it references pgvector base image
+- [ ] **T1.9** Write tests: run full CI test suite + contract tests against ParadeDB image
 
-## 2. CI Workflow
+## Phase 2: CI Pipeline Improvements
+> Depends on: Phase 1 (ParadeDB image in CI)
 
-- [ ] 2.1 Create `.github/workflows/ci.yml`
-- [ ] 2.2 Add lint job (ruff check)
-- [ ] 2.3 Add typecheck job (mypy)
-- [ ] 2.4 Add test job with service containers:
-  - PostgreSQL 15
-  - Redis 7
-- [ ] 2.5 Add Docker build verification job
-- [ ] 2.6 Configure job parallelization
-- [ ] 2.7 Add coverage reporting (codecov or similar)
-- [ ] 2.8 Add PR comment with test results
+- [ ] **T2.1** Add mypy type-check job to `.github/workflows/ci.yml` (currently only ruff runs)
+- [ ] **T2.2** Add coverage threshold gate: `pytest --cov --cov-fail-under=25`
+- [ ] **T2.3** Add coverage report upload (codecov or GitHub summary)
+- [ ] **T2.4** Verify all 4 CI jobs pass: lint, test, contract-test, validate-profiles
 
-## 3. CD Workflow
+## Phase 3: CD Pipeline (Railway Deployment)
+> Depends on: Phase 2 (CI improvements stable)
 
-- [ ] 3.1 Create `.github/workflows/deploy.yml`
-- [ ] 3.2 Add Docker build and push job:
-  - Tag with commit SHA
-  - Tag with `latest`
-  - Push to ghcr.io
-- [ ] 3.3 Add staging migration job
-- [ ] 3.4 Add staging deployment job
-- [ ] 3.5 Add production migration job (manual approval)
-- [ ] 3.6 Add production deployment job
+- [ ] **T3.1** Create `.github/workflows/deploy.yml` with Railway CLI
+- [ ] **T3.2** Add staging deployment job (auto-trigger on main merge)
+- [ ] **T3.3** Add staging migration step: `alembic upgrade head` against staging DB
+- [ ] **T3.4** Add production deployment job with manual approval gate
+- [ ] **T3.5** Add production migration step: `alembic upgrade head` against production DB
+- [ ] **T3.6** Configure GitHub Environment: `staging` with deployment protection
+- [ ] **T3.7** Configure GitHub Environment: `production` with required reviewers
+- [ ] **T3.8** Add RAILWAY_TOKEN as repository secret
+- [ ] **T3.9** Test staging deployment end-to-end
 
-## 4. Environment Setup
+## Phase 4: Dependency & Governance
+> Independent of Phases 1-3
 
-- [ ] 4.1 Create GitHub Environment: `staging`
-- [ ] 4.2 Create GitHub Environment: `production`
-- [ ] 4.3 Configure production approval requirement
-- [ ] 4.4 Add environment secrets:
-  - DATABASE_URL
-  - REDIS_URL
-  - ANTHROPIC_API_KEY
-  - NEO4J credentials (if used)
-- [ ] 4.5 Document secrets in README
+- [ ] **T4.1** Create `.github/dependabot.yml` with pip, github-actions, docker ecosystems
+- [ ] **T4.2** Configure weekly schedule, grouped updates, auto-merge for patch versions
+- [ ] **T4.3** Create `.github/CODEOWNERS` mapping src/, web/, .github/ to appropriate reviewers
+- [ ] **T4.4** Document branch protection settings to apply manually
+- [ ] **T4.5** Enable branch protection on main: require CI pass + review approval
 
-## 5. Docker Compose Updates
+## Phase 5: Documentation
+> Depends on: Phases 1-4
 
-- [ ] 5.1 Update `docker-compose.yml` for local dev parity
-- [ ] 5.2 Create `docker-compose.prod.yml` for production
-- [ ] 5.3 Add Opik service to docker-compose.yml
-- [ ] 5.4 Add healthcheck configurations
-- [ ] 5.5 Document compose file differences
-
-## 6. Deployment Scripts
-
-- [ ] 6.1 Create `scripts/deploy.sh` for server-side deployment
-- [ ] 6.2 Add graceful shutdown handling
-- [ ] 6.3 Add rollback script
-- [ ] 6.4 Document deployment process
-
-## 7. Dependency Management
-
-- [ ] 7.1 Create `.github/dependabot.yml`
-- [ ] 7.2 Configure Python dependency updates
-- [ ] 7.3 Configure GitHub Actions updates
-- [ ] 7.4 Configure Docker base image updates
-
-## 8. Branch Protection
-
-- [ ] 8.1 Enable branch protection on main
-- [ ] 8.2 Require CI to pass before merge
-- [ ] 8.3 Require review approval
-- [ ] 8.4 Create CODEOWNERS file
-
-## 9. Testing
-
-- [ ] 9.1 Test CI workflow on feature branch
-- [ ] 9.2 Test Docker build in CI
-- [ ] 9.3 Test deployment to staging
-- [ ] 9.4 Verify rollback procedure
-
-## 10. Documentation
-
-- [ ] 10.1 Document CI/CD pipeline in docs/
-- [ ] 10.2 Document environment setup
-- [ ] 10.3 Document deployment procedure
-- [ ] 10.4 Document rollback procedure
-- [ ] 10.5 Add badges to README (CI status, coverage)
+- [ ] **T5.1** Update `docs/SETUP.md` with deployment pipeline documentation
+- [ ] **T5.2** Document ParadeDB migration in `docs/SETUP.md` PostgreSQL section
+- [ ] **T5.3** Update `CLAUDE.md` deployment section and quick links
+- [ ] **T5.4** Add CI status badge to README

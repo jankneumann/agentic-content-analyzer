@@ -1,45 +1,44 @@
-# Change: Add Deployment Pipeline with GitHub Actions
+# Change: Complete Deployment Pipeline & Migrate to ParadeDB
 
 ## Why
 
-The project lacks automated CI/CD, requiring manual steps for:
-- Running tests before merge
-- Building and pushing Docker images
-- Running database migrations
-- Deploying to environments
-
-By adding a GitHub Actions pipeline:
-
-1. **Quality gates**: Automated tests, linting, type checking on every PR
-2. **Consistent builds**: Docker images built and tagged automatically
-3. **Safe deployments**: Migrations run in CI, staged rollouts
-4. **Environment parity**: Same image runs in dev, staging, production
+The project has a working CI pipeline (lint, test, contract-test, profile-validation) but lacks:
+- **CD pipeline**: No automated deployment after merge — Railway deployments are triggered manually
+- **Dependency management**: No Dependabot for automated security/version updates
+- **Code ownership**: No CODEOWNERS for review routing
+- **Branch protection**: CI must pass but no formal branch protection rules configured
+- **Coverage gates**: Tests run but no coverage threshold enforced
+- **PostgreSQL image consolidation**: Dev/CI use `pgvector/pgvector:pg17` which only includes pgvector. The codebase also uses pg_search (BM25 full-text), pg_cron (scheduled jobs), and pgmq. These require either a custom-built Railway Docker image (~20min compile) or manual installation. ParadeDB bundles all essential extensions pre-built.
 
 ## What Changes
 
-### CI Pipeline (Pull Requests)
-- **NEW**: `.github/workflows/ci.yml`
-  - Run pytest with coverage
-  - Run ruff (linting)
-  - Run mypy (type checking)
-  - Build Docker image (verify it builds)
-
 ### CD Pipeline (Main Branch)
 - **NEW**: `.github/workflows/deploy.yml`
-  - Build and push to GitHub Container Registry (ghcr.io)
-  - Tag with commit SHA and `latest`
-  - Run Alembic migrations (staging, then production)
-  - Deploy to target environment
+  - Trigger Railway deployment via Railway CLI
+  - Run Alembic migrations against staging, then production
+  - Manual approval gate for production deployment
+  - Tag releases with commit SHA
 
-### Docker Configuration
-- **NEW**: `Dockerfile` (multi-stage, optimized)
-- **NEW**: `.dockerignore`
-- **MODIFIED**: `docker-compose.yml` for local dev parity
+### CI Pipeline Improvements
+- **MODIFIED**: `.github/workflows/ci.yml`
+  - Add coverage reporting with threshold gate
+  - Migrate service container from `pgvector/pgvector:pg17` to `paradedb/paradedb:latest`
+  - Add mypy job (currently missing from CI — only ruff runs)
 
-### Environment Configuration
-- **NEW**: `.github/workflows/` workflow files
-- **NEW**: Environment secrets configuration guide
-- **MODIFIED**: Settings to support environment-specific config
+### PostgreSQL Image Migration
+- **MODIFIED**: `docker-compose.yml` — switch from `pgvector/pgvector:pg17` to `paradedb/paradedb:latest`
+- **MODIFIED**: `.github/workflows/ci.yml` — same image switch for service containers
+- **MODIFIED**: `Dockerfile` — update Railway production image base (if applicable)
+- **IMPACT**: ParadeDB includes pgvector, pg_search, pg_cron, pgmq, pg_ivm pre-built — eliminates custom Railway image build and manual extension installation
+
+### Dependency & Governance
+- **NEW**: `.github/dependabot.yml` — Python, GitHub Actions, Docker base image updates
+- **NEW**: `.github/CODEOWNERS` — review routing for src/, web/, .github/
+- **MODIFIED**: GitHub branch protection settings (documented, applied manually)
+
+### Documentation
+- **MODIFIED**: `docs/SETUP.md` — deployment documentation
+- **MODIFIED**: `CLAUDE.md` — update PostgreSQL image references and gotchas
 
 ## Pipeline Stages
 
@@ -48,90 +47,63 @@ PR Created/Updated
     │
     ▼
 ┌─────────────────────────────────────────────┐
-│ CI: Lint + Type Check + Test                │
-│ ├─ ruff check src/                          │
-│ ├─ mypy src/                                │
-│ ├─ pytest --cov                             │
-│ └─ docker build (verify)                    │
+│ CI: Lint + Type Check + Test  [EXISTS]       │
+│ ├─ ruff check + format check                │
+│ ├─ mypy src/  [ADD]                         │
+│ ├─ Alembic single-head check                │
+│ ├─ pytest --cov (threshold gate) [IMPROVE]  │
+│ ├─ Contract/fuzz tests (Schemathesis)       │
+│ └─ Profile validation + secrets scan        │
 └─────────────────────────────────────────────┘
     │
     ▼ (merge to main)
 ┌─────────────────────────────────────────────┐
-│ CD: Build & Push                            │
-│ ├─ docker build --tag ghcr.io/org/app:sha  │
-│ └─ docker push                              │
-└─────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────┐
-│ CD: Deploy Staging                          │
-│ ├─ alembic upgrade head                     │
-│ └─ deploy (docker-compose pull && up)       │
+│ CD: Deploy Staging  [NEW]                   │
+│ ├─ railway deploy --environment staging     │
+│ └─ alembic upgrade head (staging DB)        │
 └─────────────────────────────────────────────┘
     │
     ▼ (manual approval)
 ┌─────────────────────────────────────────────┐
-│ CD: Deploy Production                       │
-│ ├─ alembic upgrade head                     │
-│ └─ deploy                                   │
+│ CD: Deploy Production  [NEW]                │
+│ ├─ alembic upgrade head (production DB)     │
+│ └─ railway deploy --environment production  │
 └─────────────────────────────────────────────┘
-```
-
-## Configuration
-
-```yaml
-# .github/workflows/ci.yml (simplified)
-name: CI
-on: [pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-      redis:
-        image: redis:7
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync
-      - run: uv run ruff check src/
-      - run: uv run mypy src/
-      - run: uv run pytest --cov
 ```
 
 ## Secrets Required
 
-| Secret | Purpose |
-|--------|---------|
-| `GHCR_TOKEN` | Push to GitHub Container Registry |
-| `DATABASE_URL_STAGING` | Staging database for migrations |
-| `DATABASE_URL_PRODUCTION` | Production database |
-| `ANTHROPIC_API_KEY` | For integration tests |
-| `OPIK_API_KEY` | Opik/Comet authentication for telemetry (if enabled) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry exporter endpoint (if enabled) |
+| Secret | Scope | Purpose |
+|--------|-------|---------|
+| `RAILWAY_TOKEN` | Repository | Railway CLI authentication for deployments |
+| `DATABASE_URL_STAGING` | Environment: staging | Staging database for migrations |
+| `DATABASE_URL_PRODUCTION` | Environment: production | Production database for migrations |
+| `ANTHROPIC_API_KEY` | Repository | For CI integration tests |
+| `ADMIN_API_KEY` | Repository | For CI contract tests |
+| `APP_SECRET_KEY` | Repository | For CI contract tests |
 
 ## Impact
 
-- **New spec**: `deployment` - CI/CD pipeline
+- **Modified spec**: `deployment` — CI/CD pipeline (existing spec updated)
 - **New files**:
-  - `.github/workflows/ci.yml`
   - `.github/workflows/deploy.yml`
-  - `Dockerfile`
-  - `.dockerignore`
+  - `.github/dependabot.yml`
+  - `.github/CODEOWNERS`
 - **Modified**:
-  - `docker-compose.yml` - Ensure parity with production
-  - `docs/SETUP.md` - Add deployment documentation
+  - `.github/workflows/ci.yml` — coverage gate, mypy, ParadeDB image
+  - `docker-compose.yml` — ParadeDB image migration
+  - `Dockerfile` — ParadeDB base image (if applicable)
+  - `docs/SETUP.md` — deployment documentation
+  - `CLAUDE.md` — updated PostgreSQL image gotchas
 
 ## Related Proposals
 
-- **add-observability**: Add Opik to docker-compose for local dev
-- **add-test-infrastructure**: Tests must pass in CI
-- **add-hoverfly-api-simulation**: Hoverfly runs in CI for integration tests
+- **harden-public-repo-security**: Branch protection, secrets scanning (complementary)
 
 ## Non-Goals
 
-- Kubernetes deployment (docker-compose for now)
+- Kubernetes deployment (Railway handles orchestration)
 - Multi-region deployment
-- Blue-green deployments (can add later)
+- Blue-green deployments
 - Infrastructure as Code (Terraform/Pulumi)
+- GHCR image registry (Railway builds from source)

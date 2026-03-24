@@ -1,0 +1,130 @@
+{
+  "review_type": "plan",
+  "target": "add-deployment-pipeline",
+  "reviewer_vendor": "claude-opus-4-6",
+  "reviewed_at": "2026-03-24T22:00:00Z",
+  "overall_disposition": "revise",
+  "summary": "Proposal is partially obsolete — CI pipeline, Dockerfile, and .dockerignore already exist. Requires major revision to reflect current codebase state. Remaining value is CD pipeline, Dependabot, CODEOWNERS, and deployment scripts (~40% of original scope).",
+  "findings": [
+    {
+      "id": 1,
+      "type": "correctness",
+      "criticality": "critical",
+      "description": "Proposal marks Dockerfile, .dockerignore, and .github/workflows/ci.yml as NEW, but all three already exist in the repository. The Dockerfile is a multi-stage build with Python 3.12, uv dependency management, and Braintrust extra. ci.yml has lint, test, contract-test, and validate-profiles jobs.",
+      "resolution": "Remove tasks 1.1-1.4 (Docker config), 2.1-2.6 (CI workflow creation). Replace with tasks to audit/improve existing files. Focus remaining effort on deploy.yml, dependabot.yml, CODEOWNERS, and deployment scripts.",
+      "disposition": "fix"
+    },
+    {
+      "id": 2,
+      "type": "correctness",
+      "criticality": "critical",
+      "description": "Proposal specifies Redis service container (redis:7) in CI and mentions Redis in docker-compose. Redis was completely removed from the project — no application code uses it (removed from docker-compose, settings, profiles, CI, pyproject.toml).",
+      "resolution": "Remove all Redis references from proposal.md, design.md, and tasks.md. Remove REDIS_URL from secrets table.",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Proposal specifies postgres:15 image but the project uses pgvector/pgvector:pg17. Both docker-compose.yml and ci.yml already use pg17. Using postgres:15 would miss pgvector extension and cause test failures for search/embedding tests.",
+      "resolution": "Update all PostgreSQL references from postgres:15 to pgvector/pgvector:pg17 to match existing configuration.",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Proposal specifies python:3.11-slim in Dockerfile but the project requires Python >=3.12 (pyproject.toml) and the existing Dockerfile uses python:3.12-slim.",
+      "resolution": "Update Dockerfile references from python:3.11-slim to python:3.12-slim.",
+      "disposition": "fix"
+    },
+    {
+      "id": 5,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Design doc mentions 'uv sync --frozen --no-dev' for dependency install but the existing Dockerfile uses 'uv sync --frozen --no-dev --no-editable --extra braintrust'. Missing --extra braintrust causes silent import failure in production (documented in CLAUDE.md gotchas).",
+      "resolution": "Update Dockerfile examples to include --extra braintrust flag.",
+      "disposition": "fix"
+    },
+    {
+      "id": 6,
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Spec requires coverage threshold ('pytest SHALL pass with configured coverage threshold') but neither the spec nor design doc specifies what the threshold is. The existing ci.yml runs tests without --cov flag and has no coverage gate.",
+      "resolution": "Either specify a concrete coverage threshold (e.g., 70%) or remove the coverage requirement and add it as a future enhancement.",
+      "disposition": "fix"
+    },
+    {
+      "id": 7,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Spec has no requirement for Alembic single-head enforcement, but the existing ci.yml already runs 'python scripts/check_alembic_heads.py' in the lint job. This is a critical quality gate (documented in CLAUDE.md) that the spec should capture.",
+      "resolution": "Add a spec scenario: 'GIVEN a pull request, WHEN CI runs, THEN Alembic SHALL have a single migration head.'",
+      "disposition": "fix"
+    },
+    {
+      "id": 8,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "No requirement for profile validation in CI. The existing ci.yml has a validate-profiles job that validates all profiles/*.yaml and checks for hardcoded secrets. This should be in the spec.",
+      "resolution": "Add spec scenarios for profile validation and secrets scanning in CI.",
+      "disposition": "fix"
+    },
+    {
+      "id": 9,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "No requirement for contract/fuzz testing in CI. The existing ci.yml has a contract-test job running Schemathesis. This is a significant quality gate not captured in the spec.",
+      "resolution": "Add spec scenario for API contract testing via Schemathesis.",
+      "disposition": "fix"
+    },
+    {
+      "id": 10,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Design proposes 'docker-compose pull && up' deployment strategy (Decision 6) but the project deploys to Railway (see docs/MOBILE_DEPLOYMENT.md, skills/aca-deployment, railway.yaml profile). The deployment target is Railway, not a docker-compose-managed server.",
+      "resolution": "Revise deployment strategy to align with Railway deployment model. The CD pipeline should trigger Railway deployment via Railway CLI or API, not docker-compose. Reference existing aca-deployment skill and Railway deployment docs.",
+      "disposition": "fix"
+    },
+    {
+      "id": 11,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Proposal lists GHCR_TOKEN for pushing to GitHub Container Registry, but the existing Dockerfile and docker-compose.yml suggest the production image is built and deployed by Railway directly (Railway builds from source). GHCR may not be needed if Railway handles the build.",
+      "resolution": "Clarify whether GHCR is needed alongside Railway's built-in builder. If Railway builds from source, the CD pipeline only needs to trigger a Railway deployment, not push to GHCR.",
+      "disposition": "fix"
+    },
+    {
+      "id": 12,
+      "type": "security",
+      "criticality": "medium",
+      "description": "Task 4.4 lists NEO4J credentials as environment secrets but Neo4j credentials are already managed via profile-based configuration (.secrets.yaml + profiles). Adding them as GitHub Environment secrets creates a second source of truth.",
+      "resolution": "Document that secrets are managed via Railway environment variables (for production) and .secrets.yaml (for development). GitHub Environment secrets should only store values that the CD pipeline itself needs (e.g., RAILWAY_TOKEN).",
+      "disposition": "fix"
+    },
+    {
+      "id": 13,
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "Spec requires image tagging with commit SHA and 'latest' but has no requirement for semantic version tags. Railway may need specific tags or branches for deployment triggers.",
+      "resolution": "Consider adding requirement for branch-based or semver tags if Railway deployment is trigger-based.",
+      "disposition": "accept"
+    },
+    {
+      "id": 14,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "Task 5.3 proposes adding Opik service to docker-compose.yml, but Opik already has its own docker-compose.opik.yml (managed via 'make opik-up'). Merging into the main file would force all developers to run Opik.",
+      "resolution": "Keep Opik in its separate compose file. This task is already done and should be removed.",
+      "disposition": "fix"
+    },
+    {
+      "id": 15,
+      "type": "style",
+      "criticality": "low",
+      "description": "Tasks are numbered 1-10 but count to 49 items total. The numbering uses section.item format (1.1, 1.2...) which is clear but some sections have very different granularity (Section 1 has 4 tasks, Section 2 has 8).",
+      "resolution": "After removing completed/obsolete tasks, re-balance remaining sections for consistent granularity.",
+      "disposition": "accept"
+    }
+  ]
+}
