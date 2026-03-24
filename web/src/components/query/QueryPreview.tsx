@@ -19,24 +19,36 @@ interface QueryPreviewProps {
   onRetry?: () => void
 }
 
-export function QueryPreview({ preview, isLoading, error, onRetry }: QueryPreviewProps) {
+export function QueryPreview({
+  preview,
+  isLoading,
+  error,
+  onRetry,
+}: QueryPreviewProps) {
   const [expanded, setExpanded] = React.useState(false)
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 rounded-md border p-3 bg-muted/30">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Loading preview...</span>
+      <div className="bg-muted/30 flex items-center gap-2 rounded-md border p-3">
+        <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+        <span className="text-muted-foreground text-sm">
+          Loading preview...
+        </span>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="rounded-md border border-destructive/50 p-3 bg-destructive/5">
-        <p className="text-sm text-destructive">Failed to load preview</p>
+      <div className="border-destructive/50 bg-destructive/5 rounded-md border p-3">
+        <p className="text-destructive text-sm">Failed to load preview</p>
         {onRetry && (
-          <Button variant="ghost" size="sm" className="mt-1 h-7 text-xs" onClick={onRetry}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1 h-7 text-xs"
+            onClick={onRetry}
+          >
             Retry
           </Button>
         )}
@@ -48,24 +60,29 @@ export function QueryPreview({ preview, isLoading, error, onRetry }: QueryPrevie
 
   if (preview.total_count === 0) {
     return (
-      <div className="rounded-md border p-3 bg-muted/30">
-        <p className="text-sm text-muted-foreground">No content matches the current filters.</p>
+      <div className="bg-muted/30 rounded-md border p-3">
+        <p className="text-muted-foreground text-sm">
+          No content matches the current filters.
+        </p>
       </div>
     )
   }
 
-  const visibleTitles = expanded ? preview.sample_titles : preview.sample_titles.slice(0, 3)
+  const visibleTitles = expanded
+    ? preview.sample_titles
+    : preview.sample_titles.slice(0, 3)
   const hasMoreTitles = preview.sample_titles.length > 3
 
   return (
-    <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+    <div className="bg-muted/30 space-y-2 rounded-md border p-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">
           {preview.total_count} item{preview.total_count !== 1 ? "s" : ""} match
         </span>
         {preview.date_range.earliest && preview.date_range.latest && (
-          <span className="text-xs text-muted-foreground">
-            {preview.date_range.earliest.slice(0, 10)} - {preview.date_range.latest.slice(0, 10)}
+          <span className="text-muted-foreground text-xs">
+            {preview.date_range.earliest.slice(0, 10)} -{" "}
+            {preview.date_range.latest.slice(0, 10)}
           </span>
         )}
       </div>
@@ -84,10 +101,10 @@ export function QueryPreview({ preview, isLoading, error, onRetry }: QueryPrevie
       {/* Sample titles */}
       {visibleTitles.length > 0 && (
         <div className="space-y-1">
-          <span className="text-xs text-muted-foreground">Sample titles:</span>
-          <ul className="space-y-0.5">
+          <span className="text-muted-foreground text-xs">Sample titles:</span>
+          <ul id="sample-titles-list" className="space-y-0.5">
             {visibleTitles.map((title, i) => (
-              <li key={i} className="text-xs truncate text-foreground/80">
+              <li key={i} className="text-foreground/80 truncate text-xs">
                 {title}
               </li>
             ))}
@@ -96,17 +113,19 @@ export function QueryPreview({ preview, isLoading, error, onRetry }: QueryPrevie
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 text-xs p-0"
+              className="h-6 p-0 text-xs"
               onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              aria-controls="sample-titles-list"
             >
               {expanded ? (
                 <>
-                  <ChevronUp className="h-3 w-3 mr-1" />
+                  <ChevronUp className="mr-1 h-3 w-3" />
                   Show less
                 </>
               ) : (
                 <>
-                  <ChevronDown className="h-3 w-3 mr-1" />
+                  <ChevronDown className="mr-1 h-3 w-3" />
                   Show all {preview.sample_titles.length}
                 </>
               )}
