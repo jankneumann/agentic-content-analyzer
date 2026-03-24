@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    image: paradedb/paradedb:0.22.2-pg17
     container_name: newsletter-postgres
     environment:
       POSTGRES_DB: newsletters

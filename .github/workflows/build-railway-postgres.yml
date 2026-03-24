@@ -38,8 +38,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=16-railway
-            type=sha,prefix=16-railway-
+            type=raw,value=17-railway
+            type=sha,prefix=17-railway-
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -56,15 +56,17 @@ jobs:
         run: |
           echo "## Railway PostgreSQL Image Built" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:16-railway\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:17-railway\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Base:** \`paradedb/paradedb:0.22.2-pg17\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Extensions Included" >> $GITHUB_STEP_SUMMARY
-          echo "- pgvector 0.7.4" >> $GITHUB_STEP_SUMMARY
-          echo "- pg_search 0.13.0 (ParadeDB)" >> $GITHUB_STEP_SUMMARY
-          echo "- pgmq 1.4.4" >> $GITHUB_STEP_SUMMARY
-          echo "- pg_cron 1.6.4" >> $GITHUB_STEP_SUMMARY
+          echo "### Extensions Included (via ParadeDB)" >> $GITHUB_STEP_SUMMARY
+          echo "- pgvector 0.8.1" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_search 0.22.2" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_cron 1.6" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_ivm 1.13" >> $GITHUB_STEP_SUMMARY
+          echo "- PostGIS 3.6.2" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Usage" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:16-railway" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:17-railway" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
