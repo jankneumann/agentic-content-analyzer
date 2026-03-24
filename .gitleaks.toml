@@ -1,0 +1,74 @@
+title = "agentic-newsletter-aggregator gitleaks config"
+
+# =============================================================================
+# Allowlist Maintenance Guide
+# =============================================================================
+#
+# Add entries here when gitleaks flags known-safe patterns. Each entry should
+# explain WHY the pattern is safe so future maintainers understand the intent.
+#
+# Sections:
+#   [[allowlist.regexes]]  — regex patterns that are always safe to ignore
+#   [[allowlist.paths]]    — file paths (regex) to exclude entirely
+#   [[allowlist.commits]]  — specific commit SHAs to skip
+#
+# Run gitleaks manually:
+#   gitleaks detect --source . --verbose
+#   gitleaks detect --source . --config .gitleaks.toml --verbose
+#
+# Reference: https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+# =============================================================================
+
+[allowlist]
+  description = "Project-level allowlist for known test/dev credentials"
+
+  # ---------------------------------------------------------------------------
+  # Regex patterns — strings that are always safe regardless of file location
+  # ---------------------------------------------------------------------------
+
+  regexes = [
+    # Local Supabase default JWT tokens — these are the PUBLIC, well-known test
+    # tokens shipped by `supabase init` for local development. They are
+    # intentionally hardcoded in src/config/settings.py as fallback defaults
+    # for SUPABASE_LOCAL=true mode. They have no access to any real Supabase
+    # project and are published in the official Supabase docs.
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\\.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9\\.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\\.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0\\.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU",
+  ]
+
+  # ---------------------------------------------------------------------------
+  # Path patterns — files excluded from scanning entirely
+  # ---------------------------------------------------------------------------
+
+  paths = [
+    # Example/template files — contain placeholder values, never real secrets
+    '''.env\.example''',
+    '''\.secrets\.yaml\.example''',
+
+    # Test suite — test files use fake keys like "test-key", "test-admin-key",
+    # "test-key-for-ci" as fixture values. These are not real credentials.
+    '''tests/''',
+
+    # CI workflow files — use hardcoded placeholder values for CI runs:
+    #   ANTHROPIC_API_KEY: test-key-for-ci
+    #   ADMIN_API_KEY: test-admin-key
+    # These are intentionally fake; real secrets are injected via GitHub Secrets.
+    '''\.github/workflows/''',
+
+    # Docker Compose — uses "newsletter_password" as a dev-only database
+    # password for the local Postgres and Neo4j containers. Not a production
+    # credential. Also present in profiles/local.yaml, profiles/base.yaml,
+    # profiles/ci-neon.yaml, and .env.example for the same reason.
+    '''docker-compose\.yml''',
+
+    # Profile YAML files — contain dev/CI default fallback values such as
+    # "newsletter_password" (local DB) and "test-key-for-ci" / "test-admin-key-for-ci"
+    # (CI placeholder API keys). Real secrets are injected via ${VAR} interpolation
+    # from environment variables or .secrets.yaml (which is gitignored).
+    '''profiles/''',
+
+    # Hoverfly HTTP simulation fixtures — JSON recordings of HTTP interactions
+    # used for offline integration tests. Any key-like strings are simulated
+    # API responses, not real credentials.
+    '''tests/integration/fixtures/simulations/''',
+  ]

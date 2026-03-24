@@ -565,6 +565,9 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Langfuse self-hosted is resource-heavy | 6 services (PG, ClickHouse, Redis, MinIO, web, worker); use `make langfuse-up` only when needed |
 | Langfuse uses Basic Auth for OTLP | `Authorization: Basic base64(public_key:secret_key)` — different from Opik/Braintrust auth |
 | Langfuse port 3100 | Avoids conflict with web frontend (3000), Vite (5173), Opik (5174) |
+| gitleaks pre-commit blocks commit | Check `.gitleaks.toml` allowlist; add path or regex exception for intentional test fixtures |
+| pip-audit fails in CI | Check `pip-audit --desc on` locally; known advisories may need `--ignore-vuln` flag |
+| Security headers break iframe embedding | `X-Frame-Options: DENY` prevents embedding; if embedding needed, switch to CSP `frame-ancestors` directive |
 
 ## Quick Links by Task
 

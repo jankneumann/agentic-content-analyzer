@@ -34,6 +34,7 @@ services:
       - "54322:5432"
     environment:
       POSTGRES_USER: postgres
+      # WARNING: Development credentials only. Never use these values in production.
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     volumes:
