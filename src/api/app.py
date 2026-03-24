@@ -22,6 +22,7 @@ from src.api.image_generation_routes import router as image_generation_router
 from src.api.job_routes import router as job_router
 from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
+from src.api.middleware.security_headers import SecurityHeadersMiddleware
 from src.api.middleware.telemetry import TraceIdMiddleware
 from src.api.model_settings_routes import router as model_settings_router
 from src.api.notification_preferences_routes import router as notification_preferences_router
@@ -127,6 +128,9 @@ app = FastAPI(
 
 # Auth middleware — enforces session cookie or X-Admin-Key on all non-exempt endpoints
 app.add_middleware(AuthMiddleware)
+
+# Security headers — adds X-Content-Type-Options, X-Frame-Options, CSP, etc.
+app.add_middleware(SecurityHeadersMiddleware, environment=settings.environment)
 
 # CORS configuration - configurable via ALLOWED_ORIGINS env var
 # Use "*" for iOS Shortcuts and other mobile clients

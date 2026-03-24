@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 # Track the active profile name (set during Settings initialization)
 _active_profile_name: str | None = None
 
+# Common weak/default secrets that should not be used in production
+_WEAK_SECRETS = {"changeme", "secret", "password", "admin", "test", "12345678"}
+
 
 def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]:
     """Flatten a profile dict into Settings-compatible flat dict.
@@ -943,6 +946,34 @@ class Settings(BaseSettings):
                 "ALLOWED_ORIGINS is using development defaults (localhost only) in production. "
                 "Cross-origin requests will be denied. "
                 "Set ALLOWED_ORIGINS to your production frontend URL(s)."
+            )
+
+        # Check for weak APP_SECRET_KEY
+        if self.app_secret_key and self.app_secret_key.lower() in _WEAK_SECRETS:
+            logger.warning(
+                "APP_SECRET_KEY matches a common default value. "
+                "Use a strong random key: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
+        # Check for weak ADMIN_API_KEY
+        if self.admin_api_key and self.admin_api_key.lower() in _WEAK_SECRETS:
+            logger.warning(
+                "ADMIN_API_KEY matches a common default value. "
+                "Use a strong random key: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
+        # Check for short ADMIN_API_KEY
+        if self.admin_api_key and len(self.admin_api_key) < 32:
+            logger.warning(
+                "ADMIN_API_KEY is shorter than 32 characters. "
+                "Consider using a stronger key for production."
+            )
+
+        # Check for default database credentials
+        if "newsletter_password" in self.database_url:
+            logger.warning(
+                "DATABASE_URL contains the default development password 'newsletter_password'. "
+                "Use a strong random password for production databases."
             )
 
         return self

@@ -1,0 +1,34 @@
+# Security Headers Contract
+# Defines the expected headers on all API responses
+
+standard_headers:
+  X-Content-Type-Options: "nosniff"
+  X-Frame-Options: "DENY"
+  X-XSS-Protection: "0"
+  Referrer-Policy: "strict-origin-when-cross-origin"
+  Permissions-Policy: "camera=(), microphone=(), geolocation=()"
+
+production_only_headers:
+  Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+
+report_only_headers:
+  Content-Security-Policy-Report-Only: >-
+    default-src 'self';
+    script-src 'self';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data: https:;
+    connect-src 'self' https:;
+    font-src 'self';
+    frame-ancestors 'none'
+
+# Headers that MUST NOT be present on responses
+prohibited_headers:
+  - Server  # Don't leak server info (uvicorn default)
+  - X-Powered-By  # Don't leak framework info
+
+# Middleware ordering (position in FastAPI middleware stack)
+middleware_order:
+  - CORSMiddleware        # Outermost — handles preflight
+  - SecurityHeadersMiddleware  # After CORS, before auth
+  - AuthMiddleware        # After security headers
+  - TelemetryMiddleware   # Innermost

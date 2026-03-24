@@ -5,6 +5,7 @@ services:
     environment:
       POSTGRES_DB: newsletters
       POSTGRES_USER: newsletter_user
+      # WARNING: Development credentials only. Never use these values in production.
       POSTGRES_PASSWORD: newsletter_password
     ports:
       - "5432:5432"
@@ -21,6 +22,7 @@ services:
     image: neo4j:5
     container_name: newsletter-neo4j
     environment:
+      # WARNING: Development credentials only. Never use these values in production.
       NEO4J_AUTH: neo4j/newsletter_password
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
@@ -40,6 +42,7 @@ services:
     image: neo4j:5
     container_name: newsletter-neo4j-test
     environment:
+      # WARNING: Development credentials only. Never use these values in production.
       NEO4J_AUTH: neo4j/newsletter_password
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*

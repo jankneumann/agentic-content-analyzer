@@ -64,6 +64,7 @@ services:
     hostname: langfuse-postgres
     environment:
       POSTGRES_USER: langfuse
+      # WARNING: Development credentials only. Never use these values in production.
       POSTGRES_PASSWORD: langfuse
       POSTGRES_DB: langfuse
     healthcheck:

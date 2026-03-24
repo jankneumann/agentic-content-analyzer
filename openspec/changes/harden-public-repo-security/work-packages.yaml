@@ -1,0 +1,238 @@
+# Work Packages: Harden Public Repo Security
+# DAG-scheduled for multi-agent parallel implementation
+
+metadata:
+  change_id: harden-public-repo-security
+  created: "2026-03-24"
+  parallel_safe: true
+  estimated_packages: 5
+
+packages:
+  # ─────────────────────────────────────────────
+  # Root: Contracts & Configuration (no dependencies)
+  # ─────────────────────────────────────────────
+  wp-contracts:
+    title: "Security scanning configuration and contracts"
+    description: |
+      Create gitleaks configuration, security headers interface contract,
+      and shared allowlist patterns used by all other packages.
+    tasks:
+      - "1.1: Create .gitleaks.toml with project-specific allowlist"
+      - "1.3: Run git history audit and document findings"
+    scope:
+      write_allow:
+        - ".gitleaks.toml"
+        - "openspec/changes/harden-public-repo-security/audit-report.md"
+      read_allow:
+        - "**/*"
+      deny:
+        - "src/**"
+        - "web/**"
+        - ".github/**"
+    locks:
+      files:
+        - ".gitleaks.toml"
+      keys:
+        - "config:gitleaks"
+        - "repo:secret-scanning"
+      ttl_minutes: 120
+      reason: "Gitleaks configuration and git history audit"
+    depends_on: []
+    verification:
+      tier: C  # Static validation only
+      checks:
+        - "gitleaks detect --source . --no-git --config .gitleaks.toml"
+    priority: 1
+
+  # ─────────────────────────────────────────────
+  # Parallel: CI Security Workflows
+  # ─────────────────────────────────────────────
+  wp-ci-security:
+    title: "CI security scanning workflows"
+    description: |
+      Add GitHub Actions workflows for secret scanning (gitleaks),
+      dependency vulnerability scanning (pip-audit, pnpm audit),
+      and integrate into CI pipeline.
+    tasks:
+      - "2.1: Create .github/workflows/security.yml with gitleaks action"
+      - "2.2: Add pip-audit and pnpm audit CI steps"
+      - "2.3: Integrate security workflow with existing CI"
+    scope:
+      write_allow:
+        - ".github/workflows/security.yml"
+        - "pyproject.toml"  # Add pip-audit dev dependency
+      read_allow:
+        - ".github/**"
+        - "pyproject.toml"
+        - "web/package.json"
+        - ".gitleaks.toml"
+      deny:
+        - "src/**"
+        - "web/src/**"
+        - "tests/**"
+    locks:
+      files:
+        - ".github/workflows/security.yml"
+      keys:
+        - "ci:security-workflow"
+        - "deps:pip-audit"
+      ttl_minutes: 120
+      reason: "CI security scanning pipeline"
+    depends_on:
+      - wp-contracts  # Needs .gitleaks.toml for workflow reference
+    verification:
+      tier: C  # Static - YAML validation, no runtime
+      checks:
+        - "python -c \"import yaml; yaml.safe_load(open('.github/workflows/security.yml'))\""
+        - "pip-audit --version"
+
+  # ─────────────────────────────────────────────
+  # Parallel: Backend Security Hardening
+  # ─────────────────────────────────────────────
+  wp-backend-hardening:
+    title: "Security headers middleware and production validation"
+    description: |
+      Implement SecurityHeadersMiddleware for standard browser protection
+      headers. Extend production startup validation with weak-secret and
+      default-credential detection.
+    tasks:
+      - "3.1: Implement SecurityHeadersMiddleware"
+      - "3.2: Test security headers"
+      - "4.1: Extend Settings validation with weak-secret detection"
+      - "4.2: Test extended validation"
+    scope:
+      write_allow:
+        - "src/api/middleware/security_headers.py"
+        - "src/api/app.py"
+        - "src/config/settings.py"
+        - "tests/api/test_security_headers.py"
+        - "tests/config/test_production_validation.py"
+      read_allow:
+        - "src/api/**"
+        - "src/config/**"
+        - "tests/**"
+      deny:
+        - ".github/**"
+        - "web/**"
+        - "docker-compose*.yml"
+    locks:
+      files:
+        - "src/api/middleware/security_headers.py"
+      keys:
+        - "api:middleware:security-headers"
+        - "config:production-validation"
+      ttl_minutes: 120
+      reason: "Backend security headers and production validation"
+    depends_on: []  # Independent of contracts
+    verification:
+      tier: A  # Full: unit tests + integration tests + linting
+      checks:
+        - "pytest tests/api/test_security_headers.py -v"
+        - "pytest tests/config/test_production_validation.py -v"
+        - "ruff check src/api/middleware/security_headers.py"
+
+  # ─────────────────────────────────────────────
+  # Parallel: Repository Hygiene & Documentation
+  # ─────────────────────────────────────────────
+  wp-repo-hygiene:
+    title: "Repository hygiene, SECURITY.md, and documentation"
+    description: |
+      Create SECURITY.md with responsible disclosure policy.
+      Add credential warning comments to docker-compose files.
+      Document branch protection rules. Add pre-commit gitleaks hook.
+      Update CLAUDE.md with security scanning gotchas.
+    tasks:
+      - "1.2: Add gitleaks pre-commit hook"
+      - "5.1: Add credential warning comments to docker-compose files"
+      - "5.2: Create SECURITY.md"
+      - "5.3: Document branch protection rules"
+      - "6.1: Update CLAUDE.md with security gotchas"
+    scope:
+      write_allow:
+        - "SECURITY.md"
+        - "CLAUDE.md"
+        - ".pre-commit-config.yaml"
+        - "docker-compose.yml"
+        - "docker-compose.opik.yml"
+        - "docker-compose.supabase.yml"
+        - "docker-compose.langfuse.yml"
+      read_allow:
+        - "**/*"
+      deny:
+        - "src/**"
+        - "web/src/**"
+        - "tests/**"
+        - ".github/workflows/**"
+    locks:
+      files:
+        - "SECURITY.md"
+        - ".pre-commit-config.yaml"
+      keys:
+        - "docs:security-policy"
+        - "config:pre-commit"
+        - "docker:compose-credentials"
+      ttl_minutes: 120
+      reason: "Repository hygiene and security documentation"
+    depends_on:
+      - wp-contracts  # Needs .gitleaks.toml for pre-commit hook config
+    verification:
+      tier: C  # Static - file existence and content checks
+      checks:
+        - "test -f SECURITY.md"
+        - "grep -q 'gitleaks' .pre-commit-config.yaml"
+        - "grep -q 'WARNING' docker-compose.yml"
+
+  # ─────────────────────────────────────────────
+  # Tail: Integration & Final Verification
+  # ─────────────────────────────────────────────
+  wp-integration:
+    title: "Integration testing and spec updates"
+    description: |
+      Merge all work package outputs. Run full test suite.
+      Update api-security spec. Verify E2E tests pass with
+      security headers. Final gitleaks scan on merged result.
+    tasks:
+      - "6.2: Update api-security spec with security headers requirements"
+      - "Merge worktree branches"
+      - "Run full test suite"
+      - "Run gitleaks on merged result"
+      - "Verify E2E tests pass with security headers"
+    scope:
+      write_allow:
+        - "specs/api-security/**"
+        - "openspec/changes/harden-public-repo-security/**"
+      read_allow:
+        - "**/*"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "integration:harden-public-repo-security"
+      ttl_minutes: 180
+      reason: "Final integration and verification"
+    depends_on:
+      - wp-ci-security
+      - wp-backend-hardening
+      - wp-repo-hygiene
+    verification:
+      tier: A  # Full test suite
+      checks:
+        - "pytest tests/ -v --ignore=tests/contract/"
+        - "gitleaks detect --source ."
+        - "ruff check src/"
+
+# ─────────────────────────────────────────────
+# DAG Visualization
+# ─────────────────────────────────────────────
+#
+#                 wp-contracts (P1)
+#                /       |
+#               /        |
+#    wp-ci-security  wp-repo-hygiene
+#              \         |         wp-backend-hardening
+#               \        |        /
+#                wp-integration (tail)
+#
+# Parallelism: wp-ci-security ∥ wp-repo-hygiene ∥ wp-backend-hardening
+# Max agents: 3 (after wp-contracts completes)
+# Critical path: wp-contracts → wp-ci-security → wp-integration
