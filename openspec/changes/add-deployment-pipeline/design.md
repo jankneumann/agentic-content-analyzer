@@ -56,9 +56,9 @@ The project has a working CI pipeline but no CD automation. Deployments to Railw
 
 **What**: Add pytest-cov threshold gate at 25% (current baseline).
 
-**Why**: The codebase has 25% coverage. Setting the threshold at current level prevents regression while not blocking work. Can be raised incrementally.
+**Why**: The codebase has 25% line coverage. Setting the threshold at current level prevents regression while not blocking work. Threshold can be raised as coverage improves.
 
-**Alternative considered**: No threshold (current state). Rejected because coverage can silently decrease without a gate.
+**Alternative considered**: No threshold (current state). Rejected because coverage can silently decrease without a gate. Higher threshold (e.g., 50%) would block merges immediately.
 
 ### Decision 5: Dependabot Configuration
 
@@ -66,7 +66,7 @@ The project has a working CI pipeline but no CD automation. Deployments to Railw
 
 **Why**: Automated security and version updates reduce maintenance burden and catch CVEs early.
 
-**Configuration**: Weekly schedule, grouped updates, auto-merge for patch versions.
+**Configuration**: Weekly schedule, grouped updates. No auto-merge — all Dependabot PRs require CI pass + manual review before merge (branch protection enforces this). Security updates are auto-labeled for priority triage.
 
 ## File Structure
 

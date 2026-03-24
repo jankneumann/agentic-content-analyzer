@@ -54,15 +54,15 @@ The system SHALL enforce a minimum test coverage threshold.
 
 #### Scenario: Coverage meets threshold
 - **GIVEN** a pull request is created or updated
-- **WHEN** pytest runs with coverage
-- **THEN** coverage SHALL be at least 25% (adjustable threshold)
-- **AND** coverage report SHALL be visible in PR summary
+- **WHEN** pytest runs with `--cov --cov-fail-under=25`
+- **THEN** line coverage SHALL be at least 25%
+- **AND** a coverage summary SHALL be posted as a GitHub Actions job summary
 
 #### Scenario: Coverage below threshold
-- **GIVEN** test coverage drops below the configured threshold
+- **GIVEN** line coverage drops below 25%
 - **WHEN** CI runs
-- **THEN** the CI job SHALL fail
-- **AND** the coverage delta SHALL be reported
+- **THEN** the pytest job SHALL fail with a non-zero exit code
+- **AND** the job summary SHALL show current coverage percentage and the threshold
 
 ### Requirement: PostgreSQL Service Container
 
@@ -79,6 +79,19 @@ The system SHALL use ParadeDB as the PostgreSQL image for all environments.
 - **WHEN** the postgres service starts
 - **THEN** the image SHALL be `paradedb/paradedb` with the same pinned version tag as CI
 
+#### Scenario: ParadeDB image unavailable
+- **GIVEN** the `paradedb/paradedb` image cannot be pulled
+- **WHEN** CI or docker compose attempts to start PostgreSQL
+- **THEN** the job or service SHALL fail with a clear image pull error
+- **AND** the pinned version tag SHALL be documented in CLAUDE.md for manual fallback
+
+#### Scenario: Extension availability verification
+- **GIVEN** PostgreSQL starts with the ParadeDB image
+- **WHEN** migrations run
+- **THEN** `CREATE EXTENSION IF NOT EXISTS pgvector` SHALL succeed
+- **AND** `CREATE EXTENSION IF NOT EXISTS pg_search` SHALL succeed
+- **AND** `CREATE EXTENSION IF NOT EXISTS pg_cron` SHALL succeed
+
 ### Requirement: Continuous Deployment
 
 The system SHALL deploy automatically to staging and with approval to production.
@@ -88,7 +101,9 @@ The system SHALL deploy automatically to staging and with approval to production
 - **AND** CI has passed
 - **WHEN** the CD pipeline runs
 - **THEN** Alembic migrations SHALL run against the staging database
+- **AND** the `alembic_version` table SHALL reflect the latest migration revision
 - **AND** the application SHALL be deployed to Railway staging environment
+- **AND** an HTTP GET to the staging `/health` endpoint SHALL return 200 within 3 minutes
 
 #### Scenario: Staging migration failure
 - **GIVEN** Alembic migration fails against staging
