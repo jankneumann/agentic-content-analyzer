@@ -1,0 +1,24 @@
+# Code Owners — routes PR reviews to appropriate owners
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: repository owner reviews everything
+* @jankneumann
+
+# Backend source code
+/src/ @jankneumann
+
+# Frontend
+/web/ @jankneumann
+
+# CI/CD and infrastructure
+/.github/ @jankneumann
+/railway/ @jankneumann
+/docker-compose*.yml @jankneumann
+/Dockerfile @jankneumann
+
+# Database migrations
+/alembic/ @jankneumann
+
+# Configuration
+/profiles/ @jankneumann
+/sources.d/ @jankneumann
