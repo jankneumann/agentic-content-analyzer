@@ -122,8 +122,8 @@ async def generate_image(request: GenerateRequest) -> GenerateResponse:
     with get_db() as db:
         try:
             generator = get_image_generator(db=db)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid image generator configuration")
 
         params = GenerationParams(
             size=request.size,
@@ -192,8 +192,8 @@ async def suggest_images(request: SuggestRequest) -> SuggestResponse:
     with get_db() as db:
         try:
             generator = get_image_generator(db=db)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid image generator configuration")
         try:
             suggestions = await generator.suggest_images(
                 content=request.content,
@@ -248,8 +248,8 @@ async def regenerate_image(image_id: UUID, request: RegenerateRequest) -> Genera
 
         try:
             generator = get_image_generator(db=db)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid image generator configuration")
 
         prompt = request.prompt or existing.generation_prompt
         old_params = existing.generation_params or {}
