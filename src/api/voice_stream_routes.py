@@ -84,8 +84,9 @@ async def voice_stream(
             model_info.family,
         )
     except Exception as e:
+        logger.error(f"Model configuration error: {e}")
         await websocket.send_json(
-            {"type": "error", "text": f"Model configuration error: {e}", "cleaned": False}
+            {"type": "error", "text": "An internal model configuration error occurred.", "cleaned": False}
         )
         await websocket.close(code=4002, reason="Configuration error")
         return
@@ -95,7 +96,8 @@ async def voice_stream(
     try:
         provider = service.create_provider()
     except ValueError as e:
-        await websocket.send_json({"type": "error", "text": str(e), "cleaned": False})
+        logger.error(f"Provider creation error: {e}")
+        await websocket.send_json({"type": "error", "text": "An error occurred while creating the STT provider.", "cleaned": False})
         await websocket.close(code=4003, reason="Provider error")
         return
 
