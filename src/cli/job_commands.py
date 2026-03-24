@@ -1,5 +1,9 @@
 """CLI commands for job queue management.
 
+In HTTP mode (default), commands call the backend API via httpx.
+In direct mode (--direct flag or API unreachable), commands call
+queue functions directly (legacy inline behavior).
+
 Usage:
     aca jobs list
     aca jobs show <job-id>
@@ -15,10 +19,11 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
+import httpx
 import typer
 
 from src.cli.adapters import run_async
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import is_direct_mode, is_json_mode, output_result
 from src.models.jobs import TYPE_ALIASES, JobHistoryItem, JobListItem, JobRecord, JobStatus
 
 app = typer.Typer(help="Manage background jobs in the queue.")
@@ -120,51 +125,13 @@ def _parse_duration(duration_str: str) -> int:
     return int(match.group(1))
 
 
-@app.command("list")
-def list_jobs(
-    status: Annotated[
-        str | None,
-        typer.Option(
-            "--status",
-            "-s",
-            help="Filter by status: queued, in_progress, completed, failed",
-        ),
-    ] = None,
-    entrypoint: Annotated[
-        str | None,
-        typer.Option(
-            "--entrypoint",
-            "-e",
-            help="Filter by task entrypoint (e.g., 'summarize_content')",
-        ),
-    ] = None,
-    limit: Annotated[
-        int,
-        typer.Option(
-            "--limit",
-            "-n",
-            help="Maximum number of jobs to display (max 100)",
-        ),
-    ] = 20,
-    offset: Annotated[
-        int,
-        typer.Option(
-            "--offset",
-            help="Pagination offset",
-        ),
-    ] = 0,
-) -> None:
-    """List jobs in the queue with optional filters.
+# ---------------------------------------------------------------------------
+# aca jobs list
+# ---------------------------------------------------------------------------
 
-    Shows job ID, entrypoint, status, progress, and creation time.
-    Use --status to filter by job state, --entrypoint to filter by task type.
 
-    Examples:
-        aca jobs list
-        aca jobs list --status failed
-        aca jobs list --entrypoint summarize_content
-        aca jobs list --limit 50 --offset 100
-    """
+def _list_jobs_direct(status: str | None, entrypoint: str | None, limit: int, offset: int) -> None:
+    """Direct job listing (legacy inline path)."""
     from src.queue.setup import list_jobs as queue_list_jobs
 
     # Parse and validate status filter
@@ -246,6 +213,137 @@ def list_jobs(
         console.print(f"[dim]Use --offset {offset + limit} to see more.[/dim]")
 
 
+@app.command("list")
+def list_jobs(
+    status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            "-s",
+            help="Filter by status: queued, in_progress, completed, failed",
+        ),
+    ] = None,
+    entrypoint: Annotated[
+        str | None,
+        typer.Option(
+            "--entrypoint",
+            "-e",
+            help="Filter by task entrypoint (e.g., 'summarize_content')",
+        ),
+    ] = None,
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit",
+            "-n",
+            help="Maximum number of jobs to display (max 100)",
+        ),
+    ] = 20,
+    offset: Annotated[
+        int,
+        typer.Option(
+            "--offset",
+            help="Pagination offset",
+        ),
+    ] = 0,
+) -> None:
+    """List jobs in the queue with optional filters.
+
+    Shows job ID, entrypoint, status, progress, and creation time.
+    Use --status to filter by job state, --entrypoint to filter by task type.
+
+    Examples:
+        aca jobs list
+        aca jobs list --status failed
+        aca jobs list --entrypoint summarize_content
+        aca jobs list --limit 50 --offset 100
+    """
+    if is_direct_mode():
+        return _list_jobs_direct(status, entrypoint, limit, offset)
+
+    try:
+        from src.cli.api_client import get_api_client
+
+        client = get_api_client()
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if status:
+            params["status"] = status
+        if entrypoint:
+            params["entrypoint"] = entrypoint
+        response = client.list_jobs(**params)
+    except httpx.ConnectError:
+        if not is_json_mode():
+            from rich.console import Console
+
+            Console(stderr=True).print(
+                "[yellow]Backend unavailable — listing jobs directly...[/yellow]"
+            )
+        _list_jobs_direct(status, entrypoint, limit, offset)
+        return
+
+    if is_json_mode():
+        output_result(response)
+        return
+
+    # Parse API response
+    jobs_data = response.get("jobs", [])
+    total = response.get("total", len(jobs_data))
+
+    if not jobs_data:
+        typer.echo("No jobs found matching the criteria.")
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+    table = Table(title=f"Jobs ({len(jobs_data)} of {total} shown)")
+
+    table.add_column("ID", justify="right", style="cyan", no_wrap=True)
+    table.add_column("Entrypoint", style="white", max_width=25)
+    table.add_column("Status", style="bold")
+    table.add_column("Progress", justify="right")
+    table.add_column("Error", style="red", max_width=30)
+    table.add_column("Created", style="dim")
+
+    for job in jobs_data:
+        status_val = job.get("status", "")
+        # Map status string to color
+        color_map = {
+            "queued": "yellow",
+            "in_progress": "blue",
+            "completed": "green",
+            "failed": "red",
+        }
+        status_color = color_map.get(status_val, "white")
+        status_display = f"[{status_color}]{status_val}[/{status_color}]"
+
+        progress = job.get("progress", 0)
+        progress_display = f"{progress}%" if progress > 0 else "-"
+
+        table.add_row(
+            str(job.get("id", "")),
+            _truncate(job.get("entrypoint", ""), 25),
+            status_display,
+            progress_display,
+            _truncate(job.get("error"), 30),
+            job.get("created_at", ""),
+        )
+
+    console.print(table)
+
+    # Pagination info
+    showing_end = min(offset + limit, total)
+    console.print(f"\nShowing {offset + 1}-{showing_end} of {total} jobs.")
+    if total > offset + limit:
+        console.print(f"[dim]Use --offset {offset + limit} to see more.[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# aca jobs history (direct-only — uses queue internals not exposed via API)
+# ---------------------------------------------------------------------------
+
+
 def _format_history_item(item: JobHistoryItem) -> dict[str, Any]:
     """Format a history item for JSON output."""
     result: dict[str, Any] = {
@@ -304,6 +402,8 @@ def history(
 
     Displays an enriched view of job history including task labels,
     content descriptions, and timing information.
+
+    Always runs directly (uses queue internals not exposed via API).
 
     Examples:
         aca jobs history
@@ -416,21 +516,13 @@ def history(
         console.print(f"\n[dim]Showing {len(items)} of {total} total entries.[/dim]")
 
 
-@app.command("show")
-def show_job(
-    job_id: Annotated[
-        int,
-        typer.Argument(help="ID of the job to view"),
-    ],
-) -> None:
-    """Show detailed information about a specific job.
+# ---------------------------------------------------------------------------
+# aca jobs show
+# ---------------------------------------------------------------------------
 
-    Displays all job metadata including payload, priority, retry count,
-    and timestamps.
 
-    Example:
-        aca jobs show 123
-    """
+def _show_job_direct(job_id: int) -> None:
+    """Direct job detail display (legacy inline path)."""
     from src.queue.setup import get_job_status
 
     try:
@@ -500,39 +592,116 @@ def show_job(
         console.print(json.dumps(payload_display, indent=2, default=str))
 
 
-@app.command("retry")
-def retry_job(
+@app.command("show")
+def show_job(
     job_id: Annotated[
-        int | None,
-        typer.Argument(help="ID of the failed job to retry"),
-    ] = None,
-    failed: Annotated[
-        bool,
-        typer.Option(
-            "--failed",
-            "-f",
-            help="Retry all failed jobs (bulk operation)",
-        ),
-    ] = False,
+        int,
+        typer.Argument(help="ID of the job to view"),
+    ],
 ) -> None:
-    """Retry a failed job or all failed jobs.
+    """Show detailed information about a specific job.
 
-    Re-enqueues the job(s) for processing. Only jobs with status 'failed'
-    can be retried.
+    Displays all job metadata including payload, priority, retry count,
+    and timestamps.
 
-    Examples:
-        aca jobs retry 123
-        aca jobs retry --failed
+    Example:
+        aca jobs show 123
     """
+    if is_direct_mode():
+        return _show_job_direct(job_id)
+
+    try:
+        from src.cli.api_client import get_api_client
+
+        client = get_api_client()
+        response = client.get_job(job_id)
+    except httpx.ConnectError:
+        if not is_json_mode():
+            from rich.console import Console
+
+            Console(stderr=True).print(
+                "[yellow]Backend unavailable — fetching job directly...[/yellow]"
+            )
+        _show_job_direct(job_id)
+        return
+
+    if is_json_mode():
+        output_result(response)
+        return
+
+    # Rich panel display from API response
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    console = Console()
+
+    status_val = response.get("status", "")
+    color_map = {
+        "queued": "yellow",
+        "in_progress": "blue",
+        "completed": "green",
+        "failed": "red",
+    }
+    status_color = color_map.get(status_val, "white")
+
+    # Build details table
+    details = Table.grid(padding=(0, 2))
+    details.add_column(style="bold")
+    details.add_column()
+
+    details.add_row("ID:", str(response.get("id", "")))
+    details.add_row("Entrypoint:", response.get("entrypoint", ""))
+    details.add_row("Status:", f"[{status_color}]{status_val}[/{status_color}]")
+    details.add_row("Priority:", str(response.get("priority", 0)))
+    details.add_row("Retry Count:", str(response.get("retry_count", 0)))
+    progress = response.get("progress", 0)
+    details.add_row("Progress:", f"{progress}%")
+    progress_message = response.get("progress_message")
+    if progress_message:
+        details.add_row("Message:", progress_message)
+
+    details.add_row("", "")  # Spacer
+    details.add_row("Created:", response.get("created_at", ""))
+    started_at = response.get("started_at")
+    if started_at:
+        details.add_row("Started:", started_at)
+    completed_at = response.get("completed_at")
+    if completed_at:
+        details.add_row("Completed:", completed_at)
+
+    error = response.get("error")
+    if error:
+        details.add_row("", "")  # Spacer
+        details.add_row("Error:", f"[red]{error}[/red]")
+
+    console.print(
+        Panel(
+            details,
+            title=f"[bold]Job #{response.get('id', job_id)}[/bold]",
+            border_style="blue",
+        )
+    )
+
+    # Show payload if present
+    payload = response.get("payload", {})
+    payload_display = {k: v for k, v in payload.items() if k not in ("progress", "message")}
+    if payload_display:
+        console.print()
+        console.print("[bold]Payload:[/bold]")
+        import json
+
+        console.print(json.dumps(payload_display, indent=2, default=str))
+
+
+# ---------------------------------------------------------------------------
+# aca jobs retry
+# ---------------------------------------------------------------------------
+
+
+def _retry_job_direct(job_id: int | None, failed: bool) -> None:
+    """Direct job retry (legacy inline path)."""
     from src.queue.setup import list_jobs as queue_list_jobs, retry_failed_job
-
-    if not job_id and not failed:
-        typer.echo("Error: Provide a job ID or use --failed for bulk retry.")
-        raise typer.Exit(1)
-
-    if job_id and failed:
-        typer.echo("Error: Cannot use both job ID and --failed together.")
-        raise typer.Exit(1)
 
     if failed:
         # Bulk retry all failed jobs
@@ -585,7 +754,7 @@ def retry_job(
                     )
                 )
     else:
-        # Single job retry - job_id is guaranteed to be set at this point
+        # Single job retry
         assert job_id is not None
         try:
             result = run_async(retry_failed_job(job_id))
@@ -606,6 +775,83 @@ def retry_job(
                     fg=typer.colors.GREEN,
                 )
             )
+
+
+@app.command("retry")
+def retry_job(
+    job_id: Annotated[
+        int | None,
+        typer.Argument(help="ID of the failed job to retry"),
+    ] = None,
+    failed: Annotated[
+        bool,
+        typer.Option(
+            "--failed",
+            "-f",
+            help="Retry all failed jobs (bulk operation)",
+        ),
+    ] = False,
+) -> None:
+    """Retry a failed job or all failed jobs.
+
+    Re-enqueues the job(s) for processing. Only jobs with status 'failed'
+    can be retried.
+
+    Examples:
+        aca jobs retry 123
+        aca jobs retry --failed
+    """
+    if not job_id and not failed:
+        typer.echo("Error: Provide a job ID or use --failed for bulk retry.")
+        raise typer.Exit(1)
+
+    if job_id and failed:
+        typer.echo("Error: Cannot use both job ID and --failed together.")
+        raise typer.Exit(1)
+
+    if is_direct_mode():
+        return _retry_job_direct(job_id, failed)
+
+    # HTTP mode: single job retry only (bulk --failed uses direct path)
+    if failed:
+        # Bulk retry not exposed via single API call — use direct path
+        if not is_json_mode():
+            from rich.console import Console
+
+            Console(stderr=True).print("[yellow]Bulk retry uses direct mode...[/yellow]")
+        return _retry_job_direct(job_id, failed)
+
+    assert job_id is not None
+    try:
+        from src.cli.api_client import get_api_client
+
+        client = get_api_client()
+        response = client.retry_job(job_id)
+    except httpx.ConnectError:
+        if not is_json_mode():
+            from rich.console import Console
+
+            Console(stderr=True).print(
+                "[yellow]Backend unavailable — retrying job directly...[/yellow]"
+            )
+        _retry_job_direct(job_id, failed)
+        return
+
+    if is_json_mode():
+        output_result(response)
+    else:
+        retry_count = response.get("retry_count", "?")
+        typer.echo(
+            typer.style(
+                f"Job {job_id} re-enqueued for processing (retry #{retry_count}).",
+                fg=typer.colors.GREEN,
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
+# aca jobs cleanup (direct-only — uses queue internals not exposed via API)
+# ---------------------------------------------------------------------------
 
 
 @app.command("cleanup")
@@ -632,6 +878,8 @@ def cleanup_jobs(
     Only deletes jobs with status 'completed'. Never deletes queued,
     in_progress, or failed jobs.
 
+    Always runs directly (uses queue internals not exposed via API).
+
     Examples:
         aca jobs cleanup --older-than 30d
         aca jobs cleanup --older-than 7d --dry-run
@@ -646,7 +894,6 @@ def cleanup_jobs(
 
     if dry_run:
         # Count completed jobs that would be deleted
-        # Note: This is an approximation since we can't filter by date in list_jobs
         try:
             jobs, total = run_async(queue_list_jobs(status=JobStatus.COMPLETED, limit=100))
         except Exception as e:
@@ -654,8 +901,6 @@ def cleanup_jobs(
             raise typer.Exit(1)
 
         # Count jobs older than threshold
-        from datetime import UTC, timedelta
-
         cutoff = datetime.now(UTC) - timedelta(days=days)
         old_jobs = [j for j in jobs if j.created_at and j.created_at < cutoff]
 

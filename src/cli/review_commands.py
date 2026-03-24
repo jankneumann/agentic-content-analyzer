@@ -1,5 +1,10 @@
 """CLI commands for digest review and revision.
 
+In HTTP mode (default), list/view commands call the backend API via httpx.
+In direct mode (--direct flag or API unreachable), commands call adapter
+functions directly (legacy inline behavior). The revise command is always
+direct-only (interactive REPL is too complex for HTTP).
+
 Usage:
     aca review list
     aca review view <digest-id>
@@ -11,6 +16,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
+import httpx
 import typer
 
 from src.cli.adapters import (
@@ -20,7 +26,7 @@ from src.cli.adapters import (
     process_revision_turn_sync,
     start_revision_session_sync,
 )
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(help="Review and revise digests.")
 
@@ -28,12 +34,26 @@ app = typer.Typer(help="Review and revise digests.")
 def _format_digest_summary(digest: Any) -> dict[str, Any]:
     """Format a digest object into a summary dictionary for display.
 
+    Works with both ORM objects (direct mode) and API response dicts (HTTP mode).
+
     Args:
-        digest: Digest ORM object.
+        digest: Digest ORM object or API response dict.
 
     Returns:
         Dictionary with key digest fields.
     """
+    if isinstance(digest, dict):
+        return {
+            "id": digest.get("id"),
+            "type": digest.get("digest_type", digest.get("type", "")),
+            "title": digest.get("title"),
+            "status": digest.get("status", ""),
+            "period_start": digest.get("period_start"),
+            "period_end": digest.get("period_end"),
+            "newsletter_count": digest.get("newsletter_count", 0),
+            "revision_count": digest.get("revision_count", 0),
+            "created_at": digest.get("created_at"),
+        }
     return {
         "id": digest.id,
         "type": str(digest.digest_type),
@@ -147,13 +167,109 @@ def _display_digest_content(digest: Any) -> None:
                     console.print(f"    {actions}")
 
 
-@app.command("list")
-def list_reviews() -> None:
-    """List all digests pending review.
+def _display_digest_content_from_dict(digest: dict[str, Any]) -> None:
+    """Display full digest content from an API response dict using Rich formatting.
 
-    Shows digests with status PENDING_REVIEW, ordered by creation date
-    (newest first). Displays ID, type, title, period, and creation date.
+    Args:
+        digest: Digest detail dict from the API.
     """
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+
+    console = Console()
+
+    # Header panel
+    header_lines = [
+        f"**Type:** {digest.get('digest_type', '')}",
+        f"**Status:** {digest.get('status', '')}",
+        f"**Period:** {digest.get('period_start', '')} to {digest.get('period_end', '')}",
+        f"**Content Count:** {digest.get('newsletter_count', 0)}",
+        f"**Revisions:** {digest.get('revision_count', 0)}",
+        f"**Model:** {digest.get('model_used', '')}",
+    ]
+    if digest.get("reviewed_by"):
+        header_lines.append(f"**Reviewed By:** {digest['reviewed_by']}")
+    if digest.get("reviewed_at"):
+        header_lines.append(f"**Reviewed At:** {digest['reviewed_at']}")
+
+    console.print(
+        Panel(
+            Markdown("\n".join(header_lines)),
+            title=f"[bold]Digest #{digest.get('id')}: {digest.get('title', '')}[/bold]",
+            border_style="blue",
+        )
+    )
+
+    # If markdown_content is available, display it directly
+    if digest.get("markdown_content"):
+        console.print()
+        console.print(Markdown(digest["markdown_content"]))
+        return
+
+    # Otherwise, render structured fields
+    if digest.get("executive_overview"):
+        console.print()
+        console.print("[bold]Executive Overview[/bold]")
+        console.print(Markdown(digest["executive_overview"]))
+
+    if digest.get("strategic_insights"):
+        console.print()
+        console.print("[bold]Strategic Insights[/bold]")
+        for idx, insight in enumerate(digest["strategic_insights"], 1):
+            if isinstance(insight, dict):
+                title = insight.get("title", "Untitled")
+                summary = insight.get("summary", "")
+                console.print(f"\n  {idx}. [bold]{title}[/bold]")
+                console.print(f"     {summary}")
+            else:
+                console.print(f"  {idx}. {insight}")
+
+    if digest.get("technical_developments"):
+        console.print()
+        console.print("[bold]Technical Developments[/bold]")
+        for idx, dev in enumerate(digest["technical_developments"], 1):
+            if isinstance(dev, dict):
+                title = dev.get("title", "Untitled")
+                summary = dev.get("summary", "")
+                console.print(f"\n  {idx}. [bold]{title}[/bold]")
+                console.print(f"     {summary}")
+            else:
+                console.print(f"  {idx}. {dev}")
+
+    if digest.get("emerging_trends"):
+        console.print()
+        console.print("[bold]Emerging Trends[/bold]")
+        for idx, trend in enumerate(digest["emerging_trends"], 1):
+            if isinstance(trend, dict):
+                title = trend.get("title", "Untitled")
+                summary = trend.get("summary", "")
+                console.print(f"\n  {idx}. [bold]{title}[/bold]")
+                console.print(f"     {summary}")
+            else:
+                console.print(f"  {idx}. {trend}")
+
+    if digest.get("actionable_recommendations"):
+        console.print()
+        console.print("[bold]Actionable Recommendations[/bold]")
+        recs = digest["actionable_recommendations"]
+        if isinstance(recs, dict):
+            for role, actions in recs.items():
+                console.print(f"\n  [bold]{role}:[/bold]")
+                if isinstance(actions, list):
+                    for action in actions:
+                        console.print(f"    - {action}")
+                else:
+                    console.print(f"    {actions}")
+
+
+# ---------------------------------------------------------------------------
+# Direct-mode helpers
+# ---------------------------------------------------------------------------
+
+
+def _list_reviews_direct() -> None:
+    """List pending reviews via direct service calls (legacy path)."""
     try:
         digests = list_pending_reviews_sync()
     except Exception as e:
@@ -216,19 +332,8 @@ def list_reviews() -> None:
     typer.echo(f"\n{len(digests)} digest(s) pending review.")
 
 
-@app.command("view")
-def view(
-    digest_id: Annotated[
-        int,
-        typer.Argument(help="ID of the digest to view."),
-    ],
-) -> None:
-    """View full content of a digest.
-
-    Displays the complete digest including executive overview, strategic
-    insights, technical developments, emerging trends, and actionable
-    recommendations.
-    """
+def _view_review_direct(digest_id: int) -> None:
+    """View a digest via direct service calls (legacy path)."""
     try:
         digest = get_digest_sync(digest_id)
     except Exception as e:
@@ -246,6 +351,133 @@ def view(
     _display_digest_content(digest)
 
 
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+
+@app.command("list")
+def list_reviews() -> None:
+    """List all digests pending review.
+
+    Shows digests with status PENDING_REVIEW, ordered by creation date
+    (newest first). Displays ID, type, title, period, and creation date.
+    """
+    if is_direct_mode():
+        _list_reviews_direct()
+        return
+
+    # HTTP path
+    try:
+        from src.cli.api_client import get_api_client
+
+        client = get_api_client()
+        resp = client.list_digests(status="pending_review")
+        digests: list[dict[str, Any]] = resp.get("digests", resp.get("items", []))
+    except httpx.ConnectError:
+        if not is_json_mode():
+            from rich.console import Console
+
+            Console(stderr=True).print(
+                "[yellow]Backend unavailable — listing reviews directly...[/yellow]"
+            )
+        _list_reviews_direct()
+        return
+
+    if not digests:
+        typer.echo("No digests pending review.")
+        if is_json_mode():
+            output_result({"digests": [], "count": 0})
+        return
+
+    if is_json_mode():
+        output_result(
+            {
+                "digests": [_format_digest_summary(d) for d in digests],
+                "count": len(digests),
+            }
+        )
+        return
+
+    # Rich table display
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+    table = Table(title="Digests Pending Review")
+
+    table.add_column("ID", justify="right", style="cyan", no_wrap=True)
+    table.add_column("Type", style="magenta")
+    table.add_column("Title", style="white", max_width=50)
+    table.add_column("Period", style="green")
+    table.add_column("Items", justify="right")
+    table.add_column("Revisions", justify="right")
+    table.add_column("Created", style="dim")
+
+    for d in digests:
+        period_start = d.get("period_start", "")
+        period_end = d.get("period_end", "")
+        period = f"{period_start} to {period_end}" if period_start and period_end else ""
+
+        table.add_row(
+            str(d.get("id", "")),
+            d.get("digest_type", d.get("type", "")),
+            d.get("title") or "(no title)",
+            period,
+            str(d.get("newsletter_count", 0)),
+            str(d.get("revision_count", 0)),
+            d.get("created_at", ""),
+        )
+
+    console.print(table)
+    typer.echo(f"\n{len(digests)} digest(s) pending review.")
+
+
+@app.command("view")
+def view(
+    digest_id: Annotated[
+        int,
+        typer.Argument(help="ID of the digest to view."),
+    ],
+) -> None:
+    """View full content of a digest.
+
+    Displays the complete digest including executive overview, strategic
+    insights, technical developments, emerging trends, and actionable
+    recommendations.
+    """
+    if is_direct_mode():
+        _view_review_direct(digest_id)
+        return
+
+    # HTTP path
+    try:
+        from src.cli.api_client import get_api_client
+
+        client = get_api_client()
+        digest = client.get_digest(digest_id)
+    except httpx.ConnectError:
+        if not is_json_mode():
+            from rich.console import Console
+
+            Console(stderr=True).print(
+                "[yellow]Backend unavailable — loading digest directly...[/yellow]"
+            )
+        _view_review_direct(digest_id)
+        return
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            typer.echo(f"Error: Digest {digest_id} not found.")
+            raise typer.Exit(1)
+        raise
+
+    if is_json_mode():
+        output_result(_format_digest_summary(digest))
+        return
+
+    _display_digest_content_from_dict(digest)
+
+
 @app.command("revise")
 def revise(
     digest_id: Annotated[
@@ -258,6 +490,9 @@ def revise(
     Loads the digest, displays its content, then enters a revision loop where
     you can request changes. The AI will revise the digest based on your
     instructions. Type "done" or press Ctrl-D to finish and approve.
+
+    This command always runs in direct mode (interactive REPL requires
+    direct service access).
 
     Example:
         aca review revise 42

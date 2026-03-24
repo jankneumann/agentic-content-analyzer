@@ -540,3 +540,36 @@ def _register_content_handlers() -> None:
             count = 1 if count else 0
 
         await update_job_progress(job_id, 100, f"Ingested {count} items from {source}")
+
+    @register_handler("run_pipeline")
+    async def run_pipeline_handler(job_id: int, payload: dict) -> None:
+        from src.pipeline.runner import run_pipeline
+
+        pipeline_type = payload.get("pipeline_type", "daily")
+        date = payload.get("date")
+        sources = payload.get("sources")
+
+        async def _on_progress(data: dict) -> None:
+            stage = data.get("stage", "")
+            status = data.get("status", "")
+            message = data.get("message", f"{stage} {status}")
+            progress_map = {
+                ("ingestion", "started"): 10,
+                ("ingestion", "completed"): 30,
+                ("summarization", "started"): 35,
+                ("summarization", "completed"): 70,
+                ("digest", "started"): 75,
+                ("digest", "completed"): 100,
+            }
+            pct = progress_map.get((stage, status), 50)
+            await update_job_progress(job_id, pct, message)
+
+        def _sync_progress(data: dict) -> None:
+            _asyncio.get_event_loop().create_task(_on_progress(data))
+
+        await run_pipeline(
+            pipeline_type=pipeline_type,
+            date=date,
+            sources=sources,
+            on_progress=_sync_progress,
+        )

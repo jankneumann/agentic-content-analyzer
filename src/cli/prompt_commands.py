@@ -1,5 +1,9 @@
 """CLI commands for prompt management.
 
+In HTTP mode (default), commands call the backend API via httpx.
+In direct mode (--direct flag or API unreachable), commands call
+services directly (legacy inline behavior).
+
 Usage:
     aca prompts list
     aca prompts show <key>
@@ -16,9 +20,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(
     name="prompts",
@@ -27,21 +32,13 @@ app = typer.Typer(
 )
 
 
-@app.command("list")
-def list_prompts(
-    category: Annotated[
-        str | None,
-        typer.Option("--category", "-c", help="Filter by category (chat, pipeline)"),
-    ] = None,
-    overrides_only: Annotated[
-        bool,
-        typer.Option("--overrides-only", "-o", help="Show only prompts with overrides"),
-    ] = False,
-) -> None:
-    """List all prompts with their override status.
+# ---------------------------------------------------------------------------
+# Direct-mode implementations
+# ---------------------------------------------------------------------------
 
-    Shows prompt keys, categories, and whether they have user overrides.
-    """
+
+def _list_prompts_direct(category: str | None, overrides_only: bool) -> None:
+    """List prompts directly via DB."""
     from src.services.prompt_service import PromptService
     from src.storage.database import get_db
 
@@ -63,55 +60,11 @@ def list_prompts(
         typer.echo("No prompts found matching filters.")
         return
 
-    # Group by category and step
-    current_category = ""
-    current_step = ""
-
-    for p in all_prompts:
-        # Print category header
-        if p["category"] != current_category:
-            current_category = p["category"]
-            typer.echo()
-            typer.echo(typer.style(f"  {current_category.upper()}", bold=True))
-
-        # Print step header
-        if p["step"] != current_step:
-            current_step = p["step"]
-            display_step = current_step.replace("_", " ").title()
-            typer.echo(typer.style(f"    {display_step}:", dim=True))
-
-        # Build status indicator
-        if p["has_override"]:
-            badge = typer.style(" [override]", fg=typer.colors.YELLOW)
-            version_str = f" v{p['version']}" if p["version"] else ""
-        else:
-            badge = ""
-            version_str = ""
-
-        # Truncate default for display
-        preview = p["default"][:60].replace("\n", " ")
-        if len(p["default"]) > 60:
-            preview += "..."
-
-        typer.echo(f"      {p['key']}{badge}{version_str}")
-        typer.echo(typer.style(f"        {preview}", dim=True))
-
-    typer.echo()
-    typer.echo(f"Total: {len(all_prompts)} prompts")
+    _display_prompts_table(all_prompts)
 
 
-@app.command("show")
-def show_prompt(
-    key: Annotated[str, typer.Argument(help="Prompt key (e.g., pipeline.summarization.system)")],
-    default: Annotated[
-        bool,
-        typer.Option("--default", "-d", help="Show default value even if override exists"),
-    ] = False,
-) -> None:
-    """Show the full value of a prompt.
-
-    Displays the current effective value, or the default if --default is used.
-    """
+def _show_prompt_direct(key: str, default: bool) -> None:
+    """Show a prompt directly via DB."""
     from src.services.prompt_service import PromptService
     from src.storage.database import get_db
 
@@ -155,6 +108,203 @@ def show_prompt(
         typer.echo(default_value)
 
 
+def _set_prompt_direct(key: str, value: str, description: str | None) -> None:
+    """Set a prompt override directly via DB."""
+    from src.services.prompt_service import PromptService
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        service = PromptService(db)
+
+        # Validate key exists
+        default_value = service.get_default(key)
+        if not default_value:
+            typer.echo(typer.style(f"Prompt not found: {key}", fg=typer.colors.RED))
+            raise typer.Exit(1)
+
+        service.set_override(key, value, description=description)
+        override = service.get_override(key)
+
+    if is_json_mode():
+        output_result(
+            {
+                "key": key,
+                "has_override": True,
+                "version": override.version if override else 1,
+            }
+        )
+        return
+
+    version = override.version if override else 1
+    typer.echo(typer.style(f"Override set for {key} (v{version})", fg=typer.colors.GREEN))
+
+
+def _reset_prompt_direct(key: str) -> None:
+    """Reset a prompt override directly via DB."""
+    from src.services.prompt_service import PromptService
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        service = PromptService(db)
+        service.clear_override(key)
+
+    if is_json_mode():
+        output_result({"key": key, "has_override": False})
+        return
+
+    typer.echo(typer.style(f"Override cleared for {key}", fg=typer.colors.GREEN))
+
+
+# ---------------------------------------------------------------------------
+# Shared display helpers
+# ---------------------------------------------------------------------------
+
+
+def _display_prompts_table(all_prompts: list[dict]) -> None:
+    """Display prompts in a grouped table format."""
+    current_category = ""
+    current_step = ""
+
+    for p in all_prompts:
+        # Print category header
+        if p["category"] != current_category:
+            current_category = p["category"]
+            typer.echo()
+            typer.echo(typer.style(f"  {current_category.upper()}", bold=True))
+
+        # Print step header
+        if p["step"] != current_step:
+            current_step = p["step"]
+            display_step = current_step.replace("_", " ").title()
+            typer.echo(typer.style(f"    {display_step}:", dim=True))
+
+        # Build status indicator
+        if p["has_override"]:
+            badge = typer.style(" [override]", fg=typer.colors.YELLOW)
+            version_str = f" v{p['version']}" if p["version"] else ""
+        else:
+            badge = ""
+            version_str = ""
+
+        # Truncate default for display
+        preview = p["default"][:60].replace("\n", " ")
+        if len(p["default"]) > 60:
+            preview += "..."
+
+        typer.echo(f"      {p['key']}{badge}{version_str}")
+        typer.echo(typer.style(f"        {preview}", dim=True))
+
+    typer.echo()
+    typer.echo(f"Total: {len(all_prompts)} prompts")
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+
+@app.command("list")
+def list_prompts(
+    category: Annotated[
+        str | None,
+        typer.Option("--category", "-c", help="Filter by category (chat, pipeline)"),
+    ] = None,
+    overrides_only: Annotated[
+        bool,
+        typer.Option("--overrides-only", "-o", help="Show only prompts with overrides"),
+    ] = False,
+) -> None:
+    """List all prompts with their override status.
+
+    Shows prompt keys, categories, and whether they have user overrides.
+    """
+    if is_direct_mode():
+        return _list_prompts_direct(category, overrides_only)
+
+    try:
+        from src.cli.api_client import get_api_client
+
+        client = get_api_client()
+        params = {}
+        if category:
+            params["category"] = category
+        if overrides_only:
+            params["overrides_only"] = "true"
+        data = client.list_prompts(**params)
+
+        if is_json_mode():
+            output_result(data)
+            return
+
+        all_prompts = data.get("prompts", data.get("overrides", []))
+        if not all_prompts:
+            typer.echo("No prompts found matching filters.")
+            return
+
+        _display_prompts_table(all_prompts)
+    except httpx.ConnectError:
+        if not is_json_mode():
+            typer.echo("Backend unavailable -- running directly...", err=True)
+        _list_prompts_direct(category, overrides_only)
+
+
+@app.command("show")
+def show_prompt(
+    key: Annotated[str, typer.Argument(help="Prompt key (e.g., pipeline.summarization.system)")],
+    default: Annotated[
+        bool,
+        typer.Option("--default", "-d", help="Show default value even if override exists"),
+    ] = False,
+) -> None:
+    """Show the full value of a prompt.
+
+    Displays the current effective value, or the default if --default is used.
+    """
+    if is_direct_mode():
+        return _show_prompt_direct(key, default)
+
+    try:
+        from src.cli.api_client import get_api_client
+
+        client = get_api_client()
+        data = client.get_prompt(key)
+
+        if is_json_mode():
+            output_result(data)
+            return
+
+        typer.echo(typer.style(f"Key: {key}", bold=True))
+
+        has_override = data.get("has_override", False)
+        override_value = data.get("override_value") or data.get("value")
+        default_value = data.get("default_value", "")
+
+        if has_override and not default:
+            typer.echo(typer.style("Status: override active", fg=typer.colors.YELLOW))
+            if data.get("version"):
+                typer.echo(f"Version: {data['version']}")
+            if data.get("description"):
+                typer.echo(f"Description: {data['description']}")
+            typer.echo()
+            typer.echo(override_value)
+        else:
+            if has_override:
+                typer.echo(typer.style("Status: showing default (override exists)", dim=True))
+            else:
+                typer.echo(typer.style("Status: default (no override)", dim=True))
+            typer.echo()
+            typer.echo(default_value)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            typer.echo(typer.style(f"Prompt not found: {key}", fg=typer.colors.RED))
+            raise typer.Exit(1)
+        raise
+    except httpx.ConnectError:
+        if not is_json_mode():
+            typer.echo("Backend unavailable -- running directly...", err=True)
+        _show_prompt_direct(key, default)
+
+
 @app.command("set")
 def set_prompt(
     key: Annotated[str, typer.Argument(help="Prompt key to override")],
@@ -175,9 +325,6 @@ def set_prompt(
 
     Provide the value inline with --value or from a file with --file.
     """
-    from src.services.prompt_service import PromptService
-    from src.storage.database import get_db
-
     if value is None and file is None:
         typer.echo(typer.style("Error: provide --value or --file", fg=typer.colors.RED))
         raise typer.Exit(1)
@@ -192,30 +339,27 @@ def set_prompt(
             raise typer.Exit(1)
         value = file.read_text()
 
-    with get_db() as db:
-        service = PromptService(db)
+    assert value is not None  # guaranteed by validation above
 
-        # Validate key exists
-        default_value = service.get_default(key)
-        if not default_value:
-            typer.echo(typer.style(f"Prompt not found: {key}", fg=typer.colors.RED))
-            raise typer.Exit(1)
+    if is_direct_mode():
+        return _set_prompt_direct(key, value, description)
 
-        service.set_override(key, value, description=description)  # type: ignore[arg-type]
-        override = service.get_override(key)
+    try:
+        from src.cli.api_client import get_api_client
 
-    if is_json_mode():
-        output_result(
-            {
-                "key": key,
-                "has_override": True,
-                "version": override.version if override else 1,
-            }
-        )
-        return
+        client = get_api_client()
+        data = client.set_prompt(key, value)
 
-    version = override.version if override else 1
-    typer.echo(typer.style(f"Override set for {key} (v{version})", fg=typer.colors.GREEN))
+        if is_json_mode():
+            output_result(data)
+            return
+
+        version = data.get("version", 1)
+        typer.echo(typer.style(f"Override set for {key} (v{version})", fg=typer.colors.GREEN))
+    except httpx.ConnectError:
+        if not is_json_mode():
+            typer.echo("Backend unavailable -- running directly...", err=True)
+        _set_prompt_direct(key, value, description)
 
 
 @app.command("reset")
@@ -223,18 +367,24 @@ def reset_prompt(
     key: Annotated[str, typer.Argument(help="Prompt key to reset")],
 ) -> None:
     """Reset a prompt override, reverting to the default value."""
-    from src.services.prompt_service import PromptService
-    from src.storage.database import get_db
+    if is_direct_mode():
+        return _reset_prompt_direct(key)
 
-    with get_db() as db:
-        service = PromptService(db)
-        service.clear_override(key)
+    try:
+        from src.cli.api_client import get_api_client
 
-    if is_json_mode():
-        output_result({"key": key, "has_override": False})
-        return
+        client = get_api_client()
+        client.reset_prompt(key)
 
-    typer.echo(typer.style(f"Override cleared for {key}", fg=typer.colors.GREEN))
+        if is_json_mode():
+            output_result({"key": key, "has_override": False})
+            return
+
+        typer.echo(typer.style(f"Override cleared for {key}", fg=typer.colors.GREEN))
+    except httpx.ConnectError:
+        if not is_json_mode():
+            typer.echo("Backend unavailable -- running directly...", err=True)
+        _reset_prompt_direct(key)
 
 
 @app.command("export")
@@ -251,6 +401,7 @@ def export_prompts(
     """Export prompts to a YAML file.
 
     Exports all prompts (or only overrides) for backup or migration.
+    Always runs directly (writes local files).
     """
     import yaml  # type: ignore[import-untyped]
 
@@ -303,6 +454,7 @@ def import_prompts(
 
     The file should have the same structure as prompts.yaml (category.step.name).
     Only values that differ from defaults are saved as overrides.
+    Always runs directly (reads local files, applies to DB).
     """
     import yaml  # type: ignore[import-untyped]
 
@@ -397,6 +549,8 @@ def test_prompt(
 
     Variables are provided as --var key=value pairs. Unset variables
     are left as {placeholder} in the output.
+
+    Always runs directly (template rendering is local).
     """
     from src.services.prompt_service import PromptService
     from src.storage.database import get_db

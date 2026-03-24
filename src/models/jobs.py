@@ -131,6 +131,7 @@ ENTRYPOINT_LABELS: dict[str, str] = {
     "extract_url_content": "URL Extraction",
     "process_content": "Process Content",
     "ingest_content": "Ingest",
+    "run_pipeline": "Pipeline",
 }
 
 TYPE_ALIASES: dict[str, str] = {
@@ -139,6 +140,7 @@ TYPE_ALIASES: dict[str, str] = {
     "extract": "extract_url_content",
     "process": "process_content",
     "ingest": "ingest_content",
+    "pipeline": "run_pipeline",
 }
 
 

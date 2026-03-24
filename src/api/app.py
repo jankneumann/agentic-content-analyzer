@@ -27,6 +27,7 @@ from src.api.model_settings_routes import router as model_settings_router
 from src.api.notification_preferences_routes import router as notification_preferences_router
 from src.api.notification_routes import router as notification_router
 from src.api.otel_proxy_routes import router as otel_proxy_router
+from src.api.pipeline_routes import router as pipeline_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
@@ -175,6 +176,7 @@ app.include_router(share_router)  # Share management (enable/disable/status)
 app.include_router(shared_router)  # Public shared content (no auth)
 app.include_router(notification_router)  # Notification events and SSE stream
 app.include_router(notification_preferences_router)  # Notification preferences
+app.include_router(pipeline_router)  # Pipeline execution (daily/weekly)
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 

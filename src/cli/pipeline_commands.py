@@ -24,9 +24,10 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Any
 
+import httpx
 import typer
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import is_direct_mode, is_json_mode, output_result
 from src.telemetry.metrics import (
     record_pipeline_stage_completed,
     record_pipeline_stage_failed,
@@ -40,6 +41,45 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 app = typer.Typer(help="Run end-to-end ingest -> summarize -> digest pipelines.")
+
+
+# ---------------------------------------------------------------------------
+# HTTP helper
+# ---------------------------------------------------------------------------
+
+
+def _pipeline_via_api(params: dict[str, Any], label: str) -> None:
+    """Run pipeline via HTTP API with SSE progress streaming."""
+    from src.cli.api_client import get_api_client
+    from src.cli.progress import stream_job_progress
+
+    client = get_api_client()
+    response = client.run_pipeline(**params)
+    job_id = response.get("job_id")
+
+    if not job_id:
+        if is_json_mode():
+            output_result(response)
+        else:
+            typer.echo(f"Pipeline enqueued: {response.get('message', '')}")
+        return
+
+    result = stream_job_progress(
+        client, str(job_id), label=label, stream_type="pipeline", json_mode=is_json_mode()
+    )
+
+    if is_json_mode():
+        output_result(result)
+    else:
+        status = result.get("status", "unknown")
+        if status in ("completed", "complete"):
+            typer.echo(f"\n{label} completed successfully.")
+        else:
+            msg = result.get("message", "Unknown error")
+            typer.echo(f"\n{label} failed: {msg}", err=True)
+
+    if result.get("status") in ("error", "failed"):
+        raise typer.Exit(1)
 
 
 def _get_tracer() -> Any:
@@ -499,6 +539,18 @@ def daily(
     Use --wait flag to enqueue summarization jobs for worker pool processing
     instead of direct in-process summarization.
     """
+    if not is_direct_mode() and not wait:
+        try:
+            params: dict[str, Any] = {"pipeline_type": "daily"}
+            if date:
+                params["date"] = date
+            _pipeline_via_api(params, "Daily pipeline")
+            return
+        except httpx.ConnectError:
+            if not is_json_mode():
+                typer.echo("Backend unavailable — running pipeline directly...", err=True)
+
+    # Direct mode fallback
     # Parse target date
     if date:
         try:
@@ -642,6 +694,18 @@ def weekly(
     Use --wait flag to enqueue summarization jobs for worker pool processing
     instead of direct in-process summarization.
     """
+    if not is_direct_mode() and not wait:
+        try:
+            params: dict[str, Any] = {"pipeline_type": "weekly"}
+            if week:
+                params["date"] = week
+            _pipeline_via_api(params, "Weekly pipeline")
+            return
+        except httpx.ConnectError:
+            if not is_json_mode():
+                typer.echo("Backend unavailable — running pipeline directly...", err=True)
+
+    # Direct mode fallback
     # Parse target week start date
     if week:
         try:

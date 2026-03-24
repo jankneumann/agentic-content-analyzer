@@ -134,6 +134,107 @@ class ApiClient:
         resp.raise_for_status()
         return self._resp_json(resp)
 
+    # ── Digests (read) ──────────────────────────────────────────────────
+
+    def list_digests(self, **params: Any) -> dict[str, Any]:
+        """GET /api/v1/digests — list digests."""
+        query = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.get("/api/v1/digests", params=query)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def get_digest(self, digest_id: int) -> dict[str, Any]:
+        """GET /api/v1/digests/{digest_id} — get digest details."""
+        resp = self._client.get(f"/api/v1/digests/{digest_id}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def review_digest(self, digest_id: int, **params: Any) -> dict[str, Any]:
+        """POST /api/v1/digests/{digest_id}/review — approve/reject digest."""
+        payload = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.post(f"/api/v1/digests/{digest_id}/review", json=payload)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    # ── Themes ────────────────────────────────────────────────────────
+
+    def analyze_themes(self, **params: Any) -> dict[str, Any]:
+        """POST /api/v1/themes/analyze — run theme analysis."""
+        payload = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.post("/api/v1/themes/analyze", json=payload)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    # ── Podcast Scripts ───────────────────────────────────────────────
+
+    def generate_podcast(self, **params: Any) -> dict[str, Any]:
+        """POST /api/v1/podcasts/generate — generate podcast script."""
+        payload = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.post("/api/v1/podcasts/generate", json=payload)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def list_scripts(self, **params: Any) -> dict[str, Any]:
+        """GET /api/v1/scripts — list podcast scripts."""
+        query = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.get("/api/v1/scripts", params=query)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    # ── Settings ──────────────────────────────────────────────────────
+
+    def list_settings(self, **params: Any) -> dict[str, Any]:
+        """GET /api/v1/settings/overrides — list setting overrides."""
+        query = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.get("/api/v1/settings/overrides", params=query)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def get_setting(self, key: str) -> dict[str, Any]:
+        """GET /api/v1/settings/overrides/{key} — get a setting."""
+        resp = self._client.get(f"/api/v1/settings/overrides/{key}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def set_setting(self, key: str, value: str) -> dict[str, Any]:
+        """PUT /api/v1/settings/overrides/{key} — set a setting override."""
+        resp = self._client.put(f"/api/v1/settings/overrides/{key}", json={"value": value})
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def delete_setting(self, key: str) -> dict[str, Any]:
+        """DELETE /api/v1/settings/overrides/{key} — remove a setting override."""
+        resp = self._client.delete(f"/api/v1/settings/overrides/{key}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    # ── Prompts ───────────────────────────────────────────────────────
+
+    def list_prompts(self, **params: Any) -> dict[str, Any]:
+        """GET /api/v1/settings/overrides — list prompts (via overrides API)."""
+        query = {"prefix": "prompt.", **{k: v for k, v in params.items() if v is not None}}
+        resp = self._client.get("/api/v1/settings/overrides", params=query)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def get_prompt(self, key: str) -> dict[str, Any]:
+        """GET /api/v1/settings/overrides/{key} — get prompt value."""
+        resp = self._client.get(f"/api/v1/settings/overrides/{key}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def set_prompt(self, key: str, value: str) -> dict[str, Any]:
+        """PUT /api/v1/settings/overrides/{key} — set prompt override."""
+        resp = self._client.put(f"/api/v1/settings/overrides/{key}", json={"value": value})
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def reset_prompt(self, key: str) -> dict[str, Any]:
+        """DELETE /api/v1/settings/overrides/{key} — reset prompt to default."""
+        resp = self._client.delete(f"/api/v1/settings/overrides/{key}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
     # ── Internal ───────────────────────────────────────────────────────
 
     @staticmethod
