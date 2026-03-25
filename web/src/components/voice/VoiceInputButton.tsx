@@ -59,12 +59,19 @@ export function VoiceInputButton({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={onToggle}
-            disabled={isDisabled}
+            onClick={(e) => {
+              if (isDisabled) {
+                e.preventDefault()
+                return
+              }
+              onToggle()
+            }}
+            aria-disabled={isDisabled}
             aria-label={isListening ? "Stop voice input" : "Start voice input"}
             aria-pressed={isListening}
             className={cn(
               "relative h-9 w-9 shrink-0",
+              isDisabled && "cursor-not-allowed opacity-50",
               isListening && "text-red-500 hover:text-red-600",
               error && !isListening && "text-destructive",
               className
@@ -73,7 +80,7 @@ export function VoiceInputButton({
             {/* Pulsing ring animation during recording */}
             {isListening && (
               <span
-                className="absolute inset-0 rounded-md animate-pulse-ring"
+                className="animate-pulse-ring absolute inset-0 rounded-md"
                 aria-hidden="true"
               />
             )}
