@@ -1,7 +1,7 @@
 # Validation Report: add-digest-followup-prompts
 
-**Date**: 2026-03-25 17:05:00
-**Commit**: 3a010f2
+**Date**: 2026-03-25 17:15:00
+**Commit**: e96aecc (fix applied during validation)
 **Branch**: openspec/add-digest-followup-prompts
 **PR**: #316
 
@@ -78,6 +78,7 @@ Architecture validation scripts not available (`scripts/validate_flows.py` not p
 | Copy-to-clipboard button per prompt | PASS | `CopyablePrompt` component in `DigestPane.tsx:307-334` using `navigator.clipboard` |
 | Visual feedback on copy | PASS | Check icon with green color, 2s timeout reset |
 | API response includes `followup_prompts` | PASS | `DigestSectionResponse.followup_prompts` in `digest_routes.py:85` |
+| API passes `followup_prompts` from DB JSON | PASS | `parse_sections_json` extracts `followup_prompts` (fixed in e96aecc — was silently dropping data) |
 | Digest dialog shows follow-up prompts | PASS | `FollowUpPromptsSection` in `digests.tsx` SectionList |
 | TypeScript types include `followup_prompts` | PASS | `followup_prompts?: string[]` in `web/src/types/digest.ts:60-76` |
 
