@@ -4,7 +4,7 @@ Loads ingestion source definitions from YAML config files in sources.d/
 directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
-Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog
 """
 
 import logging
@@ -52,6 +52,8 @@ class SourceDefaults(BaseModel):
     content_filter_strategy: Literal["none", "keyword", "llm", "keyword+llm"] | None = None
     content_filter_topics: list[str] | None = None
     content_filter_excerpt_chars: int | None = None  # Characters for LLM classification
+    # Blog-specific defaults
+    request_delay: float = 1.0
 
 
 # --- Source Type Models ---
@@ -142,6 +144,14 @@ class WebSearchSource(SourceBase):
     domain_filter: list[str] | None = None  # perplexity
 
 
+class BlogSource(SourceBase):
+    type: Literal["blog"] = "blog"
+    url: str
+    link_selector: str | None = None
+    link_pattern: str | None = None
+    request_delay: float = 1.0
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -151,7 +161,8 @@ Source = Annotated[
     | PodcastSource
     | GmailSource
     | SubstackSource
-    | WebSearchSource,
+    | WebSearchSource
+    | BlogSource,
     Field(discriminator="type"),
 ]
 
@@ -198,6 +209,10 @@ class SourcesConfig(BaseModel):
     def get_websearch_sources(self) -> list[WebSearchSource]:
         """Get all enabled web search sources."""
         return [s for s in self.sources if isinstance(s, WebSearchSource) and s.enabled]
+
+    def get_blog_sources(self) -> list[BlogSource]:
+        """Get all enabled blog sources."""
+        return [s for s in self.sources if isinstance(s, BlogSource) and s.enabled]
 
 
 # --- Source File Model (per-file schema) ---

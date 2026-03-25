@@ -13,17 +13,18 @@ T4 (content filter) ─┘                                    │
 
 ## Tasks
 
-### T1: Add BlogSource to Source Configuration
+### T1: Add BlogSource to Source Configuration [DONE]
 **Files**: `src/config/sources.py`
 **Effort**: Small
 **Dependencies**: None
+**Status**: Complete
 
 - Add `BlogSource(SourceBase)` with fields: `url`, `link_selector`, `link_pattern`, `request_delay`
 - Add `BlogSource` to `Source` discriminated union
 - Add `get_blog_sources()` method to `SourcesConfig`
 - Add `request_delay` to `SourceDefaults` (blog-specific default)
 
-### T2: Add BLOG Enum Value and Migration
+### T2: Add BLOG Enum Value and Migration [DONE]
 **Files**: `src/models/content.py`, `alembic/versions/xxx_add_blog_enum.py`
 **Effort**: Small
 **Dependencies**: None
@@ -32,7 +33,7 @@ T4 (content filter) ─┘                                    │
 - Create Alembic migration: `ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'blog'`
 - Update module docstring to include BLOG source
 
-### T3: Create Blog Source Configuration File
+### T3: Create Blog Source Configuration File [DONE]
 **Files**: `sources.d/blogs.yaml`
 **Effort**: Small
 **Dependencies**: None
@@ -55,7 +56,7 @@ T4 (content filter) ─┘                                    │
 - Added `create_content_filter()` factory for easy instantiation from settings
 - 33 unit tests passing
 
-### T5: Implement Blog Scraping Client and Service
+### T5: Implement Blog Scraping Client and Service [DONE]
 **Files**: `src/ingestion/blog_scraper.py`, `tests/test_ingestion/test_blog_scraper.py`
 **Effort**: Large
 **Dependencies**: T1, T2, T4
@@ -82,7 +83,7 @@ Core implementation:
 - Unit tests for deduplication logic
 - Mock HTTP responses (no real network calls)
 
-### T6: Add Orchestrator Function
+### T6: Add Orchestrator Function [DONE]
 **Files**: `src/ingestion/orchestrator.py`
 **Effort**: Small
 **Dependencies**: T5
@@ -90,7 +91,7 @@ Core implementation:
 - Add `ingest_blog()` function following existing pattern (lazy import, parameter forwarding)
 - Support `on_result` callback for CLI rich output
 
-### T7: Integrate into Pipeline Runner
+### T7: Integrate into Pipeline Runner [DONE]
 **Files**: `src/pipeline/runner.py`
 **Effort**: Small
 **Dependencies**: T6
@@ -99,7 +100,7 @@ Core implementation:
 - Add `("blog", ingest_blog)` to the `sources` list
 - Blog runs in parallel with other ingestion sources
 
-### T8: Add CLI Command
+### T8: Add CLI Command [DONE]
 **Files**: `src/cli/ingest_commands.py`
 **Effort**: Small
 **Dependencies**: T6
@@ -108,7 +109,7 @@ Core implementation:
 - Options: `--max`, `--days`, `--force`, `--direct`
 - Follow existing CLI command pattern (API path + direct path)
 
-### T9: Integration Test
+### T9: Integration Test [DONE]
 **Files**: `tests/test_ingestion/test_blog_scraper_integration.py`
 **Effort**: Medium
 **Dependencies**: T5, T6, T7, T8

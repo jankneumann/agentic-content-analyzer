@@ -12,6 +12,7 @@ Content Sources:
 - PODCAST: Podcast episode transcripts
 - SUBSTACK: Substack newsletters via Substack API
 - XSEARCH: X/Twitter posts via Grok API search
+- BLOG: Blog posts scraped from index pages
 - MANUAL: Manually created content via API
 """
 
@@ -58,6 +59,7 @@ class ContentSource(StrEnum):
     WEBPAGE = "webpage"  # Future: scraped web pages
     XSEARCH = "xsearch"  # X/Twitter posts via Grok search
     PERPLEXITY = "perplexity"  # Web articles via Perplexity search
+    BLOG = "blog"  # Blog posts scraped from index pages
     OTHER = "other"
 
 

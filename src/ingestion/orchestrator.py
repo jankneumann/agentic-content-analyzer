@@ -8,6 +8,8 @@ Each function:
 - Lazy-imports its service classes (avoids circular imports, defers heavy deps)
 - Accepts the same parameters the service expects
 - Returns int (number of items ingested) or a result dataclass
+
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url
 """
 
 from __future__ import annotations
@@ -110,6 +112,40 @@ def ingest_rss(
     service = RSSContentIngestionService()
     result = service.ingest_content(
         max_entries_per_feed=max_entries_per_feed,
+        after_date=after_date,
+        force_reprocess=force_reprocess,
+    )
+    if on_result:
+        on_result(result)
+    return result.items_ingested
+
+
+def ingest_blog(
+    *,
+    max_entries_per_source: int = 10,
+    after_date: datetime | None = None,
+    force_reprocess: bool = False,
+    on_result: Callable[[IngestionResult], None] | None = None,
+) -> int:
+    """Ingest blog posts from configured blog sources.
+
+    Discovers post links from blog index pages, extracts content
+    via Trafilatura, and persists with deduplication.
+
+    Args:
+        max_entries_per_source: Maximum posts per blog source.
+        after_date: Only fetch posts after this date.
+        force_reprocess: Force reprocess existing content.
+        on_result: Optional callback for rich result reporting in CLI.
+
+    Returns:
+        Number of items ingested.
+    """
+    from src.ingestion.blog_scraper import BlogContentIngestionService
+
+    service = BlogContentIngestionService()
+    result = service.ingest_content(
+        max_entries_per_source=max_entries_per_source,
         after_date=after_date,
         force_reprocess=force_reprocess,
     )
