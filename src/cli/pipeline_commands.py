@@ -231,6 +231,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     from src.config import settings as app_settings
     from src.config.sources import WebSearchSource, load_sources_config
     from src.ingestion.orchestrator import (
+        ingest_blog,
         ingest_gmail,
         ingest_perplexity_search,
         ingest_podcast,
@@ -245,6 +246,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     tasks = [
         _ingest_source("gmail", ingest_gmail),
         _ingest_source("rss", ingest_rss),
+        _ingest_source("blog", ingest_blog),
         _ingest_source("youtube-playlist", ingest_youtube_playlist),
         _ingest_source("youtube-rss", ingest_youtube_rss),
         _ingest_source("podcast", ingest_podcast),

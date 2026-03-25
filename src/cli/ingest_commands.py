@@ -237,6 +237,53 @@ def rss(
 
 
 # ---------------------------------------------------------------------------
+# aca ingest blog
+# ---------------------------------------------------------------------------
+
+
+def _blog_direct(max_results: int, after_date: datetime | None, force: bool) -> None:
+    """Direct blog ingestion."""
+    from src.ingestion.orchestrator import ingest_blog
+
+    count = ingest_blog(
+        max_entries_per_source=max_results,
+        after_date=after_date,
+        force_reprocess=force,
+    )
+    output_result({"source": "blog", "ingested": count})
+
+
+@app.command("blog")
+def blog(
+    max: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum posts per blog source."),
+    ] = 10,
+    days: Annotated[
+        int | None,
+        typer.Option("--days", "-d", help="Only fetch posts from the last N days."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+) -> None:
+    """Ingest posts from configured blog sources."""
+    after_date = _days_to_after_date(days)
+
+    if is_direct_mode():
+        return _blog_direct(max, after_date, force)
+
+    try:
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        _ingest_via_api("blog", params, "Blog ingestion")
+    except httpx.ConnectError:
+        _blog_direct(max, after_date, force)
+
+
+# ---------------------------------------------------------------------------
 # aca ingest substack
 # ---------------------------------------------------------------------------
 
