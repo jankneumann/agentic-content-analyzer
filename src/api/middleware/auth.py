@@ -6,6 +6,7 @@ explicitly exempted paths. In development mode, all requests pass.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import secrets
 from datetime import UTC, datetime
@@ -43,6 +44,26 @@ def _is_exempt(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES)
 
 
+def _is_local_client(request: Request) -> bool:
+    """Return True when a request originates from loopback/local test clients.
+
+    Dev-mode auth bypass should only apply to local development traffic to reduce
+    accidental public exposure when ENVIRONMENT is misconfigured.
+    """
+    if not request.client or not request.client.host:
+        return False
+
+    host = request.client.host
+    if host == "testclient":
+        return True
+
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        # Non-IP hosts are not considered local by default.
+        return False
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """Middleware that enforces authentication on all non-exempt endpoints.
 
@@ -60,6 +81,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # If a user sets APP_SECRET_KEY, they expect auth to work, even in dev.
         keys_configured = settings.app_secret_key or settings.admin_api_key
         if settings.is_development and not keys_configured:
+            if not _is_local_client(request):
+                return _error_response(
+                    401,
+                    "Authentication required",
+                    "Unauthenticated development mode is restricted to local requests.",
+                )
             return await call_next(request)
 
         # CORS preflight: let OPTIONS through so CORSMiddleware can respond

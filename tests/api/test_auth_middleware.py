@@ -329,6 +329,29 @@ class TestDevelopmentMode:
         # Should NOT be 401 -- dev mode bypasses auth middleware
         assert resp.status_code != 401
 
+    def test_non_local_client_requires_auth_even_in_dev_mode(self, monkeypatch):
+        """Dev auth bypass is restricted to loopback clients only."""
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("APP_SECRET_KEY", "")
+        monkeypatch.setenv("ADMIN_API_KEY", "")
+        monkeypatch.setenv("WORKER_ENABLED", "false")
+
+        from src.config.settings import get_settings
+
+        get_settings.cache_clear()
+        try:
+            from src.api.app import app
+
+            # Simulate a non-loopback client address.
+            with TestClient(app, client=("203.0.113.10", 50000)) as client:
+                resp = client.get(_PROTECTED_ENDPOINT)
+
+            assert resp.status_code == 401
+            assert "restricted to local requests" in resp.json()["detail"].lower()
+        finally:
+            get_settings.cache_clear()
+
 
 # ===========================================================================
 # Sliding Window Cookie Refresh Tests

@@ -13,6 +13,7 @@ import httpx
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
+from src.api.otel_rate_limiter import otel_proxy_rate_limiter
 from src.config import settings
 from src.utils.logging import get_logger
 
@@ -43,6 +44,15 @@ async def proxy_traces(request: Request) -> Response:
 
     if not settings.otel_exporter_otlp_endpoint:
         return JSONResponse(status_code=503, content={"detail": "OTLP endpoint not configured"})
+
+    client_ip = request.client.host if request.client else "unknown"
+    if otel_proxy_rate_limiter.is_limited(client_ip):
+        retry_after = otel_proxy_rate_limiter.get_retry_after(client_ip)
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Please try again later."},
+            headers={"Retry-After": str(retry_after)},
+        )
 
     # Validate content-type
     content_type = request.headers.get("content-type", "")
