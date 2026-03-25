@@ -441,6 +441,29 @@ class TestDigestSectionBackwardCompatibility:
         section = DigestSection.model_validate(data)
         assert section.followup_prompts == ["Prompt 1", "Prompt 2"]
 
+    def test_api_response_model_includes_followup_prompts(self):
+        """DigestSectionResponse includes followup_prompts field."""
+        from src.api.digest_routes import DigestSectionResponse
+
+        # With prompts
+        response = DigestSectionResponse(
+            title="Test",
+            summary="Summary",
+            details=["d1"],
+            themes=["t1"],
+            followup_prompts=["Prompt 1", "Prompt 2"],
+        )
+        assert response.followup_prompts == ["Prompt 1", "Prompt 2"]
+
+        # Without prompts (backward compatibility)
+        response_no_prompts = DigestSectionResponse(
+            title="Test",
+            summary="Summary",
+            details=["d1"],
+            themes=["t1"],
+        )
+        assert response_no_prompts.followup_prompts == []
+
     def test_digest_request_max_followup_prompts_default(self):
         """DigestRequest defaults max_followup_prompts to 3."""
         from datetime import datetime

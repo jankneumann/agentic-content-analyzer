@@ -83,6 +83,7 @@ class DigestSectionResponse(BaseModel):
     details: list[str]
     themes: list[str]
     continuity: str | None = None
+    followup_prompts: list[str] = Field(default_factory=list)
 
 
 class DigestDetail(BaseModel):

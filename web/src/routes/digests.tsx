@@ -7,6 +7,7 @@
  * Route: /digests
  */
 
+import * as React from "react"
 import { useState } from "react"
 import { createRoute, Link } from "@tanstack/react-router"
 import {
@@ -25,6 +26,11 @@ import {
   TrendingUp,
   Cpu,
   FileSearch,
+  MessageSquare,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { toast } from "sonner"
@@ -673,8 +679,74 @@ function SectionList({ sections }: { sections?: DigestSection[] }) {
               ))}
             </div>
           )}
+          {section.followup_prompts && section.followup_prompts.length > 0 && (
+            <FollowUpPromptsSection prompts={section.followup_prompts} />
+          )}
         </div>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Collapsible follow-up prompts with copy-to-clipboard
+ */
+function FollowUpPromptsSection({ prompts }: { prompts: string[] }) {
+  const [isOpen, setIsOpen] = React.useState(false)
+
+  return (
+    <div className="mt-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-auto gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+      >
+        <MessageSquare className="h-3 w-3" />
+        Follow-up prompts ({prompts.length})
+        {isOpen ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+      </Button>
+      {isOpen && (
+        <div className="mt-2 space-y-2">
+          {prompts.map((prompt, idx) => (
+            <CopyablePromptItem key={idx} prompt={prompt} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CopyablePromptItem({ prompt }: { prompt: string }) {
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(prompt)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="group relative rounded-md border bg-muted/30 p-2.5 pr-9 text-xs leading-relaxed">
+      {prompt}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="absolute right-1 top-1 h-6 w-6 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+        onClick={handleCopy}
+        title="Copy prompt"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-green-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </Button>
     </div>
   )
 }
