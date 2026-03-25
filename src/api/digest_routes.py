@@ -561,6 +561,7 @@ async def get_digest(
                     details=s.get("details", []),
                     themes=s.get("themes", []),
                     continuity=s.get("continuity"),
+                    followup_prompts=s.get("followup_prompts", []),
                 )
                 for s in sections_json
             ]
