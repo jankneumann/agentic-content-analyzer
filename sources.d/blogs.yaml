@@ -1,0 +1,31 @@
+defaults:
+  type: blog
+  enabled: true
+  max_entries: 10
+  request_delay: 1.0
+  content_filter_strategy: keyword
+
+sources:
+  # Anthropic research blog — all posts are on-topic, no filter needed
+  - name: "Anthropic Research"
+    url: "https://www.anthropic.com/research"
+    tags: [ai, anthropic, research]
+    content_filter_strategy: none
+    max_entries: 10
+
+  # Claude blog — product announcements and guides
+  - name: "Claude Blog"
+    url: "https://www.anthropic.com/news"
+    tags: [ai, claude, product]
+    link_selector: "a[href*='/news/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # Example with heuristic mode (no link_selector) and URL pattern filter
+  # - name: "Example Engineering Blog"
+  #   url: "https://engineering.example.com/blog"
+  #   tags: [engineering]
+  #   link_pattern: "/blog/\\d{4}/"
+  #   content_filter_strategy: keyword+llm
+  #   max_entries: 5
+  #   request_delay: 2.0
