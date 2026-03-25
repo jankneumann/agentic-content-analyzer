@@ -361,7 +361,7 @@ async def upload_document(
     except FileIngestionError as e:
         raise HTTPException(
             status_code=400, detail="Document upload failed due to an ingestion error"
-        )
+        ) from e
     except Exception as e:
         # Don't shadow HTTPException
         if isinstance(e, HTTPException):
