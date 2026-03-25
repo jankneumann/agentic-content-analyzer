@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -517,6 +517,45 @@ hoverfly-status:  ## Check Hoverfly status and loaded simulations
 	else \
 		echo "✗ Hoverfly is not running"; \
 		echo "  Start with: make hoverfly-up"; \
+	fi
+
+crawl4ai-up:  ## Start Crawl4AI browser server for JS content extraction
+	@echo "Starting Crawl4AI..."
+	@docker compose --profile crawl4ai up -d crawl4ai
+	@echo "Waiting for Crawl4AI to be ready (may take 30s on first start)..."
+	@timeout=60; \
+	elapsed=0; \
+	while ! curl -sf http://localhost:11235/health >/dev/null 2>&1; do \
+		if [ $$elapsed -ge $$timeout ]; then \
+			echo "✗ Timeout waiting for Crawl4AI"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
+		printf "."; \
+	done
+	@echo ""
+	@echo "✓ Crawl4AI is ready!"
+	@echo "  Server:  http://localhost:11235"
+	@echo "  Health:  http://localhost:11235/health"
+	@echo ""
+	@echo "Run Crawl4AI tests:"
+	@echo "  make test-crawl4ai"
+
+crawl4ai-down:  ## Stop Crawl4AI browser server
+	@echo "Stopping Crawl4AI..."
+	@docker compose --profile crawl4ai stop crawl4ai
+	@echo "✓ Crawl4AI stopped"
+
+crawl4ai-logs:  ## Tail Crawl4AI logs
+	@docker compose --profile crawl4ai logs -f crawl4ai
+
+test-crawl4ai:  ## Run Crawl4AI integration tests (requires: make crawl4ai-up)
+	@if curl -sf http://localhost:11235/health >/dev/null 2>&1; then \
+		pytest -m crawl4ai -v --no-cov; \
+	else \
+		echo "✗ Crawl4AI is not running! Start with: make crawl4ai-up"; \
+		exit 1; \
 	fi
 
 full-up:  ## Start all services (core + Opik observability)

@@ -1,0 +1,28 @@
+{
+  "data": {
+    "pairs": [
+      {
+        "request": {
+          "method": [{"matcher": "exact", "value": "POST"}],
+          "path": [{"matcher": "exact", "value": "/md"}],
+          "body": [{"matcher": "jsonpath", "value": "$.url"}]
+        },
+        "response": {
+          "status": 200,
+          "body": "{\"result\": {\"markdown\": \"# Extracted Content\\n\\nThis is markdown extracted from a JavaScript-heavy page by Crawl4AI.\\n\\n## Key Points\\n\\n- Dynamic content rendered\\n- JavaScript executed\\n- Full page content captured\\n\\nThis content was extracted using headless browser rendering.\"}}",
+          "headers": {
+            "Content-Type": ["application/json"]
+          }
+        }
+      }
+    ],
+    "globalActions": {
+      "delays": []
+    }
+  },
+  "meta": {
+    "schemaVersion": "v5",
+    "hoverflyVersion": "v1.10.5",
+    "timeExported": "2026-03-25T00:00:00Z"
+  }
+}

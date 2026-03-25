@@ -4,6 +4,10 @@ Provides high-quality HTML-to-markdown conversion using:
 - Trafilatura (primary): Fast, academic-quality extraction (~50ms)
 - Crawl4AI (fallback): JS rendering for dynamic content (~2-5s)
 
+Crawl4AI supports two modes selected by settings:
+- Local mode: AsyncWebCrawler in-process (requires crawl4ai package)
+- Remote mode: HTTP POST to Docker-hosted server (requires crawl4ai_server_url)
+
 Usage:
     converter = HtmlMarkdownConverter()
 
@@ -23,6 +27,8 @@ Usage:
 import asyncio
 from dataclasses import dataclass
 from typing import Any
+
+import httpx
 
 from src.utils.logging import get_logger
 
@@ -100,28 +106,107 @@ def validate_markdown_quality(
     )
 
 
+CACHE_MODE_MAP: dict[str, Any] = {}
+"""CacheMode enum mapping — populated lazily when crawl4ai is available."""
+
+
+def _build_cache_mode_map() -> dict[str, Any]:
+    """Build CacheMode mapping from crawl4ai, or return empty dict if unavailable."""
+    try:
+        from crawl4ai import CacheMode
+
+        return {
+            "bypass": CacheMode.BYPASS,
+            "enabled": CacheMode.ENABLED,
+            "disabled": CacheMode.DISABLED,
+            "read_only": CacheMode.READ_ONLY,
+            "write_only": CacheMode.WRITE_ONLY,
+        }
+    except ImportError:
+        return {}
+
+
 class HtmlMarkdownConverter:
     """Two-tier HTML to Markdown converter with async support.
 
     Primary extraction uses Trafilatura for speed and quality.
     Falls back to Crawl4AI for JavaScript-heavy content (URL-only).
+
+    Crawl4AI supports two modes:
+    - Local: AsyncWebCrawler in-process (requires crawl4ai package install)
+    - Remote: HTTP POST /md to Docker-hosted server (requires server_url)
     """
 
     def __init__(
         self,
-        use_crawl4ai_fallback: bool = False,  # Disabled by default until crawl4ai is added
-        min_length_threshold: int = 200,
+        use_crawl4ai_fallback: bool | None = None,
+        min_length_threshold: int | None = None,
+        server_url: str | None = None,
+        cache_mode: str | None = None,
+        page_timeout: int | None = None,
+        excluded_tags: list[str] | None = None,
     ) -> None:
         """Initialize converter.
 
+        Constructor kwargs take precedence over settings. Pass None to use settings values.
+
         Args:
-            use_crawl4ai_fallback: Enable Crawl4AI fallback for low-quality extractions
+            use_crawl4ai_fallback: Enable Crawl4AI fallback (default from settings.crawl4ai_enabled)
             min_length_threshold: Minimum content length before triggering fallback
+            server_url: Remote Crawl4AI server URL (default from settings.crawl4ai_server_url)
+            cache_mode: Cache mode string (default from settings.crawl4ai_cache_mode)
+            page_timeout: Page load timeout in ms (default from settings.crawl4ai_page_timeout)
+            excluded_tags: HTML tags to exclude (default from settings.crawl4ai_excluded_tags)
         """
-        self.use_fallback = use_crawl4ai_fallback
-        self.min_length_threshold = min_length_threshold
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+
+        self.use_fallback = (
+            use_crawl4ai_fallback
+            if use_crawl4ai_fallback is not None
+            else settings.crawl4ai_enabled
+        )
+        self.min_length_threshold = (
+            min_length_threshold if min_length_threshold is not None else 200
+        )
+        self.server_url = server_url if server_url is not None else settings.crawl4ai_server_url
+        self.page_timeout = (
+            page_timeout if page_timeout is not None else settings.crawl4ai_page_timeout
+        )
+        self.excluded_tags = (
+            excluded_tags if excluded_tags is not None else settings.crawl4ai_excluded_tags
+        )
+
+        # Parse and validate cache mode
+        cache_mode_str = cache_mode if cache_mode is not None else settings.crawl4ai_cache_mode
+        self._cache_mode_str = cache_mode_str
+        self._cache_mode_enum: Any = None  # Resolved lazily for local mode
+
         self._trafilatura_available: bool | None = None
         self._crawl4ai_available: bool | None = None
+
+    def _resolve_cache_mode(self) -> Any:
+        """Resolve cache mode string to CacheMode enum (local mode only).
+
+        Returns:
+            CacheMode enum value
+
+        Raises:
+            ValueError: If cache mode string is not recognized
+        """
+        global CACHE_MODE_MAP
+        if not CACHE_MODE_MAP:
+            CACHE_MODE_MAP = _build_cache_mode_map()
+        if not CACHE_MODE_MAP:
+            # crawl4ai not installed — caller should check _check_crawl4ai() first
+            return None
+        if self._cache_mode_str not in CACHE_MODE_MAP:
+            valid = ", ".join(sorted(CACHE_MODE_MAP.keys()))
+            raise ValueError(
+                f"Invalid crawl4ai_cache_mode '{self._cache_mode_str}'. Valid options: {valid}"
+            )
+        return CACHE_MODE_MAP[self._cache_mode_str]
 
     def _check_trafilatura(self) -> bool:
         """Check if trafilatura is available."""
@@ -215,7 +300,67 @@ class HtmlMarkdownConverter:
     async def _convert_with_crawl4ai(self, url: str) -> str | None:
         """Crawl4AI extraction for JavaScript-heavy content.
 
+        Dispatches to remote (HTTP) or local (in-process browser) mode
+        based on whether server_url is configured.
+
         Note: Crawl4AI requires a URL - cannot process raw HTML.
+
+        Args:
+            url: URL to fetch and extract
+
+        Returns:
+            Extracted markdown or None
+        """
+        if self.server_url:
+            return await self._convert_with_crawl4ai_remote(url)
+        return await self._convert_with_crawl4ai_local(url)
+
+    async def _convert_with_crawl4ai_remote(self, url: str) -> str | None:
+        """Extract content via remote Crawl4AI Docker server (POST /md).
+
+        Args:
+            url: URL to extract content from
+
+        Returns:
+            Extracted markdown or None
+        """
+        try:
+            timeout_seconds = self.page_timeout / 1000 + 5  # page timeout + network buffer
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                response = await client.post(
+                    f"{self.server_url}/md",
+                    json={"url": url, "c": self._cache_mode_str},
+                    headers={"Content-Type": "application/json"},
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    markdown = data.get("result", {}).get("markdown")
+                    return str(markdown) if markdown else None
+                logger.warning(
+                    "Crawl4AI remote server returned HTTP %d for %s",
+                    response.status_code,
+                    url,
+                )
+                return None
+        except httpx.ConnectError:
+            logger.warning(
+                "Crawl4AI remote server unreachable at %s — is it running?",
+                self.server_url,
+            )
+            return None
+        except httpx.TimeoutException:
+            logger.warning(
+                "Crawl4AI remote server timed out for %s (timeout: %.0fs)",
+                url,
+                self.page_timeout / 1000,
+            )
+            return None
+        except Exception as e:
+            logger.error("Crawl4AI remote extraction failed: %s", e)
+            return None
+
+    async def _convert_with_crawl4ai_local(self, url: str) -> str | None:
+        """Crawl4AI extraction via in-process AsyncWebCrawler (local browser).
 
         Args:
             url: URL to fetch and extract
@@ -231,6 +376,8 @@ class HtmlMarkdownConverter:
             from crawl4ai.content_filter_strategy import PruningContentFilter
             from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
+            cache_mode = self._resolve_cache_mode()
+
             # Configure content filtering
             content_filter = PruningContentFilter(
                 threshold=0.45,
@@ -240,7 +387,15 @@ class HtmlMarkdownConverter:
 
             md_generator = DefaultMarkdownGenerator(content_filter=content_filter)
 
-            config = CrawlerRunConfig(markdown_generator=md_generator)
+            config_kwargs: dict[str, Any] = {
+                "markdown_generator": md_generator,
+                "page_timeout": self.page_timeout,
+                "excluded_tags": self.excluded_tags,
+            }
+            if cache_mode is not None:
+                config_kwargs["cache_mode"] = cache_mode
+
+            config = CrawlerRunConfig(**config_kwargs)
 
             browser_config = BrowserConfig(headless=True, verbose=False)
 
@@ -252,11 +407,11 @@ class HtmlMarkdownConverter:
                     markdown_content = result.markdown.fit_markdown
                     return str(markdown_content) if markdown_content else None
 
-                logger.warning(f"Crawl4AI extraction failed for {url}")
+                logger.warning("Crawl4AI local extraction failed for %s", url)
                 return None
 
         except Exception as e:
-            logger.error(f"Crawl4AI extraction failed: {e}")
+            logger.error("Crawl4AI local extraction failed: %s", e)
             return None
 
     def _passes_quality_check(self, markdown: str | None) -> bool:

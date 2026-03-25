@@ -667,6 +667,15 @@ class Settings(BaseSettings):
     cohere_api_key: str | None = None
     jina_api_key: str | None = None
 
+    # Crawl4AI Configuration
+    # Fallback extractor for JavaScript-heavy pages (SPAs, dynamic content).
+    # Requires crawl4ai optional dep or Docker server.
+    crawl4ai_enabled: bool = False  # Feature flag — must explicitly enable
+    crawl4ai_cache_mode: str = "bypass"  # bypass/enabled/disabled/read_only/write_only
+    crawl4ai_server_url: str | None = None  # Remote server URL (e.g., http://localhost:11235)
+    crawl4ai_page_timeout: int = 30000  # Page load timeout in ms
+    crawl4ai_excluded_tags: list[str] = ["nav", "footer", "header"]  # HTML tags to exclude
+
     # CLI API Client Configuration
     # Used by CLI commands to target the backend API (local dev or cloud).
     # Override via profile settings.api.api_base_url or API_BASE_URL env var.

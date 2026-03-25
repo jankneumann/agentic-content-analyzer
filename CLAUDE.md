@@ -67,6 +67,12 @@ make supabase-down # Stop Supabase stack
 make supabase-logs # Tail Supabase logs
 make dev-supabase  # Start with PROFILE=local-supabase (requires: make supabase-up)
 
+# Crawl4AI browser server (JS content extraction)
+make crawl4ai-up   # Start Crawl4AI Docker server (port 11235)
+make crawl4ai-down # Stop Crawl4AI server
+make crawl4ai-logs # Tail Crawl4AI logs
+make test-crawl4ai # Run Crawl4AI integration tests
+
 # Full stack management
 make full-up       # Start core services + Opik
 make full-down     # Stop all services (including Supabase if running)
@@ -568,6 +574,11 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | gitleaks pre-commit blocks commit | Check `.gitleaks.toml` allowlist; add path or regex exception for intentional test fixtures |
 | pip-audit fails in CI | Check `pip-audit --desc on` locally; known advisories may need `--ignore-vuln` flag |
 | Security headers break iframe embedding | `X-Frame-Options: DENY` prevents embedding; if embedding needed, switch to CSP `frame-ancestors` directive |
+| Crawl4AI Docker needs `--shm-size=1g` | Chromium crashes without shared memory; docker-compose sets `shm_size: '1g'` |
+| `crawl4ai_enabled` defaults to `False` | Must explicitly enable via env var or profile; prevents accidental browser launches |
+| Remote mode needs Docker running | `make crawl4ai-up` first; connection refused errors are fail-safe (returns Trafilatura result) |
+| CacheMode string must match enum names | Valid values: `bypass`, `enabled`, `disabled`, `read_only`, `write_only` |
+| Crawl4AI lazy import in converter | `get_settings()` imported inside `__init__` — patch at `src.config.settings.get_settings`, not the converter module |
 
 ## Quick Links by Task
 
