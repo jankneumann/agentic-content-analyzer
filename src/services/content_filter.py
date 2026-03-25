@@ -243,29 +243,42 @@ class ContentRelevanceFilter:
 
 
 def create_content_filter(
-    strategy_override: str | None = None,
-    topics_override: list[str] | None = None,
+    source: object | None = None,
+    *,
+    strategy: str | None = None,
+    topics: list[str] | None = None,
+    excerpt_chars: int | None = None,
 ) -> ContentRelevanceFilter:
-    """Create a ContentRelevanceFilter from application settings.
+    """Create a ContentRelevanceFilter from source config.
 
-    Reads defaults from settings (CONTENT_FILTER_STRATEGY, CONTENT_FILTER_TOPICS,
-    CONTENT_FILTER_EXCERPT_CHARS). Overrides can be passed for per-source config.
+    Filter configuration is read from sources.d/ via the standard cascade:
+      _defaults.yaml → per-file defaults → per-source entry
+
+    Explicit keyword arguments take highest precedence.
 
     Args:
-        strategy_override: Override strategy (from source config).
-        topics_override: Override topics (from source config).
+        source: A source object (e.g., RSSSource, BlogSource) whose
+            content_filter_* attributes provide per-source overrides.
+            These cascade over _defaults.yaml and per-file defaults.
+        strategy: Explicit override (highest precedence).
+        topics: Explicit override (highest precedence).
+        excerpt_chars: Explicit override (highest precedence).
 
     Returns:
         Configured ContentRelevanceFilter instance.
     """
-    from src.config import settings as app_settings
+    # Resolve from source object (already has cascade-resolved values)
+    src_strategy = getattr(source, "content_filter_strategy", None) if source else None
+    src_topics = getattr(source, "content_filter_topics", None) if source else None
+    src_excerpt = getattr(source, "content_filter_excerpt_chars", None) if source else None
 
-    strategy = strategy_override or app_settings.content_filter_strategy
-    topics = topics_override or app_settings.content_filter_topics
-    excerpt_chars = app_settings.content_filter_excerpt_chars
+    # Explicit args > source config > hardcoded defaults
+    resolved_strategy = strategy or src_strategy or "none"
+    resolved_topics = topics or src_topics or []
+    resolved_excerpt = excerpt_chars or src_excerpt or 1000
 
     return ContentRelevanceFilter(
-        strategy=strategy,
-        topics=topics,
-        excerpt_chars=excerpt_chars,
+        strategy=resolved_strategy,
+        topics=resolved_topics,
+        excerpt_chars=resolved_excerpt,
     )

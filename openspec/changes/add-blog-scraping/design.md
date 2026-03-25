@@ -224,14 +224,30 @@ Blog sources are especially likely to contain off-topic posts (e.g., a company e
 
 ### Configuration
 
-**Global defaults** in `.env` / settings:
-```bash
-CONTENT_FILTER_STRATEGY=keyword+llm        # none, keyword, llm, keyword+llm
-CONTENT_FILTER_TOPICS=AI,machine learning,leadership,data engineering
-CONTENT_FILTER_EXCERPT_CHARS=1000           # Characters for LLM classification
+All filter configuration lives in the `sources.d/` cascade — no `.env` variables needed.
+
+**Global defaults** in `sources.d/_defaults.yaml`:
+```yaml
+defaults:
+  content_filter_strategy: none  # none, keyword, llm, keyword+llm
+  content_filter_topics:
+    - AI
+    - machine learning
+    - LLM
+    - deep learning
+    - data engineering
+    - leadership
+  content_filter_excerpt_chars: 1000
 ```
 
-**Per-source overrides** in `sources.d/blogs.yaml`:
+**Per-file defaults** (e.g., `sources.d/blogs.yaml`):
+```yaml
+defaults:
+  type: blog
+  content_filter_strategy: keyword+llm   # Override for all blog sources
+```
+
+**Per-source overrides**:
 ```yaml
 sources:
   - name: "Anthropic Blog"
@@ -244,20 +260,24 @@ sources:
     content_filter_topics: [AI, machine learning, LLM]
 ```
 
+**Cascade resolution** (highest precedence first):
+1. Per-source entry fields
+2. Per-file `defaults:` section
+3. `_defaults.yaml` global defaults
+4. Hardcoded fallbacks (`none` strategy, empty topics, 1000 chars)
+
 ### Integration Point
 
-In the blog ingestion service, after fetching content and before DB persistence:
+In any ingestion service, after fetching content and before DB persistence:
 ```python
 from src.services.content_filter import create_content_filter
 
-filter = create_content_filter(
-    strategy_override=source.content_filter_strategy,
-    topics_override=source.content_filter_topics,
-)
+# Source object already has cascade-resolved values
+filter = create_content_filter(source)
 contents = filter.filter_contents(contents)
 ```
 
-The same utility can be used in RSS, Gmail, or any other ingestion service.
+The same utility can be used in RSS, Gmail, blog, or any other ingestion service.
 
 ### Default Model
 
@@ -279,6 +299,6 @@ Content filtering uses `gemini-2.5-flash-lite` by default (configurable via `MOD
 | `src/config/models.py` | Add `CONTENT_FILTERING` to `ModelStep` enum |
 | `src/config/model_registry.yaml` | Add `content_filtering: gemini-2.5-flash-lite` default |
 | `src/config/prompts.yaml` | Add `pipeline.content_filtering` prompt templates |
-| `src/config/settings.py` | Add `content_filter_*` settings |
+| `sources.d/_defaults.yaml` | Add `content_filter_*` global defaults |
 | `tests/test_services/test_content_filter.py` | **New**: Unit tests for content filter |
 | `tests/test_ingestion/test_blog_scraper.py` | **New**: Unit tests |

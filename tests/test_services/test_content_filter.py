@@ -325,28 +325,52 @@ class TestParseLLMResponse:
 
 
 class TestCreateContentFilter:
-    def _mock_settings(self):
-        mock = MagicMock()
-        mock.content_filter_strategy = "keyword"
-        mock.content_filter_topics = ["AI", "ML"]
-        mock.content_filter_excerpt_chars = 500
-        return mock
+    def _mock_source(self, **overrides):
+        """Create a mock source object with content_filter_* attributes."""
+        defaults = {
+            "content_filter_strategy": "keyword",
+            "content_filter_topics": ["AI", "ML"],
+            "content_filter_excerpt_chars": 500,
+        }
+        defaults.update(overrides)
+        return MagicMock(**defaults)
 
-    def test_uses_settings_defaults(self):
-        mock_settings = self._mock_settings()
-        with patch("src.config.settings", mock_settings):
-            f = create_content_filter()
+    def test_reads_from_source_object(self):
+        source = self._mock_source()
+        f = create_content_filter(source)
         assert f.strategy == "keyword"
         assert f.topics == ["AI", "ML"]
         assert f.excerpt_chars == 500
 
-    def test_overrides_take_precedence(self):
-        mock_settings = self._mock_settings()
-        mock_settings.content_filter_excerpt_chars = 1000
-        with patch("src.config.settings", mock_settings):
-            f = create_content_filter(
-                strategy_override="llm",
-                topics_override=["leadership", "management"],
-            )
+    def test_explicit_args_override_source(self):
+        source = self._mock_source()
+        f = create_content_filter(
+            source,
+            strategy="llm",
+            topics=["leadership", "management"],
+        )
         assert f.strategy == "llm"
         assert f.topics == ["leadership", "management"]
+        assert f.excerpt_chars == 500  # Falls through from source
+
+    def test_no_source_uses_hardcoded_defaults(self):
+        f = create_content_filter()
+        assert f.strategy == "none"
+        assert f.topics == []
+        assert f.excerpt_chars == 1000
+
+    def test_source_with_none_fields_uses_defaults(self):
+        source = self._mock_source(
+            content_filter_strategy=None,
+            content_filter_topics=None,
+            content_filter_excerpt_chars=None,
+        )
+        f = create_content_filter(source)
+        assert f.strategy == "none"
+        assert f.topics == []
+        assert f.excerpt_chars == 1000
+
+    def test_explicit_excerpt_chars(self):
+        source = self._mock_source()
+        f = create_content_filter(source, excerpt_chars=2000)
+        assert f.excerpt_chars == 2000

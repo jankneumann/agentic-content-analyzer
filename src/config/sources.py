@@ -50,7 +50,8 @@ class SourceDefaults(BaseModel):
     )
     # Content relevance filtering
     content_filter_strategy: Literal["none", "keyword", "llm", "keyword+llm"] | None = None
-    content_filter_topics: list[str] | None = None  # Override global topics
+    content_filter_topics: list[str] | None = None
+    content_filter_excerpt_chars: int | None = None  # Characters for LLM classification
 
 
 # --- Source Type Models ---
@@ -64,6 +65,10 @@ class SourceBase(BaseModel):
     tags: list[str] = []
     enabled: bool = True
     max_entries: int | None = None
+    # Content relevance filtering (inherited by all source types via cascade)
+    content_filter_strategy: str | None = None
+    content_filter_topics: list[str] | None = None
+    content_filter_excerpt_chars: int | None = None
 
 
 class RSSSource(SourceBase):

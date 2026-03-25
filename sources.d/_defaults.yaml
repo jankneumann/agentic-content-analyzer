@@ -3,3 +3,16 @@ defaults:
   enabled: true
   max_entries: 50
   days_back: 7
+
+  # Content relevance filtering
+  # Cascade: _defaults.yaml → per-file defaults → per-source entry
+  # Strategies: none (default), keyword, llm, keyword+llm
+  content_filter_strategy: none
+  content_filter_topics:
+    - AI
+    - machine learning
+    - LLM
+    - deep learning
+    - data engineering
+    - leadership
+  content_filter_excerpt_chars: 1000
