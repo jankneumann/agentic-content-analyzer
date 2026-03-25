@@ -1,0 +1,326 @@
+# Work Packages: Blog Page Scraping Ingestion
+# Decomposition for multi-agent parallel implementation
+#
+# DAG:
+#   wp-config ──┐
+#   wp-enum ────┤
+#   wp-sources ─┼── wp-scraper ── wp-orchestrator ── wp-integration
+#               │                       │
+#               │                  wp-cli ─────────┘
+#               │                       │
+#               └── (T4 content filter: DONE)
+
+change_id: add-blog-scraping
+generated: "2026-03-25"
+
+packages:
+  # ─────────────────────────────────────────────
+  # Layer 0: Foundation (no dependencies, parallel)
+  # ─────────────────────────────────────────────
+
+  - id: wp-config
+    name: "Add BlogSource to source configuration"
+    tasks: [T1]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "src/config/sources.py"
+      read_allow:
+        - "src/config/**"
+        - "contracts/generated/models.py"
+      deny:
+        - "src/ingestion/**"
+        - "src/cli/**"
+        - "src/pipeline/**"
+        - "tests/**"
+    locks:
+      files:
+        - "src/config/sources.py"
+      keys:
+        - "config:source-model:BlogSource"
+        - "config:source-union:blog"
+      ttl_minutes: 60
+      reason: "Add BlogSource model and update Source union"
+    verification:
+      tier: C  # Static: linting and type checking
+      checks:
+        - "ruff check src/config/sources.py"
+        - "mypy src/config/sources.py"
+    description: |
+      Add BlogSource(SourceBase) with fields: url, link_selector, link_pattern,
+      request_delay. Add to Source discriminated union. Add get_blog_sources()
+      to SourcesConfig. Add request_delay to SourceDefaults.
+
+  - id: wp-enum
+    name: "Add BLOG enum value and Alembic migration"
+    tasks: [T2]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "src/models/content.py"
+        - "alembic/versions/*_add_blog_enum.py"
+      read_allow:
+        - "src/models/**"
+        - "alembic/**"
+        - "contracts/db/schema.sql"
+      deny:
+        - "src/ingestion/**"
+        - "src/cli/**"
+        - "src/config/**"
+    locks:
+      files:
+        - "src/models/content.py"
+      keys:
+        - "db:enum:contentsource:blog"
+        - "db:migration:add_blog_enum"
+      ttl_minutes: 60
+      reason: "Add BLOG to ContentSource enum and create migration"
+    verification:
+      tier: A  # Full: migration applies cleanly
+      checks:
+        - "ruff check src/models/content.py"
+        - "alembic upgrade head"
+        - "alembic downgrade -1"
+    description: |
+      Add BLOG = "blog" to ContentSource enum in src/models/content.py.
+      Create Alembic migration: ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'blog'.
+      Migration must be idempotent (IF NOT EXISTS).
+
+  - id: wp-sources
+    name: "Create blog source configuration file"
+    tasks: [T3]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "sources.d/blogs.yaml"
+      read_allow:
+        - "sources.d/**"
+        - "contracts/generated/models.py"
+      deny:
+        - "src/**"
+        - "tests/**"
+    locks:
+      files:
+        - "sources.d/blogs.yaml"
+      keys:
+        - "config:sources.d:blogs"
+      ttl_minutes: 30
+      reason: "Create new blog source YAML config"
+    verification:
+      tier: C  # Static: YAML validity
+      checks:
+        - "python3 -c 'import yaml; yaml.safe_load(open(\"sources.d/blogs.yaml\"))'"
+    description: |
+      Create sources.d/blogs.yaml with defaults section (type: blog).
+      Add initial sources: Anthropic research blog, Claude blog.
+      Include examples with link_selector and without (heuristic mode).
+
+  # ─────────────────────────────────────────────
+  # Layer 1: Core Implementation (depends on Layer 0)
+  # ─────────────────────────────────────────────
+
+  - id: wp-scraper
+    name: "Implement blog scraper client and service"
+    tasks: [T5]
+    priority: 2
+    depends_on: [wp-config, wp-enum, wp-sources]
+    scope:
+      write_allow:
+        - "src/ingestion/blog_scraper.py"
+        - "tests/test_ingestion/test_blog_scraper.py"
+      read_allow:
+        - "src/ingestion/rss.py"
+        - "src/ingestion/podcast.py"
+        - "src/config/sources.py"
+        - "src/models/content.py"
+        - "src/services/content_filter.py"
+        - "src/utils/**"
+        - "contracts/**"
+      deny:
+        - "src/ingestion/orchestrator.py"
+        - "src/cli/**"
+        - "src/pipeline/**"
+    locks:
+      files:
+        - "src/ingestion/blog_scraper.py"
+        - "tests/test_ingestion/test_blog_scraper.py"
+      keys:
+        - "ingestion:blog:client"
+        - "ingestion:blog:service"
+      ttl_minutes: 120
+      reason: "Core blog scraping implementation"
+    verification:
+      tier: A  # Full: unit tests + lint
+      checks:
+        - "ruff check src/ingestion/blog_scraper.py"
+        - "mypy src/ingestion/blog_scraper.py"
+        - "pytest tests/test_ingestion/test_blog_scraper.py -v"
+    description: |
+      NEW FILE: src/ingestion/blog_scraper.py
+
+      BlogScrapingClient:
+      - fetch_index_page(): HTTP fetch with SSRF protection (httpx, follow_redirects=True)
+      - discover_post_links(): CSS selector or heuristic link extraction via BeautifulSoup
+      - extract_post_content(): Fetch + Trafilatura markdown extraction
+      - extract_published_date(): OG → time → meta → JSON-LD → fallback
+      - Rate limiting between requests (request_delay)
+
+      BlogContentIngestionService:
+      - ingest_content(): Source resolution → link discovery → content extraction → dedup → persist
+      - 3-level dedup: source_id, source_url, content_hash
+      - Per-source SourceFetchResult tracking
+      - Content relevance filtering via create_content_filter(source)
+      - db.flush() after each db.add() (autoflush=False gotcha)
+
+      Unit tests: link discovery HTML variants, date extraction strategies,
+      URL filtering, dedup logic, mock HTTP responses.
+
+  # ─────────────────────────────────────────────
+  # Layer 2: Integration (depends on Layer 1)
+  # ─────────────────────────────────────────────
+
+  - id: wp-orchestrator
+    name: "Add orchestrator function and pipeline integration"
+    tasks: [T6, T7]
+    priority: 3
+    depends_on: [wp-scraper]
+    scope:
+      write_allow:
+        - "src/ingestion/orchestrator.py"
+        - "src/cli/pipeline_commands.py"
+      read_allow:
+        - "src/ingestion/blog_scraper.py"
+        - "src/config/sources.py"
+        - "contracts/**"
+      deny:
+        - "src/cli/ingest_commands.py"
+        - "tests/**"
+    locks:
+      files:
+        - "src/ingestion/orchestrator.py"
+        - "src/cli/pipeline_commands.py"
+      keys:
+        - "ingestion:orchestrator:ingest_blog"
+        - "pipeline:ingestion-stage:blog"
+      ttl_minutes: 60
+      reason: "Wire blog scraper into orchestrator and pipeline"
+    verification:
+      tier: C  # Static: lint + type check (no unit tests for orchestrator)
+      checks:
+        - "ruff check src/ingestion/orchestrator.py src/cli/pipeline_commands.py"
+        - "mypy src/ingestion/orchestrator.py"
+    description: |
+      T6: Add ingest_blog() to src/ingestion/orchestrator.py
+      - Lazy import BlogContentIngestionService
+      - Forward parameters (max_entries_per_source, after_date, force_reprocess)
+      - Support on_result callback
+      - Return result.items_ingested
+
+      T7: Add blog to _run_ingestion_stage_async() in pipeline_commands.py
+      - Import ingest_blog from orchestrator
+      - Add _ingest_source("blog", ingest_blog) to tasks list
+
+  - id: wp-cli
+    name: "Add CLI command"
+    tasks: [T8]
+    priority: 3
+    depends_on: [wp-orchestrator]
+    scope:
+      write_allow:
+        - "src/cli/ingest_commands.py"
+      read_allow:
+        - "src/ingestion/orchestrator.py"
+        - "src/cli/output.py"
+        - "contracts/**"
+      deny:
+        - "src/ingestion/blog_scraper.py"
+        - "src/pipeline/**"
+    locks:
+      files:
+        - "src/cli/ingest_commands.py"
+      keys:
+        - "cli:ingest:blog"
+      ttl_minutes: 60
+      reason: "Add aca ingest blog CLI command"
+    verification:
+      tier: C  # Static: lint (CLI tests mock orchestrator)
+      checks:
+        - "ruff check src/cli/ingest_commands.py"
+    description: |
+      Add blog subcommand to aca ingest:
+      - Options: --max (default 10), --days, --force, --direct
+      - API path: _ingest_via_api("blog", params, "Blog ingestion")
+      - Direct path: _blog_direct() calling orchestrator.ingest_blog()
+      - Fallback: auto-switch to direct if API unreachable
+      - Guard human output with not is_json_mode()
+
+  # ─────────────────────────────────────────────
+  # Layer 3: Verification (depends on all above)
+  # ─────────────────────────────────────────────
+
+  - id: wp-integration
+    name: "Integration tests and full verification"
+    tasks: [T9]
+    priority: 4
+    depends_on: [wp-scraper, wp-orchestrator, wp-cli]
+    scope:
+      write_allow:
+        - "tests/test_ingestion/test_blog_scraper_integration.py"
+        - "tests/cli/test_ingest_blog.py"
+      read_allow:
+        - "src/**"
+        - "sources.d/**"
+        - "contracts/**"
+        - "tests/**"
+      deny:
+        - "src/**"  # Read-only for source code
+    locks:
+      files:
+        - "tests/test_ingestion/test_blog_scraper_integration.py"
+        - "tests/cli/test_ingest_blog.py"
+      keys:
+        - "test:integration:blog"
+        - "test:cli:blog"
+      ttl_minutes: 120
+      reason: "Integration and CLI tests for blog ingestion"
+    verification:
+      tier: A  # Full test suite
+      checks:
+        - "pytest tests/test_ingestion/test_blog_scraper.py -v"
+        - "pytest tests/test_ingestion/test_blog_scraper_integration.py -v"
+        - "pytest tests/cli/test_ingest_blog.py -v"
+        - "pytest tests/ -x --timeout 120"
+        - "alembic upgrade head"
+    description: |
+      Integration tests:
+      - Full flow: config loading → link discovery → content extraction → DB persist
+      - Dedup on second run (skip already-ingested)
+      - Date filtering (after_date parameter)
+      - Content relevance filtering (keyword + LLM strategies)
+      - Pipeline integration (blog appears in ingestion results)
+      - Mock HTTP via respx or responses library
+
+      CLI tests:
+      - aca ingest blog with various options
+      - JSON mode output
+      - Direct mode fallback
+      - Mock orchestrator at src.ingestion.orchestrator.ingest_blog
+
+# DAG Visualization
+#
+#   wp-config ──────┐
+#   wp-enum ────────┼── wp-scraper ── wp-orchestrator ── wp-integration
+#   wp-sources ─────┘                       │
+#                                      wp-cli ──────────┘
+#
+# Parallel execution groups:
+#   Round 1: wp-config, wp-enum, wp-sources (3 agents)
+#   Round 2: wp-scraper (1 agent, largest package)
+#   Round 3: wp-orchestrator (1 agent)
+#   Round 4: wp-cli + wp-integration (can overlap if CLI is fast)
+#
+# Critical path: wp-config → wp-scraper → wp-orchestrator → wp-integration
+# Estimated parallel speedup: ~2x (3 foundation packages run simultaneously)
