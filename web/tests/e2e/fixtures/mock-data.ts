@@ -319,6 +319,10 @@ export function createDigestDetail(
         ],
         themes: ["Enterprise AI", "Safety"],
         continuity: null,
+        followup_prompts: [
+          "Given that GPT-5 introduces improved reasoning and safety features, analyze how this changes the build-vs-buy decision for enterprise AI platforms. What should a CTO evaluate when deciding whether to migrate existing AI workloads?",
+          "Compare the enterprise AI strategies of OpenAI, Anthropic, and Google post-GPT-5. Which vendor offers the best risk-adjusted value for a Fortune 500 company?",
+        ],
       },
     ],
     technical_developments: [
@@ -331,6 +335,9 @@ export function createDigestDetail(
         ],
         themes: ["Model Architecture", "Efficiency"],
         continuity: null,
+        followup_prompts: [
+          "Explain the trade-offs of Mixture-of-Experts vs dense transformer architectures for production inference. When does MoE make sense and when should teams stick with dense models?",
+        ],
       },
     ],
     emerging_trends: [
@@ -344,6 +351,9 @@ export function createDigestDetail(
         ],
         themes: ["Regulation", "Safety"],
         continuity: null,
+        followup_prompts: [
+          "Draft a 1-page brief for engineering leadership explaining the current state of AI safety regulation (EU AI Act, US executive orders) and recommending a compliance roadmap for an enterprise deploying LLM-based products.",
+        ],
       },
     ],
     actionable_recommendations: {

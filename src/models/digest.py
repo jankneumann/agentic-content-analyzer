@@ -117,6 +117,9 @@ class DigestSection(BaseModel):
     details: list[str] = Field(default_factory=list, description="Detailed points")
     themes: list[str] = Field(default_factory=list, description="Related theme names")
     continuity: str | None = Field(None, description="Historical continuity text")
+    followup_prompts: list[str] = Field(
+        default_factory=list, description="LLM prompts for deeper analysis"
+    )
 
 
 class DigestData(BaseModel):
@@ -169,6 +172,7 @@ class DigestRequest(BaseModel):
     max_strategic_insights: int = Field(default=5, description="Max strategic insights")
     max_technical_developments: int = Field(default=5, description="Max technical developments")
     max_emerging_trends: int = Field(default=3, description="Max emerging trends")
+    max_followup_prompts: int = Field(default=3, description="Max follow-up prompts per section")
     include_historical_context: bool = Field(default=True, description="Include historical context")
     content_query: "ContentQuery | None" = Field(
         default=None, description="Optional content selection override"

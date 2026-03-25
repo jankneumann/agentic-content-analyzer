@@ -14,7 +14,7 @@
  */
 
 import * as React from "react"
-import { ChevronDown, ChevronRight, FileQuestion, Users, Lightbulb, Cpu, TrendingUp, Target, BookOpen, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronRight, FileQuestion, Users, Lightbulb, Cpu, TrendingUp, Target, BookOpen, Loader2, MessageSquare, Check, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -258,9 +258,78 @@ function CollapsibleSection({ section, defaultOpen = false }: CollapsibleSection
               {section.continuity}
             </div>
           )}
+
+          {/* Follow-up Prompts */}
+          {section.followup_prompts && section.followup_prompts.length > 0 && (
+            <FollowUpPrompts prompts={section.followup_prompts} />
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+interface FollowUpPromptsProps {
+  prompts: string[]
+}
+
+function FollowUpPrompts({ prompts }: FollowUpPromptsProps) {
+  const [isOpen, setIsOpen] = React.useState(false)
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-auto gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <MessageSquare className="h-3 w-3" />
+          Follow-up prompts ({prompts.length})
+          {isOpen ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-2 space-y-2">
+          {prompts.map((prompt, idx) => (
+            <CopyablePrompt key={idx} prompt={prompt} />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function CopyablePrompt({ prompt }: { prompt: string }) {
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(prompt)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="group relative rounded-md border bg-muted/30 p-2.5 pr-9 text-xs leading-relaxed">
+      {prompt}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="absolute right-1 top-1 h-6 w-6 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+        onClick={handleCopy}
+        title="Copy prompt"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-green-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </Button>
+    </div>
   )
 }
 
