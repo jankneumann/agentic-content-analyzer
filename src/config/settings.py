@@ -478,6 +478,11 @@ class Settings(BaseSettings):
     perplexity_max_results: int = 30  # Max articles per search run
     perplexity_domain_filter: list[str] = []  # Domain allow/deny list
 
+    # Content Relevance Filtering
+    content_filter_strategy: str = "none"  # none, keyword, llm, keyword+llm
+    content_filter_topics: list[str] = []  # Topics for relevance filtering
+    content_filter_excerpt_chars: int = 1000  # Characters from content start for LLM classification
+
     # Unified Web Search Provider (for ad-hoc search: chat, podcast, review)
     web_search_provider: str = "tavily"  # tavily, perplexity, grok
 

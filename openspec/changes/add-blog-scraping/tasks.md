@@ -5,9 +5,10 @@
 ```
 T1 (source model) ──┐
 T2 (enum + migration)┤
-                     ├── T4 (blog scraper module) ── T5 (orchestrator) ── T6 (pipeline) ── T8 (integration test)
-T3 (sources.d yaml) ─┘                                    │
-                                                           T7 (CLI command)
+T3 (sources.d yaml) ─┤
+                     ├── T5 (blog scraper module) ── T6 (orchestrator) ── T7 (pipeline) ── T9 (integration test)
+T4 (content filter) ─┘                                    │
+                                                           T8 (CLI command)
 ```
 
 ## Tasks
@@ -40,10 +41,24 @@ T3 (sources.d yaml) ─┘                                    │
 - Add initial sources: Anthropic research blog, Claude blog
 - Include examples with `link_selector` and without (heuristic mode)
 
-### T4: Implement Blog Scraping Client and Service
+### T4: Implement Content Relevance Filter (DONE)
+**Files**: `src/services/content_filter.py`, `src/config/models.py`, `src/config/model_registry.yaml`, `src/config/prompts.yaml`, `src/config/settings.py`, `src/config/sources.py`, `tests/test_services/test_content_filter.py`
+**Effort**: Medium
+**Dependencies**: None
+**Status**: Complete
+
+- Added `ContentRelevanceFilter` shared utility with keyword, LLM, and keyword+llm strategies
+- Added `CONTENT_FILTERING` model step (default: `gemini-2.5-flash-lite`)
+- Added `pipeline.content_filtering` prompt templates
+- Added `content_filter_strategy`, `content_filter_topics`, `content_filter_excerpt_chars` settings
+- Added per-source filter overrides in `SourceDefaults` (`content_filter_strategy`, `content_filter_topics`)
+- Added `create_content_filter()` factory for easy instantiation from settings
+- 33 unit tests passing
+
+### T5: Implement Blog Scraping Client and Service
 **Files**: `src/ingestion/blog_scraper.py`, `tests/test_ingestion/test_blog_scraper.py`
 **Effort**: Large
-**Dependencies**: T1, T2
+**Dependencies**: T1, T2, T4
 
 Core implementation:
 
@@ -67,36 +82,36 @@ Core implementation:
 - Unit tests for deduplication logic
 - Mock HTTP responses (no real network calls)
 
-### T5: Add Orchestrator Function
+### T6: Add Orchestrator Function
 **Files**: `src/ingestion/orchestrator.py`
 **Effort**: Small
-**Dependencies**: T4
+**Dependencies**: T5
 
 - Add `ingest_blog()` function following existing pattern (lazy import, parameter forwarding)
 - Support `on_result` callback for CLI rich output
 
-### T6: Integrate into Pipeline Runner
+### T7: Integrate into Pipeline Runner
 **Files**: `src/pipeline/runner.py`
 **Effort**: Small
-**Dependencies**: T5
+**Dependencies**: T6
 
 - Import `ingest_blog` in `_run_ingestion()`
 - Add `("blog", ingest_blog)` to the `sources` list
 - Blog runs in parallel with other ingestion sources
 
-### T7: Add CLI Command
+### T8: Add CLI Command
 **Files**: `src/cli/ingest_commands.py`
 **Effort**: Small
-**Dependencies**: T5
+**Dependencies**: T6
 
 - Add `blog` subcommand to `aca ingest`
 - Options: `--max`, `--days`, `--force`, `--direct`
 - Follow existing CLI command pattern (API path + direct path)
 
-### T8: Integration Test
+### T9: Integration Test
 **Files**: `tests/test_ingestion/test_blog_scraper_integration.py`
 **Effort**: Medium
-**Dependencies**: T4, T5, T6, T7
+**Dependencies**: T5, T6, T7, T8
 
 - Test full flow: config loading → link discovery → content extraction → DB persistence
 - Test deduplication on second run

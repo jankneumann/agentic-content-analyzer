@@ -48,6 +48,9 @@ class SourceDefaults(BaseModel):
     chunking_strategy: str | None = (
         None  # Force: structured, youtube_transcript, gemini_summary, markdown, section
     )
+    # Content relevance filtering
+    content_filter_strategy: Literal["none", "keyword", "llm", "keyword+llm"] | None = None
+    content_filter_topics: list[str] | None = None  # Override global topics
 
 
 # --- Source Type Models ---

@@ -93,6 +93,7 @@ class ModelStep(StrEnum):
     VOICE_CLEANUP = "voice_cleanup"  # Voice transcript cleanup/polishing
     IMAGE_SUGGESTION = "image_suggestion"  # LLM-based image content analysis
     CLOUD_STT = "cloud_stt"  # Cloud speech-to-text transcription
+    CONTENT_FILTERING = "content_filtering"  # Content relevance classification
 
 
 # Map of env var names per model step (e.g., MODEL_SUMMARIZATION)

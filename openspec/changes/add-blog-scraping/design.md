@@ -209,6 +209,60 @@ Could use `ContentSource.WEBPAGE` instead of adding `BLOG`. Rejected because:
 ### C. RSS Auto-Discovery
 Try to find RSS feeds automatically before falling back to scraping. Could be a nice-to-have but out of scope — if the user knows about an RSS feed, they'd configure it as an RSS source.
 
+## Content Relevance Filtering
+
+Blog sources are especially likely to contain off-topic posts (e.g., a company engineering blog covering many topics). A shared `ContentRelevanceFilter` utility has been implemented in `src/services/content_filter.py` for use across all ingestion sources.
+
+### Strategy Options
+
+| Strategy | How It Works | Cost | Latency |
+|----------|-------------|------|---------|
+| `none` | No filtering (default) | Free | 0ms |
+| `keyword` | Regex word-boundary matching on title + excerpt | Free | ~0ms |
+| `llm` | LLM classification via title + first N chars | ~$0.001/article | ~1s |
+| `keyword+llm` | Keyword pre-filter, LLM fallback for non-matches | Hybrid | ~0-1s |
+
+### Configuration
+
+**Global defaults** in `.env` / settings:
+```bash
+CONTENT_FILTER_STRATEGY=keyword+llm        # none, keyword, llm, keyword+llm
+CONTENT_FILTER_TOPICS=AI,machine learning,leadership,data engineering
+CONTENT_FILTER_EXCERPT_CHARS=1000           # Characters for LLM classification
+```
+
+**Per-source overrides** in `sources.d/blogs.yaml`:
+```yaml
+sources:
+  - name: "Anthropic Blog"
+    url: "https://www.anthropic.com/research"
+    content_filter_strategy: none      # All posts are on-topic
+
+  - name: "Company Engineering Blog"
+    url: "https://engineering.example.com"
+    content_filter_strategy: keyword+llm
+    content_filter_topics: [AI, machine learning, LLM]
+```
+
+### Integration Point
+
+In the blog ingestion service, after fetching content and before DB persistence:
+```python
+from src.services.content_filter import create_content_filter
+
+filter = create_content_filter(
+    strategy_override=source.content_filter_strategy,
+    topics_override=source.content_filter_topics,
+)
+contents = filter.filter_contents(contents)
+```
+
+The same utility can be used in RSS, Gmail, or any other ingestion service.
+
+### Default Model
+
+Content filtering uses `gemini-2.5-flash-lite` by default (configurable via `MODEL_CONTENT_FILTERING`). At ~$0.10/MTok input, classifying a 1000-char excerpt costs ~$0.00005 per article.
+
 ## File Changes Summary
 
 | File | Change |
@@ -221,4 +275,10 @@ Try to find RSS feeds automatically before falling back to scraping. Could be a 
 | `src/cli/ingest_commands.py` | Add `blog` subcommand |
 | `sources.d/blogs.yaml` | **New**: Blog source configuration |
 | `alembic/versions/xxx_add_blog_source.py` | **New**: Migration to add `blog` to PG enum |
+| `src/services/content_filter.py` | **New**: Shared content relevance filter (keyword + LLM) |
+| `src/config/models.py` | Add `CONTENT_FILTERING` to `ModelStep` enum |
+| `src/config/model_registry.yaml` | Add `content_filtering: gemini-2.5-flash-lite` default |
+| `src/config/prompts.yaml` | Add `pipeline.content_filtering` prompt templates |
+| `src/config/settings.py` | Add `content_filter_*` settings |
+| `tests/test_services/test_content_filter.py` | **New**: Unit tests for content filter |
 | `tests/test_ingestion/test_blog_scraper.py` | **New**: Unit tests |

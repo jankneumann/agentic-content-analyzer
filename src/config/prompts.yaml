@@ -811,3 +811,21 @@ pipeline:
 
       Provide the refined prompt as plain text (no JSON, no markdown formatting).
       The prompt should be ready to pass directly to an image generation API.
+
+  content_filtering:
+    system: |
+      You are a content relevance classifier. Given a title and content excerpt,
+      determine whether the content is relevant to the specified topics.
+
+      Respond with ONLY a JSON object (no markdown, no explanation):
+      {{"relevant": true}} or {{"relevant": false}}
+
+    user_template: |
+      Classify whether this content is relevant to ANY of these topics: {topics}
+
+      **Title:** {title}
+
+      **Content excerpt:**
+      {excerpt}
+
+      Respond with ONLY a JSON object: {{"relevant": true}} or {{"relevant": false}}
