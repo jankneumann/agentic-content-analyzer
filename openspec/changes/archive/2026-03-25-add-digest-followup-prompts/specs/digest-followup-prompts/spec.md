@@ -83,9 +83,7 @@ The system SHALL display follow-up prompts in the digest review interface with c
 - **THEN** the prompt text SHALL be copied to the system clipboard
 - **AND** visual feedback SHALL confirm the copy action
 
-## MODIFIED Requirements
-
-### Requirement: Digest Creation Output Schema (from pipeline spec)
+### Requirement: Digest Creation Output Schema
 
 The digest creation LLM output schema SHALL include `followup_prompts` in each section type.
 
