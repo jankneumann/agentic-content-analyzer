@@ -30,7 +30,7 @@
   - Show prompt count in trigger label
   - Each prompt gets a copy-to-clipboard button with visual feedback
 - [x] 4.3 Add E2E test mock data with `followup_prompts` arrays in digest section factories
-- [ ] 4.4 Add E2E test verifying prompts render and copy button works
+- [x] 4.4 Add E2E test verifying prompts render and copy button works
 
 ## Phase 5: Integration Verification
 

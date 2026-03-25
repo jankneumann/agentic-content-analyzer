@@ -83,6 +83,7 @@ class DigestSectionResponse(BaseModel):
     details: list[str]
     themes: list[str]
     continuity: str | None = None
+    followup_prompts: list[str] = Field(default_factory=list)
 
 
 class DigestDetail(BaseModel):
@@ -560,6 +561,7 @@ async def get_digest(
                     details=s.get("details", []),
                     themes=s.get("themes", []),
                     continuity=s.get("continuity"),
+                    followup_prompts=s.get("followup_prompts", []),
                 )
                 for s in sections_json
             ]
