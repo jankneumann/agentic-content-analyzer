@@ -1,73 +1,49 @@
 # Implementation Tasks
 
-## 1. Save URL API Endpoint
+> **Note**: Core API endpoints (save-url, save-page, status), URL extraction,
+> HTML processing, Chrome extension, bookmarklet, web save form, and auth
+> are already implemented. Remaining tasks focus on completing the mobile experience.
 
-- [ ] 1.1 Create `src/api/save_routes.py` with router
-- [ ] 1.2 Implement `POST /api/v1/content/save-url` endpoint
-- [ ] 1.3 Add URL validation (valid URL format, https preferred)
-- [ ] 1.4 Add duplicate detection by source_url
-- [ ] 1.5 Implement `GET /api/v1/content/{id}/status` endpoint
-- [ ] 1.6 Configure CORS for mobile clients (allow all origins for API key auth)
-- [ ] 1.7 Register router in `src/api/app.py`
+## 1. Save Endpoint Rate Limiting
 
-## 2. Optional API Key Authentication
+- [ ] 1.1 Create `src/api/save_rate_limiter.py` with `EndpointRateLimiter(30, 60)`
+- [ ] 1.2 Add rate limiter check to `save_url` endpoint (return 429 with retry_after)
+- [ ] 1.3 Add rate limiter check to `save_page` endpoint
+- [ ] 1.4 Add `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers
+- [ ] 1.5 Write unit tests for save rate limiter
+- [ ] 1.6 Write integration test: rate limit triggers on burst requests
 
-- [ ] 2.1 Create `src/api/auth/api_keys.py` module
-- [ ] 2.2 Create APIKey model (id, hashed_key, name, rate_limit, created_at)
-- [ ] 2.3 Implement `verify_api_key()` dependency
-- [ ] 2.4 Add rate limiting per API key (60 req/min default)
-- [ ] 2.5 Create Alembic migration for api_keys table
-- [ ] 2.6 Add API key management CLI commands
+## 2. iOS Shortcut Distribution
 
-## 3. URL Content Extraction
+- [ ] 2.1 Create iOS Shortcut in Apple Shortcuts app with full flow
+- [ ] 2.2 Export `.shortcut` file to `shortcuts/Save to Newsletter.shortcut`
+- [ ] 2.3 Create `GET /api/v1/content/shortcut` installation page endpoint
+- [ ] 2.4 Create `src/templates/shortcut.html` with download link and QR code
+- [ ] 2.5 Add iCloud sharing link as alternative distribution method
+- [ ] 2.6 Write test for shortcut installation endpoint
 
-- [ ] 3.1 Create `src/services/url_extractor.py`
-- [ ] 3.2 Integrate with existing `ParserRouter` for HTML parsing
-- [ ] 3.3 Add fallback extraction (title, meta description) if parsing fails
-- [ ] 3.4 Implement async extraction as background task
-- [ ] 3.5 Add timeout handling (30s max per URL)
-- [ ] 3.6 Handle common errors (404, timeout, blocked)
+## 3. Mobile Save Page UX Improvements
 
-## 4. Mobile Save Page
+- [ ] 3.1 Audit `src/templates/save.html` for mobile touch targets (44px min)
+- [ ] 3.2 Add viewport meta tag and safe area insets for iOS
+- [ ] 3.3 Add success/error state animations (CSS transitions)
+- [ ] 3.4 Add "Recent saves" section (localStorage-backed, last 10)
+- [ ] 3.5 Add dark mode support matching system preference
+- [ ] 3.6 Test on iOS Safari, Chrome, and Android Chrome
 
-- [ ] 4.1 Create `GET /save` endpoint in save_routes.py
-- [ ] 4.2 Create `src/templates/save.html` (mobile-optimized)
-- [ ] 4.3 Pre-fill form from URL query parameters
-- [ ] 4.4 Add JavaScript for async form submission
-- [ ] 4.5 Show success/error states with clear messaging
-- [ ] 4.6 Add responsive design (works on phone and desktop)
+## 4. Documentation
 
-## 5. iOS Shortcut
+- [ ] 4.1 Create `docs/MOBILE_CAPTURE.md` with setup guide
+- [ ] 4.2 Document iOS Shortcut installation (with screenshots placeholder)
+- [ ] 4.3 Document rate limiting behavior and limits
+- [ ] 4.4 Add troubleshooting section for mobile-specific issues
+- [ ] 4.5 Update `docs/CONTENT_CAPTURE.md` to cross-reference mobile guide
+- [ ] 4.6 Update CLAUDE.md with mobile capture section
 
-- [ ] 5.1 Create Shortcut in Apple Shortcuts app
-- [ ] 5.2 Configure to receive URLs from Share Sheet
-- [ ] 5.3 Add input fields for API URL and API key
-- [ ] 5.4 Implement HTTP POST action to save-url endpoint
-- [ ] 5.5 Add success/error notifications
-- [ ] 5.6 Export as .shortcut file to `shortcuts/` directory
-- [ ] 5.7 Create `shortcuts/README.md` with installation guide
+## 5. Tests
 
-## 6. Database Provider Testing
-
-- [ ] 6.1 Write integration tests for save-url with local PostgreSQL
-- [ ] 6.2 Write integration tests for save-url with Supabase
-- [ ] 6.3 Write integration tests for save-url with Neon
-- [ ] 6.4 Verify cold start handling with Neon (test after idle period)
-- [ ] 6.5 Test duplicate detection across providers
-
-## 7. Unit Tests
-
-- [ ] 7.1 Test save_routes.py endpoint logic
-- [ ] 7.2 Test URL validation edge cases
-- [ ] 7.3 Test duplicate detection logic
-- [ ] 7.4 Test API key authentication
-- [ ] 7.5 Test rate limiting behavior
-- [ ] 7.6 Test url_extractor.py with mock responses
-
-## 8. Documentation
-
-- [ ] 8.1 Create `docs/MOBILE_CAPTURE.md` user guide
-- [ ] 8.2 Document iOS Shortcut installation
-- [ ] 8.3 Document API key setup
-- [ ] 8.4 Add troubleshooting section
-- [ ] 8.5 Update CLAUDE.md with new endpoint
+- [ ] 5.1 Unit tests for rate limiter module
+- [ ] 5.2 API tests for rate-limited save endpoints (429 responses)
+- [ ] 5.3 API test for shortcut installation page rendering
+- [ ] 5.4 E2E test for mobile save page form submission (Playwright)
+- [ ] 5.5 E2E test for bookmarklet page rendering
