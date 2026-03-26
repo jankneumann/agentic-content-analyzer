@@ -354,3 +354,22 @@ async def bookmarklet_page(request: Request) -> HTMLResponse:
             "api_base_url": api_base_url,
         },
     )
+
+
+# iOS Shortcut installation page
+@router.get("/shortcut", response_class=HTMLResponse, include_in_schema=False)
+async def shortcut_page(request: Request) -> HTMLResponse:
+    """Render the iOS Shortcut installation page.
+
+    Provides instructions for installing the iOS Shortcut that enables
+    saving URLs directly from the iOS Share Sheet.
+    """
+    api_base_url = str(request.base_url).rstrip("/")
+
+    return templates.TemplateResponse(
+        "shortcut.html",
+        {
+            "request": request,
+            "api_base_url": api_base_url,
+        },
+    )
