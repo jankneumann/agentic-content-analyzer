@@ -98,9 +98,12 @@ export interface AudioRecorderOperations {
 
 // --- Backend Settings Extension (wp-settings) ---
 
-/** New settings fields added to voice settings API */
+/**
+ * New setting added to voice settings API.
+ * NOTE: stt_engine was removed per review finding #3 —
+ * engine_preference_order already handles engine selection.
+ */
 export interface OnDeviceSTTSettings {
-  stt_engine: "auto" | "browser" | "cloud" | "on-device";
   stt_model_size: WhisperModelSize;
 }
 

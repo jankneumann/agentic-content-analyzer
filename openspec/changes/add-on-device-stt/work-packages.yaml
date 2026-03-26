@@ -133,7 +133,12 @@ packages:
         - "cd web && pnpm exec tsc --noEmit"
     description: |
       NEW FILE: whisper-worker.ts
-      MODIFIED: package.json (add whisper-turbo dependency), vite.config.ts (WASM handling)
+      MODIFIED: package.json (add @nicktomlin/whisper.cpp dependency), vite.config.ts (WASM handling)
+
+      WASM dependency resolution (in order):
+      1. @nicktomlin/whisper.cpp — mature, maintained Whisper.cpp WASM build
+      2. whisper-turbo — if @nicktomlin unavailable
+      3. @anthropic-ai/whisper-wasm — if published by implementation time
 
       whisper-worker.ts (Web Worker):
       - Typed message protocol: WorkerInMessage / WorkerOutMessage
@@ -148,44 +153,44 @@ packages:
       - Handle .wasm file imports
 
   - id: wp-settings
-    name: "Backend STT settings API extension"
-    tasks: [T5.1, T5.2, T5.3, T5.4, T5.5]
+    name: "Backend STT model size setting"
+    tasks: [T5.2, T5.4, T5.5]
     priority: 1
     depends_on: []
     scope:
       write_allow:
         - "src/api/voice_settings_routes.py"
-        - "tests/api/test_voice_settings_api.py"
       read_allow:
         - "src/api/**"
         - "src/config/**"
         - "contracts/**"
       deny:
         - "web/**"
+        - "tests/**"
     locks:
       files:
         - "src/api/voice_settings_routes.py"
       keys:
         - "api:voice:stt-settings"
       ttl_minutes: 60
-      reason: "Backend settings for STT engine and model size"
+      reason: "Backend setting for STT model size"
     verification:
-      tier: A
+      tier: C
       checks:
         - "ruff check src/api/voice_settings_routes.py"
-        - "pytest tests/api/test_voice_settings_api.py -v"
     description: |
       MODIFIED: voice_settings_routes.py
 
-      Add stt_engine and stt_model_size to voice settings:
-      - PUT /api/v1/settings/voice/stt_engine ("auto"/"browser"/"cloud"/"on-device")
+      Add stt_model_size to voice settings (stt_engine REMOVED per review
+      finding #3 — engine_preference_order already handles engine selection):
       - PUT /api/v1/settings/voice/stt_model_size ("tiny"/"base")
-      - DELETE endpoints for reset
-      - Defaults: stt_engine="auto", stt_model_size="tiny"
-      - Validation: reject invalid values with 400
+      - DELETE /api/v1/settings/voice/stt_model_size for reset
+      - Default: stt_model_size="tiny"
+      - Validation: reject values not in ["tiny", "base"] with 400
+      - Include stt_model_size in GET response
 
-      NOTE: engine_preference_order and valid_engine_names already
-      include "on-device" — only stt_engine and stt_model_size are new.
+      NOTE: engine_preference_order already includes "on-device" and handles
+      engine selection/fallback. No new stt_engine field needed.
 
   # ─────────────────────────────────────────────
   # Layer 1: Core engine (depends on Layer 0)
