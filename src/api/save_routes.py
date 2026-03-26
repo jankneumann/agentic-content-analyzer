@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, HttpUrl, StringConstraints
 
+from src.api.save_rate_limiter import save_rate_limiter
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -126,6 +127,7 @@ async def _process_client_html(content_id: int, html: str, source_url: str) -> N
 async def save_url(
     request: SaveURLRequest,
     background_tasks: BackgroundTasks,
+    http_request: Request,
 ) -> SaveURLResponse:
     """Save a URL for content extraction.
 
@@ -135,6 +137,15 @@ async def save_url(
     If the URL already exists, returns the existing content ID
     with status "exists".
     """
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if save_rate_limiter.is_limited(client_ip):
+        retry_after = save_rate_limiter.get_retry_after(client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     url_str = str(request.url)
 
     with get_db() as db:
@@ -194,6 +205,7 @@ async def save_url(
 async def save_page(
     request: SavePageRequest,
     background_tasks: BackgroundTasks,
+    http_request: Request,
 ) -> SavePageResponse:
     """Save a page with client-captured HTML content.
 
@@ -205,6 +217,15 @@ async def save_page(
 
     If the URL already exists, returns the existing content ID with status "exists".
     """
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if save_rate_limiter.is_limited(client_ip):
+        retry_after = save_rate_limiter.get_retry_after(client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     url_str = str(request.url)
 
     with get_db() as db:
