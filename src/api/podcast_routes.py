@@ -247,33 +247,37 @@ async def list_podcasts(
 @router.get("/statistics", response_model=PodcastStatistics)
 async def get_podcast_statistics() -> PodcastStatistics:
     """Get statistics about podcasts."""
+    from collections import defaultdict
+
     from sqlalchemy import func
 
     with get_db() as db:
-        # Group by status to get counts in a single query
-        status_counts = (
-            db.query(Podcast.status, func.count(Podcast.id)).group_by(Podcast.status).all()
-        )
-        status_map = {status: count for status, count in status_counts}
-
-        # Calculate total from status counts (status is non-nullable)
-        total = sum(status_map.values())
-
-        # Group by voice provider for provider counts
-        provider_counts = (
-            db.query(Podcast.voice_provider, func.count(Podcast.id))
-            .filter(Podcast.voice_provider.isnot(None))
-            .group_by(Podcast.voice_provider)
+        # OPTIMIZATION: Combine status counts, provider counts, and duration sum
+        # into a single multi-dimensional query to replace 3 separate database calls.
+        counts = (
+            db.query(
+                Podcast.status,
+                Podcast.voice_provider,
+                func.count(Podcast.id),
+                func.sum(Podcast.duration_seconds),
+            )
+            .group_by(Podcast.status, Podcast.voice_provider)
             .all()
         )
-        by_provider = {provider: count for provider, count in provider_counts}
 
-        # Calculate total duration (single scalar query)
-        total_duration = (
-            db.query(func.sum(Podcast.duration_seconds))
-            .filter(Podcast.status == "completed")
-            .scalar()
-        ) or 0
+        status_map = defaultdict(int)
+        by_provider = defaultdict(int)
+        total = 0
+        total_duration = 0
+
+        for status, provider, count, duration_sum in counts:
+            total += count
+            if status:
+                status_map[status] += count
+            if provider:
+                by_provider[provider] += count
+            if status == "completed" and duration_sum:
+                total_duration += duration_sum
 
         return PodcastStatistics(
             total=total,
@@ -385,7 +389,7 @@ async def generate_audio(
             voice_provider = VoiceProvider(request.voice_provider)
             alex_voice = VoicePersona(request.alex_voice)
             sam_voice = VoicePersona(request.sam_voice)
-        except ValueError as e:
+        except ValueError:
             raise HTTPException(status_code=400, detail="Invalid voice configuration")
 
         # Create podcast record
