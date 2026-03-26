@@ -121,7 +121,7 @@ GET /api/v1/content/{content_id}/status
 ### Rate Limiting
 - **Limit**: 30 requests per minute per IP address
 - **429 Response**: Includes `Retry-After` header with seconds until reset
-- Rate limits are per-endpoint (save-url and save-page share the same limiter)
+- Rate limits are shared across both endpoints — 30 requests total per minute across save-url and save-page combined
 
 ## Authentication
 
