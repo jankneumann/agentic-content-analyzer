@@ -232,12 +232,19 @@ def get_parser_router() -> ParserRouter:
         else None
     )
 
+    kreuzberg_shadow = (
+        {f.strip() for f in settings.kreuzberg_shadow_formats.split(",") if f.strip()}
+        if settings.kreuzberg_shadow_formats
+        else None
+    )
+
     return ParserRouter(
         markitdown_parser=markitdown,
         docling_parser=docling,
         youtube_parser=youtube,
         kreuzberg_parser=kreuzberg,
         kreuzberg_preferred_formats=kreuzberg_preferred,
+        kreuzberg_shadow_formats=kreuzberg_shadow,
     )
 
 

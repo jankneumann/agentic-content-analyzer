@@ -55,6 +55,7 @@ class ParserRouter:
         youtube_parser: Optional["DocumentParser"] = None,
         kreuzberg_parser: Optional["DocumentParser"] = None,
         kreuzberg_preferred_formats: set[str] | None = None,
+        kreuzberg_shadow_formats: set[str] | None = None,
         default_parser: str = "markitdown",
     ):
         """Initialize the parser router.
@@ -65,6 +66,7 @@ class ParserRouter:
             youtube_parser: Optional YouTube parser for timestamped transcripts
             kreuzberg_parser: Optional Kreuzberg parser for document extraction
             kreuzberg_preferred_formats: Formats that should prefer Kreuzberg
+            kreuzberg_shadow_formats: Formats for shadow comparison evaluation
             default_parser: Parser to use for unknown formats
         """
         self.parsers: dict[str, DocumentParser] = {
@@ -82,6 +84,7 @@ class ParserRouter:
         self._has_youtube = youtube_parser is not None
         self._has_kreuzberg = kreuzberg_parser is not None
         self._kreuzberg_preferred: set[str] = kreuzberg_preferred_formats or set()
+        self._kreuzberg_shadow: set[str] = kreuzberg_shadow_formats or set()
 
     def route(
         self,
@@ -166,7 +169,25 @@ class ParserRouter:
                 ocr_needed=ocr_needed,
             )
 
-        return await parser.parse(source, format_hint=format_hint)
+        result = await parser.parse(source, format_hint=format_hint)
+
+        # Shadow evaluation: fire-and-forget Kreuzberg comparison
+        if self._has_kreuzberg and self._kreuzberg_shadow:
+            detected_format = format_hint or (
+                self._detect_format(source) if not isinstance(source, bytes) else "unknown"
+            )
+            from src.parsers.shadow import maybe_shadow_parse
+
+            maybe_shadow_parse(
+                shadow_parser=self.parsers.get("kreuzberg"),
+                shadow_formats=self._kreuzberg_shadow,
+                detected_format=detected_format,
+                canonical_result=result,
+                source=source,
+                format_hint=format_hint,
+            )
+
+        return result
 
     def _detect_format(self, source: str | Path) -> str:
         """Detect format from file extension or URL pattern.
