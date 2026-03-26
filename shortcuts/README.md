@@ -2,6 +2,10 @@
 
 This directory contains iOS Shortcut files for capturing web content from your iPhone.
 
+> **Full documentation**: See [Mobile Capture Guide](../docs/MOBILE_CAPTURE.md) for complete setup instructions.
+>
+> **Interactive setup**: Visit `https://your-server.com/api/v1/content/shortcut` for a guided installation page.
+
 ## Installation
 
 ### Option 1: Import from File
