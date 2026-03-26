@@ -53,12 +53,14 @@ class VoiceSettingsResponse(BaseModel):
     input_auto_submit: VoiceSettingInfo
     cloud_stt_language: VoiceSettingInfo
     engine_preference_order: VoiceSettingInfo
+    stt_model_size: VoiceSettingInfo
     cloud_stt_model: str  # Read-only: current CLOUD_STT pipeline step model
     presets: list[VoicePreset]
     valid_providers: list[str]
     valid_input_languages: list[str]
     valid_cloud_stt_languages: list[str]
     valid_engine_names: list[str]
+    valid_stt_model_sizes: list[str]
 
 
 class VoiceUpdateRequest(BaseModel):
@@ -113,6 +115,11 @@ _VOICE_SETTINGS = {
         "settings_field": "engine_preference_order",
         "default": "cloud,native,browser,on-device",
     },
+    "stt_model_size": {
+        "env_var": "STT_MODEL_SIZE",
+        "settings_field": "stt_model_size",
+        "default": "tiny",
+    },
 }
 
 # Valid BCP-47 language tags for voice input
@@ -142,6 +149,9 @@ VALID_CLOUD_STT_LANGUAGES = [
 
 # Valid engine names for preference order
 VALID_ENGINE_NAMES = ["cloud", "native", "browser", "on-device"]
+
+# Valid on-device STT model sizes
+VALID_STT_MODEL_SIZES = ["tiny", "base"]
 
 
 def _resolve_voice_setting(field: str, service: SettingsService) -> tuple[str, str]:
@@ -184,6 +194,7 @@ async def get_voice_settings() -> VoiceSettingsResponse:
         auto_val, auto_src = _resolve_voice_setting("input_auto_submit", service)
         cloud_lang_val, cloud_lang_src = _resolve_voice_setting("cloud_stt_language", service)
         engine_val, engine_src = _resolve_voice_setting("engine_preference_order", service)
+        stt_size_val, stt_size_src = _resolve_voice_setting("stt_model_size", service)
 
         # Resolve current CLOUD_STT model (read-only)
         try:
@@ -222,12 +233,16 @@ async def get_voice_settings() -> VoiceSettingsResponse:
             engine_preference_order=VoiceSettingInfo(
                 key="voice.engine_preference_order", value=engine_val, source=engine_src
             ),
+            stt_model_size=VoiceSettingInfo(
+                key="voice.stt_model_size", value=stt_size_val, source=stt_size_src
+            ),
             cloud_stt_model=cloud_stt_model,
             presets=presets,
             valid_providers=VALID_PROVIDERS,
             valid_input_languages=VALID_INPUT_LANGUAGES,
             valid_cloud_stt_languages=VALID_CLOUD_STT_LANGUAGES,
             valid_engine_names=VALID_ENGINE_NAMES,
+            valid_stt_model_sizes=VALID_STT_MODEL_SIZES,
         )
 
 
@@ -302,6 +317,12 @@ async def update_voice_setting(field: str, request: VoiceUpdateRequest) -> dict:
                 status_code=400,
                 detail=f"Invalid engine names: {invalid}. Valid engines: {VALID_ENGINE_NAMES}",
             )
+
+    if field == "stt_model_size" and request.value not in VALID_STT_MODEL_SIZES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid STT model size: {request.value}. Valid sizes: {VALID_STT_MODEL_SIZES}",
+        )
 
     with get_db() as db:
         service = SettingsService(db)
