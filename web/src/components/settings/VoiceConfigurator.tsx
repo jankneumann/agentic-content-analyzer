@@ -13,10 +13,11 @@
  */
 
 import { useState } from "react"
-import { RotateCcw, AlertCircle, RefreshCw, Lock, Volume2, Mic, Cloud, ChevronUp, ChevronDown } from "lucide-react"
+import { RotateCcw, AlertCircle, RefreshCw, Lock, Volume2, Mic, Cloud, Cpu, Download, Trash2, CheckCircle2, ChevronUp, ChevronDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -25,6 +26,8 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useVoiceSettings, useUpdateVoice, useResetVoice } from "@/hooks/use-settings"
+import { useModelCache } from "@/hooks/use-model-cache"
+import { WHISPER_MODELS, type WhisperModelSize } from "@/lib/voice/model-constants"
 import type { VoiceSettingInfo } from "@/types/settings"
 
 /** Human-readable language labels */
@@ -438,6 +441,120 @@ export function VoiceConfigurator() {
           </div>
         </EnvLockWrapper>
       </SettingRow>
+
+      {/* Separator */}
+      <div className="border-t" />
+
+      {/* On-Device STT section */}
+      <OnDeviceSttSection />
+    </div>
+  )
+}
+
+/** Format bytes into a human-readable size string */
+function formatBytes(bytes: number): string {
+  if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)}KB`
+  return `${Math.round(bytes / 1_000_000)}MB`
+}
+
+/** On-Device Speech-to-Text section with model download management */
+function OnDeviceSttSection() {
+  const { modelStatus, isDownloading, progress, error, download, remove } =
+    useModelCache()
+  const [selectedSize, setSelectedSize] = useState<WhisperModelSize>("tiny")
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Cpu className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-sm font-medium">On-Device Speech-to-Text</h3>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Download a Whisper model for fully local, offline speech recognition.
+        Models run in-browser using WebAssembly.
+      </p>
+
+      {/* Model size selector */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Model Size</Label>
+        <Select
+          value={selectedSize}
+          onValueChange={(v) => setSelectedSize(v as WhisperModelSize)}
+          disabled={isDownloading}
+        >
+          <SelectTrigger size="sm" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(WHISPER_MODELS) as WhisperModelSize[]).map(
+              (size) => (
+                <SelectItem key={size} value={size}>
+                  {size.charAt(0).toUpperCase() + size.slice(1)} (~
+                  {formatBytes(WHISPER_MODELS[size].fileSize)})
+                </SelectItem>
+              ),
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Status display */}
+      {modelStatus.isCached && modelStatus.modelSize && modelStatus.modelName ? (
+        <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
+              <CheckCircle2 className="mr-1 h-3 w-3" />
+              Cached
+            </Badge>
+            <span className="text-sm">
+              {modelStatus.modelName}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              (~{formatBytes(WHISPER_MODELS[modelStatus.modelSize].fileSize)})
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={() => {
+              if (modelStatus.modelSize) {
+                void remove(modelStatus.modelSize)
+              }
+            }}
+            disabled={isDownloading}
+          >
+            <Trash2 className="mr-1 h-3 w-3" />
+            Delete
+          </Button>
+        </div>
+      ) : isDownloading ? (
+        <div className="space-y-2 rounded-md border bg-card px-3 py-3">
+          <div className="flex items-center justify-between text-sm">
+            <span>Downloading {WHISPER_MODELS[selectedSize].name}...</span>
+            <span className="tabular-nums text-muted-foreground">{progress}%</span>
+          </div>
+          <Progress value={progress} />
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => void download(selectedSize)}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          Download Model (~{formatBytes(WHISPER_MODELS[selectedSize].fileSize)})
+        </Button>
+      )}
+
+      {/* Error display */}
+      {error && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <p className="text-xs text-destructive">{error}</p>
+        </div>
+      )}
     </div>
   )
 }
