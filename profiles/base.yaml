@@ -119,6 +119,15 @@ settings:
     web_search_provider: "${WEB_SEARCH_PROVIDER:-tavily}"
 
   # ---------------------------------------------------------------------------
+  # Crawl4AI Settings
+  # ---------------------------------------------------------------------------
+  crawl4ai:
+    crawl4ai_enabled: ${CRAWL4AI_ENABLED:-false}
+    crawl4ai_cache_mode: ${CRAWL4AI_CACHE_MODE:-bypass}
+    crawl4ai_server_url: ${CRAWL4AI_SERVER_URL:-}
+    crawl4ai_page_timeout: ${CRAWL4AI_PAGE_TIMEOUT:-30000}
+
+  # ---------------------------------------------------------------------------
   # CLI API Client Settings
   # ---------------------------------------------------------------------------
   api:

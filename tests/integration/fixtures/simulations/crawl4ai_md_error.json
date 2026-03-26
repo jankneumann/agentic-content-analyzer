@@ -1,0 +1,27 @@
+{
+  "data": {
+    "pairs": [
+      {
+        "request": {
+          "method": [{"matcher": "exact", "value": "POST"}],
+          "path": [{"matcher": "exact", "value": "/md"}]
+        },
+        "response": {
+          "status": 500,
+          "body": "{\"error\": \"Internal server error: browser crashed\"}",
+          "headers": {
+            "Content-Type": ["application/json"]
+          }
+        }
+      }
+    ],
+    "globalActions": {
+      "delays": []
+    }
+  },
+  "meta": {
+    "schemaVersion": "v5",
+    "hoverflyVersion": "v1.10.5",
+    "timeExported": "2026-03-25T00:00:00Z"
+  }
+}

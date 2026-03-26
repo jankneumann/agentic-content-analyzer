@@ -547,6 +547,25 @@ Simulations are JSON files in `tests/integration/fixtures/simulations/`. See `te
 | HoverflyClient uses `Connection: close` header | Prevents connection pooling issues with httpx in test contexts |
 | Settings fields have real defaults | `hoverfly_proxy_url` defaults to `http://localhost:8500`, `hoverfly_admin_url` to `http://localhost:8888` |
 
+### Crawl4AI Integration Tests
+
+Tests requiring a Crawl4AI browser server use the `@pytest.mark.crawl4ai` marker:
+
+```bash
+make crawl4ai-up      # Start Crawl4AI Docker server
+make test-crawl4ai    # Run Crawl4AI integration tests
+make crawl4ai-down    # Stop server
+```
+
+**Fixtures** (defined in `tests/integration/fixtures/crawl4ai.py`):
+- `crawl4ai_available` — session-scoped, True if server is running
+- `requires_crawl4ai` — autouse marker, skips tests if server is down
+- `crawl4ai_url` — base URL for the Crawl4AI server
+
+**Hoverfly simulations** for Crawl4AI remote mode:
+- `tests/integration/fixtures/simulations/crawl4ai_md_success.json` — successful `POST /md`
+- `tests/integration/fixtures/simulations/crawl4ai_md_error.json` — server error response
+
 ---
 
 ## E2E Testing (Playwright)

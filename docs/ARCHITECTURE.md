@@ -265,6 +265,11 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 - Async-native: `await converter.convert()` in async contexts
 - Quality validation: `validate_markdown_quality()` checks structure
 - Batch processing: `batch_convert()` with semaphore limiting
+- **Crawl4AI fallback**: For JavaScript-heavy pages where Trafilatura returns insufficient content
+  - Local mode: `AsyncWebCrawler` in-process (requires `crawl4ai` optional dep + browser)
+  - Remote mode: HTTP `POST /md` to Docker-hosted Crawl4AI server (port 11235)
+  - Selection: `crawl4ai_server_url` set → remote; unset → local
+  - Fail-safe: extraction failures never block content ingestion
 
 ## Processing Stages
 

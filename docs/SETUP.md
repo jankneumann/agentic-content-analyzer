@@ -1046,6 +1046,47 @@ Features:
 
 > **Note**: S3 access keys provide full storage access. Keep them secure and never expose them to clients.
 
+### Crawl4AI Setup (Optional)
+
+Crawl4AI provides JavaScript-heavy page extraction as a fallback when Trafilatura returns insufficient content.
+
+#### Option A: Docker Server (Recommended)
+
+```bash
+make crawl4ai-up  # Start Crawl4AI Docker server on port 11235
+```
+
+Configure in `.env` or profile:
+```bash
+CRAWL4AI_ENABLED=true
+CRAWL4AI_SERVER_URL=http://localhost:11235
+CRAWL4AI_CACHE_MODE=bypass        # bypass/enabled/disabled/read_only/write_only
+CRAWL4AI_PAGE_TIMEOUT=30000       # Page load timeout in ms
+```
+
+#### Option B: Local Install
+
+```bash
+uv pip install -e ".[crawl4ai]"   # Install crawl4ai optional dependency
+crawl4ai-setup                     # Download browser (Chromium via Playwright)
+crawl4ai-doctor                    # Verify installation
+```
+
+Configure in `.env`:
+```bash
+CRAWL4AI_ENABLED=true
+# No CRAWL4AI_SERVER_URL → uses local AsyncWebCrawler in-process
+```
+
+#### Settings Reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CRAWL4AI_ENABLED` | `false` | Feature flag — must explicitly enable |
+| `CRAWL4AI_SERVER_URL` | _(none)_ | Remote server URL; if set, uses HTTP mode |
+| `CRAWL4AI_CACHE_MODE` | `bypass` | Cache strategy for extracted content |
+| `CRAWL4AI_PAGE_TIMEOUT` | `30000` | Page load timeout (ms) |
+
 ### Observability Variables (Optional)
 
 The newsletter aggregator supports pluggable observability via a provider factory pattern. Two layers work together:

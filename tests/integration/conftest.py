@@ -384,6 +384,13 @@ def mock_graphiti_client():
 
 # Import Hoverfly fixtures to make them available to all integration tests
 # These fixtures are defined in tests/integration/fixtures/hoverfly.py
+# Import Crawl4AI fixtures to make them available to all integration tests
+# These fixtures are defined in tests/integration/fixtures/crawl4ai.py
+from tests.integration.fixtures.crawl4ai import (  # noqa: E402, F401
+    crawl4ai_available,
+    crawl4ai_url,
+    requires_crawl4ai,
+)
 from tests.integration.fixtures.hoverfly import (  # noqa: E402, F401
     hoverfly,
     hoverfly_available,

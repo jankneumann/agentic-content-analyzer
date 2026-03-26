@@ -1,0 +1,316 @@
+# Work Packages: add-crawl4ai-integration
+# Decomposed for multi-agent parallel implementation
+# DAG: wp-config → [wp-converter, wp-docker, wp-docs] → wp-tests → wp-integration
+
+change_id: add-crawl4ai-integration
+version: 1
+
+packages:
+  # ─────────────────────────────────────────────────
+  # Root: Configuration & Dependencies
+  # ─────────────────────────────────────────────────
+  - id: wp-config
+    title: "Configuration & Dependencies"
+    description: |
+      Add crawl4ai optional dependency to pyproject.toml, add 5 new settings
+      fields to Settings class, wire profile interpolation in base.yaml,
+      and write unit tests for settings.
+    priority: 1
+    depends_on: []
+    tasks:
+      - "1.1"  # pyproject.toml optional dep
+      - "1.2"  # Settings fields
+      - "1.3"  # profiles/base.yaml wiring
+      - "1.4"  # Settings unit tests
+    scope:
+      write_allow:
+        - "pyproject.toml"
+        - "src/config/settings.py"
+        - "profiles/base.yaml"
+        - "tests/config/test_settings_crawl4ai.py"
+      read_allow:
+        - "src/config/**"
+        - "profiles/**"
+        - "tests/config/**"
+      deny:
+        - "src/parsers/**"
+        - "docker-compose.yml"
+        - "Makefile"
+        - "docs/**"
+    locks:
+      files:
+        - "pyproject.toml"
+        - "src/config/settings.py"
+        - "profiles/base.yaml"
+      keys:
+        - "config:settings:crawl4ai_enabled"
+        - "config:settings:crawl4ai_cache_mode"
+        - "config:settings:crawl4ai_server_url"
+        - "config:settings:crawl4ai_page_timeout"
+        - "config:settings:crawl4ai_excluded_tags"
+        - "config:profile:base.yaml:crawl4ai"
+      ttl_minutes: 60
+      reason: "Settings and dependency configuration for Crawl4AI"
+    verification:
+      tier: A
+      checks:
+        - "pytest tests/config/test_settings_crawl4ai.py -v"
+        - "ruff check src/config/settings.py"
+        - "mypy src/config/settings.py"
+
+  # ─────────────────────────────────────────────────
+  # Parallel: Converter Implementation
+  # ─────────────────────────────────────────────────
+  - id: wp-converter
+    title: "HtmlMarkdownConverter Updates"
+    description: |
+      Update converter to read settings, add CacheMode mapping,
+      implement remote server mode via httpx, add excluded_tags
+      and page_timeout support. Write unit tests.
+    priority: 2
+    depends_on:
+      - wp-config
+    tasks:
+      - "2.1"  # Settings injection in __init__
+      - "2.2"  # CacheMode mapping
+      - "2.3"  # excluded_tags in CrawlerRunConfig
+      - "2.4"  # page_timeout in CrawlerRunConfig
+      - "2.5"  # Remote server mode
+      - "2.6"  # Local vs remote dispatch
+      - "2.7"  # Unit tests
+    scope:
+      write_allow:
+        - "src/parsers/html_markdown.py"
+        - "tests/parsers/test_html_markdown_crawl4ai.py"
+      read_allow:
+        - "src/parsers/**"
+        - "src/config/settings.py"
+        - "tests/parsers/**"
+      deny:
+        - "docker-compose.yml"
+        - "Makefile"
+        - "src/config/**"
+        - "profiles/**"
+        - "docs/**"
+    locks:
+      files:
+        - "src/parsers/html_markdown.py"
+      keys:
+        - "parser:html_markdown:crawl4ai_fallback"
+        - "parser:html_markdown:remote_mode"
+        - "parser:html_markdown:cache_mode_map"
+      ttl_minutes: 90
+      reason: "Converter implementation for Crawl4AI local + remote modes"
+    verification:
+      tier: A
+      checks:
+        - "pytest tests/parsers/test_html_markdown_crawl4ai.py -v"
+        - "ruff check src/parsers/html_markdown.py"
+        - "mypy src/parsers/html_markdown.py"
+
+  # ─────────────────────────────────────────────────
+  # Parallel: Docker & Infrastructure
+  # ─────────────────────────────────────────────────
+  - id: wp-docker
+    title: "Docker Service & Makefile Targets"
+    description: |
+      Add crawl4ai service to docker-compose.yml under crawl4ai profile,
+      add Makefile targets (crawl4ai-up/down/logs, test-crawl4ai),
+      register pytest marker, add health check to /ready endpoint.
+    priority: 2
+    depends_on:
+      - wp-config
+    tasks:
+      - "3.1"  # docker-compose.yml service
+      - "3.2"  # Makefile targets
+      - "3.3"  # pytest marker
+      - "3.4"  # /ready health check
+    scope:
+      write_allow:
+        - "docker-compose.yml"
+        - "Makefile"
+        - "pyproject.toml"  # pytest marker only (additive)
+        - "src/api/health_routes.py"
+      read_allow:
+        - "docker-compose.yml"
+        - "Makefile"
+        - "src/api/**"
+        - "src/config/settings.py"
+      deny:
+        - "src/parsers/**"
+        - "src/config/settings.py"
+        - "profiles/**"
+        - "docs/**"
+    locks:
+      files:
+        - "docker-compose.yml"
+        - "Makefile"
+        - "src/api/health_routes.py"
+      keys:
+        - "docker:service:crawl4ai"
+        - "make:crawl4ai-up"
+        - "make:crawl4ai-down"
+        - "make:crawl4ai-logs"
+        - "make:test-crawl4ai"
+        - "api:GET /ready:crawl4ai_status"
+        - "pytest:marker:crawl4ai"
+      ttl_minutes: 60
+      reason: "Docker infrastructure and Makefile targets for Crawl4AI"
+    verification:
+      tier: C
+      checks:
+        - "docker compose config --quiet"
+        - "make -n crawl4ai-up"
+        - "ruff check src/api/health_routes.py"
+
+  # ─────────────────────────────────────────────────
+  # Parallel: Documentation
+  # ─────────────────────────────────────────────────
+  - id: wp-docs
+    title: "Documentation Updates"
+    description: |
+      Update SETUP.md, ARCHITECTURE.md, TESTING.md, and CLAUDE.md
+      with Crawl4AI setup, configuration, architecture diagram,
+      testing patterns, and gotchas.
+    priority: 3
+    depends_on:
+      - wp-config
+    tasks:
+      - "5.1"  # SETUP.md
+      - "5.2"  # ARCHITECTURE.md
+      - "5.3"  # CLAUDE.md
+      - "5.4"  # TESTING.md
+    scope:
+      write_allow:
+        - "docs/SETUP.md"
+        - "docs/ARCHITECTURE.md"
+        - "docs/TESTING.md"
+        - "CLAUDE.md"
+      read_allow:
+        - "docs/**"
+        - "CLAUDE.md"
+        - "src/parsers/html_markdown.py"
+        - "src/config/settings.py"
+        - "docker-compose.yml"
+        - "Makefile"
+      deny:
+        - "src/**"
+        - "tests/**"
+        - "profiles/**"
+    locks:
+      files:
+        - "docs/SETUP.md"
+        - "docs/ARCHITECTURE.md"
+        - "docs/TESTING.md"
+        - "CLAUDE.md"
+      keys:
+        - "docs:setup:crawl4ai"
+        - "docs:architecture:extraction-pipeline"
+        - "docs:testing:crawl4ai"
+        - "docs:claude:crawl4ai-gotchas"
+      ttl_minutes: 60
+      reason: "Documentation for Crawl4AI setup, architecture, and testing"
+    verification:
+      tier: C
+      checks:
+        - "test -f docs/SETUP.md"
+        - "test -f CLAUDE.md"
+
+  # ─────────────────────────────────────────────────
+  # Integration Tests (depends on converter + docker)
+  # ─────────────────────────────────────────────────
+  - id: wp-tests
+    title: "Integration & Hoverfly Tests"
+    description: |
+      Create Hoverfly simulations for Crawl4AI REST API, integration
+      test fixtures, and integration tests covering the full fallback
+      chain via simulated HTTP and live Docker.
+    priority: 3
+    depends_on:
+      - wp-converter
+      - wp-docker
+    tasks:
+      - "4.1"  # Hoverfly simulations
+      - "4.2"  # Integration fixtures
+      - "4.3"  # Hoverfly integration tests
+      - "4.4"  # Live Docker integration tests
+    scope:
+      write_allow:
+        - "tests/integration/fixtures/simulations/crawl4ai_*.json"
+        - "tests/integration/fixtures/crawl4ai.py"
+        - "tests/integration/test_crawl4ai_extraction.py"
+      read_allow:
+        - "tests/**"
+        - "src/parsers/html_markdown.py"
+        - "src/config/settings.py"
+      deny:
+        - "src/**"
+        - "docker-compose.yml"
+        - "docs/**"
+    locks:
+      files:
+        - "tests/integration/test_crawl4ai_extraction.py"
+        - "tests/integration/fixtures/crawl4ai.py"
+      keys:
+        - "test:integration:crawl4ai"
+        - "test:hoverfly:crawl4ai_simulations"
+      ttl_minutes: 90
+      reason: "Integration and simulation tests for Crawl4AI extraction"
+    verification:
+      tier: A
+      checks:
+        - "pytest tests/integration/test_crawl4ai_extraction.py -v -m 'not crawl4ai'"
+        - "ruff check tests/integration/"
+
+  # ─────────────────────────────────────────────────
+  # Integration: Merge & Full Test Suite
+  # ─────────────────────────────────────────────────
+  - id: wp-integration
+    title: "Integration Merge & Full Validation"
+    description: |
+      Merge all work package branches, resolve any conflicts,
+      run full test suite, verify no regressions.
+    priority: 4
+    depends_on:
+      - wp-converter
+      - wp-docker
+      - wp-tests
+      - wp-docs
+    tasks: []
+    scope:
+      write_allow:
+        - "**"  # Integration can touch anything to resolve conflicts
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "integration:add-crawl4ai-integration"
+      ttl_minutes: 30
+      reason: "Final integration merge and validation"
+    verification:
+      tier: A
+      checks:
+        - "pytest --ignore=tests/contract/ --ignore=tests/integration/ -v"
+        - "pytest tests/parsers/ -v"
+        - "ruff check src/ tests/"
+        - "mypy src/"
+
+# DAG Visualization
+#
+#                 wp-config (P1)
+#                 /    |     \
+#                /     |      \
+#   wp-converter  wp-docker  wp-docs
+#       (P2)       (P2)      (P3)
+#          \       /
+#           \     /
+#          wp-tests (P3)
+#             |
+#             |
+#       wp-integration (P4)
+#
+# Parallelism: wp-converter, wp-docker, wp-docs run concurrently after wp-config
+# wp-tests waits for wp-converter + wp-docker
+# wp-integration is the final merge gate

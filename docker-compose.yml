@@ -72,6 +72,21 @@ services:
     profiles:
       - test  # Only start with --profile test or when explicitly specified
 
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: newsletter-crawl4ai
+    ports:
+      - "11235:11235"
+    shm_size: '1g'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11235/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    profiles:
+      - crawl4ai  # Only start with --profile crawl4ai or when explicitly specified
+
 volumes:
   postgres_data:
   neo4j_data:

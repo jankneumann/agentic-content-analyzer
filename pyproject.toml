@@ -126,6 +126,9 @@ embeddings = [
 image-generation = [
     "google-cloud-aiplatform>=1.38.0",  # Vertex AI SDK for Imagen image generation
 ]
+crawl4ai = [
+    "crawl4ai>=0.7.0",  # JS-heavy content extraction via headless browser
+]
 
 [build-system]
 requires = ["hatchling"]

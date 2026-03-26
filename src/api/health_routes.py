@@ -125,6 +125,18 @@ async def readiness_check() -> JSONResponse:
         logger.warning("Queue health check failed: %s", exc)
         checks["queue"] = "unavailable"
 
+    # Crawl4AI remote server check (only if configured)
+    if settings.crawl4ai_enabled and settings.crawl4ai_server_url:
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{settings.crawl4ai_server_url}/health")
+                checks["crawl4ai"] = "ok" if resp.status_code == 200 else "degraded"
+        except Exception as exc:
+            logger.warning("Crawl4AI health check failed: %s", exc)
+            checks["crawl4ai"] = "unavailable"
+
     # Backup recency check (Railway provider with pg_cron only)
     if settings.database_provider == "railway" and settings.railway_backup_enabled:
         try:
