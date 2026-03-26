@@ -119,7 +119,7 @@ class KreuzbergParser(DocumentParser):
     def __init__(
         self,
         max_file_size_mb: int = 100,
-        timeout_seconds: int = 300,
+        timeout_seconds: int = 120,
     ) -> None:
         """Initialize the Kreuzberg parser.
 
@@ -165,7 +165,9 @@ class KreuzbergParser(DocumentParser):
         start_time = time.time()
         warnings: list[str] = []
 
-        source_str = str(source) if not isinstance(source, bytes | BinaryIO) else "stream"
+        source_str = (
+            str(source) if not (isinstance(source, bytes) or hasattr(source, "read")) else "stream"
+        )
         detected_format = format_hint or self._detect_format(source)
 
         # Check file size for path sources
@@ -189,7 +191,7 @@ class KreuzbergParser(DocumentParser):
                     extract_bytes(source, mime_type=mime_type, config=config),
                     timeout=self.timeout_seconds,
                 )
-            elif isinstance(source, BinaryIO):
+            elif hasattr(source, "read"):
                 # Read bytes from file-like object
                 data = source.read()
                 mime_type = EXTENSION_MIME_MAP.get(detected_format, "application/octet-stream")
@@ -273,7 +275,7 @@ class KreuzbergParser(DocumentParser):
         Returns:
             Format string (e.g., "pdf", "docx")
         """
-        if isinstance(source, bytes | BinaryIO):
+        if isinstance(source, bytes) or hasattr(source, "read"):
             return "unknown"
 
         source_str = str(source)
@@ -416,7 +418,7 @@ class KreuzbergParser(DocumentParser):
                 pass
 
         # Fallback to filename for title
-        if not title and not isinstance(source, bytes | BinaryIO):
+        if not title and not (isinstance(source, bytes) or hasattr(source, "read")):
             source_path = Path(str(source))
             if source_path.suffix:
                 title = source_path.stem

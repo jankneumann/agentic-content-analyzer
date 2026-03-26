@@ -35,7 +35,9 @@ async def run_shadow_parse(
         source: Document source (same as passed to canonical parser).
         format_hint: Optional format override.
     """
-    source_str = str(source) if not isinstance(source, bytes | BinaryIO) else "stream"
+    source_str = (
+        str(source) if not (isinstance(source, bytes) or hasattr(source, "read")) else "stream"
+    )
     start_time = time.time()
 
     try:

@@ -102,7 +102,7 @@ class TestInit:
         parser = KreuzbergParser()
         assert parser is not None
         assert parser.max_file_size_mb == 100
-        assert parser.timeout_seconds == 300
+        assert parser.timeout_seconds == 120
 
     def test_init_fails_when_kreuzberg_missing(self):
         """Without a mock in sys.modules, importing kreuzberg should fail."""
@@ -342,4 +342,4 @@ class TestConfiguration:
     def test_default_configuration(self):
         parser = KreuzbergParser()
         assert parser.max_file_size_mb == 100
-        assert parser.timeout_seconds == 300
+        assert parser.timeout_seconds == 120
