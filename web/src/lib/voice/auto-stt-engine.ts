@@ -10,6 +10,7 @@
 import type { STTEngine, STTStartOptions } from "./engine"
 import { BrowserSTTEngine } from "./browser-stt-engine"
 import { CloudSTTEngine, type CloudSTTConfig } from "./cloud-stt-engine"
+import { OnDeviceSTTEngine } from "./on-device-stt-engine"
 
 export interface AutoSTTConfig {
   /** Comma-separated engine preference order */
@@ -40,7 +41,8 @@ export class AutoSTTEngine implements STTEngine {
       "cloud",
       new CloudSTTEngine(config.cloudConfig ?? {})
     )
-    // "native" and "on-device" engines will be added by future proposals
+    this.engines.set("on-device", new OnDeviceSTTEngine())
+    // "native" engine will be added by Capacitor/Tauri proposals
   }
 
   async isAvailable(): Promise<boolean> {
