@@ -132,6 +132,15 @@ const SOURCE_CONFIGS: SourceConfig[] = [
     maxResultsMax: 50,
     supportsIngest: true,
   },
+  {
+    key: "blog",
+    label: "Blog Posts",
+    description: "Scrape and ingest blog posts from configured blog sources.",
+    icon: <BookOpen className="h-5 w-5" />,
+    maxResultsLabel: "Maximum posts",
+    maxResultsMax: 100,
+    supportsIngest: true,
+  },
 ]
 
 /**
