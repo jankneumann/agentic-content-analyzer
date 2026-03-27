@@ -1,0 +1,287 @@
+openapi: 3.1.0
+info:
+  title: Mobile Content Capture API
+  description: |
+    Endpoints for saving URLs and pages from mobile devices (iOS Shortcuts,
+    bookmarklets, Chrome extension). Includes rate limiting for mobile clients.
+  version: 1.1.0
+
+paths:
+  /api/v1/content/save-url:
+    post:
+      operationId: saveUrl
+      summary: Save a URL for background content extraction
+      description: |
+        Creates a Content record and queues background extraction.
+        Returns immediately with content ID for status polling.
+        Duplicate URLs return existing content ID.
+      security:
+        - sessionCookie: []
+        - adminKey: []
+        - {} # Open mode when no auth configured
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveURLRequest'
+            example:
+              url: "https://example.com/ai-article"
+              title: "New AI Breakthrough"
+              tags: ["ai", "research"]
+              notes: "Interesting findings on LLM scaling"
+              source: "ios_shortcut"
+      responses:
+        '201':
+          description: URL saved and queued for extraction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveURLResponse'
+              example:
+                content_id: 12345
+                status: "queued"
+                message: "URL saved. Content extraction in progress."
+                duplicate: false
+        '200':
+          description: URL already exists (duplicate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveURLResponse'
+              example:
+                content_id: 12340
+                status: "exists"
+                message: "URL already saved."
+                duplicate: true
+        '422':
+          description: Validation error (invalid URL format)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
+              example:
+                detail: "Rate limit exceeded. Try again later."
+                retry_after: 60
+
+  /api/v1/content/save-page:
+    post:
+      operationId: savePage
+      summary: Save a page with client-captured HTML
+      description: |
+        Accepts full rendered DOM from browser extensions.
+        Processes HTML to extract markdown and images.
+        Maximum HTML size: 5 MB.
+      security:
+        - sessionCookie: []
+        - adminKey: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavePageRequest'
+      responses:
+        '201':
+          description: Page saved and queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveURLResponse'
+        '200':
+          description: URL already exists (duplicate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveURLResponse'
+        '422':
+          description: Validation error
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
+
+  /api/v1/content/{content_id}/status:
+    get:
+      operationId: getContentStatus
+      summary: Get extraction status of a content record
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Current content status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentStatusResponse'
+              example:
+                content_id: 12345
+                status: "parsed"
+                title: "New AI Breakthrough"
+                word_count: 1542
+                error: null
+        '404':
+          description: Content not found
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: JWT session cookie (7-day expiry)
+    adminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+      description: Admin API key for CLI/extension auth
+
+  schemas:
+    SaveURLRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: URL to save and extract content from
+          example: "https://example.com/article"
+        title:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: Optional page title
+        excerpt:
+          type: string
+          maxLength: 5000
+          nullable: true
+          description: Optional selected text excerpt
+        tags:
+          type: array
+          maxItems: 20
+          nullable: true
+          items:
+            type: string
+            maxLength: 100
+          description: Optional tags for categorization
+        notes:
+          type: string
+          maxLength: 10000
+          nullable: true
+          description: Optional user notes
+        source:
+          type: string
+          maxLength: 50
+          nullable: true
+          description: Capture source identifier
+          enum: [chrome_extension, ios_shortcut, bookmarklet, web_save_page, api]
+
+    SavePageRequest:
+      type: object
+      required: [url, html]
+      properties:
+        url:
+          type: string
+          format: uri
+        html:
+          type: string
+          maxLength: 5242880
+          description: Rendered DOM HTML (max 5 MB)
+        title:
+          type: string
+          maxLength: 1000
+          nullable: true
+        excerpt:
+          type: string
+          maxLength: 5000
+          nullable: true
+        tags:
+          type: array
+          maxItems: 20
+          nullable: true
+          items:
+            type: string
+            maxLength: 100
+        notes:
+          type: string
+          maxLength: 10000
+          nullable: true
+        source:
+          type: string
+          maxLength: 50
+          nullable: true
+
+    SaveURLResponse:
+      type: object
+      required: [content_id, status, message, duplicate]
+      properties:
+        content_id:
+          type: integer
+          description: ID of the created or existing content
+        status:
+          type: string
+          enum: [queued, exists]
+        message:
+          type: string
+        duplicate:
+          type: boolean
+
+    ContentStatusResponse:
+      type: object
+      required: [content_id, status]
+      properties:
+        content_id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, parsing, parsed, failed]
+        title:
+          type: string
+          nullable: true
+        word_count:
+          type: integer
+          nullable: true
+        error:
+          type: string
+          nullable: true
+
+    RateLimitError:
+      type: object
+      properties:
+        detail:
+          type: string
+        retry_after:
+          type: integer
+          description: Seconds until rate limit resets
+
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              msg:
+                type: string
+              type:
+                type: string

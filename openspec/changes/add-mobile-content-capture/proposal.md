@@ -1,102 +1,108 @@
 # Change: Add Mobile Content Capture (iOS Focus)
 
+## Status
+
+**Partially implemented** — Core API endpoints, Chrome extension, bookmarklet, and web save page are all live. This proposal covers the **remaining work** to complete the mobile capture experience.
+
 ## Why
 
-Users discover interesting content while browsing on their iPhones. The existing `content-capture` proposal covers Chrome extensions and bookmarklets, but **iOS has no browser extension support**. Mobile users need:
+Users discover interesting content while browsing on their iPhones. The existing `content-capture` spec covers Chrome extensions and bookmarklets, but **iOS has no browser extension support**. Mobile users need:
 
 1. **Native iOS integration** via Share Sheet and Shortcuts app
-2. **Cross-device sync** - capture on phone, process on server
-3. **Database-agnostic capture** - works with both Supabase and Neon backends
+2. **Rate limiting** on save endpoints to protect against abuse
+3. **Mobile-optimized save page** UX audit and improvements
+4. **Documentation** for mobile capture workflows
 
-## What's Included
+## What's Already Implemented
 
-### iOS Shortcuts Integration
-- Pre-built Shortcut that calls the Save URL API
-- Appears in iOS Share Sheet for any URL
-- Supports adding notes/tags during capture
-- Works offline (queues URLs for later sync)
+| Component | Status | Location |
+|-----------|--------|----------|
+| Save URL API (`POST /save-url`) | Done | `src/api/save_routes.py` |
+| Save Page API (`POST /save-page`) | Done | `src/api/save_routes.py` |
+| Content Status API (`GET /{id}/status`) | Done | `src/api/save_routes.py` |
+| URL Extractor (background) | Done | `src/services/url_extractor.py` |
+| HTML Processor (client capture) | Done | `src/services/html_processor.py` |
+| Chrome Extension | Done | `extension/` |
+| Bookmarklet page | Done | `src/templates/bookmarklet.html` |
+| Web save form | Done | `src/templates/save.html` |
+| Auth middleware (session + admin key) | Done | `src/api/middleware/auth.py` |
+| Frontend save URL hook | Done | `web/src/hooks/use-contents.ts` |
+| API tests | Done | `tests/api/test_save_api.py` |
+| Shortcuts README | Done | `shortcuts/README.md` |
 
-### Save URL API Enhancement
-- `POST /api/v1/content/save-url` - Queue URL for processing
-- Optional API key authentication (for mobile use)
-- Rate limiting per API key
-- Returns content ID for status polling
+## What Remains
 
-### Web Capture Page (Mobile-Optimized)
-- `GET /save` - Mobile-friendly save form
-- Pre-fills from URL parameters (for bookmarklet/shortcut)
-- Touch-optimized UI (44px tap targets)
-- Works as fallback for any mobile browser
+### 1. Save Endpoint Rate Limiting
+- No rate limiter exists on `save-url` or `save-page` endpoints
+- Other endpoints (login, share, chat, otel) all have rate limiters
+- Need `SaveRateLimiter` following the `EndpointRateLimiter` pattern
+- Default: 30 requests/minute per IP (mobile use is bursty but bounded)
 
-## Database Backend Considerations
+### 2. iOS Shortcut Distribution
+- Only a README with manual creation steps exists
+- Need a downloadable `.shortcut` file or iCloud link
+- Need server-rendered installation page at `/api/v1/content/shortcut`
+- Shortcut should support: URL capture, optional tags, API key auth
 
-### How Capture Works with Supabase vs Neon
+### 3. Mobile Save Page UX
+- Current `save.html` template works but needs mobile UX audit
+- Touch targets (44px minimum), viewport meta, safe area insets
+- Success/error state animations
+- "Recent saves" list for quick reference
 
-Both backends are PostgreSQL, so the **Content model and API are identical**. The difference is in **operational characteristics**:
-
-| Aspect | Supabase | Neon |
-|--------|----------|------|
-| **Connection** | Pooled via Supavisor | Pooled via `-pooler` endpoint |
-| **Cold Start** | Always warm (dedicated compute) | May have 2-5s wake time (scale-to-zero) |
-| **Best For** | Production with consistent traffic | Development, CI, cost-sensitive workloads |
-| **Mobile Capture** | Instant response | First capture may be slower |
-
-### Architecture Flow
-
-```
-iPhone Share Sheet
-       ↓
-iOS Shortcut (HTTP POST)
-       ↓
-Save URL API (/api/v1/content/save-url)
-       ↓
-Database Provider Factory (auto-detects Supabase/Neon/Local)
-       ↓
-PostgreSQL (Content record created with status=PENDING)
-       ↓
-Background Task (extract content via Crawl4AI or existing parsers)
-       ↓
-PostgreSQL (Content updated with markdown, status=PARSED)
-```
-
-The **same API endpoint** works regardless of database backend. The provider abstraction (`src/database/providers/`) handles connection pooling and SSL configuration per-provider.
-
-## What Changes
-
-- **ENHANCED**: `content-capture` spec to include iOS Shortcuts
-- **NEW**: iOS Shortcut file (.shortcut) for distribution
-- **NEW**: Mobile-optimized save page template
-- **NEW**: Optional API key authentication for mobile clients
-- **MODIFIED**: Save URL endpoint with rate limiting
+### 4. Documentation
+- Create `docs/MOBILE_CAPTURE.md` comprehensive user guide
+- Update `CLAUDE.md` with mobile capture commands
+- Update `CONTENT_CAPTURE.md` to cross-reference mobile guide
 
 ## Impact
 
-- **Affected specs**: `content-capture` (enhanced)
-- **New code**:
-  - `shortcuts/Save to Newsletter.shortcut` - iOS Shortcut
-  - `src/templates/save_mobile.html` - Mobile save page
-  - `src/api/auth/api_keys.py` - Simple API key auth (optional)
-- **Dependencies**: None (uses existing database provider abstraction)
+- **Modified code**: `src/api/save_routes.py` (add rate limiter dependency)
+- **New code**: `src/api/save_rate_limiter.py`, shortcut installation endpoint
+- **New files**: `docs/MOBILE_CAPTURE.md`, updated `src/templates/save.html`
+- **Tests**: Rate limiter unit tests, shortcut endpoint tests
+- **Dependencies**: None (all infrastructure already exists)
 
 ## Related Proposals
 
-- **content-capture** - Base Chrome extension/bookmarklet (this extends it)
-- **add-crawl4ai-integration** - Enhanced content extraction
-- **add-user-authentication** - Full auth system (this uses lightweight API keys)
-- **mobile-reader** - PWA for reading captured content
+- **content-capture** spec — Base capability this extends
+- **add-crawl4ai-integration** — Enhanced content extraction (already merged)
+- **mobile-reader** spec — PWA for reading captured content
+
+## Architecture Flow
+
+```
+iPhone Share Sheet
+       |
+iOS Shortcut (HTTP POST)
+       |
+Save URL API (/api/v1/content/save-url)
+       |
+Rate Limiter (30 req/min per IP) --- 429 if exceeded
+       |
+Auth Middleware (session cookie OR X-Admin-Key)
+       |
+Database Provider Factory (auto-detects Supabase/Neon/Local)
+       |
+PostgreSQL (Content record created with status=PENDING)
+       |
+Background Task (extract content via Crawl4AI or Trafilatura)
+       |
+PostgreSQL (Content updated with markdown, status=PARSED)
+```
 
 ## User Journey
 
 ### Capturing from iPhone
 
-1. **Install Shortcut**: User adds pre-built Shortcut to their device
+1. **Install Shortcut**: User adds pre-built Shortcut via iCloud link or download page
 2. **Configure API URL**: Enter their server URL and optional API key
-3. **Share Any URL**: From Safari, tap Share → "Save to Newsletter"
+3. **Share Any URL**: From Safari, tap Share -> "Save to Newsletter"
 4. **Optional Notes**: Add tags or notes before saving
 5. **Confirmation**: Shortcut shows success/failure toast
 
 ### Viewing Captured Content
 
 1. Content appears in the web UI under "Recent Content"
-2. Status shows: Pending → Parsing → Parsed → Summarized
-3. Use `mobile-reader` PWA for mobile-optimized reading
+2. Status shows: Pending -> Parsing -> Parsed -> Summarized
+3. Use mobile-reader PWA for mobile-optimized reading

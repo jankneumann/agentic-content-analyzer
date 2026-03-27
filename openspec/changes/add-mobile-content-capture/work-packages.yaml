@@ -1,0 +1,271 @@
+# Work Packages for add-mobile-content-capture
+#
+# DAG:
+#   wp-contracts (root, already complete)
+#       |
+#       +-- wp-rate-limiter (backend: rate limiting module + integration)
+#       |
+#       +-- wp-mobile-ux (frontend: save page UX improvements)
+#       |
+#       +-- wp-ios-shortcut (distribution: shortcut file + install page)
+#       |
+#       +-- wp-docs (documentation: user guide + cross-references)
+#       |
+#       +-- wp-integration (depends on ALL above)
+#
+# Parallelism: wp-rate-limiter, wp-mobile-ux, wp-ios-shortcut, and wp-docs
+# can all run concurrently — they have non-overlapping write scopes.
+
+feature_id: add-mobile-content-capture
+branch: openspec/add-mobile-content-capture
+created: "2026-03-26"
+
+packages:
+  - id: wp-contracts
+    title: "Contract artifacts (OpenAPI, types)"
+    description: |
+      Generate and validate API contracts for the mobile capture endpoints.
+      These contracts are the coordination boundary for parallel work.
+    status: complete
+    priority: 1
+    tasks:
+      - "contracts/openapi/v1.yaml — OpenAPI 3.1 spec"
+      - "contracts/generated/models.py — Pydantic models"
+      - "contracts/generated/types.ts — TypeScript interfaces"
+    scope:
+      write_allow:
+        - "openspec/changes/add-mobile-content-capture/contracts/**"
+      read_allow:
+        - "src/api/save_routes.py"
+        - "src/api/rate_limiter_base.py"
+      deny: []
+    locks:
+      files: []
+      keys: []
+      ttl_minutes: 0
+      reason: "Contract generation (planning phase)"
+    depends_on: []
+    verification:
+      tier: C
+      checks:
+        - "YAML/JSON schema validation"
+        - "Type stub syntax check"
+
+  - id: wp-rate-limiter
+    title: "Save endpoint rate limiting"
+    description: |
+      Add rate limiting to save-url and save-page endpoints using the existing
+      EndpointRateLimiter base class. Follow the pattern from share_rate_limiter.py.
+    status: open
+    priority: 2
+    tasks:
+      - "1.1 Create src/api/save_rate_limiter.py (EndpointRateLimiter, 30 req/min)"
+      - "1.2 Add rate limiter to save_url endpoint"
+      - "1.3 Add rate limiter to save_page endpoint"
+      - "1.4 Add X-RateLimit-Remaining/Reset response headers"
+      - "5.1 Unit tests for rate limiter module"
+      - "5.2 API tests for 429 responses"
+    scope:
+      write_allow:
+        - "src/api/save_rate_limiter.py"
+        - "src/api/save_routes.py"
+        - "tests/api/test_save_rate_limiter.py"
+        - "tests/api/test_save_api.py"
+      read_allow:
+        - "src/api/rate_limiter_base.py"
+        - "src/api/share_rate_limiter.py"
+        - "src/api/chat_rate_limiter.py"
+        - "contracts/**"
+      deny:
+        - "src/templates/**"
+        - "docs/**"
+        - "shortcuts/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/api/save_rate_limiter.py"
+        - "src/api/save_routes.py"
+      keys:
+        - "api:POST /v1/content/save-url:rate-limit"
+        - "api:POST /v1/content/save-page:rate-limit"
+      ttl_minutes: 120
+      reason: "Rate limiter implementation for save endpoints"
+    depends_on:
+      - wp-contracts
+    verification:
+      tier: A
+      checks:
+        - "pytest tests/api/test_save_rate_limiter.py -v"
+        - "pytest tests/api/test_save_api.py -v"
+        - "ruff check src/api/save_rate_limiter.py"
+        - "mypy src/api/save_rate_limiter.py"
+
+  - id: wp-ios-shortcut
+    title: "iOS Shortcut distribution"
+    description: |
+      Create the iOS Shortcut distribution infrastructure: installation page
+      endpoint, HTML template, and Shortcut documentation. The actual .shortcut
+      file must be created manually on an iPhone.
+    status: open
+    priority: 2
+    tasks:
+      - "2.3 Create GET /api/v1/content/shortcut installation page endpoint"
+      - "2.4 Create src/templates/shortcut.html with install instructions"
+      - "2.6 Write test for shortcut installation endpoint"
+    scope:
+      write_allow:
+        - "src/api/save_routes.py:shortcut-endpoint"
+        - "src/templates/shortcut.html"
+        - "tests/api/test_shortcut_page.py"
+      read_allow:
+        - "src/templates/bookmarklet.html"
+        - "src/templates/save.html"
+        - "shortcuts/README.md"
+        - "contracts/**"
+      deny:
+        - "src/api/save_rate_limiter.py"
+        - "src/api/rate_limiter_base.py"
+        - "docs/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/templates/shortcut.html"
+      keys:
+        - "api:GET /v1/content/shortcut"
+        - "template:shortcut.html"
+      ttl_minutes: 120
+      reason: "iOS Shortcut installation page"
+    depends_on:
+      - wp-contracts
+    verification:
+      tier: A
+      checks:
+        - "pytest tests/api/test_shortcut_page.py -v"
+        - "ruff check src/api/save_routes.py"
+
+  - id: wp-mobile-ux
+    title: "Mobile save page UX improvements"
+    description: |
+      Audit and improve the existing save.html template for mobile devices.
+      Focus on touch targets, safe area insets, dark mode, and recent saves list.
+    status: open
+    priority: 3
+    tasks:
+      - "3.1 Audit save.html for 44px touch targets"
+      - "3.2 Add viewport meta and safe area insets"
+      - "3.3 Add success/error animations"
+      - "3.4 Add recent saves section (localStorage)"
+      - "3.5 Add dark mode support"
+      - "5.4 E2E test for mobile save page"
+      - "5.5 E2E test for bookmarklet page"
+    scope:
+      write_allow:
+        - "src/templates/save.html"
+        - "web/tests/e2e/save/**"
+      read_allow:
+        - "src/templates/bookmarklet.html"
+        - "web/tests/e2e/fixtures/**"
+        - "contracts/**"
+      deny:
+        - "src/api/*.py"
+        - "src/services/**"
+        - "docs/**"
+        - "shortcuts/**"
+    locks:
+      files:
+        - "src/templates/save.html"
+      keys:
+        - "template:save.html"
+      ttl_minutes: 120
+      reason: "Mobile save page UX improvements"
+    depends_on:
+      - wp-contracts
+    verification:
+      tier: A
+      checks:
+        - "cd web && pnpm exec playwright test tests/e2e/save/"
+        - "Manual: touch target size audit on iOS Safari"
+
+  - id: wp-docs
+    title: "Mobile capture documentation"
+    description: |
+      Create the comprehensive MOBILE_CAPTURE.md user guide and update
+      cross-references in CONTENT_CAPTURE.md and CLAUDE.md.
+    status: open
+    priority: 3
+    tasks:
+      - "4.1 Create docs/MOBILE_CAPTURE.md"
+      - "4.2 Document iOS Shortcut installation"
+      - "4.3 Document rate limiting behavior"
+      - "4.4 Add troubleshooting section"
+      - "4.5 Update docs/CONTENT_CAPTURE.md cross-references"
+      - "4.6 Update CLAUDE.md with mobile capture section"
+    scope:
+      write_allow:
+        - "docs/MOBILE_CAPTURE.md"
+        - "docs/CONTENT_CAPTURE.md"
+        - "CLAUDE.md"
+        - "shortcuts/README.md"
+      read_allow:
+        - "src/api/save_routes.py"
+        - "src/api/save_rate_limiter.py"
+        - "src/templates/**"
+        - "contracts/**"
+        - "extension/**"
+      deny:
+        - "src/**/*.py"
+        - "web/src/**"
+        - "tests/**"
+    locks:
+      files:
+        - "docs/MOBILE_CAPTURE.md"
+      keys:
+        - "docs:mobile-capture"
+      ttl_minutes: 120
+      reason: "Mobile capture documentation"
+    depends_on:
+      - wp-contracts
+    verification:
+      tier: C
+      checks:
+        - "Markdown lint"
+        - "Link validation"
+
+  - id: wp-integration
+    title: "Integration testing and merge"
+    description: |
+      Run the full test suite after all packages are merged.
+      Verify rate limiting, shortcut page, mobile UX, and documentation
+      work together end-to-end.
+    status: open
+    priority: 4
+    tasks:
+      - "Run full pytest suite"
+      - "Run E2E tests including new save page tests"
+      - "Manual: iOS Safari test of save flow"
+      - "Manual: iOS Shortcut test of save-url flow"
+      - "Verify documentation links resolve"
+    scope:
+      write_allow:
+        - "**"
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "integration:add-mobile-content-capture"
+      ttl_minutes: 60
+      reason: "Integration testing — all packages must be complete"
+    depends_on:
+      - wp-rate-limiter
+      - wp-ios-shortcut
+      - wp-mobile-ux
+      - wp-docs
+    verification:
+      tier: A
+      checks:
+        - "pytest -v"
+        - "cd web && pnpm test:e2e"
+        - "ruff check src/"
+        - "mypy src/"

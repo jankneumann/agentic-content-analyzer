@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Save to Newsletter Aggregator</title>
     <style>
         :root {
@@ -14,6 +14,7 @@
             --primary-hover: #4338ca;
             --success-color: #22c55e;
             --error-color: #ef4444;
+            --muted-color: #666;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -24,6 +25,7 @@
                 --input-border: #404040;
                 --primary-color: #6366f1;
                 --primary-hover: #818cf8;
+                --muted-color: #999;
             }
         }
 
@@ -40,6 +42,10 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             padding: 20px;
+            padding-top: max(20px, env(safe-area-inset-top));
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            padding-left: max(20px, env(safe-area-inset-left));
+            padding-right: max(20px, env(safe-area-inset-right));
             max-width: 600px;
             margin: 0 auto;
         }
@@ -64,8 +70,9 @@
         input[type="text"],
         textarea {
             width: 100%;
-            padding: 14px;
+            padding: 16px;
             font-size: 16px;
+            min-height: 52px;
             border: 1px solid var(--input-border);
             border-radius: 8px;
             background-color: var(--input-bg);
@@ -115,6 +122,14 @@
             margin-top: 20px;
             text-align: center;
             font-weight: 500;
+            opacity: 0;
+            transform: translateY(-8px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .status.visible {
+            opacity: 1;
+            transform: translateY(0);
         }
 
         .status.success {
@@ -141,14 +156,47 @@
 
         .hint {
             font-size: 14px;
-            color: #666;
+            color: var(--muted-color);
             margin-top: 4px;
         }
 
-        @media (prefers-color-scheme: dark) {
-            .hint {
-                color: #999;
-            }
+        .recent-saves {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--input-border);
+        }
+
+        .recent-saves h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .recent-saves ul {
+            list-style: none;
+        }
+
+        .recent-saves li {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--input-border);
+            font-size: 14px;
+        }
+
+        .recent-saves li:last-child {
+            border-bottom: none;
+        }
+
+        .recent-saves .save-url {
+            color: var(--primary-color);
+            text-decoration: none;
+            word-break: break-all;
+            display: block;
+        }
+
+        .recent-saves .save-time {
+            color: var(--muted-color);
+            font-size: 12px;
+            margin-top: 4px;
         }
     </style>
 </head>
@@ -195,6 +243,11 @@
 
     <div id="status" class="status hidden"></div>
 
+    <div id="recent-saves" class="recent-saves hidden">
+        <h2>Recent Saves</h2>
+        <ul id="recent-list"></ul>
+    </div>
+
     <script>
         // API base URL injected from server (supports cross-origin bookmarklet use)
         const API_BASE = {{ api_base_url | tojson }};
@@ -202,11 +255,91 @@
         const submitBtn = document.getElementById('submit-btn');
         const statusDiv = document.getElementById('status');
 
+        // --- Status animation helpers ---
+        function showStatus(className, text) {
+            statusDiv.textContent = text;
+            statusDiv.className = 'status ' + className;
+            statusDiv.classList.remove('hidden');
+            // Trigger reflow so the transition plays from opacity:0
+            void statusDiv.offsetHeight;
+            statusDiv.classList.add('visible');
+        }
+
+        function showStatusWithContent(className, buildContent) {
+            statusDiv.textContent = '';
+            buildContent(statusDiv);
+            statusDiv.className = 'status ' + className;
+            statusDiv.classList.remove('hidden');
+            void statusDiv.offsetHeight;
+            statusDiv.classList.add('visible');
+        }
+
+        function hideStatus() {
+            statusDiv.classList.remove('visible');
+            statusDiv.addEventListener('transitionend', function handler() {
+                statusDiv.removeEventListener('transitionend', handler);
+                statusDiv.classList.add('hidden');
+            });
+        }
+
+        // --- Recent saves management ---
+        const RECENT_KEY = 'newsletter-recent-saves';
+        const MAX_RECENT = 5;
+
+        function loadRecentSaves() {
+            try {
+                return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+            } catch { return []; }
+        }
+
+        function addRecentSave(url, title, contentId) {
+            const saves = loadRecentSaves();
+            saves.unshift({ url: url, title: title || url, contentId: contentId, time: Date.now() });
+            if (saves.length > MAX_RECENT) saves.length = MAX_RECENT;
+            localStorage.setItem(RECENT_KEY, JSON.stringify(saves));
+            renderRecentSaves();
+        }
+
+        function renderRecentSaves() {
+            const saves = loadRecentSaves();
+            const container = document.getElementById('recent-saves');
+            const list = document.getElementById('recent-list');
+
+            if (saves.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            list.innerHTML = saves.map(function(s) {
+                const ago = getTimeAgo(s.time);
+                return '<li><a class="save-url" href="' + escapeHtml(s.url) + '" target="_blank">' + escapeHtml(s.title) + '</a><div class="save-time">' + ago + '</div></li>';
+            }).join('');
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function getTimeAgo(timestamp) {
+            const seconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (seconds < 60) return 'just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return minutes + 'm ago';
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return hours + 'h ago';
+            const days = Math.floor(hours / 24);
+            return days + 'd ago';
+        }
+
+        // --- Form handling ---
         function resetForm() {
             form.reset();
             submitBtn.disabled = false;
             submitBtn.textContent = 'Save';
-            statusDiv.classList.add('hidden');
+            hideStatus();
         }
 
         form.addEventListener('submit', async (e) => {
@@ -215,9 +348,7 @@
             // Disable button and show loading
             submitBtn.disabled = true;
             submitBtn.textContent = 'Saving...';
-            statusDiv.className = 'status loading';
-            statusDiv.textContent = 'Saving URL...';
-            statusDiv.classList.remove('hidden');
+            showStatus('loading', 'Saving URL...');
 
             try {
                 const formData = new FormData(form);
@@ -239,30 +370,37 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    statusDiv.className = 'status success';
                     const contentId = Number(result.content_id);
                     const msg = result.duplicate
-                        ? `URL already saved (ID: ${contentId}). `
-                        : `Saved! Content ID: ${contentId}. Extraction in progress. `;
-                    statusDiv.textContent = '';
-                    statusDiv.appendChild(document.createTextNode(msg));
-                    const link = document.createElement('a');
-                    link.href = '#';
-                    link.textContent = 'Save another';
-                    link.addEventListener('click', (ev) => { ev.preventDefault(); resetForm(); });
-                    statusDiv.appendChild(link);
+                        ? 'URL already saved (ID: ' + contentId + '). '
+                        : 'Saved! Content ID: ' + contentId + '. Extraction in progress. ';
+
+                    showStatusWithContent('success', function(el) {
+                        el.appendChild(document.createTextNode(msg));
+                        const link = document.createElement('a');
+                        link.href = '#';
+                        link.textContent = 'Save another';
+                        link.addEventListener('click', function(ev) { ev.preventDefault(); resetForm(); });
+                        el.appendChild(link);
+                    });
+
                     submitBtn.textContent = 'Saved';
                     submitBtn.disabled = true;
+
+                    // Track in recent saves
+                    addRecentSave(data.url, data.title, result.content_id);
                 } else {
                     throw new Error(result.detail || 'Save failed');
                 }
             } catch (error) {
-                statusDiv.className = 'status error';
-                statusDiv.textContent = `Error: ${error.message}`;
+                showStatus('error', 'Error: ' + error.message);
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Save';
             }
         });
+
+        // Load recent saves on page load
+        renderRecentSaves();
     </script>
 </body>
 </html>
