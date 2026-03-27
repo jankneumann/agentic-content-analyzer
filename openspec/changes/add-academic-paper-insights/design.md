@@ -5,11 +5,11 @@ Follows the existing Client-Service ingestion pattern:
 ```
 SemanticScholarClient (HTTP client, no DB)
     ↓
-AcademicPaperIngestionService (business logic + persistence)
+ScholarContentIngestionService (business logic + persistence)
     ↓
-orchestrator.ingest_academic() (lazy-loaded entry point)
+orchestrator.ingest_scholar() (lazy-loaded entry point)
     ↓
-CLI: aca ingest academic / aca ingest academic-paper <id>
+CLI: aca ingest scholar / aca ingest scholar-paper <id>
 Pipeline: pipeline runner daily stage
 ```
 
@@ -40,12 +40,12 @@ Pipeline: pipeline runner daily stage
 
 ## Source Configuration
 
-**New file:** `sources.d/academic.yaml`
+**New file:** `sources.d/scholar.yaml`
 
 ```yaml
 version: 1
 defaults:
-  type: academic
+  type: scholar
   enabled: true
   max_entries: 20
   min_citation_count: 0
@@ -75,11 +75,11 @@ sources:
     tags: [agents, research]
 ```
 
-**AcademicSource model** (in `src/config/sources.py`):
+**ScholarSource model** (in `src/config/sources.py`):
 
 ```python
-class AcademicSource(SourceBase):
-    type: Literal["academic"] = "academic"
+class ScholarSource(SourceBase):
+    type: Literal["scholar"] = "scholar"
     query: str                                    # Search query
     fields_of_study: list[str] = []              # e.g., ["Computer Science"]
     paper_types: list[str] = []                  # e.g., ["Review", "JournalArticle"]
@@ -92,9 +92,9 @@ class AcademicSource(SourceBase):
 
 Academic papers map to existing Content fields:
 
-| Content Field | Academic Paper Source |
+| Content Field | Scholar Paper Source |
 |--------------|---------------------|
-| `source_type` | `ContentSource.ACADEMIC` |
+| `source_type` | `ContentSource.SCHOLAR` |
 | `source_id` | Semantic Scholar paper ID (stable, unique) |
 | `source_url` | `semanticscholar.org/paper/{id}` or open access PDF URL |
 | `title` | Paper title |
@@ -160,7 +160,7 @@ Academic papers map to existing Content fields:
 
 ## Deduplication Strategy
 
-1. **Primary:** Source ID match (`source_type=ACADEMIC` + `source_id=S2PaperId`)
+1. **Primary:** Source ID match (`source_type=SCHOLAR` + `source_id=S2PaperId`)
 2. **Secondary:** Cross-source DOI/arXiv lookup — check metadata_json for matching DOI or arXiv ID across all source types (a paper ingested via Perplexity search might already exist)
 3. **Tertiary:** Content hash (normalized markdown)
 
@@ -180,16 +180,16 @@ A utility to scan existing Content records for academic paper references:
 4. Filter already-ingested papers
 5. Ingest new papers with `ingestion_mode: "reference_extraction"` in metadata
 
-**CLI:** `aca ingest academic-refs` — scan recent content and ingest referenced papers
+**CLI:** `aca ingest scholar-refs` — scan recent content and ingest referenced papers
 
 ## Ad-hoc Web Search Provider
 
 For use in chat, podcast generation, and digest review contexts:
 
 ```python
-class AcademicWebSearchProvider:
+class ScholarWebSearchProvider:
     """Semantic Scholar search for ad-hoc academic queries."""
-    name = "academic"
+    name = "scholar"
 
     def search(self, query, max_results=5) -> list[WebSearchResult]:
         # Uses /paper/search endpoint

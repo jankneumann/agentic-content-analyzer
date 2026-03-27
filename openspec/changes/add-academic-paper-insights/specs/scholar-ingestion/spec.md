@@ -1,17 +1,17 @@
-# Academic Paper Ingestion
+# Scholar Ingestion
 
 ## ADDED Requirements
 
-### Requirement: Academic Paper Search via Semantic Scholar
+### Requirement: Scholar Paper Search via Semantic Scholar
 
 The system SHALL support discovery and ingestion of academic papers using the Semantic Scholar Academic Graph API.
 
 #### Scenario: Successful keyword search and ingestion
 
-- **WHEN** the user runs academic paper ingestion with a search query
+- **WHEN** the user runs scholar paper ingestion with a search query
 - **THEN** the system queries the Semantic Scholar `/paper/search` endpoint with the provided query
 - **AND** requests fields: paperId, externalIds, title, abstract, year, venue, citationCount, influentialCitationCount, fieldsOfStudy, authors, publicationTypes, openAccessPdf, tldr
-- **AND** for each result, creates one Content record with `source_type=academic`
+- **AND** for each result, creates one Content record with `source_type=scholar`
 - **AND** uses the Semantic Scholar paper ID as `source_id`
 - **AND** formats the paper as structured markdown (title, authors, venue, abstract, TL;DR, references, links)
 - **AND** stores academic metadata in `metadata_json` (s2_paper_id, arxiv_id, doi, authors, venue, year, citation_count, fields_of_study, publication_types)
@@ -49,13 +49,13 @@ The system SHALL support discovery and ingestion of academic papers using the Se
 - **THEN** the system passes the year filter to the Semantic Scholar API
 - **AND** only returns papers published within the specified range
 
-### Requirement: Academic Paper Deduplication
+### Requirement: Scholar Paper Deduplication
 
 The system SHALL prevent duplicate ingestion of academic papers across all source types.
 
 #### Scenario: Duplicate detection by Semantic Scholar ID
 
-- **WHEN** ingesting a paper whose Semantic Scholar paper ID already exists as `source_id` with `source_type=academic`
+- **WHEN** ingesting a paper whose Semantic Scholar paper ID already exists as `source_id` with `source_type=scholar`
 - **THEN** the system skips the duplicate without creating a new record
 - **AND** logs a debug message indicating the duplicate was skipped
 
@@ -95,7 +95,7 @@ The system SHALL support extracting academic paper references from previously in
 
 #### Scenario: Extracting arXiv references from content
 
-- **WHEN** the user runs reference extraction (`aca ingest academic-refs`)
+- **WHEN** the user runs reference extraction (`aca ingest scholar-refs`)
 - **THEN** the system scans `markdown_content` of recent Content records
 - **AND** extracts arXiv identifiers matching patterns `arXiv:YYMM.NNNNN` and `arxiv.org/abs/YYMM.NNNNN`
 - **AND** batch-resolves them via Semantic Scholar `/paper/batch` endpoint
@@ -114,54 +114,54 @@ The system SHALL support extracting academic paper references from previously in
 - **THEN** the system only scans Content records within the specified date range
 - **AND** this allows incremental extraction from newly ingested content
 
-### Requirement: Academic Source Configuration
+### Requirement: Scholar Source Configuration
 
-The system SHALL support YAML-based configuration for recurring academic paper searches.
+The system SHALL support YAML-based configuration for recurring scholar paper searches.
 
-#### Scenario: Loading academic sources from sources.d
+#### Scenario: Loading scholar sources from sources.d
 
 - **WHEN** the application loads source configuration
-- **THEN** the system reads `sources.d/academic.yaml`
+- **THEN** the system reads `sources.d/scholar.yaml`
 - **AND** each entry defines: name, query, tags, enabled, max_entries, fields_of_study, paper_types, min_citation_count, year_range, venues
 
-#### Scenario: Academic sources in daily pipeline
+#### Scenario: Scholar sources in daily pipeline
 
 - **WHEN** the daily pipeline runs (`aca pipeline daily`)
-- **THEN** academic sources from `sources.d/academic.yaml` are included in the ingestion stage
+- **THEN** scholar sources from `sources.d/scholar.yaml` are included in the ingestion stage
 - **AND** they run concurrently with other source types via `asyncio.gather()`
 
-### Requirement: Academic Paper CLI Commands
+### Requirement: Scholar CLI Commands
 
-The system SHALL provide CLI commands for academic paper ingestion.
+The system SHALL provide CLI commands for scholar paper ingestion.
 
 #### Scenario: Search-based ingestion
 
-- **WHEN** the user runs `aca ingest academic`
-- **THEN** the system loads sources from `sources.d/academic.yaml`
+- **WHEN** the user runs `aca ingest scholar`
+- **THEN** the system loads sources from `sources.d/scholar.yaml`
 - **AND** executes each enabled source's search query
 - **AND** reports per-source ingestion counts
 
 #### Scenario: Single paper ingestion
 
-- **WHEN** the user runs `aca ingest academic-paper <identifier>`
+- **WHEN** the user runs `aca ingest scholar-paper <identifier>`
 - **THEN** the system resolves the identifier (DOI, arXiv ID, S2 ID, or URL)
 - **AND** ingests the paper with full details
 - **AND** optionally ingests references with `--with-refs` flag
 
 #### Scenario: Reference extraction from existing content
 
-- **WHEN** the user runs `aca ingest academic-refs`
+- **WHEN** the user runs `aca ingest scholar-refs`
 - **THEN** the system scans existing content for paper references
 - **AND** batch-resolves and ingests discovered papers
 - **AND** supports `--after`, `--before`, `--source`, and `--dry-run` flags
 
-### Requirement: Academic Web Search Provider
+### Requirement: Scholar Web Search Provider
 
-The system SHALL provide an academic search provider for ad-hoc queries in chat and digest review contexts.
+The system SHALL provide a scholar search provider for ad-hoc queries in chat and digest review contexts.
 
-#### Scenario: Ad-hoc academic search
+#### Scenario: Ad-hoc scholar search
 
-- **WHEN** a component requests web search with `provider="academic"`
+- **WHEN** a component requests web search with `provider="scholar"`
 - **THEN** the system queries Semantic Scholar for matching papers
 - **AND** returns results as `WebSearchResult` objects with paper title, S2 URL, and abstract snippet
 
