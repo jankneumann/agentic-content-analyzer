@@ -988,13 +988,152 @@ def search_knowledge_graph(query: str, limit: int = 10) -> str:
 
 
 # ===========================================================================
+# Auth middleware for HTTP transports
+# ===========================================================================
+
+
+class AdminKeyAuthMiddleware:
+    """ASGI middleware that enforces X-Admin-Key authentication.
+
+    Reuses the project's existing ADMIN_API_KEY setting for consistency
+    with the REST API auth model. Skips auth in development mode when
+    no keys are configured (same behavior as AuthMiddleware).
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        from src.config import get_settings
+
+        settings = get_settings()
+
+        # Dev mode without keys configured: allow all (matches REST API behavior)
+        keys_configured = settings.app_secret_key or settings.admin_api_key
+        if settings.is_development and not keys_configured:
+            await self.app(scope, receive, send)
+            return
+
+        # Extract headers
+        headers = dict(scope.get("headers", []))
+        admin_key = headers.get(b"x-admin-key", b"").decode()
+
+        # Check X-Admin-Key
+        if admin_key and settings.admin_api_key:
+            import secrets as _secrets
+
+            if _secrets.compare_digest(admin_key, settings.admin_api_key):
+                await self.app(scope, receive, send)
+                return
+
+        # Check session cookie (JWT)
+        if settings.app_secret_key:
+            cookie_header = headers.get(b"cookie", b"").decode()
+            session_token = _extract_cookie(cookie_header, "session")
+            if session_token:
+                payload = _verify_jwt_token(session_token, settings.app_secret_key)
+                if payload is not None:
+                    await self.app(scope, receive, send)
+                    return
+
+        # Reject
+        if scope["type"] == "http":
+            response_body = json.dumps(
+                {"error": "Authentication required. Provide X-Admin-Key header."}
+            ).encode()
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    [b"content-type", b"application/json"],
+                    [b"content-length", str(len(response_body)).encode()],
+                ],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": response_body,
+            })
+        else:
+            # WebSocket: close with 4401
+            await send({"type": "websocket.close", "code": 4401})
+
+
+def _extract_cookie(cookie_header: str, name: str) -> str | None:
+    """Extract a cookie value from a Cookie header string."""
+    for part in cookie_header.split(";"):
+        part = part.strip()
+        if part.startswith(f"{name}="):
+            return part[len(name) + 1 :]
+    return None
+
+
+def _verify_jwt_token(token: str, app_secret_key: str) -> dict | None:
+    """Verify a JWT session token using the same logic as auth_routes."""
+    try:
+        import hmac
+
+        import jwt
+
+        signing_key = hmac.new(
+            app_secret_key.encode(), b"jwt-signing-key", "sha256"
+        ).digest()
+        return jwt.decode(
+            token,
+            signing_key,
+            algorithms=["HS256"],
+            issuer="newsletter-aggregator",
+        )
+    except Exception:
+        return None
+
+
+# ===========================================================================
 # Entry point
 # ===========================================================================
 
 
 def main() -> None:
-    """Run the MCP server."""
-    mcp.run()
+    """Run the MCP server.
+
+    Supports three transports:
+        stdio (default):  For Claude Desktop, Cursor, etc.
+        sse:              For remote/web clients with auth
+        streamable-http:  For newer MCP clients with auth
+
+    Environment variables:
+        MCP_TRANSPORT:  Transport type (stdio, sse, streamable-http)
+        MCP_PORT:       Port for HTTP transports (default: 8100)
+        MCP_HOST:       Host for HTTP transports (default: 0.0.0.0)
+        ADMIN_API_KEY:  Required for HTTP transports (auth via X-Admin-Key header)
+    """
+    import os
+
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+
+    if transport == "stdio":
+        mcp.run()
+        return
+
+    import uvicorn
+
+    host = os.environ.get("MCP_HOST", "0.0.0.0")
+    port = int(os.environ.get("MCP_PORT", "8100"))
+
+    if transport == "sse":
+        starlette_app = mcp.sse_app()
+    elif transport == "streamable-http":
+        starlette_app = mcp.streamable_http_app()
+    else:
+        raise ValueError(f"Unknown transport: {transport}. Use stdio, sse, or streamable-http.")
+
+    # Wrap with auth middleware for HTTP transports
+    starlette_app.add_middleware(AdminKeyAuthMiddleware)
+
+    uvicorn.run(starlette_app, host=host, port=port)
 
 
 if __name__ == "__main__":
