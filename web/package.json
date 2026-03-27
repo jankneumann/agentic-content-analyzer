@@ -15,7 +15,8 @@
     "test:coverage": "vitest --coverage",
     "test:e2e": "playwright test --ignore-snapshots",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:smoke": "playwright test --project=smoke"
+    "test:e2e:smoke": "playwright test --project=smoke",
+    "test:e2e:regression": "playwright test tests/e2e/regression/ --ignore-snapshots"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

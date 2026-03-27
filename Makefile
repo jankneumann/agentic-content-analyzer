@@ -64,6 +64,16 @@ test-langfuse:  ## Run Langfuse integration tests (requires: make langfuse-up)
 test-integration:  ## Run integration tests (requires test services)
 	pytest tests/integration/ -v
 
+test-regression:  ## Run regression tests (CLI workflows + API contracts, no external deps)
+	pytest tests/cli/test_regression_daily_pipeline.py tests/regression/ -v -m regression --no-cov
+
+test-regression-e2e:  ## Run Playwright regression E2E tests (no backend needed)
+	cd web && pnpm exec playwright test tests/e2e/regression/ --ignore-snapshots
+
+test-regression-all:  ## Run all regression tests (Python + Playwright)
+	$(MAKE) test-regression
+	$(MAKE) test-regression-e2e
+
 test-hoverfly:  ## Run Hoverfly integration tests (requires: make hoverfly-up)
 	@if ! curl -sf http://localhost:8888/api/v2/hoverfly >/dev/null 2>&1; then \
 		echo "✗ Hoverfly is not running! Start with: make hoverfly-up"; \
