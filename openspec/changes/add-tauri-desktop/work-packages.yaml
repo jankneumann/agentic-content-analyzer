@@ -1,0 +1,387 @@
+# Work Packages: Tauri v2 Desktop Shell
+# Decomposition for multi-agent parallel implementation
+#
+# DAG:
+#   wp-tauri-scaffold ──── wp-platform ──┐
+#                                        ├── wp-tray-shortcut ──┐
+#                                        │                      ├── wp-integration
+#   wp-drag-drop ──────────────────────→─┤                      │
+#   wp-notifications ──────────────────→─┘                      │
+#   wp-ci ──────────────────────────────────────────────────────→┘
+#
+# Parallel implementation note:
+# add-capacitor-mobile runs concurrently. Shared resources:
+#   - web/src/lib/platform.ts (both CREATE)
+#   - web/package.json (both ADD deps)
+# Coordinator merge queue handles ordering via lock keys.
+
+change_id: add-tauri-desktop
+generated: "2026-03-27"
+plan_revision: 2
+
+packages:
+  # ─────────────────────────────────────────────
+  # Layer 0: Foundation (no dependencies)
+  # ─────────────────────────────────────────────
+
+  - id: wp-tauri-scaffold
+    name: "Tauri v2 project scaffold and Vite integration"
+    tasks: [T1.1, T1.2, T1.3, T1.4, T1.5, T1.6, T1.7]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "web/src-tauri/**"
+        - "web/package.json"
+        - "web/pnpm-lock.yaml"
+        - ".gitignore"
+      read_allow:
+        - "web/**"
+        - "src/api/main.py"
+      deny:
+        - "src/**"
+        - "web/src/lib/**"
+        - "web/src/components/**"
+        - "web/src/hooks/**"
+    locks:
+      files:
+        - "web/src-tauri/tauri.conf.json"
+        - "web/src-tauri/Cargo.toml"
+        - "web/src-tauri/capabilities/default.json"
+      keys:
+        - "frontend:deps:tauri"
+        - "frontend:tauri:scaffold"
+        - "frontend:tauri:capabilities"
+      ttl_minutes: 120
+      reason: "Tauri v2 project initialization, Cargo.toml, capabilities, Vite integration"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm install"
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW DIRECTORY: web/src-tauri/
+      MODIFIED: web/package.json (add @tauri-apps/api, @tauri-apps/cli)
+
+      Creates:
+      - tauri.conf.json with app identifier, window config, dev server URL
+      - Cargo.toml with tauri (tray-icon feature), tauri-plugin-global-shortcut,
+        tauri-plugin-notification, tauri-plugin-shell
+      - capabilities/default.json with all required permissions
+      - src/main.rs with basic app setup
+      - Vite dev URL forwarding config
+
+      Also adds tauri://localhost to ALLOWED_ORIGINS in backend CORS
+      (modify src/api/main.py CORS config — the only backend change).
+
+  - id: wp-drag-drop
+    name: "Native file drag-and-drop with size validation"
+    tasks: [T5.1, T5.2, T5.3, T5.4, T5.5, T5.6, T5.7]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "web/src/components/tauri/DropZone.tsx"
+        - "web/src/hooks/use-tauri-file-drop.ts"
+        - "web/src/lib/tauri/file-drop.ts"
+      read_allow:
+        - "web/src/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+        - "web/src-tauri/**"
+        - "web/src/lib/platform.ts"
+    locks:
+      files:
+        - "web/src/components/tauri/DropZone.tsx"
+        - "web/src/hooks/use-tauri-file-drop.ts"
+      keys:
+        - "frontend:tauri:file-drop"
+        - "frontend:tauri:drop-zone"
+      ttl_minutes: 90
+      reason: "File drop event handling, size validation, upload integration"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILES: DropZone.tsx, use-tauri-file-drop.ts, file-drop.ts
+
+      file-drop.ts:
+      - Listen to tauri://file-drop and tauri://file-drop-hover events
+      - Validate file extension against supported formats
+      - Validate file size against MAX_UPLOAD_SIZE_MB (default 500MB)
+      - Return typed results (valid, unsupported, oversized)
+
+      use-tauri-file-drop.ts hook:
+      - Wraps file-drop.ts for React
+      - Manages upload state (uploading, completed, failed)
+      - Calls POST /api/v1/documents/upload for valid files
+
+      DropZone.tsx:
+      - Visual overlay when files dragged over window
+      - Success/error toasts via sonner
+      - Summary notification for multi-file drops
+
+  - id: wp-notifications
+    name: "Desktop notification delivery via SSE"
+    tasks: [T6.1, T6.2, T6.3, T6.4, T6.5, T6.6, T6.7]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "web/src/lib/tauri/notifications.ts"
+        - "web/src/hooks/use-desktop-notifications.ts"
+      read_allow:
+        - "web/src/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+        - "web/src-tauri/**"
+        - "web/src/lib/platform.ts"
+    locks:
+      files:
+        - "web/src/lib/tauri/notifications.ts"
+        - "web/src/hooks/use-desktop-notifications.ts"
+      keys:
+        - "frontend:tauri:notifications"
+        - "frontend:tauri:sse-client"
+      ttl_minutes: 90
+      reason: "SSE subscription, native notifications, graceful degradation"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILES: notifications.ts, use-desktop-notifications.ts
+
+      notifications.ts:
+      - SSE client subscribing to GET /api/v1/notifications/stream
+      - Graceful degradation: if non-200 or connection refused, log warning
+        and disable notifications (no user-facing error)
+      - Convert SSE events to Tauri native notifications
+      - Handle notification click: show/focus window, navigate to payload.url
+      - SSE reconnection with Last-Event-ID header
+
+      use-desktop-notifications.ts hook:
+      - Initialize on mount (only when isTauri())
+      - Request OS notification permission on first launch
+      - Manage connection state
+
+  - id: wp-ci
+    name: "GitHub Actions cross-platform build workflow"
+    tasks: [T7.3, T7.4]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - ".github/workflows/tauri-build.yml"
+        - "docs/SETUP.md"
+      read_allow:
+        - ".github/**"
+        - "web/src-tauri/**"
+      deny:
+        - "src/**"
+        - "web/src/**"
+    locks:
+      files:
+        - ".github/workflows/tauri-build.yml"
+      keys:
+        - "ci:tauri-build"
+      ttl_minutes: 60
+      reason: "Cross-platform CI workflow for Tauri builds"
+    verification:
+      tier: C
+      checks:
+        - "cat .github/workflows/tauri-build.yml"
+    description: |
+      NEW: .github/workflows/tauri-build.yml
+      MODIFIED: docs/SETUP.md (Rust toolchain documentation)
+
+      CI workflow:
+      - Matrix: macos-latest, windows-latest, ubuntu-latest
+      - Install Rust toolchain
+      - Install webkit2gtk (Linux only)
+      - pnpm install + tauri build
+      - Upload build artifacts
+      - Trigger: push to main, manual dispatch
+
+  # ─────────────────────────────────────────────
+  # Layer 1: Platform + integration (depends on Layer 0)
+  # ─────────────────────────────────────────────
+
+  - id: wp-platform
+    name: "Platform detection utility and build scripts"
+    tasks: [T2.1, T2.2, T2.3, T2.4, T7.1, T7.2]
+    priority: 2
+    depends_on: [wp-tauri-scaffold]
+    scope:
+      write_allow:
+        - "web/src/lib/platform.ts"
+        - "web/src/hooks/use-platform.ts"
+        - "web/package.json"
+      read_allow:
+        - "web/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+        - "web/src-tauri/**"
+        - "web/src/components/**"
+    locks:
+      files:
+        - "web/src/lib/platform.ts"
+        - "web/src/hooks/use-platform.ts"
+      keys:
+        - "frontend:platform:detection"
+        - "frontend:platform:hook"
+      ttl_minutes: 90
+      reason: "Platform detection (shared resource with add-capacitor-mobile)"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILES: platform.ts, use-platform.ts
+      MODIFIED: package.json (add tauri:dev, tauri:build scripts)
+
+      platform.ts:
+      - isTauri(): detect window.__TAURI_INTERNALS__
+      - Platform type: 'desktop' | 'web' (Capacitor adds 'ios' | 'android' later)
+      - getPlatform(): returns correct platform string
+      - NO Capacitor references (would throw ReferenceError)
+
+      use-platform.ts:
+      - React hook wrapping getPlatform() for component use
+
+      PARALLEL CONFLICT: add-capacitor-mobile also creates platform.ts.
+      Coordinator merge queue determines which merges first.
+      Second feature rebases and extends.
+
+  # ─────────────────────────────────────────────
+  # Layer 2: Features using platform detection
+  # ─────────────────────────────────────────────
+
+  - id: wp-tray-shortcut
+    name: "System tray and global shortcut with voice overlay"
+    tasks: [T3.1, T3.2, T3.3, T3.4, T3.5, T3.6, T3.7, T4.1, T4.2, T4.3, T4.4, T4.5, T4.6]
+    priority: 3
+    depends_on: [wp-platform]
+    scope:
+      write_allow:
+        - "web/src-tauri/src/tray.rs"
+        - "web/src-tauri/src/main.rs"
+        - "web/src-tauri/src/shortcuts.rs"
+        - "web/src/components/tauri/VoiceOverlay.tsx"
+        - "web/src/hooks/use-global-shortcut.ts"
+        - "web/src/components/settings/ShortcutSettings.tsx"
+      read_allow:
+        - "web/src/**"
+        - "web/src-tauri/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/lib/platform.ts"
+    locks:
+      files:
+        - "web/src-tauri/src/tray.rs"
+        - "web/src-tauri/src/shortcuts.rs"
+        - "web/src/components/tauri/VoiceOverlay.tsx"
+      keys:
+        - "frontend:tauri:tray"
+        - "frontend:tauri:global-shortcut"
+        - "frontend:tauri:voice-overlay"
+      ttl_minutes: 120
+      reason: "System tray, global shortcut, and voice overlay panel"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILES: tray.rs, shortcuts.rs, VoiceOverlay.tsx, use-global-shortcut.ts, ShortcutSettings.tsx
+      MODIFIED: main.rs (register tray + shortcuts)
+
+      tray.rs:
+      - TrayIconBuilder with app icon
+      - Context menu: Open App, Ingest URL, Start Voice Input, Quit
+      - Event handlers for each menu action
+
+      shortcuts.rs:
+      - Register Cmd+Shift+Space (macOS) / Ctrl+Shift+Space (Windows/Linux)
+      - Handle registration failure: log warning, notify user once
+      - Configurable shortcut via settings
+
+      VoiceOverlay.tsx:
+      - DOM panel (bottom-right, always-on-top via setAlwaysOnTop)
+      - Integrates with existing useVoiceInput hook
+      - Shows interim/final transcripts
+      - Dismiss on stop or Escape key
+
+      use-global-shortcut.ts:
+      - Bridge between Tauri shortcut events and React state
+      - Toggles voice overlay visibility
+
+      ShortcutSettings.tsx:
+      - UI for customizing global shortcut binding
+
+  # ─────────────────────────────────────────────
+  # Layer 3: Integration testing
+  # ─────────────────────────────────────────────
+
+  - id: wp-integration
+    name: "E2E tests and full verification"
+    tasks: [T8.1, T8.2, T8.3, T8.4, T8.5]
+    priority: 4
+    depends_on: [wp-tray-shortcut, wp-drag-drop, wp-notifications, wp-ci]
+    scope:
+      write_allow:
+        - "web/tests/e2e/tauri/**"
+        - "web/tests/e2e/fixtures/mock-data.ts"
+      read_allow:
+        - "web/src/**"
+        - "web/src-tauri/**"
+        - "contracts/**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "test:tauri:e2e"
+      ttl_minutes: 120
+      reason: "E2E tests for platform detection, drag-drop, voice overlay"
+    verification:
+      tier: A
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+        - "cd web && pnpm test:e2e"
+    description: |
+      NEW DIRECTORY: web/tests/e2e/tauri/
+      MODIFIED: mock-data.ts (add Tauri context mocks)
+
+      Tests:
+      - Platform detection with mocked window.__TAURI_INTERNALS__
+      - Drag-and-drop file upload with mocked Tauri events
+      - File size validation rejection (oversized file mock)
+      - Global shortcut + voice overlay show/hide
+      - Manual testing checklist (documented, not automated)
+
+# DAG Visualization
+#
+#   wp-tauri-scaffold ── wp-platform ──┐
+#                                      ├── wp-tray-shortcut ──┐
+#   wp-drag-drop ──────────────────────┤                      ├── wp-integration
+#   wp-notifications ──────────────────┘                      │
+#   wp-ci ────────────────────────────────────────────────────→┘
+#
+# Parallel execution groups:
+#   Round 1: wp-tauri-scaffold, wp-drag-drop, wp-notifications, wp-ci (4 agents)
+#   Round 2: wp-platform (1 agent, depends on scaffold)
+#   Round 3: wp-tray-shortcut (1 agent, depends on platform)
+#   Round 4: wp-integration (1 agent, depends on all)
+#
+# Critical path: wp-tauri-scaffold → wp-platform → wp-tray-shortcut → wp-integration
+# Estimated parallel speedup: ~2x (4 foundation packages run simultaneously)
+#
+# Cross-feature conflicts with add-capacitor-mobile:
+#   - web/src/lib/platform.ts — both features CREATE this file
+#   - web/package.json — both features ADD dependencies
+#   Resolution: Coordinator merge queue determines order.
+#   Lock keys "frontend:platform:detection" declared by both features.

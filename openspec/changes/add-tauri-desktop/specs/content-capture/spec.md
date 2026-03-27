@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Content Capture Methods
-The system SHALL support multiple methods for capturing content: bookmarklet, iOS Shortcuts, Chrome extension, native share target, and native file drag-and-drop.
+The system SHALL support multiple methods for capturing content: bookmarklet, iOS Shortcuts, Chrome extension, native share target, and native file drag-and-drop with client-side validation.
 
 #### Scenario: Bookmarklet capture
 - **WHEN** a user clicks the bookmarklet in their browser
@@ -23,5 +23,11 @@ The system SHALL support multiple methods for capturing content: bookmarklet, iO
 
 #### Scenario: Native file drag-and-drop capture
 - **WHEN** a user drops a supported file onto the Tauri desktop window
+- **AND** the file size is within the configured maximum upload size
 - **THEN** the file SHALL be uploaded via `POST /api/v1/documents/upload`
 - **AND** processing SHALL begin automatically
+
+#### Scenario: Oversized file drag-and-drop rejection
+- **WHEN** a user drops a file that exceeds the configured maximum upload size onto the Tauri desktop window
+- **THEN** an error toast SHALL display immediately
+- **AND** no upload request SHALL be made
