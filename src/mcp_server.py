@@ -988,6 +988,599 @@ def search_knowledge_graph(query: str, limit: int = 10) -> str:
 
 
 # ===========================================================================
+# CONTENT EDITING TOOLS
+# ===========================================================================
+
+
+@mcp.tool()
+def update_content(
+    content_id: int,
+    title: str | None = None,
+    markdown_content: str | None = None,
+    author: str | None = None,
+    publication: str | None = None,
+    status: str | None = None,
+) -> str:
+    """Update a content item's fields.
+
+    Supports partial updates — only specified fields are changed.
+    If markdown_content is updated, the content hash is automatically recalculated.
+
+    Args:
+        content_id: The content item ID to update.
+        title: New title.
+        markdown_content: New markdown body.
+        author: New author name.
+        publication: New publication name.
+        status: New status ('pending', 'parsed', 'completed', 'failed').
+
+    Returns:
+        JSON with the updated content item.
+    """
+    from src.models.content import ContentStatus, ContentUpdate
+    from src.services.content_service import ContentService
+    from src.storage.database import get_db
+
+    update_data: dict[str, Any] = {}
+    if title is not None:
+        update_data["title"] = title
+    if markdown_content is not None:
+        update_data["markdown_content"] = markdown_content
+    if author is not None:
+        update_data["author"] = author
+    if publication is not None:
+        update_data["publication"] = publication
+    if status is not None:
+        update_data["status"] = ContentStatus(status)
+
+    if not update_data:
+        return _serialize({"error": "No fields to update"})
+
+    data = ContentUpdate(**update_data)
+
+    with get_db() as db:
+        service = ContentService(db)
+        result = service.update(content_id, data)
+        if result is None:
+            return _serialize({"error": f"Content {content_id} not found"})
+        return _serialize({
+            "id": result.id,
+            "title": result.title,
+            "status": str(result.status),
+            "updated_fields": list(update_data.keys()),
+        })
+
+
+@mcp.tool()
+def get_summary(content_id: int) -> str:
+    """Get the structured summary for a content item.
+
+    Returns the full summary including executive summary, key themes,
+    strategic insights, technical details, and actionable items.
+
+    Args:
+        content_id: The content item ID whose summary to retrieve.
+
+    Returns:
+        JSON with summary fields or error if not found.
+    """
+    from src.models.summary import Summary
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        summary = db.query(Summary).filter(Summary.content_id == content_id).first()
+        if not summary:
+            return _serialize({"error": f"No summary found for content {content_id}"})
+
+        return _serialize({
+            "id": summary.id,
+            "content_id": summary.content_id,
+            "executive_summary": summary.executive_summary,
+            "key_themes": summary.key_themes,
+            "strategic_insights": summary.strategic_insights,
+            "technical_details": summary.technical_details,
+            "actionable_items": summary.actionable_items,
+            "notable_quotes": summary.notable_quotes,
+            "relevant_links": summary.relevant_links,
+            "relevance_scores": summary.relevance_scores,
+            "markdown_content": summary.markdown_content,
+            "model_used": summary.model_used,
+            "created_at": str(summary.created_at) if summary.created_at else None,
+        })
+
+
+@mcp.tool()
+def update_summary(
+    content_id: int,
+    executive_summary: str | None = None,
+    key_themes: str | None = None,
+    strategic_insights: str | None = None,
+    technical_details: str | None = None,
+    actionable_items: str | None = None,
+    markdown_content: str | None = None,
+) -> str:
+    """Update a content item's summary.
+
+    Supports partial updates. List fields accept JSON-encoded arrays.
+
+    Args:
+        content_id: The content item ID whose summary to update.
+        executive_summary: New executive summary text.
+        key_themes: JSON array of theme strings (e.g., '["RAG", "Fine-tuning"]').
+        strategic_insights: JSON array of insight strings.
+        technical_details: JSON array of technical detail strings.
+        actionable_items: JSON array of action item strings.
+        markdown_content: New full markdown representation.
+
+    Returns:
+        JSON with the updated summary.
+    """
+    from src.models.summary import Summary
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        summary = db.query(Summary).filter(Summary.content_id == content_id).first()
+        if not summary:
+            return _serialize({"error": f"No summary found for content {content_id}"})
+
+        updated_fields = []
+        if executive_summary is not None:
+            summary.executive_summary = executive_summary
+            updated_fields.append("executive_summary")
+        if key_themes is not None:
+            summary.key_themes = json.loads(key_themes)
+            updated_fields.append("key_themes")
+        if strategic_insights is not None:
+            summary.strategic_insights = json.loads(strategic_insights)
+            updated_fields.append("strategic_insights")
+        if technical_details is not None:
+            summary.technical_details = json.loads(technical_details)
+            updated_fields.append("technical_details")
+        if actionable_items is not None:
+            summary.actionable_items = json.loads(actionable_items)
+            updated_fields.append("actionable_items")
+        if markdown_content is not None:
+            summary.markdown_content = markdown_content
+            updated_fields.append("markdown_content")
+
+        if not updated_fields:
+            return _serialize({"error": "No fields to update"})
+
+        db.commit()
+        db.refresh(summary)
+
+        return _serialize({
+            "id": summary.id,
+            "content_id": summary.content_id,
+            "updated_fields": updated_fields,
+        })
+
+
+@mcp.tool()
+def resummarize_content(
+    content_id: int,
+    feedback: str | None = None,
+) -> str:
+    """Re-summarize a content item, optionally with revision feedback.
+
+    If feedback is provided, the existing summary's executive_summary is
+    prepended with the feedback as context for the LLM to improve upon.
+    Without feedback, generates a fresh summary from the original content.
+
+    Args:
+        content_id: The content item ID to re-summarize.
+        feedback: Optional natural language feedback for the LLM
+                  (e.g., 'Focus more on the RAG architecture details').
+
+    Returns:
+        JSON with the new summary metadata.
+    """
+    from src.models.content import Content, ContentStatus
+    from src.models.summary import Summary
+    from src.processors.summarizer import ContentSummarizer
+    from src.storage.database import get_db
+
+    # If feedback is provided, embed it into content metadata so
+    # the summarizer can use it as guidance
+    if feedback:
+        with get_db() as db:
+            content = db.query(Content).filter(Content.id == content_id).first()
+            if not content:
+                return _serialize({"error": f"Content {content_id} not found"})
+
+            # Store feedback in metadata for the summarizer prompt
+            meta = content.metadata_json or {}
+            meta["revision_feedback"] = feedback
+            content.metadata_json = meta
+
+            # Reset status to allow re-summarization
+            content.status = ContentStatus.PARSED
+            # Remove existing summary so a fresh one is generated
+            db.query(Summary).filter(Summary.content_id == content_id).delete()
+            db.commit()
+
+    # Run the summarizer
+    summarizer = ContentSummarizer()
+    success = summarizer.summarize_content(content_id)
+
+    if not success:
+        return _serialize({"error": f"Summarization failed for content {content_id}"})
+
+    # Return the new summary
+    with get_db() as db:
+        summary = db.query(Summary).filter(Summary.content_id == content_id).first()
+        if not summary:
+            return _serialize({"error": "Summary not found after re-summarization"})
+
+        return _serialize({
+            "id": summary.id,
+            "content_id": summary.content_id,
+            "executive_summary": summary.executive_summary,
+            "key_themes": summary.key_themes,
+            "model_used": summary.model_used,
+            "created_at": str(summary.created_at) if summary.created_at else None,
+            "had_feedback": feedback is not None,
+        })
+
+
+# ===========================================================================
+# DIGEST EDITING TOOLS
+# ===========================================================================
+
+
+@mcp.tool()
+def get_digest_markdown(digest_id: int) -> str:
+    """Get digest as full markdown document.
+
+    Returns the markdown representation of the digest, suitable for
+    editing in an external editor and pushing back.
+
+    Args:
+        digest_id: The digest ID.
+
+    Returns:
+        JSON with markdown_content and section structure.
+    """
+    from src.models.digest import Digest
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        digest = db.query(Digest).filter(Digest.id == digest_id).first()
+        if not digest:
+            return _serialize({"error": f"Digest {digest_id} not found"})
+
+        return _serialize({
+            "id": digest.id,
+            "title": digest.title,
+            "digest_type": str(digest.digest_type),
+            "status": str(digest.status),
+            "markdown_content": digest.markdown_content,
+            "executive_overview": digest.executive_overview,
+            "strategic_insights": digest.strategic_insights,
+            "technical_developments": digest.technical_developments,
+            "emerging_trends": digest.emerging_trends,
+            "actionable_recommendations": digest.actionable_recommendations,
+            "theme_tags": digest.theme_tags,
+            "revision_count": digest.revision_count,
+        })
+
+
+@mcp.tool()
+def update_digest(
+    digest_id: int,
+    title: str | None = None,
+    executive_overview: str | None = None,
+    markdown_content: str | None = None,
+    strategic_insights: str | None = None,
+    technical_developments: str | None = None,
+    emerging_trends: str | None = None,
+    actionable_recommendations: str | None = None,
+) -> str:
+    """Directly update digest fields.
+
+    Supports partial updates. JSON section fields accept JSON-encoded values.
+    Valid sections: title, executive_overview, strategic_insights,
+    technical_developments, emerging_trends, actionable_recommendations.
+
+    Args:
+        digest_id: The digest ID to update.
+        title: New digest title.
+        executive_overview: New executive overview text.
+        markdown_content: New full markdown content.
+        strategic_insights: JSON array of DigestSection objects.
+        technical_developments: JSON array of DigestSection objects.
+        emerging_trends: JSON array of DigestSection objects.
+        actionable_recommendations: JSON dict mapping roles to action lists.
+
+    Returns:
+        JSON with the updated digest metadata.
+    """
+    from src.models.digest import Digest
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        digest = db.query(Digest).filter(Digest.id == digest_id).first()
+        if not digest:
+            return _serialize({"error": f"Digest {digest_id} not found"})
+
+        updated_fields = []
+        if title is not None:
+            digest.title = title
+            updated_fields.append("title")
+        if executive_overview is not None:
+            digest.executive_overview = executive_overview
+            updated_fields.append("executive_overview")
+        if markdown_content is not None:
+            digest.markdown_content = markdown_content
+            updated_fields.append("markdown_content")
+        if strategic_insights is not None:
+            digest.strategic_insights = json.loads(strategic_insights)
+            updated_fields.append("strategic_insights")
+        if technical_developments is not None:
+            digest.technical_developments = json.loads(technical_developments)
+            updated_fields.append("technical_developments")
+        if emerging_trends is not None:
+            digest.emerging_trends = json.loads(emerging_trends)
+            updated_fields.append("emerging_trends")
+        if actionable_recommendations is not None:
+            digest.actionable_recommendations = json.loads(actionable_recommendations)
+            updated_fields.append("actionable_recommendations")
+
+        if not updated_fields:
+            return _serialize({"error": "No fields to update"})
+
+        digest.revision_count += 1
+        db.commit()
+        db.refresh(digest)
+
+        return _serialize({
+            "id": digest.id,
+            "title": digest.title,
+            "status": str(digest.status),
+            "revision_count": digest.revision_count,
+            "updated_fields": updated_fields,
+        })
+
+
+@mcp.tool()
+def revise_digest_section(
+    digest_id: int,
+    section: str,
+    feedback: str,
+) -> str:
+    """AI-assisted revision of a digest section.
+
+    Sends natural language feedback to the LLM, which revises the specified
+    section accordingly. This mirrors the interactive revision workflow
+    in the review UI.
+
+    Valid sections: title, executive_overview, strategic_insights,
+    technical_developments, emerging_trends, actionable_recommendations.
+
+    Args:
+        digest_id: The digest ID to revise.
+        section: Section name to revise.
+        feedback: Natural language feedback describing desired changes
+                  (e.g., 'Make this more concise and focus on RAG developments').
+
+    Returns:
+        JSON with the revised section content and metadata.
+    """
+    import asyncio
+
+    from src.services.review_service import ReviewService
+
+    service = ReviewService()
+
+    # Start a revision session
+    session_id = f"mcp-{digest_id}-{int(datetime.now(UTC).timestamp())}"
+
+    try:
+        context = asyncio.run(
+            service.start_revision_session(digest_id, session_id, "mcp-agent")
+        )
+    except Exception as e:
+        return _serialize({"error": str(e)})
+
+    # Process the revision turn
+    prompt = f"Please revise the '{section}' section. Feedback: {feedback}"
+    try:
+        result = asyncio.run(
+            service.process_revision_turn(context, prompt, [], session_id)
+        )
+    except Exception as e:
+        return _serialize({"error": f"Revision failed: {e}"})
+
+    # Apply the revision
+    if result and result.get("revised_content"):
+        try:
+            asyncio.run(
+                service.apply_revision(digest_id, section, result["revised_content"])
+            )
+        except Exception as e:
+            return _serialize({"error": f"Failed to apply revision: {e}"})
+
+    return _serialize({
+        "digest_id": digest_id,
+        "section": section,
+        "status": "revised",
+        "revision_result": result,
+    })
+
+
+# ===========================================================================
+# PODCAST SCRIPT EDITING TOOLS
+# ===========================================================================
+
+
+@mcp.tool()
+def get_podcast_script(script_id: int) -> str:
+    """Get a podcast script with review-friendly formatting.
+
+    Returns all sections with dialogue turns, word counts, and metadata.
+
+    Args:
+        script_id: The podcast script ID.
+
+    Returns:
+        JSON with formatted script sections, dialogue, and metadata.
+    """
+    from src.services.script_review_service import ScriptReviewService
+
+    service = ScriptReviewService()
+    try:
+        result = service.get_script_for_review(script_id)
+        return _serialize(result)
+    except ValueError as e:
+        return _serialize({"error": str(e)})
+
+
+@mcp.tool()
+def update_podcast_section(
+    script_id: int,
+    section_index: int,
+    dialogue: str,
+) -> str:
+    """Directly replace a podcast script section's dialogue.
+
+    Replaces the dialogue turns in a specific section with new content.
+
+    Args:
+        script_id: The podcast script ID.
+        section_index: Zero-based index of the section to update.
+        dialogue: JSON array of DialogueTurn objects, each with:
+                  'speaker' ('alex' or 'sam'), 'text', optional 'emphasis'
+                  and 'pause_after'.
+                  Example: '[{"speaker":"alex","text":"Hello!"},{"speaker":"sam","text":"Hi!"}]'
+
+    Returns:
+        JSON with the updated script metadata.
+    """
+    import asyncio
+
+    from src.models.podcast import DialogueTurn, ScriptRevisionRequest
+    from src.services.script_review_service import ScriptReviewService
+
+    turns_data = json.loads(dialogue)
+    replacement = [DialogueTurn(**t) for t in turns_data]
+
+    request = ScriptRevisionRequest(
+        script_id=script_id,
+        section_index=section_index,
+        feedback="Direct replacement via MCP",
+        replacement_dialogue=replacement,
+    )
+
+    service = ScriptReviewService()
+    try:
+        result = asyncio.run(service.revise_section(request))
+        return _serialize({
+            "script_id": result.id,
+            "status": result.status,
+            "revision_count": result.revision_count,
+            "section_updated": section_index,
+        })
+    except Exception as e:
+        return _serialize({"error": str(e)})
+
+
+@mcp.tool()
+def revise_podcast_section(
+    script_id: int,
+    section_index: int,
+    feedback: str,
+) -> str:
+    """AI-assisted revision of a podcast script section.
+
+    Sends natural language feedback to the LLM, which revises the
+    section's dialogue accordingly.
+
+    Args:
+        script_id: The podcast script ID.
+        section_index: Zero-based index of the section to revise.
+        feedback: Natural language feedback describing desired changes
+                  (e.g., 'Make the intro more engaging and add a hook').
+
+    Returns:
+        JSON with the updated script metadata.
+    """
+    import asyncio
+
+    from src.models.podcast import ScriptRevisionRequest
+    from src.services.script_review_service import ScriptReviewService
+
+    request = ScriptRevisionRequest(
+        script_id=script_id,
+        section_index=section_index,
+        feedback=feedback,
+    )
+
+    service = ScriptReviewService()
+    try:
+        result = asyncio.run(service.revise_section(request))
+        return _serialize({
+            "script_id": result.id,
+            "status": result.status,
+            "revision_count": result.revision_count,
+            "section_revised": section_index,
+        })
+    except Exception as e:
+        return _serialize({"error": str(e)})
+
+
+@mcp.tool()
+def review_podcast_script(
+    script_id: int,
+    action: str,
+    reviewer: str = "mcp-agent",
+    section_feedback: str | None = None,
+    general_notes: str | None = None,
+) -> str:
+    """Submit a review for a podcast script.
+
+    Args:
+        script_id: The podcast script ID.
+        action: Review action: 'approve', 'request_revision', or 'reject'.
+        reviewer: Reviewer name (default: 'mcp-agent').
+        section_feedback: JSON dict mapping section indices to feedback strings.
+                          Example: '{"0": "Make intro shorter", "2": "Add more technical depth"}'
+        general_notes: Overall review notes.
+
+    Returns:
+        JSON with the updated script status.
+    """
+    import asyncio
+
+    from src.models.podcast import ScriptReviewAction, ScriptReviewRequest
+    from src.services.script_review_service import ScriptReviewService
+
+    feedback_dict: dict[int, str] = {}
+    if section_feedback:
+        raw = json.loads(section_feedback)
+        feedback_dict = {int(k): v for k, v in raw.items()}
+
+    request = ScriptReviewRequest(
+        script_id=script_id,
+        action=ScriptReviewAction(action),
+        reviewer=reviewer,
+        section_feedback=feedback_dict,
+        general_notes=general_notes,
+    )
+
+    service = ScriptReviewService()
+    try:
+        result = asyncio.run(service.submit_review(request))
+        return _serialize({
+            "script_id": result.id,
+            "status": result.status,
+            "revision_count": result.revision_count,
+            "reviewed_by": result.reviewed_by,
+        })
+    except Exception as e:
+        return _serialize({"error": str(e)})
+
+
+# ===========================================================================
 # Auth middleware for HTTP transports
 # ===========================================================================
 

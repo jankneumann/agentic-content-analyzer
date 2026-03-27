@@ -27,6 +27,7 @@ import typer
 
 from src.cli.analyze_commands import app as analyze_app
 from src.cli.digest_commands import app as digest_app
+from src.cli.edit_commands import app as edit_app
 from src.cli.graph_commands import app as graph_app
 from src.cli.ingest_commands import app as ingest_app
 from src.cli.job_commands import app as job_app
@@ -62,6 +63,7 @@ app = typer.Typer(
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(summarize_app, name="summarize")
 app.add_typer(digest_app, name="create-digest")
+app.add_typer(edit_app, name="edit")
 app.add_typer(pipeline_app, name="pipeline")
 app.add_typer(review_app, name="review")
 app.add_typer(analyze_app, name="analyze")
