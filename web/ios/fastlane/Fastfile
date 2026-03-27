@@ -1,0 +1,80 @@
+# Fastfile — iOS build and deployment lanes
+# See: https://docs.fastlane.tools/
+#
+# Usage:
+#   bundle exec fastlane beta          # Build + upload to TestFlight
+#   bundle exec fastlane build_only    # Build without uploading
+
+default_platform(:ios)
+
+platform :ios do
+  # ---------------------------------------------------------------------------
+  # Lane: beta
+  # Builds the app and uploads to TestFlight for beta testing.
+  # ---------------------------------------------------------------------------
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    # --- Build versioning (11.5) ---
+    # CFBundleVersion: monotonically increasing build number from CI run number.
+    # Falls back to "1" for local builds.
+    increment_build_number(
+      build_number: ENV["GITHUB_RUN_NUMBER"] || "1",
+      xcodeproj: "App/App.xcodeproj"
+    )
+
+    # CFBundleShortVersionString: read from web/package.json so the marketing
+    # version stays in sync with the web app.
+    package_json_path = File.join(Dir.pwd, "..", "package.json")
+    if File.exist?(package_json_path)
+      require "json"
+      version = JSON.parse(File.read(package_json_path))["version"]
+      increment_version_number(
+        version_number: version,
+        xcodeproj: "App/App.xcodeproj"
+      )
+    end
+
+    # --- Code signing via match (11.1) ---
+    match(type: "appstore", readonly: is_ci)
+
+    # --- Build (11.2) ---
+    build_app(
+      workspace: "App/App.xcworkspace",
+      scheme: "App",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "./build",
+      output_name: "ACA.ipa"
+    )
+
+    # --- Upload to TestFlight (11.2) ---
+    # skip_waiting_for_build_processing: CI finishes faster; TestFlight
+    # processes the build asynchronously.
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true
+    )
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lane: build_only
+  # Builds without uploading — useful for PR validation.
+  # ---------------------------------------------------------------------------
+  desc "Build without uploading"
+  lane :build_only do
+    increment_build_number(
+      build_number: ENV["GITHUB_RUN_NUMBER"] || "1",
+      xcodeproj: "App/App.xcodeproj"
+    )
+
+    match(type: "appstore", readonly: is_ci)
+
+    build_app(
+      workspace: "App/App.xcworkspace",
+      scheme: "App",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "./build",
+      output_name: "ACA.ipa"
+    )
+  end
+end
