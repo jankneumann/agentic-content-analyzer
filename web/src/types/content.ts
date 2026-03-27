@@ -27,8 +27,12 @@ export type ContentSource =
   | "file_upload"
   | "youtube"
   | "podcast"
+  | "substack"
   | "manual"
   | "webpage"
+  | "xsearch"
+  | "perplexity"
+  | "blog"
   | "other"
 
 /**

@@ -8,6 +8,7 @@
 import { Route as rootRoute } from "./routes/__root"
 import { IndexRoute } from "./routes/index"
 import { ContentsRoute } from "./routes/contents"
+import { IngestRoute } from "./routes/ingest"
 import { SummariesRoute } from "./routes/summaries"
 import { ThemesRoute } from "./routes/themes"
 import { DigestsRoute } from "./routes/digests"
@@ -40,6 +41,7 @@ const ReviewRouteWithChildren = ReviewRoute.addChildren([
 export const routeTree = rootRoute.addChildren([
   IndexRoute,
   ContentsRoute,
+  IngestRoute,
   SummariesRoute,
   ThemesRoute,
   DigestsRoute,
