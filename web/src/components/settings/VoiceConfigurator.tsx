@@ -532,7 +532,7 @@ function OnDeviceSttSection() {
       ) : isDownloading ? (
         <div className="space-y-2 rounded-md border bg-card px-3 py-3">
           <div className="flex items-center justify-between text-sm">
-            <span>Downloading {WHISPER_MODELS[selectedSize].name}...</span>
+            <span>Downloading {WHISPER_MODELS[selectedSize].displayName}...</span>
             <span className="tabular-nums text-muted-foreground">{progress}%</span>
           </div>
           <Progress value={progress} />

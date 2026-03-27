@@ -8,8 +8,8 @@
 
 import type { STTEngine, STTEngineEvents, STTEngineState, STTStartOptions } from "./engine"
 import { AudioRecorder } from "./audio-recorder"
-import { isModelCached, getCachedModel } from "./model-cache"
-import type { WhisperModelSize } from "./model-constants"
+import { isModelCached } from "./model-cache"
+import { MODEL_MAP, type WhisperModelSize } from "./model-constants"
 import type { WorkerOutMessage } from "./whisper-worker"
 
 export interface OnDeviceSTTConfig {
@@ -136,11 +136,7 @@ export class OnDeviceSTTEngine implements STTEngine {
 
   private async loadModel(): Promise<void> {
     const modelSize = this.config.defaultModelSize ?? "tiny"
-    const modelBytes = await getCachedModel(modelSize)
-
-    if (!modelBytes) {
-      throw new Error(`Model '${modelSize}' not cached. Download it from settings first.`)
-    }
+    const whisperModel = MODEL_MAP[modelSize]
 
     return new Promise((resolve, reject) => {
       const onMessage = (event: MessageEvent<WorkerOutMessage>) => {
@@ -155,7 +151,7 @@ export class OnDeviceSTTEngine implements STTEngine {
       }
 
       this.worker?.addEventListener("message", onMessage)
-      this.worker?.postMessage({ type: "load-model", modelBytes })
+      this.worker?.postMessage({ type: "load-model", model: whisperModel })
     })
   }
 

@@ -1,165 +1,90 @@
+/**
+ * Whisper model cache management.
+ *
+ * Wraps @remotion/whisper-web's built-in model download and storage
+ * (IndexedDB-backed) with a simplified interface for our UI layer.
+ */
+
 import {
-  WHISPER_MODELS,
-  MODEL_CACHE_NAME,
-  type WhisperModelSize,
-} from "./model-constants"
+  downloadWhisperModel,
+  getLoadedModels,
+  deleteModel as remotionDeleteModel,
+} from "@remotion/whisper-web"
+import { MODEL_MAP, WHISPER_MODELS, type WhisperModelSize } from "./model-constants"
 
 export interface ModelCacheStatus {
   isCached: boolean
   modelSize: WhisperModelSize | null
   modelName: string | null
-  cachedAt: string | null
 }
 
 export type ProgressCallback = (percent: number) => void
 
 /**
- * Download a Whisper model and store it in the Cache API.
- * Tracks download progress via an optional callback (0-100).
- * Cleans up partial cache entries on failure.
+ * Download a Whisper model via @remotion/whisper-web.
+ * The library stores models in IndexedDB automatically.
  */
 export async function downloadModel(
   size: WhisperModelSize,
   onProgress?: ProgressCallback,
-): Promise<ArrayBuffer> {
-  const modelInfo = WHISPER_MODELS[size]
-  const cache = await caches.open(MODEL_CACHE_NAME)
+): Promise<void> {
+  const model = MODEL_MAP[size]
 
-  // Start the fetch
-  const response = await fetch(modelInfo.cdnUrl)
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to download model ${modelInfo.name}: ${response.status} ${response.statusText}`,
-    )
-  }
-
-  if (!response.body) {
-    throw new Error(
-      `Response body is null for model ${modelInfo.name} — streaming not supported`,
-    )
-  }
-
-  const contentLength =
-    Number(response.headers.get("content-length")) || modelInfo.fileSize
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let receivedBytes = 0
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      chunks.push(value)
-      receivedBytes += value.byteLength
-
-      if (onProgress) {
-        const percent = Math.min(
-          100,
-          Math.round((receivedBytes / contentLength) * 100),
-        )
-        onProgress(percent)
-      }
-    }
-  } catch (error) {
-    // Clean up any partial cache entry
-    await cache.delete(modelInfo.cdnUrl).catch(() => {})
-    throw error
-  }
-
-  // Combine chunks into a single ArrayBuffer
-  const fullArray = new Uint8Array(receivedBytes)
-  let offset = 0
-  for (const chunk of chunks) {
-    fullArray.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-
-  // Store in Cache API as a synthetic Response
-  const cacheResponse = new Response(fullArray.buffer, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Content-Length": String(receivedBytes),
-      "X-Cached-At": new Date().toISOString(),
-      "X-Model-Size": size,
+  await downloadWhisperModel({
+    model,
+    onProgress: (p) => {
+      const pct = Math.round(p.progress * 100)
+      onProgress?.(pct)
     },
   })
-
-  await cache.put(modelInfo.cdnUrl, cacheResponse)
-
-  return fullArray.buffer as ArrayBuffer
 }
 
 /**
- * Check whether a model of the given size is already cached.
+ * Check if a model is cached (downloaded) via @remotion/whisper-web.
  */
-export async function isModelCached(
-  size: WhisperModelSize,
-): Promise<boolean> {
+export async function isModelCached(size: WhisperModelSize): Promise<boolean> {
   try {
-    const cache = await caches.open(MODEL_CACHE_NAME)
-    const match = await cache.match(WHISPER_MODELS[size].cdnUrl)
-    return match !== undefined
+    const loaded = await getLoadedModels()
+    const model = MODEL_MAP[size]
+    return loaded.includes(model)
   } catch {
     return false
   }
 }
 
 /**
- * Retrieve a cached model as an ArrayBuffer, or null if not cached.
- */
-export async function getCachedModel(
-  size: WhisperModelSize,
-): Promise<ArrayBuffer | null> {
-  try {
-    const cache = await caches.open(MODEL_CACHE_NAME)
-    const match = await cache.match(WHISPER_MODELS[size].cdnUrl)
-    if (!match) return null
-    return await match.arrayBuffer()
-  } catch {
-    return null
-  }
-}
-
-/**
- * Inspect the cache and return info about the first cached model found.
- * Checks models in order: tiny, base.
+ * Get info about the currently cached model.
+ * Returns the first cached model found (checks tiny before base).
  */
 export async function getCachedModelInfo(): Promise<ModelCacheStatus> {
-  const sizes: WhisperModelSize[] = ["tiny", "base"]
-
   try {
-    const cache = await caches.open(MODEL_CACHE_NAME)
+    const loaded = await getLoadedModels()
+    if (loaded.length === 0) {
+      return { isCached: false, modelSize: null, modelName: null }
+    }
 
-    for (const size of sizes) {
-      const match = await cache.match(WHISPER_MODELS[size].cdnUrl)
-      if (match) {
+    // Find which of our model sizes is cached
+    for (const size of ["tiny", "base"] as WhisperModelSize[]) {
+      const model = MODEL_MAP[size]
+      if (loaded.includes(model)) {
         return {
           isCached: true,
           modelSize: size,
-          modelName: WHISPER_MODELS[size].name,
-          cachedAt: match.headers.get("X-Cached-At"),
+          modelName: WHISPER_MODELS[size].displayName,
         }
       }
     }
-  } catch {
-    // Cache API unavailable or error — treat as uncached
-  }
 
-  return {
-    isCached: false,
-    modelSize: null,
-    modelName: null,
-    cachedAt: null,
+    return { isCached: false, modelSize: null, modelName: null }
+  } catch {
+    return { isCached: false, modelSize: null, modelName: null }
   }
 }
 
 /**
- * Delete a cached model.
+ * Delete a cached model via @remotion/whisper-web.
  */
-export async function deleteModel(size: WhisperModelSize): Promise<void> {
-  const cache = await caches.open(MODEL_CACHE_NAME)
-  await cache.delete(WHISPER_MODELS[size].cdnUrl)
+export async function deleteModelFromCache(size: WhisperModelSize): Promise<void> {
+  const model = MODEL_MAP[size]
+  await remotionDeleteModel(model)
 }

@@ -1,23 +1,23 @@
 /**
  * Whisper WASM Web Worker
  *
- * Runs Whisper model loading and inference off the main thread.
- * Communicates via typed postMessage protocol.
+ * Runs Whisper model inference off the main thread using @remotion/whisper-web.
+ * The library handles WASM loading, model management, and transcription.
  *
- * The actual WASM binding is deferred to integration time — this worker
- * currently stores the raw model bytes and stubs out transcription.
- * When a Whisper WASM package is integrated, the `transcribe` handler
- * will be updated to call into it.
+ * Communication via typed postMessage protocol.
  */
+
+import { transcribe, downloadWhisperModel } from "@remotion/whisper-web"
+import type { WhisperWebModel } from "@remotion/whisper-web"
 
 // ---------------------------------------------------------------------------
 // Message types (re-exported so callers can import from the same module)
 // ---------------------------------------------------------------------------
 
 export type WorkerInMessage =
-  | { type: "load-model"; modelBytes: ArrayBuffer }
+  | { type: "load-model"; model: WhisperWebModel }
   | { type: "transcribe"; audio: Float32Array; language: string }
-  | { type: "unload-model" };
+  | { type: "unload-model" }
 
 export type WorkerOutMessage =
   | { type: "model-loading"; progress: number }
@@ -25,26 +25,25 @@ export type WorkerOutMessage =
   | { type: "model-error"; error: string }
   | { type: "transcription-result"; text: string; confidence?: number }
   | { type: "transcription-error"; error: string }
-  | { type: "ready" };
+  | { type: "ready" }
 
 // ---------------------------------------------------------------------------
 // Worker-scoped state
 // ---------------------------------------------------------------------------
 
-/** Raw GGML model bytes kept in memory while the model is "loaded". */
-let modelBytes: ArrayBuffer | null = null;
+let loadedModel: WhisperWebModel | null = null
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function post(msg: WorkerOutMessage): void {
-  self.postMessage(msg);
+  self.postMessage(msg)
 }
 
 function toErrorString(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  if (err instanceof Error) return err.message
+  return String(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -52,82 +51,93 @@ function toErrorString(err: unknown): string {
 // ---------------------------------------------------------------------------
 
 self.onmessage = (event: MessageEvent<WorkerInMessage>) => {
-  const msg = event.data;
+  const msg = event.data
 
   switch (msg.type) {
     case "load-model":
-      handleLoadModel(msg.modelBytes);
-      break;
+      void handleLoadModel(msg.model)
+      break
     case "transcribe":
-      handleTranscribe(msg.audio, msg.language);
-      break;
+      void handleTranscribe(msg.audio, msg.language)
+      break
     case "unload-model":
-      handleUnloadModel();
-      break;
+      handleUnloadModel()
+      break
     default:
-      // Exhaustiveness guard — if a new message type is added but not
-      // handled, TypeScript will flag this at compile time.
       post({
         type: "transcription-error",
         error: `Unknown message type: ${(msg as { type: string }).type}`,
-      });
+      })
   }
-};
+}
 
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
-function handleLoadModel(bytes: ArrayBuffer): void {
+async function handleLoadModel(model: WhisperWebModel): Promise<void> {
   try {
-    post({ type: "model-loading", progress: 0 });
+    post({ type: "model-loading", progress: 0 })
 
-    // Store raw bytes. Actual WASM initialisation will happen here once
-    // a Whisper WASM package is integrated.
-    modelBytes = bytes;
+    // Ensure model is downloaded (no-op if already cached in IndexedDB)
+    await downloadWhisperModel({
+      model,
+      onProgress: (p) => {
+        const pct = Math.round(p.progress * 100)
+        post({ type: "model-loading", progress: pct })
+      },
+    })
 
-    post({ type: "model-loading", progress: 100 });
-    post({ type: "model-loaded" });
+    loadedModel = model
+    post({ type: "model-loaded" })
   } catch (err) {
-    modelBytes = null;
-    post({ type: "model-error", error: toErrorString(err) });
+    loadedModel = null
+    post({ type: "model-error", error: toErrorString(err) })
   }
 }
 
-function handleTranscribe(audio: Float32Array, language: string): void {
+async function handleTranscribe(audio: Float32Array, language: string): Promise<void> {
   try {
-    if (!modelBytes) {
+    if (!loadedModel) {
       post({
         type: "transcription-error",
         error: "No model loaded. Send a load-model message first.",
-      });
-      return;
+      })
+      return
     }
 
-    // -----------------------------------------------------------------
-    // STUB: Real WASM inference will replace this block.
-    // For now we acknowledge that transcription was requested so the
-    // calling code can exercise the full message round-trip.
-    // -----------------------------------------------------------------
-    void language; // suppress unused-variable lint
-    void audio;
+    // Run Whisper inference via @remotion/whisper-web
+    const result = await transcribe({
+      channelWaveform: audio,
+      model: loadedModel,
+      language: language === "auto" ? "auto" : (language as "en"),
+      onProgress: () => {
+        // Could emit progress but transcription is usually fast
+      },
+    })
+
+    // Combine all transcription segments into a single string
+    const text = result.transcription
+      .map((segment) => segment.text.trim())
+      .join(" ")
+      .trim()
 
     post({
       type: "transcription-result",
-      text: "",
+      text,
       confidence: undefined,
-    });
+    })
   } catch (err) {
-    post({ type: "transcription-error", error: toErrorString(err) });
+    post({ type: "transcription-error", error: toErrorString(err) })
   }
 }
 
 function handleUnloadModel(): void {
-  modelBytes = null;
+  loadedModel = null
 }
 
 // ---------------------------------------------------------------------------
 // Signal readiness
 // ---------------------------------------------------------------------------
 
-post({ type: "ready" });
+post({ type: "ready" })

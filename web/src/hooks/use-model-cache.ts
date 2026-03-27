@@ -9,7 +9,7 @@
 import { useState, useCallback, useEffect } from "react"
 import {
   downloadModel,
-  deleteModel,
+  deleteModelFromCache,
   getCachedModelInfo,
   type ModelCacheStatus,
 } from "../lib/voice/model-cache"
@@ -19,7 +19,6 @@ const INITIAL_STATUS: ModelCacheStatus = {
   isCached: false,
   modelSize: null,
   modelName: null,
-  cachedAt: null,
 }
 
 export function useModelCache() {
@@ -70,7 +69,7 @@ export function useModelCache() {
       setError(null)
 
       try {
-        await deleteModel(size)
+        await deleteModelFromCache(size)
         await refreshStatus()
       } catch (err) {
         const message =
