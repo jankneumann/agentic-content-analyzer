@@ -1,0 +1,118 @@
+{
+  "review_type": "implementation",
+  "target": "add-on-device-stt",
+  "reviewer_vendor": "claude-opus-4-6",
+  "reviewed_at": "2026-03-26T12:00:00Z",
+  "overall_disposition": "fix",
+  "summary": "12 findings across all packages. 2 critical bugs (AutoSTTEngine missing await, processing state not wired to UI), 4 high-priority issues (worker race condition, language casting, production COOP/COEP, model cache async). Implementation architecture is sound but integration layer has gaps.",
+  "findings": [
+    {
+      "id": 1,
+      "type": "correctness",
+      "criticality": "critical",
+      "package_id": "wp-engine",
+      "description": "AutoSTTEngine.start() calls engine.isAvailable() without await (line 74). Returns a Promise which is truthy, so first engine is always selected regardless of actual availability.",
+      "resolution": "Make start() async or use a synchronous availability cache. The start() method should await isAvailable() before selecting an engine.",
+      "disposition": "fix"
+    },
+    {
+      "id": 2,
+      "type": "correctness",
+      "criticality": "critical",
+      "package_id": "wp-indicator",
+      "description": "Processing state from OnDeviceSTTEngine never reaches the UI. ChatInput.tsx has a type hack adding isProcessing? to useVoiceInput return, but the hook never sets this property. VoiceInputButton.isProcessing is always undefined.",
+      "resolution": "The useVoiceInput hook needs to be updated to support STTEngine state, or a separate hook/context needs to propagate engine state to the UI layer.",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "correctness",
+      "criticality": "high",
+      "package_id": "wp-engine",
+      "description": "Worker initWorker() registers two message listeners simultaneously — a one-time handler for 'ready' AND a persistent handleWorkerMessage handler. Both fire on the same message events, causing potential duplicate handling.",
+      "resolution": "Register the persistent handler only after the 'ready' promise resolves, not alongside it.",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "correctness",
+      "criticality": "high",
+      "package_id": "wp-whisper-worker",
+      "description": "Language type cast `language as 'en'` in whisper-worker.ts is incorrect. English-only models (tiny.en, base.en) only support 'en' — passing other BCP-47 tags will produce incorrect results silently.",
+      "resolution": "Validate language in the worker: if model ends with '.en', force language to 'en'. Log a warning if a non-English language was requested with an English-only model.",
+      "disposition": "fix"
+    },
+    {
+      "id": 5,
+      "type": "architecture",
+      "criticality": "high",
+      "package_id": "wp-whisper-worker",
+      "description": "Production deployments need Cross-Origin-Embedder-Policy and Cross-Origin-Opener-Policy headers for SharedArrayBuffer. Only dev server config is set in vite.config.ts.",
+      "resolution": "Document production header requirements. For Railway: add headers in Dockerfile CMD or nginx config. Non-blocking for development but blocks production use.",
+      "disposition": "accept"
+    },
+    {
+      "id": 6,
+      "type": "correctness",
+      "criticality": "medium",
+      "package_id": "wp-settings-ui",
+      "description": "VoiceConfigurator's OnDeviceSttSection uses local state for selectedSize but never reads/writes the stt_model_size backend setting. User preference is not persisted.",
+      "resolution": "Wire selectedSize to useVoiceSettings().stt_model_size for read and useUpdateVoice('stt_model_size') for write.",
+      "disposition": "fix"
+    },
+    {
+      "id": 7,
+      "type": "correctness",
+      "criticality": "medium",
+      "package_id": "wp-settings",
+      "description": "engine_preference_order validation accepts duplicates ('cloud,cloud,browser') and empty segments ('cloud,,browser'). Not a new issue but affects on-device engine selection.",
+      "resolution": "Add dedup and empty-filter to validation. Low priority — pre-existing issue.",
+      "disposition": "accept"
+    },
+    {
+      "id": 8,
+      "type": "performance",
+      "criticality": "medium",
+      "package_id": "wp-engine",
+      "description": "No timeout on worker initialization or transcription. If WASM loading hangs, the UI will appear frozen indefinitely.",
+      "resolution": "Add a 30s timeout to initWorker() and a 60s timeout to transcription. Emit error on timeout.",
+      "disposition": "accept"
+    },
+    {
+      "id": 9,
+      "type": "correctness",
+      "criticality": "low",
+      "package_id": "wp-whisper-worker",
+      "description": "Confidence score is always undefined. @remotion/whisper-web returns per-token probability (p field) that could be averaged.",
+      "resolution": "Compute average token probability from result.transcription[].tokens[].p if available.",
+      "disposition": "accept"
+    },
+    {
+      "id": 10,
+      "type": "correctness",
+      "criticality": "low",
+      "package_id": "wp-audio",
+      "description": "audioBuffer.getChannelData(0) can throw if audio has no channels. Rare edge case.",
+      "resolution": "Add a guard: if (audioBuffer.numberOfChannels === 0) throw new Error('No audio channels')",
+      "disposition": "accept"
+    },
+    {
+      "id": 11,
+      "type": "style",
+      "criticality": "low",
+      "package_id": "wp-engine",
+      "description": "on-device-stt-engine.ts:103 reuses 'starting' state for processing, but the STTEngineState type has no 'processing' value. This makes the processing indicator ambiguous.",
+      "resolution": "Consider adding a 'processing' state to STTEngineState, or use a separate flag.",
+      "disposition": "accept"
+    },
+    {
+      "id": 12,
+      "type": "style",
+      "criticality": "low",
+      "package_id": "wp-model-cache",
+      "description": "deleteModelFromCache name inconsistency — all other functions use short names (downloadModel, isModelCached) but delete uses full 'FromCache' suffix.",
+      "resolution": "Rename to deleteModel for consistency, or keep as-is to avoid shadowing @remotion/whisper-web's deleteModel.",
+      "disposition": "accept"
+    }
+  ]
+}

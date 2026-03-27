@@ -56,12 +56,14 @@ export interface VoiceSettingsResponse {
   input_auto_submit: VoiceSettingInfo
   cloud_stt_language: VoiceSettingInfo
   engine_preference_order: VoiceSettingInfo
+  stt_model_size: VoiceSettingInfo
   cloud_stt_model: string
   presets: VoicePreset[]
   valid_providers: string[]
   valid_input_languages: string[]
   valid_cloud_stt_languages: string[]
   valid_engine_names: string[]
+  valid_stt_model_sizes: string[]
 }
 
 /** Health status for a single service */

@@ -101,6 +101,13 @@ export default defineConfig({
     // Development server port
     port: 5173,
 
+    // Cross-origin isolation headers required for SharedArrayBuffer
+    // (used by @remotion/whisper-web WASM inference)
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+
     // Proxy API requests to FastAPI backend
     // This avoids CORS issues during development
     proxy: {
@@ -110,6 +117,11 @@ export default defineConfig({
         // Rewrite not needed since FastAPI routes start with /api
       },
     },
+  },
+
+  optimizeDeps: {
+    // Exclude @remotion/whisper-web from dep optimization — it loads WASM
+    exclude: ['@remotion/whisper-web'],
   },
 
   build: {

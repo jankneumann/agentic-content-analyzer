@@ -68,8 +68,9 @@ export function ChatInput({
   const continuous = voiceSettings?.input_continuous?.value === "true"
   const autoSubmit = voiceSettings?.input_auto_submit?.value === "true"
 
-  // Track previous listening state for ARIA announcements
+  // Track previous listening/processing state for ARIA announcements
   const wasListeningRef = React.useRef(false)
+  const wasProcessingRef = React.useRef(false)
   const [voiceAnnouncement, setVoiceAnnouncement] = React.useState("")
 
   const canSubmit = value.trim().length > 0 && !isLoading && !disabled
@@ -117,7 +118,7 @@ export function ChatInput({
     }
   }, [value, resizeTextarea])
 
-  // Voice input hook
+  // Voice input hook (isProcessing is part of the return type for on-device STT)
   const voiceInput = useVoiceInput({
     lang,
     continuous,
@@ -197,15 +198,24 @@ export function ChatInput({
     [maxLength]
   )
 
-  // Update ARIA announcement when listening state changes
+  // Update ARIA announcement when listening/processing state changes
   React.useEffect(() => {
     if (voiceInput.isListening && !wasListeningRef.current) {
       setVoiceAnnouncement("Recording started")
     } else if (!voiceInput.isListening && wasListeningRef.current) {
-      setVoiceAnnouncement("Recording stopped")
+      if (voiceInput.isProcessing) {
+        setVoiceAnnouncement("Recording stopped. Transcribing audio...")
+      } else {
+        setVoiceAnnouncement("Recording stopped")
+      }
+    } else if (voiceInput.isProcessing && !wasProcessingRef.current) {
+      setVoiceAnnouncement("Transcribing audio...")
+    } else if (!voiceInput.isProcessing && wasProcessingRef.current) {
+      setVoiceAnnouncement("Transcription complete")
     }
     wasListeningRef.current = voiceInput.isListening
-  }, [voiceInput.isListening])
+    wasProcessingRef.current = !!voiceInput.isProcessing
+  }, [voiceInput.isListening, voiceInput.isProcessing])
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -222,11 +232,13 @@ export function ChatInput({
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            readOnly={voiceInput.isListening}
+            readOnly={voiceInput.isListening || !!voiceInput.isProcessing}
             placeholder={
-              voiceInput.isListening
-                ? "Listening..."
-                : placeholder
+              voiceInput.isProcessing
+                ? "Transcribing..."
+                : voiceInput.isListening
+                  ? "Listening..."
+                  : placeholder
             }
             aria-label="Chat message"
             aria-describedby={`${charCountId} ${helperId}`}
@@ -238,8 +250,8 @@ export function ChatInput({
             rows={1}
           />
 
-          {/* Interim transcript overlay (shown below textarea while listening) */}
-          {voiceInput.interimTranscript && (
+          {/* Interim transcript overlay (shown below textarea while listening, hidden during processing) */}
+          {voiceInput.interimTranscript && !voiceInput.isProcessing && (
             <p
               className="mt-1 px-3 text-sm text-muted-foreground italic truncate"
               aria-live="polite"
@@ -267,6 +279,7 @@ export function ChatInput({
           {/* Voice input button */}
           <VoiceInputButton
             isListening={voiceInput.isListening}
+            isProcessing={voiceInput.isProcessing}
             isSupported={voiceInput.isSupported}
             error={voiceInput.error}
             disabled={disabled || isLoading}

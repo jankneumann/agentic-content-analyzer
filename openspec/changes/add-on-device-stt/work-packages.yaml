@@ -1,0 +1,384 @@
+# Work Packages: On-Device Speech-to-Text via WebAssembly
+# Decomposition for multi-agent parallel implementation
+#
+# DAG:
+#   wp-model-cache ──────┐
+#   wp-audio ────────────┼── wp-engine ── wp-hook-refactor ── wp-integration
+#   wp-whisper-worker ───┘       │
+#   wp-settings ─────────────────┘
+#   wp-settings-ui ──── wp-indicator ── wp-integration
+#
+# Key insight: Tasks 1.1-1.4 from the original proposal are ALREADY DONE.
+# The STTEngine interface, AutoSTTEngine, BrowserSTTEngine, and CloudSTTEngine
+# all exist in web/src/lib/voice/. The backend already validates "on-device"
+# in VALID_ENGINE_NAMES. This plan focuses on NET NEW work only.
+
+change_id: add-on-device-stt
+generated: "2026-03-26"
+
+packages:
+  # ─────────────────────────────────────────────
+  # Layer 0: Foundation (no dependencies, parallel)
+  # ─────────────────────────────────────────────
+
+  - id: wp-model-cache
+    name: "Model download and cache management"
+    tasks: [T3.1, T3.2, T3.3, T3.4, T3.5]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "web/src/lib/voice/model-cache.ts"
+        - "web/src/lib/voice/model-constants.ts"
+      read_allow:
+        - "web/src/lib/voice/**"
+        - "contracts/**"
+      deny:
+        - "web/src/lib/voice/engine.ts"
+        - "web/src/lib/voice/auto-stt-engine.ts"
+        - "src/**"
+    locks:
+      files:
+        - "web/src/lib/voice/model-cache.ts"
+        - "web/src/lib/voice/model-constants.ts"
+      keys:
+        - "frontend:voice:model-cache"
+      ttl_minutes: 90
+      reason: "Cache API model management and download with progress"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILES: model-cache.ts, model-constants.ts
+
+      model-constants.ts: WHISPER_MODELS map with size, name, fileSize,
+      memoryEstimate, cdnUrl for tiny (39MB) and base (74MB) models.
+
+      model-cache.ts: Cache API operations
+      - downloadModel(size, onProgress): fetch with ReadableStream progress
+      - isModelCached(size): check Cache API for model URL
+      - getCachedModel(size): retrieve ArrayBuffer from cache
+      - getCachedModelInfo(): return ModelCacheStatus
+      - deleteModel(size): remove from Cache API
+      - Retry logic with partial download cleanup on failure
+
+  - id: wp-audio
+    name: "MediaRecorder audio capture"
+    tasks: [T4.1, T4.2, T4.3, T4.4]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "web/src/lib/voice/audio-recorder.ts"
+      read_allow:
+        - "web/src/lib/voice/**"
+        - "contracts/**"
+      deny:
+        - "web/src/lib/voice/engine.ts"
+        - "web/src/lib/voice/auto-stt-engine.ts"
+        - "src/**"
+    locks:
+      files:
+        - "web/src/lib/voice/audio-recorder.ts"
+      keys:
+        - "frontend:voice:audio-recorder"
+      ttl_minutes: 60
+      reason: "MediaRecorder wrapper for microphone capture"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILE: audio-recorder.ts
+
+      AudioRecorder class:
+      - requestPermission(): getUserMedia with audio constraints
+      - startRecording(): MediaRecorder with audio/webm or audio/wav
+      - stopRecording(): Returns Float32Array (PCM 16-bit mono 16kHz)
+      - Audio format conversion: blob → AudioContext → resample → Float32Array
+      - Permission denial handling with user-facing error message
+      - destroy(): Stop tracks, release MediaStream
+
+  - id: wp-whisper-worker
+    name: "Whisper WASM Web Worker"
+    tasks: [T2.1, T2.2, T2.3, T2.4, T2.5, T2.6]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "web/src/lib/voice/whisper-worker.ts"
+        - "web/package.json"
+        - "web/pnpm-lock.yaml"
+        - "web/vite.config.ts"
+      read_allow:
+        - "web/src/lib/voice/**"
+        - "contracts/**"
+      deny:
+        - "web/src/lib/voice/engine.ts"
+        - "web/src/lib/voice/auto-stt-engine.ts"
+        - "src/**"
+    locks:
+      files:
+        - "web/src/lib/voice/whisper-worker.ts"
+      keys:
+        - "frontend:voice:whisper-worker"
+        - "frontend:deps:whisper-wasm"
+      ttl_minutes: 120
+      reason: "Whisper WASM dependency, Vite config, Web Worker implementation"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm install"
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILE: whisper-worker.ts
+      MODIFIED: package.json (add @nicktomlin/whisper.cpp dependency), vite.config.ts (WASM handling)
+
+      WASM dependency resolution (in order):
+      1. @nicktomlin/whisper.cpp — mature, maintained Whisper.cpp WASM build
+      2. whisper-turbo — if @nicktomlin unavailable
+      3. @anthropic-ai/whisper-wasm — if published by implementation time
+
+      whisper-worker.ts (Web Worker):
+      - Typed message protocol: WorkerInMessage / WorkerOutMessage
+      - load-model handler: fetch model bytes, initialize Whisper instance
+      - transcribe handler: accept Float32Array, run inference, return text
+      - unload-model handler: free WASM memory
+      - Progress reporting during model loading
+      - Error propagation via postMessage
+
+      Vite config:
+      - Configure worker bundling (new Worker(url, { type: "module" }))
+      - Handle .wasm file imports
+
+  - id: wp-settings
+    name: "Backend STT model size setting"
+    tasks: [T5.2, T5.4, T5.5]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "src/api/voice_settings_routes.py"
+      read_allow:
+        - "src/api/**"
+        - "src/config/**"
+        - "contracts/**"
+      deny:
+        - "web/**"
+        - "tests/**"
+    locks:
+      files:
+        - "src/api/voice_settings_routes.py"
+      keys:
+        - "api:voice:stt-settings"
+      ttl_minutes: 60
+      reason: "Backend setting for STT model size"
+    verification:
+      tier: C
+      checks:
+        - "ruff check src/api/voice_settings_routes.py"
+    description: |
+      MODIFIED: voice_settings_routes.py
+
+      Add stt_model_size to voice settings (stt_engine REMOVED per review
+      finding #3 — engine_preference_order already handles engine selection):
+      - PUT /api/v1/settings/voice/stt_model_size ("tiny"/"base")
+      - DELETE /api/v1/settings/voice/stt_model_size for reset
+      - Default: stt_model_size="tiny"
+      - Validation: reject values not in ["tiny", "base"] with 400
+      - Include stt_model_size in GET response
+
+      NOTE: engine_preference_order already includes "on-device" and handles
+      engine selection/fallback. No new stt_engine field needed.
+
+  # ─────────────────────────────────────────────
+  # Layer 1: Core engine (depends on Layer 0)
+  # ─────────────────────────────────────────────
+
+  - id: wp-engine
+    name: "OnDeviceSTTEngine implementation"
+    tasks: [T1.3, T1.5]
+    priority: 2
+    depends_on: [wp-model-cache, wp-audio, wp-whisper-worker]
+    scope:
+      write_allow:
+        - "web/src/lib/voice/on-device-stt-engine.ts"
+        - "web/src/lib/voice/auto-stt-engine.ts"
+        - "web/src/lib/voice/index.ts"
+      read_allow:
+        - "web/src/lib/voice/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/components/**"
+    locks:
+      files:
+        - "web/src/lib/voice/on-device-stt-engine.ts"
+        - "web/src/lib/voice/auto-stt-engine.ts"
+      keys:
+        - "frontend:voice:on-device-engine"
+        - "frontend:voice:auto-engine-registration"
+      ttl_minutes: 90
+      reason: "OnDeviceSTTEngine class and AutoSTTEngine registration"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      NEW FILE: on-device-stt-engine.ts
+      MODIFIED: auto-stt-engine.ts (register on-device), index.ts (export)
+
+      OnDeviceSTTEngine implements STTEngine:
+      - id = "on-device"
+      - isAvailable(): WebAssembly support + model cached + MediaRecorder
+      - start(): AudioRecorder.startRecording() → set state "listening"
+      - stop(): AudioRecorder.stopRecording() → send to Worker →
+                emit TranscriptEvent(cleaned=false) → set state "idle"
+      - destroy(): terminate worker, release audio
+
+      AutoSTTEngine registration:
+      - Add: this.engines.set("on-device", new OnDeviceSTTEngine(config))
+      - Position in constructor after existing engines
+
+  # ─────────────────────────────────────────────
+  # Layer 2: UI integration (depends on Layer 1)
+  # ─────────────────────────────────────────────
+
+  - id: wp-settings-ui
+    name: "STT settings UI controls"
+    tasks: [T6.1, T6.2, T6.3, T6.4, T6.5, T6.6]
+    priority: 3
+    depends_on: [wp-settings, wp-model-cache]
+    scope:
+      write_allow:
+        - "web/src/components/settings/VoiceConfigurator.tsx"
+        - "web/src/hooks/use-model-cache.ts"
+      read_allow:
+        - "web/src/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/lib/voice/**"
+    locks:
+      files:
+        - "web/src/components/settings/VoiceConfigurator.tsx"
+      keys:
+        - "frontend:settings:voice-stt"
+      ttl_minutes: 90
+      reason: "STT engine settings UI with model download"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      MODIFIED: VoiceConfigurator.tsx
+      NEW: use-model-cache.ts hook
+
+      VoiceConfigurator additions:
+      - STT Engine subsection with engine selector dropdown
+      - Model size selector (Tiny ~39MB / Base ~74MB)
+      - Download button with progress bar (when no model cached)
+      - Model status indicator (green dot, name, size, delete button)
+
+      use-model-cache.ts hook:
+      - Wraps ModelCacheOperations for React
+      - Tracks download state (isDownloading, progress, error)
+      - Provides downloadModel, deleteModel, modelStatus
+
+  - id: wp-indicator
+    name: "Processing indicator during transcription"
+    tasks: [T7.1, T7.2, T7.3]
+    priority: 3
+    depends_on: [wp-engine]
+    scope:
+      write_allow:
+        - "web/src/components/voice/VoiceInputButton.tsx"
+        - "web/src/components/chat/ChatInput.tsx"
+      read_allow:
+        - "web/src/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/lib/voice/**"
+    locks:
+      files:
+        - "web/src/components/voice/VoiceInputButton.tsx"
+        - "web/src/components/chat/ChatInput.tsx"
+      keys:
+        - "frontend:voice:button-indicator"
+        - "frontend:chat:input-indicator"
+      ttl_minutes: 60
+      reason: "Processing/transcribing UI indicators"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      MODIFIED: VoiceInputButton.tsx, ChatInput.tsx
+
+      VoiceInputButton:
+      - Add "processing" state (spinner animation during on-device transcription)
+      - Distinguish: idle → listening (pulsing ring) → processing (spinner) → idle
+
+      ChatInput:
+      - Add "Transcribing..." placeholder during on-device processing
+      - Replace with transcript text when complete
+
+  # ─────────────────────────────────────────────
+  # Layer 3: Testing (depends on all above)
+  # ─────────────────────────────────────────────
+
+  - id: wp-integration
+    name: "Tests and full verification"
+    tasks: [T8.1, T8.2, T8.3, T8.4, T8.5]
+    priority: 4
+    depends_on: [wp-engine, wp-settings-ui, wp-indicator, wp-settings]
+    scope:
+      write_allow:
+        - "web/tests/**"
+        - "web/src/__tests__/**"
+        - "tests/api/test_voice_settings_api.py"
+      read_allow:
+        - "web/src/**"
+        - "src/**"
+        - "contracts/**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "test:voice:on-device-stt"
+      ttl_minutes: 120
+      reason: "Unit tests, E2E tests, backend API tests"
+    verification:
+      tier: A
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+        - "cd web && pnpm test"
+        - "cd web && pnpm test:e2e"
+        - "pytest tests/api/test_voice_settings_api.py -v"
+    description: |
+      Tests covering:
+      - Engine abstraction (mock Worker, mock AudioRecorder)
+      - Model cache operations (mock Cache API)
+      - E2E: STT engine settings UI (mocked)
+      - E2E: Model download/delete flow (mocked)
+      - Backend: STT settings PUT/DELETE endpoints
+
+# DAG Visualization
+#
+#   wp-model-cache ──────┐
+#   wp-audio ────────────┼── wp-engine ── wp-indicator ──┐
+#   wp-whisper-worker ───┘       │                       │
+#                                │                       ├── wp-integration
+#   wp-settings ─────────────────┼── wp-settings-ui ─────┘
+#                                │
+#
+# Parallel execution groups:
+#   Round 1: wp-model-cache, wp-audio, wp-whisper-worker, wp-settings (4 agents)
+#   Round 2: wp-engine (1 agent, critical path)
+#   Round 3: wp-settings-ui, wp-indicator (2 agents, parallel)
+#   Round 4: wp-integration (1 agent)
+#
+# Critical path: wp-whisper-worker → wp-engine → wp-indicator → wp-integration
+# Estimated parallel speedup: ~2.5x (4 foundation packages + 2 UI packages run simultaneously)
