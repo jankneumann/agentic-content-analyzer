@@ -385,7 +385,7 @@ async def generate_audio(
             voice_provider = VoiceProvider(request.voice_provider)
             alex_voice = VoicePersona(request.alex_voice)
             sam_voice = VoicePersona(request.sam_voice)
-        except ValueError as e:
+        except ValueError:
             raise HTTPException(status_code=400, detail="Invalid voice configuration")
 
         # Create podcast record
