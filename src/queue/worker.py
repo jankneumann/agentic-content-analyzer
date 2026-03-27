@@ -213,9 +213,10 @@ async def _process_job(
         logger.info(f"Job {job_id} ({entrypoint}) completed")
         await _emit_job_notification(job_id, entrypoint, payload)
     except Exception as e:
-        logger.error(f"Job {job_id} ({entrypoint}) failed: {e}")
-        await _fail_job(conn, job_id, str(e))
-        await _emit_job_notification(job_id, entrypoint, payload, error=str(e))
+        logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
+        generic_error = "Job failed due to an internal error"
+        await _fail_job(conn, job_id, generic_error)
+        await _emit_job_notification(job_id, entrypoint, payload, error=generic_error)
     finally:
         heartbeat_task.cancel()
         await asyncio.gather(heartbeat_task, return_exceptions=True)
