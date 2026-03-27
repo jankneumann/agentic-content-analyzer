@@ -63,6 +63,12 @@ export class AutoSTTEngine implements STTEngine {
   }
 
   start(options: STTStartOptions): void {
+    // Engine selection is async (some engines need async isAvailable checks)
+    // so we kick off selection and start as an async IIFE
+    void this.selectAndStart(options)
+  }
+
+  private async selectAndStart(options: STTStartOptions): Promise<void> {
     const preference = this.config.preferenceOrder ?? DEFAULT_PREFERENCE
     const order = preference.split(",").map((e) => e.trim())
 
@@ -73,7 +79,8 @@ export class AutoSTTEngine implements STTEngine {
       // Skip cloud if not configured
       if (engineId === "cloud" && !this.config.cloudAvailable) continue
 
-      if (engine.isAvailable()) {
+      const available = await engine.isAvailable()
+      if (available) {
         this.selectedEngine = engine
         engine.start(options)
         return

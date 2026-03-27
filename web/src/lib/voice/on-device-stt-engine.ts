@@ -114,20 +114,19 @@ export class OnDeviceSTTEngine implements STTEngine {
           { type: "module" }
         )
 
-        const onMessage = (event: MessageEvent<WorkerOutMessage>) => {
+        const onReady = (event: MessageEvent<WorkerOutMessage>) => {
           if (event.data.type === "ready") {
-            this.worker?.removeEventListener("message", onMessage)
+            this.worker?.removeEventListener("message", onReady)
+            // Register persistent handler AFTER ready — avoids duplicate handling
+            this.worker?.addEventListener("message", (e: MessageEvent<WorkerOutMessage>) => {
+              this.handleWorkerMessage(e.data)
+            })
             resolve()
           }
         }
 
-        this.worker.addEventListener("message", onMessage)
+        this.worker.addEventListener("message", onReady)
         this.worker.addEventListener("error", (e) => reject(e.error ?? e.message))
-
-        // Set up persistent message handler
-        this.worker.addEventListener("message", (event: MessageEvent<WorkerOutMessage>) => {
-          this.handleWorkerMessage(event.data)
-        })
       } catch (e) {
         reject(e)
       }

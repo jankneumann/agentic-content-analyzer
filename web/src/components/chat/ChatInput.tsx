@@ -118,9 +118,8 @@ export function ChatInput({
     }
   }, [value, resizeTextarea])
 
-  // Voice input hook
-  // Extended return type to support isProcessing from on-device STT engine
-  const voiceInput: ReturnType<typeof useVoiceInput> & { isProcessing?: boolean } = useVoiceInput({
+  // Voice input hook (isProcessing is part of the return type for on-device STT)
+  const voiceInput = useVoiceInput({
     lang,
     continuous,
     onResult: React.useCallback(

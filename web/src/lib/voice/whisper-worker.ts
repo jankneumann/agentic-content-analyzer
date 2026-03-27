@@ -106,11 +106,16 @@ async function handleTranscribe(audio: Float32Array, language: string): Promise<
       return
     }
 
+    // English-only models (*.en) only support "en" language
+    // Force "en" for English models to avoid silent misrecognition
+    const isEnglishModel = loadedModel.endsWith(".en")
+    const resolvedLanguage = isEnglishModel ? "en" : (language === "auto" ? "auto" : language)
+
     // Run Whisper inference via @remotion/whisper-web
     const result = await transcribe({
       channelWaveform: audio,
       model: loadedModel,
-      language: language === "auto" ? "auto" : (language as "en"),
+      language: resolvedLanguage as "en",
       onProgress: () => {
         // Could emit progress but transcription is usually fast
       },

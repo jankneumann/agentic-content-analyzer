@@ -461,7 +461,18 @@ function formatBytes(bytes: number): string {
 function OnDeviceSttSection() {
   const { modelStatus, isDownloading, progress, error, download, remove } =
     useModelCache()
-  const [selectedSize, setSelectedSize] = useState<WhisperModelSize>("tiny")
+  const { data: voiceData } = useVoiceSettings()
+  const updateMutation = useUpdateVoice()
+
+  // Read persisted model size from backend, default to "tiny"
+  const persistedSize = (voiceData?.stt_model_size?.value as WhisperModelSize) ?? "tiny"
+  const [selectedSize, setSelectedSize] = useState<WhisperModelSize>(persistedSize)
+
+  // Sync to backend when user changes model size
+  const handleSizeChange = (size: WhisperModelSize) => {
+    setSelectedSize(size)
+    updateMutation.mutate({ field: "stt_model_size", value: size })
+  }
 
   return (
     <div className="space-y-4">
@@ -480,7 +491,7 @@ function OnDeviceSttSection() {
         <Label className="text-sm font-medium">Model Size</Label>
         <Select
           value={selectedSize}
-          onValueChange={(v) => setSelectedSize(v as WhisperModelSize)}
+          onValueChange={(v) => handleSizeChange(v as WhisperModelSize)}
           disabled={isDownloading}
         >
           <SelectTrigger size="sm" className="w-full">
