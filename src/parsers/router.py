@@ -53,6 +53,9 @@ class ParserRouter:
         markitdown_parser: "DocumentParser",
         docling_parser: Optional["DocumentParser"] = None,
         youtube_parser: Optional["DocumentParser"] = None,
+        kreuzberg_parser: Optional["DocumentParser"] = None,
+        kreuzberg_preferred_formats: set[str] | None = None,
+        kreuzberg_shadow_formats: set[str] | None = None,
         default_parser: str = "markitdown",
     ):
         """Initialize the parser router.
@@ -61,6 +64,9 @@ class ParserRouter:
             markitdown_parser: MarkItDown parser instance (always required)
             docling_parser: Optional Docling parser for advanced PDF/OCR
             youtube_parser: Optional YouTube parser for timestamped transcripts
+            kreuzberg_parser: Optional Kreuzberg parser for document extraction
+            kreuzberg_preferred_formats: Formats that should prefer Kreuzberg
+            kreuzberg_shadow_formats: Formats for shadow comparison evaluation
             default_parser: Parser to use for unknown formats
         """
         self.parsers: dict[str, DocumentParser] = {
@@ -70,10 +76,15 @@ class ParserRouter:
             self.parsers["docling"] = docling_parser
         if youtube_parser:
             self.parsers["youtube"] = youtube_parser
+        if kreuzberg_parser:
+            self.parsers["kreuzberg"] = kreuzberg_parser
 
         self.default_parser = default_parser
         self._has_docling = docling_parser is not None
         self._has_youtube = youtube_parser is not None
+        self._has_kreuzberg = kreuzberg_parser is not None
+        self._kreuzberg_preferred: set[str] = kreuzberg_preferred_formats or set()
+        self._kreuzberg_shadow: set[str] = kreuzberg_shadow_formats or set()
 
     def route(
         self,
@@ -106,6 +117,11 @@ class ParserRouter:
             logger.debug(f"Routing {source} to docling (structured extraction preferred)")
             return self.parsers["docling"]
 
+        # Kreuzberg preference (if available and format is preferred)
+        if self._has_kreuzberg and detected_format in self._kreuzberg_preferred:
+            logger.debug(f"Routing {source} to kreuzberg (format preferred)")
+            return self.parsers["kreuzberg"]
+
         # Use routing table
         parser_name = self.ROUTING_TABLE.get(detected_format, self.default_parser)
 
@@ -115,6 +131,9 @@ class ParserRouter:
             parser_name = "markitdown"
         elif parser_name == "youtube" and not self._has_youtube:
             logger.debug(f"Routing {source} to markitdown (youtube parser not available)")
+            parser_name = "markitdown"
+        elif parser_name == "kreuzberg" and not self._has_kreuzberg:
+            logger.debug(f"Routing {source} to markitdown (kreuzberg not available)")
             parser_name = "markitdown"
         else:
             logger.debug(f"Routing {source} to {parser_name}")
@@ -150,7 +169,25 @@ class ParserRouter:
                 ocr_needed=ocr_needed,
             )
 
-        return await parser.parse(source, format_hint=format_hint)
+        result = await parser.parse(source, format_hint=format_hint)
+
+        # Shadow evaluation: fire-and-forget Kreuzberg comparison
+        if self._has_kreuzberg and self._kreuzberg_shadow:
+            detected_format = format_hint or (
+                self._detect_format(source) if not isinstance(source, bytes) else "unknown"
+            )
+            from src.parsers.shadow import maybe_shadow_parse
+
+            maybe_shadow_parse(
+                shadow_parser=self.parsers.get("kreuzberg"),
+                shadow_formats=self._kreuzberg_shadow,
+                detected_format=detected_format,
+                canonical_result=result,
+                source=source,
+                format_hint=format_hint,
+            )
+
+        return result
 
     def _detect_format(self, source: str | Path) -> str:
         """Detect format from file extension or URL pattern.
@@ -197,3 +234,8 @@ class ParserRouter:
     def has_youtube(self) -> bool:
         """Whether YouTube parser is available."""
         return self._has_youtube
+
+    @property
+    def has_kreuzberg(self) -> bool:
+        """Whether Kreuzberg parser is available."""
+        return self._has_kreuzberg

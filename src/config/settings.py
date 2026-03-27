@@ -507,6 +507,13 @@ class Settings(BaseSettings):
     docling_timeout_seconds: int = 300  # Processing timeout for large documents
     docling_cache_dir: str = "/tmp/docling"  # Cache directory for Docling models  # noqa: S108
 
+    # Kreuzberg Parser Configuration
+    enable_kreuzberg: bool = False  # Enable Kreuzberg parser (requires kreuzberg extra)
+    kreuzberg_preferred_formats: str = ""  # Comma-separated formats to route to Kreuzberg
+    kreuzberg_shadow_formats: str = ""  # Comma-separated formats for shadow comparison
+    kreuzberg_max_file_size_mb: int = 100  # Maximum file size for Kreuzberg processing
+    kreuzberg_timeout_seconds: int = 120  # Processing timeout (lower than Docling)
+
     # File Upload Configuration
     max_upload_size_mb: int = 50  # Maximum file upload size
 
