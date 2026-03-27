@@ -11,8 +11,8 @@ The application runs as a PWA, which works well for mobile access but lacks nati
 - Add a native share target handler that routes shared URLs to the existing `save-url` API
 - Integrate Capacitor's native speech recognition plugin as an additional engine option in the voice input system
 - Add build scripts and CI configuration for iOS builds
-- Configure deep linking for `aca://` URL scheme
 - Define iOS deployment pipeline: code signing via Fastlane Match, TestFlight beta distribution, CI/CD for automated builds
+- Configure backend CORS for Capacitor native origins (`capacitor://localhost`)
 
 ## Capabilities
 
@@ -28,8 +28,8 @@ The application runs as a PWA, which works well for mobile access but lacks nati
 
 - **Frontend**: Platform detection utility, conditional plugin imports, Capacitor config files
 - **Build**: New `npx cap sync`, `npx cap open ios` commands; Xcode for native builds
-- **Dependencies**: `@capacitor/core`, `@capacitor/ios`, `@capacitor/android` (scaffolded), plus plugins (`@capacitor/push-notifications`, `@capacitor/share`, `@capacitor/haptics`, `@capacitor/status-bar`, `@capgo/capacitor-native-audio` or equivalent STT plugin)
-- **Infrastructure**: No new backend services — Capacitor consumes existing API and notification event system (from `add-notification-events`)
+- **Dependencies**: `@capacitor/core`, `@capacitor/ios`, `@capacitor/android` (scaffolded), plus plugins (`@capacitor/push-notifications`, `@capacitor/share`, `@capacitor/haptics`, `@capacitor/status-bar`, `@capacitor/network`, `@capacitor/app`, `@capacitor/preferences`, `@capacitor-community/speech-recognition`)
+- **Infrastructure**: Minimal backend changes — add Capacitor native origins to CORS configuration. Push notifications are scoped to foreground local notifications (MVP); server-side APNs integration deferred to a follow-up proposal
 - **Distribution**: iOS via TestFlight (beta) → App Store. CI/CD automates builds; requires Apple Developer Program ($99/yr). Android deployment deferred to a separate proposal
 - **Signing**: iOS provisioning profiles + certificates managed via Fastlane Match
 - **Existing PWA**: Unchanged — Capacitor wraps the same build output, PWA continues to work independently

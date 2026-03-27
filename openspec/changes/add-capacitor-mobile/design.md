@@ -43,7 +43,10 @@ Capacitor adds a native shell around the same web build, enabling native APIs wi
 | Capability | Plugin |
 |-----------|--------|
 | Push notifications | `@capacitor/push-notifications` (official) |
-| Share target | `@capacitor/share` (official, for sending); Android intent filter + iOS share extension for receiving |
+| Share target (outgoing) | `@capacitor/share` (official) — for sharing *from* the app to other apps |
+| Share target (receiving) | Custom native code: iOS Share Extension + Android intent filter (no plugin) |
+| Network status | `@capacitor/network` (official) — offline detection for share queue retry |
+| App lifecycle | `@capacitor/app` (official) — foreground/background events for share queue processing |
 | Haptics | `@capacitor/haptics` (official) |
 | Status bar | `@capacitor/status-bar` (official) |
 | Speech recognition | `@capacitor-community/speech-recognition` (community) |
@@ -63,11 +66,20 @@ export const getPlatform = () => Capacitor.getPlatform(); // 'ios' | 'android' |
 
 **Rationale**: Conditional logic throughout the app (e.g., use native STT vs browser STT, show push notification opt-in vs. skip) needs a single source of truth for platform detection. Capacitor provides this API natively.
 
-### 4. Share target via Android intent filter + iOS app extension
+### 4. Share target via Android intent filter + iOS Share Extension
 
-**Choice**: Configure Android `AndroidManifest.xml` with an intent filter for `text/plain` and URL shares. For iOS, add a Share Extension that forwards URLs to the web view.
+**Choice**: Configure Android `AndroidManifest.xml` with an intent filter for `text/plain` and URL shares. For iOS, add a Share Extension that forwards URLs to the main app via an App Group shared container.
 
-**Rationale**: This is the standard Capacitor pattern for receiving shared content. The shared URL is routed to the existing `save-url` API endpoint.
+**Note on plugin scope**: `@capacitor/share` only supports *outgoing* shares (sharing from the app to other apps). Receiving shared content requires custom native code — an iOS Share Extension and an Android intent filter. There is no Capacitor plugin for receiving shares.
+
+**iOS Share Extension architecture**: The Share Extension runs in a separate process with a 120MB memory limit and no access to the main app's WKWebView or JavaScript context. Communication between the extension and the main app uses:
+1. **App Groups shared container** — the Share Extension writes the shared URL to a `UserDefaults` suite shared via App Group (e.g., `group.com.aca.app`). This requires configuring the App Group capability in both the main app and the Share Extension targets.
+2. **URL scheme activation** — after writing to the shared container, the extension opens the `aca://` URL scheme to bring the main app to the foreground. The main app reads the pending URL from the shared container on activation.
+3. **Fallback for background app** — if the main app is already running, it checks the shared container on `appStateChange` events (Capacitor `App` plugin) to pick up queued shares.
+
+**Share Extension authentication**: The extension process has no access to the main app's cookie jar or Keychain items (unless explicitly shared). Rather than sharing credentials across processes, the extension **queues URLs in the App Group shared container** and the main app processes them on next activation. This avoids credential sharing and simplifies the security model — the main app already has valid auth context.
+
+**Rationale**: This is the standard Capacitor pattern for receiving shared content. The queued-URL approach avoids the complexity of sharing auth tokens across process boundaries while ensuring no shared URLs are lost.
 
 ### 5. Native STT as engine option
 
@@ -101,6 +113,64 @@ export const getPlatform = () => Capacitor.getPlatform(); // 'ios' | 'android' |
 - Play Store internal testing track and production distribution
 - Google Play Developer account setup ($25 one-time)
 
+### 7. Push notifications scoped to foreground local notifications (MVP)
+
+**Choice**: For the initial release, push notifications are **local notifications triggered by SSE events while the app is foregrounded or recently backgrounded**. True remote push (APNs/FCM server-side integration) is deferred to a follow-up proposal.
+
+**Rationale**: The existing backend notification system uses SSE for real-time delivery. Adding server-side APNs integration requires: an APNs signing key, a push dispatch service, and changes to `notification_service.py` to send HTTP/2 requests to Apple's push servers. This is a significant backend addition that contradicts the "no new backend services" goal. Local notifications via the Capacitor Push Notifications plugin (listening to SSE events while the app is active) provide immediate value with zero backend changes. Remote push is tracked as a follow-up.
+
+**What this means**:
+- Notifications appear as native banners while the app is in the foreground
+- When the app is fully closed/suspended, notifications are NOT delivered (requires APNs — deferred)
+- Device token registration still happens (future-proofing for remote push)
+
+### 8. Offline share queue via Capacitor Preferences
+
+**Choice**: Use the `@capacitor/preferences` plugin (key-value storage) to queue shared URLs when the device is offline. The `@capacitor/network` plugin detects connectivity changes to trigger retry.
+
+**Queue mechanism:**
+1. Share Extension writes URL to App Group shared container
+2. Main app reads URL from shared container on activation
+3. If API call fails (network error), URL is appended to a JSON array in Capacitor Preferences under key `pending_shares`
+4. `@capacitor/network` `networkStatusChange` listener triggers flush of pending shares when connectivity is restored
+5. Dedup: URLs are compared by normalized string before queueing (same URL shared twice while offline → stored once)
+
+**Rationale**: Capacitor Preferences is persistent, synchronous, and available on all platforms. It's simpler than IndexedDB for a small queue of URLs. The Network plugin provides reliable connectivity change events.
+
+### 9. Native platform directories committed to git
+
+**Choice**: Commit `ios/` and `android/` directories to version control.
+
+**Rationale**: The native project directories contain critical configuration that must be version-controlled:
+- `Info.plist` with permissions, URL schemes, and App Group entitlements
+- Share Extension target and source files
+- `capacitor.config.ts` server settings
+- Fastlane configuration under `ios/fastlane/`
+
+Gitignoring these would require every developer and CI to run `npx cap add ios` on fresh clones, losing all manual native configuration. The Capacitor convention is to commit native project files.
+
+### 10. Backend URL via VITE_API_URL (resolved)
+
+**Choice**: Use the existing `VITE_API_URL` environment variable, which is already baked into the Vite build. No new configuration mechanism needed.
+
+- `pnpm cap:dev` → dev server uses `VITE_API_URL=http://localhost:8000` (or the Vite proxy)
+- `pnpm cap:build` → production build uses `VITE_API_URL` set in CI environment (production API URL)
+- `capacitor.config.ts` `server.url` is only set in dev mode (for live reload); production builds serve from bundled files
+
+**Rationale**: The frontend already uses `VITE_API_URL` everywhere via the API client. Capacitor doesn't change how the web app resolves its API base URL — it just wraps the same build output. No new configuration surface is needed.
+
+### 11. CORS for Capacitor native origin
+
+**Choice**: Add `capacitor://localhost` and `http://localhost` to `ALLOWED_ORIGINS` in the backend CORS configuration.
+
+**Rationale**: WKWebView on iOS uses `capacitor://localhost` as the request origin, which differs from the PWA's web origin. Without this, all API calls from the native app are rejected by CORS. `http://localhost` is needed for Android WebView. These are added to the development and production CORS configuration — they are safe because they can only originate from the native app itself.
+
+### 12. Deep linking deferred to follow-up
+
+**Choice**: Deep linking via `aca://` URL scheme is **deferred to a separate proposal**. The initial release focuses on the share target flow (which uses App Groups, not deep links for IPC) and direct app launch.
+
+**Rationale**: Deep linking requires Universal Links (AASA file hosting, domain association), URL scheme registration, and route handler integration in the frontend router. This is orthogonal to the core Capacitor shell functionality and can be added incrementally. The share target uses App Group shared container for IPC, not URL scheme deep links.
+
 ## Risks / Trade-offs
 
 - **Capacitor version lag**: Capacitor releases may lag behind iOS/Android SDK updates. → Pin Capacitor major version, update quarterly.
@@ -110,7 +180,7 @@ export const getPlatform = () => Capacitor.getPlatform(); // 'ios' | 'android' |
 - **Build complexity**: Requires Xcode (macOS only) for iOS builds. → CI builds on macOS runners.
 - **Two deployment channels**: PWA and native app need to stay in sync. → Both use the same Vite build; Capacitor syncs from `dist/`.
 
-## Open Questions
+## Resolved Questions
 
-- Should push notifications be opt-in via settings UI or prompted on first app launch? (Leaning: settings UI — avoid aggressive permission requests.)
-- Should the native app connect to a configurable backend URL or hardcode production? (Leaning: configurable via settings, default to production.)
+- **Push notification opt-in**: Settings UI toggle (Decision 7). Avoids aggressive permission prompts on first launch.
+- **Backend URL configuration**: Uses existing `VITE_API_URL` (Decision 10). No new configuration mechanism needed.

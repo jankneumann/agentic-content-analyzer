@@ -41,20 +41,25 @@ The system SHALL provide a utility to detect whether the app is running in a nat
 - **THEN** `isNative()` SHALL return `false`
 - **AND** `getPlatform()` SHALL return `"web"`
 
-### Requirement: Push Notification Delivery
-The system SHALL deliver notification events from `add-notification-events` as native push notifications on iOS and Android. The backend event system (event types, dispatch, preferences, device registration) is defined in the `notification-events` capability.
+### Requirement: Push Notification Delivery (Foreground MVP)
+The system SHALL deliver notification events as local native notifications when the app is in the foreground on native platforms. The backend SSE event stream is the notification source. Server-side APNs/FCM integration for background push is deferred to a follow-up proposal.
 
 #### Scenario: Request permission
 - **WHEN** the user enables push notifications in settings
 - **THEN** the system SHALL request native push notification permission via Capacitor Push Notifications plugin
-- **AND** register the device token with the backend device registration API (`POST /api/v1/notifications/devices`)
+- **AND** register the device token with the backend device registration API (`POST /api/v1/notifications/devices`) for future remote push support
 
-#### Scenario: Receive push notification
-- **WHEN** the backend dispatch service emits a notification event for a registered device
-- **THEN** the native push notification SHALL be displayed with the event title and summary
+#### Scenario: Receive foreground notification
+- **WHEN** the app is in the foreground on a native platform
+- **AND** an SSE notification event is received from the backend
+- **THEN** a local native notification SHALL be displayed with the event title and summary
+
+#### Scenario: Background notification (deferred)
+- **WHEN** the app is fully closed or suspended
+- **THEN** notifications SHALL NOT be delivered (requires server-side APNs integration — deferred)
 
 #### Scenario: Notification tap
-- **WHEN** the user taps a push notification
+- **WHEN** the user taps a notification
 - **THEN** the app SHALL open and navigate to the content specified in the event's `payload.url`
 
 #### Scenario: Token refresh
@@ -65,6 +70,21 @@ The system SHALL deliver notification events from `add-notification-events` as n
 - **WHEN** the app is running as a PWA (not native)
 - **THEN** push notification registration SHALL be skipped
 - **AND** no push notification UI SHALL be shown
+
+### Requirement: CORS for Capacitor Origins
+The backend SHALL accept requests from Capacitor native origins to enable API communication from the native app.
+
+#### Scenario: iOS WKWebView origin
+- **WHEN** the native iOS app makes an API request
+- **THEN** the backend SHALL accept `capacitor://localhost` as a valid CORS origin
+
+#### Scenario: Android WebView origin
+- **WHEN** the native Android app makes an API request
+- **THEN** the backend SHALL accept `http://localhost` as a valid CORS origin
+
+#### Scenario: Existing web origins unchanged
+- **WHEN** the PWA or web browser makes an API request
+- **THEN** existing CORS origins SHALL continue to work unchanged
 
 ### Requirement: Native Status Bar Control
 The system SHALL control the native status bar appearance to match the app theme.
