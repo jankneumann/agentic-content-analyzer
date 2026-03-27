@@ -194,6 +194,12 @@ make test-regression                    # Python CLI + API contract regression t
 make test-regression-e2e               # Playwright UX workflow regression tests
 make test-regression-all               # All regression tests (Python + Playwright)
 pytest -m regression -v --no-cov       # Run regression tests directly
+
+# Live E2E Pipeline Tests (requires running backend + LLM keys)
+make test-e2e-live                      # Run live pipeline tests with LLM validation
+E2E_EVALUATOR=opik make test-e2e-live   # Use Opik for evaluation scoring
+E2E_EVALUATOR=langfuse make test-e2e-live # Use Langfuse for evaluation scoring
+E2E_BASE_URL=http://localhost:8000 make test-e2e-live  # Custom backend URL
 ```
 
 ## Source Configuration
@@ -612,6 +618,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 - E2E page objects: `web/tests/e2e/fixtures/pages/*.page.ts`
 - Contract testing: `tests/contract/` (Schemathesis schema validation + fuzz testing)
 - Regression testing: `tests/regression/` (API contracts), `tests/cli/test_regression_daily_pipeline.py` (CLI workflows), `web/tests/e2e/regression/` (UX workflows)
+- Live E2E pipeline tests: `tests/e2e/` (sequential pipeline execution with LLM validation, Opik/Langfuse scoring)
 
 ### Configuration
 - Profile guide: [docs/PROFILES.md](docs/PROFILES.md)
