@@ -34,6 +34,8 @@ export class NativeSTTEngine implements STTEngine {
   private plugin: SpeechRecognitionPlugin | null = null
   private state: STTEngineState = "idle"
   private listenerHandle: { remove: () => void } | null = null
+  private lastTranscript = ""
+  private activeOptions: STTStartOptions | null = null
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -78,11 +80,16 @@ export class NativeSTTEngine implements STTEngine {
         }
       }
 
+      // Track options so stop() can emit final result
+      this.activeOptions = options
+      this.lastTranscript = ""
+
       // Listen for partial results
       this.listenerHandle = await this.plugin.addListener(
         "partialResults",
         (data: { matches: string[] }) => {
           if (data.matches && data.matches.length > 0) {
+            this.lastTranscript = data.matches[0]
             options.events.onResult({
               text: data.matches[0],
               isFinal: false,
@@ -125,6 +132,19 @@ export class NativeSTTEngine implements STTEngine {
     } catch {
       // Ignore stop errors
     }
+
+    // Emit final transcript so consumers know speech input is complete
+    if (this.lastTranscript && this.activeOptions) {
+      this.activeOptions.events.onResult({
+        text: this.lastTranscript,
+        isFinal: true,
+        cleaned: false,
+        confidence: undefined,
+      })
+    }
+
+    this.lastTranscript = ""
+    this.activeOptions = null
     this.state = "idle"
   }
 

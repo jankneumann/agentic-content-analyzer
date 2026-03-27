@@ -9,9 +9,12 @@
  * storage to prevent duplicate entries.
  */
 
-import { Preferences } from "@capacitor/preferences"
-
 const QUEUE_KEY = "pending_shares"
+
+async function getPreferences() {
+  const { Preferences } = await import("@capacitor/preferences")
+  return Preferences
+}
 const MAX_RETRIES = 5
 
 export interface PendingShare {
@@ -45,6 +48,7 @@ function normalizeUrl(url: string): string {
  */
 export async function getPending(): Promise<PendingShare[]> {
   try {
+    const Preferences = await getPreferences()
     const { value } = await Preferences.get({ key: QUEUE_KEY })
     if (!value) return []
     return JSON.parse(value) as PendingShare[]
@@ -57,6 +61,7 @@ export async function getPending(): Promise<PendingShare[]> {
  * Persist the queue to Preferences.
  */
 async function savePending(items: PendingShare[]): Promise<void> {
+  const Preferences = await getPreferences()
   await Preferences.set({
     key: QUEUE_KEY,
     value: JSON.stringify(items),

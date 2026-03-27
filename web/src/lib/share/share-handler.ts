@@ -30,7 +30,7 @@ import { toast } from "sonner"
  */
 async function trySaveUrl(url: string): Promise<boolean> {
   try {
-    await saveUrl({ url })
+    await saveUrl({ url, source: "native-share" })
     return true
   } catch {
     return false

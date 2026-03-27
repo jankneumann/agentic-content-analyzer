@@ -20,12 +20,17 @@ import { Toaster } from "@/components/ui/sonner"
 import { BackgroundTasksProvider } from "@/contexts/BackgroundTasksContext"
 import { checkSession, isAuthEnabled } from "@/lib/api"
 import { initTelemetry } from "@/lib/telemetry"
+import { initShareTarget } from "@/lib/share"
 
 // Initialize OTel before React renders so fetch instrumentation
 // is active before TanStack Query makes its first API call.
 // Fire-and-forget: telemetry initialization should never block app rendering.
 // The .catch() prevents unhandled-promise-rejection warnings in strict environments.
 initTelemetry().catch(() => {})
+
+// Initialize native share target listeners (no-op on web).
+// Must run before React renders to catch shares received while app was closed.
+initShareTarget()
 
 /**
  * TanStack Query client
