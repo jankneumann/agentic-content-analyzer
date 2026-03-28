@@ -21,6 +21,11 @@ from src.models.chunk import ChunkType, DocumentChunk
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled regex patterns for performance
+TABLE_PATTERN = re.compile(r"(\|.+\|[\s\S]*?\|.+\|)", re.MULTILINE)
+TIMESTAMP_PATTERN = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]\(([^)]+)\)")
+CODE_BLOCK_PATTERN = re.compile(r"```[\s\S]*?```", re.MULTILINE)
+
 # Token encoder for chunk size estimation — lazy-initialized
 _encoder = None
 
@@ -180,9 +185,8 @@ class StructuredChunkingStrategy:
             section_path = " > ".join(section_path_parts) if section_path_parts else None
 
             # Check for tables (```table or | header | format)
-            table_pattern = re.compile(r"(\|.+\|[\s\S]*?\|.+\|)", re.MULTILINE)
-            tables = table_pattern.findall(section)
-            non_table_text = table_pattern.sub("", section).strip()
+            tables = TABLE_PATTERN.findall(section)
+            non_table_text = TABLE_PATTERN.sub("", section).strip()
 
             # Chunk non-table text
             if non_table_text:
@@ -252,7 +256,6 @@ class YouTubeTranscriptChunkingStrategy:
 
         chunks: list[DocumentChunk] = []
         # Parse timestamped segments: [MM:SS](url&t=N) or [HH:MM:SS](url)
-        timestamp_pattern = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]\(([^)]+)\)")
 
         # Split by paragraphs (double newline)
         paragraphs = re.split(r"\n\n+", content)
@@ -269,7 +272,7 @@ class YouTubeTranscriptChunkingStrategy:
                 continue
 
             # Extract timestamp from paragraph
-            ts_match = timestamp_pattern.search(para)
+            ts_match = TIMESTAMP_PATTERN.search(para)
             if ts_match:
                 ts_str = ts_match.group(1)
                 link = ts_match.group(2)
@@ -420,9 +423,8 @@ class MarkdownChunkingStrategy:
             section_path = " > ".join(section_path_parts) if section_path_parts else None
 
             # Detect code blocks and keep them together
-            code_block_pattern = re.compile(r"```[\s\S]*?```", re.MULTILINE)
-            code_blocks = code_block_pattern.findall(section)
-            non_code_text = code_block_pattern.sub("", section).strip()
+            code_blocks = CODE_BLOCK_PATTERN.findall(section)
+            non_code_text = CODE_BLOCK_PATTERN.sub("", section).strip()
 
             # Chunk non-code text
             if non_code_text:

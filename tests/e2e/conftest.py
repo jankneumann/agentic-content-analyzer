@@ -94,9 +94,7 @@ def http_client(base_url: str, admin_key: str) -> httpx.Client:
     headers = {}
     if admin_key:
         headers["X-Admin-Key"] = admin_key
-    with httpx.Client(
-        base_url=base_url, timeout=E2E_TIMEOUT, headers=headers
-    ) as client:
+    with httpx.Client(base_url=base_url, timeout=E2E_TIMEOUT, headers=headers) as client:
         yield client
 
 
@@ -146,7 +144,9 @@ class ValidationResult:
     def __repr__(self) -> str:
         status = "PASS" if self.passed else "FAIL"
         trace = f", trace={self.trace_id}" if self.trace_id else ""
-        return f"ValidationResult({status}, score={self.score:.2f}, issues={len(self.issues)}{trace})"
+        return (
+            f"ValidationResult({status}, score={self.score:.2f}, issues={len(self.issues)}{trace})"
+        )
 
     def assert_passed(self, min_score: float = 0.5) -> None:
         """Assert that validation passed with minimum score."""
@@ -427,8 +427,7 @@ class OpikEvaluator(CustomLLMEvaluator):
                 },
             )
             logger.info(
-                f"Opik score reported: {artifact_type}={result.score:.2f} "
-                f"(trace={result.trace_id})"
+                f"Opik score reported: {artifact_type}={result.score:.2f} (trace={result.trace_id})"
             )
         except Exception as e:
             logger.warning(f"Failed to report score to Opik: {e}")
@@ -458,9 +457,7 @@ class LangfuseEvaluator(CustomLLMEvaluator):
 
         public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "")
         secret_key = os.getenv("LANGFUSE_SECRET_KEY", "")
-        self._langfuse_base_url = os.getenv(
-            "LANGFUSE_BASE_URL", "https://cloud.langfuse.com"
-        )
+        self._langfuse_base_url = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
 
         # Langfuse uses HTTP Basic Auth
         auth_str = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
@@ -540,8 +537,13 @@ def poll_until_complete(
     """
     if terminal_statuses is None:
         terminal_statuses = {
-            "completed", "failed", "error",
-            "COMPLETED", "FAILED", "APPROVED", "REJECTED",
+            "completed",
+            "failed",
+            "error",
+            "COMPLETED",
+            "FAILED",
+            "APPROVED",
+            "REJECTED",
         }
 
     start = time.monotonic()

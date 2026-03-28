@@ -165,9 +165,7 @@ class ReferenceExtractor:
             if before:
                 query = query.filter(Content.created_at <= before)
             if source_types:
-                query = query.filter(
-                    Content.source_type.cast(sa_text("text")).in_(source_types)
-                )
+                query = query.filter(Content.source_type.cast(sa_text("text")).in_(source_types))
 
             contents = query.all()
 
@@ -211,8 +209,7 @@ class ReferenceExtractor:
                 logger.warning("Failed to resolve reference %s: %s", identifier, e)
 
         logger.info(
-            "Reference ingestion: scanned=%d, found=%d, ingested=%d, "
-            "skipped_dup=%d, unresolved=%d",
+            "Reference ingestion: scanned=%d, found=%d, ingested=%d, skipped_dup=%d, unresolved=%d",
             result.content_scanned,
             result.references_found,
             result.papers_ingested,

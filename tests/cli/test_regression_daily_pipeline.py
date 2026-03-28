@@ -19,7 +19,7 @@ Markers:
 from __future__ import annotations
 
 from contextlib import ExitStack
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -150,9 +150,7 @@ class TestThemeAnalysisCommand:
 
     def test_analyze_themes_rejects_invalid_dates(self):
         """Theme analysis fails gracefully on invalid date format."""
-        result = runner.invoke(
-            app, ["analyze", "themes", "--start", "not-a-date", "--direct"]
-        )
+        result = runner.invoke(app, ["analyze", "themes", "--start", "not-a-date", "--direct"])
 
         assert result.exit_code == 1
         assert "Error" in result.output
@@ -219,9 +217,7 @@ class TestPodcastGenerateCommand:
     def test_podcast_generate_with_digest_id(self, mock_generate):
         """Podcast generation accepts digest ID and runs."""
         mock_generate.return_value = None
-        result = runner.invoke(
-            app, ["podcast", "generate", "--digest-id", "301", "--direct"]
-        )
+        result = runner.invoke(app, ["podcast", "generate", "--digest-id", "301", "--direct"])
 
         assert result.exit_code == 0
         mock_generate.assert_called_once_with(301, "standard")
@@ -315,9 +311,7 @@ class TestSequentialWorkflow:
         # Step 5: Generate podcast
         with patch("src.cli.podcast_commands._generate_direct") as mock_gen:
             mock_gen.return_value = None
-            result = runner.invoke(
-                app, ["podcast", "generate", "--digest-id", "301", "--direct"]
-            )
+            result = runner.invoke(app, ["podcast", "generate", "--digest-id", "301", "--direct"])
         assert result.exit_code == 0, f"Podcast generation failed: {result.output}"
 
 
@@ -341,8 +335,6 @@ class TestSummarizeCommand:
     def test_summarize_pending_with_source_filter(self, mock_summarize):
         """Summarize pending accepts --source filter."""
         mock_summarize.return_value = None
-        result = runner.invoke(
-            app, ["summarize", "pending", "--source", "gmail,rss", "--direct"]
-        )
+        result = runner.invoke(app, ["summarize", "pending", "--source", "gmail,rss", "--direct"])
 
         assert result.exit_code == 0

@@ -355,9 +355,7 @@ def summarize_pending(
 
     query = ContentQuery(
         source_types=(
-            [ContentSource(s.strip()) for s in source_types.split(",")]
-            if source_types
-            else None
+            [ContentSource(s.strip()) for s in source_types.split(",")] if source_types else None
         ),
         start_date=_parse_date(after_date),
         end_date=_parse_date(before_date),
@@ -435,18 +433,20 @@ def create_digest(
     if result is None:
         return _serialize({"error": "No content available for digest creation"})
 
-    return _serialize({
-        "digest_type": str(result.digest_type),
-        "title": result.title,
-        "period_start": str(result.period_start),
-        "period_end": str(result.period_end),
-        "content_count": result.newsletter_count,
-        "executive_overview": result.executive_overview,
-        "strategic_insights_count": len(result.strategic_insights),
-        "technical_developments_count": len(result.technical_developments),
-        "emerging_trends_count": len(result.emerging_trends),
-        "model_used": result.model_used,
-    })
+    return _serialize(
+        {
+            "digest_type": str(result.digest_type),
+            "title": result.title,
+            "period_start": str(result.period_start),
+            "period_end": str(result.period_end),
+            "content_count": result.newsletter_count,
+            "executive_overview": result.executive_overview,
+            "strategic_insights_count": len(result.strategic_insights),
+            "technical_developments_count": len(result.technical_developments),
+            "emerging_trends_count": len(result.emerging_trends),
+            "model_used": result.model_used,
+        }
+    )
 
 
 @mcp.tool()
@@ -478,19 +478,21 @@ def list_digests(
 
         digests = query.limit(limit).all()
 
-        return _serialize([
-            {
-                "id": d.id,
-                "title": d.title,
-                "digest_type": str(d.digest_type),
-                "status": str(d.status),
-                "period_start": str(d.period_start),
-                "period_end": str(d.period_end),
-                "content_count": d.newsletter_count,
-                "created_at": str(d.created_at),
-            }
-            for d in digests
-        ])
+        return _serialize(
+            [
+                {
+                    "id": d.id,
+                    "title": d.title,
+                    "digest_type": str(d.digest_type),
+                    "status": str(d.status),
+                    "period_start": str(d.period_start),
+                    "period_end": str(d.period_end),
+                    "content_count": d.newsletter_count,
+                    "created_at": str(d.created_at),
+                }
+                for d in digests
+            ]
+        )
 
 
 @mcp.tool()
@@ -595,7 +597,6 @@ def run_pipeline(digest_type: str = "daily") -> str:
     Returns:
         JSON with results from each pipeline stage.
     """
-    import asyncio
 
     from src.ingestion.orchestrator import (
         ingest_gmail,
@@ -915,19 +916,21 @@ def list_content(
 
         items = query.limit(min(limit, 100)).all()
 
-        return _serialize([
-            {
-                "id": c.id,
-                "title": c.title,
-                "source_type": str(c.source_type),
-                "publication": c.publication,
-                "status": str(c.status),
-                "published_date": str(c.published_date) if c.published_date else None,
-                "ingested_at": str(c.ingested_at) if c.ingested_at else None,
-                "source_url": c.source_url,
-            }
-            for c in items
-        ])
+        return _serialize(
+            [
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "source_type": str(c.source_type),
+                    "publication": c.publication,
+                    "status": str(c.status),
+                    "published_date": str(c.published_date) if c.published_date else None,
+                    "ingested_at": str(c.ingested_at) if c.ingested_at else None,
+                    "source_url": c.source_url,
+                }
+                for c in items
+            ]
+        )
 
 
 @mcp.tool()
@@ -948,18 +951,20 @@ def get_content(content_id: int) -> str:
         if not content:
             return _serialize({"error": f"Content {content_id} not found"})
 
-        return _serialize({
-            "id": content.id,
-            "title": content.title,
-            "source_type": str(content.source_type),
-            "publication": content.publication,
-            "status": str(content.status),
-            "published_date": str(content.published_date) if content.published_date else None,
-            "source_url": content.source_url,
-            "markdown_content": content.markdown_content,
-            "summary": content.summary,
-            "metadata": content.metadata_json,
-        })
+        return _serialize(
+            {
+                "id": content.id,
+                "title": content.title,
+                "source_type": str(content.source_type),
+                "publication": content.publication,
+                "status": str(content.status),
+                "published_date": str(content.published_date) if content.published_date else None,
+                "source_url": content.source_url,
+                "markdown_content": content.markdown_content,
+                "summary": content.summary,
+                "metadata": content.metadata_json,
+            }
+        )
 
 
 # ===========================================================================
@@ -1043,12 +1048,14 @@ def update_content(
         result = service.update(content_id, data)
         if result is None:
             return _serialize({"error": f"Content {content_id} not found"})
-        return _serialize({
-            "id": result.id,
-            "title": result.title,
-            "status": str(result.status),
-            "updated_fields": list(update_data.keys()),
-        })
+        return _serialize(
+            {
+                "id": result.id,
+                "title": result.title,
+                "status": str(result.status),
+                "updated_fields": list(update_data.keys()),
+            }
+        )
 
 
 @mcp.tool()
@@ -1072,21 +1079,23 @@ def get_summary(content_id: int) -> str:
         if not summary:
             return _serialize({"error": f"No summary found for content {content_id}"})
 
-        return _serialize({
-            "id": summary.id,
-            "content_id": summary.content_id,
-            "executive_summary": summary.executive_summary,
-            "key_themes": summary.key_themes,
-            "strategic_insights": summary.strategic_insights,
-            "technical_details": summary.technical_details,
-            "actionable_items": summary.actionable_items,
-            "notable_quotes": summary.notable_quotes,
-            "relevant_links": summary.relevant_links,
-            "relevance_scores": summary.relevance_scores,
-            "markdown_content": summary.markdown_content,
-            "model_used": summary.model_used,
-            "created_at": str(summary.created_at) if summary.created_at else None,
-        })
+        return _serialize(
+            {
+                "id": summary.id,
+                "content_id": summary.content_id,
+                "executive_summary": summary.executive_summary,
+                "key_themes": summary.key_themes,
+                "strategic_insights": summary.strategic_insights,
+                "technical_details": summary.technical_details,
+                "actionable_items": summary.actionable_items,
+                "notable_quotes": summary.notable_quotes,
+                "relevant_links": summary.relevant_links,
+                "relevance_scores": summary.relevance_scores,
+                "markdown_content": summary.markdown_content,
+                "model_used": summary.model_used,
+                "created_at": str(summary.created_at) if summary.created_at else None,
+            }
+        )
 
 
 @mcp.tool()
@@ -1149,11 +1158,13 @@ def update_summary(
         db.commit()
         db.refresh(summary)
 
-        return _serialize({
-            "id": summary.id,
-            "content_id": summary.content_id,
-            "updated_fields": updated_fields,
-        })
+        return _serialize(
+            {
+                "id": summary.id,
+                "content_id": summary.content_id,
+                "updated_fields": updated_fields,
+            }
+        )
 
 
 @mcp.tool()
@@ -1212,15 +1223,17 @@ def resummarize_content(
         if not summary:
             return _serialize({"error": "Summary not found after re-summarization"})
 
-        return _serialize({
-            "id": summary.id,
-            "content_id": summary.content_id,
-            "executive_summary": summary.executive_summary,
-            "key_themes": summary.key_themes,
-            "model_used": summary.model_used,
-            "created_at": str(summary.created_at) if summary.created_at else None,
-            "had_feedback": feedback is not None,
-        })
+        return _serialize(
+            {
+                "id": summary.id,
+                "content_id": summary.content_id,
+                "executive_summary": summary.executive_summary,
+                "key_themes": summary.key_themes,
+                "model_used": summary.model_used,
+                "created_at": str(summary.created_at) if summary.created_at else None,
+                "had_feedback": feedback is not None,
+            }
+        )
 
 
 # ===========================================================================
@@ -1249,20 +1262,22 @@ def get_digest_markdown(digest_id: int) -> str:
         if not digest:
             return _serialize({"error": f"Digest {digest_id} not found"})
 
-        return _serialize({
-            "id": digest.id,
-            "title": digest.title,
-            "digest_type": str(digest.digest_type),
-            "status": str(digest.status),
-            "markdown_content": digest.markdown_content,
-            "executive_overview": digest.executive_overview,
-            "strategic_insights": digest.strategic_insights,
-            "technical_developments": digest.technical_developments,
-            "emerging_trends": digest.emerging_trends,
-            "actionable_recommendations": digest.actionable_recommendations,
-            "theme_tags": digest.theme_tags,
-            "revision_count": digest.revision_count,
-        })
+        return _serialize(
+            {
+                "id": digest.id,
+                "title": digest.title,
+                "digest_type": str(digest.digest_type),
+                "status": str(digest.status),
+                "markdown_content": digest.markdown_content,
+                "executive_overview": digest.executive_overview,
+                "strategic_insights": digest.strategic_insights,
+                "technical_developments": digest.technical_developments,
+                "emerging_trends": digest.emerging_trends,
+                "actionable_recommendations": digest.actionable_recommendations,
+                "theme_tags": digest.theme_tags,
+                "revision_count": digest.revision_count,
+            }
+        )
 
 
 @mcp.tool()
@@ -1333,13 +1348,15 @@ def update_digest(
         db.commit()
         db.refresh(digest)
 
-        return _serialize({
-            "id": digest.id,
-            "title": digest.title,
-            "status": str(digest.status),
-            "revision_count": digest.revision_count,
-            "updated_fields": updated_fields,
-        })
+        return _serialize(
+            {
+                "id": digest.id,
+                "title": digest.title,
+                "status": str(digest.status),
+                "revision_count": digest.revision_count,
+                "updated_fields": updated_fields,
+            }
+        )
 
 
 @mcp.tool()
@@ -1376,36 +1393,32 @@ def revise_digest_section(
     session_id = f"mcp-{digest_id}-{int(datetime.now(UTC).timestamp())}"
 
     try:
-        context = asyncio.run(
-            service.start_revision_session(digest_id, session_id, "mcp-agent")
-        )
+        context = asyncio.run(service.start_revision_session(digest_id, session_id, "mcp-agent"))
     except Exception as e:
         return _serialize({"error": str(e)})
 
     # Process the revision turn
     prompt = f"Please revise the '{section}' section. Feedback: {feedback}"
     try:
-        result = asyncio.run(
-            service.process_revision_turn(context, prompt, [], session_id)
-        )
+        result = asyncio.run(service.process_revision_turn(context, prompt, [], session_id))
     except Exception as e:
         return _serialize({"error": f"Revision failed: {e}"})
 
     # Apply the revision
     if result and result.get("revised_content"):
         try:
-            asyncio.run(
-                service.apply_revision(digest_id, section, result["revised_content"])
-            )
+            asyncio.run(service.apply_revision(digest_id, section, result["revised_content"]))
         except Exception as e:
             return _serialize({"error": f"Failed to apply revision: {e}"})
 
-    return _serialize({
-        "digest_id": digest_id,
-        "section": section,
-        "status": "revised",
-        "revision_result": result,
-    })
+    return _serialize(
+        {
+            "digest_id": digest_id,
+            "section": section,
+            "status": "revised",
+            "revision_result": result,
+        }
+    )
 
 
 # ===========================================================================
@@ -1474,12 +1487,14 @@ def update_podcast_section(
     service = ScriptReviewService()
     try:
         result = asyncio.run(service.revise_section(request))
-        return _serialize({
-            "script_id": result.id,
-            "status": result.status,
-            "revision_count": result.revision_count,
-            "section_updated": section_index,
-        })
+        return _serialize(
+            {
+                "script_id": result.id,
+                "status": result.status,
+                "revision_count": result.revision_count,
+                "section_updated": section_index,
+            }
+        )
     except Exception as e:
         return _serialize({"error": str(e)})
 
@@ -1518,12 +1533,14 @@ def revise_podcast_section(
     service = ScriptReviewService()
     try:
         result = asyncio.run(service.revise_section(request))
-        return _serialize({
-            "script_id": result.id,
-            "status": result.status,
-            "revision_count": result.revision_count,
-            "section_revised": section_index,
-        })
+        return _serialize(
+            {
+                "script_id": result.id,
+                "status": result.status,
+                "revision_count": result.revision_count,
+                "section_revised": section_index,
+            }
+        )
     except Exception as e:
         return _serialize({"error": str(e)})
 
@@ -1570,12 +1587,14 @@ def review_podcast_script(
     service = ScriptReviewService()
     try:
         result = asyncio.run(service.submit_review(request))
-        return _serialize({
-            "script_id": result.id,
-            "status": result.status,
-            "revision_count": result.revision_count,
-            "reviewed_by": result.reviewed_by,
-        })
+        return _serialize(
+            {
+                "script_id": result.id,
+                "status": result.status,
+                "revision_count": result.revision_count,
+                "reviewed_by": result.reviewed_by,
+            }
+        )
     except Exception as e:
         return _serialize({"error": str(e)})
 
@@ -1638,18 +1657,22 @@ class AdminKeyAuthMiddleware:
             response_body = json.dumps(
                 {"error": "Authentication required. Provide X-Admin-Key header."}
             ).encode()
-            await send({
-                "type": "http.response.start",
-                "status": 401,
-                "headers": [
-                    [b"content-type", b"application/json"],
-                    [b"content-length", str(len(response_body)).encode()],
-                ],
-            })
-            await send({
-                "type": "http.response.body",
-                "body": response_body,
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                        [b"content-length", str(len(response_body)).encode()],
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": response_body,
+                }
+            )
         else:
             # WebSocket: close with 4401
             await send({"type": "websocket.close", "code": 4401})
@@ -1671,9 +1694,7 @@ def _verify_jwt_token(token: str, app_secret_key: str) -> dict | None:
 
         import jwt
 
-        signing_key = hmac.new(
-            app_secret_key.encode(), b"jwt-signing-key", "sha256"
-        ).digest()
+        signing_key = hmac.new(app_secret_key.encode(), b"jwt-signing-key", "sha256").digest()
         return jwt.decode(
             token,
             signing_key,
