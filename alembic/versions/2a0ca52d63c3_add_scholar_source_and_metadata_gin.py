@@ -1,7 +1,7 @@
 """Add scholar content source and metadata_json GIN index
 
-Revision ID: a1b2c3d4e5f6
-Revises: f9a8b7c6d5e5
+Revision ID: 2a0ca52d63c3
+Revises: a1b2c3d4e5f6
 Create Date: 2026-03-27 10:00:00.000000
 
 """
@@ -11,8 +11,8 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "203a8919b20b"
+revision: str = "2a0ca52d63c3"
+down_revision: Union[str, None] = "a1b2c3d4e5f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

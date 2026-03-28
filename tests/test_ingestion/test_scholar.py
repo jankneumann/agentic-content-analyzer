@@ -237,10 +237,11 @@ class TestBuildMetadata:
             tldr=None,
         )
         meta = self.service._build_metadata(paper, "single_paper")
-        assert meta["arxiv_id"] is None
-        assert meta["doi"] is None
-        assert meta["tldr"] is None
-        assert meta["open_access_pdf_url"] is None
+        # Optional fields are omitted when not present (avoids null in JSON)
+        assert "arxiv_id" not in meta
+        assert "doi" not in meta
+        assert "tldr" not in meta
+        assert "open_access_pdf_url" not in meta
 
 
 # ---------------------------------------------------------------------------
