@@ -182,20 +182,32 @@ class ScholarContentIngestionService:
         """Build metadata_json dict for a paper."""
         meta: dict[str, Any] = {
             "s2_paper_id": paper.paper_id,
-            "arxiv_id": paper.external_ids.get("ArXiv"),
-            "doi": paper.external_ids.get("DOI"),
-            "corpus_id": paper.external_ids.get("CorpusId"),
             "authors": [{"name": a.name, "authorId": a.author_id} for a in paper.authors],
-            "venue": paper.venue,
-            "year": paper.year,
             "citation_count": paper.citation_count,
             "influential_citation_count": paper.influential_citation_count,
             "fields_of_study": paper.fields_of_study,
             "publication_types": paper.publication_types,
-            "open_access_pdf_url": self._get_open_access_url(paper),
-            "tldr": paper.tldr.get("text") if paper.tldr else None,
             "ingestion_mode": ingestion_mode,
         }
+        # Only include optional fields when present — avoids storing null
+        # values that confuse GIN jsonb_path_ops containment queries
+        if paper.external_ids.get("ArXiv"):
+            meta["arxiv_id"] = paper.external_ids["ArXiv"]
+        if paper.external_ids.get("DOI"):
+            meta["doi"] = paper.external_ids["DOI"]
+        if paper.external_ids.get("CorpusId"):
+            meta["corpus_id"] = paper.external_ids["CorpusId"]
+        if paper.venue:
+            meta["venue"] = paper.venue
+        if paper.year:
+            meta["year"] = paper.year
+        oa_url = self._get_open_access_url(paper)
+        if oa_url:
+            meta["open_access_pdf_url"] = oa_url
+        if paper.tldr:
+            tldr_text = paper.tldr.get("text")
+            if tldr_text:
+                meta["tldr"] = tldr_text
         meta.update(extra)
         return meta
 
@@ -467,14 +479,16 @@ class ScholarContentIngestionService:
         )
         result.papers_skipped_filter = len(papers) - len(filtered)
 
-        # Store papers
+        # Store papers (use savepoints for per-paper error isolation)
         with get_db() as db:
             for paper in filtered:
                 try:
+                    sp = db.begin_nested()
                     # Cross-source dedup
                     if not force_reprocess and self._check_cross_source_duplicate(paper, db):
                         result.papers_skipped_duplicate += 1
                         logger.debug(f"Cross-source duplicate: {paper.title}")
+                        sp.rollback()
                         continue
 
                     content_data = self._paper_to_content_data(
@@ -489,13 +503,14 @@ class ScholarContentIngestionService:
                         result.papers_ingested += 1
                     else:
                         result.papers_skipped_duplicate += 1
+                    sp.commit()
                 except Exception as e:
                     result.papers_failed += 1
                     logger.error(
                         f"Failed to ingest paper '{paper.title}': {e}",
                         exc_info=True,
                     )
-                    db.rollback()
+                    sp.rollback()
 
         logger.info(
             f"Scholar search '{query}': found={result.papers_found}, "
@@ -636,8 +651,10 @@ class ScholarContentIngestionService:
         with get_db() as db:
             for paper in papers:
                 try:
+                    sp = db.begin_nested()
                     if not force_reprocess and self._check_cross_source_duplicate(paper, db):
                         result.papers_skipped_duplicate += 1
+                        sp.rollback()
                         continue
 
                     content_data = self._paper_to_content_data(
@@ -651,13 +668,14 @@ class ScholarContentIngestionService:
                         result.papers_ingested += 1
                     else:
                         result.papers_skipped_duplicate += 1
+                    sp.commit()
                 except Exception as e:
                     result.papers_failed += 1
                     logger.error(
                         f"Failed to ingest {direction} paper '{paper.title}': {e}",
                         exc_info=True,
                     )
-                    db.rollback()
+                    sp.rollback()
 
         logger.info(
             f"Citation traversal ({direction}) for {paper_id}: "

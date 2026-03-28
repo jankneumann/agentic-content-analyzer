@@ -5,6 +5,11 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.ingestion.scholar import ScholarContentIngestionService
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +40,14 @@ S2_URL_PATTERN = re.compile(r"semanticscholar\.org/paper/[^/]+/([0-9a-f]{40})")
 
 
 class ReferenceExtractor:
-    """Extracts academic paper references from Content markdown."""
+    """Extracts academic paper references from Content markdown.
+
+    Combines regex-based extraction with optional ingestion through
+    ScholarContentIngestionService for the ``aca ingest scholar-refs`` workflow.
+    """
+
+    def __init__(self) -> None:
+        self._scholar_service: ScholarContentIngestionService | None = None
 
     def extract_arxiv_ids(self, text: str) -> set[str]:
         ids: set[str] = set()
@@ -99,3 +111,117 @@ class ReferenceExtractor:
             len(all_ids),
         )
         return sorted(all_ids)
+
+    # ------------------------------------------------------------------
+    # Ingestion workflow (used by orchestrator)
+    # ------------------------------------------------------------------
+
+    def _get_scholar_service(self) -> ScholarContentIngestionService:
+        """Lazy-create the scholar ingestion service."""
+        if self._scholar_service is None:
+            from src.ingestion.scholar import ScholarContentIngestionService
+
+            self._scholar_service = ScholarContentIngestionService()
+        return self._scholar_service
+
+    async def ingest_extracted_references(
+        self,
+        *,
+        after: datetime | None = None,
+        before: datetime | None = None,
+        source_types: list[str] | None = None,
+        dry_run: bool = False,
+        limit: int | None = None,
+    ) -> ReferenceExtractionResult:
+        """Extract references from existing content and ingest them.
+
+        Queries the database for Content records, extracts academic
+        identifiers (arXiv, DOI, S2), then uses ScholarContentIngestionService
+        to resolve and ingest each reference.
+
+        Args:
+            after: Only scan content created after this date.
+            before: Only scan content created before this date.
+            source_types: Filter content by source type names.
+            dry_run: Report what would be ingested without persisting.
+            limit: Maximum references to ingest.
+
+        Returns:
+            ReferenceExtractionResult with counts.
+        """
+        from sqlalchemy import text as sa_text
+
+        from src.models.content import Content
+        from src.storage.database import get_db
+
+        result = ReferenceExtractionResult()
+
+        # Query content records
+        with get_db() as db:
+            query = db.query(Content)
+
+            if after:
+                query = query.filter(Content.created_at >= after)
+            if before:
+                query = query.filter(Content.created_at <= before)
+            if source_types:
+                query = query.filter(
+                    Content.source_type.cast(sa_text("text")).in_(source_types)
+                )
+
+            contents = query.all()
+
+        # Extract identifiers
+        identifiers = self.extract_from_contents(contents)
+        result.content_scanned = len(contents)
+        result.references_found = len(identifiers)
+
+        if dry_run:
+            logger.info(
+                "Dry run: found %d references from %d content records",
+                result.references_found,
+                result.content_scanned,
+            )
+            return result
+
+        if not identifiers:
+            return result
+
+        # Apply limit
+        if limit and limit < len(identifiers):
+            identifiers = identifiers[:limit]
+
+        # Ingest each reference
+        service = self._get_scholar_service()
+        for identifier in identifiers:
+            try:
+                paper_result = await service.ingest_paper(identifier)
+                if paper_result.ingested:
+                    result.papers_ingested += 1
+                    result.references_resolved += 1
+                elif paper_result.already_exists:
+                    result.papers_skipped_duplicate += 1
+                    result.references_resolved += 1
+                elif paper_result.error:
+                    result.references_unresolved += 1
+                else:
+                    result.references_resolved += 1
+            except Exception as e:
+                result.references_unresolved += 1
+                logger.warning("Failed to resolve reference %s: %s", identifier, e)
+
+        logger.info(
+            "Reference ingestion: scanned=%d, found=%d, ingested=%d, "
+            "skipped_dup=%d, unresolved=%d",
+            result.content_scanned,
+            result.references_found,
+            result.papers_ingested,
+            result.papers_skipped_duplicate,
+            result.references_unresolved,
+        )
+        return result
+
+    async def close(self) -> None:
+        """Close the underlying scholar service if created."""
+        if self._scholar_service is not None:
+            await self._scholar_service.close()
