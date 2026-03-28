@@ -49,6 +49,12 @@ The system MUST retrieve a single paper by arXiv ID. It SHALL support standard I
 - **THEN** `normalize_arxiv_id()` extracts `2301.12345` as the base ID
 - **AND** the system constructs the API URL from the extracted ID (not the user-provided URL)
 
+#### Scenario: Lookup by DOI
+
+- **WHEN** a user provides a DOI like `10.48550/arXiv.2301.12345`
+- **THEN** `normalize_arxiv_id()` extracts the arXiv ID `2301.12345` from the DOI
+- **AND** fetches the paper via the standard arXiv API
+
 #### Scenario: Invalid arXiv identifier
 
 - **WHEN** a user provides an identifier that does not match any known arXiv ID format
@@ -176,7 +182,7 @@ All dates parsed from feedparser `published_parsed` and `updated_parsed` fields 
 
 ### Requirement: Content Model
 
-Each arXiv paper SHALL create a Content record with `source_type = ContentSource.ARXIV`, `source_id` = base arXiv ID, `source_url` = `https://arxiv.org/abs/{id}`, `publication` = `"arXiv [{primary_category}]"`, and `metadata_json` containing: `arxiv_id`, `arxiv_version`, `categories`, `primary_category`, `authors` (list), `abstract`, `doi`, `journal_ref`, `comment`, `updated_date`, `pdf_extracted`, `pdf_pages`, `ingestion_mode`.
+Each arXiv paper SHALL create a Content record with `source_type = ContentSource.ARXIV`, `source_id` = base arXiv ID, `source_url` = `https://arxiv.org/abs/{id}`, `publication` = `"arXiv [{primary_category}]"`, `raw_content` = abstract XML from Atom feed, `raw_format` = `"xml"`, and `metadata_json` containing: `arxiv_id`, `arxiv_version`, `categories`, `primary_category`, `authors` (list), `abstract`, `doi`, `journal_ref`, `comment`, `updated_date`, `pdf_extracted`, `pdf_pages`, `ingestion_mode`.
 
 #### Scenario: Content record created from arXiv paper
 
@@ -279,3 +285,32 @@ The system SHALL create an Alembic migration that:
 
 - **WHEN** the migration runs on a database that already has the `arxiv` enum value and GIN index
 - **THEN** it completes without error (uses `IF NOT EXISTS` guards)
+
+### Requirement: MCP Tools
+
+The system SHALL provide MCP tools that mirror the CLI commands:
+- `ingest_arxiv(max, days, force_reprocess, no_pdf)` — mirrors `aca ingest arxiv`
+- `ingest_arxiv_paper(identifier, no_pdf, force_reprocess)` — mirrors `aca ingest arxiv-paper`
+
+#### Scenario: MCP tool ingests arXiv papers
+
+- **WHEN** the `ingest_arxiv` MCP tool is called with `max=10`
+- **THEN** it delegates to `ingest_arxiv()` orchestrator function
+- **AND** returns the count of ingested papers
+
+#### Scenario: MCP tool ingests single paper
+
+- **WHEN** the `ingest_arxiv_paper` MCP tool is called with `identifier="2301.12345"`
+- **THEN** it delegates to `ingest_arxiv_paper()` orchestrator function
+- **AND** returns the paper result details
+
+### Requirement: Frontend Source Type Registration
+
+The frontend SHALL display `ARXIV` as a recognized source type with an appropriate label ("arXiv") and icon (`FileText` from lucide-react) in the content list and ingest pages.
+
+#### Scenario: arXiv content appears in content list
+
+- **GIVEN** the database contains Content records with `source_type=ARXIV`
+- **WHEN** a user views the content list page
+- **THEN** arXiv records display with the "arXiv" label and FileText icon
+- **AND** can be filtered by the arXiv source type

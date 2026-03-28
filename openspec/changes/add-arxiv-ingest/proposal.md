@@ -51,7 +51,7 @@ The two features share deduplication infrastructure (GIN-indexed `metadata_json`
 ## Scope
 
 ### In Scope
-- arXiv API client (Atom feed search + OAI-PMH for new submissions)
+- arXiv API client (Atom feed search for categories and keywords)
 - PDF download and full-text extraction via existing Docling parser
 - Version-aware deduplication (base arXiv ID as `source_id`, version in metadata)
 - `ARXIV` content source type and Alembic migration
