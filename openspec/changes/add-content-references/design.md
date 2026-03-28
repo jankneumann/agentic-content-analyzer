@@ -87,6 +87,15 @@ SQLAlchemy model uses `sa.String(20)` with `@validates` decorator to enforce enu
 
 ## Reference Extraction Service
 
+### Migration from Existing Code
+
+The existing `src/ingestion/reference_extractor.py` (from Scholar PR #338) provides the foundation. This proposal refactors it to `src/services/reference_extractor.py` and extends it:
+
+- **Preserved**: `ARXIV_PATTERNS`, `DOI_PATTERNS`, `S2_URL_PATTERN` regex patterns, `extract_all()`, `extract_from_contents()`, `ingest_extracted_references()` methods
+- **Restructured**: Separate pattern constants → unified `REFERENCE_PATTERNS` dict keyed by `ExternalIdType`
+- **Added**: `classify_url()`, `_find_chunk_for_offset()`, `extract_context()`, `extract_from_content()` (DB-aware), `store_references()` (atomic persistence), `ExtractedReference` dataclass
+- **Backward compatibility**: `src/ingestion/reference_extractor.py` becomes a re-export shim
+
 ### Pattern Matching
 
 ```python
