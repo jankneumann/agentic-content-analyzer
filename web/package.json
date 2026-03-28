@@ -19,10 +19,16 @@
     "cap:dev": "VITE_API_URL=http://localhost:8000 vite & npx cap sync && npx cap open ios",
     "cap:build": "vite build && npx cap sync",
     "cap:open:ios": "npx cap open ios",
-    "cap:open:android": "npx cap open android"
+    "cap:open:android": "npx cap open android",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-global-shortcut": "^2.0.0",
+    "@tauri-apps/plugin-notification": "^2.0.0",
+    "@tauri-apps/plugin-shell": "^2.0.0",
     "@capacitor/android": "^8.3.0",
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.3.0",
@@ -75,6 +81,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
+    "@tauri-apps/cli": "^2.0.0",
     "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/typography": "^0.5.19",

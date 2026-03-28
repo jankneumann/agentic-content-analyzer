@@ -277,15 +277,14 @@ class Settings(BaseSettings):
     # CORS Configuration
     # Comma-separated list of allowed origins, or "*" for all origins
     # Examples: "http://localhost:5173,http://localhost:3000" or "*"
-    allowed_origins: str = (
-        "http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost"
-    )
+    allowed_origins: str = "http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost,tauri://localhost"
 
     _DEV_DEFAULT_ORIGINS: ClassVar[set[str]] = {
         "http://localhost:5173",
         "http://localhost:3000",
         "capacitor://localhost",
         "http://localhost",
+        "tauri://localhost",
     }
 
     def _is_dev_default_origins(self) -> bool:
