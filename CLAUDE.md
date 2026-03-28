@@ -22,6 +22,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Content Capture](docs/CONTENT_CAPTURE.md) | Chrome extension, bookmarklet, save URL API |
 | [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
+| [Desktop](docs/DESKTOP_DEPLOYMENT.md) | Tauri desktop app: build, distribute, remote backend, CORS |
 
 **Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
 
