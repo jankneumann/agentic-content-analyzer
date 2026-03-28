@@ -195,11 +195,12 @@ Phase 3:                 │                   │
   3. Format tree search prompt with query + tree JSON (compact IDs)
   4. Execute LLM calls concurrently via `asyncio.gather()` with `tree_search_timeout_seconds` timeout
   5. Parse JSON response to get `node_list` (compact IDs) and `thinking`
-  6. Resolve compact IDs back to DB chunk IDs via mapping
-  7. Fetch leaf chunks under selected nodes (recursive children query)
-  8. Convert to `SearchResult` objects with `tree_reasoning` populated from `thinking`
-  9. Handle LLM errors/timeouts gracefully — log warning, fall back to empty results for that document
-  10. Create telemetry spans with `tree_depth`, `node_count`, `query`, `selected_node_ids`, `duration_ms`
+  6. Validate returned compact IDs exist in the mapping — silently skip unknown IDs (LLM hallucination guard), log warning if any skipped
+  7. Resolve valid compact IDs back to DB chunk IDs via mapping
+  8. Fetch leaf chunks under selected nodes (recursive children query) — use only tree chunks (`tree_depth IS NOT NULL`), never flat chunks for the same content_id
+  9. Convert to `SearchResult` objects with `tree_reasoning` populated from `thinking`
+  10. Handle LLM errors/timeouts gracefully — log warning, fall back to empty results for that document
+  11. Create telemetry spans with `tree_depth`, `node_count`, `query`, `selected_node_ids`, `duration_ms`
 - **Model resolution**: Use `ModelStep.TREE_SEARCH` (not a Settings field)
 
 ### Task 3.5: Update SearchResult model
@@ -213,7 +214,7 @@ Phase 3:                 │                   │
 - **Work**: Modify `HybridSearchService.search()`:
   1. After applying filters, partition matching content_ids into tree-indexed and flat-indexed sets
   2. Tree-indexed: content_ids that have chunks with `tree_depth IS NOT NULL` (authoritative check)
-  3. Run tree search for tree-indexed set (if `tree_search_enabled`), capped at `tree_search_max_documents`
+  3. Run tree search for tree-indexed set (if `tree_search_enabled`), capped at `tree_search_max_documents`. Tree search returns results from tree chunks only — flat chunks for the same content_id are NOT included (they exist for BM25/vector fallback, not tree search)
   4. Run standard BM25 + vector search for flat-indexed set (and as fallback for tree-indexed overflow and timeouts)
   5. Merge both result sets via existing RRF fusion
 
