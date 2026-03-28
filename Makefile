@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -551,6 +551,58 @@ test-crawl4ai:  ## Run Crawl4AI integration tests (requires: make crawl4ai-up)
 		echo "✗ Crawl4AI is not running! Start with: make crawl4ai-up"; \
 		exit 1; \
 	fi
+
+# =============================================================================
+# Tauri Desktop App
+# =============================================================================
+
+tauri-setup:  ## Install Rust toolchain and Tauri dependencies
+	@echo "Checking Rust toolchain..."
+	@if ! command -v cargo >/dev/null 2>&1; then \
+		echo "Installing Rust via rustup..."; \
+		curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; \
+		echo ""; \
+		echo "✓ Rust installed. Run 'source ~/.cargo/env' then retry."; \
+		echo "  (or open a new terminal)"; \
+		exit 1; \
+	else \
+		echo "✓ Rust $$(rustc --version | cut -d' ' -f2) found"; \
+	fi
+	@echo "Installing frontend dependencies..."
+	@cd web && pnpm install
+	@echo ""
+	@echo "✓ Tauri setup complete! Run 'make tauri-dev' to start."
+
+tauri-dev:  ## Start Tauri desktop app in dev mode (Vite HMR + native window)
+	@if ! command -v cargo >/dev/null 2>&1; then \
+		echo "✗ Rust not installed! Run: make tauri-setup"; \
+		exit 1; \
+	fi
+	@echo "Starting backend API..."
+	@$(MAKE) dev-bg 2>/dev/null || true
+	@echo "Starting Tauri dev mode (first build takes 2-5 min)..."
+	@cd web && pnpm tauri:dev
+
+tauri-build:  ## Build Tauri desktop app for current platform
+	@if ! command -v cargo >/dev/null 2>&1; then \
+		echo "✗ Rust not installed! Run: make tauri-setup"; \
+		exit 1; \
+	fi
+	@cd web && pnpm tauri:build
+	@echo ""
+	@echo "✓ Build complete! Output in web/src-tauri/target/release/bundle/"
+
+tauri-icons:  ## Generate Tauri app icons from source (use ICON=path/to/icon.png)
+	@if [ -z "$(ICON)" ]; then \
+		echo "Usage: make tauri-icons ICON=path/to/1024x1024.png"; \
+		exit 1; \
+	fi
+	@cd web && npx tauri icon "$(ICON)"
+	@echo "✓ Icons generated in web/src-tauri/icons/"
+
+test-tauri:  ## Run Tauri E2E tests (no Rust needed — mocked Tauri context)
+	@cd web && pnpm exec playwright test tests/e2e/tauri/ --ignore-snapshots
+	@echo "✓ Tauri E2E tests passed"
 
 full-up:  ## Start all services (core + Opik observability)
 	@echo "Starting core services..."
