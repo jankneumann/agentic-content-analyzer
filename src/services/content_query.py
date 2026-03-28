@@ -113,8 +113,40 @@ class ContentQueryService:
                 # Rebuild base_q to only include limited IDs
                 base_q = db.query(Content).filter(Content.id.in_(limited_ids))
 
-            # Total count
-            total_count = base_q.count()
+            # Single multi-dimensional query to fetch all aggregates in one pass
+            # This avoids the N+1 query problem of multiple count/group_by queries
+            grouped_stats = (
+                base_q.with_entities(
+                    Content.source_type,
+                    Content.status,
+                    func.count(Content.id),
+                    func.min(Content.published_date),
+                    func.max(Content.published_date),
+                )
+                .group_by(Content.source_type, Content.status)
+                .all()
+            )
+
+            total_count = 0
+            source_counts = {}
+            status_counts = {}
+            earliest_dt = None
+            latest_dt = None
+
+            for src, stat, cnt, min_d, max_d in grouped_stats:
+                total_count += cnt
+
+                if src:
+                    source_counts[src.value] = source_counts.get(src.value, 0) + cnt
+                if stat:
+                    status_counts[stat.value] = status_counts.get(stat.value, 0) + cnt
+
+                if min_d:
+                    if earliest_dt is None or min_d < earliest_dt:
+                        earliest_dt = min_d
+                if max_d:
+                    if latest_dt is None or max_d > latest_dt:
+                        latest_dt = max_d
 
             if total_count == 0:
                 return ContentQueryPreview(
@@ -126,30 +158,11 @@ class ContentQueryService:
                     query=query,
                 )
 
-            # Breakdown by source type
-            source_counts = (
-                base_q.with_entities(Content.source_type, func.count(Content.id))
-                .group_by(Content.source_type)
-                .all()
-            )
-            by_source = dict(sorted((src.value, cnt) for src, cnt in source_counts))
+            by_source = dict(sorted(source_counts.items()))
+            by_status = dict(sorted(status_counts.items()))
 
-            # Breakdown by status
-            status_counts = (
-                base_q.with_entities(Content.status, func.count(Content.id))
-                .group_by(Content.status)
-                .all()
-            )
-            by_status = dict(sorted((st.value, cnt) for st, cnt in status_counts))
-
-            # Date range
-            date_stats = base_q.with_entities(
-                func.min(Content.published_date),
-                func.max(Content.published_date),
-            ).one()
-
-            earliest = date_stats[0].isoformat() if date_stats[0] else None
-            latest = date_stats[1].isoformat() if date_stats[1] else None
+            earliest = earliest_dt.isoformat() if earliest_dt else None
+            latest = latest_dt.isoformat() if latest_dt else None
 
             # Sample titles (most recent first, up to PREVIEW_SAMPLE_LIMIT)
             sample_q = (

@@ -145,9 +145,7 @@ class ContentRelevanceFilter:
                 relevant.append(item)
             else:
                 filtered_count += 1
-                logger.debug(
-                    f"Filtered out (strategy={result.strategy_used}): {item.title!r}"
-                )
+                logger.debug(f"Filtered out (strategy={result.strategy_used}): {item.title!r}")
 
         if filtered_count > 0:
             logger.info(
@@ -182,15 +180,12 @@ class ContentRelevanceFilter:
 
     def _call_llm(self, title: str, excerpt: str) -> FilterResult:
         """Make the actual LLM call for relevance classification."""
-        from src.config import settings as app_settings
         from src.config.models import ModelStep, get_model_config
         from src.services.llm_router import LLMRouter
         from src.services.prompt_service import PromptService
 
         model_config = get_model_config()
-        model = self.model_override or model_config.get_model_for_step(
-            ModelStep.CONTENT_FILTERING
-        )
+        model = self.model_override or model_config.get_model_for_step(ModelStep.CONTENT_FILTERING)
 
         prompt_service = PromptService()
         system_prompt = prompt_service.get_pipeline_prompt("content_filtering", "system")
