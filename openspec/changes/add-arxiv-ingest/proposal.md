@@ -52,7 +52,8 @@ The two features share deduplication infrastructure (GIN-indexed `metadata_json`
 - Citation graph traversal (covered by Semantic Scholar proposal)
 - LaTeX source parsing (PDF extraction is sufficient)
 - arXiv bulk data access (requires institutional agreement)
-- Automatic cross-enrichment between Scholar and arXiv (future enhancement)
+- Reference extraction and citation tracking (covered by `add-content-references` proposal)
+- Scholar ↔ arXiv supplementary linking (covered by `add-content-references` proposal)
 
 ## Risks
 
