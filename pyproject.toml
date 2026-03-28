@@ -275,4 +275,5 @@ markers = [
     "smoke: Smoke tests against a live API server (require running backend)",
     "contract: API contract and fuzz tests (require test database)",
     "neon: marks tests that require Neon database credentials (deselect with '-m not neon')",
+    "regression: Regression tests verifying end-to-end workflow consistency (CLI + UX + API contracts)",
 ]

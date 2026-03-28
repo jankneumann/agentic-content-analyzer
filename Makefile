@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -63,6 +63,19 @@ test-langfuse:  ## Run Langfuse integration tests (requires: make langfuse-up)
 
 test-integration:  ## Run integration tests (requires test services)
 	pytest tests/integration/ -v
+
+test-regression:  ## Run regression tests (CLI workflows + API contracts, no external deps)
+	pytest tests/cli/test_regression_daily_pipeline.py tests/regression/ -v -m regression --no-cov
+
+test-regression-e2e:  ## Run Playwright regression E2E tests (no backend needed)
+	cd web && pnpm exec playwright test tests/e2e/regression/ --ignore-snapshots
+
+test-regression-all:  ## Run all regression tests (Python + Playwright)
+	$(MAKE) test-regression
+	$(MAKE) test-regression-e2e
+
+test-e2e-live:  ## Run live E2E pipeline tests (requires running backend + LLM keys)
+	pytest tests/e2e/ -v -m e2e --no-cov
 
 test-hoverfly:  ## Run Hoverfly integration tests (requires: make hoverfly-up)
 	@if ! curl -sf http://localhost:8888/api/v2/hoverfly >/dev/null 2>&1; then \
