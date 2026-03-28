@@ -12,7 +12,17 @@
  */
 
 import * as React from "react"
-import { ChevronDown, ChevronRight, FileText, Loader2, Lightbulb, Cpu, Target, Quote, BookOpen } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Loader2,
+  Lightbulb,
+  Cpu,
+  Target,
+  Quote,
+  BookOpen,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -32,13 +42,17 @@ interface SummariesListPaneProps {
 }
 
 // Memoized to prevent re-renders when parent layout changes (e.g. chat streaming, resizing)
-export const SummariesListPane = React.memo(function SummariesListPane({ summaries, isLoading = false, className }: SummariesListPaneProps) {
+export const SummariesListPane = React.memo(function SummariesListPane({
+  summaries,
+  isLoading = false,
+  className,
+}: SummariesListPaneProps) {
   if (isLoading) {
     return (
       <div className={cn("flex h-full flex-col", className)}>
         <ReviewPaneHeader title="Source Summaries" />
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
         </div>
       </div>
     )
@@ -86,7 +100,10 @@ interface CollapsibleSummaryProps {
   defaultOpen?: boolean
 }
 
-const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, defaultOpen = false }: CollapsibleSummaryProps) {
+const CollapsibleSummary = React.memo(function CollapsibleSummary({
+  summary,
+  defaultOpen = false,
+}: CollapsibleSummaryProps) {
   const [isOpen, setIsOpen] = React.useState(defaultOpen)
 
   const sectionCount =
@@ -97,30 +114,32 @@ const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, def
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className="rounded-lg border bg-card">
+      <div className="bg-card rounded-lg border">
         <CollapsibleTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start gap-2 p-3 h-auto"
+            className="h-auto w-full justify-start gap-2 p-3"
           >
             {isOpen ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
             ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
             )}
-            <div className="flex-1 text-left min-w-0">
-              <div className="font-medium truncate">
-                <span className="text-muted-foreground font-normal">[{summary.content_id}]</span>{" "}
+            <div className="min-w-0 flex-1 text-left">
+              <div className="truncate font-medium">
+                <span className="text-muted-foreground font-normal">
+                  [{summary.content_id}]
+                </span>{" "}
                 {summary.title}
               </div>
               {summary.publication && (
-                <div className="text-xs text-muted-foreground truncate">
+                <div className="text-muted-foreground truncate text-xs">
                   {summary.publication}
                 </div>
               )}
             </div>
-            <div className="flex gap-1 shrink-0">
+            <div className="flex shrink-0 gap-1">
               <Badge variant="outline" className="text-xs">
                 {summary.key_themes.length} themes
               </Badge>
@@ -133,7 +152,7 @@ const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, def
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t px-4 py-3 space-y-4">
+          <div className="space-y-4 border-t px-4 py-3">
             {/* Executive Summary - Always visible */}
             <SummarySection
               title="Executive Summary"
@@ -167,7 +186,10 @@ const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, def
               >
                 <ul className="space-y-2">
                   {summary.strategic_insights.map((insight, idx) => (
-                    <li key={idx} className="text-sm leading-relaxed pl-2 border-l-2 border-muted/50">
+                    <li
+                      key={idx}
+                      className="border-muted/50 border-l-2 pl-2 text-sm leading-relaxed"
+                    >
                       {insight}
                     </li>
                   ))}
@@ -184,7 +206,10 @@ const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, def
               >
                 <ul className="space-y-2">
                   {summary.technical_details.map((detail, idx) => (
-                    <li key={idx} className="text-sm leading-relaxed pl-2 border-l-2 border-muted/50">
+                    <li
+                      key={idx}
+                      className="border-muted/50 border-l-2 pl-2 text-sm leading-relaxed"
+                    >
                       {detail}
                     </li>
                   ))}
@@ -201,7 +226,10 @@ const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, def
               >
                 <ul className="space-y-2">
                   {summary.actionable_items.map((item, idx) => (
-                    <li key={idx} className="text-sm leading-relaxed pl-2 border-l-2 border-muted/50">
+                    <li
+                      key={idx}
+                      className="border-muted/50 border-l-2 pl-2 text-sm leading-relaxed"
+                    >
                       {item}
                     </li>
                   ))}
@@ -220,7 +248,7 @@ const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, def
                   {summary.notable_quotes.map((quote, idx) => (
                     <li
                       key={idx}
-                      className="text-sm leading-relaxed pl-3 border-l-2 border-muted-foreground/30 italic"
+                      className="border-muted-foreground/30 border-l-2 pl-3 text-sm leading-relaxed italic"
                     >
                       "{quote}"
                     </li>
@@ -230,12 +258,10 @@ const CollapsibleSummary = React.memo(function CollapsibleSummary({ summary, def
             )}
 
             {/* Metadata */}
-            <div className="flex items-center gap-3 text-xs text-muted-foreground pt-2 border-t">
+            <div className="text-muted-foreground flex items-center gap-3 border-t pt-2 text-xs">
               <span>Model: {summary.model_used}</span>
               {summary.processing_time_seconds && (
-                <span>
-                  {summary.processing_time_seconds.toFixed(1)}s
-                </span>
+                <span>{summary.processing_time_seconds.toFixed(1)}s</span>
               )}
             </div>
           </div>
@@ -251,10 +277,14 @@ interface SummarySectionProps {
   children: React.ReactNode
 }
 
-const SummarySection = React.memo(function SummarySection({ title, icon, children }: SummarySectionProps) {
+const SummarySection = React.memo(function SummarySection({
+  title,
+  icon,
+  children,
+}: SummarySectionProps) {
   return (
     <div>
-      <h4 className="text-xs font-medium uppercase text-muted-foreground mb-1.5 flex items-center gap-1.5">
+      <h4 className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase">
         {icon}
         {title}
       </h4>
@@ -286,28 +316,26 @@ const CollapsibleSubSection = React.memo(function CollapsibleSubSection({
         <button
           type="button"
           aria-expanded={isOpen}
-          className="flex items-center gap-1.5 w-full text-left hover:text-foreground/80"
+          className="hover:text-foreground/80 focus-visible:ring-ring flex w-full items-center gap-1.5 rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none"
         >
           {isOpen ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
           ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <ChevronRight className="text-muted-foreground h-3 w-3 shrink-0" />
           )}
-          <span className="text-xs font-medium uppercase text-muted-foreground flex items-center gap-1.5">
+          <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium uppercase">
             {icon}
             {title}
           </span>
           {count !== undefined && (
-            <Badge variant="outline" className="text-xs ml-1">
+            <Badge variant="outline" className="ml-1 text-xs">
               {count}
             </Badge>
           )}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-2 ml-4">
-          {children}
-        </div>
+        <div className="mt-2 ml-4">{children}</div>
       </CollapsibleContent>
     </Collapsible>
   )
@@ -316,9 +344,11 @@ const CollapsibleSubSection = React.memo(function CollapsibleSubSection({
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <FileText className="mb-3 h-10 w-10 text-muted-foreground/50" />
-      <p className="text-sm font-medium text-muted-foreground">No source summaries</p>
-      <p className="mt-1 text-xs text-muted-foreground/70">
+      <FileText className="text-muted-foreground/50 mb-3 h-10 w-10" />
+      <p className="text-muted-foreground text-sm font-medium">
+        No source summaries
+      </p>
+      <p className="text-muted-foreground/70 mt-1 text-xs">
         No summaries found for this digest period.
       </p>
     </div>
