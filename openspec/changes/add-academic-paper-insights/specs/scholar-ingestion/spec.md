@@ -110,16 +110,22 @@ The system SHALL support exploring a paper's citation graph to discover related 
 #### Scenario: Fetching a paper's references
 
 - **WHEN** the user requests references for a specific paper (via `--with-refs` or explicit command)
-- **THEN** the system fetches the paper's references via `/paper/{id}/references`
-- **AND** applies the same filtering (citation count, field, type) as search-based ingestion
-- **AND** ingests qualifying references as new Content records
-- **AND** stores the relationship in metadata_json (`ingestion_mode: "citation_traversal"`, `parent_paper_id`)
+- **THEN** the system SHALL fetch the paper's references via `/paper/{id}/references`
+- **AND** SHALL apply the same filtering (citation count, field, type) as search-based ingestion
+- **AND** SHALL ingest qualifying references as new Content records
+- **AND** SHALL store the relationship in metadata_json (`ingestion_mode: "citation_traversal"`, `parent_paper_id`)
 
 #### Scenario: Fetching a paper's citations (papers that cite it)
 
 - **WHEN** the user requests citations for a specific paper
-- **THEN** the system fetches citing papers via `/paper/{id}/citations`
-- **AND** applies the same filtering and deduplication as search-based ingestion
+- **THEN** the system SHALL fetch citing papers via `/paper/{id}/citations`
+- **AND** SHALL apply the same filtering and deduplication as search-based ingestion
+
+#### Scenario: Paper with no references or citations
+
+- **WHEN** the citation/reference API returns an empty list for a paper
+- **THEN** the system SHALL log an info message: "Paper {id} has no {references|citations}"
+- **AND** SHALL return a result with zero ingested papers (not an error)
 
 ### Requirement: Reference Extraction from Existing Content
 
