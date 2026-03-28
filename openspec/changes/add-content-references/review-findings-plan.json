@@ -4,156 +4,124 @@
   "reviewer_vendor": "claude-opus-4-6",
   "findings": [
     {
-      "id": "CR-001",
-      "type": "correctness",
+      "id": "PR-001",
+      "type": "security",
       "criticality": "high",
-      "description": "The metadata_json column on the contents table is declared as sa.JSON() (SQLAlchemy JSON type), which maps to PostgreSQL 'json' type, NOT 'jsonb'. GIN indexes (jsonb_path_ops) and the @> containment operator require jsonb. The _find_by_external_id method and GIN index creation will fail against a json column.",
-      "resolution": "Add an ALTER TABLE contents ALTER COLUMN metadata_json TYPE jsonb USING metadata_json::jsonb step to the migration before CREATE INDEX ... USING GIN. Update the SQLAlchemy model to use JSONB instead of JSON for metadata_json. Coordinate with Scholar/arXiv proposals so only the first migration performs the alter.",
+      "description": "REQ-REF-008 API endpoints (GET /api/v1/contents/{id}/references, GET /api/v1/contents/{id}/cited-by) lack authentication specification. Existing content routes use router-level Depends(verify_admin_key). Task 7.1 creates a new router but doesn't specify whether it requires admin auth or is public. Neither the spec nor the design addresses authentication for these read-only endpoints.",
+      "resolution": "Specify in REQ-REF-008: 'Endpoints require session cookie or X-Admin-Key authentication, consistent with existing content routes.' In Task 7.1, add: 'router = APIRouter(dependencies=[Depends(verify_admin_key)])' following src/api/content_routes.py pattern.",
       "disposition": "fix"
     },
     {
-      "id": "CR-002",
-      "type": "spec_gap",
-      "criticality": "high",
-      "description": "The unique constraint uq_content_reference UNIQUE (source_content_id, external_id, external_id_type) does not account for NULL values. In SQL, NULL != NULL, so multiple URL-only references (external_id=NULL) from the same source won't be caught. The partial unique index on external_url handles some cases but nothing prevents references with both external_id=NULL and external_url=NULL.",
-      "resolution": "Add CHECK constraint: CONSTRAINT chk_has_identifier CHECK (external_id IS NOT NULL OR external_url IS NOT NULL). This makes the two unique constraints collectively exhaustive.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-003",
-      "type": "architecture",
-      "criticality": "high",
-      "description": "CLAUDE.md gotcha: autoflush=False + dedup loop. The store_references function adds references in a loop relying on unique constraints. With autoflush=False, newly added rows within the same batch won't be visible to dedup checks, causing collisions at commit.",
-      "resolution": "Use INSERT ... ON CONFLICT DO NOTHING via SQLAlchemy's insert().on_conflict_do_nothing() to handle duplicates atomically. Mandate this conflict-handling strategy in the spec.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-004",
-      "type": "architecture",
-      "criticality": "high",
-      "description": "Three new PostgreSQL enum types are introduced (referencetype, externalidtype, resolutionstatus). CLAUDE.md warns: PG enum + Python StrEnum mismatch requires ALTER TYPE migrations for each new value. Future additions to these enums are very likely.",
-      "resolution": "Use VARCHAR columns with application-level StrEnum validation instead of PG enum types. This avoids the migration burden. The design SQL already uses VARCHAR(20) — align the spec with the design.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-005",
-      "type": "contract_mismatch",
-      "criticality": "medium",
-      "description": "The design SQL schema uses VARCHAR(20) for reference_type, external_id_type, and resolution_status, but spec REQ-REF-010 says 'Add referencetype, externalidtype, resolutionstatus PostgreSQL enum types'. Design and spec contradict each other.",
-      "resolution": "Align spec REQ-REF-010 with the design's VARCHAR approach. Remove the requirement to create PostgreSQL enum types.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-006",
-      "type": "correctness",
-      "criticality": "medium",
-      "description": "The _find_chunk_for_offset function matches regex character offsets from markdown_content against DocumentChunk.start_char/end_char. If the chunker modifies whitespace, strips headers, or transforms text before recording offsets, positions won't align.",
-      "resolution": "Verify that DocumentChunk.start_char/end_char are character offsets into the original markdown_content field. Add spec assertion: 'start_char and end_char SHALL be character offsets into the original markdown_content.'",
-      "disposition": "escalate"
-    },
-    {
-      "id": "CR-007",
-      "type": "performance",
-      "criticality": "medium",
-      "description": "resolve_incoming runs three separate queries per content ingestion (arxiv_id, doi, source_url). The partial index ix_content_refs_unresolved may not cover these queries efficiently.",
-      "resolution": "The existing ix_content_refs_external_id index should cover structured ID lookups. Add resolution_status filter to queries. Monitor query plans; consider composite partial index if needed.",
-      "disposition": "accept"
-    },
-    {
-      "id": "CR-008",
+      "id": "PR-002",
       "type": "security",
       "criticality": "medium",
-      "description": "Auto-ingest depth check uses metadata_json.get('ingestion_mode') == 'auto_ingest' as sole guard. The max_depth parameter is declared but never used. If metadata is NULL or not set correctly (bug), recursive ingestion proceeds.",
-      "resolution": "Track actual depth via auto_ingest_depth: int in metadata_json (0 for user-ingested, 1 for auto-ingest, etc.) and compare against max_depth. More robust than boolean check and supports future depth > 1.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-009",
-      "type": "spec_gap",
-      "criticality": "medium",
-      "description": "REQ-REF-007 specifies bidirectional supplements references but design only creates one direction (Scholar → arXiv). For true bidirectionality, two rows are needed or the query layer must treat supplements as symmetric.",
-      "resolution": "Either create two content_reference rows (one each direction), or document that supplements is symmetric and queries must search both source_content_id and target_content_id.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-010",
-      "type": "spec_gap",
-      "criticality": "medium",
-      "description": "The partial unique constraint uq_content_reference_url uses WHERE clause syntax (UNIQUE ... WHERE external_id IS NULL). Standard SQL UNIQUE constraints do not support WHERE. This must be a partial unique index, not a table constraint.",
-      "resolution": "Change to CREATE UNIQUE INDEX uq_content_reference_url ON content_references (source_content_id, external_url) WHERE external_id IS NULL. Use op.create_index(unique=True, postgresql_where=...) in Alembic.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-011",
-      "type": "architecture",
-      "criticality": "medium",
-      "description": "The resolve_references handler must be registered in register_all_handlers() in src/queue/worker.py. The design does not show the import wiring. Existing handlers are registered inline in _register_content_handlers().",
-      "resolution": "Add a _register_reference_handlers() function call in register_all_handlers() that imports the handler module, following existing pattern.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-012",
-      "type": "architecture",
-      "criticality": "medium",
-      "description": "ReferenceGraphSync creates its own Neo4j driver instance, but the codebase uses Graphiti which manages its own connection. This introduces a second connection pool outside Graphiti's management.",
-      "resolution": "Reuse the existing GraphitiClient.driver instance for citation edge operations instead of creating a separate driver. GraphitiClient already exposes self.driver for raw Cypher queries.",
-      "disposition": "fix"
-    },
-    {
-      "id": "CR-013",
-      "type": "spec_gap",
-      "criticality": "low",
-      "description": "Fail-safe spec (REQ-REF-012) does not specify whether partial extraction results should be persisted if extraction fails mid-way through processing.",
-      "resolution": "Clarify: partial results are persisted (store what succeeded), errors logged at WARNING, no automatic retry.",
+      "description": "MCP tool ingest_reference(reference_id) allows ad-hoc ingestion of any unresolved reference by ID. Since auto-ingest is disabled by default (reference_auto_ingest_enabled=False), this tool effectively bypasses the setting gate. A malicious or misconfigured MCP client could trigger unbounded ingestion by calling ingest_reference in a loop for all unresolved references.",
+      "resolution": "Decision: Option A — ingest_reference is intentionally independent of reference_auto_ingest_enabled. The setting gates unattended background auto-ingestion only. Ad-hoc MCP tool invocation requires explicit per-reference action and is not gated. Documented in REQ-REF-013 and MCP tool docstring.",
       "disposition": "accept"
     },
     {
-      "id": "CR-014",
+      "id": "PR-003",
       "type": "correctness",
-      "criticality": "low",
-      "description": "arXiv ID regex patterns only match new-format IDs (YYMM.NNNNN, post-2007). Old-format IDs (hep-ph/0601001) are not captured.",
-      "resolution": "Add a note: 'Reference extraction supports new-format arXiv IDs (YYMM.NNNNN, April 2007+) only.'",
-      "disposition": "accept"
-    },
-    {
-      "id": "CR-015",
-      "type": "spec_gap",
-      "criticality": "low",
-      "description": "DOI regex pattern r'DOI:\\s*(10\\.\\d{4,9}/[^\\s\\)]+)' uses greedy match that captures trailing punctuation. normalize_id strips some but may miss edge cases.",
-      "resolution": "Tighten regex to exclude common terminators from capture group, or ensure normalize_id handles all edge cases.",
-      "disposition": "accept"
-    },
-    {
-      "id": "CR-016",
-      "type": "correctness",
-      "criticality": "low",
-      "description": "Tasks dependency graph states 'Max parallel width: 3 (sections 1, 2, 9 in first wave)' but Section 9 (MCP Tools) depends on 7 and 8. First wave should be 1, 2, and 10 (Settings).",
-      "resolution": "Fix the parallel width statement to reference correct sections.",
+      "criticality": "high",
+      "description": "Design code shows store_references using on_conflict_do_nothing(constraint='uq_content_reference'), but this only handles references WITH external_id. URL-only references (external_id=NULL) use the partial unique index uq_content_reference_url, not the table constraint. The on_conflict_do_nothing call does not specify a fallback for the partial index path, so duplicate URL-only references would fail with IntegrityError instead of being silently skipped.",
+      "resolution": "Add a second conflict handling path for URL-only references: when ref.external_id is None, use on_conflict_do_nothing(index_elements=['source_content_id', 'external_url'], postgresql_where=text('external_id IS NULL')). Or use a try/except IntegrityError as fallback.",
       "disposition": "fix"
     },
     {
-      "id": "CR-017",
-      "type": "spec_gap",
-      "criticality": "low",
-      "description": "REQ-REF-008 API endpoints do not mention pagination parameters. Other API routes use page/page_size with standard pagination.",
-      "resolution": "Add pagination parameters and metadata to API endpoint spec.",
-      "disposition": "accept"
-    },
-    {
-      "id": "CR-018",
+      "id": "PR-004",
       "type": "architecture",
-      "criticality": "low",
-      "description": "MCP tool resolve_references accepts auto_ingest parameter that could override system-level reference_auto_ingest_enabled setting. Precedence not specified.",
-      "resolution": "Clarify: MCP tool auto_ingest parameter only effective when setting is True. If setting is False, parameter is ignored.",
-      "disposition": "accept"
+      "criticality": "medium",
+      "description": "The design shows resolve_references handler as an async function using get_db() context manager. However, the existing custom worker in src/queue/worker.py processes jobs synchronously within a thread pool — handlers are called inside asyncio.to_thread() or similar. The handler signature and DB session management must match the worker's actual invocation pattern.",
+      "resolution": "Verify whether the custom worker calls handlers with async or sync pattern. If sync, the resolve_references handler should be sync and use get_db() directly. If async, it should use asyncio to_thread for DB calls. Check src/queue/worker.py handler dispatch pattern before implementation.",
+      "disposition": "fix"
     },
     {
-      "id": "CR-019",
+      "id": "PR-005",
       "type": "spec_gap",
       "criticality": "medium",
-      "description": "If chunks are re-indexed (deleted and recreated) without deleting content, source_chunk_id becomes NULL via ON DELETE SET NULL. The spec mentions 'retroactive anchoring when chunks become available' (REQ-REF-001) but provides no mechanism for this update.",
-      "resolution": "Add a task or post-chunking hook that re-anchors references when chunks are re-indexed for a content item: call _find_chunk_for_offset on all references with source_chunk_id IS NULL for the content_id.",
+      "description": "REQ-REF-002 lists 'Internal content URLs (matching the application's own URL patterns)' as a reference type to extract, but no regex pattern, normalization logic, or scenario covers this. The design's REFERENCE_PATTERNS dict only includes arXiv, DOI, and S2. Internal URL matching requires knowing the app's base URL which varies by deployment.",
+      "resolution": "Either: (1) remove 'internal content URLs' from REQ-REF-002 scope and note it as a future enhancement, or (2) add a REFERENCE_PATTERNS entry for internal URLs using a configurable base URL pattern from Settings. Add a scenario covering internal URL detection.",
       "disposition": "fix"
+    },
+    {
+      "id": "PR-006",
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "The design's extract_from_content code calls content.markdown_content directly without null check on line 144. Task 2.6 says 'Handles None/empty markdown_content gracefully' but the design pseudocode would raise AttributeError on NoneType if markdown_content is None, since re.finditer(pattern, None) throws TypeError.",
+      "resolution": "Add early return in the design pseudocode: 'if not content.markdown_content: return []' before the regex scan loop. This matches the scenario 'Content with empty markdown_content' added in iteration 1.",
+      "disposition": "accept"
+    },
+    {
+      "id": "PR-007",
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Task 5.3 wires hooks into 7+ orchestrator functions (ingest_gmail, ingest_rss, ingest_youtube, etc.). This is a large surface area for a cross-cutting concern. If a new ingestion source is added later (e.g., add-arxiv-ingest), the developer must remember to add the hook call. This violates the open-closed principle.",
+      "resolution": "Consider an alternative: add the hook in a centralized post-ingestion point rather than in each orchestrator function. For example, if the queue worker's process_content entrypoint calls extraction, all sources benefit automatically. If per-function hooks are preferred, add a CLAUDE.md gotcha: 'New ingestion orchestrator functions MUST call on_content_ingested() from src/services/reference_hook after content persist.'",
+      "disposition": "accept"
+    },
+    {
+      "id": "PR-008",
+      "type": "performance",
+      "criticality": "medium",
+      "description": "The design's extract_from_content loads ALL chunks for a content item via db.query(DocumentChunk).filter(...).all(). For long documents with hundreds of chunks, this loads all chunk text into memory. The chunks are only needed for offset matching — their full text isn't required.",
+      "resolution": "Use a projection query: only load id, chunk_index, and len(chunk_text) (or a stored chunk_text_length column). Alternatively, accept current approach since chunk counts are typically <50 per document and text is already in memory from the indexing step.",
+      "disposition": "accept"
+    },
+    {
+      "id": "PR-009",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "REQ-REF-008 specifies API response should include 'target content summary (if resolved)' but doesn't define what 'summary' means — is it the content title? First N characters of markdown? A summary record? The Pydantic schema (ReferenceResponse, Task 7.4) doesn't specify these fields.",
+      "resolution": "Define explicitly: resolved references include target_content_id, target_title (Content.title), target_source_type, and target_source_url. Do NOT include full markdown_content or summary text in the reference response to avoid N+1 or payload bloat.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-010",
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Task 1.5 updates the Content SQLAlchemy model to use JSONB instead of JSON for metadata_json. This is a model-level change that affects ALL code touching Content.metadata_json — not just reference-related code. Any query using Content.metadata_json comparisons or serialization could behave differently with JSONB (e.g., key ordering, duplicate key handling). This is a cross-cutting change bundled into a feature-specific migration.",
+      "resolution": "This is acceptable since the JSON→JSONB migration is idempotent and JSONB is strictly superior for queries. Note in the task that this change is intentionally broader than the reference feature — it benefits all metadata_json queries. Add a regression test verifying existing metadata_json reads/writes work after the type change.",
+      "disposition": "accept"
+    },
+    {
+      "id": "PR-011",
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "The SUPPLEMENTS bidirectional reference creation (design.md, Scholar↔arXiv link) creates two rows with the same external_id and external_id_type but different source_content_id values. The uq_content_reference constraint is on (source_content_id, external_id, external_id_type), so both rows have unique combinations. However, if the arXiv→Scholar row also sets external_id=arxiv_id with external_id_type=ARXIV, it semantically says 'arXiv paper references this arXiv ID' which is self-referential and confusing.",
+      "resolution": "For the reverse direction (arXiv→Scholar), use a different identifier if available (e.g., external_id=scholar_s2_paper_id, external_id_type=S2) or set external_id=None with only external_url. This makes the bidirectional rows semantically clearer. Alternatively, document that both rows use the same arXiv ID by convention and this is expected.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-012",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "REQ-REF-009 specifies CLI options --after DATE and --before DATE but doesn't specify the date format. Existing CLI commands use ISO 8601 (YYYY-MM-DD). The spec should be consistent.",
+      "resolution": "Add 'ISO 8601 date format (YYYY-MM-DD)' to the option descriptions.",
+      "disposition": "accept"
+    },
+    {
+      "id": "PR-013",
+      "type": "style",
+      "criticality": "low",
+      "description": "Design decision 'Why anchor to DocumentChunk instead of text snippet?' references 'start_char/end_char give precise structural location' but the design itself acknowledges these fields are never populated. The decision rationale contradicts the implementation reality.",
+      "resolution": "Update the design decision text: remove reference to start_char/end_char precision, or reframe as 'chunk_index and section_path give structural location; start_char/end_char are available for future precision improvements.'",
+      "disposition": "accept"
+    },
+    {
+      "id": "PR-014",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "REQ-REF-008 API endpoints don't specify pagination parameters. Existing API routes in this codebase use page/page_size query parameters with standard pagination metadata in responses.",
+      "resolution": "Add pagination parameters to REQ-REF-008: 'Endpoints accept page (default 1) and page_size (default 20) query parameters, returning standard pagination metadata.'",
+      "disposition": "accept"
+    },
+    {
+      "id": "PR-015",
+      "type": "architecture",
+      "criticality": "low",
+      "description": "The existing ReferenceExtractor in src/ingestion/reference_extractor.py has a close() method for the Scholar service. After migration to src/services/, the class will have both the new stateless extraction methods AND the old stateful Scholar-service-based methods. This mixed responsibility may confuse future contributors.",
+      "resolution": "After migration, consider splitting into two classes: ReferenceExtractor (stateless, extraction + store) and ScholarReferenceIngester (stateful, wraps Scholar service for scholar-refs CLI). The ingester can live alongside or compose the extractor. Not blocking — can be addressed during implementation if the mixed class becomes unwieldy.",
+      "disposition": "accept"
     }
   ]
 }

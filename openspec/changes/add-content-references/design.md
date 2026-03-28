@@ -647,6 +647,10 @@ def ingest_reference(
 ) -> str:
     """Ingest content for a specific unresolved reference (ad-hoc).
 
+    Operates independently of reference_auto_ingest_enabled — requires
+    explicit invocation per reference. The setting gates only unattended
+    background auto-ingestion, not deliberate per-reference requests.
+
     Args:
         reference_id: content_references row ID
 
