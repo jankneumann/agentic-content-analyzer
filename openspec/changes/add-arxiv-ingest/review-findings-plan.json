@@ -1,0 +1,127 @@
+{
+  "review_type": "plan",
+  "target": "add-arxiv-ingest",
+  "reviewer_vendor": "claude-opus-4-6",
+  "findings": [
+    {
+      "id": "ARX-001",
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Design specifies async rate limiting (asyncio.sleep(3)) in ArxivClient, but the pipeline runner wraps orchestrator functions with asyncio.to_thread(func) where func is Callable[[], int] (synchronous). Existing ingestion services (RSS, Gmail, etc.) are synchronous. The design must clarify whether ArxivClient is sync or async.",
+      "resolution": "Make ArxivClient synchronous using httpx.Client (not AsyncClient) and time.sleep(3) for rate limiting, matching existing ingestion clients. If async is required for streaming PDF downloads, the orchestrator function must use asyncio.run(). Recommend sync approach for consistency.",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-002",
+      "type": "correctness",
+      "criticality": "high",
+      "description": "CLAUDE.md gotcha: 'feedparser dates are naive — Always add tzinfo=UTC when converting published_parsed'. The spec uses feedparser for Atom XML parsing but neither the design nor spec mention timezone handling for parsed dates. Naive datetime comparison with timezone-aware DB columns will cause errors.",
+      "resolution": "Add explicit requirement: 'All dates parsed from feedparser published_parsed and updated_parsed fields MUST be converted to timezone-aware datetime with UTC tzinfo before storage.' Add to ArxivClient tasks (section 2).",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-003",
+      "type": "correctness",
+      "criticality": "high",
+      "description": "CLAUDE.md gotcha: ALTER TYPE ADD VALUE cannot run inside a transaction on PostgreSQL. Task 1.2 uses ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'arxiv' but does not note the non-transactional requirement. If the migration runs inside a transaction, it will fail.",
+      "resolution": "Task 1.2 must explicitly note that ALTER TYPE ADD VALUE is non-transactional. Use op.execute() directly or explicitly COMMIT/BEGIN around it as done in existing enum migrations.",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-004",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "REQ-ARXIV-005 (Version-Aware Updates) resets status to PENDING on version update, but does not specify what happens to existing Summary records linked to the old version. Stale Summary records may cause the summarization pipeline to skip or create duplicates.",
+      "resolution": "Add requirement: 'When a version update resets Content status to PENDING, any existing Summary records for that Content MUST be marked as stale or deleted so the summarization pipeline regenerates them.'",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-005",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "REQ-ARXIV-003 specifies max page count enforcement but page count cannot be known before downloading and parsing the PDF. The arXiv API does not provide page count metadata.",
+      "resolution": "Clarify: (1) Download PDF with 50MB size cap during streaming. (2) After download, open with lightweight PDF reader to check page count before full Docling parsing. If pages exceed limit, skip Docling and fall back to abstract-only.",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-006",
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Both add-arxiv-ingest and add-academic-paper-insights create the same GIN index in their Alembic migrations. If both exist, Alembic may produce multiple heads.",
+      "resolution": "Task 1.3 must note: check for existing Alembic heads and merge if needed, per CLAUDE.md gotcha about 'Alembic multiple heads block upgrade head'. Use CREATE INDEX IF NOT EXISTS (already specified) and set appropriate down_revision.",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-007",
+      "type": "security",
+      "criticality": "medium",
+      "description": "REQ-ARXIV-002 accepts arXiv URLs as input to normalize_arxiv_id. A malicious URL could cause SSRF if the client naively fetches the user-provided URL instead of constructing from the extracted ID.",
+      "resolution": "Add requirement: 'ArxivClient MUST construct all API and PDF URLs from the normalized arXiv ID using hardcoded base URLs (export.arxiv.org). User-provided URLs MUST only be used for ID extraction, never passed directly to HTTP clients.'",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-008",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "REQ-ARXIV-009 skips ingestion when a Scholar record exists for the same arXiv ID. This means full-text extraction (the primary value proposition) never happens for papers already discovered by Scholar. The enrichment path is deferred to 'future' without concrete design.",
+      "resolution": "Consider allowing arXiv to create its record alongside Scholar (with a supplements cross-reference via add-content-references), or allow arXiv to enrich the Scholar record's markdown_content. At minimum, document this as a known limitation.",
+      "disposition": "escalate"
+    },
+    {
+      "id": "ARX-009",
+      "type": "style",
+      "criticality": "low",
+      "description": "Requirements use inconsistent RFC language. Some use 'must' lowercase, others use imperative bullets without modal verbs.",
+      "resolution": "Standardize on uppercase MUST/SHALL/SHOULD/MAY per RFC 2119.",
+      "disposition": "accept"
+    },
+    {
+      "id": "ARX-010",
+      "type": "performance",
+      "criticality": "medium",
+      "description": "3-second delay shared between API queries and PDF downloads means 20 papers with PDF extraction requires 63+ seconds minimum just for rate limiting. arXiv PDF CDN likely has more permissive limits than the API.",
+      "resolution": "Separate rate limiters: 3s delay for API queries, more permissive for PDF downloads. Or allow configurable concurrency for PDF downloads.",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-011",
+      "type": "architecture",
+      "criticality": "low",
+      "description": "MCP tools include ingest_arxiv and ingest_arxiv_paper but no search-only tool. MCP users cannot search arXiv without triggering full ingestion.",
+      "resolution": "Consider adding a search_arxiv(query, categories, max_results) MCP tool that returns metadata without ingesting.",
+      "disposition": "accept"
+    },
+    {
+      "id": "ARX-012",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "REQ-ARXIV-010 lists --days as a CLI option but arXiv API does not support date-range filtering natively. Must be client-side filtering after fetch.",
+      "resolution": "Document that --days filtering is applied client-side after API response parsing. Consider increasing max_results when --days is specified.",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-013",
+      "type": "style",
+      "criticality": "low",
+      "description": "Design specifies raw_content as 'PDF binary path or abstract XML' but storing a temp file path is fragile. Existing services store actual raw content.",
+      "resolution": "Clarify that raw_content stores the abstract XML text (not the PDF binary). For PDF-extracted papers, raw_content stores the abstract XML as fallback, raw_format='xml'.",
+      "disposition": "fix"
+    },
+    {
+      "id": "ARX-014",
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "Cross-source dedup is asymmetric: arXiv skips when Scholar exists, but what happens when Scholar encounters an existing arXiv record is not defined. Both proposals need symmetric dedup rules.",
+      "resolution": "Add note cross-referencing expected Scholar behavior and ensure the Scholar spec is updated to handle existing arXiv records.",
+      "disposition": "escalate"
+    },
+    {
+      "id": "ARX-015",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "GIN index table name inconsistency: design says 'ON contents' (plural), Scholar design says 'ON content' (singular). Must match the SQLAlchemy __tablename__.",
+      "resolution": "Verify actual table name from src/models/content.py. The table is 'contents' (plural). Use consistently across both proposals.",
+      "disposition": "fix"
+    }
+  ]
+}
