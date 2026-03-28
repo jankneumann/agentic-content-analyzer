@@ -1,5 +1,5 @@
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub fn setup_shortcuts(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Cmd+Shift+Space (macOS) / Ctrl+Shift+Space (Windows/Linux)
@@ -15,7 +15,7 @@ pub fn setup_shortcuts(app: &tauri::App) -> Result<(), Box<dyn std::error::Error
     let app_handle = app.handle().clone();
 
     match app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
-        if event == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+        if event.state == ShortcutState::Pressed {
             if let Some(window) = app_handle.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();

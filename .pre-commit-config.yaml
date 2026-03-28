@@ -27,6 +27,7 @@ repos:
         args: [--unsafe]  # Allow custom YAML tags
       - id: check-added-large-files
         args: [--maxkb=1000]
+        exclude: \.icns$
       - id: check-merge-conflict
       - id: detect-private-key
 
