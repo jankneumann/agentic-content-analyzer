@@ -1,18 +1,51 @@
 # document-search Delta Spec — Tree Index Chunking
 
-## Requirement: Chunk Thinning
+## MODIFIED Requirements
 
-The system SHALL merge undersized chunks into adjacent chunks when a chunk's token count falls below the configured `min_node_tokens` threshold (default: 50 tokens).
+### Requirement: Semantic Document Chunking
 
-The system SHALL apply chunk thinning as a post-processing step in `MarkdownChunkingStrategy` and `StructuredChunkingStrategy`, after initial heading-based splitting and before chunk index assignment.
+The system SHALL split ingested content into chunks using pluggable chunking strategies selected based on content type and parser.
 
-The system SHALL merge an undersized chunk into the preceding chunk (append), or into the following chunk (prepend) if no preceding chunk exists.
+The system SHALL support the following chunking strategies:
+- **StructuredChunkingStrategy** (`structured`): For DoclingParser output, heading-aware splitting
+- **MarkdownChunkingStrategy** (`markdown`): For markdown content, heading-boundary splitting
+- **YouTubeTranscriptChunkingStrategy** (`youtube_transcript`): For YouTube transcripts
+- **GeminiSummaryChunkingStrategy** (`gemini_summary`): For Gemini-processed summaries
+- **SectionChunkingStrategy** (`section`): For section-level splitting
+- **TreeIndexChunkingStrategy** (`tree_index`): For hierarchical tree index construction from heading hierarchy (H1-H6) on long structured documents
 
-The system SHALL preserve the `section_path` and `heading_text` of the larger (absorbing) chunk during merging.
+The system SHALL apply chunk thinning as a post-processing step in `MarkdownChunkingStrategy` and `StructuredChunkingStrategy`, after initial heading-based splitting and before chunk index assignment. Thinning SHALL merge undersized chunks into adjacent chunks when a chunk's token count falls below the configured `min_node_tokens` threshold (default: 50 tokens).
+
+The system SHALL merge an undersized chunk into the preceding chunk (append), or into the following chunk (prepend) if no preceding chunk exists. The system SHALL preserve the `section_path` and `heading_text` of the larger (absorbing) chunk during merging.
 
 The system SHALL NOT merge chunks with `chunk_type` of TABLE or CODE during thinning, regardless of their token count. Thinning SHALL only apply to PARAGRAPH and SECTION chunk types, preserving semantic classification of specialized content.
 
-The system SHALL expose `min_node_tokens` as a configurable setting with a default of 50.
+The system SHALL expose `min_node_tokens` as a configurable setting with a default of 50. Setting `min_node_tokens` to 0 SHALL disable thinning entirely.
+
+The system SHALL auto-select `TreeIndexChunkingStrategy` when ALL of the following conditions are met:
+1. The content's `markdown_content` exceeds `tree_index_min_tokens` (default: 8000 tokens)
+2. The content's heading hierarchy has depth >= `tree_index_min_heading_depth` (default: 3, e.g., H1 > H2 > H3)
+
+The system SHALL always create flat chunks (via the standard strategy) in addition to tree index chunks. Tree indexing is additive, never replacing flat chunks.
+
+The system SHALL store tree relationships using:
+- `parent_chunk_id`: Nullable self-referential FK on `document_chunks` pointing to the parent node
+- `tree_depth`: Integer indicating the node's depth in the tree (0 = root). Flat chunks have `tree_depth=NULL`. `tree_depth` is the authoritative discriminator between flat and tree chunks — `parent_chunk_id` is NULL for both flat chunks and tree root nodes.
+- `is_summary`: Boolean indicating whether the chunk contains an LLM-generated summary (internal node) vs. actual content (leaf node)
+
+The system SHALL generate LLM summaries for internal (non-leaf) tree nodes using the model resolved via `ModelStep.TREE_SUMMARIZATION` enum → env var `MODEL_TREE_SUMMARIZATION` → DB override → YAML default (`claude-haiku-4-5`). This follows the existing model resolution pattern — it is NOT a Settings field.
+
+The system SHALL perform LLM summarization as an async post-processing step in `index_content()` (following the existing async embedding pattern in `indexing.py`), NOT within the synchronous `ChunkingStrategy.chunk()` method. The `TreeIndexChunkingStrategy.chunk()` method SHALL remain synchronous, building the tree structure and creating placeholder summary chunks with empty `chunk_text`. The indexing service SHALL populate summaries asynchronously after chunk insertion.
+
+The system SHALL parallelize sibling node summarization via `asyncio.gather()` — nodes at the same tree depth with the same parent are independent and can be summarized concurrently. Bottom-up ordering requires children to be summarized before parents, but not sequential processing within a depth level.
+
+The system SHALL store internal node summaries as `DocumentChunk` records with `is_summary=True` and `chunk_type=SECTION`. No new `ChunkType` enum value is needed — the existing `SECTION` value is reused for summary nodes, disambiguated by the `is_summary` boolean.
+
+The system SHALL store leaf nodes as `DocumentChunk` records with `is_summary=False` and the appropriate `chunk_type` (PARAGRAPH, TABLE, CODE, etc.).
+
+The system SHALL expose `tree_index_min_tokens` (default: 8000) and `tree_index_min_heading_depth` (default: 3) as configurable settings.
+
+The system SHALL create telemetry spans for tree summarization LLM calls using the existing observability provider. Spans SHALL include `content_id`, `internal_node_count`, and `total_summary_tokens`.
 
 #### Scenario: Small fragment merged into preceding chunk
 
@@ -46,39 +79,6 @@ The system SHALL expose `min_node_tokens` as a configurable setting with a defau
 - **THEN** the CODE chunk is NOT merged into an adjacent chunk
 - **AND** it remains as a standalone chunk with `chunk_type=CODE` preserved
 
----
-
-## Requirement: Tree Index Chunking Strategy
-
-The system SHALL provide a `TreeIndexChunkingStrategy` (`tree_index`) that builds a hierarchical tree structure from document heading hierarchy (H1-H6).
-
-The system SHALL register `tree_index` in the `STRATEGY_REGISTRY` alongside existing strategies.
-
-The system SHALL auto-select `TreeIndexChunkingStrategy` when ALL of the following conditions are met:
-1. The content's `markdown_content` exceeds `tree_index_min_tokens` (default: 8000 tokens)
-2. The content's heading hierarchy has depth >= 3 (e.g., H1 > H2 > H3)
-
-The system SHALL always create flat chunks (via the standard strategy) in addition to tree index chunks. Tree indexing is additive, never replacing flat chunks.
-
-The system SHALL store tree relationships using:
-- `parent_chunk_id`: Nullable self-referential FK on `document_chunks` pointing to the parent node
-- `tree_depth`: Integer indicating the node's depth in the tree (0 = root)
-- `is_summary`: Boolean indicating whether the chunk contains an LLM-generated summary (internal node) vs. actual content (leaf node)
-
-The system SHALL generate LLM summaries for internal (non-leaf) tree nodes using the model configured via `MODEL_TREE_SUMMARIZATION` (resolved via `ModelStep.TREE_SUMMARIZATION` enum in `src/config/models.py`, default: `claude-haiku-4-5`).
-
-The system SHALL perform LLM summarization as an async post-processing step in `index_content()` (following the existing async embedding pattern in `indexing.py`), NOT within the synchronous `ChunkingStrategy.chunk()` method. The `TreeIndexChunkingStrategy.chunk()` method SHALL remain synchronous, building the tree structure and creating placeholder summary chunks with empty `chunk_text`. The indexing service SHALL populate summaries asynchronously after chunk insertion.
-
-The system SHALL parallelize sibling node summarization via `asyncio.gather()` — nodes at the same tree depth with the same parent are independent and can be summarized concurrently. Bottom-up ordering only requires children to be summarized before parents, not sequential processing within a depth level.
-
-The system SHALL store internal node summaries as `DocumentChunk` records with `is_summary=True` and `chunk_type=SECTION`. No new `ChunkType` enum value is needed — the existing `SECTION` value is reused for summary nodes.
-
-The system SHALL store leaf nodes as `DocumentChunk` records with `is_summary=False` and the appropriate `chunk_type` (PARAGRAPH, TABLE, CODE, etc.).
-
-The system SHALL distinguish flat chunks from tree chunks using the `tree_depth` column: flat chunks have `tree_depth=NULL`, tree root nodes have `tree_depth=0`, and tree children have `tree_depth >= 1`. The `parent_chunk_id` column is `NULL` for both flat chunks and tree root nodes; `tree_depth` is the authoritative discriminator.
-
-The system SHALL expose `tree_index_min_tokens` as a configurable setting (default: 8000).
-
 #### Scenario: Long PDF auto-selects tree index strategy
 
 - **WHEN** a 15,000-token PDF is parsed by DoclingParser
@@ -99,14 +99,14 @@ The system SHALL expose `tree_index_min_tokens` as a configurable setting (defau
 
 - **WHEN** a 12,000-token document has only H1 and H2 headings (depth 2)
 - **THEN** only flat chunks are created
-- **AND** no tree index is built (heading depth < 3)
+- **AND** no tree index is built (heading depth < tree_index_min_heading_depth)
 
 #### Scenario: Tree index coexists with flat chunks
 
 - **WHEN** a qualifying document is indexed
 - **THEN** both flat chunks (for BM25 + vector search) and tree chunks (for tree search) exist in `document_chunks`
 - **AND** flat chunks have `parent_chunk_id=NULL`, `tree_depth=NULL`, `is_summary=NULL`
-- **AND** tree chunks have populated `parent_chunk_id`, `tree_depth`, and `is_summary` values
+- **AND** tree chunks have populated `parent_chunk_id` (except root), `tree_depth >= 0`, and `is_summary` values
 
 #### Scenario: Per-source tree index override
 
@@ -121,9 +121,17 @@ The system SHALL expose `tree_index_min_tokens` as a configurable setting (defau
 - **AND** new flat and tree chunks are created from the current content
 - **AND** new LLM summaries are generated for the new tree structure
 
----
+#### Scenario: Tree summarization fails during indexing
 
-## Requirement: Tree Search Retrieval
+- **WHEN** LLM summarization fails for one or more internal nodes during tree index construction
+- **THEN** the system SHALL delete all tree chunks for that content_id (keeping flat chunks intact)
+- **AND** log a warning with the failure details and content_id
+- **AND** the content remains searchable via flat BM25 + vector search
+- **AND** the indexing operation does not fail overall
+
+## ADDED Requirements
+
+### Requirement: Tree Search Retrieval
 
 The system SHALL provide an LLM-based tree search retrieval path for documents that have tree indexes.
 
@@ -137,7 +145,7 @@ The system SHALL implement tree search as follows:
 5. Fetch actual text content from selected leaf nodes (and their descendants)
 6. Optionally rerank the retrieved content using the existing reranking infrastructure
 
-The system SHALL use the model configured via `MODEL_TREE_SEARCH` (resolved via `ModelStep.TREE_SEARCH` enum in `src/config/models.py`, default: `claude-haiku-4-5`) for tree search LLM calls.
+The system SHALL use the model resolved via `ModelStep.TREE_SEARCH` enum → env var `MODEL_TREE_SEARCH` → DB override → YAML default (`claude-haiku-4-5`). This follows the existing model resolution pattern — it is NOT a Settings field.
 
 The system SHALL limit tree search to a configurable maximum number of documents per query (default: 3, setting: `tree_search_max_documents`). When more tree-indexed documents match, the system SHALL select the top-N by BM25/vector pre-score and fall back to flat search for the remainder.
 
@@ -153,7 +161,7 @@ The system SHALL expose `tree_search_enabled` as a configurable setting (default
 
 The system SHALL fall back to flat hybrid search when tree search fails (LLM error, timeout, invalid response).
 
-The system SHALL create telemetry spans for tree search LLM calls using the existing observability provider. Spans SHALL include: `tree_depth` (max depth of tree), `node_count` (total nodes in tree), `query`, `selected_node_ids` (from LLM response), and `duration_ms`. Tree summarization during indexing SHALL also create telemetry spans with `content_id`, `internal_node_count`, and `total_summary_tokens`.
+The system SHALL create telemetry spans for tree search LLM calls using the existing observability provider. Spans SHALL include: `tree_depth` (max depth of tree), `node_count` (total nodes in tree), `query`, `selected_node_ids` (from LLM response), and `duration_ms`.
 
 #### Scenario: Search query hits tree-indexed document
 
@@ -205,7 +213,7 @@ The system SHALL create telemetry spans for tree search LLM calls using the exis
 #### Scenario: Tree search results include reasoning
 
 - **WHEN** a tree search returns results for a document
-- **THEN** the `SearchResult.tree_reasoning` field contains the LLM's reasoning trace (e.g., "Section 2.1 covers RL training and Section 3.2 covers evaluation results")
+- **THEN** the `SearchResult.tree_reasoning` field contains the LLM's reasoning trace
 - **AND** flat hybrid search results have `tree_reasoning=None`
 
 #### Scenario: Tree search prompt uses compact node IDs
@@ -220,3 +228,44 @@ The system SHALL create telemetry spans for tree search LLM calls using the exis
 - **WHEN** a user runs `aca prompts show search.tree_search`
 - **THEN** the system displays the tree search prompt template
 - **AND** the prompt can be customized via `aca prompts set search.tree_search --value "..."`
+
+### Requirement: Tree Index Backfill
+
+The system SHALL provide a `backfill-tree-index` management command to build tree indexes for existing qualifying content.
+
+The system SHALL scan existing content records and build tree indexes for content that meets the tree index qualification criteria (token count > `tree_index_min_tokens` AND heading depth >= `tree_index_min_heading_depth`).
+
+The system SHALL support a `--dry-run` flag that previews what would be indexed without making changes.
+
+The system SHALL support a `--content-id` flag to target specific content for tree indexing.
+
+The system SHALL support a `--force` flag to rebuild tree indexes for content that already has them (deletes existing tree chunks first, preserves flat chunks). Without `--force`, the system SHALL skip content that already has tree chunks.
+
+#### Scenario: Backfill builds tree index for qualifying content
+
+- **WHEN** an admin runs `aca manage backfill-tree-index`
+- **AND** content record 42 has 15,000 tokens and heading depth 4
+- **AND** content record 42 has no existing tree chunks
+- **THEN** the system builds a tree index for content 42
+- **AND** reports progress and summary
+
+#### Scenario: Backfill skips already-indexed content
+
+- **WHEN** an admin runs `aca manage backfill-tree-index` without `--force`
+- **AND** content record 42 already has tree chunks (`tree_depth IS NOT NULL`)
+- **THEN** content 42 is skipped
+- **AND** the summary reports it as skipped
+
+#### Scenario: Force backfill rebuilds existing tree index
+
+- **WHEN** an admin runs `aca manage backfill-tree-index --force`
+- **AND** content record 42 already has tree chunks
+- **THEN** existing tree chunks for content 42 are deleted (flat chunks preserved)
+- **AND** a new tree index is built from current content
+- **AND** new LLM summaries are generated
+
+#### Scenario: Dry run previews without changes
+
+- **WHEN** an admin runs `aca manage backfill-tree-index --dry-run`
+- **THEN** the system lists qualifying content that would be indexed
+- **AND** no database changes are made

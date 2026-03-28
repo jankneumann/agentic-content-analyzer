@@ -117,6 +117,8 @@ This approach:
 
 **No new ChunkType enum value needed** — internal summary nodes reuse `ChunkType.SECTION`. This avoids the `ALTER TYPE ... ADD VALUE` PostgreSQL migration gotcha documented in CLAUDE.md.
 
+**Failure handling**: If LLM summarization fails for any node (timeout, rate limit, model error), the entire tree index for that content is rolled back — all tree chunks are deleted, flat chunks are preserved. This is a deliberate "all or nothing" approach: a partial tree with missing summaries would produce unpredictable tree search behavior. The content remains fully searchable via flat BM25 + vector search. A warning is logged with the content_id and failure details.
+
 ### Tree Search Retrieval (Phase 3)
 
 ```
