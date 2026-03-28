@@ -129,6 +129,9 @@ image-generation = [
 crawl4ai = [
     "crawl4ai>=0.7.0",  # JS-heavy content extraction via headless browser
 ]
+kreuzberg = [
+    "kreuzberg>=4.0.0,<5.0.0",  # Lightweight Rust-core document extraction (91+ formats)
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -10,6 +10,8 @@
 import type { STTEngine, STTStartOptions } from "./engine"
 import { BrowserSTTEngine } from "./browser-stt-engine"
 import { CloudSTTEngine, type CloudSTTConfig } from "./cloud-stt-engine"
+import { NativeSTTEngine } from "./native-stt-engine"
+import { OnDeviceSTTEngine } from "./on-device-stt-engine"
 
 export interface AutoSTTConfig {
   /** Comma-separated engine preference order */
@@ -40,7 +42,8 @@ export class AutoSTTEngine implements STTEngine {
       "cloud",
       new CloudSTTEngine(config.cloudConfig ?? {})
     )
-    // "native" and "on-device" engines will be added by future proposals
+    this.engines.set("on-device", new OnDeviceSTTEngine())
+    this.engines.set("native", new NativeSTTEngine())
   }
 
   async isAvailable(): Promise<boolean> {
@@ -61,6 +64,12 @@ export class AutoSTTEngine implements STTEngine {
   }
 
   start(options: STTStartOptions): void {
+    // Engine selection is async (some engines need async isAvailable checks)
+    // so we kick off selection and start as an async IIFE
+    void this.selectAndStart(options)
+  }
+
+  private async selectAndStart(options: STTStartOptions): Promise<void> {
     const preference = this.config.preferenceOrder ?? DEFAULT_PREFERENCE
     const order = preference.split(",").map((e) => e.trim())
 
@@ -71,7 +80,8 @@ export class AutoSTTEngine implements STTEngine {
       // Skip cloud if not configured
       if (engineId === "cloud" && !this.config.cloudAvailable) continue
 
-      if (engine.isAvailable()) {
+      const available = await engine.isAvailable()
+      if (available) {
         this.selectedEngine = engine
         engine.start(options)
         return

@@ -131,30 +131,11 @@ db-reset:  ## Reset database (WARNING: deletes all data)
 postgres:  ## Connect to PostgreSQL
 	docker exec -it newsletter-postgres psql -U newsletter_user -d newsletters
 
-redis:  ## Connect to Redis CLI
-	docker exec -it newsletter-redis redis-cli
-
 neo4j:  ## Open Neo4j browser (http://localhost:7474)
 	@echo "Opening Neo4j Browser at http://localhost:7474"
 	@echo "Username: neo4j"
 	@echo "Password: newsletter_password"
 	@open http://localhost:7474 2>/dev/null || xdg-open http://localhost:7474 2>/dev/null || echo "Please open http://localhost:7474 in your browser"
-
-# Pipeline commands
-pipeline:  ## Run full newsletter pipeline (ingest → summarize → digest)
-	python -m scripts.run_pipeline
-
-pipeline-skip-ingest:  ## Run pipeline without ingestion (process existing newsletters)
-	python -m scripts.run_pipeline --skip-ingestion
-
-pipeline-weekly:  ## Run weekly digest pipeline
-	python -m scripts.run_pipeline --weekly
-
-pipeline-auto-approve:  ## Run pipeline and auto-approve digest
-	python -m scripts.run_pipeline --auto-approve
-
-pipeline-yesterday:  ## Process yesterday's newsletters
-	python -m scripts.run_pipeline --date $$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d yesterday +%Y-%m-%d)
 
 # Development servers
 api:  ## Start the backend API server (uvicorn with hot reload)

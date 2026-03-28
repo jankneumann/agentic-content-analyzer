@@ -1,0 +1,257 @@
+# Work Packages for add-kreuzberg-optional-parser
+# DAG: wp-config → [wp-parser-adapter, wp-router-integration] → wp-shadow-eval → wp-tests → wp-integration
+
+change_id: add-kreuzberg-optional-parser
+version: 1
+
+packages:
+  - id: wp-config
+    title: "Dependency and configuration"
+    description: >
+      Add Kreuzberg optional dependency group to pyproject.toml and new settings
+      fields to src/config/settings.py. This is the root package — all others
+      depend on it.
+    tasks:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "pyproject.toml"
+        - "src/config/settings.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-kreuzberg-optional-parser/**"
+      deny:
+        - "src/parsers/**"
+        - "src/api/**"
+        - "tests/**"
+    locks:
+      files:
+        - "pyproject.toml"
+        - "src/config/settings.py"
+      keys:
+        - "config:settings:enable_kreuzberg"
+        - "config:settings:kreuzberg_preferred_formats"
+        - "config:settings:kreuzberg_shadow_formats"
+        - "config:settings:kreuzberg_max_file_size_mb"
+        - "config:settings:kreuzberg_timeout_seconds"
+        - "dep:optional:kreuzberg"
+      ttl_minutes: 120
+      reason: "Kreuzberg dependency and configuration setup"
+    verification:
+      tier: C
+      checks:
+        - "uv sync --extra kreuzberg succeeds"
+        - "python -c 'from src.config.settings import Settings; s = Settings(_env_file=None, anthropic_api_key=\"test\"); assert hasattr(s, \"enable_kreuzberg\")'"
+        - "ruff check src/config/settings.py"
+
+  - id: wp-parser-adapter
+    title: "KreuzbergParser adapter implementation"
+    description: >
+      Implement KreuzbergParser conforming to DocumentParser interface.
+      Maps Kreuzberg's ExtractionResult to DocumentContent model.
+      Uses native async API (no executor wrapping).
+    tasks:
+      - "2.1"
+      - "2.2"
+      - "2.3"
+    priority: 2
+    depends_on:
+      - wp-config
+    scope:
+      write_allow:
+        - "src/parsers/kreuzberg_parser.py"
+      read_allow:
+        - "src/parsers/base.py"
+        - "src/parsers/docling_parser.py"
+        - "src/models/document.py"
+        - "openspec/changes/add-kreuzberg-optional-parser/contracts/**"
+      deny:
+        - "src/parsers/router.py"
+        - "src/api/**"
+        - "tests/**"
+    locks:
+      files:
+        - "src/parsers/kreuzberg_parser.py"
+      keys:
+        - "parser:kreuzberg:adapter"
+      ttl_minutes: 120
+      reason: "KreuzbergParser implementation"
+    verification:
+      tier: C
+      checks:
+        - "ruff check src/parsers/kreuzberg_parser.py"
+        - "mypy src/parsers/kreuzberg_parser.py --ignore-missing-imports"
+
+  - id: wp-router-integration
+    title: "Router and factory wiring"
+    description: >
+      Extend ParserRouter with kreuzberg_parser parameter and
+      kreuzberg_preferred_formats routing. Update get_parser_router()
+      factory in upload_routes.py to wire Kreuzberg when enabled.
+    tasks:
+      - "3.1"
+      - "3.2"
+      - "3.3"
+    priority: 2
+    depends_on:
+      - wp-config
+    scope:
+      write_allow:
+        - "src/parsers/router.py"
+        - "src/api/upload_routes.py"
+      read_allow:
+        - "src/parsers/base.py"
+        - "src/parsers/kreuzberg_parser.py"
+        - "src/config/settings.py"
+        - "openspec/changes/add-kreuzberg-optional-parser/contracts/**"
+      deny:
+        - "src/parsers/kreuzberg_parser.py"
+        - "tests/**"
+    locks:
+      files:
+        - "src/parsers/router.py"
+        - "src/api/upload_routes.py"
+      keys:
+        - "parser:router:kreuzberg_routing"
+        - "api:upload:parser_factory"
+      ttl_minutes: 120
+      reason: "Router Kreuzberg integration"
+    verification:
+      tier: C
+      checks:
+        - "ruff check src/parsers/router.py src/api/upload_routes.py"
+        - "mypy src/parsers/router.py --ignore-missing-imports"
+
+  - id: wp-shadow-eval
+    title: "Shadow evaluation and observability"
+    description: >
+      Add shadow mode that runs Kreuzberg in parallel for configured formats
+      without changing canonical output. Emit comparison telemetry via existing
+      observability provider.
+    tasks:
+      - "4.1"
+      - "4.2"
+      - "4.3"
+    priority: 3
+    depends_on:
+      - wp-parser-adapter
+      - wp-router-integration
+    scope:
+      write_allow:
+        - "src/parsers/router.py"
+        - "src/parsers/shadow.py"
+      read_allow:
+        - "src/parsers/**"
+        - "src/telemetry/**"
+        - "src/config/settings.py"
+      deny:
+        - "src/api/**"
+        - "tests/**"
+    locks:
+      files:
+        - "src/parsers/shadow.py"
+      keys:
+        - "parser:shadow:evaluation"
+        - "telemetry:parser:comparison"
+      ttl_minutes: 120
+      reason: "Shadow evaluation mode"
+    verification:
+      tier: C
+      checks:
+        - "ruff check src/parsers/shadow.py"
+
+  - id: wp-tests
+    title: "Tests and validation"
+    description: >
+      Unit tests for KreuzbergParser, router tests for Kreuzberg-enabled/disabled
+      behavior and fallback precedence, integration tests for upload with
+      Kreuzberg installed/absent, and regression tests for chunking defaults.
+    tasks:
+      - "5.1"
+      - "5.2"
+      - "5.3"
+      - "5.4"
+    priority: 4
+    depends_on:
+      - wp-shadow-eval
+    scope:
+      write_allow:
+        - "tests/parsers/test_kreuzberg_parser.py"
+        - "tests/parsers/test_router.py"
+        - "tests/api/test_upload_routes.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+      deny:
+        - "src/**"
+    locks:
+      files:
+        - "tests/parsers/test_kreuzberg_parser.py"
+      keys:
+        - "test:kreuzberg:unit"
+        - "test:kreuzberg:router"
+        - "test:kreuzberg:integration"
+      ttl_minutes: 120
+      reason: "Kreuzberg test suite"
+    verification:
+      tier: A
+      checks:
+        - "pytest tests/parsers/test_kreuzberg_parser.py -v"
+        - "pytest tests/parsers/test_router.py -v"
+        - "ruff check tests/parsers/"
+
+  - id: wp-integration
+    title: "Integration validation and rollout config"
+    description: >
+      Full integration test with all parsers enabled. Verify rollout config
+      ships with Kreuzberg disabled by default. Update profile templates
+      if needed.
+    tasks:
+      - "6.1"
+      - "6.2"
+      - "6.3"
+    priority: 5
+    depends_on:
+      - wp-tests
+    scope:
+      write_allow:
+        - "profiles/**"
+        - "openspec/changes/add-kreuzberg-optional-parser/tasks.md"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "profiles/**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "integration:kreuzberg:full"
+      ttl_minutes: 60
+      reason: "Final integration validation"
+    verification:
+      tier: B
+      checks:
+        - "pytest tests/parsers/ tests/api/test_upload_routes.py -v"
+        - "ruff check src/ tests/"
+
+# DAG visualization:
+#
+#   wp-config
+#     │
+#     ├──────────────────┐
+#     ▼                  ▼
+#   wp-parser-adapter  wp-router-integration   ← PARALLEL
+#     │                  │
+#     └────────┬─────────┘
+#              ▼
+#         wp-shadow-eval
+#              │
+#              ▼
+#          wp-tests
+#              │
+#              ▼
+#        wp-integration

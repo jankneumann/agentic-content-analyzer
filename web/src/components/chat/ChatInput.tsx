@@ -68,8 +68,9 @@ export function ChatInput({
   const continuous = voiceSettings?.input_continuous?.value === "true"
   const autoSubmit = voiceSettings?.input_auto_submit?.value === "true"
 
-  // Track previous listening state for ARIA announcements
+  // Track previous listening/processing state for ARIA announcements
   const wasListeningRef = React.useRef(false)
+  const wasProcessingRef = React.useRef(false)
   const [voiceAnnouncement, setVoiceAnnouncement] = React.useState("")
 
   const canSubmit = value.trim().length > 0 && !isLoading && !disabled
@@ -83,18 +84,24 @@ export function ChatInput({
   }, [])
 
   // Handle form submission
-  const handleSubmit = React.useCallback(() => {
-    if (!canSubmit) return
+  const handleSubmit = React.useCallback(
+    (e?: React.MouseEvent | React.KeyboardEvent) => {
+      if (!canSubmit) {
+        if (e) e.preventDefault()
+        return
+      }
 
-    onSubmit(value.trim(), { enableWebSearch })
-    setValue("")
-    setEnableWebSearch(false)
+      onSubmit(value.trim(), { enableWebSearch })
+      setValue("")
+      setEnableWebSearch(false)
 
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-    }
-  }, [canSubmit, value, enableWebSearch, onSubmit])
+      // Reset textarea height
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto"
+      }
+    },
+    [canSubmit, value, enableWebSearch, onSubmit]
+  )
 
   // Cleanup handler
   const handleCleanup = React.useCallback(async () => {
@@ -117,7 +124,7 @@ export function ChatInput({
     }
   }, [value, resizeTextarea])
 
-  // Voice input hook
+  // Voice input hook (isProcessing is part of the return type for on-device STT)
   const voiceInput = useVoiceInput({
     lang,
     continuous,
@@ -158,7 +165,14 @@ export function ChatInput({
           }
         }, 0)
       },
-      [continuous, autoSubmit, enableWebSearch, onSubmit, resizeTextarea, handleCleanup]
+      [
+        continuous,
+        autoSubmit,
+        enableWebSearch,
+        onSubmit,
+        resizeTextarea,
+        handleCleanup,
+      ]
     ),
     onError: React.useCallback((error: string) => {
       toast.error(error)
@@ -197,15 +211,24 @@ export function ChatInput({
     [maxLength]
   )
 
-  // Update ARIA announcement when listening state changes
+  // Update ARIA announcement when listening/processing state changes
   React.useEffect(() => {
     if (voiceInput.isListening && !wasListeningRef.current) {
       setVoiceAnnouncement("Recording started")
     } else if (!voiceInput.isListening && wasListeningRef.current) {
-      setVoiceAnnouncement("Recording stopped")
+      if (voiceInput.isProcessing) {
+        setVoiceAnnouncement("Recording stopped. Transcribing audio...")
+      } else {
+        setVoiceAnnouncement("Recording stopped")
+      }
+    } else if (voiceInput.isProcessing && !wasProcessingRef.current) {
+      setVoiceAnnouncement("Transcribing audio...")
+    } else if (!voiceInput.isProcessing && wasProcessingRef.current) {
+      setVoiceAnnouncement("Transcription complete")
     }
     wasListeningRef.current = voiceInput.isListening
-  }, [voiceInput.isListening])
+    wasProcessingRef.current = !!voiceInput.isProcessing
+  }, [voiceInput.isListening, voiceInput.isProcessing])
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -222,26 +245,28 @@ export function ChatInput({
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            readOnly={voiceInput.isListening}
+            readOnly={voiceInput.isListening || !!voiceInput.isProcessing}
             placeholder={
-              voiceInput.isListening
-                ? "Listening..."
-                : placeholder
+              voiceInput.isProcessing
+                ? "Transcribing..."
+                : voiceInput.isListening
+                  ? "Listening..."
+                  : placeholder
             }
             aria-label="Chat message"
             aria-describedby={`${charCountId} ${helperId}`}
             disabled={disabled || isLoading}
             className={cn(
-              "min-h-[48px] max-h-[200px] resize-none pr-12",
-              "scrollbar-thin scrollbar-thumb-muted",
+              "max-h-[200px] min-h-[48px] resize-none pr-12",
+              "scrollbar-thin scrollbar-thumb-muted"
             )}
             rows={1}
           />
 
-          {/* Interim transcript overlay (shown below textarea while listening) */}
-          {voiceInput.interimTranscript && (
+          {/* Interim transcript overlay (shown below textarea while listening, hidden during processing) */}
+          {voiceInput.interimTranscript && !voiceInput.isProcessing && (
             <p
-              className="mt-1 px-3 text-sm text-muted-foreground italic truncate"
+              className="text-muted-foreground mt-1 truncate px-3 text-sm italic"
               aria-live="polite"
             >
               {voiceInput.interimTranscript}
@@ -252,7 +277,7 @@ export function ChatInput({
           <div
             id={charCountId}
             className={cn(
-              "absolute bottom-2 right-2 text-xs text-muted-foreground transition-colors",
+              "text-muted-foreground absolute right-2 bottom-2 text-xs transition-colors",
               value.length > maxLength * 0.9 && "font-medium text-amber-500",
               value.length >= maxLength && "text-destructive"
             )}
@@ -267,6 +292,7 @@ export function ChatInput({
           {/* Voice input button */}
           <VoiceInputButton
             isListening={voiceInput.isListening}
+            isProcessing={voiceInput.isProcessing}
             isSupported={voiceInput.isSupported}
             error={voiceInput.error}
             disabled={disabled || isLoading}
@@ -288,9 +314,12 @@ export function ChatInput({
                 <Button
                   size="icon"
                   onClick={handleSubmit}
-                  disabled={!canSubmit}
+                  aria-disabled={!canSubmit}
                   aria-label="Send message"
-                  className="h-9 w-9 shrink-0"
+                  className={cn(
+                    "h-9 w-9 shrink-0",
+                    !canSubmit && "cursor-not-allowed opacity-50"
+                  )}
                 >
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -301,7 +330,7 @@ export function ChatInput({
               </TooltipTrigger>
               <TooltipContent>
                 <p>Send message</p>
-                <p className="text-xs text-muted-foreground">Press Enter</p>
+                <p className="text-muted-foreground text-xs">Press Enter</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -329,14 +358,14 @@ export function ChatInput({
       )}
 
       {/* Helper text */}
-      <p id={helperId} className="px-1 text-xs text-muted-foreground">
+      <p id={helperId} className="text-muted-foreground px-1 text-xs">
         <span className="hidden sm:inline">
-          Press <kbd className="rounded bg-muted px-1">Enter</kbd> to send,{" "}
-          <kbd className="rounded bg-muted px-1">Shift+Enter</kbd> for new line
+          Press <kbd className="bg-muted rounded px-1">Enter</kbd> to send,{" "}
+          <kbd className="bg-muted rounded px-1">Shift+Enter</kbd> for new line
           {voiceInput.isSupported && (
             <>
               ,{" "}
-              <kbd className="rounded bg-muted px-1">
+              <kbd className="bg-muted rounded px-1">
                 {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Shift+C
               </kbd>{" "}
               to clean up

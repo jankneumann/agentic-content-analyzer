@@ -1,0 +1,434 @@
+# work-packages.yaml — add-capacitor-mobile
+# DAG-scheduled parallel work packages for multi-agent implementation
+#
+# DAG visualization:
+#
+#   wp-capacitor-setup ──┬──► wp-backend-cors ─────────────────────┐
+#     (root)             ├──► wp-platform-utils ──┬──► wp-share-target ──┐
+#                        ├──► wp-native-stt ──────┤                     │
+#                        └──► wp-build-deploy ────┤──► wp-push-notif ───┤
+#                                                 │                     │
+#                                                 └─────────────────────┴──► wp-integration
+#
+# Parallel zones (after root completes):
+#   Zone 1: wp-backend-cors, wp-platform-utils, wp-native-stt, wp-build-deploy
+#   Zone 2: wp-share-target, wp-push-notifications (depend on platform-utils)
+#   Zone 3: wp-integration (depends on all)
+
+schema_version: "1.0"
+change_id: add-capacitor-mobile
+contracts_revision: "initial"
+plan_revision: "post-review-v2"
+
+packages:
+  # ── Root Package ──────────────────────────────────────────────────────────────
+
+  - id: wp-capacitor-setup
+    name: "Capacitor Setup & Plugin Installation"
+    description: |
+      Initialize Capacitor in web/, add iOS and Android platforms,
+      install all required plugins, configure capacitor.config.ts.
+      Tasks: 1.1-1.6, 3.1-3.7
+    priority: 1
+    depends_on: []
+    tasks:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+      - "1.4"
+      - "1.5"
+      - "1.6"
+      - "3.1"
+      - "3.2"
+      - "3.3"
+      - "3.4"
+      - "3.5"
+      - "3.6"
+      - "3.7"
+    scope:
+      write_allow:
+        - "web/package.json"
+        - "web/pnpm-lock.yaml"
+        - "web/capacitor.config.ts"
+        - "web/ios/**"
+        - "web/android/**"
+      read_allow:
+        - "web/**"
+        - "openspec/changes/add-capacitor-mobile/**"
+      deny:
+        - "src/**"
+        - "web/src/**"
+    locks:
+      files:
+        - "web/package.json"
+        - "web/capacitor.config.ts"
+      keys:
+        - "config:capacitor"
+        - "config:package.json"
+      ttl_minutes: 60
+      reason: "Capacitor initialization and plugin installation"
+    verification:
+      tier: C
+      steps:
+        - "npx cap ls — verify iOS and Android platforms listed"
+        - "pnpm install — verify no dependency conflicts"
+        - "Verify capacitor.config.ts has correct appId, appName, webDir"
+
+  # ── Parallel Zone 1 (all depend on wp-capacitor-setup) ──────────────────────
+
+  - id: wp-backend-cors
+    name: "Backend CORS Configuration"
+    description: |
+      Add capacitor://localhost and http://localhost to allowed CORS origins.
+      Update settings.py defaults and verify across profiles.
+      Tasks: 4.1-4.3
+    priority: 2
+    depends_on:
+      - wp-capacitor-setup
+    tasks:
+      - "4.1"
+      - "4.2"
+      - "4.3"
+    scope:
+      write_allow:
+        - "src/config/settings.py"
+        - "tests/api/test_cors*"
+        - "tests/config/test_settings*"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "profiles/**"
+        - "openspec/changes/add-capacitor-mobile/contracts/**"
+      deny:
+        - "web/**"
+    locks:
+      files:
+        - "src/config/settings.py"
+      keys:
+        - "config:cors:allowed_origins"
+      ttl_minutes: 60
+      reason: "CORS configuration for Capacitor native origins"
+    verification:
+      tier: A
+      steps:
+        - "pytest tests/config/ -v — settings tests pass"
+        - "pytest tests/api/test_cors* -v — CORS tests pass (if exist)"
+        - "Verify capacitor://localhost in default allowed_origins"
+
+  - id: wp-platform-utils
+    name: "Platform Detection, Haptics & Status Bar"
+    description: |
+      Create platform detection utility, usePlatform hook, haptics utility,
+      and status bar theme integration. These are shared utilities consumed
+      by other frontend packages.
+      Tasks: 2.1-2.3, 8.1-8.3, 9.1-9.3
+    priority: 2
+    depends_on:
+      - wp-capacitor-setup
+    tasks:
+      - "2.1"
+      - "2.2"
+      - "2.3"
+      - "8.1"
+      - "8.2"
+      - "8.3"
+      - "9.1"
+      - "9.2"
+      - "9.3"
+    scope:
+      write_allow:
+        - "web/src/lib/platform.ts"
+        - "web/src/lib/haptics.ts"
+        - "web/src/lib/status-bar.ts"
+        - "web/src/hooks/use-platform.ts"
+        - "web/src/lib/telemetry/**"
+        - "web/tests/lib/platform*"
+        - "web/tests/lib/haptics*"
+        - "web/tests/hooks/use-platform*"
+      read_allow:
+        - "web/**"
+        - "openspec/changes/add-capacitor-mobile/contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/lib/voice/**"
+        - "web/src/lib/push-notifications*"
+        - "web/src/lib/share/**"
+    locks:
+      files:
+        - "web/src/lib/platform.ts"
+        - "web/src/lib/haptics.ts"
+      keys:
+        - "lib:platform-detection"
+        - "lib:haptics"
+        - "lib:status-bar"
+      ttl_minutes: 90
+      reason: "Platform detection and native UI utilities"
+    verification:
+      tier: A
+      steps:
+        - "pnpm tsc --noEmit — type check passes"
+        - "pnpm vitest run tests/lib/platform — unit tests pass"
+        - "Verify isNative() returns false in Node/browser context"
+        - "Verify haptics.ts exports triggerHaptic with web no-op"
+
+  - id: wp-native-stt
+    name: "Native STT Engine"
+    description: |
+      Create NativeSTTEngine implementing STTEngine interface, wire
+      @capacitor-community/speech-recognition plugin, update AutoSTTEngine
+      to prefer native on Capacitor. Lazy initialization.
+      Tasks: 7.1-7.4
+    priority: 2
+    depends_on:
+      - wp-capacitor-setup
+    tasks:
+      - "7.1"
+      - "7.2"
+      - "7.3"
+      - "7.4"
+    scope:
+      write_allow:
+        - "web/src/lib/voice/native-stt-engine.ts"
+        - "web/src/lib/voice/auto-stt-engine.ts"
+        - "web/src/lib/voice/index.ts"
+        - "web/tests/lib/voice/**"
+      read_allow:
+        - "web/**"
+        - "openspec/changes/add-capacitor-mobile/contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/lib/platform.ts"
+        - "web/src/lib/haptics.ts"
+        - "web/src/lib/share/**"
+        - "web/src/lib/push-notifications*"
+    locks:
+      files:
+        - "web/src/lib/voice/auto-stt-engine.ts"
+        - "web/src/lib/voice/native-stt-engine.ts"
+        - "web/src/lib/voice/index.ts"
+      keys:
+        - "lib:voice:native-stt"
+        - "lib:voice:auto-engine"
+      ttl_minutes: 90
+      reason: "Native speech recognition engine implementation"
+    verification:
+      tier: A
+      steps:
+        - "pnpm tsc --noEmit — type check passes"
+        - "pnpm vitest run tests/lib/voice — unit tests pass"
+        - "Verify NativeSTTEngine.id === 'native'"
+        - "Verify NativeSTTEngine implements STTEngine interface"
+        - "Verify AutoSTTEngine registers native engine in engines map"
+        - "Verify lazy initialization (no plugin import at module scope)"
+
+  - id: wp-build-deploy
+    name: "Build Scripts & iOS Deployment Pipeline"
+    description: |
+      Add pnpm cap:dev, cap:build, cap:open:ios scripts.
+      Create GitHub Actions workflow, Fastlane config, build versioning.
+      Tasks: 10.1-10.4, 11.1-11.10
+    priority: 2
+    depends_on:
+      - wp-capacitor-setup
+    tasks:
+      - "10.1"
+      - "10.2"
+      - "10.3"
+      - "10.4"
+      - "11.1"
+      - "11.2"
+      - "11.3"
+      - "11.4"
+      - "11.5"
+      - "11.6"
+      - "11.7"
+      - "11.8"
+      - "11.9"
+      - "11.10"
+    scope:
+      write_allow:
+        - "web/package.json:scripts"
+        - "web/ios/fastlane/**"
+        - ".github/workflows/ios-build.yml"
+        - "docs/PRIVACY_POLICY.md"
+        - "docs/IOS_BUILD.md"
+      read_allow:
+        - "web/**"
+        - ".github/**"
+        - "openspec/changes/add-capacitor-mobile/**"
+      deny:
+        - "src/**"
+        - "web/src/**"
+    locks:
+      files:
+        - ".github/workflows/ios-build.yml"
+      keys:
+        - "ci:ios-build"
+        - "config:fastlane"
+      ttl_minutes: 90
+      reason: "Build scripts and iOS CI/CD pipeline"
+    verification:
+      tier: C
+      steps:
+        - "Verify pnpm cap:dev, cap:build, cap:open:ios scripts exist in package.json"
+        - "Verify ios-build.yml triggers on push to main + workflow_dispatch"
+        - "Verify Fastlane Matchfile and Fastfile exist"
+        - "Verify privacy policy document exists"
+
+  # ── Parallel Zone 2 (depend on platform-utils) ──────────────────────────────
+
+  - id: wp-share-target
+    name: "Native Share Target & Offline Queue"
+    description: |
+      Implement share target handler with URL validation, App Group IPC,
+      offline queue with Capacitor Preferences, and dedup logic.
+      Tasks: 6.1-6.11
+    priority: 3
+    depends_on:
+      - wp-platform-utils
+    tasks:
+      - "6.1"
+      - "6.2"
+      - "6.3"
+      - "6.4"
+      - "6.5"
+      - "6.6"
+      - "6.7"
+      - "6.8"
+      - "6.9"
+      - "6.10"
+      - "6.11"
+    scope:
+      write_allow:
+        - "web/src/lib/share/**"
+        - "web/src/lib/share-target.ts"
+        - "web/src/hooks/use-share-target.ts"
+        - "web/tests/lib/share/**"
+        - "web/tests/e2e/share/**"
+        - "web/ios/App/ShareExtension/**"
+      read_allow:
+        - "web/**"
+        - "openspec/changes/add-capacitor-mobile/contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/lib/voice/**"
+        - "web/src/lib/push-notifications*"
+        - "web/src/lib/platform.ts"
+        - "web/src/lib/haptics.ts"
+    locks:
+      files:
+        - "web/src/lib/share-target.ts"
+      keys:
+        - "lib:share-target"
+        - "lib:offline-queue"
+        - "api:POST /v1/content/save-url:consumer"
+      ttl_minutes: 120
+      reason: "Native share target with offline queue"
+    verification:
+      tier: A
+      steps:
+        - "pnpm tsc --noEmit — type check passes"
+        - "pnpm vitest run tests/lib/share — unit tests pass"
+        - "Verify URL validation rejects javascript:, data:, file: schemes"
+        - "Verify URL validation rejects URLs > 2048 chars"
+        - "Verify offline queue enqueue, dedup, and flush logic"
+        - "Verify Share Extension Swift code compiles (if Xcode available)"
+
+  - id: wp-push-notifications
+    name: "Push Notification Delivery (Foreground MVP)"
+    description: |
+      Implement push notification wrapper, device token registration,
+      settings UI toggle, foreground local notifications from SSE events.
+      Tasks: 5.1-5.6
+    priority: 3
+    depends_on:
+      - wp-platform-utils
+    tasks:
+      - "5.1"
+      - "5.2"
+      - "5.3"
+      - "5.4"
+      - "5.5"
+      - "5.6"
+    scope:
+      write_allow:
+        - "web/src/lib/push-notifications.ts"
+        - "web/src/hooks/use-push-notifications.ts"
+        - "web/src/components/settings/PushNotificationToggle.tsx"
+        - "web/tests/lib/push-notifications*"
+        - "web/tests/e2e/push/**"
+      read_allow:
+        - "web/**"
+        - "openspec/changes/add-capacitor-mobile/contracts/**"
+      deny:
+        - "src/**"
+        - "web/src/lib/voice/**"
+        - "web/src/lib/share/**"
+        - "web/src/lib/platform.ts"
+        - "web/src/lib/haptics.ts"
+    locks:
+      files:
+        - "web/src/lib/push-notifications.ts"
+      keys:
+        - "lib:push-notifications"
+        - "api:POST /v1/notifications/devices:consumer"
+      ttl_minutes: 90
+      reason: "Foreground push notification delivery"
+    verification:
+      tier: A
+      steps:
+        - "pnpm tsc --noEmit — type check passes"
+        - "pnpm vitest run tests/lib/push-notifications — unit tests pass"
+        - "Verify device token registration calls correct API endpoint"
+        - "Verify notification tap navigates to payload.url"
+        - "Verify push UI hidden on web (isNative() === false)"
+
+  # ── Integration Package ─────────────────────────────────────────────────────
+
+  - id: wp-integration
+    name: "Integration & E2E Testing"
+    description: |
+      Merge all work packages, run full test suite, cross-package verification,
+      E2E tests for platform detection, share target, and push notification flows.
+      Tasks: 12.1-12.8
+    priority: 4
+    depends_on:
+      - wp-backend-cors
+      - wp-platform-utils
+      - wp-native-stt
+      - wp-build-deploy
+      - wp-share-target
+      - wp-push-notifications
+    tasks:
+      - "12.1"
+      - "12.2"
+      - "12.3"
+      - "12.4"
+      - "12.5"
+      - "12.6"
+      - "12.7"
+      - "12.8"
+    scope:
+      write_allow:
+        - "web/tests/e2e/**"
+        - "web/tests/**"
+        - "tests/**"
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "integration:add-capacitor-mobile"
+      ttl_minutes: 120
+      reason: "Integration merge and full test suite"
+    verification:
+      tier: A
+      steps:
+        - "pnpm tsc --noEmit — full type check"
+        - "pnpm vitest run — all unit tests pass"
+        - "pnpm test:e2e — E2E tests pass (mocked)"
+        - "pytest tests/ -v — backend tests pass (CORS)"
+        - "ruff check src/ — linting passes"
+        - "mypy src/ — type check passes"
+        - "Cross-package contract verification: types.ts matches API schemas"

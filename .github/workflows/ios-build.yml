@@ -1,0 +1,219 @@
+# iOS Build & Deploy to TestFlight
+#
+# Triggers:
+#   - Push to main (automatic deploy)
+#   - Manual workflow_dispatch with optional TestFlight upload toggle (11.6)
+#
+# =============================================================================
+# CI SECRETS REQUIRED (11.4)
+# =============================================================================
+# Configure these in GitHub Settings > Secrets and Variables > Actions:
+#
+#   APPLE_ID                - Apple Developer account email (e.g., dev@example.com)
+#   APP_STORE_CONNECT_API_KEY_ID      - App Store Connect API Key ID
+#   APP_STORE_CONNECT_API_ISSUER_ID   - App Store Connect API Issuer ID
+#   APP_STORE_CONNECT_API_KEY_CONTENT - App Store Connect API Key (.p8 content)
+#   MATCH_GIT_URL           - HTTPS URL to private certificates repo
+#                             (e.g., https://github.com/your-org/certificates)
+#   MATCH_PASSWORD          - Passphrase used to encrypt/decrypt match repo
+#   APPLE_TEAM_ID           - Apple Developer Team ID (10-char alphanumeric)
+#
+# Optional:
+#   FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD
+#                           - App-specific password if using Apple ID auth
+#                             (not needed when using App Store Connect API key)
+#
+# =============================================================================
+# TESTFLIGHT BETA TESTER GROUP SETUP (11.7)
+# =============================================================================
+# 1. Go to App Store Connect > Your App > TestFlight > Internal Testing
+# 2. Create a group (e.g., "Beta Testers")
+# 3. Add testers by email — they receive an invite via TestFlight app
+# 4. Each new build auto-distributes to internal testers (no review needed)
+# 5. For external testers: create an External Testing group — first build
+#    in each group requires Apple's Beta App Review (~24-48h)
+#
+# =============================================================================
+# PROMOTION TO APP STORE (11.8)
+# =============================================================================
+# 1. In App Store Connect > Your App > App Store tab, create a new version
+# 2. Select the TestFlight build to promote
+# 3. Fill required metadata (see APP STORE METADATA below)
+# 4. Submit for App Review (~24-48h for first submission, faster thereafter)
+# 5. Once approved, release manually or set auto-release
+#
+# =============================================================================
+# APP STORE METADATA REQUIREMENTS (11.10)
+# =============================================================================
+# Required for App Store submission:
+#   - App name (30 chars max)
+#   - Subtitle (30 chars max)
+#   - Privacy policy URL (public, see docs/PRIVACY_POLICY.md)
+#   - Category: News (primary), Productivity (secondary)
+#   - Screenshots: 6.7" (1290x2796), 6.5" (1284x2778), 5.5" (1242x2208)
+#     Optional: 12.9" iPad (2048x2732)
+#   - Description (4000 chars max)
+#   - Keywords (100 chars max, comma-separated)
+#   - Support URL
+#   - Age rating questionnaire (likely 4+, no objectionable content)
+#   - Copyright (e.g., "2024 Your Name")
+#   - Build selection (from TestFlight)
+#   - App Review notes: credentials for review team if login required
+#
+# Deliver metadata via fastlane:
+#   fastlane deliver --submit_for_review --automatic_release
+# =============================================================================
+
+name: iOS Build & Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/ios-build.yml"
+  workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: "Upload to TestFlight"
+        required: true
+        default: "true"
+        type: boolean
+
+# Ensure only one iOS build runs at a time
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      # --------------------------------------------------
+      # 1. Checkout
+      # --------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------
+      # 2. Setup Node.js + pnpm
+      # --------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
+      # --------------------------------------------------
+      # 3. Install dependencies + build web assets
+      # --------------------------------------------------
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web app
+        run: pnpm build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.example.com' }}
+
+      # --------------------------------------------------
+      # 4. Capacitor sync (copies web build to iOS project)
+      # --------------------------------------------------
+      - name: Sync Capacitor
+        run: npx cap sync ios
+
+      # --------------------------------------------------
+      # 5. Setup Ruby + Fastlane
+      # --------------------------------------------------
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: web/ios
+
+      - name: Install Fastlane
+        working-directory: web/ios
+        run: |
+          gem install fastlane
+          # If a Gemfile exists, use bundle instead:
+          # bundle install
+
+      # --------------------------------------------------
+      # 6. Configure App Store Connect API key
+      # --------------------------------------------------
+      - name: Create App Store Connect API key file
+        working-directory: web/ios
+        run: |
+          mkdir -p private_keys
+          echo "${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}" > private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+
+      # --------------------------------------------------
+      # 7. Run Fastlane
+      # --------------------------------------------------
+      - name: Build and deploy to TestFlight
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.upload_to_testflight == 'true')
+        working-directory: web/ios
+        run: bundle exec fastlane beta
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_PATH: private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
+      - name: Build only (no upload)
+        if: >-
+          github.event_name == 'workflow_dispatch' && github.event.inputs.upload_to_testflight == 'false'
+        working-directory: web/ios
+        run: bundle exec fastlane build_only
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_PATH: private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
+      # --------------------------------------------------
+      # 8. Upload build artifact
+      # --------------------------------------------------
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACA-iOS-${{ github.run_number }}
+          path: web/ios/build/ACA.ipa
+          retention-days: 30
+
+      # --------------------------------------------------
+      # 9. Cleanup sensitive files
+      # --------------------------------------------------
+      - name: Cleanup API key
+        if: always()
+        working-directory: web/ios
+        run: rm -rf private_keys

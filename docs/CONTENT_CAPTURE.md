@@ -7,6 +7,11 @@ Save web content to your Newsletter Aggregator while browsing. Two capture metho
 | Chrome Extension | Desktop Chrome users, paywall content | Chrome, Chromium-based |
 | Bookmarklet | Universal fallback | All browsers including mobile Safari |
 
+## Mobile Capture
+
+For mobile-specific setup (iOS Shortcuts, mobile bookmarklets, web save page):
+see the **[Mobile Capture Guide](MOBILE_CAPTURE.md)**.
+
 ## Capture Modes
 
 The Chrome extension supports two capture modes:

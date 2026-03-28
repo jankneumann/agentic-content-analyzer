@@ -277,9 +277,16 @@ class Settings(BaseSettings):
     # CORS Configuration
     # Comma-separated list of allowed origins, or "*" for all origins
     # Examples: "http://localhost:5173,http://localhost:3000" or "*"
-    allowed_origins: str = "http://localhost:5173,http://localhost:3000"
+    allowed_origins: str = (
+        "http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost"
+    )
 
-    _DEV_DEFAULT_ORIGINS: ClassVar[set[str]] = {"http://localhost:5173", "http://localhost:3000"}
+    _DEV_DEFAULT_ORIGINS: ClassVar[set[str]] = {
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "capacitor://localhost",
+        "http://localhost",
+    }
 
     def _is_dev_default_origins(self) -> bool:
         """Check if allowed_origins is still the development default value.
@@ -506,6 +513,13 @@ class Settings(BaseSettings):
     docling_max_file_size_mb: int = 100  # Maximum file size for Docling processing
     docling_timeout_seconds: int = 300  # Processing timeout for large documents
     docling_cache_dir: str = "/tmp/docling"  # Cache directory for Docling models  # noqa: S108
+
+    # Kreuzberg Parser Configuration
+    enable_kreuzberg: bool = False  # Enable Kreuzberg parser (requires kreuzberg extra)
+    kreuzberg_preferred_formats: str = ""  # Comma-separated formats to route to Kreuzberg
+    kreuzberg_shadow_formats: str = ""  # Comma-separated formats for shadow comparison
+    kreuzberg_max_file_size_mb: int = 100  # Maximum file size for Kreuzberg processing
+    kreuzberg_timeout_seconds: int = 120  # Processing timeout (lower than Docling)
 
     # File Upload Configuration
     max_upload_size_mb: int = 50  # Maximum file upload size

@@ -1,0 +1,58 @@
+{
+  "review_type": "plan",
+  "target": "add-on-device-stt",
+  "reviewer_vendor": "claude-opus-4-6",
+  "reviewed_at": "2026-03-26T10:00:00Z",
+  "overall_disposition": "proceed",
+  "summary": "Well-structured plan leveraging existing STTEngine interface. 8-package DAG with clean scope isolation. 6 findings, none blocking. Key risks: WASM dependency selection and CDN URL pinning need resolution before implementation.",
+  "findings": [
+    {
+      "id": 1,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "The spec for 'No engine available' scenario states voice input should be disabled, but doesn't specify what happens when the user has engine_preference_order set to 'on-device' only and the model isn't cached. The AutoSTTEngine fallback logic should be specified: does it show a 'download model' prompt, or just disable the button?",
+      "resolution": "Add a scenario to voice-input/spec.md: 'GIVEN engine_preference_order is on-device only AND no model cached THEN show tooltip suggesting model download in settings'",
+      "disposition": "accept"
+    },
+    {
+      "id": 2,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "wp-whisper-worker lists 'whisper-turbo or equivalent' as the WASM dependency but doesn't pin a specific package. The design.md mentions three alternatives (whisper-turbo, @nicktomlin/whisper.cpp, @huggingface/transformers). The implementing agent needs a definitive choice to add to package.json.",
+      "resolution": "Pin to `@anthropic-ai/whisper-wasm` or `whisper-turbo` in model-constants.ts. If neither package exists on npm at implementation time, fall back to @nicktomlin/whisper.cpp. Add a note in wp-whisper-worker description specifying the resolution order.",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "contract_mismatch",
+      "criticality": "low",
+      "description": "The contract types.ts defines OnDeviceSTTSettings.stt_engine as 'auto' | 'browser' | 'cloud' | 'on-device' but the backend voice_settings_routes.py doesn't yet have stt_engine as a valid field — it only has engine_preference_order (comma-separated list). The wp-settings description says to add PUT /api/v1/settings/voice/stt_engine, but this overlaps semantically with engine_preference_order. Need to clarify: is stt_engine a new distinct setting, or should the UI just modify engine_preference_order?",
+      "resolution": "Simplify: remove stt_engine from the plan. The existing engine_preference_order already controls which engines are tried and in what order. The settings UI should let users reorder the preference list rather than adding a new scalar field. Keep stt_model_size as the only new backend setting.",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "model-constants.ts needs CDN URLs for Whisper GGML model files, but these aren't specified in the contracts. Hugging Face hosts models at 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin' — this should be documented as the default CDN source so the implementing agent doesn't have to research it.",
+      "resolution": "Add CDN URL pattern to model-constants.ts contract: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{modelName}'. Include specific URLs for ggml-tiny.en.bin and ggml-base.en.bin.",
+      "disposition": "accept"
+    },
+    {
+      "id": 5,
+      "type": "security",
+      "criticality": "low",
+      "description": "The model download fetches a 40-80MB binary from an external CDN (Hugging Face). The plan doesn't specify integrity verification. A corrupted or tampered model file could cause crashes or incorrect transcription. Consider adding SHA-256 hash verification after download.",
+      "resolution": "Add known SHA-256 hashes to model-constants.ts. After download, compute hash of ArrayBuffer and compare before caching. Log warning if mismatch and reject the download.",
+      "disposition": "accept"
+    },
+    {
+      "id": 6,
+      "type": "correctness",
+      "criticality": "low",
+      "description": "wp-settings puts tests/api/test_voice_settings_api.py in both wp-settings (write_allow) and wp-integration (write_allow). If wp-settings writes initial test scaffolding and wp-integration extends it, they'll conflict. Typically tests should live entirely in wp-integration.",
+      "resolution": "Remove tests/api/test_voice_settings_api.py from wp-settings write_allow. The wp-settings package should only modify the route file. All tests go in wp-integration.",
+      "disposition": "fix"
+    }
+  ]
+}

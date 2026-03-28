@@ -214,10 +214,37 @@ def get_parser_router() -> ParserRouter:
         except ImportError:
             logger.warning("Docling not available, falling back to MarkItDown for PDFs")
 
+    kreuzberg = None
+    if settings.enable_kreuzberg:
+        try:
+            from src.parsers.kreuzberg_parser import KreuzbergParser
+
+            kreuzberg = KreuzbergParser(
+                max_file_size_mb=settings.kreuzberg_max_file_size_mb,
+                timeout_seconds=settings.kreuzberg_timeout_seconds,
+            )
+        except ImportError:
+            logger.warning("Kreuzberg not available, install with: uv sync --extra kreuzberg")
+
+    kreuzberg_preferred = (
+        {f.strip() for f in settings.kreuzberg_preferred_formats.split(",") if f.strip()}
+        if settings.kreuzberg_preferred_formats
+        else None
+    )
+
+    kreuzberg_shadow = (
+        {f.strip() for f in settings.kreuzberg_shadow_formats.split(",") if f.strip()}
+        if settings.kreuzberg_shadow_formats
+        else None
+    )
+
     return ParserRouter(
         markitdown_parser=markitdown,
         docling_parser=docling,
         youtube_parser=youtube,
+        kreuzberg_parser=kreuzberg,
+        kreuzberg_preferred_formats=kreuzberg_preferred,
+        kreuzberg_shadow_formats=kreuzberg_shadow,
     )
 
 
@@ -358,7 +385,7 @@ async def upload_document(
                 processing_time_ms=None,  # Would need to track this
             )
 
-    except FileIngestionError as e:
+    except FileIngestionError:
         raise HTTPException(
             status_code=400, detail="Document upload failed due to an ingestion error"
         )

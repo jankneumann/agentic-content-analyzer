@@ -65,6 +65,8 @@ export interface UseVoiceInputReturn {
   isSupported: boolean
   /** Whether voice input is currently active */
   isListening: boolean
+  /** Whether on-device transcription is processing (after recording stops) */
+  isProcessing: boolean
   /** In-progress (interim) transcript text */
   interimTranscript: string
   /** Final committed transcript text */
@@ -218,6 +220,7 @@ export function useVoiceInput(
   return {
     isSupported,
     isListening,
+    isProcessing: false, // TODO: Wire to STTEngine state when hook is refactored (T1.5)
     interimTranscript,
     transcript,
     error,

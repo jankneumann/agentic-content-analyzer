@@ -1,4 +1,6 @@
 export type { STTEngine, STTEngineEvents, STTEngineState, STTStartOptions, TranscriptEvent } from "./engine"
 export { BrowserSTTEngine } from "./browser-stt-engine"
 export { CloudSTTEngine, type CloudSTTConfig } from "./cloud-stt-engine"
+export { NativeSTTEngine } from "./native-stt-engine"
+export { OnDeviceSTTEngine, type OnDeviceSTTConfig } from "./on-device-stt-engine"
 export { AutoSTTEngine, type AutoSTTConfig } from "./auto-stt-engine"

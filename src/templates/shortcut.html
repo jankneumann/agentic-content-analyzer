@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iOS Shortcut - Newsletter Aggregator</title>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #1a1a1a;
+            --input-bg: #f5f5f5;
+            --input-border: #e0e0e0;
+            --primary-color: #4f46e5;
+            --primary-hover: #4338ca;
+            --success-color: #22c55e;
+            --muted-color: #666;
+            --card-bg: #f9fafb;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #1a1a1a;
+                --text-color: #e5e5e5;
+                --input-bg: #2a2a2a;
+                --input-border: #404040;
+                --primary-color: #6366f1;
+                --primary-hover: #818cf8;
+                --muted-color: #999;
+                --card-bg: #222;
+            }
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+        h2 { font-size: 18px; font-weight: 600; margin: 24px 0 12px; }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--muted-color);
+            margin-bottom: 24px;
+        }
+
+        .step {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            line-height: 28px;
+            text-align: center;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            margin-right: 8px;
+        }
+
+        .step-title {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .step-content {
+            margin-top: 8px;
+            font-size: 14px;
+            color: var(--muted-color);
+        }
+
+        .step-content p {
+            margin-bottom: 8px;
+        }
+
+        .step-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        code {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 12px;
+            background-color: var(--input-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .code-block {
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 8px 0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        .config-section {
+            font-size: 13px;
+            color: var(--muted-color);
+            background-color: var(--card-bg);
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+
+        .config-section strong {
+            color: var(--text-color);
+        }
+
+        .config-section p {
+            margin-bottom: 8px;
+        }
+
+        .config-section p:last-child {
+            margin-bottom: 0;
+        }
+
+        .coming-soon {
+            display: inline-block;
+            font-size: 12px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            padding: 2px 8px;
+            border-radius: 12px;
+            color: var(--muted-color);
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <h1>iOS Shortcut</h1>
+    <p class="subtitle">Save any URL from the iOS Share Sheet to your Newsletter Aggregator.</p>
+
+    <h2>What This Does</h2>
+    <div class="step">
+        <div class="step-content">
+            <p>This shortcut adds a "Save to Aggregator" option to your iOS Share Sheet. When you find an interesting article in Safari, a news app, or anywhere else, tap Share and select the shortcut to save the URL for processing through your Newsletter Aggregator pipeline.</p>
+        </div>
+    </div>
+
+    <h2>Setup Steps</h2>
+
+    <div class="step">
+        <span class="step-number">1</span>
+        <span class="step-title">Open the Shortcuts app</span>
+        <div class="step-content">
+            <p>Open the <strong>Shortcuts</strong> app on your iPhone or iPad. Tap the <strong>+</strong> button in the top-right corner to create a new shortcut.</p>
+        </div>
+    </div>
+
+    <div class="step">
+        <span class="step-number">2</span>
+        <span class="step-title">Accept Share Sheet input</span>
+        <div class="step-content">
+            <p>Tap <strong>Add Action</strong>, search for <strong>"Receive"</strong> and select <strong>Receive input from Share Sheet</strong>. Set the input type to <strong>URLs</strong>.</p>
+        </div>
+    </div>
+
+    <div class="step">
+        <span class="step-number">3</span>
+        <span class="step-title">Add the API request</span>
+        <div class="step-content">
+            <p>Add a <strong>Get Contents of URL</strong> action. Configure it as follows:</p>
+            <p><strong>URL:</strong></p>
+            <div class="code-block" id="api-url"></div>
+            <p><strong>Method:</strong> POST</p>
+            <p><strong>Headers:</strong></p>
+            <div class="code-block">Content-Type: application/json</div>
+            <p><strong>Request Body (JSON):</strong></p>
+            <div class="code-block">{
+  "url": [Shortcut Input],
+  "source": "ios_shortcut"
+}</div>
+            <p>For the <code>"url"</code> value, use the <strong>Shortcut Input</strong> variable (tap the field and select it from the variable list).</p>
+        </div>
+    </div>
+
+    <div class="step">
+        <span class="step-number">4</span>
+        <span class="step-title">Show confirmation</span>
+        <div class="step-content">
+            <p>Add a <strong>Show Result</strong> action and set it to display the output from the previous step. This will show a confirmation when the URL is saved successfully.</p>
+        </div>
+    </div>
+
+    <div class="step">
+        <span class="step-number">5</span>
+        <span class="step-title">Name and enable in Share Sheet</span>
+        <div class="step-content">
+            <p>Tap the shortcut name at the top and rename it to <strong>"Save to Aggregator"</strong>. Tap the settings icon and enable <strong>Show in Share Sheet</strong>.</p>
+        </div>
+    </div>
+
+    <h2>Configuration</h2>
+
+    <div class="config-section">
+        <p><strong>Adding API Key Authentication:</strong></p>
+        <p>If your server requires authentication, add an extra header to the <strong>Get Contents of URL</strong> action in Step 3:</p>
+        <div class="code-block">X-Admin-Key: your-api-key-here</div>
+        <p>Replace <code>your-api-key-here</code> with the value of your <code>ADMIN_API_KEY</code> setting.</p>
+    </div>
+
+    <h2>Alternative: iCloud Link <span class="coming-soon">Coming soon</span></h2>
+    <div class="step">
+        <div class="step-content">
+            <p>A pre-built shortcut that you can install with one tap via iCloud link will be available in a future update. For now, follow the manual setup steps above.</p>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = {{ api_base_url | tojson }};
+        document.getElementById('api-url').textContent = BASE_URL + '/api/v1/content/save-url';
+    </script>
+</body>
+</html>
