@@ -1,0 +1,366 @@
+# Work Packages: Academic Paper Insights via Semantic Scholar
+# Decomposition for multi-agent parallel implementation
+#
+# DAG:
+#   wp-migration ──────────┐
+#   wp-client ─────────────┼── wp-ingestion ── wp-orchestrator ── wp-cli ── wp-integration
+#   wp-config ─────────────┘        │
+#   wp-ref-extractor ── (wp-client) ┘
+#   wp-web-search ── (wp-client)
+#   wp-frontend ─────────────────────────────────────────────── wp-integration
+#
+# Max parallel width: 4 (wp-migration, wp-client, wp-config, wp-frontend in wave 0)
+
+change_id: add-academic-paper-insights
+generated: "2026-03-28"
+
+packages:
+  # ─────────────────────────────────────────────
+  # Layer 0: Foundation (no dependencies, parallel)
+  # ─────────────────────────────────────────────
+
+  - id: wp-migration
+    name: "Content model & database migration"
+    tasks: ["1.1", "1.2", "1.3", "1.4"]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "src/models/content.py"
+        - "alembic/versions/*scholar*.py"
+      read_allow:
+        - "src/models/**"
+        - "alembic/**"
+      deny:
+        - "src/ingestion/**"
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/models/content.py"
+      keys:
+        - "backend:models:content"
+        - "backend:alembic:migration"
+      ttl_minutes: 60
+      reason: "Add SCHOLAR enum value and GIN index on metadata_json"
+    verification:
+      tier: C
+      checks:
+        - "python -c 'from src.models.content import ContentSource; assert ContentSource.SCHOLAR == \"scholar\"'"
+    description: |
+      Add SCHOLAR to ContentSource enum. Create Alembic migration with:
+      - ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'scholar'
+      - CREATE INDEX ix_content_metadata_json_gin ON content USING GIN (metadata_json jsonb_path_ops)
+      Use op.execute() raw SQL for both (not op.create_index).
+
+  - id: wp-client
+    name: "Semantic Scholar API client"
+    tasks: ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7", "2.8", "2.8a", "2.9", "2.10", "2.11"]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "src/ingestion/semantic_scholar_client.py"
+        - "tests/test_ingestion/test_semantic_scholar_client.py"
+      read_allow:
+        - "src/ingestion/**"
+        - "src/config/settings.py"
+      deny:
+        - "src/models/**"
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/ingestion/semantic_scholar_client.py"
+      keys:
+        - "backend:ingestion:scholar-client"
+      ttl_minutes: 90
+      reason: "S2 HTTP client with rate limiting, error handling, Pydantic models"
+    verification:
+      tier: B
+      checks:
+        - "pytest tests/test_ingestion/test_semantic_scholar_client.py -v --no-cov"
+    description: |
+      NEW FILE: src/ingestion/semantic_scholar_client.py
+      SemanticScholarClient class with: search_papers, get_paper, get_paper_references,
+      get_paper_citations, batch_get_papers, resolve_identifier.
+      Pydantic models: S2Paper, S2Author, S2SearchResult.
+      Proactive rate limiting (asyncio.Semaphore, inter-request delay).
+      Error handling: 404 skip, invalid ID ValueError, 5xx retry, batch partial failure.
+
+  - id: wp-config
+    name: "Source configuration & settings"
+    tasks: ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"]
+    priority: 1
+    depends_on: []
+    scope:
+      write_allow:
+        - "src/config/sources.py"
+        - "src/config/settings.py"
+        - "sources.d/scholar.yaml"
+        - "profiles/base.yaml"
+        - "tests/test_config/test_scholar_sources.py"
+      read_allow:
+        - "src/config/**"
+        - "sources.d/**"
+        - "profiles/**"
+      deny:
+        - "src/ingestion/**"
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/config/sources.py"
+        - "src/config/settings.py"
+        - "sources.d/scholar.yaml"
+        - "profiles/base.yaml"
+      keys:
+        - "backend:config:sources"
+        - "backend:config:settings"
+      ttl_minutes: 60
+      reason: "ScholarSource model, settings field, profile wiring, YAML config"
+    verification:
+      tier: B
+      checks:
+        - "pytest tests/test_config/test_scholar_sources.py -v --no-cov"
+    description: |
+      Add ScholarSource to sources.py discriminated union.
+      Add SEMANTIC_SCHOLAR_API_KEY to Settings (optional, default empty).
+      Wire in profiles/base.yaml. Create sources.d/scholar.yaml with 3 initial sources.
+
+  - id: wp-frontend
+    name: "Frontend source type registration"
+    tasks: ["10.1", "10.2"]
+    priority: 2
+    depends_on: []
+    scope:
+      write_allow:
+        - "web/src/routes/contents.tsx"
+        - "web/src/routes/ingest.tsx"
+      read_allow:
+        - "web/src/**"
+      deny:
+        - "src/**"
+        - "alembic/**"
+    locks:
+      files:
+        - "web/src/routes/contents.tsx"
+        - "web/src/routes/ingest.tsx"
+      keys:
+        - "frontend:routes:contents"
+        - "frontend:routes:ingest"
+      ttl_minutes: 30
+      reason: "Add scholar entry to sourceConfig maps"
+    verification:
+      tier: C
+      checks:
+        - "cd web && pnpm exec tsc --noEmit"
+    description: |
+      Add scholar to sourceConfig in contents.tsx and ingest.tsx.
+      Label: "Scholar", icon: GraduationCap from lucide-react.
+
+  # ─────────────────────────────────────────────
+  # Layer 1: Depends on client (wp-client)
+  # ─────────────────────────────────────────────
+
+  - id: wp-ref-extractor
+    name: "Reference extraction from existing content"
+    tasks: ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7"]
+    priority: 2
+    depends_on: [wp-client]
+    scope:
+      write_allow:
+        - "src/ingestion/reference_extractor.py"
+        - "tests/test_ingestion/test_reference_extractor.py"
+      read_allow:
+        - "src/ingestion/**"
+        - "src/models/**"
+        - "src/storage/**"
+      deny:
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/ingestion/reference_extractor.py"
+      keys:
+        - "backend:ingestion:ref-extractor"
+      ttl_minutes: 60
+      reason: "Regex extraction of arXiv/DOI/S2 URLs, batch resolution via S2 client"
+    verification:
+      tier: B
+      checks:
+        - "pytest tests/test_ingestion/test_reference_extractor.py -v --no-cov"
+    description: |
+      NEW FILE: src/ingestion/reference_extractor.py
+      ReferenceExtractor class: arXiv regex, DOI regex, S2 URL regex.
+      extract_references() scans Content markdown_content.
+      ingest_extracted_references() batch-resolves via S2 client.
+
+  - id: wp-web-search
+    name: "Scholar web search provider"
+    tasks: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]
+    priority: 3
+    depends_on: [wp-client]
+    scope:
+      write_allow:
+        - "src/services/web_search.py"
+        - "tests/test_services/test_scholar_web_search.py"
+      read_allow:
+        - "src/services/**"
+        - "src/ingestion/semantic_scholar_client.py"
+      deny:
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/services/web_search.py"
+      keys:
+        - "backend:services:web-search"
+      ttl_minutes: 45
+      reason: "ScholarWebSearchProvider + settings validation for non-default"
+    verification:
+      tier: B
+      checks:
+        - "pytest tests/test_services/test_scholar_web_search.py -v --no-cov"
+    description: |
+      Add ScholarWebSearchProvider to web_search.py.
+      Register in get_web_search_provider() factory (opt-in only).
+      Add validation rejecting scholar as default WEB_SEARCH_PROVIDER.
+
+  # ─────────────────────────────────────────────
+  # Layer 2: Ingestion service (depends on migration, client, config)
+  # ─────────────────────────────────────────────
+
+  - id: wp-ingestion
+    name: "Scholar content ingestion service"
+    tasks: ["4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8", "4.9", "4.10", "4.11"]
+    priority: 1
+    depends_on: [wp-migration, wp-client, wp-config]
+    scope:
+      write_allow:
+        - "src/ingestion/scholar.py"
+        - "tests/test_ingestion/test_scholar.py"
+      read_allow:
+        - "src/ingestion/**"
+        - "src/models/**"
+        - "src/config/**"
+        - "src/storage/**"
+      deny:
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/ingestion/scholar.py"
+      keys:
+        - "backend:ingestion:scholar"
+      ttl_minutes: 90
+      reason: "Core ingestion service: search, single-paper, citation traversal, dedup"
+    verification:
+      tier: B
+      checks:
+        - "pytest tests/test_ingestion/test_scholar.py -v --no-cov"
+    description: |
+      NEW FILE: src/ingestion/scholar.py
+      ScholarContentIngestionService: _format_paper_markdown, _build_metadata,
+      _paper_to_content_data, _apply_filters, _check_cross_source_duplicate (GIN index),
+      ingest_from_search, ingest_paper, ingest_from_citations.
+      Result dataclasses: ScholarSearchResult, ScholarPaperResult.
+
+  # ─────────────────────────────────────────────
+  # Layer 3: Orchestrator + API (depends on ingestion, ref-extractor)
+  # ─────────────────────────────────────────────
+
+  - id: wp-orchestrator
+    name: "Orchestrator & pipeline integration"
+    tasks: ["6.1", "6.2", "6.3", "6.4", "6.5", "9.1", "9.2", "9.3"]
+    priority: 1
+    depends_on: [wp-ingestion, wp-ref-extractor]
+    scope:
+      write_allow:
+        - "src/ingestion/orchestrator.py"
+        - "src/pipeline/runner.py"
+        - "src/api/source_routes.py"
+      read_allow:
+        - "src/ingestion/**"
+        - "src/pipeline/**"
+        - "src/api/**"
+        - "src/config/**"
+      deny:
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/ingestion/orchestrator.py"
+        - "src/pipeline/runner.py"
+        - "src/api/source_routes.py"
+      keys:
+        - "backend:ingestion:orchestrator"
+        - "backend:pipeline:runner"
+      ttl_minutes: 60
+      reason: "Wire scholar into orchestrator, pipeline, and API routes"
+    verification:
+      tier: C
+      checks:
+        - "python -c 'from src.ingestion.orchestrator import ingest_scholar; print(\"OK\")'"
+
+  # ─────────────────────────────────────────────
+  # Layer 4: CLI (depends on orchestrator)
+  # ─────────────────────────────────────────────
+
+  - id: wp-cli
+    name: "CLI commands"
+    tasks: ["7.1", "7.2", "7.3", "7.4"]
+    priority: 2
+    depends_on: [wp-orchestrator]
+    scope:
+      write_allow:
+        - "src/cli/ingest_commands.py"
+        - "tests/cli/test_scholar_commands.py"
+      read_allow:
+        - "src/cli/**"
+        - "src/ingestion/**"
+      deny:
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/ingest_commands.py"
+      keys:
+        - "backend:cli:ingest"
+      ttl_minutes: 60
+      reason: "aca ingest scholar, scholar-paper, scholar-refs commands"
+    verification:
+      tier: B
+      checks:
+        - "pytest tests/cli/test_scholar_commands.py -v --no-cov"
+    description: |
+      Add 3 CLI commands to ingest_commands.py:
+      - aca ingest scholar (search-based from sources.d)
+      - aca ingest scholar-paper <identifier> [--with-refs]
+      - aca ingest scholar-refs [--after, --before, --source, --dry-run, --limit]
+
+  # ─────────────────────────────────────────────
+  # Integration (depends on all)
+  # ─────────────────────────────────────────────
+
+  - id: wp-integration
+    name: "Integration, docs, and final verification"
+    tasks: ["11.1", "11.2", "11.3"]
+    priority: 1
+    depends_on: [wp-cli, wp-web-search, wp-frontend]
+    scope:
+      write_allow:
+        - "CLAUDE.md"
+        - "docs/**"
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      keys:
+        - "integration:add-academic-paper-insights"
+      ttl_minutes: 120
+      reason: "Full integration test, documentation, PR creation"
+    verification:
+      tier: A
+      checks:
+        - "pytest tests/ -v --no-cov -x"
+        - "cd web && pnpm exec tsc --noEmit"
