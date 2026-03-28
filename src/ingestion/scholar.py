@@ -90,11 +90,14 @@ class ScholarContentIngestionService:
     def _get_client(self) -> SemanticScholarClient:
         """Return (and lazily create) the API client."""
         if self._client is None:
+            from src.config.settings import get_settings
             from src.ingestion.semantic_scholar_client import (
                 SemanticScholarClient as _Client,
             )
 
-            self._client = _Client()
+            settings = get_settings()
+            api_key = settings.semantic_scholar_api_key or None
+            self._client = _Client(api_key=api_key)
         return self._client
 
     # ------------------------------------------------------------------
