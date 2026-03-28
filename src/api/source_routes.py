@@ -63,12 +63,16 @@ def _get_source_url(source) -> str:
     - YouTubePlaylistSource: YouTube playlist URL from id
     - YouTubeChannelSource: YouTube channel URL from channel_id
     - GmailSource: Gmail query string
+    - ScholarSource: search query string
     """
     if isinstance(source, YouTubePlaylistSource):
         return f"https://www.youtube.com/playlist?list={source.id}"
     if isinstance(source, YouTubeChannelSource):
         return f"https://www.youtube.com/channel/{source.channel_id}"
     if isinstance(source, GmailSource):
+        return source.query
+    # ScholarSource and other query-based sources
+    if hasattr(source, "query"):
         return source.query
     # RSSSource, YouTubeRSSSource, PodcastSource all have .url
     return source.url

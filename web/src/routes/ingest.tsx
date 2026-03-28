@@ -22,6 +22,7 @@ import {
   Loader2,
   ArrowLeft,
   BookOpen,
+  GraduationCap,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -139,6 +140,15 @@ const SOURCE_CONFIGS: SourceConfig[] = [
     icon: <BookOpen className="h-5 w-5" />,
     maxResultsLabel: "Maximum posts",
     maxResultsMax: 100,
+    supportsIngest: true,
+  },
+  {
+    key: "scholar",
+    label: "Academic Papers",
+    description: "Fetch and analyze academic papers from Google Scholar, arXiv, and Semantic Scholar.",
+    icon: <GraduationCap className="h-5 w-5" />,
+    maxResultsLabel: "Maximum papers",
+    maxResultsMax: 50,
     supportsIngest: true,
   },
 ]

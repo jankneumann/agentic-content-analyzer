@@ -9,6 +9,7 @@ Provider implementations:
 - TavilyWebSearchProvider: Wraps existing TavilyService
 - PerplexityWebSearchProvider: Uses PerplexityClient for citation-rich results
 - GrokWebSearchProvider: Adapts GrokXClient for X/Twitter social signal
+- ScholarWebSearchProvider: Wraps SemanticScholarClient for academic paper search
 """
 
 from __future__ import annotations
@@ -260,6 +261,85 @@ class GrokWebSearchProvider:
 
 
 # ---------------------------------------------------------------------------
+# Semantic Scholar Adapter
+# ---------------------------------------------------------------------------
+
+
+class ScholarWebSearchProvider:
+    """Wraps SemanticScholarClient for ad-hoc academic paper queries.
+
+    Opt-in only — not intended as a default WEB_SEARCH_PROVIDER.
+    Callers request it explicitly via ``get_web_search_provider("scholar")``.
+    """
+
+    @property
+    def name(self) -> str:
+        return "scholar"
+
+    def search(self, query: str, max_results: int = 5) -> list[WebSearchResult]:
+        """Search Semantic Scholar for papers matching *query*."""
+        import asyncio
+
+        from src.ingestion.semantic_scholar_client import SemanticScholarClient
+
+        async def _search() -> list[WebSearchResult]:
+            from src.config.settings import get_settings
+
+            settings = get_settings()
+            api_key = settings.semantic_scholar_api_key or None
+
+            client = SemanticScholarClient(api_key=api_key)
+            try:
+                result = await client.search_papers(query, limit=max_results)
+                return [
+                    WebSearchResult(
+                        title=paper.title,
+                        url=f"https://www.semanticscholar.org/paper/{paper.paper_id}",
+                        content=(
+                            paper.abstract[:300] + "..."
+                            if paper.abstract and len(paper.abstract) > 300
+                            else (paper.abstract or "")
+                        ),
+                        metadata={
+                            "year": paper.year,
+                            "citation_count": paper.citation_count,
+                            "venue": paper.venue,
+                            "fields_of_study": paper.fields_of_study,
+                        },
+                    )
+                    for paper in result.data
+                ]
+            finally:
+                await client.close()
+
+        return asyncio.run(_search())
+
+    def format_results(self, results: list[WebSearchResult]) -> str:
+        """Format results with academic context."""
+        if not results:
+            return "No academic papers found."
+        lines: list[str] = []
+        for i, r in enumerate(results, 1):
+            parts = [f"{i}. {r.title}"]
+            if r.url:
+                parts.append(f"   URL: {r.url}")
+            if r.content:
+                parts.append(f"   Abstract: {r.content[:500]}...")
+            if r.metadata:
+                meta_parts: list[str] = []
+                if r.metadata.get("year"):
+                    meta_parts.append(f"Year: {r.metadata['year']}")
+                if r.metadata.get("citation_count"):
+                    meta_parts.append(f"Citations: {r.metadata['citation_count']}")
+                if r.metadata.get("venue"):
+                    meta_parts.append(f"Venue: {r.metadata['venue']}")
+                if meta_parts:
+                    parts.append(f"   {', '.join(meta_parts)}")
+            lines.append("\n".join(parts))
+        return "\n\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
@@ -289,7 +369,10 @@ def get_web_search_provider(provider: str | None = None) -> WebSearchProvider:
         return PerplexityWebSearchProvider()
     elif provider_name == "grok":
         return GrokWebSearchProvider()
+    elif provider_name == "scholar":
+        return ScholarWebSearchProvider()
     else:
         raise ValueError(
-            f"Unknown web search provider: {provider_name}. Valid values: tavily, perplexity, grok"
+            f"Unknown web search provider: {provider_name}. "
+            "Valid values: tavily, perplexity, grok, scholar"
         )
