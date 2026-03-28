@@ -17,8 +17,11 @@ The system must store content references in a `content_references` PostgreSQL ta
 - `external_id_type` (ExternalIdType enum, nullable) — identifier namespace
 - `resolution_status` (ResolutionStatus enum) — unresolved, resolved, external, failed, not_found
 - `resolved_at` (timestamp, nullable)
-- `context_snippet` (text, nullable) — surrounding text where reference was found
+- `source_chunk_id` (FK to document_chunks.id, nullable) — chunk where reference was found, anchoring to the hierarchical document model
+- `context_snippet` (text, nullable) — surrounding text (fallback when chunk not yet indexed)
 - `confidence` (float, default 1.0) — extraction confidence score
+
+When `DocumentChunk` records exist for the source content, references must be anchored via `source_chunk_id` using character offset matching (`start_char`/`end_char`). When chunks are not yet available (content ingested but not yet chunked), `context_snippet` serves as fallback. References should be retroactively anchored when chunks become available.
 
 ### REQ-REF-002: Reference Extraction from Content
 
@@ -108,6 +111,16 @@ All ingestion services must call reference extraction after creating/updating a 
 - Enqueue `resolve_references` background job
 - Call reverse resolution to update any existing unresolved refs pointing to the new content
 - This hook must be fail-safe: reference extraction failure must not block content ingestion
+
+### REQ-REF-013: MCP Tool Surface
+
+All API endpoints and CLI commands must also be registered as MCP tools in `src/mcp_server.py` via `@mcp.tool()`, following the existing delegation pattern:
+- `get_content_references(content_id, direction)` — query outgoing/incoming references
+- `extract_references(after, before, source, dry_run, batch_size)` — backfill extraction
+- `resolve_references(batch_size, auto_ingest)` — trigger resolution pass
+- `ingest_reference(reference_id)` — ad-hoc ingest for a specific unresolved reference
+
+This ensures agentic workflows (MCP clients, AI assistants) have the same citation discovery and ingestion capabilities as the API and CLI.
 
 ## Scenarios
 
