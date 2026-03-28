@@ -21,7 +21,11 @@ The system must store content references in a `content_references` PostgreSQL ta
 - `context_snippet` (text, nullable) — surrounding text (fallback when chunk not yet indexed)
 - `confidence` (float, default 1.0) — extraction confidence score
 
-When `DocumentChunk` records exist for the source content, references must be anchored via `source_chunk_id` using character offset matching (`start_char`/`end_char`). When chunks are not yet available (content ingested but not yet chunked), `context_snippet` serves as fallback. References should be retroactively anchored when chunks become available.
+The table MUST have a CHECK constraint: `CHECK (external_id IS NOT NULL OR external_url IS NOT NULL)` — every reference must have at least one identifier.
+
+The URL uniqueness constraint MUST be a partial unique index (not a table constraint): `CREATE UNIQUE INDEX uq_content_reference_url ON content_references (source_content_id, external_url) WHERE external_id IS NULL`.
+
+When `DocumentChunk` records exist for the source content, references must be anchored via `source_chunk_id` using chunk_index-based sequential matching (approximate character range from cumulative chunk text lengths). Note: `DocumentChunk.start_char`/`end_char` fields are not populated by current chunking strategies. When chunks are not yet available (content ingested but not yet chunked), `context_snippet` serves as fallback. References must be retroactively re-anchored when chunks are created or re-indexed for a content item.
 
 ### REQ-REF-002: Reference Extraction from Content
 
@@ -33,6 +37,8 @@ On content ingestion, the system must scan `markdown_content` and `links_json` f
 - Generic URLs from `links_json` (lower confidence)
 
 Extracted identifiers must be normalized (strip version suffixes, lowercase DOIs, remove URL prefixes).
+
+Reference storage MUST use `INSERT ... ON CONFLICT DO NOTHING` (not session-level dedup) to handle duplicates atomically. This avoids the `autoflush=False` gotcha where newly added rows within the same batch are invisible to subsequent dedup checks.
 
 ### REQ-REF-003: Background Resolution
 
@@ -66,13 +72,13 @@ When enabled via `reference_auto_ingest_enabled` setting:
 - Unresolved references with structured IDs (arXiv, DOI) trigger content ingestion
 - arXiv IDs trigger `ingest_arxiv_paper()`
 - DOIs trigger `ingest_scholar_paper()`
-- Max depth of 1: content auto-ingested from references does not trigger further auto-ingestion
-- Auto-ingested content is tagged with `ingestion_mode: "auto_ingest"` in metadata_json
+- Depth tracking via `metadata_json.auto_ingest_depth` integer: 0 for user-ingested, 1 for first-level auto-ingest, etc. Content with `auto_ingest_depth >= max_depth` does not trigger further auto-ingestion
+- Auto-ingested content is tagged with both `ingestion_mode: "auto_ingest"` and `auto_ingest_depth: N` in metadata_json
 
 ### REQ-REF-007: Supplementary Links (Scholar ↔ arXiv)
 
 When both a Scholar abstract and an arXiv full-text record exist for the same paper:
-- Create a bidirectional `supplements` reference between them
+- Create **two** `supplements` reference rows (one in each direction: Scholar→arXiv and arXiv→Scholar) for true bidirectionality — avoids requiring symmetric query logic
 - Detection via shared `arxiv_id` in `metadata_json`
 - Created during ingestion of whichever record arrives second
 
@@ -91,9 +97,11 @@ When both a Scholar abstract and an arXiv full-text record exist for the same pa
 
 ### REQ-REF-010: Database Migration
 
-- Create `content_references` table with indexes
-- Add `referencetype`, `externalidtype`, `resolutionstatus` PostgreSQL enum types
-- Create GIN index on `contents.metadata_json` if not already present (idempotent)
+- Create `content_references` table with indexes and CHECK constraint (`chk_has_identifier`)
+- Use `VARCHAR(20)` columns with application-level `StrEnum` validation for `reference_type`, `external_id_type`, and `resolution_status` — do NOT create PostgreSQL enum types (avoids `ALTER TYPE ... ADD VALUE` migration burden per CLAUDE.md gotcha)
+- Create partial unique index `uq_content_reference_url` using `CREATE UNIQUE INDEX ... WHERE external_id IS NULL` (not a table-level UNIQUE constraint, which does not support WHERE clauses)
+- ALTER `contents.metadata_json` from `json` to `jsonb` if not already `jsonb`: `ALTER TABLE contents ALTER COLUMN metadata_json TYPE jsonb USING metadata_json::jsonb` (required for GIN index and `@>` containment queries; coordinate with arXiv migration so only the first migration performs the ALTER)
+- Create GIN index on `contents.metadata_json` if not already present (idempotent with `CREATE INDEX IF NOT EXISTS`)
 
 ### REQ-REF-011: Settings
 
@@ -156,26 +164,27 @@ WHEN the resolve_references background job runs
 THEN it calls ingest_scholar_paper("DOI:10.1234/paper")
 AND the newly ingested content resolves the reference
 AND the auto-ingested content has metadata_json.ingestion_mode = "auto_ingest"
+AND the auto-ingested content has metadata_json.auto_ingest_depth = 1
 ```
 
 ### Scenario: Auto-ingest depth limit
 ```
-GIVEN content A was auto-ingested (metadata_json.ingestion_mode = "auto_ingest")
+GIVEN content A was auto-ingested (metadata_json.auto_ingest_depth = 1)
+AND reference_auto_ingest_max_depth = 1
 AND content A contains a reference to arXiv paper 2402.99999
 WHEN reference extraction runs on content A
 THEN the reference is extracted and stored as unresolved
-BUT auto-ingest is NOT triggered (depth limit prevents recursive auto-ingest)
+BUT auto-ingest is NOT triggered (auto_ingest_depth >= max_depth)
 ```
 
 ### Scenario: Scholar and arXiv records linked as supplements
 ```
 GIVEN a Scholar content record exists with metadata_json.arxiv_id = "2301.12345"
 WHEN an arXiv content record is ingested for paper 2301.12345
-THEN a content_references row is created with:
-  - source_content_id = scholar.id
-  - target_content_id = arxiv.id
-  - reference_type = "supplements"
-  - resolution_status = "resolved"
+THEN two content_references rows are created:
+  - Row 1: source_content_id=scholar.id, target_content_id=arxiv.id, reference_type="supplements"
+  - Row 2: source_content_id=arxiv.id, target_content_id=scholar.id, reference_type="supplements"
+AND both have resolution_status = "resolved"
 ```
 
 ### Scenario: Generic URL reference from blog post
@@ -192,11 +201,12 @@ THEN a content_references row is created with:
 
 ### Scenario: Reference extraction is fail-safe
 ```
-GIVEN reference extraction encounters a regex error or database error
+GIVEN reference extraction encounters a regex error or database error mid-way through processing
 WHEN the extraction hook runs during content ingestion
-THEN the error is logged
+THEN the error is logged at WARNING level
+AND partial results (references successfully extracted before the error) are persisted
 AND the content ingestion completes successfully (not blocked)
-AND no content_references rows are created for this content
+AND no automatic retry is attempted
 ```
 
 ### Scenario: API returns references for content item

@@ -14,20 +14,23 @@ Section 10 (settings)           ─── no deps, parallel with 1, 2
 Section 11 (docs)               ─── depends on all
 ```
 
-**Max parallel width: 3** (sections 1, 2, 9 in first wave)
+**Max parallel width: 3** (sections 1, 2, 10 in first wave)
 
 ## 1. Database Migration & Models
 
-- [ ] 1.1 Create `ReferenceType`, `ExternalIdType`, `ResolutionStatus` Python enums in `src/models/content_reference.py`
-- [ ] 1.2 Create `ContentReference` SQLAlchemy model in `src/models/content_reference.py` — include `source_chunk_id` FK to `document_chunks.id` (nullable, SET NULL on delete)
+- [ ] 1.1 Create `ReferenceType`, `ExternalIdType`, `ResolutionStatus` Python `StrEnum` classes in `src/models/content_reference.py` — these are app-level validation only, **no PostgreSQL enum types**
+- [ ] 1.2 Create `ContentReference` SQLAlchemy model in `src/models/content_reference.py` — use `sa.String(20)` for enum-like columns with `@validates` decorator; include `source_chunk_id` FK to `document_chunks.id` (nullable, SET NULL on delete); include CHECK constraint `chk_has_identifier`
 - [ ] 1.3 Add `references` and `cited_by` relationships on `Content` model (lazy-loaded)
 - [ ] 1.4 Create Alembic migration:
-  - Add `referencetype`, `externalidtype`, `resolutionstatus` PostgreSQL enum types
-  - Create `content_references` table with all columns and constraints
+  - ALTER `contents.metadata_json` from `json` to `jsonb` if not already `jsonb`: `ALTER TABLE contents ALTER COLUMN metadata_json TYPE jsonb USING metadata_json::jsonb` (coordinate with arXiv migration — check column type before altering)
+  - Create `content_references` table with all columns, CHECK constraint, and unique constraint
+  - Create partial unique index: `CREATE UNIQUE INDEX uq_content_reference_url ON content_references (source_content_id, external_url) WHERE external_id IS NULL` (use `op.create_index(unique=True, postgresql_where=...)` in Alembic)
   - Create indexes: `ix_content_refs_source`, `ix_content_refs_target`, `ix_content_refs_external_id`, `ix_content_refs_unresolved`
-  - Create GIN index on `contents.metadata_json` if not present (idempotent with Scholar/arXiv migrations)
-- [ ] 1.5 Run migration and verify table, enums, and indexes
-- [ ] 1.6 Write model unit tests (creation, constraints, relationships)
+  - Create GIN index on `contents.metadata_json` if not present (idempotent with `CREATE INDEX IF NOT EXISTS`)
+  - Check for Alembic multiple heads and merge if needed
+- [ ] 1.5 Update SQLAlchemy Content model to use `JSONB` instead of `JSON` for `metadata_json`
+- [ ] 1.6 Run migration and verify table, indexes, and constraints
+- [ ] 1.7 Write model unit tests (creation, constraints, CHECK constraint, relationships)
 
 ## 2. Reference Extraction Service (parallel with 1, 9)
 
@@ -35,10 +38,10 @@ Section 11 (docs)               ─── depends on all
 - [ ] 2.2 Implement `REFERENCE_PATTERNS` dict mapping `ExternalIdType` → list of compiled regex patterns for arXiv IDs, DOIs, S2 URLs
 - [ ] 2.3 Implement `normalize_id(id_type, raw_id) -> str` — strip arXiv version suffix, lowercase DOIs, clean trailing punctuation
 - [ ] 2.4 Implement `classify_url(url) -> ExtractedReference | None` — classify known URL patterns into structured IDs (arxiv.org → arxiv, doi.org → doi, semanticscholar.org → s2)
-- [ ] 2.5 Implement `_find_chunk_for_offset(chunks, char_offset) -> DocumentChunk | None` — match character offset to chunk via `start_char`/`end_char`
+- [ ] 2.5 Implement `_find_chunk_for_offset(chunks, char_offset) -> DocumentChunk | None` — use chunk_index-based sequential matching (cumulative `len(chunk.text)`) since `start_char`/`end_char` are never populated by current chunking strategies
 - [ ] 2.6 Implement `extract_context(text, match, window=150) -> str` — extract surrounding text for context_snippet (fallback when no chunk available)
 - [ ] 2.7 Implement `extract_from_content(content: Content, db: Session) -> list[ExtractedReference]` — scan markdown_content + links_json, anchor to DocumentChunk when available, fall back to context_snippet, deduplicate
-- [ ] 2.8 Implement `store_references(content_id, refs, db) -> int` — persist ExtractedReference list to content_references table, skip existing (unique constraint)
+- [ ] 2.8 Implement `store_references(content_id, refs, db) -> int` — persist ExtractedReference list using `INSERT ... ON CONFLICT DO NOTHING` (not session-level dedup) to handle the `autoflush=False` gotcha atomically
 - [ ] 2.9 Create `ExtractedReference` dataclass (external_id, external_id_type, external_url, source_chunk_id, context_snippet, confidence, reference_type)
 - [ ] 2.10 Write unit tests: regex patterns (arXiv variants, DOI variants, S2 URLs), normalization, URL classification, chunk anchoring, deduplication
 
@@ -51,12 +54,12 @@ Section 11 (docs)               ─── depends on all
 - [ ] 3.5 Implement `resolve_for_content(content_id, db) -> int` — resolve all unresolved refs for a specific content item
 - [ ] 3.6 Implement `resolve_batch(batch_size, db) -> int` — resolve oldest unresolved refs in batch
 - [ ] 3.7 Implement `resolve_incoming(new_content: Content, db) -> int` — reverse resolution: find unresolved refs matching new content's metadata (arxiv_id, doi, source_url)
-- [ ] 3.8 Register `resolve_references` queue handler in `src/queue/worker.py`
+- [ ] 3.8 Register `resolve_references` queue handler in `src/queue/worker.py` — add `_register_reference_handlers()` function call in `register_all_handlers()`, following the existing `_register_content_handlers()` pattern
 - [ ] 3.9 Write unit tests: resolution by external_id, by URL, reverse resolution, batch processing
 
 ## 4. Neo4j Citation Edge Sync (depends on 1, 3)
 
-- [ ] 4.1 Create `src/services/reference_graph_sync.py` with `ReferenceGraphSync` class
+- [ ] 4.1 Create `src/services/reference_graph_sync.py` with `ReferenceGraphSync` class — reuse `GraphitiClient.driver` for raw Cypher queries (do NOT create a separate Neo4j driver instance)
 - [ ] 4.2 Implement `_find_episode_uuid(content_id) -> str | None` — query Neo4j for Episode node matching content
 - [ ] 4.3 Implement `sync_reference(ref: ContentReference)` — create/update CITES edge between Episode nodes (MERGE with properties)
 - [ ] 4.4 Implement `sync_resolved_for_content(content_id)` — sync all resolved refs for a content item
@@ -74,13 +77,14 @@ Section 11 (docs)               ─── depends on all
   - Call `resolve_incoming()` for reverse resolution
   - Wrap in try/except: log errors, never block ingestion
 - [ ] 5.3 Wire hook into ingestion orchestrator (called after content persist in each service)
-- [ ] 5.4 Add `supplements` link detection: when arXiv content is ingested and Scholar record exists (or vice versa), create bidirectional supplements reference
-- [ ] 5.5 Write integration tests: hook called on RSS ingestion, hook called on arXiv ingestion, hook failure doesn't block ingestion
+- [ ] 5.4 Add `supplements` link detection: when arXiv content is ingested and Scholar record exists (or vice versa), create **two** supplements reference rows (one in each direction) for true bidirectionality
+- [ ] 5.5 Add chunk re-anchoring hook: after chunks are created or re-indexed for a content item, run `_find_chunk_for_offset` on all references with `source_chunk_id IS NULL` for that content_id to retroactively anchor them
+- [ ] 5.6 Write integration tests: hook called on RSS ingestion, hook called on arXiv ingestion, hook failure doesn't block ingestion, chunk re-anchoring after indexing
 
 ## 6. Auto-Ingest Trigger (depends on 3)
 
 - [ ] 6.1 Create `src/services/reference_auto_ingest.py` with `AutoIngestTrigger` class
-- [ ] 6.2 Implement depth check: skip if source content has `ingestion_mode == "auto_ingest"` in metadata_json
+- [ ] 6.2 Implement depth check via `metadata_json.auto_ingest_depth` integer (0=user-ingested, 1+=auto-ingested): skip if `auto_ingest_depth >= max_depth`. Tag newly auto-ingested content with both `ingestion_mode: "auto_ingest"` and `auto_ingest_depth: source_depth + 1`
 - [ ] 6.3 Implement arXiv auto-ingest: call `ingest_arxiv_paper()` for unresolved arXiv IDs
 - [ ] 6.4 Implement DOI auto-ingest: call `ingest_scholar_paper()` for unresolved DOIs
 - [ ] 6.5 Wire into resolution service (opt-in, gated on `reference_auto_ingest_enabled` setting)

@@ -20,16 +20,16 @@ Neo4j sync: CITES/CITED_BY edges between Episodes
 CREATE TABLE content_references (
     id              SERIAL PRIMARY KEY,
     source_content_id   INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
-    reference_type      VARCHAR(20) NOT NULL DEFAULT 'cites',  -- ReferenceType enum
+    reference_type      VARCHAR(20) NOT NULL DEFAULT 'cites',  -- ReferenceType StrEnum (app-level validation, NOT PG enum)
 
     -- Resolution target (one of these populated)
     target_content_id   INTEGER REFERENCES contents(id) ON DELETE SET NULL,
     external_url        TEXT,
     external_id         TEXT,             -- "2301.12345", "10.1038/nature12345"
-    external_id_type    VARCHAR(20),      -- ExternalIdType enum
+    external_id_type    VARCHAR(20),      -- ExternalIdType StrEnum (app-level validation, NOT PG enum)
 
     -- Resolution tracking
-    resolution_status   VARCHAR(20) NOT NULL DEFAULT 'unresolved',
+    resolution_status   VARCHAR(20) NOT NULL DEFAULT 'unresolved',  -- ResolutionStatus StrEnum (app-level validation)
     resolved_at         TIMESTAMPTZ,
 
     -- Context (anchored to document chunk model)
@@ -41,10 +41,14 @@ CREATE TABLE content_references (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     -- Constraints
-    CONSTRAINT uq_content_reference UNIQUE (source_content_id, external_id, external_id_type),
-    CONSTRAINT uq_content_reference_url UNIQUE (source_content_id, external_url)
-        WHERE external_id IS NULL
+    CONSTRAINT chk_has_identifier CHECK (external_id IS NOT NULL OR external_url IS NOT NULL),
+    CONSTRAINT uq_content_reference UNIQUE (source_content_id, external_id, external_id_type)
 );
+
+-- Partial unique index for URL-only references (where external_id IS NULL)
+CREATE UNIQUE INDEX uq_content_reference_url
+    ON content_references (source_content_id, external_url)
+    WHERE external_id IS NULL;
 
 CREATE INDEX ix_content_refs_source ON content_references(source_content_id);
 CREATE INDEX ix_content_refs_target ON content_references(target_content_id) WHERE target_content_id IS NOT NULL;
@@ -52,7 +56,9 @@ CREATE INDEX ix_content_refs_external_id ON content_references(external_id_type,
 CREATE INDEX ix_content_refs_unresolved ON content_references(resolution_status) WHERE resolution_status = 'unresolved';
 ```
 
-### Enums
+### Enums (VARCHAR + Application-Level Validation)
+
+All enum-like fields use `VARCHAR(20)` columns with Python `StrEnum` validation at the application layer. **No PostgreSQL enum types** are created — this avoids the `ALTER TYPE ... ADD VALUE` migration burden when adding new values (see CLAUDE.md gotcha: "PG enum + Python StrEnum mismatch").
 
 ```python
 class ReferenceType(StrEnum):
@@ -77,6 +83,8 @@ class ResolutionStatus(StrEnum):
     NOT_FOUND = "not_found"      # Identifier doesn't resolve (404, invalid)
 ```
 
+SQLAlchemy model uses `sa.String(20)` with `@validates` decorator to enforce enum membership at the ORM layer.
+
 ## Reference Extraction Service
 
 ### Pattern Matching
@@ -100,7 +108,11 @@ REFERENCE_PATTERNS = {
 
 ### Extraction Flow
 
-References are anchored to `DocumentChunk` records from the hierarchical document model when available. Each chunk has `id`, `chunk_index`, `section_path` (heading hierarchy), `start_char`/`end_char` (character offsets), and `chunk_type` — providing precise location context within the source document. When chunks haven't been indexed yet (e.g., during initial ingestion before chunking runs), `context_snippet` serves as a fallback.
+References are anchored to `DocumentChunk` records from the hierarchical document model when available. Each chunk has `id`, `chunk_index`, `section_path` (heading hierarchy), and `chunk_type` — providing structural location context within the source document.
+
+**Important**: `DocumentChunk.start_char`/`end_char` fields exist in the model but are **never populated** by current chunking strategies (all return `None`). Therefore, chunk anchoring uses **chunk_index-based sequential matching**: iterate chunks by `chunk_index`, check if the regex match offset falls within the approximate character range for that chunk (computed from cumulative `len(chunk.text)`). This is best-effort — exact character alignment is not guaranteed when the chunker modifies whitespace or headers.
+
+When chunks haven't been indexed yet (e.g., during initial ingestion before chunking runs), `context_snippet` serves as a fallback. When chunks are later created for previously-unchunked content, a re-anchoring pass updates `source_chunk_id` for references with `source_chunk_id IS NULL`.
 
 ```python
 class ReferenceExtractor:
@@ -147,12 +159,46 @@ class ReferenceExtractor:
 
         return deduplicate_refs(refs)
 
+    def store_references(self, content_id: int, refs: list[ExtractedReference], db: Session) -> int:
+        """Persist extracted references using INSERT ... ON CONFLICT DO NOTHING.
+
+        Uses atomic conflict handling (not session-level dedup) to avoid
+        the autoflush=False gotcha where newly added rows are invisible
+        to subsequent SELECTs within the same flush cycle.
+        """
+        from sqlalchemy.dialects.postgresql import insert
+
+        stored = 0
+        for ref in refs:
+            stmt = insert(ContentReference).values(
+                source_content_id=content_id,
+                external_id=ref.external_id,
+                external_id_type=ref.external_id_type,
+                external_url=ref.external_url,
+                source_chunk_id=ref.source_chunk_id,
+                context_snippet=ref.context_snippet,
+                confidence=ref.confidence,
+                reference_type=ref.reference_type or ReferenceType.CITES,
+            ).on_conflict_do_nothing(
+                constraint="uq_content_reference"
+            )
+            result = db.execute(stmt)
+            stored += result.rowcount
+        return stored
+
     def _find_chunk_for_offset(self, chunks: list[DocumentChunk], char_offset: int) -> DocumentChunk | None:
-        """Find the chunk containing this character offset."""
+        """Find the chunk containing this character offset.
+
+        Uses chunk_index-based sequential matching since start_char/end_char
+        are not populated by current chunking strategies. Computes approximate
+        character ranges from cumulative chunk text lengths.
+        """
+        cumulative = 0
         for chunk in chunks:
-            if chunk.start_char is not None and chunk.end_char is not None:
-                if chunk.start_char <= char_offset < chunk.end_char:
-                    return chunk
+            chunk_len = len(chunk.text) if chunk.text else 0
+            if cumulative <= char_offset < cumulative + chunk_len:
+                return chunk
+            cumulative += chunk_len
         return None
 ```
 
@@ -284,19 +330,35 @@ class AutoIngestTrigger:
         if not ref.external_id or not ref.external_id_type:
             return None
 
-        # Check depth: don't auto-ingest from auto-ingested content
+        # Check depth via auto_ingest_depth integer (more robust than boolean check):
+        # 0 = user-ingested, 1 = first-level auto-ingest, 2+ = recursive
         source = self.db.get(Content, ref.source_content_id)
-        if (source.metadata_json or {}).get("ingestion_mode") == "auto_ingest":
+        source_depth = (source.metadata_json or {}).get("auto_ingest_depth", 0)
+        if source_depth >= self.max_depth:
             return None
+
+        # Compute depth for the new content (source_depth + 1)
+        new_depth = source_depth + 1
 
         if ref.external_id_type == ExternalIdType.ARXIV:
             from src.ingestion.orchestrator import ingest_arxiv_paper
             result = await ingest_arxiv_paper(ref.external_id)
+            if result and result.content:
+                # Tag with auto_ingest_depth for depth tracking
+                meta = result.content.metadata_json or {}
+                meta["ingestion_mode"] = "auto_ingest"
+                meta["auto_ingest_depth"] = new_depth
+                result.content.metadata_json = meta
             return result.content if result else None
 
         elif ref.external_id_type == ExternalIdType.DOI:
             from src.ingestion.orchestrator import ingest_scholar_paper
             result = await ingest_scholar_paper(f"DOI:{ref.external_id}")
+            if result and result.content:
+                meta = result.content.metadata_json or {}
+                meta["ingestion_mode"] = "auto_ingest"
+                meta["auto_ingest_depth"] = new_depth
+                result.content.metadata_json = meta
             return result.content if result else None
 
         return None
@@ -316,7 +378,15 @@ Only resolved references (with both `source_content_id` and `target_content_id`)
 
 ```python
 class ReferenceGraphSync:
-    """One-way sync: PostgreSQL → Neo4j citation edges."""
+    """One-way sync: PostgreSQL → Neo4j citation edges.
+
+    Reuses the existing GraphitiClient.driver instance for raw Cypher queries
+    instead of creating a separate Neo4j driver (avoids a second connection pool
+    outside Graphiti's management).
+    """
+
+    def __init__(self, graphiti_client: GraphitiClient):
+        self.driver = graphiti_client.driver  # Reuse existing connection pool
 
     async def sync_reference(self, ref: ContentReference) -> None:
         """Create/update CITES edge when reference is resolved."""
@@ -375,6 +445,29 @@ RETURN a.name, b.name, count(s) AS co_citation_count
 ORDER BY co_citation_count DESC
 ```
 
+## Database Migration Notes
+
+### metadata_json: json → jsonb
+
+The `contents.metadata_json` column is currently declared as `sa.JSON()` (PostgreSQL `json` type). GIN indexes and the `@>` containment operator require `jsonb`. The migration MUST:
+
+```sql
+ALTER TABLE contents ALTER COLUMN metadata_json TYPE jsonb USING metadata_json::jsonb;
+CREATE INDEX IF NOT EXISTS ix_content_metadata_json_gin ON contents USING GIN (metadata_json jsonb_path_ops);
+```
+
+This ALTER is idempotent with the arXiv migration — coordinate so only the first migration performs it (check column type before altering). The SQLAlchemy model should also be updated to use `JSONB` instead of `JSON`.
+
+### Queue Handler Registration
+
+The `resolve_references` handler must be registered in `register_all_handlers()` in `src/queue/worker.py`. Add a `_register_reference_handlers()` function following the existing pattern in `_register_content_handlers()`:
+
+```python
+def _register_reference_handlers():
+    from src.services.reference_resolver import resolve_references_handler
+    # Handler auto-registered via @register_handler decorator
+```
+
 ## Integration Points
 
 ### On Content Ingestion (all source types)
@@ -406,13 +499,21 @@ if resolved_count > 0:
 
 ### Scholar ↔ arXiv Supplementary Link
 
-When an arXiv paper is ingested and a Scholar record exists with the same arXiv ID (or vice versa):
+When an arXiv paper is ingested and a Scholar record exists with the same arXiv ID (or vice versa), create **two rows** for true bidirectionality (avoids requiring symmetric query logic):
 
 ```python
-# Create bidirectional SUPPLEMENTS relationship
+# Create bidirectional SUPPLEMENTS relationship (two rows)
 ref_service.create_reference(
     source_content_id=scholar_content.id,
     target_content_id=arxiv_content.id,
+    reference_type=ReferenceType.SUPPLEMENTS,
+    external_id=arxiv_id,
+    external_id_type=ExternalIdType.ARXIV,
+    resolution_status=ResolutionStatus.RESOLVED,
+)
+ref_service.create_reference(
+    source_content_id=arxiv_content.id,
+    target_content_id=scholar_content.id,
     reference_type=ReferenceType.SUPPLEMENTS,
     external_id=arxiv_id,
     external_id_type=ExternalIdType.ARXIV,
@@ -522,7 +623,9 @@ def resolve_references(
 
     Args:
         batch_size: Number of references to process
-        auto_ingest: Trigger ingestion for unresolved structured IDs
+        auto_ingest: Trigger ingestion for unresolved structured IDs.
+            Only effective when reference_auto_ingest_enabled setting is True.
+            If the setting is False, this parameter is ignored.
 
     Returns:
         JSON with resolution stats
