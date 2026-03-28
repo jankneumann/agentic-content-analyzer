@@ -1222,3 +1222,138 @@ def scholar_refs(
         _ingest_via_api("scholar-refs", params, "Scholar reference extraction")
     except httpx.ConnectError:
         _scholar_refs_direct(after, before, source, dry_run, limit)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest arxiv
+# ---------------------------------------------------------------------------
+
+
+def _arxiv_direct(max_entries: int, days: int | None, force_reprocess: bool, no_pdf: bool) -> None:
+    """Direct arXiv ingestion."""
+    from rich.console import Console
+
+    console = Console()
+    try:
+        from src.ingestion.orchestrator import ingest_arxiv
+
+        after_date = _days_to_after_date(days)
+        count = ingest_arxiv(
+            max_results=max_entries,
+            after_date=after_date,
+            force_reprocess=force_reprocess,
+            no_pdf=no_pdf,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "arxiv"}, success=False)
+        else:
+            console.print(f"[red]arXiv ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "arxiv", "items_ingested": count})
+    else:
+        console.print(f"[green]arXiv ingestion complete.[/green] {count} paper(s) ingested.")
+
+
+@app.command("arxiv")
+def arxiv(
+    max_entries: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum papers per source."),
+    ] = 20,
+    days: Annotated[
+        int | None,
+        typer.Option("--days", "-d", help="Only ingest papers from the last N days."),
+    ] = None,
+    force_reprocess: Annotated[
+        bool,
+        typer.Option("--force-reprocess", help="Force re-ingest existing papers."),
+    ] = False,
+    no_pdf: Annotated[
+        bool,
+        typer.Option("--no-pdf", help="Skip PDF download, use abstract-only."),
+    ] = False,
+) -> None:
+    """Ingest papers from configured arXiv sources (sources.d/arxiv.yaml)."""
+    if is_direct_mode():
+        return _arxiv_direct(max_entries, days, force_reprocess, no_pdf)
+
+    try:
+        params: dict[str, Any] = {"max_entries": max_entries}
+        if days is not None:
+            params["days"] = days
+        if force_reprocess:
+            params["force_reprocess"] = True
+        if no_pdf:
+            params["no_pdf"] = True
+        _ingest_via_api("arxiv", params, "arXiv ingestion")
+    except httpx.ConnectError:
+        _arxiv_direct(max_entries, days, force_reprocess, no_pdf)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest arxiv-paper
+# ---------------------------------------------------------------------------
+
+
+def _arxiv_paper_direct(identifier: str, no_pdf: bool, force_reprocess: bool) -> None:
+    """Direct single arXiv paper ingestion."""
+    from rich.console import Console
+
+    console = Console()
+    try:
+        from src.ingestion.orchestrator import ingest_arxiv_paper
+
+        count = ingest_arxiv_paper(
+            identifier=identifier,
+            pdf_extraction=not no_pdf,
+            force_reprocess=force_reprocess,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "arxiv-paper"}, success=False)
+        else:
+            console.print(f"[red]arXiv paper ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "arxiv-paper", "identifier": identifier, "items_ingested": count})
+    else:
+        if count:
+            console.print(f"[green]Ingested arXiv paper:[/green] {identifier}")
+        else:
+            console.print(f"[yellow]Paper already exists or not found:[/yellow] {identifier}")
+
+
+@app.command("arxiv-paper")
+def arxiv_paper(
+    identifier: Annotated[
+        str,
+        typer.Argument(
+            help="arXiv ID, URL, or DOI (e.g. 2301.12345, https://arxiv.org/abs/2301.12345)."
+        ),
+    ],
+    no_pdf: Annotated[
+        bool,
+        typer.Option("--no-pdf", help="Skip PDF download, use abstract-only."),
+    ] = False,
+    force_reprocess: Annotated[
+        bool,
+        typer.Option("--force-reprocess", help="Force re-ingest existing paper."),
+    ] = False,
+) -> None:
+    """Ingest a single arXiv paper by ID, URL, or DOI."""
+    if is_direct_mode():
+        return _arxiv_paper_direct(identifier, no_pdf, force_reprocess)
+
+    try:
+        params: dict[str, Any] = {"identifier": identifier}
+        if no_pdf:
+            params["no_pdf"] = True
+        if force_reprocess:
+            params["force_reprocess"] = True
+        _ingest_via_api("arxiv-paper", params, "arXiv paper ingestion")
+    except httpx.ConnectError:
+        _arxiv_paper_direct(identifier, no_pdf, force_reprocess)

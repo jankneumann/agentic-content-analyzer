@@ -183,6 +183,10 @@ const sourceConfig: Record<
     label: "Scholar",
     icon: <GraduationCap className="h-3 w-3" />,
   },
+  arxiv: {
+    label: "arXiv",
+    icon: <FileText className="h-3 w-3" />,
+  },
   other: {
     label: "Other",
     icon: <FileText className="h-3 w-3" />,

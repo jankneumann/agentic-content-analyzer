@@ -151,6 +151,15 @@ const SOURCE_CONFIGS: SourceConfig[] = [
     maxResultsMax: 50,
     supportsIngest: true,
   },
+  {
+    key: "arxiv",
+    label: "arXiv Papers",
+    description: "Ingest papers from arXiv with full PDF text extraction. Configure categories in sources.d/arxiv.yaml.",
+    icon: <Download className="h-5 w-5" />,
+    maxResultsLabel: "Maximum papers",
+    maxResultsMax: 100,
+    supportsIngest: true,
+  },
 ]
 
 /**

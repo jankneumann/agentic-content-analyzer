@@ -14,6 +14,7 @@ Content Sources:
 - XSEARCH: X/Twitter posts via Grok API search
 - BLOG: Blog posts scraped from index pages
 - SCHOLAR: Academic papers via Semantic Scholar
+- ARXIV: arXiv preprints with full PDF text extraction
 - MANUAL: Manually created content via API
 """
 
@@ -62,6 +63,7 @@ class ContentSource(StrEnum):
     PERPLEXITY = "perplexity"  # Web articles via Perplexity search
     BLOG = "blog"  # Blog posts scraped from index pages
     SCHOLAR = "scholar"  # Academic papers via Semantic Scholar
+    ARXIV = "arxiv"  # arXiv preprints with full PDF text
     OTHER = "other"
 
 
