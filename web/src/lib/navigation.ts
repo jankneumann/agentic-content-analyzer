@@ -12,6 +12,7 @@
 
 import {
   Library,
+  Download,
   Sparkles,
   BarChart3,
   FileText,
@@ -74,6 +75,12 @@ export const navigation: NavGroup[] = [
   {
     title: "Pipeline",
     items: [
+      {
+        title: "Ingest",
+        href: "/ingest",
+        icon: Download,
+        description: "Configure and trigger content ingestion",
+      },
       {
         title: "Content",
         href: "/contents",

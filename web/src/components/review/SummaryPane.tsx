@@ -13,7 +13,16 @@
  */
 
 import * as React from "react"
-import { ChevronDown, ChevronRight, FileQuestion, Quote, Lightbulb, Cpu, Target, BookOpen } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  FileQuestion,
+  Quote,
+  Lightbulb,
+  Cpu,
+  Target,
+  BookOpen,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -32,7 +41,11 @@ interface SummaryPaneProps {
   className?: string
 }
 
-export function SummaryPane({ summary, isPreview = false, className }: SummaryPaneProps) {
+export function SummaryPane({
+  summary,
+  isPreview = false,
+  className,
+}: SummaryPaneProps) {
   if (!summary) {
     return (
       <div className={cn("flex h-full flex-col", className)}>
@@ -69,7 +82,9 @@ export function SummaryPane({ summary, isPreview = false, className }: SummaryPa
             title="Executive Summary"
             icon={<BookOpen className="h-3.5 w-3.5" />}
           >
-            <p className="text-sm leading-relaxed">{summary.executive_summary}</p>
+            <p className="text-sm leading-relaxed">
+              {summary.executive_summary}
+            </p>
           </SectionWrapper>
 
           {/* Key Themes - Always visible */}
@@ -95,7 +110,11 @@ export function SummaryPane({ summary, isPreview = false, className }: SummaryPa
             >
               <ul className="space-y-2">
                 {summary.strategic_insights.map((insight, index) => (
-                  <CollapsibleListItem key={index} content={insight} index={index} />
+                  <CollapsibleListItem
+                    key={index}
+                    content={insight}
+                    index={index}
+                  />
                 ))}
               </ul>
             </CollapsibleSection>
@@ -111,7 +130,11 @@ export function SummaryPane({ summary, isPreview = false, className }: SummaryPa
             >
               <ul className="space-y-2">
                 {summary.technical_details.map((detail, index) => (
-                  <CollapsibleListItem key={index} content={detail} index={index} />
+                  <CollapsibleListItem
+                    key={index}
+                    content={detail}
+                    index={index}
+                  />
                 ))}
               </ul>
             </CollapsibleSection>
@@ -127,7 +150,11 @@ export function SummaryPane({ summary, isPreview = false, className }: SummaryPa
             >
               <ul className="space-y-2">
                 {summary.actionable_items.map((item, index) => (
-                  <CollapsibleListItem key={index} content={item} index={index} />
+                  <CollapsibleListItem
+                    key={index}
+                    content={item}
+                    index={index}
+                  />
                 ))}
               </ul>
             </CollapsibleSection>
@@ -144,7 +171,7 @@ export function SummaryPane({ summary, isPreview = false, className }: SummaryPa
                 {summary.notable_quotes.map((quote, index) => (
                   <li
                     key={index}
-                    className="border-l-2 border-muted-foreground/30 pl-3 text-sm italic leading-relaxed"
+                    className="border-muted-foreground/30 border-l-2 pl-3 text-sm leading-relaxed italic"
                   >
                     "{quote}"
                   </li>
@@ -187,7 +214,7 @@ interface SectionWrapperProps {
 function SectionWrapper({ title, icon, children }: SectionWrapperProps) {
   return (
     <section>
-      <h3 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+      <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-sm font-medium">
         {icon}
         {title}
       </h3>
@@ -222,11 +249,11 @@ function CollapsibleSection({
           className="w-full justify-start gap-2 px-0 hover:bg-transparent"
         >
           {isOpen ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
           )}
-          <span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+          <span className="text-muted-foreground flex items-center gap-1.5 text-sm font-medium">
             {icon}
             {title}
           </span>
@@ -238,9 +265,7 @@ function CollapsibleSection({
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="ml-6 pt-2">
-          {children}
-        </div>
+        <div className="ml-6 pt-2">{children}</div>
       </CollapsibleContent>
     </Collapsible>
   )
@@ -251,7 +276,10 @@ interface CollapsibleListItemProps {
   index: number
 }
 
-function CollapsibleListItem({ content, index: _index }: CollapsibleListItemProps) {
+function CollapsibleListItem({
+  content,
+  index: _index,
+}: CollapsibleListItemProps) {
   const [isOpen, setIsOpen] = React.useState(false)
 
   // Truncate content for preview (first 100 chars)
@@ -260,7 +288,7 @@ function CollapsibleListItem({ content, index: _index }: CollapsibleListItemProp
 
   if (!isLong) {
     return (
-      <li className="text-sm leading-relaxed pl-2 border-l-2 border-muted/50">
+      <li className="border-muted/50 border-l-2 pl-2 text-sm leading-relaxed">
         {content}
       </li>
     )
@@ -268,15 +296,15 @@ function CollapsibleListItem({ content, index: _index }: CollapsibleListItemProp
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <li className="border-l-2 border-muted/50 pl-2">
+      <li className="border-muted/50 border-l-2 pl-2">
         <CollapsibleTrigger asChild>
           <button
             type="button"
             aria-expanded={isOpen}
-            className="w-full text-left text-sm leading-relaxed hover:text-foreground/80"
+            className="hover:text-foreground/80 focus-visible:ring-ring w-full rounded-sm text-left text-sm leading-relaxed focus-visible:ring-2 focus-visible:outline-none"
           >
             <span>{isOpen ? content : preview}</span>
-            <span className="ml-1 text-xs text-muted-foreground">
+            <span className="text-muted-foreground ml-1 text-xs">
               {isOpen ? "(less)" : "(more)"}
             </span>
           </button>
@@ -313,9 +341,11 @@ function RelevanceScore({ label, score }: RelevanceScoreProps) {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <FileQuestion className="mb-3 h-10 w-10 text-muted-foreground/50" />
-      <p className="text-sm font-medium text-muted-foreground">No summary available</p>
-      <p className="mt-1 text-xs text-muted-foreground/70">
+      <FileQuestion className="text-muted-foreground/50 mb-3 h-10 w-10" />
+      <p className="text-muted-foreground text-sm font-medium">
+        No summary available
+      </p>
+      <p className="text-muted-foreground/70 mt-1 text-xs">
         Generate a summary to see it here.
       </p>
     </div>

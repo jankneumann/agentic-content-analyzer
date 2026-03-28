@@ -25,6 +25,7 @@ import {
 import { PromptManager } from "@/components/prompts/PromptManager"
 import { ModelConfigurator } from "@/components/settings/ModelConfigurator"
 import { NotificationConfigurator } from "@/components/settings/NotificationConfigurator"
+import { PushNotificationToggle } from "@/components/settings/PushNotificationToggle"
 import { VoiceConfigurator } from "@/components/settings/VoiceConfigurator"
 import { ConnectionDashboard } from "@/components/settings/ConnectionDashboard"
 
@@ -95,6 +96,7 @@ function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <PushNotificationToggle />
             <NotificationConfigurator />
           </CardContent>
         </Card>

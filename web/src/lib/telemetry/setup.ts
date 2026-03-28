@@ -92,11 +92,17 @@ export async function initTelemetry(): Promise<void> {
     // opik.project_name routes traces to the correct Opik project
     const projectName =
       import.meta.env.VITE_OPIK_PROJECT_NAME || "newsletter-aggregator"
+
+    // Add platform detection for native app telemetry
+    const { getPlatform, isNative } = await import("../platform")
+
     const resource = resourceFromAttributes({
       [ATTR_SERVICE_NAME]: "newsletter-frontend",
       "deployment.environment":
         import.meta.env.MODE === "production" ? "production" : "development",
       "opik.project_name": projectName,
+      "app.platform": getPlatform(),
+      "app.is_native": isNative(),
     })
 
     // Configure the tracer provider

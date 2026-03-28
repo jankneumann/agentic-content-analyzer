@@ -162,9 +162,7 @@ class TestLLMStrategy:
             "get_model_config": patch(
                 "src.config.models.get_model_config", return_value=mock_config
             ),
-            "LLMRouter": patch(
-                "src.services.llm_router.LLMRouter", return_value=mock_router
-            ),
+            "LLMRouter": patch("src.services.llm_router.LLMRouter", return_value=mock_router),
             "PromptService": patch(
                 "src.services.prompt_service.PromptService", return_value=mock_prompt
             ),
@@ -174,7 +172,9 @@ class TestLLMStrategy:
     def test_llm_returns_relevant(self, llm_filter):
         patches = self._patch_llm_deps('{"relevant": true}')
         with patches["get_model_config"], patches["LLMRouter"], patches["PromptService"]:
-            result = llm_filter.is_relevant(title="New LLM Paper", content="A paper about transformers.")
+            result = llm_filter.is_relevant(
+                title="New LLM Paper", content="A paper about transformers."
+            )
         assert result.relevant is True
         assert result.strategy_used == "llm"
 
