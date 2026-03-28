@@ -1,3 +1,4 @@
+mod shortcuts;
 mod tray;
 
 use tauri::Manager;
@@ -9,8 +10,16 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // System tray will be set up by wp-tray-shortcut
-            // Global shortcuts will be registered by wp-tray-shortcut
+            // Set up system tray
+            if let Err(err) = tray::setup_tray(app) {
+                eprintln!("Failed to setup system tray: {}", err);
+            }
+
+            // Register global shortcuts
+            if let Err(err) = shortcuts::setup_shortcuts(app) {
+                eprintln!("Failed to setup shortcuts: {}", err);
+            }
+
             let _ = app.get_webview_window("main");
             Ok(())
         })
