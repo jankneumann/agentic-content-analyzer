@@ -1,201 +1,92 @@
 # Proposal Prioritization Report
 
-**Date**: 2026-03-26 09:30:00
+**Date**: 2026-03-28
 **Analyzed Range**: HEAD~50..HEAD (50 commits)
-**Proposals Analyzed**: 8 active proposals (1 fully implemented, 7 remaining)
-
----
-
-## Context: Recently Completed Work
-
-Since the last prioritization (2026-02-21), the following features were **implemented and merged**:
-
-| Feature | PR/Status | Key Impact |
-|---------|-----------|------------|
-| `add-blog-scraping` | #318 | Blog index scraping, CSS selector + heuristic link discovery |
-| `add-digest-followup-prompts` | #296, #316 | Per-section follow-up prompts in digests |
-| `add-deployment-pipeline` | #306 | Railway deployment + ParadeDB migration |
-| `cli-thin-http-client` | Multiple PRs | CLI refactored as thin HTTP client |
-| `harden-public-repo-security` | #313 | Security hardening for public visibility |
-| `provider-agnostic-pipeline` | #291 | All pipeline LLM calls through LLMRouter |
-| `persist-theme-analysis` | #282 | Theme analysis persistence + history UI |
-
-**Additionally implemented** (previously, without formal OpenSpec archiving):
-- `add-voice-input` — Browser STT + voice UI (unblocks on-device-stt, capacitor, tauri)
-- `add-notification-events` — Event notification system (unblocks capacitor, tauri)
-- `content-sharing` — Share tokens, share routes, public links
-- `add-neon-branch-management` — CLI commands, profiles, CI workflow
-- `add-grok-x-search` — X/Twitter ingestion via xAI Grok API
-- `add-perplexity-search` — Perplexity Sonar API search
-- `add-user-authentication` — AuthMiddleware, session cookies, X-Admin-Key
-- `add-image-generator-service` — Image generation service (partial)
-- `content-capture` / `save-url` — Save URL API endpoint exists
-
-**Impact on blockers**: 4 proposals that were "Blocked" in the Feb 21 report are **now unblocked**.
+**Proposals Analyzed**: 4 active
 
 ---
 
 ## Priority Order
 
-### 1. add-blog-scraping — Archive (Fully Implemented)
+### 1. `add-arxiv-ingest` — Add arXiv Paper Ingestion
+- **Relevance**: Still Relevant — no arXiv-specific code exists yet; Scholar foundation (Semantic Scholar client, migration, enum) is in place but arXiv client, PDF extraction, and version-aware dedup are entirely unaddressed
+- **Readiness**: Ready — proposal approved, 9 task sections fully defined with dependency DAG, design.md present, max parallel width 4
+- **Task Progress**: 0/40 tasks complete
+- **Conflicts**: Overlaps with `add-content-references` on `src/models/content.py`, `src/mcp_server.py`, `alembic/versions/`, and `metadata_json` JSONB migration (both proposals reference same ALTER). Overlaps with `add-content-references` on `src/config/sources.py`
+- **Recommendation**: **Implement next** — builds directly on the Scholar foundation (d03c0e3), reuses existing ingestion patterns, and the arXiv API requires no API key. The `metadata_json` JSONB migration should be done here first so `add-content-references` can skip it.
+- **Next Step**: `/implement-feature add-arxiv-ingest`
 
-- **Relevance**: **Fully Implemented** — merged as PR #318, all 9 tasks done
-- **Readiness**: Complete
-- **Conflicts**: None
-- **Recommendation**: **Archive immediately** — proposal still in `openspec/changes/` but code is on main
-- **Next Step**: `openspec archive add-blog-scraping --yes`
+### 2. `tree-index-chunking` — Tree Index Chunking (PageIndex-inspired)
+- **Relevance**: Still Relevant — no tree indexing code exists; `src/services/chunking.py`, `src/services/search.py`, `src/models/chunk.py` untouched in recent commits
+- **Readiness**: Ready — proposal approved, 3-phase task breakdown with clear dependencies, design.md present. Phase 1 (chunk thinning) is zero-dependency and can ship independently
+- **Task Progress**: 0/18 tasks complete (across 3 phases)
+- **Conflicts**: Overlaps with `add-content-references` on `src/config/settings.py`. No overlap with `add-arxiv-ingest`.
+- **Recommendation**: **Implement in parallel with #1** — touches entirely different files (chunking/search/indexing vs ingestion/orchestrator). Phase 1 alone is a quick win (~50 LOC, no LLM calls, no migration).
+- **Next Step**: `/implement-feature tree-index-chunking`
 
-### 2. add-crawl4ai-integration — Quick Win, Activates Existing Code
+### 3. `add-content-references` — Content References & Citation Tracking
+- **Relevance**: Needs Verification — `src/ingestion/reference_extractor.py` (227 lines) already exists from the Scholar implementation, containing arXiv/DOI/S2 regex patterns, extraction logic, and `aca ingest scholar-refs` CLI. The proposal's Section 2 (Reference Extraction Service) substantially overlaps with this existing code, but the proposal's broader scope (resolution service, auto-ingest, Neo4j sync, API routes, queue handler) remains unaddressed.
+- **Readiness**: Partially Ready — depends on arXiv ingestion existing for auto-ingest trigger (Section 6). Core infrastructure (Sections 1-5) can proceed independently.
+- **Task Progress**: 0/50 tasks complete (though ~30% of Section 2 may be covered by existing code)
+- **Conflicts**: Overlaps with `add-arxiv-ingest` on `src/models/content.py`, `src/mcp_server.py`, `alembic/versions/`, `src/config/sources.py`. Overlaps with `tree-index-chunking` on `src/config/settings.py`. Overlaps with `add-api-versioning` on `src/api/app.py` (router registration).
+- **Recommendation**: **Implement after #1** — the auto-ingest feature (Section 6) explicitly depends on arXiv orchestrator functions. The existing `reference_extractor.py` needs audit against the proposal's design to identify what's already built vs what's new. Update `proposal.md` and `tasks.md` to account for existing code before implementation.
+- **Next Step**: `/iterate-on-plan add-content-references` (reconcile with existing reference_extractor.py)
 
-- **Relevance**: **Still Relevant** — JS-heavy pages return incomplete content. Crawl4AI fallback code exists in `HtmlMarkdownConverter` but is disabled.
-- **Readiness**: Ready (0/28 tasks, no design.md needed — activates existing code)
-- **Conflicts**: `docker-compose.yml` (additive), `pyproject.toml` (additive), `src/config/settings.py` (additive)
-- **Scope**: Small-Medium — existing code path needs activation, Docker service, configuration
-- **Recommendation**: **Implement next** — smallest actionable scope, immediate user-facing value, enhances blog scraping quality
-- **Next Step**: `/implement-feature add-crawl4ai-integration`
-
-### 3. add-kreuzberg-optional-parser — Independent, Medium Scope
-
-- **Relevance**: **Still Relevant** — adds quality comparison and format coverage alongside MarkItDown/Docling
-- **Readiness**: Ready (0/19 tasks, no design.md — but proposal has detailed design in proposal.md)
-- **Conflicts**: `src/parsers/` — **overlaps with crawl4ai** on parser layer, `src/config/settings.py` (additive)
-- **Scope**: Medium (6 phases: dependency, adapter, router, shadow evaluation, tests, rollout)
-- **Recommendation**: **Implement after crawl4ai** — both touch parser router, serialized execution avoids conflicts
-- **Next Step**: `/implement-feature add-kreuzberg-optional-parser`
-
-### 4. add-mobile-content-capture — Partially Implemented, Verify & Complete
-
-- **Relevance**: **Partially Implemented** — `src/api/save_routes.py` exists with `POST /api/v1/content/save-url`, web save page, background extraction
-- **Readiness**: Partially Ready (0/48 tasks formally, but ~40% of core API exists)
-- **Conflicts**: Minimal — mostly new files (iOS Shortcut, API key auth)
-- **Remaining Work**: iOS Shortcut file, API key authentication, rate limiting, integration tests, mobile save page polish
-- **Recommendation**: **Verify existing implementation, update tasks.md, complete remaining work**
-- **Next Step**: `/validate-feature add-mobile-content-capture` then continue implementation
-
-### 5. add-on-device-stt — NOW UNBLOCKED, Strategic
-
-- **Relevance**: **Still Relevant** — privacy-focused offline STT via Whisper WASM
-- **Readiness**: **Now Unblocked** — `add-voice-input` is implemented (STTEngine interface exists)
-- **Conflicts**: `web/src/lib/voice/` (extends voice-input files) — potential overlap with capacitor/tauri
-- **Scope**: Large (39 tasks: STT abstraction, Whisper WASM, model management, audio recording, settings, UI)
-- **Recommendation**: **Implement** — strategic foundation for native STT in Capacitor/Tauri
-- **Next Step**: `/implement-feature add-on-device-stt`
-
-### 6. add-capacitor-mobile — NOW UNBLOCKED, High User Value
-
-- **Relevance**: **Still Relevant** — native iOS app for content reading
-- **Readiness**: **Now Unblocked** — both `add-voice-input` and `add-notification-events` are implemented
-- **Conflicts**: `web/src/lib/platform.ts` (shared with Tauri), Capacitor config, iOS build
-- **Scope**: Large (50 tasks: setup, platform detection, plugins, push, share target, STT, build, deploy)
-- **Recommendation**: **Implement before Tauri** — higher user value (mobile-first content reading)
-- **Next Step**: `/implement-feature add-capacitor-mobile`
-
-### 7. add-tauri-desktop — NOW UNBLOCKED, After Capacitor
-
-- **Relevance**: **Still Relevant** — native desktop via Rust/Tauri
-- **Readiness**: **Now Unblocked** — both dependencies implemented
-- **Conflicts**: `web/src/lib/platform.ts` (shared with Capacitor) — **must serialize with Capacitor**
-- **Scope**: Large (41 tasks: setup, platform detection, system tray, shortcuts, drag-drop, notifications)
-- **Recommendation**: **Implement after Capacitor** — Capacitor establishes platform.ts abstractions
-- **Next Step**: Wait for Capacitor, then `/implement-feature add-tauri-desktop`
-
-### 8. add-api-versioning — Defer
-
-- **Relevance**: Still Relevant but low urgency — single consumer, no breaking changes imminent
-- **Readiness**: Ready (0/42 tasks, design doc complete)
-- **Conflicts**: **CRITICAL** — restructures ALL route files in `src/api/`
-- **Scope**: Large (42 tasks), highest blast radius of all proposals
-- **Recommendation**: **Defer** — implement only when breaking API changes become necessary
-- **Next Step**: Revisit after native platform features ship
+### 4. `add-api-versioning` — Add API Versioning
+- **Relevance**: Needs Refinement — the proposal references the `refactor-unified-content-model` as "~75% complete" but that refactor was completed and archived long ago. The motivation (safe API evolution) is valid but non-urgent: no external consumers exist beyond the bundled frontend. The proposal would reorganize the entire `src/api/` directory, creating high merge conflict risk with every other proposal.
+- **Readiness**: Ready technically (tasks defined), but **low urgency** — the API currently serves only the co-located frontend
+- **Task Progress**: 0/25+ tasks complete
+- **Conflicts**: **High conflict risk** — reorganizes `src/api/content_routes.py`, `src/api/digest_routes.py`, `src/api/shared_routes.py`, and `src/api/app.py`. Every proposal that adds API routes (#3 adds `reference_routes.py`) would need to account for the version directory structure.
+- **Recommendation**: **Defer** — implementing this now would create unnecessary merge conflicts with #1 and #3. Better to implement after the ingestion and search features stabilize. Update proposal to reflect current API state when ready.
+- **Next Step**: Defer. Revisit after #1 and #3 are complete.
 
 ---
 
 ## Parallel Workstreams
 
-### Stream A — Start Immediately (zero file conflicts)
-- **add-crawl4ai-integration** (#2): Quick win, activates existing code in parser layer
-- **add-mobile-content-capture** (#4): Verify existing save_routes.py, complete iOS Shortcut — touches API routes, no parser overlap
+### Stream A (start immediately — independent files)
+| Proposal | Key Files | Est. Scope |
+|----------|-----------|------------|
+| `add-arxiv-ingest` | `src/ingestion/arxiv*.py`, `src/cli/ingest_commands.py`, `src/ingestion/orchestrator.py` | ~800 LOC |
+| `tree-index-chunking` (Phase 1) | `src/services/chunking.py`, `src/config/settings.py` | ~100 LOC |
 
-### Stream B — After Crawl4AI completes (parser layer overlap)
-- **add-kreuzberg-optional-parser** (#3): Both touch `src/parsers/` router, serialize with crawl4ai
+These two have **zero file overlap** and can be implemented by separate agents concurrently.
 
-### Stream C — Platform Features (independent of Streams A+B)
-- **add-on-device-stt** (#5): Frontend voice layer (`web/src/lib/voice/`)
-- Can run in parallel with Streams A+B — different layers entirely
+### Stream B (after Stream A, or after arxiv only)
+| Proposal | Key Files | Prerequisite |
+|----------|-----------|--------------|
+| `tree-index-chunking` (Phases 2-3) | `src/services/indexing.py`, `src/services/search.py`, `src/models/chunk.py` | Phase 1 |
+| `add-content-references` | `src/models/content_reference.py`, `src/services/reference_*.py`, `src/api/reference_routes.py` | `add-arxiv-ingest` (for auto-ingest) |
 
-### Stream D — Native Platforms (after Stream C, serialize with each other)
-1. **add-capacitor-mobile** (#6): First — establishes `platform.ts` abstraction
-2. **add-tauri-desktop** (#7): Second — builds on platform abstraction
+These can also run in parallel with each other (different file sets), but `add-content-references` benefits from having arXiv ingestion available.
 
 ### Deferred
-- **add-api-versioning** (#8): Defer until breaking changes needed
-
-### Housekeeping
-- **add-blog-scraping** (#1): Archive immediately (fully implemented)
-
----
-
-## Dependency Graph (Updated)
-
-```
-  ✅ = Implemented     ⬜ = Active proposal
-
-          ✅ add-voice-input
-                │
-       ┌────────┴─────────┐
-       ▼                   ▼
-  ⬜ add-on-device-    ✅ add-cloud-stt
-       stt (#5)            (implicit)
-       │                   │
-       └────────┬──────────┘
-                ▼
-  ✅ add-notification-events
-                │
-       ┌────────┴─────────┐
-       ▼                   ▼
-  ⬜ add-capacitor-    ⬜ add-tauri-
-     mobile (#6)         desktop (#7)
-
-  --- Independent ---
-
-  ⬜ add-crawl4ai (#2) ──→ ⬜ add-kreuzberg (#3)
-                                (parser layer overlap)
-
-  ⬜ add-mobile-capture (#4)    (independent)
-
-  ⬜ add-api-versioning (#8)    (deferred, global blast radius)
-```
+| Proposal | Reason |
+|----------|--------|
+| `add-api-versioning` | High conflict risk, low urgency — wait for ingestion/search features to stabilize |
 
 ---
 
 ## Conflict Matrix
 
-| | crawl4ai | kreuzberg | mobile-cap | on-stt | capacitor | tauri | api-ver |
-|---|---|---|---|---|---|---|---|
-| **crawl4ai** | — | **parsers/, settings** | — | — | — | — | — |
-| **kreuzberg** | **parsers/, settings** | — | — | — | — | — | — |
-| **mobile-cap** | — | — | — | — | — | — | routes |
-| **on-stt** | — | — | — | — | voice/ | voice/ | — |
-| **capacitor** | — | — | — | voice/ | — | **platform.ts** | — |
-| **tauri** | — | — | — | voice/ | **platform.ts** | — | — |
-| **api-ver** | — | — | routes | — | — | — | — |
-
-**Legend**: Bold = serialization required, regular = minor/additive overlap
+| | arxiv-ingest | tree-index-chunking | content-references | api-versioning |
+|---|---|---|---|---|
+| **arxiv-ingest** | — | none | `content.py`, `mcp_server.py`, `sources.py`, `alembic/` | none |
+| **tree-index-chunking** | none | — | `settings.py` | none |
+| **content-references** | `content.py`, `mcp_server.py`, `sources.py`, `alembic/` | `settings.py` | — | `api/app.py` |
+| **api-versioning** | none | none | `api/app.py` | — |
 
 ---
 
 ## Proposals Needing Attention
 
-### Fully Implemented (archive immediately)
-- **add-blog-scraping**: PR #318 merged, all tasks done. Run `openspec archive add-blog-scraping --yes`
+### Needs Verification
+- **`add-content-references`**: `src/ingestion/reference_extractor.py` (227 lines) already implements arXiv/DOI/S2 regex extraction, normalization, and a CLI command. Section 2 of the proposal overlaps significantly. Run `/iterate-on-plan add-content-references` to reconcile tasks.md with existing code.
 
-### Partially Implemented (verify before continuing)
-- **add-mobile-content-capture**: `save_routes.py` exists with save-url endpoint — verify scope, update tasks.md, complete iOS Shortcut and API key auth
+### Needs Refinement
+- **`add-api-versioning`**: Proposal references stale "refactor-unified-content-model ~75% complete" — that's long done. Motivation section needs updating to reflect current API consumers (just the bundled frontend). Consider whether versioning is needed before external API consumers exist.
 
-### Previously Blocked → Now Unblocked
-- **add-on-device-stt**: `add-voice-input` is implemented — can proceed
-- **add-capacitor-mobile**: Both `add-voice-input` and `add-notification-events` implemented — can proceed
-- **add-tauri-desktop**: Both dependencies implemented — can proceed (after Capacitor)
-
-### Deferred
-- **add-api-versioning**: High blast radius, low urgency — defer until breaking changes needed
+### Stale Residual Directories
+The following appear in `openspec/changes/` but their proposals are already archived:
+- Residual files from archived proposals still linger under `openspec/changes/archive/` (a nested archive directory)
+- Consider consolidating to a single archive location (`openspec/archive/`)
