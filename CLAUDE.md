@@ -250,6 +250,17 @@ Each source supports: `name`, `url`/`id`, `tags`, `enabled`, `max_entries`.
 - Both support: `name`, `tags`, `enabled`
 - Used by `aca pipeline daily` for scheduled ingestion from `sources.d/websearch.yaml`
 
+**Scholar sources** (`scholar.yaml`) use the Semantic Scholar Academic Graph API:
+- `query` (required) — keyword search string (e.g., "large language model")
+- `fields_of_study` — filter by field (e.g., `["Computer Science"]`)
+- `paper_types` — filter by type (e.g., `["Review"]` for survey papers)
+- `min_citation_count` — skip low-impact papers (default: 0)
+- `year_range` — publication year filter (e.g., `"2024-"` or `"2023-2024"`)
+- `venues` — filter by venue (e.g., `["NeurIPS", "ICML"]`)
+- All support: `name`, `tags`, `enabled`, `max_entries`
+- **API key optional**: `SEMANTIC_SCHOLAR_API_KEY` for higher rate limits (1-10 RPS). Without key: ~20 req/min (free, no signup required)
+- Used by `aca pipeline daily` and `aca ingest scholar`
+
 **Migration from legacy config:**
 ```bash
 python -m src.config.migrate_sources --output-dir sources.d
