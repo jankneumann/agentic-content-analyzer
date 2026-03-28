@@ -1099,7 +1099,7 @@ def _scholar_paper_direct(identifier: str, with_refs: bool) -> None:
                 msg += " (with references)"
             console.print(msg)
         else:
-            console.print(f"[yellow]Paper not ingested[/yellow] (already exists or not found).")
+            console.print("[yellow]Paper not ingested[/yellow] (already exists or not found).")
 
 
 @app.command("scholar-paper")

@@ -438,7 +438,7 @@ class ScholarContentIngestionService:
             search_result = await client.search_papers(
                 query=query,
                 limit=max_entries,
-                year=year_range if year_range else None,
+                year_range=year_range if year_range else None,
                 fields_of_study=(
                     source_config.fields_of_study if source_config.fields_of_study else None
                 ),
