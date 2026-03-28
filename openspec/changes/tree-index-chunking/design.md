@@ -200,3 +200,66 @@ All columns nullable — no impact on existing rows. Existing flat chunks contin
 | `aca manage switch-embeddings` | Unchanged — operates on all chunks including tree chunks |
 | Search API response | Unchanged — `SearchResult` model already supports `matching_chunks` |
 | Frontend | No changes needed — tree search results appear as standard search results |
+
+## Future Work
+
+### Phase 4: Cross-Document Tree Hierarchy
+
+Phases 1-3 build tree indexes **within** a single long document (e.g., an arXiv PDF's internal section hierarchy). But the pipeline itself already has a natural multi-document tree structure:
+
+```
+Weekly Digest (root summary)
+  ├─ Daily Digest (Monday)
+  │   ├─ Newsletter Summary A  → links to Content A (original article)
+  │   ├─ Newsletter Summary B  → links to Content B
+  │   └─ YouTube Summary C     → links to Content C
+  ├─ Daily Digest (Tuesday)
+  │   ├─ Newsletter Summary D  → links to Content D
+  │   └─ ...
+  └─ Theme Analysis
+      ├─ Theme 1: "LLM Scaling"   → references multiple Content records
+      └─ Theme 2: "Agent Frameworks" → references multiple Content records
+```
+
+A digest is a "summary of summaries," and each summary is a "summary of content." This is a tree that spans multiple `content_id` values — architecturally different from the within-content tree in Phases 1-3, but the same `parent_chunk_id` / `tree_depth` / `is_summary` schema supports it.
+
+Enabling cross-document tree search would allow queries like *"What has been said about RAG architectures across the last month?"* to navigate: weekly digest overview → relevant daily digests → individual summaries → original source content — using the same LLM reasoning-based tree traversal.
+
+This pairs naturally with the knowledge graph, which already tracks entity and theme relationships across content via Graphiti/Neo4j. The tree provides structural navigation (what summarized what), while the knowledge graph provides semantic navigation (what relates to what).
+
+**Prerequisites**: Cross-content lineage tracking (partially exists via `digest_items` and summary FK relationships), and tree search that traverses across content records rather than within a single one.
+
+### Phase 5: Topic Deep Research Reviews
+
+Beyond weekly digests, the tree hierarchy enables a new output type: **deep research reviews** that span themes across longer time horizons (monthly, quarterly, or topic-triggered).
+
+A deep research review would:
+
+1. **Start from the knowledge graph** — identify a topic cluster (e.g., "reasoning models") that has accumulated significant coverage across multiple weeks
+2. **Traverse the cross-document tree** — collect all summaries, digests, and original content related to that topic, across weekly boundaries
+3. **Build a topic-specific tree** — organize the collected content chronologically and thematically into a new hierarchical structure:
+
+```
+Deep Research Review: "Reasoning Models" (Q1 2026)
+  ├─ Evolution Timeline
+  │   ├─ January: DeepSeek-R1 release and analysis
+  │   ├─ February: OpenAI o3 benchmarks and community response
+  │   └─ March: Open-source reasoning model convergence
+  ├─ Technical Analysis
+  │   ├─ Training approaches (RL vs SFT vs hybrid)
+  │   ├─ Benchmark performance trends
+  │   └─ Cost/performance tradeoffs
+  ├─ Strategic Implications
+  │   ├─ Impact on agent architectures
+  │   └─ Enterprise adoption patterns
+  └─ Source Materials
+      ├─ arXiv papers (tree-indexed, navigable)
+      ├─ Newsletter coverage (weekly digest references)
+      └─ YouTube technical deep-dives (timestamped)
+```
+
+4. **Use tree search for generation** — the LLM navigates this topic tree to produce a comprehensive review, citing specific sources with deep links (page numbers for PDFs, timestamps for videos, section references for articles)
+
+This builds on all previous phases: within-document tree indexes (Phases 2-3) make individual sources navigable, cross-document trees (Phase 4) connect the pipeline hierarchy, and topic deep research reviews (Phase 5) synthesize across both dimensions — themes and time — to produce the kind of longitudinal analysis that no single weekly digest can capture.
+
+**Key insight**: The tree model unifies both the temporal axis (daily → weekly → monthly → quarterly) and the thematic axis (individual articles → theme clusters → cross-theme synthesis) into a single navigable structure that LLM tree search can reason over.
