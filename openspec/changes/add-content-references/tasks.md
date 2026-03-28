@@ -71,7 +71,7 @@ Section 11 (docs)               ─── depends on all
 - [ ] 3.6 Implement `resolve_batch(batch_size, db) -> int` — resolve oldest unresolved refs in batch
 - [ ] 3.7 Implement `resolve_incoming(new_content: Content, db) -> int` — reverse resolution: find unresolved refs matching new content's metadata (arxiv_id, doi, source_url)
 - [ ] 3.8 Register `resolve_references` queue handler in `src/queue/worker.py` — add `_register_reference_handlers()` function call in `register_all_handlers()`, following the existing `_register_content_handlers()` pattern
-- [ ] 3.9 Write unit tests: resolution by external_id, by URL, reverse resolution, batch processing
+- [ ] 3.9 Write unit tests: resolution by external_id, by URL, reverse resolution, batch processing. **CRITICAL**: GIN-indexed queries must use `CAST(:param AS jsonb)` not `:param::jsonb` — psycopg2 misparsing of double-colon has silently broken queries in this codebase before (CLAUDE.md gotcha). Verify actual metadata_json key names match Scholar implementation: `arxiv_id`, `doi`, `s2_paper_id`.
 
 ## 4. Neo4j Citation Edge Sync (depends on 1, 3)
 
@@ -92,7 +92,7 @@ Section 11 (docs)               ─── depends on all
   - Enqueue `resolve_references` job
   - Call `resolve_incoming()` for reverse resolution
   - Wrap in try/except: log errors, never block ingestion
-- [ ] 5.3 Wire hook into ingestion orchestrator (called after content persist in each service)
+- [ ] 5.3 Wire hook into ingestion orchestrator — add `on_content_ingested()` call at the end of each orchestrator function after the service's persist step: `ingest_gmail()`, `ingest_rss()`, `ingest_youtube()`, `ingest_podcast()`, `ingest_substack()`, `ingest_scholar()`, and (when available) `ingest_arxiv()`. Each call is wrapped in the hook's own try/except so ingestion is never blocked.
 - [ ] 5.4 Add `supplements` link detection: when arXiv content is ingested and Scholar record exists (or vice versa), create **two** supplements reference rows (one in each direction) for true bidirectionality
 - [ ] 5.5 Add chunk re-anchoring hook: after chunks are created or re-indexed for a content item, run `_find_chunk_for_offset` on all references with `source_chunk_id IS NULL` for that content_id to retroactively anchor them
 - [ ] 5.6 Write integration tests: hook called on RSS ingestion, hook called on arXiv ingestion, hook failure doesn't block ingestion, chunk re-anchoring after indexing
