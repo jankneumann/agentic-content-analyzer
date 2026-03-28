@@ -7,8 +7,9 @@ Section 3 (source config) ── no deps, parallel with 1, 2
 Section 4 (ingestion svc) ── depends on 1, 2, 3
 Section 5 (orchestrator)  ── depends on 4
 Section 6 (CLI)           ── depends on 5
-Section 7 (frontend)      ── no deps, parallel with all
-Section 8 (docs)          ── depends on all
+Section 7 (MCP tools)     ── depends on 5, 6
+Section 8 (frontend)      ── no deps, parallel with all
+Section 9 (docs)          ── depends on all
 ```
 
 **Max parallel width: 4** (sections 1, 2, 3, 7 can run concurrently in first wave)
@@ -70,13 +71,19 @@ Section 8 (docs)          ── depends on all
   - Accepts: arXiv ID, arXiv URL, DOI
 - [ ] 6.3 Write CLI integration tests
 
-## 7. Frontend Source Type Registration (no deps, parallel with all)
+## 7. MCP Tools (depends on 5, 6)
 
-- [ ] 7.1 Add `arxiv` entry to `sourceConfig` in `web/src/routes/contents.tsx` with label "arXiv" and `FileText` icon from lucide-react
-- [ ] 7.2 Add matching `arxiv` entry to `web/src/routes/ingest.tsx` source configuration
+- [ ] 7.1 Add `ingest_arxiv(max, days, force_reprocess, no_pdf)` tool to `src/mcp_server.py` — mirrors `aca ingest arxiv` CLI
+- [ ] 7.2 Add `ingest_arxiv_paper(identifier, no_pdf, force_reprocess)` tool — mirrors `aca ingest arxiv-paper` CLI
+- [ ] 7.3 Write MCP tool tests
 
-## 8. Documentation (depends on all)
+## 8. Frontend Source Type Registration (no deps, parallel with all)
 
-- [ ] 8.1 Update CLAUDE.md with arxiv ingestion commands and configuration
-- [ ] 8.2 Add arxiv source examples to sources.d documentation
-- [ ] 8.3 Document version-aware update behavior and cross-source deduplication
+- [ ] 8.1 Add `arxiv` entry to `sourceConfig` in `web/src/routes/contents.tsx` with label "arXiv" and `FileText` icon from lucide-react
+- [ ] 8.2 Add matching `arxiv` entry to `web/src/routes/ingest.tsx` source configuration
+
+## 9. Documentation (depends on all)
+
+- [ ] 9.1 Update CLAUDE.md with arxiv ingestion commands, MCP tools, and configuration
+- [ ] 9.2 Add arxiv source examples to sources.d documentation
+- [ ] 9.3 Document version-aware update behavior and cross-source deduplication

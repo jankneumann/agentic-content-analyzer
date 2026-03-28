@@ -32,8 +32,9 @@ CREATE TABLE content_references (
     resolution_status   VARCHAR(20) NOT NULL DEFAULT 'unresolved',
     resolved_at         TIMESTAMPTZ,
 
-    -- Context
-    context_snippet     TEXT,             -- surrounding text where reference was found
+    -- Context (anchored to document chunk model)
+    source_chunk_id     INTEGER REFERENCES document_chunks(id) ON DELETE SET NULL,  -- chunk where reference was found
+    context_snippet     TEXT,             -- surrounding text (fallback when chunk not yet indexed)
     confidence          FLOAT DEFAULT 1.0, -- extraction confidence (1.0 for structured IDs, lower for heuristic)
 
     -- Timestamps
@@ -99,21 +100,35 @@ REFERENCE_PATTERNS = {
 
 ### Extraction Flow
 
+References are anchored to `DocumentChunk` records from the hierarchical document model when available. Each chunk has `id`, `chunk_index`, `section_path` (heading hierarchy), `start_char`/`end_char` (character offsets), and `chunk_type` — providing precise location context within the source document. When chunks haven't been indexed yet (e.g., during initial ingestion before chunking runs), `context_snippet` serves as a fallback.
+
 ```python
 class ReferenceExtractor:
-    def extract_from_content(self, content: Content) -> list[ExtractedReference]:
-        """Scan markdown_content and links_json for identifiable references."""
+    def extract_from_content(self, content: Content, db: Session) -> list[ExtractedReference]:
+        """Scan markdown_content and links_json for identifiable references.
+
+        Anchors references to DocumentChunk records when available,
+        falling back to context_snippet for unchunked content.
+        """
         refs = []
+
+        # Load chunks for this content (may be empty if not yet indexed)
+        chunks = db.query(DocumentChunk).filter(
+            DocumentChunk.content_id == content.id
+        ).order_by(DocumentChunk.chunk_index).all()
 
         # 1. Structured ID extraction from markdown text
         for id_type, patterns in REFERENCE_PATTERNS.items():
             for pattern in patterns:
                 for match in re.finditer(pattern, content.markdown_content):
+                    # Anchor to chunk via character offset
+                    chunk = _find_chunk_for_offset(chunks, match.start())
                     refs.append(ExtractedReference(
                         external_id=normalize_id(id_type, match.group(1)),
                         external_id_type=id_type,
                         external_url=build_url(id_type, match.group(1)),
-                        context_snippet=extract_context(content.markdown_content, match),
+                        source_chunk_id=chunk.id if chunk else None,
+                        context_snippet=extract_context(content.markdown_content, match) if not chunk else None,
                         confidence=1.0,
                     ))
 
@@ -123,7 +138,6 @@ class ReferenceExtractor:
             if classified:
                 refs.append(classified)
             else:
-                # Unclassified URL — store as URL-type reference
                 refs.append(ExtractedReference(
                     external_id=None,
                     external_id_type=None,
@@ -132,6 +146,14 @@ class ReferenceExtractor:
                 ))
 
         return deduplicate_refs(refs)
+
+    def _find_chunk_for_offset(self, chunks: list[DocumentChunk], char_offset: int) -> DocumentChunk | None:
+        """Find the chunk containing this character offset."""
+        for chunk in chunks:
+            if chunk.start_char is not None and chunk.end_char is not None:
+                if chunk.start_char <= char_offset < chunk.end_char:
+                    return chunk
+        return None
 ```
 
 ### ID Normalization
@@ -438,3 +460,88 @@ reference_min_confidence: float = 0.5               # Skip low-confidence URL-on
 2. Lower confidence (0.5) distinguishes them from structured IDs (1.0)
 3. Can be resolved later if the URL content is ingested
 4. Provides context for the knowledge graph even when not fully resolved
+
+### Why anchor to DocumentChunk instead of text snippet?
+
+1. Chunks are the existing unit of the hierarchical document model — `section_path`, `heading_text`, `start_char`/`end_char` give precise structural location
+2. Enables frontend to highlight the exact section where a citation was found
+3. Chunk-level anchoring survives content re-parsing (chunk IDs are stable per parse)
+4. `context_snippet` is a fallback for content not yet chunked (ingestion happens before chunking)
+5. When chunks are later indexed for unchunked content, references can be retroactively anchored
+
+## MCP Tool Surface
+
+All API endpoints and CLI commands are also exposed as MCP tools via `@mcp.tool()` in `src/mcp_server.py`, following the existing pattern where tools delegate to orchestrator functions:
+
+```python
+@mcp.tool()
+def get_content_references(
+    content_id: int,
+    direction: str = "outgoing",
+) -> str:
+    """Get references for a content item.
+
+    Args:
+        content_id: Content record ID
+        direction: "outgoing" (what this content cites) or "incoming" (what cites this content)
+
+    Returns:
+        JSON list of references with resolution status
+    """
+    # Delegates to reference service
+    ...
+
+@mcp.tool()
+def extract_references(
+    after: str | None = None,
+    before: str | None = None,
+    source: str | None = None,
+    dry_run: bool = False,
+    batch_size: int = 50,
+) -> str:
+    """Extract references from existing content (backfill).
+
+    Args:
+        after: ISO date - only process content after this date
+        before: ISO date - only process content before this date
+        source: Filter by source type (e.g., "rss", "substack")
+        dry_run: Preview without storing
+        batch_size: Number of content items per batch
+
+    Returns:
+        JSON with extraction stats
+    """
+    ...
+
+@mcp.tool()
+def resolve_references(
+    batch_size: int = 100,
+    auto_ingest: bool = False,
+) -> str:
+    """Resolve unresolved content references against the database.
+
+    Args:
+        batch_size: Number of references to process
+        auto_ingest: Trigger ingestion for unresolved structured IDs
+
+    Returns:
+        JSON with resolution stats
+    """
+    ...
+
+@mcp.tool()
+def ingest_reference(
+    reference_id: int,
+) -> str:
+    """Ingest content for a specific unresolved reference (ad-hoc).
+
+    Args:
+        reference_id: content_references row ID
+
+    Returns:
+        JSON with ingestion result and resolution status
+    """
+    ...
+```
+
+This ensures agentic workflows (MCP clients, AI assistants) can discover citations, trigger resolution, and ad-hoc ingest papers — the same capabilities as the API and CLI.
