@@ -36,6 +36,19 @@ This proposal provides **infrastructure** consumed by:
 | `add-arxiv-ingest` (arXiv) | arXiv papers linked to Scholar abstracts; blog→paper references resolved |
 | Future proposals | Any source that extracts URLs/identifiers can produce references |
 
+## Existing Code (Post-Scholar Implementation)
+
+The Scholar PR (#338) already built reference extraction infrastructure that this proposal must extend rather than duplicate:
+
+| Component | Location | What Exists | What This Proposal Adds |
+|---|---|---|---|
+| `ReferenceExtractor` class | `src/ingestion/reference_extractor.py` | Regex patterns for arXiv, DOI, S2; `extract_all()`, `extract_from_contents()` methods; Scholar-specific `ingest_extracted_references()` | Chunk anchoring, URL classification, `store_references()` with `content_references` table, context snippets |
+| CLI command | `aca ingest scholar-refs` | Extract identifiers → ingest via Scholar service | New `aca manage extract-refs` (source-agnostic, stores to `content_references` table) and `aca manage resolve-refs` (background resolution) |
+| Orchestrator function | `src/ingestion/orchestrator.py:ingest_scholar_refs()` | Wraps `ReferenceExtractor` for CLI | Ingestion hooks (auto-extract on any content ingest), reverse resolution |
+| Tests | `tests/test_ingestion/test_reference_extractor.py` | Regex extraction tests | Chunk anchoring, store_references, resolution, API route tests |
+
+**Migration strategy**: Refactor existing `ReferenceExtractor` from `src/ingestion/` to `src/services/` (aligns with service layer), extend with chunk anchoring and `content_references` persistence. Preserve existing `extract_all()` and `extract_from_contents()` APIs for backward compatibility. The `aca ingest scholar-refs` command continues to work but delegates to the new system internally.
+
 ## Scope
 
 ### In Scope
@@ -68,6 +81,7 @@ The API endpoint (`REQ-REF-008`) and auto-ingest trigger (`REQ-REF-006`) provide
 
 | Risk | Mitigation |
 |---|---|
+| Existing code overlap with Scholar PR | Refactor-and-extend strategy; preserve backward-compatible APIs |
 | Large reference volume from existing content | Batch processing with queue jobs; backfill is opt-in CLI command |
 | Circular references (A cites B, B cites A) | Allowed — these are valid in academia; no infinite loops since extraction is content-driven |
 | Auto-ingest creating unbounded content growth | Configurable: `auto_ingest_enabled` setting, `max_auto_ingest_depth=1` (no recursive auto-ingest of auto-ingested content) |
