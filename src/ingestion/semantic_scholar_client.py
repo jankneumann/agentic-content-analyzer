@@ -126,6 +126,9 @@ class SemanticScholarClient:
                     await asyncio.sleep(wait)
                     continue
 
+                # Reset 429 counter on any non-429 response
+                consecutive_429s = 0
+
                 if response.status_code >= 500:
                     last_response = response
                     if attempt == max_retries:
@@ -203,7 +206,10 @@ class SemanticScholarClient:
         for item in data:
             cited = item.get("citedPaper")
             if cited and cited.get("paperId"):
-                papers.append(S2Paper.model_validate(cited))
+                try:
+                    papers.append(S2Paper.model_validate(cited))
+                except Exception:
+                    logger.debug("Skipping malformed reference entry: %s", cited.get("paperId"))
         return papers
 
     async def get_paper_citations(self, paper_id: str, limit: int = 100) -> list[S2Paper]:
@@ -220,7 +226,10 @@ class SemanticScholarClient:
         for item in data:
             citing = item.get("citingPaper")
             if citing and citing.get("paperId"):
-                papers.append(S2Paper.model_validate(citing))
+                try:
+                    papers.append(S2Paper.model_validate(citing))
+                except Exception:
+                    logger.debug("Skipping malformed citation entry: %s", citing.get("paperId"))
         return papers
 
     async def batch_get_papers(self, paper_ids: list[str]) -> list[S2Paper | None]:

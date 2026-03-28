@@ -230,9 +230,9 @@ class ScholarContentIngestionService:
         if paper.venue:
             publication = f"{paper.venue} ({paper.year})" if paper.year else paper.venue
 
-        # Published date: Jan 1 of the paper year
+        # Published date: Jan 1 of the paper year (guard against invalid years)
         published_date: datetime | None = None
-        if paper.year:
+        if paper.year and 1900 <= paper.year <= 2100:
             published_date = datetime(paper.year, 1, 1, tzinfo=UTC)
 
         # Source URL: prefer open access PDF, fall back to S2 page

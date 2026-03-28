@@ -309,6 +309,9 @@ class ScholarWebSearchProvider:
                     )
                     for paper in result.data
                 ]
+            except Exception as exc:
+                logger.error("Scholar web search failed: %s", exc)
+                return []
             finally:
                 await client.close()
 
