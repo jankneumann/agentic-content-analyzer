@@ -189,6 +189,7 @@ export interface SaveURLParams {
   title?: string
   tags?: string[]
   notes?: string
+  source?: string
 }
 
 /**

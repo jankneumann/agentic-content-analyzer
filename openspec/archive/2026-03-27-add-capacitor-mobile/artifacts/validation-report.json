@@ -1,0 +1,61 @@
+{
+  "change_id": "add-capacitor-mobile",
+  "validated_at": "2026-03-27T00:00:00Z",
+  "packages_checked": 8,
+  "evidence_complete": true,
+  "checks": {
+    "typescript_compilation": {
+      "passed": true,
+      "detail": "pnpm tsc --noEmit — zero errors"
+    },
+    "backend_lint": {
+      "passed": true,
+      "detail": "ruff check on changed Python files — all passed"
+    },
+    "backend_tests": {
+      "passed": true,
+      "detail": "19/19 security/CORS tests passed (5 new Capacitor origin tests)"
+    },
+    "revision_consistency": {
+      "passed": true,
+      "detail": "All packages share contracts_revision='initial', plan_revision='post-review-v2'"
+    },
+    "scope_violations": {
+      "passed": true,
+      "detail": "No files written to deny-listed paths"
+    },
+    "cross_package_file_overlap": {
+      "passed": false,
+      "severity": "low",
+      "detail": "3 files claimed by both wp-capacitor-setup and wp-build-deploy: web/package.json, web/ios/fastlane/Fastfile, web/ios/fastlane/Matchfile. Acceptable because wp-capacitor-setup is root (runs first) and wp-build-deploy depends on it (runs after). No actual conflict — wp-build-deploy created fastlane files that didn't exist during root.",
+      "disposition": "accepted"
+    },
+    "uncovered_files": {
+      "passed": false,
+      "severity": "low",
+      "detail": "5 files modified outside any package write_allow scope: src/config/profiles.py (CORS), web/src/components/notifications/NotificationBell.tsx (push), web/src/lib/api/contents.ts (source field), web/src/routes/__root.tsx (initShareTarget), web/src/routes/settings.tsx (push toggle). These are integration-level changes and review fixes that cross package boundaries — expected in the integration phase.",
+      "disposition": "accepted"
+    },
+    "review_findings_addressed": {
+      "passed": true,
+      "detail": "6 of 6 requested fixes applied and committed (da6e643). TypeScript recompilation passed after fixes."
+    },
+    "task_coverage": {
+      "passed": true,
+      "detail": "68 unique tasks across 8 packages, no duplicates"
+    }
+  },
+  "issues": [
+    {
+      "severity": "info",
+      "description": "No formal work-queue-result.json files generated — agents used isolation:worktree mode and committed directly. Evidence derived from git history and post-merge verification.",
+      "disposition": "accepted"
+    },
+    {
+      "severity": "info",
+      "description": "E2E tests (tasks 12.1-12.5) not yet written — these are in the wp-integration package which was scoped for the integration phase but not yet executed as a separate agent.",
+      "disposition": "deferred"
+    }
+  ],
+  "recommendation": "PROCEED — all critical checks pass. Recommend /parallel-cleanup-feature add-capacitor-mobile"
+}

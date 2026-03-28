@@ -1,0 +1,17 @@
+# Matchfile — fastlane match configuration for code signing
+# See: https://docs.fastlane.tools/actions/match/
+#
+# Prerequisites:
+#   1. Create a private GitHub repo for certificates (e.g., your-org/certificates)
+#   2. Set MATCH_GIT_URL secret in GitHub Actions
+#   3. Set MATCH_PASSWORD secret for encrypting the repo
+#   4. Enroll in the Apple Developer Program ($99/year)
+#   5. Create an App ID "com.aca.newsletter" in Apple Developer Portal
+
+git_url(ENV["MATCH_GIT_URL"] || "https://github.com/your-org/certificates")
+storage_mode("git")
+type("appstore")
+app_identifier(["com.aca.newsletter"])
+
+# Optional: specify the Apple Developer team
+# team_id("YOUR_TEAM_ID")

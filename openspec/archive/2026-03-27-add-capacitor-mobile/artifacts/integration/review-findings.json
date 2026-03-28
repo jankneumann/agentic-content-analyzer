@@ -1,0 +1,97 @@
+{
+  "review_type": "implementation",
+  "target": "add-capacitor-mobile (full integration)",
+  "reviewer_vendor": "claude-opus-4-6",
+  "findings": [
+    {
+      "id": 1,
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "NativeSTTEngine only emits `isFinal: false` transcript events (line 88). The SpeechRecognition plugin's `partialResults` callback fires for both interim and final results, but the engine never distinguishes them. When speech recognition ends (after stop() or timeout), no final transcript event is emitted. Consumers relying on `isFinal: true` to finalize input (like the voice input hook's `onResult` callback) will never receive the final transcript.",
+      "resolution": "The Capacitor speech-recognition plugin doesn't provide a clear final/interim distinction in `partialResults`. Add a `stop()` handler that emits a final `TranscriptEvent` with `isFinal: true` using the last captured transcript text. Alternatively, listen for the plugin's completion event to emit the final result.",
+      "disposition": "fix",
+      "package_id": "wp-native-stt"
+    },
+    {
+      "id": 2,
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "In `share-handler.ts` line 24, `saveUrl` is imported from `../api/contents`. This import path assumes the API client module exports a `saveUrl` function with the exact signature `saveUrl({ url })`. If the actual function name or signature differs (e.g., `saveContentUrl` or requires additional auth headers), this will be a runtime error. The contracts define `SaveURLRequest` but the implementation bypasses it.",
+      "resolution": "Verify that `web/src/lib/api/contents.ts` exports a `saveUrl` function accepting `{ url: string }`. If it doesn't exist, create a thin wrapper around the API client. The contract's `SaveURLRequest.source` field ('native-share') should also be passed.",
+      "disposition": "fix",
+      "package_id": "wp-share-target"
+    },
+    {
+      "id": 3,
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "The share handler calls `saveUrl({ url })` but the contract specifies `source: 'native-share'` should be included in the request body (contracts/generated/types.ts SharedURL interface). Without `source`, the backend can't distinguish shares from bookmarklet saves, degrading analytics.",
+      "resolution": "Pass `{ url, source: 'native-share' }` to the save-url API call in `trySaveUrl()`.",
+      "disposition": "fix",
+      "package_id": "wp-share-target"
+    },
+    {
+      "id": 4,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "The `offline-queue.ts` imports `Preferences` at the top level (line 12) rather than using lazy dynamic imports. This differs from the pattern used everywhere else (platform.ts, haptics.ts, push-notifications.ts, share-handler.ts all use `await import()`). On web builds, `@capacitor/preferences` will be included in the bundle even though the queue is only used on native platforms.",
+      "resolution": "Change to lazy import: `const { Preferences } = await import('@capacitor/preferences')` inside each function. Alternatively, since `share-handler.ts` already guards with `isNative()` at init time, this may be acceptable if tree-shaking eliminates the dead code path.",
+      "disposition": "accept",
+      "package_id": "wp-share-target"
+    },
+    {
+      "id": 5,
+      "type": "security",
+      "criticality": "low",
+      "description": "In `push-notifications.ts` line 111, `apiClient.post('/notifications/devices', ...)` sends the device token to the backend. The `registerForPush()` function returns the raw APNs/FCM token. While the token is sent over HTTPS, it's stored in the React state via `tokenRef.current` (in use-push-notifications.ts line 44) for the lifetime of the component. This is acceptable for the current single-user design but should be noted for future multi-user considerations.",
+      "resolution": "Acceptable as-is for single-owner app. Document that device tokens are sensitive PII if the app ever supports multiple users.",
+      "disposition": "accept",
+      "package_id": "wp-push-notifications"
+    },
+    {
+      "id": 6,
+      "type": "correctness",
+      "criticality": "low",
+      "description": "In `use-push-notifications.ts` line 66, `removeAllListeners()` is called in the useEffect cleanup. However, this removes ALL push notification listeners, including the `registration` listener set up in `registerForPush()`. If the user navigates away and back, the token refresh listener won't be re-registered until the component remounts and permission is still 'granted'.",
+      "resolution": "This is acceptable given the hook re-runs on mount. The effect dependency on `[permission]` ensures re-registration happens when permission state changes.",
+      "disposition": "accept",
+      "package_id": "wp-push-notifications"
+    },
+    {
+      "id": 7,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "The `NotificationBell.tsx` modification wires SSE events to local notifications, but `initShareTarget()` from `share-handler.ts` is not called anywhere in the app initialization code. The share target handler needs to be initialized at app startup to register the `appStateChange` and `networkStatusChange` listeners.",
+      "resolution": "Add `initShareTarget()` call in the app's root component or entry point (e.g., `__root.tsx` or `App.tsx`), similar to how `initTelemetry()` is called at module scope.",
+      "disposition": "fix",
+      "package_id": "wp-share-target"
+    },
+    {
+      "id": 8,
+      "type": "style",
+      "criticality": "low",
+      "description": "The `_DEV_DEFAULT_ORIGINS` set in settings.py now has 4 entries including Capacitor origins. The name `_DEV_DEFAULT_ORIGINS` still accurately describes the purpose (origins used in development), but the docstring says 'localhost only' which is now slightly misleading since `capacitor://localhost` is a non-standard scheme.",
+      "resolution": "Minor — update the docstring from 'localhost only' to 'development defaults (localhost and Capacitor origins)'. Not blocking.",
+      "disposition": "accept",
+      "package_id": "wp-backend-cors"
+    },
+    {
+      "id": 9,
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "The iOS `Info.plist` (generated by Capacitor) doesn't include `NSMicrophoneUsageDescription` or `NSSpeechRecognitionUsageDescription` keys, which are required by Apple for microphone and speech recognition access. The native STT engine requests these permissions at runtime, but without the plist entries, iOS will crash the app on permission request.",
+      "resolution": "Add to `web/ios/App/App/Info.plist`: `<key>NSMicrophoneUsageDescription</key><string>Microphone access for voice input</string>` and `<key>NSSpeechRecognitionUsageDescription</key><string>Speech recognition for voice commands</string>`. This was in the original tasks (3.6) but may not have been executed since it requires editing the Xcode-generated plist.",
+      "disposition": "fix",
+      "package_id": "wp-capacitor-setup"
+    },
+    {
+      "id": 10,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "The `PushNotificationToggle.tsx` is imported in `settings.tsx` but the import may fail on web builds if the component eagerly references Capacitor types. Looking at the implementation, it uses `usePushNotifications()` hook which calls `isNative()` — this should be safe since `isNative()` returns false on web and the component conditionally renders null.",
+      "resolution": "No action needed — the pattern is safe. The component returns null on web via the `isAvailable` guard.",
+      "disposition": "accept",
+      "package_id": "wp-push-notifications"
+    }
+  ]
+}

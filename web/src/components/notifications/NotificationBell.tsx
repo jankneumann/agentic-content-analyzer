@@ -30,6 +30,10 @@ import {
   useMarkAllRead,
   useNotificationSSE,
 } from "@/hooks/use-notifications"
+import {
+  useLocalNotificationBridge,
+  useNotificationTapHandler,
+} from "@/hooks/use-push-notifications"
 import type { NotificationEvent, NotificationEventType } from "@/types"
 
 /** Icon mapping for event types */
@@ -113,8 +117,14 @@ export function NotificationBell() {
   const markRead = useMarkEventRead()
   const markAllRead = useMarkAllRead()
 
-  // Subscribe to SSE for real-time updates
-  useNotificationSSE()
+  // Bridge SSE events to native local notifications when foregrounded
+  const showLocalNotification = useLocalNotificationBridge()
+
+  // Subscribe to SSE for real-time updates, forwarding to local notifications
+  useNotificationSSE(showLocalNotification)
+
+  // Handle notification tap -> navigate to payload URL
+  useNotificationTapHandler()
 
   const unreadCount = unreadData?.count ?? 0
   const events = eventsData?.events ?? []
