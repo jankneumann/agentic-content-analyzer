@@ -28,7 +28,7 @@ Content arrives → ChunkingService.chunk_content()
           ALSO run TreeIndexChunkingStrategy → tree chunks
 ```
 
-Both flat and tree chunks are stored in `document_chunks`. Flat chunks have `parent_chunk_id=NULL`; tree chunks have populated tree columns.
+Both flat and tree chunks are stored in `document_chunks`. Flat chunks have `tree_depth=NULL`; tree chunks have `tree_depth >= 0`. Note: `parent_chunk_id` is NULL for both flat chunks and tree root nodes — `tree_depth` is the authoritative discriminator between flat and tree chunks.
 
 ### Tree Structure in Database
 
@@ -81,25 +81,41 @@ def _build_tree_from_headings(content: str) -> list[TreeNode]:
 
 ### LLM Node Summarization (Phase 2)
 
-For each internal node (has children), generate a summary:
+**Key constraint**: The `ChunkingStrategy` protocol is sync-only (`chunk()` returns `list[DocumentChunk]`). All five existing strategies are synchronous. We preserve this invariant.
+
+**Two-step approach**:
+1. `TreeIndexChunkingStrategy.chunk()` (sync) — builds tree structure, creates `DocumentChunk` records with `is_summary=True` and placeholder empty `chunk_text` for internal nodes
+2. `index_content()` (async) — populates summaries via LLM calls as a post-processing step, following the existing async embedding pattern in `indexing.py` (lines 25-42 use `_run_async()`)
 
 ```python
-async def _summarize_node(node: TreeNode, model: str) -> str:
-    """Generate a summary for an internal tree node.
+async def _summarize_tree_nodes(chunks: list[DocumentChunk], model: str) -> None:
+    """Populate LLM summaries for internal tree nodes (async post-processing).
 
-    Input: concatenated summaries/text of child nodes (truncated to fit context)
-    Output: 1-3 sentence summary of the section's content
+    Called from index_content() after chunk insertion, before embedding.
+    Processes bottom-up: deepest nodes first, then parents use children's summaries.
+    Sibling nodes at the same depth are parallelized via asyncio.gather().
     """
-    child_content = "\n\n".join(
-        child.summary if child.is_internal else child.text[:500]
-        for child in node.children
-    )
+    summary_chunks = [c for c in chunks if c.is_summary]
+    max_depth = max((c.tree_depth for c in summary_chunks), default=0)
 
-    prompt = f"Summarize this document section in 1-3 sentences:\n\n{child_content}"
-    return await llm_router.complete(prompt, model=model)
+    for depth in range(max_depth, -1, -1):  # bottom-up
+        level_chunks = [c for c in summary_chunks if c.tree_depth == depth]
+        # Siblings at same depth are independent — parallelize
+        summaries = await asyncio.gather(*[
+            _summarize_single_node(chunk, chunks, model)
+            for chunk in level_chunks
+        ])
+        for chunk, summary in zip(level_chunks, summaries):
+            chunk.chunk_text = summary
 ```
 
-Summarization runs bottom-up: leaf nodes have actual content, then each parent is summarized from its children's summaries. This is done during indexing (write path), not during search.
+This approach:
+- Keeps the chunking protocol sync (no protocol changes needed)
+- Parallelizes sibling summarization via `asyncio.gather()` — reduces a 15-section paper from ~10 sequential calls to ~3-4 rounds of parallel calls
+- Follows the existing indexing.py async pattern for embeddings
+- Uses `ModelStep.TREE_SUMMARIZATION` (not a Settings field) for model resolution, consistent with existing model config via `src/config/models.py`
+
+**No new ChunkType enum value needed** — internal summary nodes reuse `ChunkType.SECTION`. This avoids the `ALTER TYPE ... ADD VALUE` PostgreSQL migration gotcha documented in CLAUDE.md.
 
 ### Tree Search Retrieval (Phase 3)
 
@@ -107,20 +123,33 @@ Summarization runs bottom-up: leaf nodes have actual content, then each parent i
 Search query arrives → HybridSearchService.search()
   │
   ├─ Partition content_ids:
-  │   tree_indexed = {ids with tree_depth IS NOT NULL}
+  │   tree_indexed = {ids with tree_depth IS NOT NULL}  ← authoritative check
   │   flat_indexed = {all other ids}
   │
   ├─ Flat path (existing): BM25 + vector → RRF
   │
   ├─ Tree path (new):
+  │   0. Cap at tree_search_max_documents (default: 3), overflow → flat path
   │   1. Load tree structure (summaries only, no leaf text)
-  │   2. Format prompt: query + tree JSON
-  │   3. LLM call → {"thinking": "...", "node_list": ["10", "12"]}
-  │   4. Fetch leaf chunks under selected nodes
-  │   5. Score: position in node_list → rank
+  │   2. Assign compact IDs: N001, N002, ... (map back to DB chunk IDs)
+  │   3. Format prompt: query + tree JSON with compact IDs
+  │   4. LLM calls via asyncio.gather() with tree_search_timeout_seconds (5s)
+  │   5. Parse response → {"thinking": "...", "node_list": ["N001", "N003"]}
+  │   6. Resolve compact IDs → DB chunk IDs → fetch leaf content
+  │   7. Score: position in node_list → rank
+  │   8. Store reasoning in SearchResult.tree_reasoning
+  │
+  ├─ Timeout/error: fall back to flat path for that document
   │
   └─ Merge: RRF fusion across flat + tree results
 ```
+
+**Latency budget**: Tree search adds LLM latency. Safeguards:
+- `tree_search_max_documents` (default: 3) — caps LLM calls per query
+- `tree_search_timeout_seconds` (default: 5s) — per-document timeout with fallback
+- `asyncio.gather()` — concurrent tree search across multiple documents
+
+**Observability**: Tree search LLM calls create telemetry spans via existing observability provider with: `tree_depth`, `node_count`, `query`, `selected_node_ids`, `duration_ms`. Tree summarization during indexing also creates spans with `content_id`, `internal_node_count`, `total_summary_tokens`.
 
 ### Tree Search Prompt Template
 
@@ -141,31 +170,41 @@ Reply in JSON format:
 }
 ```
 
-The tree JSON sent to the LLM contains only summaries and hierarchy — no leaf text. This keeps the prompt small even for large documents. Example:
+The tree JSON sent to the LLM contains only summaries and hierarchy — no leaf text. **Compact sequential node IDs** (e.g., `N001`, `N002`) are assigned at prompt-construction time and mapped back to database chunk IDs for retrieval. This keeps prompts concise and avoids confusing the LLM with large arbitrary integers. Example:
 
 ```json
 {
-  "node_id": "10",
+  "node_id": "N001",
   "title": "2. Approach",
   "summary": "Describes the training methodology including RL and SFT stages",
   "children": [
-    {"node_id": "11", "title": "2.1 RL Training", "summary": "Details the reinforcement learning stage..."},
-    {"node_id": "12", "title": "2.2 SFT Stage", "summary": "Describes supervised fine-tuning..."}
+    {"node_id": "N002", "title": "2.1 RL Training", "summary": "Details the reinforcement learning stage..."},
+    {"node_id": "N003", "title": "2.2 SFT Stage", "summary": "Describes supervised fine-tuning..."}
   ]
 }
 ```
 
+### SearchResult Model Changes
+
+```python
+class SearchResult(BaseModel):
+    # ... existing fields ...
+    tree_reasoning: str | None = None  # LLM reasoning trace for tree search results
+```
+
+`tree_reasoning` is `None` for results from flat hybrid search. For tree search results, it contains the LLM's `thinking` field explaining why specific sections were selected.
+
 ### Cost Analysis
 
-| Operation | LLM Calls | When |
-|-----------|-----------|------|
-| Chunk thinning (Phase 1) | 0 | Always (post-processing step) |
-| Tree summarization (Phase 2) | ~1 per internal node | During indexing of qualifying docs |
-| Tree search (Phase 3) | 1-2 per query per tree-indexed doc | During search queries |
+| Operation | LLM Calls | When | Latency |
+|-----------|-----------|------|---------|
+| Chunk thinning (Phase 1) | 0 | Always (post-processing step) | ~0ms |
+| Tree summarization (Phase 2) | ~1 per internal node | During indexing of qualifying docs | ~3-4 parallel rounds |
+| Tree search (Phase 3) | 1 per tree-indexed doc (max 3) | During search queries | ~1-3s (concurrent, 5s timeout) |
 
 For a typical 30-page arXiv paper with ~15 sections:
-- **Indexing**: ~10 summary calls (internal nodes only) × ~500 input tokens = ~5K tokens total
-- **Search**: 1 call × ~2K tokens (tree structure) = ~2K tokens per query
+- **Indexing**: ~10 summary calls parallelized into ~3-4 rounds (sibling parallelization via `asyncio.gather()`), ~500 input tokens each = ~5K tokens total
+- **Search**: 1 call × ~2K tokens (tree structure with compact IDs) = ~2K tokens per query, capped at `tree_search_max_documents` (3) concurrent calls
 
 For short content (newsletters, RSS, blog posts): **zero additional cost** — flat chunks only.
 
@@ -198,7 +237,7 @@ All columns nullable — no impact on existing rows. Existing flat chunks contin
 | `aca manage backfill-chunks` | Unchanged — only creates flat chunks |
 | `aca manage backfill-tree-index` | New command — builds tree indexes for existing qualifying content |
 | `aca manage switch-embeddings` | Unchanged — operates on all chunks including tree chunks |
-| Search API response | Unchanged — `SearchResult` model already supports `matching_chunks` |
+| Search API response | `SearchResult` adds `tree_reasoning: str | None` field (backward-compatible, defaults to `None`) |
 | Frontend | No changes needed — tree search results appear as standard search results |
 
 ## Future Work

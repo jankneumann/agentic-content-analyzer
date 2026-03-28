@@ -2,102 +2,127 @@
   "review_type": "plan",
   "target": "tree-index-chunking",
   "reviewer_vendor": "claude-opus-4-6",
+  "review_iteration": 2,
   "findings": [
     {
       "id": 1,
       "type": "architecture",
       "criticality": "high",
-      "description": "ChunkingStrategy protocol is sync-only (src/services/chunking.py:122-135). All five existing strategies have synchronous `chunk()` methods returning `list[DocumentChunk]`. The plan's TreeIndexChunkingStrategy requires async LLM calls for node summarization (Phase 2, Task 2.4), but cannot make async calls through the sync protocol. The design.md shows `async def _summarize_node()` but does not address how this integrates with the sync `chunk()` method.",
-      "resolution": "Option A (recommended): Keep TreeIndexChunkingStrategy.chunk() sync for tree structure building only. Move LLM summarization to a separate async post-processing step in index_content() (src/services/indexing.py), which already has async patterns for embedding (lines 25-42 use _run_async()). This avoids changing the protocol. Option B: Add an optional `async_chunk()` method to the protocol and extend ChunkingService to call it when available. Option A is lower-risk and follows existing codebase patterns.",
-      "disposition": "fix"
+      "description": "ChunkingStrategy protocol is sync-only (src/services/chunking.py:122-135). All five existing strategies have synchronous `chunk()` methods returning `list[DocumentChunk]`. The plan's TreeIndexChunkingStrategy requires async LLM calls for node summarization (Phase 2, Task 2.4), but cannot make async calls through the sync protocol.",
+      "resolution": "Keep TreeIndexChunkingStrategy.chunk() sync for tree structure building only. Move LLM summarization to async post-processing in index_content(), following existing embedding pattern.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "design.md (LLM Node Summarization section), tasks.md (Task 2.4, 2.6), spec.md (Tree Index Strategy requirement), proposal.md (Design Decision #5)"
     },
     {
       "id": 2,
       "type": "spec_gap",
       "criticality": "high",
-      "description": "The spec and design do not address how tree search interacts with the existing search latency budget. Tree search adds 1-2 LLM calls per query per tree-indexed document. If a search matches 5 tree-indexed documents, that's 5-10 sequential LLM calls adding 2-10 seconds of latency. The spec says 'tree_search_enabled' can be toggled but provides no timeout, concurrency limit, or max-documents-per-tree-search constraint.",
-      "resolution": "Add requirements: (1) The system SHALL limit tree search to a configurable maximum number of documents per query (default: 3, setting: `tree_search_max_documents`). (2) The system SHALL execute tree search calls concurrently via asyncio.gather(). (3) The system SHALL enforce a per-document tree search timeout (default: 5s, setting: `tree_search_timeout_seconds`). Documents exceeding the timeout fall back to flat search.",
-      "disposition": "fix"
+      "description": "Tree search latency unspecified. No timeout, concurrency limit, or max-documents-per-tree-search constraint.",
+      "resolution": "Added tree_search_max_documents (3), tree_search_timeout_seconds (5s), asyncio.gather() concurrency.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (Tree Search Retrieval requirement + 2 new scenarios), design.md (Tree Search Retrieval section), tasks.md (Task 3.2, 3.4, 3.6, 3.7), proposal.md (Design Decision #7)"
     },
     {
       "id": 3,
       "type": "spec_gap",
       "criticality": "high",
-      "description": "The spec does not address the SearchResult/SearchScores model changes needed for tree search reasoning. The plan says 'include the LLM's reasoning trace in search response metadata for explainability' but SearchResult has no reasoning field (src/models/search.py:72-86). SearchMeta is execution-level only (query_time_ms, bm25_strategy). Without specifying where reasoning lives, implementers will make ad-hoc choices that may break the API contract.",
-      "resolution": "Add a requirement: The system SHALL add `tree_reasoning: str | None = None` to SearchResult for per-document reasoning traces. Add a scenario showing a search response with tree reasoning populated. Also update the delta spec to reference the SearchResult model change explicitly.",
-      "disposition": "fix"
+      "description": "SearchResult has no reasoning field for tree search traces.",
+      "resolution": "Added tree_reasoning: str | None = None to SearchResult model.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (Tree Search Retrieval requirement + reasoning scenario), design.md (SearchResult Model Changes section), tasks.md (Task 3.5), proposal.md (Impact section)"
     },
     {
       "id": 4,
       "type": "architecture",
       "criticality": "medium",
-      "description": "The plan proposes adding `SUMMARY` to the ChunkType StrEnum (Task 2.2), but ChunkType is backed by a PostgreSQL enum. Adding a Python StrEnum value without a corresponding `ALTER TYPE ... ADD VALUE` migration will cause `InvalidTextRepresentation` at runtime — this is already documented in CLAUDE.md as a critical gotcha: 'Adding to Python StrEnum requires ALTER TYPE ... ADD VALUE migration; without it PG throws InvalidTextRepresentation'.",
-      "resolution": "Task 2.1 (database migration) must include `ALTER TYPE chunktype ADD VALUE IF NOT EXISTS 'summary'` alongside the column additions. Alternatively, the plan could reuse existing ChunkType.SECTION for summary nodes (as currently stated in the spec: 'chunk_type=SECTION') and skip the enum addition. If reusing SECTION, remove the Task 2.2 reference to adding SUMMARY to ChunkType.",
-      "disposition": "fix"
+      "description": "ChunkType enum change needs ALTER TYPE migration (PG gotcha).",
+      "resolution": "Reuse existing ChunkType.SECTION for summary nodes. No enum addition needed.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (reuse SECTION explicitly stated), design.md (No new ChunkType note), tasks.md (Task 2.1, 2.2 — explicit 'No ChunkType change'), proposal.md (Design Decision #6)"
     },
     {
       "id": 5,
       "type": "spec_gap",
       "criticality": "medium",
-      "description": "The spec does not address what happens when tree-indexed content is re-indexed (e.g., content updated, manual re-index via backfill). The existing `index_content()` deletes old chunks before creating new ones (DELETE + INSERT pattern). For tree chunks, this means the self-referential FK cascade will delete all children when a parent is deleted, which is correct — but the spec should explicitly state the re-indexing behavior and confirm that tree + flat chunks are always rebuilt together.",
-      "resolution": "Add a scenario: 'WHEN a tree-indexed document is re-indexed, THEN all existing flat and tree chunks for that content_id are deleted, AND new flat and tree chunks are created from the current content.' Confirm CASCADE delete on parent_chunk_id handles cleanup.",
-      "disposition": "fix"
+      "description": "Re-indexing behavior for tree-indexed content not specified.",
+      "resolution": "Added scenario: re-indexing deletes all flat + tree chunks, rebuilds both, CASCADE handles cleanup.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (Re-indexing tree-indexed content scenario), tasks.md (Task 2.7 test case)"
     },
     {
       "id": 6,
       "type": "spec_gap",
       "criticality": "medium",
-      "description": "The tree search prompt template in the design uses chunk database IDs as node_ids ('node_id': '10'), but these IDs are auto-incremented integers that are not meaningful to the LLM and could be very large numbers. PageIndex uses sequential compact IDs ('0001', '0002') for better LLM comprehension. The spec does not specify how node_ids are generated or presented to the LLM.",
-      "resolution": "Add a requirement: The system SHALL assign compact sequential node identifiers (e.g., 'N001', 'N002') when constructing the tree JSON for the LLM prompt. These identifiers SHALL be mapped back to database chunk IDs for retrieval. This keeps the prompt concise and avoids confusing the LLM with large arbitrary integers.",
-      "disposition": "fix"
+      "description": "Node IDs in tree search prompt use raw DB integers, confusing for LLMs.",
+      "resolution": "Added compact sequential IDs (N001, N002) with mapping back to DB chunk IDs.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (Tree Search requirement step 2, compact IDs scenario), design.md (prompt example updated), tasks.md (Task 3.1, 3.3, 3.4, 3.7)"
     },
     {
       "id": 7,
       "type": "architecture",
       "criticality": "medium",
-      "description": "The model configuration for tree operations (Task 2.3, Task 3.2) proposes adding settings directly to the Settings class (`model_tree_summarization`, `model_tree_search`), but the existing model config system uses a dynamic ModelStep enum + model_registry.yaml pattern (src/config/models.py:79-120). Settings like `model_summarization` are NOT fields on Settings — they're resolved via ModelStep enum → env var → DB override → YAML default. The plan's approach would create an inconsistent pattern.",
-      "resolution": "Instead of adding `model_tree_summarization: str` to Settings, add `TREE_SUMMARIZATION = 'tree_summarization'` and `TREE_SEARCH = 'tree_search'` to the ModelStep enum in src/config/models.py. Add defaults to model_registry.yaml under `default_models:`. This gives automatic env var support (MODEL_TREE_SUMMARIZATION), DB overrides, and consistent resolution — zero Settings changes needed for model config.",
-      "disposition": "fix"
+      "description": "Model config uses Settings fields instead of ModelStep enum pattern.",
+      "resolution": "Use ModelStep.TREE_SUMMARIZATION and ModelStep.TREE_SEARCH enum values with model_registry.yaml defaults.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (ModelStep references), design.md (ModelStep.TREE_SUMMARIZATION note), tasks.md (Task 2.3, 3.2 — explicit ModelStep + model_registry.yaml), proposal.md (Design Decision #8)"
     },
     {
       "id": 8,
       "type": "correctness",
       "criticality": "medium",
-      "description": "Design shows tree root node with `parent_chunk_id=NULL` and `tree_depth=0` (line 42 of design.md). But flat chunks also have `parent_chunk_id=NULL` (line 40-41). The tree structure loader (Task 3.3) queries for 'parent_chunk_id IS NOT NULL OR tree_depth = 0' to find tree chunks, but this would miss distinguishing root tree nodes from flat chunks since both have `parent_chunk_id=NULL`. The only differentiator is `tree_depth IS NOT NULL` for tree chunks vs `tree_depth IS NULL` for flat chunks.",
-      "resolution": "Clarify in the spec and design that flat chunks have `tree_depth=NULL` (not 0) and tree roots have `tree_depth=0`. Update the tree structure loader query to: `tree_depth IS NOT NULL AND content_id = :content_id` to select all tree chunks (roots + children). This is already implied but should be made explicit to avoid implementation confusion.",
-      "disposition": "fix"
+      "description": "Tree root vs flat chunk disambiguation unclear — both have parent_chunk_id=NULL.",
+      "resolution": "Flat chunks: tree_depth=NULL. Tree roots: tree_depth=0. tree_depth IS NOT NULL is the authoritative discriminator.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (disambiguation requirement + coexistence scenario), design.md (Content Type Routing section), tasks.md (Task 2.2, 3.3, 3.6)"
     },
     {
       "id": 9,
       "type": "spec_gap",
       "criticality": "medium",
-      "description": "The chunk thinning spec (Phase 1) does not address interaction with table chunks. The existing StructuredChunkingStrategy keeps tables as whole chunks even if they exceed chunk size (up to 2048 tokens per existing spec). A table chunk could be only 30 tokens (e.g., a small 2-row table). Should small tables be merged into adjacent paragraph chunks, losing their `chunk_type=TABLE` classification? The spec says 'preserve chunk_type of the absorbing chunk' but this would destroy table semantics.",
-      "resolution": "Add a requirement: The system SHALL NOT merge TABLE or CODE chunks during thinning, regardless of their token count. Thinning SHALL only apply to PARAGRAPH and SECTION chunk types. This preserves semantic chunk type classification for specialized content.",
-      "disposition": "fix"
+      "description": "Chunk thinning would merge TABLE/CODE chunks, destroying semantic classification.",
+      "resolution": "TABLE and CODE chunks exempt from thinning. Only PARAGRAPH and SECTION types eligible.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "spec.md (exempt requirement + 2 scenarios), tasks.md (Task 1.2, 1.3), proposal.md (Phase 1 description)"
     },
     {
       "id": 10,
       "type": "spec_gap",
       "criticality": "low",
-      "description": "The backfill command (Task 3.7) does not specify behavior for content that was tree-indexed but has since been modified (e.g., markdown_content updated). Should it rebuild the tree? Skip it? The --dry-run flag previews 'what would be indexed' but doesn't clarify the staleness detection strategy.",
-      "resolution": "Add behavior: 'WHEN content already has tree chunks AND --force is not specified, THEN skip that content. WHEN --force is specified, THEN delete existing tree chunks and rebuild.' This matches the pattern of `aca manage backfill-chunks --embed-only` which has similar skip/force semantics.",
-      "disposition": "fix"
+      "description": "Backfill command missing --force flag for staleness handling.",
+      "resolution": "Added --force flag: without it, skip content with existing tree chunks; with it, delete and rebuild.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "tasks.md (Task 3.8)"
     },
     {
       "id": 11,
       "type": "performance",
       "criticality": "low",
-      "description": "The cost analysis estimates ~10 summary LLM calls per 30-page paper, but does not account for batching. Each internal node gets a separate LLM call. For a paper with 15 sections and 10 internal nodes, that's 10 sequential API calls during indexing. Since indexing already handles embedding batches, summarization could also be batched or parallelized.",
-      "resolution": "Note in the design that node summarization calls SHOULD be parallelized via asyncio.gather() for sibling nodes at the same tree depth (they are independent). Bottom-up ordering only requires that children are summarized before parents, not that all calls are sequential. This reduces indexing latency from ~10 sequential calls to ~3-4 rounds of parallel calls.",
-      "disposition": "accept"
+      "description": "Node summarization is sequential — 10 calls for a 15-section paper.",
+      "resolution": "Parallelize sibling nodes at same depth via asyncio.gather(). Reduces to ~3-4 rounds.",
+      "disposition": "accept",
+      "status": "resolved",
+      "resolved_in": "spec.md (parallelization requirement), design.md (code example with asyncio.gather), tasks.md (Task 2.6, 2.7), cost analysis updated"
     },
     {
       "id": 12,
       "type": "spec_gap",
       "criticality": "low",
-      "description": "The spec does not address observability for tree search operations. The project has extensive observability infrastructure (Opik, Braintrust, Langfuse) and all LLM calls should be traced. Tree search LLM calls (both summarization and retrieval) need spans with appropriate metadata (tree_depth, node_count, selected_nodes, reasoning).",
-      "resolution": "Add a requirement: The system SHALL create telemetry spans for tree summarization (during indexing) and tree search (during retrieval) LLM calls, using the existing observability provider. Spans SHALL include tree_depth, node_count, and for search: query, selected_node_ids.",
-      "disposition": "accept"
+      "description": "No observability spans for tree search LLM calls.",
+      "resolution": "Added telemetry span requirements for both summarization and search with specific metadata fields.",
+      "disposition": "accept",
+      "status": "resolved",
+      "resolved_in": "spec.md (telemetry requirement in Tree Search Retrieval), design.md (Observability note), tasks.md (Task 2.6, 3.4)"
     }
   ]
 }
