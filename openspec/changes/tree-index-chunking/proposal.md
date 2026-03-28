@@ -39,16 +39,11 @@ We propose a hybrid model inspired by [VectifyAI's PageIndex](https://github.com
 
 ## Capabilities
 
-### New Capabilities
-
-- `tree-index-chunking`: Hierarchical tree index construction for long structured documents, with LLM-generated node summaries and parent-child chunk relationships
-- `tree-search-retrieval`: LLM reasoning-based retrieval that navigates document tree structure to find relevant sections, complementing existing hybrid BM25 + vector search
-
 ### Modified Capabilities
 
-- `document-search`: Add tree search as an additional retrieval path alongside BM25 and vector search, with automatic routing based on document index type
-- `document-search` (Semantic Document Chunking): Add `TreeIndexChunkingStrategy` to the strategy registry, add chunk thinning to existing strategies, add `min_node_tokens` / `tree_index_min_tokens` settings
-- `content-ingestion`: Extend `index_content()` to build tree indexes for qualifying documents during ingestion
+- `document-search` (Semantic Document Chunking): Add chunk thinning to `MarkdownChunkingStrategy` and `StructuredChunkingStrategy`, add `TreeIndexChunkingStrategy` to the strategy registry, add `min_node_tokens` / `tree_index_min_tokens` / `tree_index_min_heading_depth` settings, add tree column schema (`parent_chunk_id`, `tree_depth`, `is_summary`), add LLM summarization for internal tree nodes
+- `document-search` (Tree Search Retrieval — new requirement): Add LLM-based tree search as an additional retrieval path alongside BM25 and vector search, with automatic routing based on document index type, compact node IDs, timeout/fallback safeguards, and `tree_reasoning` on SearchResult
+- `document-search` (Tree Index Backfill — new requirement): Add `backfill-tree-index` management command for existing content
 
 ## Impact
 

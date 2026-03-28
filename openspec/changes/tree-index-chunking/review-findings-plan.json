@@ -2,7 +2,7 @@
   "review_type": "plan",
   "target": "tree-index-chunking",
   "reviewer_vendor": "claude-opus-4-6",
-  "review_iteration": 2,
+  "review_iteration": 3,
   "findings": [
     {
       "id": 1,
@@ -96,16 +96,76 @@
     },
     {
       "id": 10,
+      "type": "consistency",
+      "criticality": "critical",
+      "description": "spec.md used freeform '## Requirement:' headers instead of OpenSpec delta headers ('## ADDED Requirements', '## MODIFIED Requirements'). openspec validate --strict failed: no deltas could be parsed.",
+      "resolution": "Restructured spec.md: Chunk Thinning + Tree Index Strategy as MODIFIED Requirements on Semantic Document Chunking; Tree Search Retrieval + Tree Index Backfill as ADDED Requirements. Validation now passes.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "specs/document-search/spec.md (complete rewrite with correct delta headers)"
+    },
+    {
+      "id": 11,
+      "type": "completeness",
+      "criticality": "high",
+      "description": "Proposal listed 'content-ingestion' as a modified capability but no spec delta existed. Also declared two new capabilities (tree-index-chunking, tree-search-retrieval) that aren't standalone capabilities — they're features within document-search.",
+      "resolution": "Removed content-ingestion from capabilities (index_content changes are internal implementation details of document-search). Consolidated tree-index-chunking and tree-search-retrieval under Modified Capabilities for document-search.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "proposal.md (Capabilities section rewritten)"
+    },
+    {
+      "id": 12,
+      "type": "parallelizability",
+      "criticality": "high",
+      "description": "Tasks lacked explicit dependency annotations. Phase ordering was implicit, intra-phase parallelism undeclared. No dependency graph for /parallel-implement.",
+      "resolution": "Added 'Depends on' annotation to every task. Added dependency graph ASCII diagram and parallelizability summary to tasks.md header.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "tasks.md (dependency graph + per-task annotations)"
+    },
+    {
+      "id": 13,
+      "type": "consistency",
+      "criticality": "medium",
+      "description": "Spec said 'MODEL_TREE_SUMMARIZATION' (env var format) in a way that could be confused with a Settings field. Design/proposal correctly noted it's NOT a Settings field.",
+      "resolution": "Clarified in spec: model resolved via 'ModelStep.TREE_SUMMARIZATION enum → env var MODEL_TREE_SUMMARIZATION → DB override → YAML default'. Explicitly notes NOT a Settings field.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "specs/document-search/spec.md (both MODIFIED and ADDED requirement blocks)"
+    },
+    {
+      "id": 14,
+      "type": "completeness",
+      "criticality": "medium",
+      "description": "No failure scenario for tree summarization during indexing. What happens if LLM summarization fails for some nodes?",
+      "resolution": "Added failure scenario: if summarization fails, delete all tree chunks (keep flat chunks), log warning, continue indexing. All-or-nothing approach to avoid partial trees.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "specs/document-search/spec.md (new scenario), design.md (Failure handling paragraph), tasks.md (Task 2.6 + 2.7 failure test case)"
+    },
+    {
+      "id": 15,
+      "type": "testability",
+      "criticality": "medium",
+      "description": "Task 2.7 said 'mocked LLM calls' but didn't specify what mock returns or how to verify bottom-up ordering.",
+      "resolution": "Clarified: mock LLM returns deterministic summaries based on input, verify parent summaries generated after children, verify call order is bottom-up.",
+      "disposition": "fix",
+      "status": "resolved",
+      "resolved_in": "tasks.md (Task 2.7 updated test description)"
+    },
+    {
+      "id": 16,
       "type": "spec_gap",
       "criticality": "low",
       "description": "Backfill command missing --force flag for staleness handling.",
       "resolution": "Added --force flag: without it, skip content with existing tree chunks; with it, delete and rebuild.",
       "disposition": "fix",
       "status": "resolved",
-      "resolved_in": "tasks.md (Task 3.8)"
+      "resolved_in": "tasks.md (Task 3.8), specs/document-search/spec.md (Tree Index Backfill requirement + scenarios)"
     },
     {
-      "id": 11,
+      "id": 17,
       "type": "performance",
       "criticality": "low",
       "description": "Node summarization is sequential — 10 calls for a 15-section paper.",
@@ -115,14 +175,24 @@
       "resolved_in": "spec.md (parallelization requirement), design.md (code example with asyncio.gather), tasks.md (Task 2.6, 2.7), cost analysis updated"
     },
     {
-      "id": 12,
+      "id": 18,
       "type": "spec_gap",
       "criticality": "low",
       "description": "No observability spans for tree search LLM calls.",
       "resolution": "Added telemetry span requirements for both summarization and search with specific metadata fields.",
       "disposition": "accept",
       "status": "resolved",
-      "resolved_in": "spec.md (telemetry requirement in Tree Search Retrieval), design.md (Observability note), tasks.md (Task 2.6, 3.4)"
+      "resolved_in": "spec.md (telemetry requirement in both MODIFIED and ADDED sections), design.md (Observability note), tasks.md (Task 2.6, 3.4)"
+    },
+    {
+      "id": 19,
+      "type": "scope",
+      "criticality": "low",
+      "description": "design.md includes Phase 4 (Cross-Document Tree) and Phase 5 (Topic Deep Research) which are future work outside current scope.",
+      "resolution": "Already labeled 'Future Work' — acceptable framing for context without scope creep.",
+      "disposition": "accept",
+      "status": "resolved",
+      "resolved_in": "design.md (Future Work section, clearly scoped out)"
     }
   ]
 }
