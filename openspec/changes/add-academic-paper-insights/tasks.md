@@ -1,8 +1,9 @@
 ## 1. Content Model & Database Migration
 
 - [ ] 1.1 Add `SCHOLAR = "scholar"` to `ContentSource` enum in `src/models/content.py`
-- [ ] 1.2 Create Alembic migration to add `scholar` value to PostgreSQL `contentsource` enum type (`ALTER TYPE contentsource ADD VALUE 'scholar'`)
-- [ ] 1.3 Run migration and verify enum is available in database
+- [ ] 1.2 Create Alembic migration to add `scholar` value to PostgreSQL `contentsource` enum type (`ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'scholar'`)
+- [ ] 1.3 In the same migration, add GIN index on `metadata_json` for cross-source dedup: `CREATE INDEX CONCURRENTLY ix_content_metadata_json_gin ON content USING GIN (metadata_json jsonb_path_ops)`
+- [ ] 1.4 Run migration and verify enum and index are available in database
 
 ## 2. Semantic Scholar Client
 
@@ -13,7 +14,8 @@
 - [ ] 2.5 Implement `get_paper_citations(paper_id, limit)` using `GET /paper/{paperId}/citations`
 - [ ] 2.6 Implement `batch_get_papers(paper_ids)` using `POST /paper/batch` (up to 500 IDs per request)
 - [ ] 2.7 Implement `resolve_identifier(identifier)` to normalize DOI/arXiv/S2ID/URL to a paper ID format the API accepts
-- [ ] 2.8 Add rate limiting with exponential backoff on 429 responses
+- [ ] 2.8 Add proactive rate limiting using `asyncio.Semaphore(1)` with configurable inter-request delay (3s unauth, 1s/0.1s auth) and reactive exponential backoff on 429 responses (base 2s/1s, max 60s/30s, 3 retries)
+- [ ] 2.8a Add error handling: 404 → log warning + skip, invalid ID → raise ValueError, 5xx/timeout → retry 3x then skip, batch partial failure → ingest resolved + log unresolved
 - [ ] 2.9 Add optional API key support via `x-api-key` header (from `SEMANTIC_SCHOLAR_API_KEY` setting)
 - [ ] 2.10 Add Pydantic response models: `S2Paper`, `S2Author`, `S2SearchResult`
 - [ ] 2.11 Write unit tests for client with mocked HTTP responses
@@ -35,7 +37,7 @@
 - [ ] 4.3 Implement `_build_metadata(paper: S2Paper, ingestion_mode: str) -> dict` for metadata_json
 - [ ] 4.4 Implement `_paper_to_content_data(paper: S2Paper, ingestion_mode: str) -> ContentData` mapper
 - [ ] 4.5 Implement `_apply_filters(papers, min_citations, paper_types, fields_of_study) -> list` for post-search filtering
-- [ ] 4.6 Implement `_check_cross_source_duplicate(paper: S2Paper, db) -> bool` checking DOI/arXiv across all source types
+- [ ] 4.6 Implement `_check_cross_source_duplicate(paper: S2Paper, db) -> bool` using GIN-indexed `metadata_json @> '{"doi": "..."}'::jsonb` containment queries for DOI and arXiv ID
 - [ ] 4.7 Implement `ingest_from_search(query, source_config, force_reprocess) -> ScholarSearchResult` — main search-based ingestion
 - [ ] 4.8 Implement `ingest_paper(identifier, with_refs, force_reprocess) -> ScholarPaperResult` — single paper lookup
 - [ ] 4.9 Implement `ingest_from_citations(paper_id, direction, source_config) -> ScholarSearchResult` — citation graph traversal
@@ -72,8 +74,9 @@
 - [ ] 8.1 Add `ScholarWebSearchProvider` class to `src/services/web_search.py`
 - [ ] 8.2 Implement `search()` mapping S2 results to `WebSearchResult` (title, S2 URL, abstract snippet)
 - [ ] 8.3 Implement `format_results()` with academic formatting (venue, year, citation count)
-- [ ] 8.4 Register `"scholar"` in `get_web_search_provider()` factory
-- [ ] 8.5 Write unit tests for the scholar web search provider
+- [ ] 8.4 Register `"scholar"` in `get_web_search_provider()` factory (opt-in only — not valid as default `WEB_SEARCH_PROVIDER`)
+- [ ] 8.5 Add validation in Settings to reject `web_search_provider="scholar"` with clear error message
+- [ ] 8.6 Write unit tests for the scholar web search provider
 
 ## 9. Source Routes & API
 
@@ -81,8 +84,13 @@
 - [ ] 9.2 Ensure scholar Content records are returned by existing content list/search endpoints
 - [ ] 9.3 Verify no API changes needed (scholar papers are standard Content records)
 
-## 10. Documentation & Configuration
+## 10. Frontend Source Type Registration
 
-- [ ] 10.1 Update CLAUDE.md with scholar ingestion commands and configuration
-- [ ] 10.2 Add scholar source examples to sources.d documentation
-- [ ] 10.3 Add `SEMANTIC_SCHOLAR_API_KEY` to environment configuration docs
+- [ ] 10.1 Add `scholar` entry to `sourceConfig` in `web/src/routes/contents.tsx` with label "Scholar" and GraduationCap icon from lucide-react
+- [ ] 10.2 Add matching `scholar` entry to `web/src/routes/ingest.tsx` source configuration
+
+## 11. Documentation & Configuration
+
+- [ ] 11.1 Update CLAUDE.md with scholar ingestion commands and configuration
+- [ ] 11.2 Add scholar source examples to sources.d documentation
+- [ ] 11.3 Add `SEMANTIC_SCHOLAR_API_KEY` to environment configuration docs

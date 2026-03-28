@@ -161,8 +161,30 @@ Academic papers map to existing Content fields:
 ## Deduplication Strategy
 
 1. **Primary:** Source ID match (`source_type=SCHOLAR` + `source_id=S2PaperId`)
-2. **Secondary:** Cross-source DOI/arXiv lookup — check metadata_json for matching DOI or arXiv ID across all source types (a paper ingested via Perplexity search might already exist)
+2. **Secondary:** Cross-source DOI/arXiv lookup via GIN-indexed `metadata_json` (see below)
 3. **Tertiary:** Content hash (normalized markdown)
+
+### Cross-Source Dedup Performance
+
+Cross-source dedup requires querying `metadata_json` JSONB for DOI/arXiv keys across all Content records. Without an index, this is O(n) per paper.
+
+**Solution:** Add a GIN index on `metadata_json` in the Alembic migration:
+
+```sql
+CREATE INDEX CONCURRENTLY ix_content_metadata_json_gin
+ON content USING GIN (metadata_json jsonb_path_ops);
+```
+
+This enables efficient queries like:
+```sql
+SELECT id FROM content
+WHERE metadata_json @> '{"doi": "10.1234/example"}'::jsonb
+LIMIT 1;
+```
+
+The `jsonb_path_ops` operator class is ~60% smaller than the default and supports containment queries (`@>`), which is all we need for dedup lookups.
+
+**Note:** Cross-source dedup skips the paper when a match is found — there is no `canonical_id` linking. If linking across sources is desired in the future, that should be a separate proposal.
 
 ## Reference Extraction
 
@@ -203,8 +225,20 @@ Registered in `get_web_search_provider()` factory.
 
 ## Rate Limiting
 
-- Use httpx with retry logic (exponential backoff)
-- Respect 100 req/5min unauthenticated limit
-- Optional `SEMANTIC_SCHOLAR_API_KEY` for higher limits (1-10 RPS)
-- Batch endpoint for reference extraction (up to 500 papers per request)
-- Add `semantic_scholar_api_key` to Settings and base.yaml profile wiring
+**Proactive rate control:**
+- `asyncio.Semaphore(1)` gates concurrent API requests (one at a time)
+- Unauthenticated: minimum 3-second delay between requests (~20 req/min, conservative within 100 req/5min pool)
+- Authenticated: 1-second delay for search/batch, 0.1-second delay for detail endpoints
+- Configurable via `semantic_scholar_rps` setting (default: inferred from auth state)
+
+**Reactive backoff:**
+- Exponential backoff on 429: base 2s (unauth) / 1s (auth), max 60s / 30s, 3 retries
+- After 3 consecutive 429s post-backoff: abort batch, return partial result with warning
+
+**Batch optimization:**
+- Reference extraction uses `/paper/batch` (up to 500 IDs per request) — single request replaces N individual lookups
+- Batch partial failures: ingest resolved papers, log unresolved IDs
+
+**Configuration:**
+- `SEMANTIC_SCHOLAR_API_KEY`: optional, wired via `profiles/base.yaml` and `.secrets.yaml`
+- `semantic_scholar_api_key` added to Settings in `src/config/settings.py`

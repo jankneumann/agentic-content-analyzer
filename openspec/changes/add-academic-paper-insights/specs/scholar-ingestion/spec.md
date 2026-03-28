@@ -62,14 +62,46 @@ The system SHALL prevent duplicate ingestion of academic papers across all sourc
 #### Scenario: Cross-source deduplication by DOI
 
 - **WHEN** ingesting a paper whose DOI matches a DOI stored in `metadata_json` of any existing Content record (regardless of source_type)
-- **THEN** the system recognizes this as a cross-source duplicate
-- **AND** links the new record to the existing one via `canonical_id` if desired, or skips ingestion
+- **THEN** the system SHALL skip ingestion of the duplicate
+- **AND** SHALL log a debug message: "Cross-source duplicate found: DOI {doi} already exists in content {id}"
+- **AND** the lookup SHALL use a GIN index on `metadata_json` for efficient JSONB key queries
 
 #### Scenario: Cross-source deduplication by arXiv ID
 
-- **WHEN** ingesting a paper whose arXiv ID matches an arXiv URL or ID in existing Content records
-- **THEN** the system recognizes this as a cross-source duplicate
-- **AND** behaves identically to DOI-based cross-source deduplication
+- **WHEN** ingesting a paper whose arXiv ID matches an arXiv URL or ID in existing Content records' `metadata_json`
+- **THEN** the system SHALL skip ingestion of the duplicate
+- **AND** SHALL log a debug message: "Cross-source duplicate found: arXiv {arxiv_id} already exists in content {id}"
+- **AND** the lookup SHALL use the same GIN index on `metadata_json`
+
+### Requirement: Semantic Scholar API Error Handling
+
+The system SHALL handle Semantic Scholar API errors gracefully, following the existing fail-safe ingestion pattern.
+
+#### Scenario: Paper not found (404)
+
+- **WHEN** a paper lookup returns HTTP 404
+- **THEN** the system SHALL log a warning: "Paper not found: {identifier}"
+- **AND** SHALL skip the paper without raising an exception
+- **AND** SHALL not count the missing paper in ingestion results
+
+#### Scenario: Invalid identifier format
+
+- **WHEN** the user provides an identifier that cannot be parsed as DOI, arXiv ID, S2 ID, or Semantic Scholar URL
+- **THEN** the system SHALL raise a `ValueError` with message: "Unrecognized paper identifier format: {identifier}. Expected DOI:10.xxx, ArXiv:YYMM.NNNNN, S2 paper ID, or semanticscholar.org URL"
+
+#### Scenario: Server error or network timeout
+
+- **WHEN** the Semantic Scholar API returns 5xx or the request times out
+- **THEN** the system SHALL retry with exponential backoff up to 3 attempts
+- **AND** after exhausting retries, SHALL log a warning and skip the failed request
+- **AND** SHALL continue processing remaining papers in the batch
+
+#### Scenario: Batch endpoint partial failure
+
+- **WHEN** the `/paper/batch` endpoint returns results for some but not all requested paper IDs
+- **THEN** the system SHALL ingest all successfully resolved papers
+- **AND** SHALL log a warning listing the unresolved paper IDs
+- **AND** SHALL include both counts (resolved, unresolved) in the result
 
 ### Requirement: Citation Graph Traversal
 
@@ -157,7 +189,7 @@ The system SHALL provide CLI commands for scholar paper ingestion.
 
 ### Requirement: Scholar Web Search Provider
 
-The system SHALL provide a scholar search provider for ad-hoc queries in chat and digest review contexts.
+The system SHALL provide a scholar search provider for ad-hoc academic queries, available only via explicit `provider="scholar"` parameter.
 
 #### Scenario: Ad-hoc scholar search
 
@@ -165,19 +197,36 @@ The system SHALL provide a scholar search provider for ad-hoc queries in chat an
 - **THEN** the system queries Semantic Scholar for matching papers
 - **AND** returns results as `WebSearchResult` objects with paper title, S2 URL, and abstract snippet
 
+#### Scenario: Scholar is not a valid default provider
+
+- **WHEN** `WEB_SEARCH_PROVIDER` is set to `"scholar"` in settings
+- **THEN** the system SHALL raise a validation error at startup
+- **AND** the error message SHALL state: "scholar is not a valid default web search provider — use provider='scholar' explicitly in API calls"
+- **AND** valid defaults remain: tavily, perplexity, grok
+
 ### Requirement: Semantic Scholar API Rate Limiting
 
-The system SHALL respect Semantic Scholar API rate limits.
+The system SHALL proactively limit request rate to the Semantic Scholar API using a token-bucket or sliding-window strategy, in addition to reactive backoff on 429 responses.
 
 #### Scenario: Unauthenticated rate limiting
 
 - **WHEN** no `SEMANTIC_SCHOLAR_API_KEY` is configured
-- **THEN** the system limits requests to stay within the ~100 requests per 5 minutes shared pool
-- **AND** implements exponential backoff on 429 responses
+- **THEN** the system SHALL enforce a maximum of 20 requests per minute (conservative within the ~100 req/5min shared pool)
+- **AND** the client SHALL use an `asyncio.Semaphore` or equivalent to gate concurrent requests
+- **AND** SHALL insert a minimum delay of 3 seconds between requests
+- **AND** SHALL implement exponential backoff (base 2s, max 60s, 3 retries) on 429 responses
 
 #### Scenario: Authenticated rate limiting
 
 - **WHEN** `SEMANTIC_SCHOLAR_API_KEY` is configured
 - **THEN** the system sends the key via `x-api-key` header
-- **AND** respects 1 RPS for search/batch endpoints and 10 RPS for other endpoints
-- **AND** implements exponential backoff on 429 responses
+- **AND** SHALL enforce 1 RPS for search and batch endpoints
+- **AND** SHALL enforce 10 RPS for single-paper detail endpoints
+- **AND** SHALL implement exponential backoff (base 1s, max 30s, 3 retries) on 429 responses
+
+#### Scenario: Rate limit exhaustion
+
+- **WHEN** the system receives 3 consecutive 429 responses after backoff retries
+- **THEN** the system SHALL abort the current ingestion batch
+- **AND** SHALL log a warning with the number of papers successfully ingested before exhaustion
+- **AND** SHALL return a partial result (not raise an exception)
