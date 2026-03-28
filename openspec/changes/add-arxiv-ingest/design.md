@@ -37,7 +37,8 @@ Pipeline: pipeline runner daily stage
 
 **Rate limiting:**
 - arXiv asks for a 3-second delay between requests (no formal rate limit)
-- Implemented as `asyncio.sleep(3)` between API calls
+- Implemented as `time.sleep(3)` between API calls (sync client)
+- PDF downloads use a separate, more permissive rate limiter (1s delay) — arXiv serves PDFs from CDN
 - Respect `Retry-After` header on 429/503 responses
 - Exponential backoff on errors (base 5s, max 60s, 3 retries)
 
@@ -98,8 +99,8 @@ arXiv papers map to existing Content fields:
 | `publication` | `"arXiv"` + primary category (e.g., `"arXiv [cs.AI]"`) |
 | `published_date` | Original submission date |
 | `markdown_content` | Full PDF text (via Docling) or abstract-only fallback |
-| `raw_content` | PDF binary path or abstract XML |
-| `raw_format` | `"pdf"` or `"xml"` |
+| `raw_content` | Abstract XML from Atom feed (not PDF binary) |
+| `raw_format` | `"xml"` |
 | `parser_used` | `"DoclingParser"` or `"ArxivAbstractParser"` |
 | `content_hash` | SHA-256 of normalized markdown |
 | `metadata_json` | See below |
@@ -138,6 +139,7 @@ arXiv papers go through revisions (v1 → v2 → v3). The update strategy:
 4. If incoming version is newer:
    - Re-download and parse the updated PDF
    - Update `markdown_content`, `content_hash`, `metadata_json`
+   - Delete or mark stale any existing Summary records for this Content
    - Reset status to `PENDING` so summarization re-runs
    - Preserve the original `ingested_at` timestamp
 5. If same or older version: skip (no-op)
@@ -152,6 +154,8 @@ arXiv API response (Atom XML)
 Paper metadata (title, abstract, authors, categories, PDF URL)
     ↓
 PDF download (httpx, streaming, temp file)
+    ↓
+Page count check (lightweight PDF reader, skip if > max_pdf_pages)
     ↓
 DoclingParser.parse(pdf_path)
     ↓ success?
@@ -187,14 +191,18 @@ Content record (database)
 
 ## Cross-Source Deduplication
 
-Uses the GIN index on `metadata_json` (created by the Scholar migration or this migration):
+arXiv full-text is the primary value; Scholar abstracts are a discovery aid. The dedup policy is **arXiv-first**:
+
+Uses the GIN index on `metadata_json` (requires `jsonb` column — migration MUST ALTER from `json` to `jsonb` if needed):
 
 1. Before ingesting an arXiv paper, check if it already exists:
    - Primary: `SELECT ... WHERE source_type='arxiv' AND source_id='{base_id}'`
    - Cross-source: `SELECT ... WHERE metadata_json @> '{"arxiv_id": "{base_id}"}'::jsonb`
-2. If found as Scholar content with same arXiv ID → skip (Scholar record exists)
+2. If found as Scholar content with same arXiv ID → **replace** the Scholar record's `markdown_content` with full PDF text, update `parser_used`, set `metadata_json.pdf_extracted=true`, reset status to PENDING for re-summarization
 3. If found as arXiv content → version check and update if newer
 4. If not found → create new Content record
+
+Conversely, when Scholar ingests a paper that already exists as arXiv content (with full text), Scholar MUST skip creating a duplicate — the arXiv full-text record is authoritative for content.
 
 ## Design Decisions
 
@@ -209,7 +217,18 @@ Uses the GIN index on `metadata_json` (created by the Scholar migration or this 
 
 - Already a project dependency (used by RSS ingestion)
 - Handles Atom and RSS transparently
-- Robust date parsing and encoding handling
+- **Important**: feedparser dates are naive — all `published_parsed` and `updated_parsed` values MUST be converted to UTC-aware datetime (per CLAUDE.md gotcha)
+
+### Why synchronous client (not async)?
+
+- The pipeline runner wraps orchestrator functions with `asyncio.to_thread(func)` where func is `Callable[[], int]` (synchronous)
+- All existing ingestion clients (RSS, Gmail, etc.) are synchronous using `httpx.Client`
+- Rate limiting uses `time.sleep(3)`, not `asyncio.sleep(3)`
+- Keeping the client sync avoids event loop conflicts and matches existing patterns
+
+### SSRF Prevention
+
+ArxivClient MUST construct all API and PDF URLs from the normalized arXiv ID using hardcoded base URLs (`export.arxiv.org`, `arxiv.org/pdf/`). User-provided URLs (from CLI or MCP) are used ONLY for ID extraction via `normalize_arxiv_id()`, never passed directly to HTTP clients.
 
 ### Why not arXiv bulk access?
 

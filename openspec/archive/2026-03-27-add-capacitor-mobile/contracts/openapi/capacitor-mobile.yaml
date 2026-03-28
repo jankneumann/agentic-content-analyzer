@@ -1,0 +1,176 @@
+openapi: "3.1.0"
+info:
+  title: Capacitor Mobile - Backend Contracts
+  description: |
+    Backend API contracts consumed by the Capacitor native app.
+    This feature adds no new API endpoints — it consumes existing ones.
+    The only backend change is CORS configuration for native origins.
+  version: "1.0.0"
+
+# Existing endpoints consumed by this feature (documented for contract verification)
+paths:
+  /api/v1/content/save-url:
+    post:
+      operationId: saveUrl
+      summary: Save a URL for content extraction
+      description: |
+        Consumed by: native share target (wp-share-target)
+        Existing endpoint — no changes required.
+      tags: [content-capture]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveURLRequest"
+            example:
+              url: "https://example.com/article"
+              title: "Shared from Safari"
+              source: "native-share"
+      responses:
+        "201":
+          description: URL saved, extraction queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveURLResponse"
+              example:
+                content_id: "abc123"
+                status: "queued"
+                message: "URL saved. Content extraction in progress."
+                duplicate: false
+        "409":
+          description: Duplicate URL already saved
+
+  /api/v1/notifications/devices:
+    post:
+      operationId: registerDevice
+      summary: Register device for push notifications
+      description: |
+        Consumed by: push notification system (wp-push-notifications)
+        Existing endpoint — no changes required.
+        Uses upsert logic: if platform+token exists, updates last_seen.
+      tags: [notifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRegistrationRequest"
+            example:
+              platform: "ios"
+              token: "APNs-device-token-hex-string"
+              delivery_method: "push"
+      responses:
+        "200":
+          description: Device registered or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceRegistrationResponse"
+              example:
+                id: "uuid-here"
+                platform: "ios"
+                token: "APNs-device-token-hex-string"
+                delivery_method: "push"
+                created_at: "2026-03-26T10:00:00Z"
+                last_seen: "2026-03-26T10:00:00Z"
+
+    delete:
+      operationId: unregisterDevice
+      summary: Unregister a device
+      tags: [notifications]
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+
+components:
+  schemas:
+    SaveURLRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: URL to save and extract content from
+        title:
+          type: string
+          maxLength: 1000
+          description: Optional title
+        excerpt:
+          type: string
+          maxLength: 5000
+          description: Optional excerpt/selection
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 100
+        notes:
+          type: string
+          maxLength: 10000
+          description: Optional user notes
+        source:
+          type: string
+          maxLength: 50
+          description: Capture source identifier (e.g., "native-share", "bookmarklet")
+
+    SaveURLResponse:
+      type: object
+      required: [content_id, status, message, duplicate]
+      properties:
+        content_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, duplicate]
+        message:
+          type: string
+        duplicate:
+          type: boolean
+
+    DeviceRegistrationRequest:
+      type: object
+      required: [platform, token]
+      properties:
+        platform:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: "Device platform (ios, android, web)"
+        token:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: "Push notification token (APNs/FCM)"
+        delivery_method:
+          type: string
+          maxLength: 50
+          default: "sse"
+          description: "Delivery method (sse, push)"
+
+    DeviceRegistrationResponse:
+      type: object
+      required: [id, platform, token, delivery_method, created_at, last_seen]
+      properties:
+        id:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        token:
+          type: string
+        delivery_method:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time

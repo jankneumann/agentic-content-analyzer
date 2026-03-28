@@ -57,6 +57,14 @@ export function VoiceInputButton({
           ? "Stop voice input"
           : "Start voice input"
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (isDisabled) {
+      e.preventDefault()
+      return
+    }
+    onToggle()
+  }
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -65,8 +73,8 @@ export function VoiceInputButton({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={onToggle}
-            disabled={isDisabled}
+            onClick={handleClick}
+            aria-disabled={isDisabled}
             aria-label={
               isProcessing
                 ? "Transcribing audio"
@@ -81,13 +89,14 @@ export function VoiceInputButton({
               isListening && "text-red-500 hover:text-red-600",
               isProcessing && "text-amber-500",
               error && !isListening && !isProcessing && "text-destructive",
+              isDisabled && "cursor-not-allowed opacity-50",
               className
             )}
           >
             {/* Pulsing ring animation during recording */}
             {isListening && !isProcessing && (
               <span
-                className="absolute inset-0 rounded-md animate-pulse-ring"
+                className="animate-pulse-ring absolute inset-0 rounded-md"
                 aria-hidden="true"
               />
             )}

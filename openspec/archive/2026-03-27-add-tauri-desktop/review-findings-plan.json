@@ -1,0 +1,103 @@
+{
+  "review_type": "plan",
+  "target": "add-tauri-desktop",
+  "reviewer_vendor": "claude-opus-4-6",
+  "findings": [
+    {
+      "id": 1,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "The plan depends on `add-capacitor-mobile` for `web/src/lib/platform.ts` (platform detection utility), but that proposal is still open and unimplemented — no platform.ts exists in the codebase. Design.md Decision 5 says 'Extend the web/src/lib/platform.ts utility (from add-capacitor-mobile)' and tasks 2.1-2.3 depend on this file existing. If Tauri is implemented before Capacitor, platform.ts must be created from scratch rather than extended.",
+      "resolution": "Either (a) add a prerequisite dependency on `add-capacitor-mobile` and block this proposal until it's implemented, or (b) rewrite tasks 2.1-2.3 to CREATE platform.ts with Tauri detection first, documenting that Capacitor detection will be added later. Option (b) is preferred — Tauri and Capacitor are independent platforms.",
+      "disposition": "fix"
+    },
+    {
+      "id": 2,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "The default global shortcut `Ctrl+Shift+V` (Windows/Linux) conflicts with 'Paste without formatting' — one of the most commonly used keyboard shortcuts in browsers, text editors, Google Docs, Slack, VS Code, and virtually every text-capable app. This will frustrate users and is likely to be immediately reported as a bug.",
+      "resolution": "Choose a less-conflicting default: (a) `Ctrl+Shift+Space` (common for voice assistants), (b) `Ctrl+Alt+V`, or (c) `Ctrl+Shift+M` (mute/microphone metaphor). macOS `Cmd+Shift+V` is less problematic but also conflicts in some apps. Add a first-run shortcut configuration dialog or make shortcut registration fail-safe with an immediate notification suggesting manual configuration.",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Task 3.1 references `tauri-plugin-tray` but no such plugin exists in Tauri v2. The system tray in Tauri v2 is built-in via `tauri::tray::TrayIconBuilder` — it's part of the core API, not a separate plugin. The correct Cargo.toml feature is `tray-icon` under `[dependencies.tauri]` features. Similarly, task 4.1 should reference `tauri-plugin-global-shortcut` (correct) but the Cargo dependency name is `tauri-plugin-global-shortcut` (crate), not just adding it to features.",
+      "resolution": "Fix task 3.1 to: 'Enable `tray-icon` feature in tauri dependency and configure tray permissions in `capabilities/default.json`'. Update the design to reference `tauri::tray::TrayIconBuilder` instead of a tray plugin.",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "The tauri-desktop spec defines a 'Deep linking via aca:// URL scheme' in the proposal but has NO corresponding spec requirements, NO design decision, and NO tasks. This is the same gap that was flagged in the `add-capacitor-mobile` review (finding #2). Deep linking requires platform-specific configuration (Info.plist on macOS, registry on Windows, .desktop file on Linux) and frontend route handling.",
+      "resolution": "Either add a task group for deep linking (tauri.conf.json URL scheme config, frontend route handler) with spec requirements, or explicitly remove it from proposal.md scope and defer to a separate proposal.",
+      "disposition": "fix"
+    },
+    {
+      "id": 5,
+      "type": "security",
+      "criticality": "medium",
+      "description": "File drag-and-drop in Tauri bypasses the browser sandbox — dropped files have full filesystem paths. The design mentions validating against `FILE_SIGNATURES` (magic bytes), which is good, but the spec scenarios don't mention file SIZE validation. The existing upload API has a 500MB max (`MAX_UPLOAD_SIZE_MB`), but Tauri file drop has no frontend size gate. A user dropping a 2GB video file would start a full upload before the server rejects it.",
+      "resolution": "Add a spec requirement: 'WHEN a dropped file exceeds the configured maximum upload size, THEN an error toast SHALL display immediately WITHOUT uploading'. Add a task to implement client-side size validation before upload.",
+      "disposition": "fix"
+    },
+    {
+      "id": 6,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "The notification delivery spec (Section 6) depends on `add-notification-events` for the backend SSE endpoint `GET /api/v1/notifications/stream`. While `add-notification-events` is archived (implemented), the spec doesn't account for what happens if the SSE endpoint is not available (e.g., older backend version, endpoint disabled). No graceful degradation scenario exists.",
+      "resolution": "Add a spec scenario: 'WHEN the SSE endpoint returns a non-200 status or is unavailable, THEN desktop notifications SHALL be disabled gracefully AND a warning SHALL be logged (not shown to user)'.",
+      "disposition": "fix"
+    },
+    {
+      "id": 7,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "The floating voice input overlay (tasks 4.3-4.4) is described as 'small, always-on-top, transparent background' but there's no design decision about how it's implemented. In Tauri v2, this requires creating a SECOND window with `always_on_top: true`, `decorations: false`, `transparent: true`. This is a non-trivial Tauri configuration and the overlay window needs its own HTML entry point (or a separate route in the SPA). The spec doesn't address window lifecycle (when to create/destroy), focus behavior, or interaction with the main window.",
+      "resolution": "Add a design decision for the floating overlay: single-window approach (DOM overlay in main window, brought to front) vs multi-window (separate Tauri window). Recommend single-window for simplicity — show a floating panel within the existing window and use `window.setAlwaysOnTop(true)` temporarily. Multi-window adds significant complexity.",
+      "disposition": "fix"
+    },
+    {
+      "id": 8,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "The tasks don't include Tauri v2 permission/capability configuration. Tauri v2 uses a capability-based security model where each plugin's APIs must be explicitly allowed in `src-tauri/capabilities/default.json`. Without this, all plugin API calls will fail at runtime with permission errors. This is a breaking change from Tauri v1.",
+      "resolution": "Add a task under Section 1: 'Configure Tauri v2 capabilities in `src-tauri/capabilities/default.json` — enable permissions for: tray icon, global shortcut registration, notification, file system read, shell open, window management'. This is critical for ALL plugin functionality.",
+      "disposition": "fix"
+    },
+    {
+      "id": 9,
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "Task 5.3 references `POST /api/v1/documents/upload` for file drag-and-drop, but the upload API requires authentication (`verify_admin_key` dependency). The spec doesn't address how the Tauri app authenticates with the backend. The existing web app uses session cookies (from `add-user-authentication`), but Tauri's webview cookie handling differs from browsers — particularly for cross-origin requests when the API is on a different host.",
+      "resolution": "Add a design decision clarifying the auth flow for Tauri: (a) Tauri webview inherits cookies from the login flow (same-origin), (b) Tauri stores auth token in secure storage and adds it as a header. Option (a) works if the API is same-origin; option (b) is needed for remote API access.",
+      "disposition": "accept"
+    },
+    {
+      "id": 10,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "Task 7.3 mentions cross-platform builds via CI, but there's no CI configuration task. Cross-compiling Tauri apps is non-trivial — macOS builds require macOS runners (GitHub Actions `macos-latest`), Windows builds require Windows runners, and Linux builds require specific webkit2gtk dev packages. This typically requires a matrix CI job.",
+      "resolution": "Add a task under Section 7: 'Create GitHub Actions workflow for cross-platform Tauri builds (matrix: macos-latest, windows-latest, ubuntu-latest) with artifact upload'. Consider deferring to a follow-up since CI config can be iterated.",
+      "disposition": "accept"
+    },
+    {
+      "id": 11,
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "The voice-input delta spec adds a 'Tauri-hosted STT' engine option but the existing `useVoiceInput` hook only supports Web Speech API (and Whisper WASM from `add-on-device-stt`). The delta spec doesn't clarify what 'Tauri-hosted STT' means — is it a Rust-side STT engine, or just the same Web Speech API/Whisper running inside Tauri's webview? The hook currently doesn't have an engine selection mechanism.",
+      "resolution": "Clarify in the voice-input delta spec: state explicitly that Tauri uses the SAME STT engines (Web Speech API + Whisper WASM) running in the webview, with the addition of a global hotkey trigger. Remove 'Tauri-hosted STT' phrasing to avoid implying a new Rust-based STT backend.",
+      "disposition": "fix"
+    },
+    {
+      "id": 12,
+      "type": "correctness",
+      "criticality": "low",
+      "description": "Design Decision 5 shows `window.__TAURI_INTERNALS__` for detection, but the code example also references `Capacitor.isNativePlatform()` without an import or null check. Since Capacitor isn't installed (no `@capacitor/core` in package.json), this would throw a ReferenceError in the current codebase.",
+      "resolution": "Guard the Capacitor check: `typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform()`. Or defer the Capacitor branch until `add-capacitor-mobile` is implemented, and only include the Tauri and web branches for now.",
+      "disposition": "fix"
+    }
+  ]
+}

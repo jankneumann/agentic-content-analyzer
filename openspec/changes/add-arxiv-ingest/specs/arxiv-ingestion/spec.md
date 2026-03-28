@@ -17,16 +17,19 @@ The system must search arXiv via the Atom API (`export.arxiv.org/api/query`) usi
 
 ### REQ-ARXIV-002: Single Paper Lookup
 
-The system must retrieve a single paper by arXiv ID using:
+The system MUST retrieve a single paper by arXiv ID using:
 - Standard IDs: `2301.12345` or `2301.12345v3`
 - Legacy IDs: `hep-th/9901001`
 - ID normalization: strip `arXiv:` prefix, URL prefix, version suffix
+- **SSRF prevention**: The client MUST construct all API and PDF URLs from the normalized ID using hardcoded base URLs. User-provided URLs MUST only be used for ID extraction, never passed to HTTP clients.
 
 ### REQ-ARXIV-003: PDF Download and Extraction
 
 When `pdf_extraction` is enabled for a source:
 - Download PDF from `https://arxiv.org/pdf/{id}` via streaming HTTP
-- Enforce max file size (default 50 MB) and max page count (default 80 pages)
+- Enforce max file size (default 50 MB) during streaming download
+- After download, check page count via lightweight PDF reader BEFORE running full Docling parsing
+- If pages exceed `max_pdf_pages` (default 80), skip Docling and fall back to abstract-only
 - Parse PDF to markdown via DoclingParser
 - On parse failure, fall back to abstract-only content with metadata header
 - Clean up temporary PDF files after parsing
@@ -40,11 +43,11 @@ When PDF extraction is disabled or fails:
 
 ### REQ-ARXIV-005: Version-Aware Updates
 
-The system must track and update paper versions:
+The system MUST track and update paper versions:
 - Use base arXiv ID (without version suffix) as `source_id`
 - Store current version number in `metadata_json.arxiv_version`
 - On re-ingest, compare versions:
-  - Newer version: update content, re-parse PDF, reset status to PENDING
+  - Newer version: update content, re-parse PDF, delete or mark stale any existing Summary records, reset status to PENDING for re-summarization
   - Same/older version: skip (no-op)
 - Preserve original `ingested_at` timestamp on updates
 
@@ -60,10 +63,14 @@ Source entries in `sources.d/arxiv.yaml` must support:
 
 ### REQ-ARXIV-007: Rate Limiting
 
-- Minimum 3-second delay between arXiv API requests
+- Minimum 3-second delay between arXiv API requests (search, metadata)
+- PDF downloads use a separate, more permissive rate limiter (1-second delay) — arXiv serves PDFs from CDN with different limits
 - Respect `Retry-After` header on 429/503 responses
 - Exponential backoff on errors: base 5s, max 60s, 3 retries
-- PDF downloads share the same rate limiter as API queries
+
+### REQ-ARXIV-007a: Date Handling
+
+All dates parsed from feedparser `published_parsed` and `updated_parsed` fields MUST be converted to timezone-aware datetime with `tzinfo=UTC` before storage (per CLAUDE.md gotcha: "feedparser dates are naive").
 
 ### REQ-ARXIV-008: Content Model
 
@@ -76,14 +83,17 @@ Each arXiv paper creates a Content record with:
 
 ### REQ-ARXIV-009: Cross-Source Deduplication
 
-- Before creating a new record, check for existing content with the same `arxiv_id` in `metadata_json` (GIN-indexed containment query)
-- If an arXiv paper already exists as a Scholar source record, skip ingestion (Scholar record takes precedence for metadata; arXiv can enrich with full text in future)
-- If an arXiv paper exists as an arXiv source, apply version check per REQ-ARXIV-005
+arXiv full-text is authoritative; Scholar abstracts are a discovery aid. The dedup policy:
+
+- Before creating a new record, check for existing content with the same `arxiv_id` in `metadata_json` (GIN-indexed containment query; requires `jsonb` column type)
+- If found as Scholar content → **replace** the Scholar record's `markdown_content` with full arXiv PDF text, update `parser_used` and `metadata_json.pdf_extracted`, delete stale summaries, reset status to PENDING
+- If found as arXiv content → apply version check per REQ-ARXIV-005
+- Conversely, when Scholar ingests a paper that already exists as arXiv content, Scholar MUST skip — the arXiv full-text record is authoritative
 
 ### REQ-ARXIV-010: CLI Commands
 
 - `aca ingest arxiv` — run all enabled sources from `sources.d/arxiv.yaml`
-  - Options: `--max <n>`, `--days <n>`, `--force-reprocess`, `--no-pdf`
+  - Options: `--max <n>`, `--days <n>` (client-side date filtering after API fetch), `--force-reprocess`, `--no-pdf`
 - `aca ingest arxiv-paper <identifier>` — ingest a single paper
   - Options: `--no-pdf`, `--force-reprocess`
   - Accepts: arXiv ID, arXiv URL, DOI
@@ -96,8 +106,10 @@ Each arXiv paper creates a Content record with:
 
 ### REQ-ARXIV-012: Database Migration
 
-- Add `'arxiv'` value to PostgreSQL `contentsource` enum type
-- Create GIN index on `metadata_json` if not already present (idempotent with Scholar migration)
+- Add `'arxiv'` value to PostgreSQL `contentsource` enum type (ALTER TYPE ADD VALUE is non-transactional — MUST run outside transaction block)
+- ALTER `contents.metadata_json` column from `json` to `jsonb` type if not already `jsonb` (required for GIN index and `@>` containment queries)
+- Create GIN index on `contents.metadata_json` if not already present (idempotent with Scholar migration; use `CREATE INDEX IF NOT EXISTS`)
+- Check for Alembic multiple heads and merge if needed
 
 ## Scenarios
 
@@ -132,13 +144,26 @@ AND sets parser_used="ArxivAbstractParser"
 AND the Content record is still created successfully
 ```
 
-### Scenario: Cross-source deduplication with Scholar
+### Scenario: arXiv enriches existing Scholar record
 ```
-GIVEN a Content record exists with source_type=SCHOLAR and metadata_json.arxiv_id="2301.12345"
+GIVEN a Content record exists with source_type=SCHOLAR and metadata_json.arxiv_id="2301.12345" containing only an abstract
 WHEN aca ingest arxiv encounters the same paper
 THEN the system detects the existing Scholar record via GIN index query
-AND skips creating a duplicate arXiv record
-AND logs "Skipped 2301.12345: exists as Scholar source"
+AND downloads and parses the full PDF
+AND replaces the Scholar record's markdown_content with full PDF text
+AND updates parser_used to "DoclingParser"
+AND sets metadata_json.pdf_extracted=true
+AND deletes stale Summary records
+AND resets status to PENDING for re-summarization
+AND logs "Enriched Scholar record 2301.12345 with arXiv full text"
+```
+
+### Scenario: Scholar skips existing arXiv record
+```
+GIVEN a Content record exists with source_type=ARXIV and metadata_json.arxiv_id="2301.12345" with full PDF text
+WHEN Scholar ingestion encounters the same paper
+THEN Scholar skips creating a duplicate record
+AND logs "Skipped 2301.12345: arXiv full-text record exists"
 ```
 
 ### Scenario: Single paper lookup

@@ -1,0 +1,160 @@
+{
+  "review_type": "plan",
+  "target": "add-capacitor-mobile",
+  "reviewer_vendor": "claude-opus-4-6",
+  "findings": [
+    {
+      "id": 1,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Task 5.2 was missing from tasks.md — numbering jumped from 5.1 to 5.3. No task for Android intent filter config.",
+      "resolution": "RESOLVED: tasks.md rewritten with corrected numbering. Android intent filter added as task 6.4 (marked as scaffolded/deferred).",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 2,
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Deep linking for 'aca://' URL scheme was mentioned in proposal.md but had no tasks, specs, or design decisions.",
+      "resolution": "RESOLVED: Deep linking deferred to a separate proposal (design decision 12). Removed from proposal.md scope. The share target uses App Group IPC, not URL scheme deep links.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 3,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "iOS Share Extension IPC mechanism was undefined — extension runs in separate process with no access to WKWebView.",
+      "resolution": "RESOLVED: Design decision 4 now specifies App Group shared container + UserDefaults suite for data passing. Extension writes URL to shared container; main app reads on appStateChange. native-share-target spec updated with extension IPC scenarios.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 4,
+      "type": "security",
+      "criticality": "high",
+      "description": "Share Extension cannot authenticate API calls — separate process has no access to cookie jar or credentials.",
+      "resolution": "RESOLVED: Design decision 4 specifies that the extension queues URLs in the App Group shared container and the main app processes them on activation (already has valid auth context). No credential sharing across processes.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 5,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Push notification spec referenced device registration but didn't address who sends APNs pushes. Backend SSE doesn't reach backgrounded apps.",
+      "resolution": "RESOLVED: Push scoped to foreground local notifications (MVP) in design decision 7. Spec updated with explicit foreground/background scenarios. APNs integration deferred to follow-up.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 6,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Proposal stated 'No new backend services' but real push notifications require server-side APNs integration.",
+      "resolution": "RESOLVED: Impact section updated to 'Minimal backend changes — add Capacitor native origins to CORS configuration'. APNs explicitly deferred.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 7,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Offline share queue had no design decision for storage mechanism, retry trigger, or dedup strategy.",
+      "resolution": "RESOLVED: Design decision 8 specifies Capacitor Preferences for storage, @capacitor/network for retry trigger, and URL-based dedup. Spec updated with queue flush and dedup scenarios. Tasks 6.9-6.11 added.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 8,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Plugin table listed '@capacitor/share' under 'Share target' which implies receiving, but the plugin only supports outgoing shares.",
+      "resolution": "RESOLVED: Plugin table split into 'Share target (outgoing)' and 'Share target (receiving)' rows. Receiving row explicitly notes 'Custom native code: iOS Share Extension + Android intent filter (no plugin)'.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 9,
+      "type": "security",
+      "criticality": "medium",
+      "description": "No URL validation in share handler for untrusted input from other apps.",
+      "resolution": "RESOLVED: Task 6.6 added for URL validation (reject non-http(s) schemes, enforce max length, sanitize). Spec updated with 'URL Validation' requirement including scenarios for valid URLs, rejected schemes, and oversized URLs. Test task 12.4 added.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 10,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Haptic feedback limited to exactly two interactions with no rationale.",
+      "resolution": "Accepted as-is for MVP scope. Two interactions (voice input toggle, content save) are reasonable starting points.",
+      "disposition": "accept",
+      "status": "accepted"
+    },
+    {
+      "id": 11,
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Task 1.6 left git convention for ios/ and android/ directories unresolved.",
+      "resolution": "RESOLVED: Design decision 9 specifies committing native directories to git (Capacitor convention). Task 1.6 updated to reflect the resolved decision.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 12,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "No task or spec addressed CORS for capacitor://localhost — all native API calls would fail without it.",
+      "resolution": "RESOLVED: Design decision 11 addresses CORS for Capacitor origins. New task group 4 (Backend CORS Configuration) with tasks 4.1-4.3. Spec updated with CORS requirement and scenarios. Proposal impact section updated.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 13,
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "Open question about backend URL configuration was unresolved, blocking build script finalization.",
+      "resolution": "RESOLVED: Design decision 10 specifies using existing VITE_API_URL. Build script tasks 10.1-10.2 updated with URL handling. Open questions section renamed to 'Resolved Questions'.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 14,
+      "type": "performance",
+      "criticality": "low",
+      "description": "Capacitor speech recognition plugin loads native speech framework eagerly, adding startup latency.",
+      "resolution": "Task 7.1 updated to note lazy initialization requirement.",
+      "disposition": "accept",
+      "status": "accepted"
+    },
+    {
+      "id": 15,
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "No task for creating privacy policy document required for App Store submission.",
+      "resolution": "RESOLVED: Task 11.9 added for drafting and hosting privacy policy.",
+      "disposition": "fix",
+      "status": "resolved"
+    },
+    {
+      "id": 16,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "macOS CI runner cost not addressed ($0.08/min vs $0.008/min for Linux).",
+      "resolution": "Task 11.3 updated to trigger on merge to main only (not PRs). Accepted as manageable cost.",
+      "disposition": "accept",
+      "status": "accepted"
+    },
+    {
+      "id": 17,
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "App versioning strategy (when to bump package.json version) undocumented.",
+      "resolution": "Accepted — standard semver discipline. TestFlight accepts multiple builds per version string.",
+      "disposition": "accept",
+      "status": "accepted"
+    }
+  ]
+}

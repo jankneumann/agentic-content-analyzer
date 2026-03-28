@@ -444,26 +444,29 @@ async def list_contents(
 @router.get("/stats", response_model=ContentStats)
 async def get_content_stats() -> ContentStats:
     """Get content statistics."""
+    from collections import defaultdict
+
     from src.models.summary import Summary
 
     with get_db() as db:
-        # Count by status
-        status_counts = (
-            db.query(Content.status, func.count(Content.id)).group_by(Content.status).all()
-        )
-        by_status = {status.value: count for status, count in status_counts}
-
-        # OPTIMIZATION: Calculate total from status counts instead of separate count query
-        # Since status is non-nullable, the sum of status counts equals the total count
-        total = sum(by_status.values())
-
-        # Count by source
-        source_counts = (
-            db.query(Content.source_type, func.count(Content.id))
-            .group_by(Content.source_type)
+        # OPTIMIZATION: Calculate status and source counts in a single multi-dimensional query
+        # This replaces 2 separate GROUP BY queries and multiple index scans.
+        counts = (
+            db.query(Content.status, Content.source_type, func.count(Content.id))
+            .group_by(Content.status, Content.source_type)
             .all()
         )
-        by_source = {source.value: count for source, count in source_counts}
+
+        by_status = defaultdict(int)
+        by_source = defaultdict(int)
+        total = 0
+
+        for status, source_type, count in counts:
+            if status:
+                by_status[status.value] += count
+            if source_type:
+                by_source[source_type.value] += count
+            total += count
 
         # Count content items that don't have summaries yet
         # Use LEFT JOIN to find content without summaries (more efficient than NOT IN subquery)

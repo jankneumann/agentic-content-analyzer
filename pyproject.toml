@@ -88,11 +88,15 @@ dependencies = [
 
     # Vector Search
     "pgvector>=0.3.0",  # PostgreSQL pgvector Python bindings
+
+    # MCP Server
+    "mcp[cli]>=1.0.0",  # Model Context Protocol server
 ]
 
 [project.scripts]
 aca = "src.cli.app:app"
 "newsletter-cli" = "src.cli.main:app"
+"aca-mcp" = "src.mcp_server:main"
 
 [project.optional-dependencies]
 dev = [
@@ -271,4 +275,5 @@ markers = [
     "smoke: Smoke tests against a live API server (require running backend)",
     "contract: API contract and fuzz tests (require test database)",
     "neon: marks tests that require Neon database credentials (deselect with '-m not neon')",
+    "regression: Regression tests verifying end-to-end workflow consistency (CLI + UX + API contracts)",
 ]

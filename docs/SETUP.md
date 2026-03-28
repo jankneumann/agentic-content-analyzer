@@ -1432,6 +1432,46 @@ alembic downgrade -1
 alembic upgrade head
 ```
 
+## Tauri Desktop Development
+
+To build the desktop app, you need the Rust toolchain in addition to the standard web development setup.
+
+### Prerequisites
+
+1. **Rust toolchain**: Install via [rustup](https://rustup.rs/):
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+
+2. **System dependencies** (Linux only):
+   ```bash
+   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
+   ```
+
+3. **Tauri CLI**: Included as a devDependency — no global install needed.
+
+### Development
+
+```bash
+cd web
+pnpm tauri:dev     # Start Tauri dev mode (Vite HMR + native window)
+pnpm tauri:build   # Production build for current platform
+```
+
+### Build Targets
+
+| Platform | Output |
+|----------|--------|
+| macOS | `.dmg` installer, `.app` bundle |
+| Windows | `.msi` installer, `.exe` |
+| Linux | `.deb`, `.AppImage`, `.rpm` |
+
+### Troubleshooting
+
+- **macOS**: If build fails with code signing errors, run `pnpm tauri build -- --no-bundle` for unsigned dev builds.
+- **Linux**: Ensure `webkit2gtk-4.1` dev package is installed (not `webkit2gtk-4.0`).
+- **Windows**: WebView2 runtime is pre-installed on Windows 10/11. For older systems, the installer includes it.
+
 ## Next Steps
 
 - **[Configure your models](MODEL_CONFIGURATION.md)** - Select LLMs and providers

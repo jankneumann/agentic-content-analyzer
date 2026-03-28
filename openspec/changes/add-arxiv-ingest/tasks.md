@@ -12,23 +12,25 @@ Section 8 (frontend)      ── no deps, parallel with all
 Section 9 (docs)          ── depends on all
 ```
 
-**Max parallel width: 4** (sections 1, 2, 3, 7 can run concurrently in first wave)
+**Max parallel width: 4** (sections 1, 2, 3, 8 can run concurrently in first wave)
 
 ## 1. Content Model & Database Migration
 
 - [ ] 1.1 Add `ARXIV = "arxiv"` to `ContentSource` enum in `src/models/content.py`
-- [ ] 1.2 Create Alembic migration to add `arxiv` value to PostgreSQL `contentsource` enum type (`ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'arxiv'`)
-- [ ] 1.3 In the same migration, add GIN index on `metadata_json` if not already present: `CREATE INDEX IF NOT EXISTS ix_content_metadata_json_gin ON contents USING GIN (metadata_json jsonb_path_ops)`
-- [ ] 1.4 Run migration and verify enum and index are available in database
+- [ ] 1.2 Create Alembic migration: ALTER TYPE `contentsource` ADD VALUE IF NOT EXISTS `'arxiv'` — **non-transactional** (must run outside transaction block per PG constraint; use `op.execute()` with autocommit or explicit COMMIT/BEGIN)
+- [ ] 1.3 In the same migration, ALTER `contents.metadata_json` from `json` to `jsonb` if not already `jsonb`: `ALTER TABLE contents ALTER COLUMN metadata_json TYPE jsonb USING metadata_json::jsonb`
+- [ ] 1.4 Add GIN index: `CREATE INDEX IF NOT EXISTS ix_content_metadata_json_gin ON contents USING GIN (metadata_json jsonb_path_ops)` — check for Alembic multiple heads and merge if needed
+- [ ] 1.5 Run migration and verify enum, column type, and index are available in database
 
 ## 2. arXiv Client (parallel with 1, 3)
 
-- [ ] 2.1 Create `src/ingestion/arxiv_client.py` with `ArxivClient` class using `httpx.AsyncClient`
+- [ ] 2.1 Create `src/ingestion/arxiv_client.py` with `ArxivClient` class using `httpx.Client` (synchronous, matching existing ingestion client pattern)
 - [ ] 2.2 Implement `search_papers(query, categories, sort_by, max_results, start)` — builds arXiv query string, calls `export.arxiv.org/api/query`, parses Atom XML response via `feedparser`
 - [ ] 2.3 Implement `get_paper(arxiv_id)` — single paper lookup via `id_list` parameter
 - [ ] 2.4 Implement `download_pdf(arxiv_id, dest_path)` — streaming PDF download to temp file with size limit enforcement (default 50 MB)
-- [ ] 2.5 Implement `normalize_arxiv_id(identifier)` — strips `arXiv:` prefix, URL components, version suffix; validates format; supports legacy IDs (e.g., `hep-th/9901001`)
-- [ ] 2.6 Add rate limiting: `asyncio.sleep(3)` between requests, respect `Retry-After` header on 429/503, exponential backoff (base 5s, max 60s, 3 retries)
+- [ ] 2.5 Implement `normalize_arxiv_id(identifier)` — strips `arXiv:` prefix, URL components, version suffix; validates format; supports legacy IDs. **SSRF prevention**: only extract ID, never pass user URLs to HTTP client
+- [ ] 2.6 Add rate limiting: `time.sleep(3)` between API requests (sync), separate 1s delay for PDF downloads; respect `Retry-After` header on 429/503, exponential backoff (base 5s, max 60s, 3 retries)
+- [ ] 2.6a Ensure all feedparser dates are converted to UTC-aware datetime with `tzinfo=UTC` (CLAUDE.md gotcha)
 - [ ] 2.7 Add Pydantic response models: `ArxivPaper` (id, title, abstract, authors, categories, primary_category, published, updated, pdf_url, doi, journal_ref, comment, version)
 - [ ] 2.8 Write unit tests for client with mocked HTTP responses (search, single paper, PDF download, rate limiting, error handling)
 
@@ -43,12 +45,12 @@ Section 9 (docs)          ── depends on all
 ## 4. arXiv Content Ingestion Service (depends on 1, 2, 3)
 
 - [ ] 4.1 Create `src/ingestion/arxiv.py` with `ArxivContentIngestionService` class
-- [ ] 4.2 Implement `_extract_pdf_content(arxiv_id, pdf_url, max_pages) -> tuple[str, str]` — downloads PDF to temp file, parses via DoclingParser, returns `(markdown, parser_used)`. Falls back to `(None, None)` on failure.
+- [ ] 4.2 Implement `_extract_pdf_content(arxiv_id, pdf_url, max_pages) -> tuple[str, str]` — downloads PDF via streaming with 50MB size cap, checks page count via lightweight PDF reader BEFORE full Docling parse, returns `(markdown, parser_used)`. Falls back to `(None, None)` on failure.
 - [ ] 4.3 Implement `_format_abstract_markdown(paper: ArxivPaper) -> str` — generates structured markdown from metadata when PDF extraction is disabled or fails
 - [ ] 4.4 Implement `_build_metadata(paper: ArxivPaper, ingestion_mode: str, pdf_extracted: bool, pdf_pages: int | None) -> dict` for metadata_json
 - [ ] 4.5 Implement `_paper_to_content_data(paper: ArxivPaper, markdown: str, parser_used: str, metadata: dict) -> ContentData` mapper
-- [ ] 4.6 Implement `_check_version_update(arxiv_id: str, incoming_version: int, db) -> Content | None` — returns existing record if version is older; None if no update needed
-- [ ] 4.7 Implement `_check_cross_source_duplicate(arxiv_id: str, db) -> bool` — GIN-indexed `metadata_json @> '{"arxiv_id": "..."}'::jsonb` containment query
+- [ ] 4.6 Implement `_check_version_update(arxiv_id: str, incoming_version: int, db) -> Content | None` — returns existing record if version is older; None if no update needed. On update, delete stale Summary records and reset status to PENDING.
+- [ ] 4.7 Implement `_check_cross_source_duplicate(arxiv_id: str, db) -> Content | None` — GIN-indexed `metadata_json @> '{"arxiv_id": "..."}'::jsonb` containment query. If Scholar record found, **enrich** it with arXiv full text (replace markdown_content, update parser_used, delete stale summaries, reset to PENDING). If arXiv record found, apply version check.
 - [ ] 4.8 Implement `ingest_from_search(source_config: ArxivSource, force_reprocess: bool) -> ArxivIngestionResult` — main search-based ingestion with PDF extraction
 - [ ] 4.9 Implement `ingest_paper(identifier: str, pdf_extraction: bool, force_reprocess: bool) -> ArxivPaperResult` — single paper lookup and ingest
 - [ ] 4.10 Implement `ingest_content(sources: list[ArxivSource] | None, after_date, force_reprocess) -> IngestionResult` — loads config, iterates sources, delegates to `ingest_from_search`
