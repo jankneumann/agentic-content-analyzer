@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "review_type": "plan",
+  "target": "add-capacitor-mobile",
+  "reviewers": [
+    {
+      "vendor": "claude-opus-4-6",
+      "agent_id": "claude-opus-4-6",
+      "success": true,
+      "findings_count": 17,
+      "elapsed_seconds": 0.0,
+      "error": null
+    }
+  ],
+  "quorum_met": false,
+  "quorum_requested": 1,
+  "quorum_received": 1,
+  "consensus_findings": [
+    {
+      "id": 1,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 1,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "high",
+      "recommended_disposition": "accept",
+      "description": "Task 5.2 is missing from tasks.md \u2014 numbering jumps from 5.1 to 5.3. There is no task for configuring the Android intent filter (referenced in design.md Decision 4 and native-share-target spec). Even though Android deployment is deferred, the intent filter config is needed if the platform is scaffolded."
+    },
+    {
+      "id": 2,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 2,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "high",
+      "recommended_disposition": "accept",
+      "description": "Deep linking for 'aca://' URL scheme is mentioned in proposal.md ('Configure deep linking for aca:// URL scheme') but has no corresponding tasks, no spec requirements, and no design decision. This is a non-trivial feature requiring both iOS Universal Links / Custom URL Scheme configuration and frontend route handling."
+    },
+    {
+      "id": 3,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 3,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "architecture",
+      "agreed_criticality": "high",
+      "recommended_disposition": "accept",
+      "description": "The iOS Share Extension runs in a separate process with limited memory (120MB) and no access to the main app's WKWebView or JavaScript context. The design says 'forwards URL to the main app' but doesn't specify the IPC mechanism. Common approaches: App Groups + UserDefaults/shared container, or a custom URL scheme to wake the main app. Without this, the share extension cannot communicate with the Capacitor web layer."
+    },
+    {
+      "id": 4,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 4,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "security",
+      "agreed_criticality": "high",
+      "recommended_disposition": "accept",
+      "description": "The save-url API currently uses session cookie or X-Admin-Key authentication. The native share extension runs in a separate process without access to the main app's cookie jar or stored credentials. No task or design decision addresses how the share extension authenticates API calls."
+    },
+    {
+      "id": 5,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 5,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "Push notification spec (capacitor-mobile/spec.md) references 'POST /api/v1/notifications/devices' for device token registration. The existing notification_routes.py already implements device registration. However, the spec doesn't specify the push notification delivery mechanism \u2014 who sends APNs pushes? The backend notification_service.py emits events to SSE, but there's no APNs integration. This requires a backend change (APNs provider) not mentioned in the proposal's impact section."
+    },
+    {
+      "id": 6,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 6,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "architecture",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "Proposal states 'No new backend services' but push notifications to devices that are backgrounded/closed require server-side APNs/FCM integration. SSE only works while the app is open. This contradicts the 'no backend changes' impact statement."
+    },
+    {
+      "id": 7,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 7,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "Task 5.5 specifies 'Add offline queue for shares when device is disconnected' and native-share-target spec has an 'Offline share' scenario, but there's no design decision for the offline queue mechanism. Questions: Where is the queue stored (IndexedDB, Capacitor Preferences, shared container)? What triggers the retry? How are duplicates prevented if the user shares the same URL twice while offline?"
+    },
+    {
+      "id": 8,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 8,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "architecture",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "The design references '@capacitor/share' (official) for sending shares but notes that *receiving* shares requires an iOS Share Extension and Android intent filter. The '@capacitor/share' plugin only supports *sending* (outgoing shares), not receiving. Receiving requires native code (Share Extension on iOS, intent filter on Android). This is correctly noted in the design but the plugin table is misleading \u2014 it lists '@capacitor/share' under 'Share target' which implies receiving."
+    },
+    {
+      "id": 9,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 9,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "security",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "No task or spec requirement addresses URL validation/sanitization in the share target handler. Shared content from other apps is untrusted user input \u2014 could contain javascript: URIs, data: URIs, or excessively long strings. The existing save-url API may handle this, but the client-side share handler should also validate."
+    },
+    {
+      "id": 10,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 10,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "The capacitor-mobile spec defines haptic feedback for exactly two interactions (voice input toggle, content save confirmation). No design rationale for why only these two. More importantly, there's no specification for haptic feedback on error states (failed save, network error) or navigation actions that other native apps commonly use."
+    },
+    {
+      "id": 11,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 11,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "architecture",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "Task 1.6 says 'Add ios/ and android/ to .gitignore (or commit \u2014 decide convention)' \u2014 this is an unresolved decision that affects team workflows. Committing native project files means Capacitor plugin changes are tracked but creates large diffs. Gitignoring them means 'npx cap add ios' must run on every fresh clone."
+    },
+    {
+      "id": 12,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 12,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "No task addresses configuring the backend CORS to accept requests from the Capacitor native origin. WKWebView on iOS uses 'capacitor://localhost' as the origin, which differs from the PWA's web origin. Without CORS configuration, all API calls from the native app will fail."
+    },
+    {
+      "id": 13,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 13,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "correctness",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "The open question about configurable backend URL vs hardcoded production is left unresolved. For a Capacitor app, the API base URL must be set at build time (or configured in capacitor.config.ts server settings). The current frontend uses VITE_API_URL which is baked into the build. If the native app targets production only, this is fine \u2014 but dev/staging builds need a mechanism to override."
+    },
+    {
+      "id": 14,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 14,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "performance",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "The Capacitor speech recognition plugin (@capacitor-community/speech-recognition) loads the native speech framework on initialization. If eagerly imported, this adds startup latency on every app launch even when voice input isn't used."
+    },
+    {
+      "id": 15,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 15,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "Task 10.9 mentions 'App Store metadata: privacy policy URL, app description, screenshots, app icon assets' but there is no task for creating the actual privacy policy document. App Store submission requires a hosted privacy policy URL. The app collects: device tokens (push notifications), speech data (voice input), and browsing content (shared URLs)."
+    },
+    {
+      "id": 16,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 16,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "architecture",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "The CI pipeline (task 10.3) requires macOS runners for iOS builds. The existing CI (.github/workflows/ci.yml) uses ubuntu-latest. The proposal doesn't address the cost implication \u2014 GitHub macOS runners are 10x more expensive than Linux runners ($0.08/min vs $0.008/min for private repos)."
+    },
+    {
+      "id": 17,
+      "status": "unconfirmed",
+      "primary_vendor": "claude-opus-4-6",
+      "primary_finding_id": 17,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "spec_gap",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "No task or spec addresses app versioning strategy for the App Store. The spec says CFBundleShortVersionString comes from package.json version and CFBundleVersion from CI run number. But package.json version must follow semver and must be incremented for each App Store submission. No task covers when/how to bump the version."
+    }
+  ],
+  "summary": {
+    "total_unique_findings": 17,
+    "confirmed_count": 0,
+    "unconfirmed_count": 17,
+    "disagreement_count": 0,
+    "blocking_count": 0
+  }
+}

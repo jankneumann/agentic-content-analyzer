@@ -52,7 +52,7 @@ class TestProductionSecurityWarnings:
             _make_settings(
                 environment="production",
                 admin_api_key="my-key",
-                allowed_origins="http://localhost:5173,http://localhost:3000",
+                allowed_origins="http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost",
             )
 
         assert any(
@@ -91,7 +91,7 @@ class TestCORSDefaults:
         s = _make_settings(
             environment="production",
             admin_api_key="key",
-            allowed_origins="http://localhost:5173,http://localhost:3000",
+            allowed_origins="http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost",
         )
         assert s.get_allowed_origins_list() == []
 
@@ -114,12 +114,13 @@ class TestCORSDefaults:
         assert s.get_allowed_origins_list() == ["*"]
 
     def test_development_dev_defaults_returns_localhost(self):
-        """Development mode with defaults should return localhost origins."""
+        """Development mode with defaults should return all dev origins including Capacitor."""
         s = _make_settings(environment="development")
-        assert s.get_allowed_origins_list() == [
-            "http://localhost:5173",
-            "http://localhost:3000",
-        ]
+        origins = s.get_allowed_origins_list()
+        assert "http://localhost:5173" in origins
+        assert "http://localhost:3000" in origins
+        assert "capacitor://localhost" in origins
+        assert "http://localhost" in origins
 
     def test_development_explicit_origins_returns_configured(self):
         """Development with explicit origins should return configured list."""
@@ -143,7 +144,7 @@ class TestCORSDefaults:
         s = _make_settings(
             environment="production",
             admin_api_key="key",
-            allowed_origins="http://localhost:5173, http://localhost:3000",
+            allowed_origins="http://localhost:5173, http://localhost:3000, capacitor://localhost, http://localhost",
         )
         assert s.get_allowed_origins_list() == []
 
@@ -152,7 +153,7 @@ class TestCORSDefaults:
         s = _make_settings(
             environment="production",
             admin_api_key="key",
-            allowed_origins="http://localhost:3000,http://localhost:5173",
+            allowed_origins="http://localhost:3000,http://localhost:5173,http://localhost,capacitor://localhost",
         )
         assert s.get_allowed_origins_list() == []
 
@@ -164,3 +165,46 @@ class TestCORSDefaults:
             allowed_origins="http://localhost:5173",
         )
         assert s.get_allowed_origins_list() == ["http://localhost:5173"]
+
+
+class TestCapacitorCORSOrigins:
+    """Test that Capacitor native origins are included in CORS defaults."""
+
+    def test_capacitor_ios_origin_in_defaults(self):
+        """capacitor://localhost (iOS WKWebView) should be in dev defaults."""
+        s = _make_settings(environment="development")
+        origins = s.get_allowed_origins_list()
+        assert "capacitor://localhost" in origins
+
+    def test_capacitor_android_origin_in_defaults(self):
+        """http://localhost (Android WebView) should be in dev defaults."""
+        s = _make_settings(environment="development")
+        origins = s.get_allowed_origins_list()
+        assert "http://localhost" in origins
+
+    def test_capacitor_origins_in_dev_default_set(self):
+        """Both Capacitor origins should be in _DEV_DEFAULT_ORIGINS ClassVar."""
+        from src.config.settings import Settings
+
+        assert "capacitor://localhost" in Settings._DEV_DEFAULT_ORIGINS
+        assert "http://localhost" in Settings._DEV_DEFAULT_ORIGINS
+
+    def test_production_with_capacitor_origins_still_blocked(self):
+        """Production with only dev defaults (including Capacitor) returns empty."""
+        s = _make_settings(
+            environment="production",
+            admin_api_key="key",
+            # Uses default allowed_origins which includes Capacitor origins
+        )
+        assert s.get_allowed_origins_list() == []
+
+    def test_production_explicit_capacitor_origin_passes_through(self):
+        """Production with explicitly set capacitor origin should pass through."""
+        s = _make_settings(
+            environment="production",
+            admin_api_key="key",
+            allowed_origins="https://myapp.com,capacitor://localhost",
+        )
+        origins = s.get_allowed_origins_list()
+        assert "https://myapp.com" in origins
+        assert "capacitor://localhost" in origins
