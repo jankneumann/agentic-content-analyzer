@@ -97,6 +97,11 @@ aca ingest perplexity-search           # Perplexity Sonar API search
 aca ingest perplexity-search -p "..."  # Custom search prompt
 aca ingest perplexity-search -m 20     # Limit results
 aca ingest perplexity-search --recency week  # Recency filter
+aca ingest scholar                     # Academic papers (Semantic Scholar)
+aca ingest scholar-paper <id>          # Single paper by DOI/arXiv/S2 ID
+aca ingest scholar-paper <id> --with-refs  # Paper + its references
+aca ingest scholar-refs                # Extract & ingest refs from existing content
+aca ingest scholar-refs --after 2025-01-01 --dry-run  # Preview extraction
 aca ingest files <path...>             # Local file ingestion
 aca ingest url <url>                   # Direct URL ingestion
 
@@ -216,6 +221,7 @@ sources.d/
   podcasts.yaml          # Podcast feeds (with transcript settings)
   gmail.yaml             # Gmail query sources
   websearch.yaml         # Web search sources (Perplexity, Grok)
+  scholar.yaml           # Academic paper sources (Semantic Scholar)
 ```
 
 Each source supports: `name`, `url`/`id`, `tags`, `enabled`, `max_entries`.
@@ -534,6 +540,7 @@ VITE_OTEL_ENABLED=true              # Enable browser trace propagation + Web Vit
 | Podcast transcription needs STT key | Set `OPENAI_API_KEY` for Whisper; `transcribe: false` in source to skip |
 | X search needs xAI API key | Set `XAI_API_KEY`; search prompt configurable via `aca prompts set pipeline.xsearch.search_prompt` |
 | Perplexity search needs API key | Set `PERPLEXITY_API_KEY`; model defaults to `sonar`; search prompt configurable via `aca prompts set perplexity_search.search_prompt` |
+| Scholar ingestion API key optional | Set `SEMANTIC_SCHOLAR_API_KEY` for higher rate limits (1-10 RPS vs ~20 req/min unauthenticated); free API, no key required for basic use |
 | Perplexity uses OpenAI SDK | Zero new dependencies — `openai.OpenAI(base_url="https://api.perplexity.ai")` with `extra_body` for vendor params |
 | WebSearchProvider lazy imports | Adapters use lazy imports in `__init__` and `search()` — mock at SOURCE module, not `src.services.web_search` |
 | Telemetry mock patch target | Patch `src.telemetry.get_provider` (source module), NOT `src.services.llm_router.get_provider` — local imports aren't module attrs |
