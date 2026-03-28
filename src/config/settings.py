@@ -476,6 +476,9 @@ class Settings(BaseSettings):
     grok_x_max_turns: int = 5  # Max tool calling turns per search
     grok_x_max_threads: int = 50  # Max threads per search run
 
+    # Semantic Scholar Configuration
+    semantic_scholar_api_key: str = ""  # Semantic Scholar API key (optional, increases rate limits)
+
     # Perplexity Search Configuration
     perplexity_api_key: str | None = None  # Perplexity API key
     perplexity_model: str = "sonar"  # sonar or sonar-pro

@@ -1,0 +1,25 @@
+version: 1
+defaults:
+  type: scholar
+  enabled: true
+  max_entries: 20
+  min_citation_count: 0
+sources:
+  - name: "AI Survey Papers"
+    query: "artificial intelligence survey"
+    paper_types: ["Review"]
+    fields_of_study: ["Computer Science"]
+    min_citation_count: 10
+    year_range: "2024-"
+    tags: [ai, survey]
+  - name: "LLM Research"
+    query: "large language model"
+    fields_of_study: ["Computer Science"]
+    year_range: "2024-"
+    max_entries: 30
+    tags: [llm, research]
+  - name: "AI Agents Research"
+    query: "autonomous AI agents"
+    fields_of_study: ["Computer Science"]
+    year_range: "2024-"
+    tags: [agents, research]
