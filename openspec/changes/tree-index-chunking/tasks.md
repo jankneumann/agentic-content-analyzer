@@ -3,24 +3,24 @@
 ## Dependency Graph
 
 ```
-Phase 1 (all independent — max parallel width: 3):
-  1.1 ──┐
-  1.4 ──┤── 1.2 ── 1.3
-        │
+Phase 1 (max parallel width: 3):
+  1.1 ── 1.2 ── 1.3
+  1.4 (independent)
+
 Phase 2:
   2.1 ── 2.2 ──┐
                ├── 2.4 ──┐
   2.3 ─────────┤         ├── 2.5 ── 2.6 ── 2.7
-               │         │
-Phase 3:
-  3.2 ─────────┤         │
-  3.5 ─────────┘         │
-               3.1 ──────┤
-               3.3 ── 3.4 ── 3.6 ── 3.7
-                                       └── 3.8
+               │         │                   │
+Phase 3:                 │                   │
+  3.2 ─────────┤         │                   │
+  3.5 ─────────┘         │                   │
+               3.1 ──────┤                   │
+               3.3 ── 3.4 ── 3.6 ── 3.7     │
+                                             └── 3.8
 ```
 
-**Summary**: Independent: 7 tasks | Sequential chains: 3 | Max parallel width: 4 (Phase 3: 3.1, 3.2, 3.3, 3.5 can run concurrently)
+**Summary**: Independent: 7 tasks (1.1, 1.4, 2.1, 2.3, 3.1, 3.2, 3.5) | Sequential chains: 3 | Max parallel width: 4 (Phase 3: 3.1, 3.2, 3.3, 3.5 concurrent) | Note: 3.8 depends on 2.6, not 3.6 (backfill is indexing, not search)
 
 ---
 
@@ -34,7 +34,7 @@ Phase 3:
 
 ### Task 1.2: Implement chunk thinning post-processor
 - **File**: `src/services/chunking.py`
-- **Depends on**: 1.1 (reads `min_node_tokens` from settings), 1.4 (uses per-source override)
+- **Depends on**: 1.1 (reads `min_node_tokens` from settings)
 - **Work**: Create `_thin_chunks(chunks: list[DocumentChunk], min_tokens: int) -> list[DocumentChunk]` function that merges undersized chunks into adjacent chunks. Merge into preceding chunk (append) by default; merge into following chunk (prepend) if no predecessor exists. Preserve `section_path` and `heading_text` of the absorbing chunk. Skip thinning when `min_tokens == 0`.
 - **Exempt chunk types**: Do NOT merge TABLE or CODE chunks regardless of token count — preserve semantic classification
 - **Integration**: Call `_thin_chunks()` as final step in `MarkdownChunkingStrategy.chunk()` and `StructuredChunkingStrategy.chunk()`, before `chunk_index` assignment
@@ -234,7 +234,7 @@ Phase 3:
 
 ### Task 3.8: Add backfill command for existing content
 - **File**: `src/cli/manage.py`
-- **Depends on**: 3.6 (needs full tree index + search pipeline working)
+- **Depends on**: 2.6 (needs tree index construction pipeline; backfill builds indexes, does not require search)
 - **Work**: Add `aca manage backfill-tree-index` command:
   - Scans existing content records that qualify for tree indexing (token count + heading depth)
   - Builds tree index for qualifying content that doesn't already have one

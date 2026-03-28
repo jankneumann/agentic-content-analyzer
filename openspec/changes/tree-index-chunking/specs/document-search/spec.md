@@ -4,15 +4,35 @@
 
 ### Requirement: Semantic Document Chunking
 
-The system SHALL split ingested content into chunks using pluggable chunking strategies selected based on content type and parser.
+The system SHALL split documents into semantically meaningful chunks before generating embeddings.
 
-The system SHALL support the following chunking strategies:
-- **StructuredChunkingStrategy** (`structured`): For DoclingParser output, heading-aware splitting
-- **MarkdownChunkingStrategy** (`markdown`): For markdown content, heading-boundary splitting
-- **YouTubeTranscriptChunkingStrategy** (`youtube_transcript`): For YouTube transcripts
-- **GeminiSummaryChunkingStrategy** (`gemini_summary`): For Gemini-processed summaries
-- **SectionChunkingStrategy** (`section`): For section-level splitting
+The system SHALL define a `ChunkingStrategy` protocol enabling pluggable chunking implementations that can be added and tested without modifying the core chunking service.
+
+The system SHALL provide a strategy registry and factory that resolves the chunking strategy by: explicit per-source override → auto-detection from `Content.parser_used` → default markdown strategy.
+
+The system SHALL leverage the structured output from advanced document parsers (DoclingParser, YouTubeParser, MarkItDownParser) to determine chunk boundaries.
+
+The system SHALL store chunks in a `document_chunks` table with metadata linking back to the source content.
+
+The system SHALL provide the following built-in chunking strategies:
+- **StructuredChunkingStrategy** (`structured`): For DoclingParser output — split on heading boundaries (H1-H6), extract tables as separate chunks, respect page boundaries
+- **YouTubeTranscriptChunkingStrategy** (`youtube_transcript`): For raw transcript output (`parser_used="youtube_transcript_api"`) — use existing 30-second timestamp window groupings with sentence boundaries, preserve deep-link URLs
+- **GeminiSummaryChunkingStrategy** (`gemini_summary`): For Gemini-processed YouTube content (`parser_used="gemini"`) — split on topic section headers from Gemini structured output, no timestamps
+- **MarkdownChunkingStrategy** (`markdown`): For MarkItDownParser output and default (Gmail, RSS) — split on markdown heading structure, keep code blocks together
+- **SectionChunkingStrategy** (`section`): For summaries/digests — split on `## Section` headers (Executive Summary, Key Themes, etc.)
 - **TreeIndexChunkingStrategy** (`tree_index`): For hierarchical tree index construction from heading hierarchy (H1-H6) on long structured documents
+
+The system SHALL support per-source chunking configuration via `sources.d/` YAML files, allowing override of chunk size, overlap, and chunking strategy at the global, per-type, or per-entry level.
+
+The system SHALL resolve chunking parameters using the existing cascading defaults: global `Settings` → `sources.d/_defaults.yaml` → per-file defaults → per-entry fields (most specific wins).
+
+The system SHALL use the default markdown chunking strategy when `Content.parser_used` is NULL or unrecognized and no `chunking_strategy` override is configured for the source.
+
+The system SHALL produce zero chunks (and log a warning) when `Content.markdown_content` is empty or NULL.
+
+The system SHALL target ~512 tokens per chunk with ~64 tokens overlap between consecutive chunks, unless overridden by per-source configuration.
+
+The system SHALL keep tables as whole chunks even if they exceed the target size (up to 2048 tokens).
 
 The system SHALL apply chunk thinning as a post-processing step in `MarkdownChunkingStrategy` and `StructuredChunkingStrategy`, after initial heading-based splitting and before chunk index assignment. Thinning SHALL merge undersized chunks into adjacent chunks when a chunk's token count falls below the configured `min_node_tokens` threshold (default: 50 tokens).
 
@@ -46,6 +66,118 @@ The system SHALL store leaf nodes as `DocumentChunk` records with `is_summary=Fa
 The system SHALL expose `tree_index_min_tokens` (default: 8000) and `tree_index_min_heading_depth` (default: 3) as configurable settings.
 
 The system SHALL create telemetry spans for tree summarization LLM calls using the existing observability provider. Spans SHALL include `content_id`, `internal_node_count`, and `total_summary_tokens`.
+
+#### Scenario: PDF document chunked by structure
+
+- **WHEN** a PDF document is parsed by DoclingParser
+- **THEN** the system creates chunks at heading boundaries
+- **AND** tables are extracted as separate chunks with caption context
+- **AND** each chunk includes the page number metadata
+
+#### Scenario: YouTube transcript chunked by timestamp
+
+- **WHEN** a YouTube video is ingested via transcript (`parser_used="youtube_transcript_api"`)
+- **THEN** the system uses `YouTubeTranscriptChunkingStrategy`
+- **AND** creates chunks using 30-second timestamp windows
+- **AND** each chunk includes `timestamp_start` and `timestamp_end` metadata
+- **AND** each chunk includes a `deep_link_url` for direct video navigation
+
+#### Scenario: YouTube Gemini summary chunked by topic section
+
+- **WHEN** a YouTube video is ingested via Gemini summarization (`parser_used="gemini"`)
+- **THEN** the system uses `GeminiSummaryChunkingStrategy`
+- **AND** creates chunks at topic section boundaries (e.g., `## Topic 1: ...`)
+- **AND** each chunk includes the section title as `heading_text`
+- **AND** chunks do NOT include timestamps (Gemini output has no timestamps)
+
+#### Scenario: YouTube Gemini and transcript configured independently
+
+- **WHEN** a YouTube source in `sources.d/` has `gemini_summary: true` and `chunk_size_tokens: 1024`
+- **AND** another YouTube source has `gemini_summary: false` and `chunk_size_tokens: 512`
+- **THEN** Gemini-processed content uses 1024-token chunks with `gemini_summary` strategy
+- **AND** transcript-processed content uses 512-token chunks with `youtube_transcript` strategy
+
+#### Scenario: Markdown document chunked by headings
+
+- **WHEN** a markdown document is parsed
+- **THEN** the system creates chunks at H1/H2/H3 boundaries
+- **AND** each chunk includes the `section_path` (e.g., "# Intro > ## Setup")
+- **AND** code blocks are kept together within chunks
+
+#### Scenario: Newsletter summary chunked by section
+
+- **WHEN** a newsletter summary is chunked
+- **THEN** the system creates chunks for each section (executive summary, key themes, etc.)
+- **AND** each chunk uses `chunk_type="section"`
+
+#### Scenario: Oversized section split into paragraphs
+
+- **WHEN** a section exceeds the target chunk size (512 tokens)
+- **THEN** the system splits the section at paragraph boundaries
+- **AND** includes overlap between consecutive chunks for context continuity
+
+#### Scenario: Table preserved as single chunk
+
+- **WHEN** a document contains a table
+- **THEN** the table is stored as a single chunk with `chunk_type="table"`
+- **AND** the table caption and headers are prepended as context
+- **AND** the chunk is not split even if it exceeds 512 tokens (up to 2048 tokens)
+
+#### Scenario: Per-source chunk size override
+
+- **WHEN** a source entry in `sources.d/rss.yaml` specifies `chunk_size_tokens: 256` and `chunk_overlap_tokens: 32`
+- **THEN** content ingested from that source is chunked with 256-token targets and 32-token overlap
+- **AND** the global `CHUNK_SIZE_TOKENS` setting is not affected
+
+#### Scenario: Per-source chunking strategy override
+
+- **WHEN** a source entry specifies `chunking_strategy: youtube_transcript`
+- **THEN** content from that source uses the `YouTubeTranscriptChunkingStrategy` regardless of `parser_used`
+- **AND** other sources without a `chunking_strategy` override continue to auto-detect from `parser_used`
+
+#### Scenario: Per-type chunking defaults
+
+- **WHEN** `sources.d/podcasts.yaml` specifies `defaults.chunk_size_tokens: 1024`
+- **THEN** all podcast sources in that file inherit the 1024-token chunk size
+- **AND** individual podcast entries can further override with their own `chunk_size_tokens`
+
+#### Scenario: Cascading chunking defaults resolution
+
+- **WHEN** `Settings.chunk_size_tokens` is 512, `sources.d/rss.yaml` defaults specify 384, and one RSS entry specifies 256
+- **THEN** most RSS sources use 384-token chunks
+- **AND** the specific entry uses 256-token chunks
+- **AND** sources in other files without overrides use the global 512-token default
+
+#### Scenario: Source config not found for content
+
+- **WHEN** content is ingested from a source that has no matching entry in `sources.d/` (e.g., direct URL ingestion, file upload)
+- **THEN** the system uses global `Settings` defaults for chunk size and overlap
+- **AND** auto-detects the chunking strategy from `Content.parser_used`
+
+#### Scenario: Empty content produces no chunks
+
+- **WHEN** a Content record has empty or NULL `markdown_content`
+- **THEN** the system produces zero chunks
+- **AND** logs a warning identifying the content_id
+- **AND** does not create an embedding
+
+#### Scenario: Unknown parser uses default chunking
+
+- **WHEN** a Content record has `parser_used` set to NULL or an unrecognized value
+- **AND** no `chunking_strategy` override is configured for the source
+- **THEN** the system uses the default `MarkdownChunkingStrategy` (heading-based + paragraph splitting)
+
+#### Scenario: New chunking strategy added via registry
+
+- **WHEN** a new `ChunkingStrategy` implementation is registered in the strategy registry
+- **THEN** it can be selected via `chunking_strategy` in `sources.d/` configuration
+- **AND** existing strategies are not affected
+
+#### Scenario: YouTube deep-link URL format
+
+- **WHEN** a YouTube transcript chunk is created
+- **THEN** the `deep_link_url` is in the format `https://youtube.com/watch?v={video_id}&t={timestamp_seconds}`
+- **AND** `timestamp_seconds` is the integer floor of `timestamp_start`
 
 #### Scenario: Small fragment merged into preceding chunk
 
