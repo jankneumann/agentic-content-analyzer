@@ -82,7 +82,7 @@ If the request spans two areas (for example, "deploy and then check if it's heal
 
 ## Execution rules
 
-1. Prefer Railway CLI. Fall back to `.agents/skills/use-railway/scripts/railway-api.sh` for operations the CLI doesn't expose.
+1. Prefer Railway CLI. Fall back to `<agent-skills-dir>/use-railway/scripts/railway-api.sh` for operations the CLI doesn't expose.
 2. Use `--json` output where available for reliable parsing.
 3. Resolve context before mutation. Know which project, environment, and service you're acting on.
 4. For destructive actions (delete service, remove deployment, drop database), confirm intent and state impact before executing.

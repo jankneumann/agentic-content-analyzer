@@ -9,6 +9,7 @@
 - **[Model Configuration](MODEL_CONFIGURATION.md)** - LLM model selection, providers, and cost optimization
 - **[Development Guide](DEVELOPMENT.md)** - Commands, patterns, and best practices
 - **[Content Guidelines](CONTENT_GUIDELINES.md)** - Digest structure, tone, and formatting standards
+- **[Gotchas](GOTCHAS.md)** - Critical pitfalls organized by area (database, testing, deployment, etc.)
 
 ## Project Overview
 

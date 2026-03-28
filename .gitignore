@@ -256,6 +256,9 @@ web/.vite/
 # bv (beads viewer) local config and caches
 .bv/
 
+# Claude Code worktrees (temporary agent working directories)
+.claude/worktrees/
+
 # Tauri
 web/src-tauri/target/
 web/src-tauri/gen/

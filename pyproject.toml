@@ -154,12 +154,10 @@ exclude = [
     "alembic/versions",
     "node_modules",
     ".pytest_cache",
-    ".gemini/skills/*/scripts",
-    ".gemini/skills/*/tests",
-    ".codex/skills/*/scripts",
-    ".codex/skills/*/tests",
-    ".claude/skills/*/scripts",
-    ".claude/skills/*/tests",
+    ".gemini/skills",
+    ".codex/skills",
+    ".claude/skills",
+    ".agents/skills",
 ]
 
 [tool.ruff.lint]
@@ -236,12 +234,10 @@ disallow_untyped_defs = true
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 ignore_missing_imports = true
 exclude = [
-    ".gemini/skills/.*/scripts",
-    ".gemini/skills/.*/tests",
-    ".codex/skills/.*/scripts",
-    ".codex/skills/.*/tests",
-    ".claude/skills/.*/scripts",
-    ".claude/skills/.*/tests",
+    "\\.gemini/skills/",
+    "\\.codex/skills/",
+    "\\.claude/skills/",
+    "\\.agents/skills/",
 ]
 
 # SQLAlchemy ORM models have dynamic attributes that mypy struggles with
