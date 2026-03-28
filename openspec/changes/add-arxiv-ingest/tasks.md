@@ -12,7 +12,7 @@ Section 8 (frontend)      ── no deps, parallel with all
 Section 9 (docs)          ── depends on all
 ```
 
-**Max parallel width: 4** (sections 1, 2, 3, 8 can run concurrently in first wave)
+**Max parallel width: 4** (sections 1, 2, 3, 8 in wave 1; section 4 in wave 2; sections 5 in wave 3; sections 6, 7 in wave 4; section 9 in wave 5)
 
 ## 1. Content Model & Database Migration
 
@@ -50,7 +50,7 @@ Section 9 (docs)          ── depends on all
 - [ ] 4.4 Implement `_build_metadata(paper: ArxivPaper, ingestion_mode: str, pdf_extracted: bool, pdf_pages: int | None) -> dict` for metadata_json
 - [ ] 4.5 Implement `_paper_to_content_data(paper: ArxivPaper, markdown: str, parser_used: str, metadata: dict) -> ContentData` mapper
 - [ ] 4.6 Implement `_check_version_update(arxiv_id: str, incoming_version: int, db) -> Content | None` — returns existing record if version is older; None if no update needed. On update, delete stale Summary records and reset status to PENDING.
-- [ ] 4.7 Implement `_check_cross_source_duplicate(arxiv_id: str, db) -> Content | None` — GIN-indexed `metadata_json @> '{"arxiv_id": "..."}'::jsonb` containment query. If Scholar record found, **enrich** it with arXiv full text (replace markdown_content, update parser_used, delete stale summaries, reset to PENDING). If arXiv record found, apply version check.
+- [ ] 4.7 Implement `_check_cross_source_duplicate(arxiv_id: str, db) -> Content | None` — GIN-indexed `metadata_json @> '{"arxiv_id": "..."}'::jsonb` containment query. If Scholar record found, **enrich** it with arXiv full text (replace markdown_content, update parser_used, delete stale summaries, reset to PENDING). If PDF extraction fails, do NOT replace the Scholar record — log warning and leave unchanged. If arXiv record found, apply version check.
 - [ ] 4.8 Implement `ingest_from_search(source_config: ArxivSource, force_reprocess: bool) -> ArxivIngestionResult` — main search-based ingestion with PDF extraction
 - [ ] 4.9 Implement `ingest_paper(identifier: str, pdf_extraction: bool, force_reprocess: bool) -> ArxivPaperResult` — single paper lookup and ingest
 - [ ] 4.10 Implement `ingest_content(sources: list[ArxivSource] | None, after_date, force_reprocess) -> IngestionResult` — loads config, iterates sources, delegates to `ingest_from_search`
@@ -73,7 +73,7 @@ Section 9 (docs)          ── depends on all
   - Accepts: arXiv ID, arXiv URL, DOI
 - [ ] 6.3 Write CLI integration tests
 
-## 7. MCP Tools (depends on 5, 6)
+## 7. MCP Tools (depends on 5)
 
 - [ ] 7.1 Add `ingest_arxiv(max, days, force_reprocess, no_pdf)` tool to `src/mcp_server.py` — mirrors `aca ingest arxiv` CLI
 - [ ] 7.2 Add `ingest_arxiv_paper(identifier, no_pdf, force_reprocess)` tool — mirrors `aca ingest arxiv-paper` CLI
