@@ -54,6 +54,16 @@ This proposal provides **infrastructure** consumed by:
 - Citation count aggregation and ranking (future enhancement)
 - Automatic backfill of all existing content (opt-in via CLI)
 
+### Future: Click-to-Ingest Citations in Frontend
+
+This proposal lays the groundwork for a frontend capability where unresolved references are rendered as clickable citations in content, summary, and digest views. A user reading a digest could click an arXiv or DOI reference inline and trigger ad-hoc ingestion — the paper would be fetched, parsed, and added to the database on demand. This requires:
+- The reference extraction and resolution infrastructure from this proposal (backend ready)
+- Frontend rendering of `content_references` with resolution status (resolved → link to internal content, unresolved → "ingest" action button)
+- A `POST /api/v1/references/{id}/ingest` endpoint that triggers single-paper ingestion and resolves the reference
+- Markdown pipeline integration to annotate citations with reference metadata during rendering
+
+The API endpoint (`REQ-REF-008`) and auto-ingest trigger (`REQ-REF-006`) provide the backend primitives; the frontend UX and markdown annotation are a separate proposal.
+
 ## Risks
 
 | Risk | Mitigation |
