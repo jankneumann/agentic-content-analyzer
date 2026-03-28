@@ -33,6 +33,7 @@ export type ContentSource =
   | "xsearch"
   | "perplexity"
   | "blog"
+  | "scholar"
   | "other"
 
 /**

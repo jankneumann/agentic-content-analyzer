@@ -30,6 +30,7 @@ import {
   Code,
   BookOpen,
   Search,
+  GraduationCap,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"
@@ -177,6 +178,10 @@ const sourceConfig: Record<
   blog: {
     label: "Blog",
     icon: <BookOpen className="h-3 w-3" />,
+  },
+  scholar: {
+    label: "Scholar",
+    icon: <GraduationCap className="h-3 w-3" />,
   },
   other: {
     label: "Other",

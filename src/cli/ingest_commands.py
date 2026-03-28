@@ -1015,3 +1015,210 @@ def url(
         _ingest_via_api("url", params, "URL ingestion")
     except httpx.ConnectError:
         _url_direct(target_url, title, tags, notes)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest scholar
+# ---------------------------------------------------------------------------
+
+
+def _scholar_direct(max_entries: int) -> None:
+    """Direct scholar ingestion."""
+    from rich.console import Console
+
+    console = Console()
+    try:
+        from src.ingestion.orchestrator import ingest_scholar
+
+        count = ingest_scholar(max_entries=max_entries)
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "scholar"}, success=False)
+        else:
+            console.print(f"[red]Scholar ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "scholar", "items_ingested": count})
+    else:
+        console.print(f"[green]Scholar ingestion complete.[/green] {count} paper(s) ingested.")
+
+
+@app.command("scholar")
+def scholar(
+    max_entries: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum papers per source."),
+    ] = 20,
+) -> None:
+    """Ingest academic papers from configured scholar sources."""
+    if is_direct_mode():
+        return _scholar_direct(max_entries)
+
+    try:
+        params: dict[str, Any] = {"max_entries": max_entries}
+        _ingest_via_api("scholar", params, "Scholar ingestion")
+    except httpx.ConnectError:
+        _scholar_direct(max_entries)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest scholar-paper
+# ---------------------------------------------------------------------------
+
+
+def _scholar_paper_direct(identifier: str, with_refs: bool) -> None:
+    """Direct scholar paper ingestion."""
+    from rich.console import Console
+
+    console = Console()
+    try:
+        from src.ingestion.orchestrator import ingest_scholar_paper
+
+        count = ingest_scholar_paper(identifier=identifier, with_refs=with_refs)
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "scholar-paper"}, success=False)
+        else:
+            console.print(f"[red]Scholar paper ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result(
+            {
+                "source": "scholar-paper",
+                "identifier": identifier,
+                "items_ingested": count,
+                "with_refs": with_refs,
+            }
+        )
+    else:
+        if count > 0:
+            msg = f"[green]Paper ingested.[/green] Identifier: {identifier}"
+            if with_refs:
+                msg += " (with references)"
+            console.print(msg)
+        else:
+            console.print(f"[yellow]Paper not ingested[/yellow] (already exists or not found).")
+
+
+@app.command("scholar-paper")
+def scholar_paper(
+    identifier: Annotated[
+        str,
+        typer.Argument(help="Paper identifier: DOI, arXiv ID, S2 paper ID, or URL."),
+    ],
+    with_refs: Annotated[
+        bool,
+        typer.Option("--with-refs", help="Also ingest referenced papers."),
+    ] = False,
+) -> None:
+    """Ingest a single academic paper by identifier (DOI, arXiv ID, S2 ID, or URL)."""
+    if is_direct_mode():
+        return _scholar_paper_direct(identifier, with_refs)
+
+    try:
+        params: dict[str, Any] = {"identifier": identifier, "with_refs": with_refs}
+        _ingest_via_api("scholar-paper", params, "Scholar paper ingestion")
+    except httpx.ConnectError:
+        _scholar_paper_direct(identifier, with_refs)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest scholar-refs
+# ---------------------------------------------------------------------------
+
+
+def _scholar_refs_direct(
+    after: str | None,
+    before: str | None,
+    source: list[str] | None,
+    dry_run: bool,
+    limit: int | None,
+) -> None:
+    """Direct scholar reference extraction."""
+    from rich.console import Console
+
+    console = Console()
+
+    after_dt: datetime | None = None
+    before_dt: datetime | None = None
+    if after:
+        after_dt = datetime.strptime(after, "%Y-%m-%d").replace(tzinfo=UTC)
+    if before:
+        before_dt = datetime.strptime(before, "%Y-%m-%d").replace(tzinfo=UTC)
+
+    try:
+        from src.ingestion.orchestrator import ingest_scholar_refs
+
+        count = ingest_scholar_refs(
+            after=after_dt,
+            before=before_dt,
+            source_types=source,
+            dry_run=dry_run,
+            limit=limit,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "scholar-refs"}, success=False)
+        else:
+            console.print(f"[red]Scholar reference extraction failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result(
+            {
+                "source": "scholar-refs",
+                "papers_ingested": count,
+                "dry_run": dry_run,
+            }
+        )
+    else:
+        if dry_run:
+            console.print(f"[yellow]Dry run:[/yellow] {count} paper(s) would be ingested.")
+        else:
+            console.print(
+                f"[green]Reference extraction complete.[/green] {count} paper(s) ingested."
+            )
+
+
+@app.command("scholar-refs")
+def scholar_refs(
+    after: Annotated[
+        str | None,
+        typer.Option("--after", help="Only scan content after this date (YYYY-MM-DD)."),
+    ] = None,
+    before: Annotated[
+        str | None,
+        typer.Option("--before", help="Only scan content before this date (YYYY-MM-DD)."),
+    ] = None,
+    source: Annotated[
+        list[str] | None,
+        typer.Option("--source", "-s", help="Filter by source type (repeatable)."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Preview without ingesting."),
+    ] = False,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", "-l", help="Maximum references to ingest."),
+    ] = None,
+) -> None:
+    """Extract and ingest academic paper references from existing content."""
+    if is_direct_mode():
+        return _scholar_refs_direct(after, before, source, dry_run, limit)
+
+    try:
+        params: dict[str, Any] = {"dry_run": dry_run}
+        if after is not None:
+            params["after"] = after
+        if before is not None:
+            params["before"] = before
+        if source is not None:
+            params["source_types"] = source
+        if limit is not None:
+            params["limit"] = limit
+        _ingest_via_api("scholar-refs", params, "Scholar reference extraction")
+    except httpx.ConnectError:
+        _scholar_refs_direct(after, before, source, dry_run, limit)

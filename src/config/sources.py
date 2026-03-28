@@ -4,7 +4,7 @@ Loads ingestion source definitions from YAML config files in sources.d/
 directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
-Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar
 """
 
 import logging
@@ -152,6 +152,16 @@ class BlogSource(SourceBase):
     request_delay: float = 1.0
 
 
+class ScholarSource(SourceBase):
+    type: Literal["scholar"] = "scholar"
+    query: str
+    fields_of_study: list[str] = []
+    paper_types: list[str] = []
+    min_citation_count: int = 0
+    year_range: str = ""
+    venues: list[str] = []
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -162,7 +172,8 @@ Source = Annotated[
     | GmailSource
     | SubstackSource
     | WebSearchSource
-    | BlogSource,
+    | BlogSource
+    | ScholarSource,
     Field(discriminator="type"),
 ]
 
@@ -213,6 +224,10 @@ class SourcesConfig(BaseModel):
     def get_blog_sources(self) -> list[BlogSource]:
         """Get all enabled blog sources."""
         return [s for s in self.sources if isinstance(s, BlogSource) and s.enabled]
+
+    def get_scholar_sources(self) -> list[ScholarSource]:
+        """Get all enabled scholar sources."""
+        return [s for s in self.sources if isinstance(s, ScholarSource) and s.enabled]
 
 
 # --- Source File Model (per-file schema) ---

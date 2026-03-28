@@ -30,6 +30,7 @@ async def _run_ingestion(
         ingest_perplexity_search,
         ingest_podcast,
         ingest_rss,
+        ingest_scholar,
         ingest_substack,
         ingest_xsearch,
         ingest_youtube_playlist,
@@ -45,12 +46,13 @@ async def _run_ingestion(
         ("substack", ingest_substack),
     ]
 
-    # Add websearch sources from sources.d/websearch.yaml
+    # Load sources configuration
+    sources_config = None
     try:
         sources_config = load_sources_config(sources_dir=app_settings.sources_config_dir)
         websearch_sources: list[WebSearchSource] = sources_config.get_websearch_sources()  # type: ignore[assignment]
     except Exception as e:
-        logger.warning(f"Failed to load websearch sources: {e}")
+        logger.warning(f"Failed to load sources config: {e}")
         websearch_sources = []
 
     for ws in websearch_sources:
@@ -77,6 +79,19 @@ async def _run_ingestion(
                 return _f
 
             sources.append((f"websearch:{ws.name or 'grok'}", _make_grok(ws)))
+
+    # Add scholar sources from sources.d/scholar.yaml (if configured)
+    # NOTE: get_scholar_sources() is added by wp-config; use getattr for forward-compat
+    try:
+        get_scholar = (
+            getattr(sources_config, "get_scholar_sources", None) if sources_config else None
+        )
+        scholar_sources = get_scholar() if get_scholar else []
+    except Exception:
+        scholar_sources = []
+
+    if scholar_sources:
+        sources.append(("scholar", lambda: ingest_scholar()))
 
     if on_progress:
         on_progress({"stage": "ingestion", "message": f"Ingesting from {len(sources)} sources"})
