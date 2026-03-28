@@ -9,7 +9,7 @@ Each function:
 - Accepts the same parameters the service expects
 - Returns int (number of items ingested) or a result dataclass
 
-Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar
 """
 
 from __future__ import annotations
@@ -410,6 +410,132 @@ def ingest_perplexity_search(
         return result.items_ingested
     finally:
         service.close()
+
+
+def ingest_scholar(
+    *,
+    max_entries: int = 20,
+) -> int:
+    """Ingest academic papers from configured scholar sources.
+
+    Loads scholar sources from sources.d/scholar.yaml and runs search-based
+    ingestion for each enabled source via the ScholarContentIngestionService.
+
+    Args:
+        max_entries: Maximum papers per source.
+
+    Returns:
+        Number of papers ingested.
+    """
+    import asyncio
+
+    from src.config.sources import load_sources_config
+    from src.ingestion.scholar import ScholarContentIngestionService
+
+    try:
+        config = load_sources_config()
+        sources = config.get_scholar_sources()
+    except Exception:
+        logger.debug("Could not load scholar sources config")
+        return 0
+
+    if not sources:
+        return 0
+
+    async def _run() -> int:
+        service = ScholarContentIngestionService()
+        try:
+            total = 0
+            for source in sources:
+                if not source.enabled:
+                    continue
+                try:
+                    result = await service.ingest_from_search(source)
+                    total += result.papers_ingested
+                except Exception as exc:
+                    logger.error(f"Scholar source '{source.name}' failed: {exc}")
+            return total
+        finally:
+            await service.close()
+
+    return asyncio.run(_run())
+
+
+def ingest_scholar_paper(
+    *,
+    identifier: str,
+    with_refs: bool = False,
+) -> int:
+    """Ingest a single academic paper by identifier.
+
+    Resolves the identifier (DOI, arXiv ID, S2 paper ID, or URL) to a
+    Semantic Scholar paper and ingests it. Optionally ingests referenced
+    papers as well.
+
+    Args:
+        identifier: DOI, arXiv ID, S2 paper ID, or URL.
+        with_refs: Also ingest papers referenced by this paper.
+
+    Returns:
+        Number of papers ingested (1 if successful, 0 if not).
+    """
+    import asyncio
+
+    from src.ingestion.scholar import ScholarContentIngestionService
+
+    async def _run() -> int:
+        service = ScholarContentIngestionService()
+        try:
+            result = await service.ingest_paper(identifier, with_refs=with_refs)
+            return 1 if result.ingested else 0
+        finally:
+            await service.close()
+
+    return asyncio.run(_run())
+
+
+def ingest_scholar_refs(
+    *,
+    after: datetime | None = None,
+    before: datetime | None = None,
+    source_types: list[str] | None = None,
+    dry_run: bool = False,
+    limit: int | None = None,
+) -> int:
+    """Extract and ingest academic paper references from existing content.
+
+    Scans existing content records for arXiv IDs, DOIs, and Semantic Scholar
+    URLs, then resolves and ingests the referenced papers.
+
+    Args:
+        after: Only scan content ingested after this date.
+        before: Only scan content ingested before this date.
+        source_types: Filter content by source types (e.g., ["rss", "gmail"]).
+        dry_run: If True, report what would be ingested without actually ingesting.
+        limit: Maximum number of references to ingest.
+
+    Returns:
+        Number of papers ingested from extracted references.
+    """
+    import asyncio
+
+    from src.ingestion.reference_extractor import ReferenceExtractor
+
+    async def _run() -> int:
+        extractor = ReferenceExtractor()
+        try:
+            result = await extractor.ingest_extracted_references(
+                after=after,
+                before=before,
+                source_types=source_types,
+                dry_run=dry_run,
+                limit=limit,
+            )
+            return result.papers_ingested
+        finally:
+            await extractor.close()
+
+    return asyncio.run(_run())
 
 
 def ingest_url(
