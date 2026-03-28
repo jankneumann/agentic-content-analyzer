@@ -294,9 +294,7 @@ class ProfileSettings(BaseModel):
     # Allow additional top-level settings
     environment: Literal["development", "staging", "production"] = "development"
     log_level: str = "INFO"
-    allowed_origins: str = (
-        "http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost"
-    )
+    allowed_origins: str = "http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost,tauri://localhost"
 
     model_config = {"extra": "allow"}
 

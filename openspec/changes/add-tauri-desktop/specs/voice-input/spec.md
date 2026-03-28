@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Voice Input Hook
-The system SHALL provide a `useVoiceInput` React hook that wraps the Web Speech API, on-device Whisper engine, native Capacitor speech recognition, or Tauri-hosted STT, and exposes recording state, transcript, and control methods.
+The system SHALL provide a `useVoiceInput` React hook that wraps the Web Speech API, on-device Whisper WASM engine, or native Capacitor speech recognition, and exposes recording state, transcript, and control methods. In a Tauri desktop context, the SAME webview-hosted STT engines are used — Tauri adds a global hotkey trigger and overlay panel, not a new STT engine.
 
 #### Scenario: Start listening
 - **WHEN** `startListening()` is called
@@ -19,11 +19,12 @@ The system SHALL provide a `useVoiceInput` React hook that wraps the Web Speech 
 #### Scenario: Global hotkey trigger
 - **WHEN** the global keyboard shortcut is pressed on a Tauri desktop
 - **THEN** `toggleListening()` SHALL be called
-- **AND** a floating voice input overlay SHALL appear if starting
+- **AND** the main window SHALL be shown and brought to front
+- **AND** a floating voice input overlay panel SHALL appear in the main window if starting
 
 #### Scenario: Floating overlay transcript
 - **WHEN** voice input is activated via the global shortcut
-- **THEN** interim and final transcripts SHALL be displayed in the floating overlay
+- **THEN** interim and final transcripts SHALL be displayed in the floating overlay panel
 - **AND** the transcript SHALL be available for insertion into the app when the overlay is dismissed
 
 #### Scenario: Interim results
