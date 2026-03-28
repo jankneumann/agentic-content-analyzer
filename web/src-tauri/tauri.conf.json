@@ -10,7 +10,6 @@
     "beforeBuildCommand": "pnpm build"
   },
   "app": {
-    "title": "ACA — AI Content Analyzer",
     "windows": [
       {
         "label": "main",
@@ -21,7 +20,7 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "fileDropEnabled": true
+        "dragDropEnabled": true
       }
     ],
     "security": {
