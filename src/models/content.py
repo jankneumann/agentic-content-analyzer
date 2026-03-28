@@ -13,6 +13,7 @@ Content Sources:
 - SUBSTACK: Substack newsletters via Substack API
 - XSEARCH: X/Twitter posts via Grok API search
 - BLOG: Blog posts scraped from index pages
+- SCHOLAR: Academic papers via Semantic Scholar
 - MANUAL: Manually created content via API
 """
 
@@ -60,6 +61,7 @@ class ContentSource(StrEnum):
     XSEARCH = "xsearch"  # X/Twitter posts via Grok search
     PERPLEXITY = "perplexity"  # Web articles via Perplexity search
     BLOG = "blog"  # Blog posts scraped from index pages
+    SCHOLAR = "scholar"  # Academic papers via Semantic Scholar
     OTHER = "other"
 
 
