@@ -226,3 +226,33 @@ THEN references are extracted for matching content items in batches of 50
 AND resolve_references jobs are enqueued for each batch
 AND progress is logged (e.g., "Processed 50/500, extracted 127 references")
 ```
+
+### Scenario: Re-ingested content preserves existing references
+```
+GIVEN content A has 3 extracted references in content_references
+WHEN content A is re-ingested with force-reprocess
+AND reference extraction runs again on the updated content
+THEN existing references are preserved (INSERT ON CONFLICT DO NOTHING)
+AND newly discovered references (from updated markdown) are added
+AND stale references (from old content no longer present) are NOT deleted
+```
+
+### Scenario: Content with empty markdown_content
+```
+GIVEN a content item has markdown_content = NULL (e.g., failed PDF extraction)
+WHEN reference extraction runs
+THEN extract_from_content returns an empty list
+AND no content_references rows are created
+AND no error is raised
+```
+
+### Scenario: Neo4j unreachable during citation sync
+```
+GIVEN a reference is resolved (target_content_id set, status = "resolved")
+AND Neo4j is unreachable (connection refused or timeout)
+WHEN citation edge sync runs
+THEN the error is logged at WARNING level
+AND no exception propagates to the caller
+AND the reference's PostgreSQL state is unchanged (still resolved)
+AND no retry is enqueued (eventual consistency via next sync pass)
+```
