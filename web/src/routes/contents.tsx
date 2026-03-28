@@ -29,10 +29,10 @@ import {
   Plus,
   Code,
   BookOpen,
+  Search,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"
-import { toast } from "sonner"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -76,13 +76,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Toggle } from "@/components/ui/toggle"
-import { useContents, useContent, useContentStats, useIngestContents, useSaveUrl } from "@/hooks/use-contents"
-import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
-import {
-  IngestContentsDialog,
-  type IngestContentParams,
-  type SaveUrlParams,
-} from "@/components/generation"
+import { useContents, useContent, useContentStats } from "@/hooks/use-contents"
 import type { ContentStatus, ContentSource, ContentFilters } from "@/types"
 
 /**
@@ -156,6 +150,10 @@ const sourceConfig: Record<
     label: "Podcast",
     icon: <Mic className="h-3 w-3" />,
   },
+  substack: {
+    label: "Substack",
+    icon: <BookOpen className="h-3 w-3" />,
+  },
   file_upload: {
     label: "Upload",
     icon: <Upload className="h-3 w-3" />,
@@ -167,6 +165,18 @@ const sourceConfig: Record<
   webpage: {
     label: "Webpage",
     icon: <Globe className="h-3 w-3" />,
+  },
+  xsearch: {
+    label: "X Search",
+    icon: <Search className="h-3 w-3" />,
+  },
+  perplexity: {
+    label: "Perplexity",
+    icon: <Globe className="h-3 w-3" />,
+  },
+  blog: {
+    label: "Blog",
+    icon: <BookOpen className="h-3 w-3" />,
   },
   other: {
     label: "Other",
@@ -184,14 +194,10 @@ function ContentsPage() {
   })
   const [searchValue, setSearchValue] = useState("")
   const [selectedContentId, setSelectedContentId] = useState<number | null>(null)
-  const [ingestDialogOpen, setIngestDialogOpen] = useState(false)
   const [showRawMarkdown, setShowRawMarkdown] = useState(false)
 
   const { data, isLoading, isError, error, refetch } = useContents(filters)
   const { data: stats } = useContentStats()
-  const ingestMutation = useIngestContents()
-  const saveUrlMutation = useSaveUrl()
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
   const navigate = useNavigate()
 
   // Fetch selected content details
@@ -230,122 +236,6 @@ function ContentsPage() {
     }))
   }
 
-  const getSourceName = (source: ContentSource) => {
-    switch (source) {
-      case "gmail":
-        return "Gmail"
-      case "rss":
-        return "RSS"
-      case "youtube":
-        return "YouTube"
-      default:
-        return source
-    }
-  }
-
-  const handleIngest = (params: IngestContentParams) => {
-    // Close dialog immediately - task runs in background
-    setIngestDialogOpen(false)
-
-    const sourceName = getSourceName(params.source)
-
-    // Add background task
-    const taskId = addTask({
-      type: "ingest",
-      title: `Ingest from ${sourceName}`,
-      message: "Starting ingestion...",
-    })
-
-    // Track initial count for comparison
-    const initialCount = data?.total ?? 0
-
-    ingestMutation.mutate(
-      {
-        source: params.source,
-        max_results: params.max_results,
-        days_back: params.days_back,
-        force_reprocess: params.force_reprocess,
-      },
-      {
-        onSuccess: () => {
-          // API returns "queued" - actual work happens in background
-          // Poll for completion by checking for new content
-          updateTask(taskId, { progress: 20, message: `Fetching from ${sourceName}...` })
-
-          let pollCount = 0
-          const maxPolls = 60 // 5 minutes max (5s intervals)
-
-          const pollInterval = setInterval(async () => {
-            pollCount++
-            const progressPercent = Math.min(20 + pollCount * 1.3, 95)
-            updateTask(taskId, {
-              progress: Math.round(progressPercent),
-              message:
-                pollCount < 10
-                  ? `Connecting to ${sourceName}...`
-                  : pollCount < 20
-                    ? "Fetching content..."
-                    : pollCount < 30
-                      ? "Processing content..."
-                      : "Finalizing ingestion...",
-            })
-
-            const result = await refetch()
-            const newCount = result.data?.total ?? 0
-
-            // Check if we have new content or if we've been polling too long
-            if (newCount > initialCount || pollCount >= maxPolls) {
-              clearInterval(pollInterval)
-              if (newCount > initialCount) {
-                const ingestedCount = newCount - initialCount
-                completeTask(taskId, `Ingested ${ingestedCount} content item${ingestedCount > 1 ? "s" : ""}`)
-                toast.success(`Ingested ${ingestedCount} content item${ingestedCount > 1 ? "s" : ""} from ${sourceName}`)
-              } else {
-                // No new content found - could be duplicates or empty source
-                completeTask(taskId, "No new content found")
-                toast.info(`No new content found in ${sourceName}`)
-              }
-            }
-          }, 5000)
-        },
-        onError: (err) => {
-          const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          failTask(taskId, errorMsg)
-          toast.error(`Failed to ingest: ${errorMsg}`)
-        },
-      }
-    )
-
-    // Update progress indicator
-    updateTask(taskId, { progress: 10, message: "Queuing ingestion..." })
-  }
-
-  const handleSaveUrl = (params: SaveUrlParams) => {
-    setIngestDialogOpen(false)
-
-    saveUrlMutation.mutate(
-      { url: params.url },
-      {
-        onSuccess: (data) => {
-          if (data.duplicate) {
-            toast.info("URL already saved", {
-              description: `Content ID: ${data.content_id}`,
-            })
-          } else {
-            toast.success("URL saved for extraction", {
-              description: `Content ID: ${data.content_id}`,
-            })
-          }
-          refetch()
-        },
-        onError: (err) => {
-          const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          toast.error(`Failed to save URL: ${errorMsg}`)
-        },
-      }
-    )
-  }
-
   return (
     <PageContainer
       title="Contents"
@@ -356,7 +246,7 @@ function ContentsPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button onClick={() => setIngestDialogOpen(true)}>
+          <Button onClick={() => navigate({ to: "/ingest" })}>
             <Plus className="mr-2 h-4 w-4" />
             Ingest New
           </Button>
@@ -480,7 +370,7 @@ function ContentsPage() {
                 <Button
                   className="mt-4"
                   size="sm"
-                  onClick={() => setIngestDialogOpen(true)}
+                  onClick={() => navigate({ to: "/ingest" })}
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Ingest Content
@@ -823,15 +713,6 @@ function ContentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Ingest content dialog */}
-      <IngestContentsDialog
-        open={ingestDialogOpen}
-        onOpenChange={setIngestDialogOpen}
-        onIngest={handleIngest}
-        onSaveUrl={handleSaveUrl}
-        isIngesting={ingestMutation.isPending}
-        isSavingUrl={saveUrlMutation.isPending}
-      />
     </PageContainer>
   )
 }
