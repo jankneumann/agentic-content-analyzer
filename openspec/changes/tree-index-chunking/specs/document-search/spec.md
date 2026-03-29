@@ -57,13 +57,19 @@ The system SHALL generate LLM summaries for internal (non-leaf) tree nodes using
 
 The system SHALL perform LLM summarization as an async post-processing step in `index_content()` (following the existing async embedding pattern in `indexing.py`), NOT within the synchronous `ChunkingStrategy.chunk()` method. The `TreeIndexChunkingStrategy.chunk()` method SHALL remain synchronous, building the tree structure and creating placeholder summary chunks with empty `chunk_text`. The indexing service SHALL populate summaries asynchronously after chunk insertion.
 
-The system SHALL parallelize sibling node summarization via `asyncio.gather()` — nodes at the same tree depth with the same parent are independent and can be summarized concurrently. Bottom-up ordering requires children to be summarized before parents, but not sequential processing within a depth level.
+The system SHALL parallelize sibling node summarization via `asyncio.gather()` bounded by `asyncio.Semaphore(settings.tree_summarization_max_concurrent)` (default: 10) — nodes at the same tree depth with the same parent are independent and can be summarized concurrently. Bottom-up ordering requires children to be summarized before parents, but not sequential processing within a depth level. The Semaphore prevents rate limit exhaustion on documents with many sibling nodes.
 
 The system SHALL store internal node summaries as `DocumentChunk` records with `is_summary=True` and `chunk_type=SECTION`. No new `ChunkType` enum value is needed — the existing `SECTION` value is reused for summary nodes, disambiguated by the `is_summary` boolean.
 
 The system SHALL store leaf nodes as `DocumentChunk` records with `is_summary=False` and the appropriate `chunk_type` (PARAGRAPH, TABLE, CODE, etc.).
 
-The system SHALL expose `tree_index_min_tokens` (default: 8000) and `tree_index_min_heading_depth` (default: 3) as configurable settings.
+The system SHALL enforce a configurable `tree_max_depth` limit (default: 10) during tree construction. Heading nesting beyond this depth SHALL be merged into the deepest allowed parent node.
+
+The system SHALL expose the following configurable settings with validation bounds:
+- `tree_index_min_tokens` (default: 8000, range: 1000–100000)
+- `tree_index_min_heading_depth` (default: 3, range: 2–10)
+- `tree_summarization_max_concurrent` (default: 10, range: 1–50)
+- `tree_max_depth` (default: 10, range: 2–20)
 
 The system SHALL create telemetry spans for tree summarization LLM calls using the existing observability provider. Spans SHALL include `content_id`, `internal_node_count`, and `total_summary_tokens`.
 
@@ -285,11 +291,17 @@ The system SHALL execute tree search calls concurrently via `asyncio.gather()` w
 
 The system SHALL enforce a per-document tree search timeout (default: 5 seconds, setting: `tree_search_timeout_seconds`). Documents exceeding the timeout SHALL fall back to flat hybrid search for that document.
 
-The system SHALL merge tree search results with flat hybrid search results (BM25 + vector) using the existing Reciprocal Rank Fusion mechanism.
+The system SHALL return tree search results as chunk-level candidates with scores (not pre-aggregated `SearchResult` objects). Tree search chunk scores SHALL feed into the existing `_calculate_rrf()` as a third score source alongside BM25 and vector scores. Document-level `SearchResult` objects SHALL be assembled by `_aggregate_to_documents()` after RRF fusion, with `tree_reasoning` populated from tree search metadata.
+
+The system SHALL limit the number of selected nodes per document to `tree_search_max_selected_nodes` (default: 10). If the LLM returns more nodes, the system SHALL truncate to the first N and log an informational message.
 
 The system SHALL add `tree_reasoning: str | None = None` to the `SearchResult` model to store the LLM's reasoning trace for tree search results. This field SHALL be `None` for results retrieved via flat hybrid search.
 
-The system SHALL expose `tree_search_enabled` as a configurable setting (default: `True`).
+The system SHALL expose the following configurable settings with validation bounds:
+- `tree_search_enabled` (default: `True`)
+- `tree_search_max_documents` (default: 3, range: 1–20)
+- `tree_search_timeout_seconds` (default: 5, range: 1–30)
+- `tree_search_max_selected_nodes` (default: 10, range: 1–50)
 
 The system SHALL fall back to flat hybrid search when tree search fails (LLM error, timeout, invalid response).
 
@@ -354,6 +366,22 @@ The system SHALL create telemetry spans for tree search LLM calls using the exis
 - **THEN** node identifiers are compact sequential strings (e.g., `N001`, `N002`, `N003`)
 - **AND** the system maintains a mapping from compact IDs to database chunk IDs
 - **AND** the LLM response's `node_list` uses compact IDs which are resolved back to chunk IDs
+
+#### Scenario: Tree search node selection capped
+
+- **WHEN** a tree search LLM response returns 15 node IDs
+- **AND** `tree_search_max_selected_nodes` is set to 10
+- **THEN** the system uses only the first 10 node IDs
+- **AND** logs an informational message about the truncation
+- **AND** the search still succeeds with the truncated set
+
+#### Scenario: Tree search pre-ranks documents by existing scores
+
+- **WHEN** a search query matches 5 tree-indexed documents
+- **AND** `tree_search_max_documents` is set to 3
+- **THEN** the system selects the top 3 documents using BM25/vector pre-scores from the initial candidate generation
+- **AND** the remaining 2 documents are searched via standard flat hybrid search
+- **AND** selection is deterministic based on pre-scores
 
 #### Scenario: Tree search prompt managed via prompt system
 

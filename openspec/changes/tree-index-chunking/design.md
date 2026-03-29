@@ -97,12 +97,17 @@ async def _summarize_tree_nodes(chunks: list[DocumentChunk], model: str) -> None
     """
     summary_chunks = [c for c in chunks if c.is_summary]
     max_depth = max((c.tree_depth for c in summary_chunks), default=0)
+    semaphore = asyncio.Semaphore(settings.tree_summarization_max_concurrent)  # default: 10
+
+    async def _bounded_summarize(chunk):
+        async with semaphore:
+            return await _summarize_single_node(chunk, chunks, model)
 
     for depth in range(max_depth, -1, -1):  # bottom-up
         level_chunks = [c for c in summary_chunks if c.tree_depth == depth]
-        # Siblings at same depth are independent — parallelize
+        # Siblings at same depth are independent — parallelize with bounded concurrency
         summaries = await asyncio.gather(*[
-            _summarize_single_node(chunk, chunks, model)
+            _bounded_summarize(chunk)
             for chunk in level_chunks
         ])
         for chunk, summary in zip(level_chunks, summaries):
@@ -111,7 +116,7 @@ async def _summarize_tree_nodes(chunks: list[DocumentChunk], model: str) -> None
 
 This approach:
 - Keeps the chunking protocol sync (no protocol changes needed)
-- Parallelizes sibling summarization via `asyncio.gather()` — reduces a 15-section paper from ~10 sequential calls to ~3-4 rounds of parallel calls
+- Parallelizes sibling summarization via `asyncio.gather()` with `Semaphore(settings.tree_summarization_max_concurrent)` — reduces a 15-section paper from ~10 sequential calls to ~3-4 rounds of parallel calls, while bounding concurrent LLM calls to prevent rate limit exhaustion (follows established codebase pattern: youtube.py, reranking.py, image_extractor.py, html_markdown.py, audio_generator_v2.py)
 - Follows the existing indexing.py async pattern for embeddings
 - Uses `ModelStep.TREE_SUMMARIZATION` (not a Settings field) for model resolution, consistent with existing model config via `src/config/models.py`
 
@@ -124,27 +129,34 @@ This approach:
 ```
 Search query arrives → HybridSearchService.search()
   │
-  ├─ Partition content_ids:
-  │   tree_indexed = {ids with tree_depth IS NOT NULL}  ← authoritative check
-  │   flat_indexed = {all other ids}
+  ├─ 1. BM25 + vector candidate generation (existing) → chunk-level score dicts
   │
-  ├─ Flat path (existing): BM25 + vector → RRF
+  ├─ 2. Partition matching content_ids:
+  │      tree_indexed = {ids with tree_depth IS NOT NULL}  ← authoritative check
+  │      flat_indexed = {all other ids}
   │
-  ├─ Tree path (new):
-  │   0. Cap at tree_search_max_documents (default: 3), overflow → flat path
-  │   1. Load tree structure (summaries only, no leaf text)
-  │   2. Assign compact IDs: N001, N002, ... (map back to DB chunk IDs)
-  │   3. Format prompt: query + tree JSON with compact IDs
-  │   4. LLM calls via asyncio.gather() with tree_search_timeout_seconds (5s)
-  │   5. Parse response → {"thinking": "...", "node_list": ["N001", "N003"]}
-  │   6. Resolve compact IDs → DB chunk IDs → fetch leaf content
-  │   7. Score: position in node_list → rank
-  │   8. Store reasoning in SearchResult.tree_reasoning
+  ├─ 3. Pre-rank tree_indexed by BM25/vector pre-scores from step 1
+  │      → top-N (tree_search_max_documents, default: 3)
+  │      → overflow → flat path
   │
-  ├─ Timeout/error: fall back to flat path for that document
+  ├─ 4. Tree path (new) — returns chunk-level (chunk_id, content_id, score, reasoning):
+  │      a. Load tree structure (summaries only, no leaf text)
+  │      b. Assign compact IDs: N001, N002, ... (map back to DB chunk IDs via json.dumps)
+  │      c. Format prompt: query + tree JSON with compact IDs
+  │      d. LLM calls via asyncio.gather() with tree_search_timeout_seconds (5s)
+  │      e. Parse + validate response (try/except, type checks, regex on IDs)
+  │      f. Cap node_list at tree_search_max_selected_nodes (default: 10)
+  │      g. Resolve compact IDs → DB chunk IDs → fetch leaf content
+  │      h. Score: 1.0 / (rank_in_node_list + 1)
   │
-  └─ Merge: RRF fusion across flat + tree results
+  ├─ 5. Timeout/error: fall back to flat path for that document
+  │
+  └─ 6. RRF fusion: BM25 scores + vector scores + tree scores (three sources)
+         → _calculate_rrf() fuses chunk-level dicts
+         → _aggregate_to_documents() builds SearchResult with tree_reasoning
 ```
+
+**Key design decision**: `_tree_search()` returns `(chunk_id, content_id, score, reasoning)` tuples — NOT `SearchResult` objects. This matches the existing RRF fusion contract where `_calculate_rrf()` operates on chunk-level score dicts and `_aggregate_to_documents()` assembles `SearchResult` objects afterwards. Tree search results feed into RRF as a third score source alongside BM25 and vector.
 
 **Latency budget**: Tree search adds LLM latency. Safeguards:
 - `tree_search_max_documents` (default: 3) — caps LLM calls per query
