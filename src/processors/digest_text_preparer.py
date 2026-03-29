@@ -44,6 +44,13 @@ class DigestTextPreparer:
     HORIZONTAL_RULE_PATTERN = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
     IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
 
+    # Cleanup patterns
+    HTML_TAGS_PATTERN = re.compile(r"<[^>]+>")
+    MULTIPLE_SPACES_PATTERN = re.compile(r"[ \t]+")
+    MULTIPLE_NEWLINES_PATTERN = re.compile(r"\n{3,}")
+    SSML_BREAK_SPACING_PATTERN = re.compile(r"\s*(<break[^>]*/>)\s*")
+    SSML_CONSECUTIVE_BREAKS_PATTERN = re.compile(r"(<break[^>]*/>)\s+(<break[^>]*/>)")
+
     # SSML break durations
     BREAK_HEADING_H1 = "500ms"
     BREAK_HEADING_H2 = "400ms"
@@ -140,7 +147,7 @@ class DigestTextPreparer:
             return 0.0
 
         # Remove SSML tags for word count if present
-        clean_text = re.sub(r"<[^>]+>", "", text)
+        clean_text = self.HTML_TAGS_PATTERN.sub("", text)
 
         # Count words (split on whitespace)
         words = len(clean_text.split())
@@ -383,15 +390,15 @@ class DigestTextPreparer:
             Cleaned text.
         """
         # Replace multiple spaces with single space
-        text = re.sub(r"[ \t]+", " ", text)
+        text = self.MULTIPLE_SPACES_PATTERN.sub(" ", text)
 
         # Replace multiple newlines with double newline (paragraph break)
-        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = self.MULTIPLE_NEWLINES_PATTERN.sub("\n\n", text)
 
         # Clean up spaces around SSML tags
         if self.use_ssml:
-            text = re.sub(r"\s*(<break[^>]*/>)\s*", r" \1 ", text)
-            text = re.sub(r"(<break[^>]*/>)\s+(<break[^>]*/>)", r"\1\2", text)
+            text = self.SSML_BREAK_SPACING_PATTERN.sub(r" \1 ", text)
+            text = self.SSML_CONSECUTIVE_BREAKS_PATTERN.sub(r"\1\2", text)
 
         # Strip leading/trailing whitespace from each line
         lines = [line.strip() for line in text.split("\n")]
