@@ -89,7 +89,8 @@ export function VoiceInputButton({
               isListening && "text-red-500 hover:text-red-600",
               isProcessing && "text-amber-500",
               error && !isListening && !isProcessing && "text-destructive",
-              isDisabled && "cursor-not-allowed opacity-50",
+              isDisabled &&
+                "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-inherit",
               className
             )}
           >

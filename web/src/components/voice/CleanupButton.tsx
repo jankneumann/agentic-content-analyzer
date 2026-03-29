@@ -61,7 +61,8 @@ export function CleanupButton({
             aria-label="Clean up text with AI"
             className={cn(
               "h-9 w-9 shrink-0",
-              isDisabled && "cursor-not-allowed opacity-50",
+              isDisabled &&
+                "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-inherit",
               className
             )}
           >
