@@ -94,11 +94,40 @@ class AutoIngestTrigger:
             return None
 
     def _ingest_arxiv(self, arxiv_id: str, depth: int) -> Content | None:
-        """Auto-ingest for arXiv references -- DEFERRED until add-arxiv-ingest lands."""
-        logger.info(
-            "arXiv auto-ingest not available (add-arxiv-ingest not implemented): %s",
-            arxiv_id,
+        """Auto-ingest via arXiv for arXiv ID references.
+
+        Calls the synchronous orchestrator function which returns an int.
+        Queries for the newly ingested content by arXiv ID after ingestion.
+        """
+        try:
+            from src.ingestion.orchestrator import ingest_arxiv_paper
+
+            count = ingest_arxiv_paper(identifier=arxiv_id)
+            if count > 0:
+                return self._find_and_tag_by_arxiv_id(arxiv_id, depth)
+            return None
+        except Exception:
+            logger.warning("arXiv auto-ingest failed for %s", arxiv_id, exc_info=True)
+            return None
+
+    def _find_and_tag_by_arxiv_id(self, arxiv_id: str, depth: int) -> Content | None:
+        """Find recently ingested content by arXiv ID and tag with depth metadata."""
+        import sqlalchemy as sa
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        from src.models.content import Content
+
+        # GIN-indexed lookup: metadata_json @> '{"arxiv_id": "..."}'
+        content = (
+            self.db.query(Content)
+            .filter(Content.metadata_json.op("@>")(sa.cast({"arxiv_id": arxiv_id}, JSONB)))
+            .order_by(Content.ingested_at.desc())
+            .first()
         )
+        if content:
+            self._tag_auto_ingested(content, depth)
+            return content
+        logger.debug("Could not find ingested content for arXiv:%s after auto-ingest", arxiv_id)
         return None
 
     def _find_and_tag_by_doi(self, doi: str, depth: int) -> Content | None:

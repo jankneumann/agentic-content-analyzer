@@ -136,14 +136,82 @@ class TestAutoIngestTrigger:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_arxiv_deferred_returns_none(self):
+    async def test_arxiv_auto_ingest_success(self):
+        source = self._make_content(depth=0)
+        ingested = self._make_content()
+        ingested.metadata_json = {}
+
+        db = MagicMock()
+        db.get.return_value = source
+        # Mock the GIN-indexed query chain for _find_and_tag_by_arxiv_id
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            ingested
+        )
+
+        trigger = AutoIngestTrigger(db, enabled=True, max_depth=1)
+        ref = self._make_ref(external_id="2301.12345", id_type="arxiv")
+
+        with patch(
+            "src.ingestion.orchestrator.ingest_arxiv_paper",
+            return_value=1,
+        ):
+            result = await trigger.maybe_ingest(ref)
+
+        assert result is ingested
+        assert ingested.metadata_json["ingestion_mode"] == "auto_ingest"
+        assert ingested.metadata_json["auto_ingest_depth"] == 1
+
+    @pytest.mark.asyncio
+    async def test_arxiv_auto_ingest_zero_count_returns_none(self):
         source = self._make_content(depth=0)
         db = MagicMock()
         db.get.return_value = source
 
         trigger = AutoIngestTrigger(db, enabled=True, max_depth=1)
         ref = self._make_ref(external_id="2301.12345", id_type="arxiv")
-        result = await trigger.maybe_ingest(ref)
+
+        with patch(
+            "src.ingestion.orchestrator.ingest_arxiv_paper",
+            return_value=0,
+        ):
+            result = await trigger.maybe_ingest(ref)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_arxiv_not_found_after_ingest_returns_none(self):
+        """Orchestrator reports success but content not found by arXiv query."""
+        source = self._make_content(depth=0)
+        db = MagicMock()
+        db.get.return_value = source
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+
+        trigger = AutoIngestTrigger(db, enabled=True, max_depth=1)
+        ref = self._make_ref(external_id="2301.12345", id_type="arxiv")
+
+        with patch(
+            "src.ingestion.orchestrator.ingest_arxiv_paper",
+            return_value=1,
+        ):
+            result = await trigger.maybe_ingest(ref)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_arxiv_error_returns_none(self):
+        source = self._make_content(depth=0)
+        db = MagicMock()
+        db.get.return_value = source
+
+        trigger = AutoIngestTrigger(db, enabled=True, max_depth=1)
+        ref = self._make_ref(external_id="2301.12345", id_type="arxiv")
+
+        with patch(
+            "src.ingestion.orchestrator.ingest_arxiv_paper",
+            side_effect=Exception("network error"),
+        ):
+            result = await trigger.maybe_ingest(ref)
+
         assert result is None
 
     @pytest.mark.asyncio
