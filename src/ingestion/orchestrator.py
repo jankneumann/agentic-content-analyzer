@@ -9,7 +9,9 @@ Each function:
 - Accepts the same parameters the service expects
 - Returns int (number of items ingested) or a result dataclass
 
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar
+
 """
 
 from __future__ import annotations
@@ -536,6 +538,92 @@ def ingest_scholar_refs(
             await extractor.close()
 
     return asyncio.run(_run())
+
+
+def ingest_arxiv(
+    *,
+    max_results: int = 20,
+    after_date: datetime | None = None,
+    force_reprocess: bool = False,
+    no_pdf: bool = False,
+) -> int:
+    """Ingest papers from configured arXiv sources.
+
+    Loads sources from sources.d/arxiv.yaml and runs search-based
+    ingestion for each enabled source.
+
+    Args:
+        max_results: Maximum papers per source.
+        after_date: Only ingest papers published after this date.
+        force_reprocess: Force re-ingest existing papers.
+        no_pdf: Skip PDF download, use abstract-only.
+
+    Returns:
+        Number of papers ingested.
+    """
+    from src.config.sources import load_sources_config
+    from src.ingestion.arxiv import ArxivContentIngestionService
+
+    try:
+        config = load_sources_config()
+        sources = config.get_arxiv_sources()
+    except Exception:
+        logger.debug("Could not load arxiv sources config")
+        return 0
+
+    if not sources:
+        return 0
+
+    # Override pdf_extraction if --no-pdf
+    if no_pdf:
+        for s in sources:
+            s.pdf_extraction = False
+
+    # Override max_entries
+    for s in sources:
+        if s.max_entries is None or max_results != 20:
+            s.max_entries = max_results
+
+    service = ArxivContentIngestionService()
+    try:
+        return service.ingest_content(
+            sources=sources,
+            after_date=after_date,
+            force_reprocess=force_reprocess,
+        )
+    finally:
+        service.close()
+
+
+def ingest_arxiv_paper(
+    *,
+    identifier: str,
+    pdf_extraction: bool = True,
+    force_reprocess: bool = False,
+) -> int:
+    """Ingest a single arXiv paper by identifier.
+
+    Args:
+        identifier: arXiv ID, URL, or DOI.
+        pdf_extraction: Whether to download and parse the PDF.
+        force_reprocess: Force re-ingest.
+
+    Returns:
+        1 if ingested, 0 otherwise.
+    """
+    from src.ingestion.arxiv import ArxivContentIngestionService
+
+    service = ArxivContentIngestionService()
+    try:
+        result = service.ingest_paper(
+            identifier,
+            pdf_extraction=pdf_extraction,
+            force_reprocess=force_reprocess,
+        )
+        return 1 if result.ingested else 0
+    finally:
+        service.close()
+
 
 
 def ingest_url(

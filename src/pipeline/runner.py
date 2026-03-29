@@ -26,6 +26,7 @@ async def _run_ingestion(
     from src.config import settings as app_settings
     from src.config.sources import WebSearchSource, load_sources_config
     from src.ingestion.orchestrator import (
+        ingest_arxiv,
         ingest_gmail,
         ingest_perplexity_search,
         ingest_podcast,
@@ -92,6 +93,17 @@ async def _run_ingestion(
 
     if scholar_sources:
         sources.append(("scholar", lambda: ingest_scholar()))
+
+    # Add arXiv sources from sources.d/arxiv.yaml (if configured)
+    try:
+        get_arxiv = getattr(sources_config, "get_arxiv_sources", None) if sources_config else None
+        arxiv_sources = get_arxiv() if get_arxiv else []
+    except Exception:
+        arxiv_sources = []
+
+    if arxiv_sources:
+        sources.append(("arxiv", lambda: ingest_arxiv()))
+
 
     if on_progress:
         on_progress({"stage": "ingestion", "message": f"Ingesting from {len(sources)} sources"})

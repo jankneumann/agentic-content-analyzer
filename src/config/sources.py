@@ -4,7 +4,9 @@ Loads ingestion source definitions from YAML config files in sources.d/
 directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar, arxiv
 Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar
+
 """
 
 import logging
@@ -162,6 +164,16 @@ class ScholarSource(SourceBase):
     venues: list[str] = []
 
 
+class ArxivSource(SourceBase):
+    type: Literal["arxiv"] = "arxiv"
+    categories: list[str] = []
+    search_query: str | None = None
+    sort_by: Literal["relevance", "lastUpdatedDate", "submittedDate"] = "submittedDate"
+    pdf_extraction: bool = True
+    max_pdf_pages: int = 80
+
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -173,7 +185,8 @@ Source = Annotated[
     | SubstackSource
     | WebSearchSource
     | BlogSource
-    | ScholarSource,
+    | ScholarSource
+    | ArxivSource,
     Field(discriminator="type"),
 ]
 
@@ -228,6 +241,11 @@ class SourcesConfig(BaseModel):
     def get_scholar_sources(self) -> list[ScholarSource]:
         """Get all enabled scholar sources."""
         return [s for s in self.sources if isinstance(s, ScholarSource) and s.enabled]
+
+    def get_arxiv_sources(self) -> list[ArxivSource]:
+        """Get all enabled arXiv sources."""
+        return [s for s in self.sources if isinstance(s, ArxivSource) and s.enabled]
+
 
 
 # --- Source File Model (per-file schema) ---

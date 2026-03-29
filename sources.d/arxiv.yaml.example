@@ -1,0 +1,27 @@
+# arXiv paper ingestion sources
+# Copy to arxiv.yaml and customize to enable.
+# No API key required — arXiv API is freely accessible.
+
+defaults:
+  type: arxiv
+  enabled: true
+  max_entries: 20
+  sort_by: submittedDate
+  pdf_extraction: true
+  max_pdf_pages: 80
+
+sources:
+  - name: "AI Research"
+    categories: ["cs.AI"]
+    search_query: "artificial intelligence"
+    tags: [ai, research]
+
+  - name: "LLM & NLP Papers"
+    categories: ["cs.CL", "cs.LG"]
+    search_query: "large language model"
+    tags: [llm, nlp]
+
+  - name: "AI Agents"
+    categories: ["cs.AI", "cs.MA"]
+    search_query: "autonomous agent"
+    tags: [agents]

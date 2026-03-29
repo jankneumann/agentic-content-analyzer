@@ -34,6 +34,7 @@ export type ContentSource =
   | "perplexity"
   | "blog"
   | "scholar"
+  | "arxiv"
   | "other"
 
 /**
