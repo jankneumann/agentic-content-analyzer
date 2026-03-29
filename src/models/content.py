@@ -35,11 +35,13 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, relationship
 
 from src.models.base import Base
 
 if TYPE_CHECKING:
+    from src.models.content_reference import ContentReference
     from src.models.image import Image
     from src.models.summary import Summary
 
@@ -119,7 +121,7 @@ class Content(Base):  # type: ignore[valid-type, misc]
     tables_json = Column(JSON, nullable=True)  # List of TableData for complex tables
     links_json = Column(JSON, nullable=True)  # Extracted URLs for link analysis
     metadata_json = Column(
-        JSON, nullable=True
+        JSONB, nullable=True
     )  # Additional metadata (page_count, word_count, etc.)
 
     # Raw preservation (optional, for re-parsing)
@@ -187,6 +189,19 @@ class Content(Base):  # type: ignore[valid-type, misc]
         foreign_keys="DocumentChunk.content_id",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+    # Content → ContentReference relationships
+    references: Mapped[list["ContentReference"]] = relationship(
+        "ContentReference",
+        foreign_keys="ContentReference.source_content_id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    cited_by: Mapped[list["ContentReference"]] = relationship(
+        "ContentReference",
+        foreign_keys="ContentReference.target_content_id",
     )
 
     # Composite unique constraint on source_type + source_id

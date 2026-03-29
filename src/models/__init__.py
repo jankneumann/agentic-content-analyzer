@@ -15,6 +15,14 @@ from src.models.base import Base
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.chunk import ChunkType, DocumentChunk
 from src.models.content import Content, ContentSource, ContentStatus
+from src.models.content_reference import (
+    ContentReference,
+    ExternalIdType,
+    ReferenceListResponse,
+    ReferenceResponse,
+    ReferenceType,
+    ResolutionStatus,
+)
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
 from src.models.image import Image, ImageSource
@@ -67,6 +75,13 @@ __all__ = [
     "Content",
     "ContentSource",
     "ContentStatus",
+    # Content Reference
+    "ContentReference",
+    "ReferenceType",
+    "ExternalIdType",
+    "ResolutionStatus",
+    "ReferenceResponse",
+    "ReferenceListResponse",
     # Document
     "DocumentContent",
     "DocumentFormat",

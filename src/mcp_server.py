@@ -1675,6 +1675,224 @@ def review_podcast_script(
 
 
 # ===========================================================================
+# CONTENT REFERENCE TOOLS
+# ===========================================================================
+
+
+@mcp.tool()
+def get_content_references(
+    content_id: int,
+    direction: str = "outgoing",
+) -> str:
+    """Get references for a content item.
+
+    Retrieves citation and reference relationships for a specific content record.
+    Outgoing = what this content cites; incoming = what cites this content.
+
+    Args:
+        content_id: Content record ID.
+        direction: 'outgoing' (what this cites) or 'incoming' (what cites this).
+
+    Returns:
+        JSON with references list, count, and direction.
+    """
+    from src.models.content_reference import ContentReference, ResolutionStatus
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        if direction == "incoming":
+            refs = (
+                db.query(ContentReference)
+                .filter(
+                    ContentReference.target_content_id == content_id,
+                    ContentReference.resolution_status == ResolutionStatus.RESOLVED,
+                )
+                .all()
+            )
+        else:
+            refs = (
+                db.query(ContentReference)
+                .filter(ContentReference.source_content_id == content_id)
+                .all()
+            )
+
+        result = []
+        for ref in refs:
+            result.append(
+                {
+                    "id": ref.id,
+                    "reference_type": ref.reference_type,
+                    "external_id": ref.external_id,
+                    "external_id_type": ref.external_id_type,
+                    "external_url": ref.external_url,
+                    "resolution_status": ref.resolution_status,
+                    "target_content_id": ref.target_content_id,
+                    "confidence": ref.confidence,
+                }
+            )
+
+    return _serialize({"references": result, "count": len(result), "direction": direction})
+
+
+@mcp.tool()
+def extract_references(
+    after: str | None = None,
+    before: str | None = None,
+    source: str | None = None,
+    dry_run: bool = False,
+    batch_size: int = 50,
+) -> str:
+    """Extract references from existing content (backfill).
+
+    Scans content records for arXiv IDs, DOIs, Semantic Scholar IDs, and
+    classifiable URLs. Stores discovered references in content_references table.
+
+    Args:
+        after: ISO date - only process content after this date.
+        before: ISO date - only process content before this date.
+        source: Filter by source type (e.g., 'rss', 'substack').
+        dry_run: Preview without storing.
+        batch_size: Number of content items per batch.
+
+    Returns:
+        JSON with extraction stats: scanned, references_found, dry_run flag.
+    """
+    from datetime import datetime as dt
+
+    from sqlalchemy import text as sa_text
+
+    from src.models.content import Content
+    from src.services.reference_extractor import ReferenceExtractor
+    from src.storage.database import get_db
+
+    extractor = ReferenceExtractor()
+    total_stored = 0
+    total_scanned = 0
+
+    with get_db() as db:
+        query = db.query(Content)
+        if after:
+            query = query.filter(Content.ingested_at >= dt.fromisoformat(after))
+        if before:
+            query = query.filter(Content.ingested_at <= dt.fromisoformat(before))
+        if source:
+            query = query.filter(Content.source_type.cast(sa_text("text")) == source)
+
+        contents = query.limit(batch_size).all()
+
+        for content in contents:
+            refs = extractor.extract_from_content(content, db)
+            total_scanned += 1
+            if refs and not dry_run and content.id is not None:
+                stored = extractor.store_references(content.id, refs, db)
+                total_stored += stored
+            elif refs:
+                total_stored += len(refs)
+
+    return _serialize(
+        {
+            "scanned": total_scanned,
+            "references_found": total_stored,
+            "dry_run": dry_run,
+        }
+    )
+
+
+@mcp.tool()
+def resolve_references(
+    batch_size: int = 100,
+) -> str:
+    """Resolve unresolved content references against the database.
+
+    Matches external identifiers (arXiv ID, DOI, S2 paper ID) and URLs
+    against existing Content records and updates resolution status.
+
+    Args:
+        batch_size: Number of references to process.
+
+    Returns:
+        JSON with resolution stats: resolved count and batch_size.
+    """
+    from src.services.reference_resolver import ReferenceResolver
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        resolver = ReferenceResolver(db)
+        resolved = resolver.resolve_batch(batch_size)
+
+    return _serialize(
+        {
+            "resolved": resolved,
+            "batch_size": batch_size,
+        }
+    )
+
+
+@mcp.tool()
+def ingest_reference(
+    reference_id: int,
+) -> str:
+    """Ingest content for a specific unresolved reference (ad-hoc).
+
+    Operates independently of reference_auto_ingest_enabled setting --
+    requires explicit invocation per reference. The setting gates only
+    unattended background auto-ingestion, not deliberate per-reference requests.
+
+    Args:
+        reference_id: content_references row ID.
+
+    Returns:
+        JSON with ingestion result and resolution status.
+    """
+    import asyncio
+
+    from src.config.settings import get_settings
+    from src.models.content_reference import ContentReference, ResolutionStatus
+    from src.services.reference_auto_ingest import AutoIngestTrigger
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        ref = db.get(ContentReference, reference_id)
+        if not ref:
+            return _serialize({"error": f"Reference {reference_id} not found"})
+
+        if ref.resolution_status == ResolutionStatus.RESOLVED:
+            return _serialize(
+                {
+                    "status": "already_resolved",
+                    "target_content_id": ref.target_content_id,
+                }
+            )
+
+        if not ref.external_id or not ref.external_id_type:
+            return _serialize({"error": "Reference has no structured ID for ingestion"})
+
+        settings = get_settings()
+        trigger = AutoIngestTrigger(
+            db=db,
+            enabled=True,  # Always enabled for ad-hoc (independent of setting)
+            max_depth=settings.reference_auto_ingest_max_depth,
+        )
+
+        try:
+            content = asyncio.run(trigger.maybe_ingest(ref))
+        except RuntimeError:
+            # Already in async context
+            loop = asyncio.get_event_loop()
+            content = loop.run_until_complete(trigger.maybe_ingest(ref))
+
+        if content:
+            return _serialize(
+                {
+                    "status": "ingested",
+                    "content_id": content.id if hasattr(content, "id") else None,
+                }
+            )
+        else:
+            return _serialize({"status": "ingestion_failed"})
+
+
+# ===========================================================================
 # Auth middleware for HTTP transports
 # ===========================================================================
 

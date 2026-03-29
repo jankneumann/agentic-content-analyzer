@@ -417,3 +417,105 @@ def switch_embeddings_cmd(
                         fg=typer.colors.YELLOW,
                     )
                 )
+
+
+@app.command("extract-refs")
+def extract_refs(
+    after: str | None = typer.Option(
+        None, "--after", help="ISO date: only process content after this date"
+    ),
+    before: str | None = typer.Option(
+        None, "--before", help="ISO date: only process content before this date"
+    ),
+    source: str | None = typer.Option(
+        None, "--source", help="Filter by source type (e.g., 'rss', 'substack')"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without storing"),
+    batch_size: int = typer.Option(50, "--batch-size", "-b", help="Content items per batch"),
+) -> None:
+    """Extract references from existing content into content_references table."""
+    from datetime import datetime as dt
+
+    from src.models.content import Content
+    from src.services.reference_extractor import ReferenceExtractor
+    from src.storage.database import get_db
+
+    extractor = ReferenceExtractor()
+    total_stored = 0
+    total_scanned = 0
+
+    with get_db() as db:
+        query = db.query(Content)
+        if after:
+            query = query.filter(Content.ingested_at >= dt.fromisoformat(after))
+        if before:
+            query = query.filter(Content.ingested_at <= dt.fromisoformat(before))
+        if source:
+            from sqlalchemy import String
+
+            query = query.filter(Content.source_type.cast(String) == source)
+
+        contents = query.all()
+        total_content = len(contents)
+
+        for i, content in enumerate(contents):
+            refs = extractor.extract_from_content(content, db)
+            total_scanned += 1
+
+            if refs and not dry_run and content.id is not None:
+                stored = extractor.store_references(content.id, refs, db)
+                total_stored += stored
+            elif refs:
+                total_stored += len(refs)
+
+            if not is_json_mode() and (i + 1) % batch_size == 0:
+                typer.echo(
+                    f"Processed {i + 1}/{total_content}, extracted {total_stored} references"
+                )
+
+    if is_json_mode():
+        output_result(
+            {
+                "scanned": total_scanned,
+                "references_found": total_stored,
+                "dry_run": dry_run,
+            }
+        )
+    elif dry_run:
+        typer.echo(f"[DRY RUN] Scanned {total_scanned} items, found {total_stored} references")
+    else:
+        typer.echo(f"Extracted {total_stored} references from {total_scanned} content items")
+
+
+@app.command("resolve-refs")
+def resolve_refs(
+    batch_size: int = typer.Option(
+        100, "--batch-size", "-b", help="Number of references to process"
+    ),
+    auto_ingest: bool = typer.Option(
+        False, "--auto-ingest", help="Trigger ingestion for unresolved structured IDs"
+    ),
+) -> None:
+    """Resolve unresolved content references against the database."""
+    from src.services.reference_resolver import ReferenceResolver
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        resolver = ReferenceResolver(db)
+        resolved = resolver.resolve_batch(batch_size)
+
+    if is_json_mode():
+        output_result(
+            {
+                "resolved": resolved,
+                "batch_size": batch_size,
+                "auto_ingest": auto_ingest,
+            }
+        )
+    else:
+        typer.echo(f"Resolved {resolved} references (batch_size={batch_size})")
+
+        if auto_ingest:
+            typer.echo(
+                "Auto-ingest: use 'aca manage extract-refs' + queue worker for automated ingestion"
+            )

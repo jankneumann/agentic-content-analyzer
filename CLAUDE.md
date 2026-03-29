@@ -115,6 +115,7 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 | Railway PORT is dynamic | Use `${PORT:-8000}` in CMD; never hardcode in Dockerfile |
 | pgvector not in ORM | `DocumentChunk.embedding` is raw SQL only; `embedding_provider`/`embedding_model` ARE mapped |
 | Mock patch lazy imports | Patch at SOURCE module (`src.X.Y`), not consumer — lazy `from X import Y` creates local vars |
+| `content_references` dual uniqueness | Refs with `external_id` use `uq_content_reference` constraint; URL-only refs use partial index `uq_content_reference_url` — `store_references()` handles both paths |
 
 ## Quick Links by Task
 
@@ -123,6 +124,8 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 
 ### Working with Content
 - [Ingestion services](docs/ARCHITECTURE.md#ingestion-services) | [Parser ecosystem](docs/ARCHITECTURE.md#parser-ecosystem) | [Data models](docs/ARCHITECTURE.md#data-models)
+- **Content References**: `src/services/reference_extractor.py` (extraction), `src/services/reference_resolver.py` (resolution), `src/services/reference_hook.py` (ingestion hooks)
+- CLI: `aca manage extract-refs` (backfill), `aca manage resolve-refs` (resolve batch)
 
 ### Testing
 - [Testing guide](docs/TESTING.md) | [E2E Playwright](docs/TESTING.md#e2e-testing-playwright) | [Hoverfly simulation](docs/TESTING.md#hoverfly-api-simulation) | [Contract tests](tests/contract/)

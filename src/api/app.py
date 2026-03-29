@@ -30,6 +30,7 @@ from src.api.notification_routes import router as notification_router
 from src.api.otel_proxy_routes import router as otel_proxy_router
 from src.api.pipeline_routes import router as pipeline_router
 from src.api.podcast_routes import router as podcast_router
+from src.api.reference_routes import router as reference_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
 from src.api.search_routes import router as search_router
@@ -181,6 +182,7 @@ app.include_router(shared_router)  # Public shared content (no auth)
 app.include_router(notification_router)  # Notification events and SSE stream
 app.include_router(notification_preferences_router)  # Notification preferences
 app.include_router(pipeline_router)  # Pipeline execution (daily/weekly)
+app.include_router(reference_router)  # Content reference tracking
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 
 
