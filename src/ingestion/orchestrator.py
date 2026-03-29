@@ -10,6 +10,8 @@ Each function:
 - Returns int (number of items ingested) or a result dataclass
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar
+
 """
 
 from __future__ import annotations
@@ -621,6 +623,7 @@ def ingest_arxiv_paper(
         return 1 if result.ingested else 0
     finally:
         service.close()
+
 
 
 def ingest_url(

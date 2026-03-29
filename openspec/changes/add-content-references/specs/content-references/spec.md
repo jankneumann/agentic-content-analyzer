@@ -126,7 +126,7 @@ All API endpoints and CLI commands must also be registered as MCP tools in `src/
 - `get_content_references(content_id, direction)` — query outgoing/incoming references
 - `extract_references(after, before, source, dry_run, batch_size)` — backfill extraction
 - `resolve_references(batch_size, auto_ingest)` — trigger resolution pass
-- `ingest_reference(reference_id)` — ad-hoc ingest for a specific unresolved reference
+- `ingest_reference(reference_id)` — ad-hoc ingest for a specific unresolved reference. This tool operates **independently** of `reference_auto_ingest_enabled` — it requires explicit per-reference invocation and is not gated by the auto-ingest setting. The setting controls only unattended background auto-ingestion (REQ-REF-006).
 
 This ensures agentic workflows (MCP clients, AI assistants) have the same citation discovery and ingestion capabilities as the API and CLI.
 

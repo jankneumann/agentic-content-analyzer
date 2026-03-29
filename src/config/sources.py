@@ -5,6 +5,8 @@ directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
 Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar, arxiv
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar
+
 """
 
 import logging
@@ -171,6 +173,7 @@ class ArxivSource(SourceBase):
     max_pdf_pages: int = 80
 
 
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -242,6 +245,7 @@ class SourcesConfig(BaseModel):
     def get_arxiv_sources(self) -> list[ArxivSource]:
         """Get all enabled arXiv sources."""
         return [s for s in self.sources if isinstance(s, ArxivSource) and s.enabled]
+
 
 
 # --- Source File Model (per-file schema) ---

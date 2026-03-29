@@ -53,6 +53,7 @@ We propose a hybrid model inspired by [VectifyAI's PageIndex](https://github.com
 - **Database**: One Alembic migration adding 3 nullable columns to `document_chunks`
 - **Cost**: Phase 1 is free. Phase 2 adds ~1 LLM call per long document during indexing (node summaries). Phase 3 adds 1-2 LLM calls per search query that hits tree-indexed content
 - **Risk**: Low — all phases are additive; existing flat chunk + hybrid search continues to work unchanged. Tree features are opt-in via content length thresholds
+- **Failure trade-off**: Tree summarization uses all-or-nothing rollback — if LLM fails for any node, the entire tree is deleted (flat chunks preserved). Content remains fully searchable via BM25 + vector. This avoids partial trees with missing summaries that would produce unpredictable tree search behavior.
 
 ## Design Decisions
 

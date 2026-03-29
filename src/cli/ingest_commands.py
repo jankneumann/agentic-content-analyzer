@@ -1357,3 +1357,4 @@ def arxiv_paper(
         _ingest_via_api("arxiv-paper", params, "arXiv paper ingestion")
     except httpx.ConnectError:
         _arxiv_paper_direct(identifier, no_pdf, force_reprocess)
+
