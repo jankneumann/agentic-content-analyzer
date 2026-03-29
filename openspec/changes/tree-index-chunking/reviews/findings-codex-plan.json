@@ -1,0 +1,55 @@
+{
+  "review_type": "plan",
+  "target": "tree-index-chunking",
+  "reviewer_vendor": "gpt-5-codex",
+  "findings": [
+    {
+      "id": 1,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Task 2.4 says `TreeIndexChunkingStrategy` should return both tree chunks and delegated flat chunks (`openspec/changes/tree-index-chunking/tasks.md:95-104`), but Task 2.5 already has `ChunkingService.chunk_content()` produce flat chunks first and then append tree chunks when the document qualifies (`openspec/changes/tree-index-chunking/tasks.md:109-114`). That conflicts with the current single-strategy dispatch in `get_chunking_strategy()` / `ChunkingService.chunk_content()` (`src/services/chunking.py:534-637`) and would either duplicate flat chunks or leave `chunking_strategy: tree_index` behavior ambiguous.",
+      "resolution": "Make `TreeIndexChunkingStrategy` tree-only. Keep flat chunk generation in `ChunkingService.chunk_content()` and explicitly special-case `chunking_strategy: tree_index` so it means \"flat + tree\" instead of dispatching a single strategy.",
+      "disposition": "fix"
+    },
+    {
+      "id": 2,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Task 3.4 defines `_tree_search(...)-> list[SearchResult]` and Task 3.6 then says to merge tree results with the existing RRF pipeline (`openspec/changes/tree-index-chunking/tasks.md:192-219`). In the current service, BM25/vector helpers return chunk tuples, `_calculate_rrf()` fuses chunk-level score dicts, and `SearchResult` objects are assembled only after document aggregation (`src/services/search.py:73-207`, `src/services/search.py:310-343`, `src/services/search.py:384-506`). The plan does not fit the existing fusion contract.",
+      "resolution": "Redefine `_tree_search()` to return chunk-level candidates and scores (for example `chunk_id`, `content_id`, rank/score, optional reasoning metadata) and feed those into RRF before `_aggregate_to_documents()` populates `SearchResult.tree_reasoning`.",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Task 3.8 promises `backfill-tree-index` and `--force` rebuilds that preserve flat chunks (`openspec/changes/tree-index-chunking/tasks.md:236-245`; `openspec/changes/tree-index-chunking/specs/document-search/spec.md:366-375,391-397`), but the current indexing service only supports \"append whatever `chunk_content()` returns\" via `index_content()` and \"delete all chunks for a content_id then rebuild\" via `reindex_content()` (`src/services/indexing.py:59-149`, `src/services/indexing.py:149-214`). Because no task adds a tree-only indexing API, implementing 3.8 in `src/cli/manage.py` alone would either duplicate indexing logic or violate the preserve-flat invariant.",
+      "resolution": "Add a reusable indexing-layer method for tree-only create/rebuild against existing content, make Task 3.8 depend on it, and cover `--dry-run`, skip, and `--force` preserve-flat behavior with tests.",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "performance",
+      "criticality": "medium",
+      "description": "Both summarization and query-time tree search are specified as unbounded `asyncio.gather()` fan-out (`openspec/changes/tree-index-chunking/design.md:91-109,138-152`; `openspec/changes/tree-index-chunking/tasks.md:121-123,196-203`). The repository already uses semaphores to bound concurrent LLM work in `src/services/reranking.py:189-214`, and a global `semaphore_limit` setting exists in `src/config/settings.py:426-427`. The plan ignores this existing pattern, so a wide document tree can burst many simultaneous LLM calls during indexing or search.",
+      "resolution": "Specify semaphore-bounded concurrency for tree summarization and tree search, preferably reusing `semaphore_limit` or adding explicit per-feature limits, and reflect that in design, spec, and tasks.",
+      "disposition": "fix"
+    },
+    {
+      "id": 5,
+      "type": "security",
+      "criticality": "medium",
+      "description": "Response validation in Task 3.4 only rejects unknown compact IDs (`openspec/changes/tree-index-chunking/tasks.md:197-200`), while the spec/design allow the LLM to select arbitrary valid nodes and then recursively fetch all descendant leaves (`openspec/changes/tree-index-chunking/specs/document-search/spec.md:272-296`; `openspec/changes/tree-index-chunking/design.md:133-146`). There is no bound on `node_list` length, no guard against selecting the root, and no cap on leaf chunks returned per document, so a prompt-injected or malformed response can force near-full-document retrieval and expensive downstream reranking.",
+      "resolution": "Add hard bounds such as `tree_search_max_selected_nodes`, reject root selection by default, cap descendant leaf chunks per document, and fall back to flat search when the LLM response exceeds those limits.",
+      "disposition": "fix"
+    },
+    {
+      "id": 6,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "`tree_search_max_documents` is specified to choose the top-N tree-indexed documents by BM25/vector pre-score (`openspec/changes/tree-index-chunking/specs/document-search/spec.md:282-283,328-334`), but Tasks 3.4 and 3.6 only say to cap or partition `content_ids` (`openspec/changes/tree-index-chunking/tasks.md:193-199,214-219`). The work plan never adds the pre-ranking step or identifies where those pre-scores come from in the existing search flow, so the capped set is under-specified.",
+      "resolution": "Add an explicit pre-scoring step that reuses existing BM25/vector candidate generation to rank tree-indexed `content_id`s before applying `tree_search_max_documents`, and add tests for deterministic top-N selection.",
+      "disposition": "fix"
+    }
+  ]
+}
