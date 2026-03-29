@@ -181,13 +181,23 @@ class ArxivClient:
         self._last_pdf_call = time.monotonic()
 
     def _request_with_retry(self, url: str, params: dict[str, Any] | None = None) -> httpx.Response:
-        """Execute GET with exponential backoff on 429/503."""
+        """Execute GET with exponential backoff on 429/503.
+
+        Makes 1 initial attempt + MAX_RETRIES retries = 4 total attempts.
+        """
+        last_resp: httpx.Response | None = None
         for attempt in range(MAX_RETRIES + 1):
             self._wait_api()
             resp = self._client.get(url, params=params)
             if resp.status_code not in (429, 503):
                 resp.raise_for_status()
                 return resp
+
+            last_resp = resp
+
+            # Don't sleep after the last attempt
+            if attempt >= MAX_RETRIES:
+                break
 
             # Respect Retry-After header
             retry_after = resp.headers.get("Retry-After")
@@ -201,8 +211,10 @@ class ArxivClient:
             )
             time.sleep(delay)
 
-        resp.raise_for_status()
-        return resp  # unreachable, but keeps type checker happy
+        # All retries exhausted
+        assert last_resp is not None
+        last_resp.raise_for_status()
+        return last_resp  # unreachable, but keeps type checker happy
 
     # ------------------------------------------------------------------
     # Atom feed parsing
