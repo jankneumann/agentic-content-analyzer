@@ -178,6 +178,7 @@ export function CollapsibleChatPanel({
         type="button"
         aria-expanded={isExpanded}
         aria-controls={panelId}
+        aria-label={isExpanded ? `Collapse ${title}` : `Expand ${title}`}
         onClick={onToggle}
         className="bg-card hover:bg-muted/50 focus-visible:ring-ring flex w-full items-center justify-between rounded-lg border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
       >
@@ -211,6 +212,7 @@ export function CollapsibleChatPanel({
           type="button"
           aria-expanded={isExpanded}
           aria-controls={panelId}
+          aria-label={`Collapse ${title}`}
           onClick={onToggle}
           className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded-sm text-sm focus-visible:ring-2 focus-visible:outline-none"
         >

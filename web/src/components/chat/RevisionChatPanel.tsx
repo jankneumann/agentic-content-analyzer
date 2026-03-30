@@ -280,6 +280,11 @@ export function RevisionChatPanel({
         type="button"
         aria-expanded={isExpanded}
         aria-controls={panelId}
+        aria-label={
+          isExpanded
+            ? "Collapse AI Assistant panel"
+            : "Expand AI Assistant panel"
+        }
         onClick={onToggle}
         className={cn(
           "bg-card hover:bg-muted/50 focus-visible:ring-ring flex w-full items-center justify-between rounded-lg border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none",
@@ -345,6 +350,7 @@ export function RevisionChatPanel({
             type="button"
             aria-expanded={isExpanded}
             aria-controls={panelId}
+            aria-label="Collapse AI Assistant panel"
             onClick={onToggle}
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex items-center gap-1 rounded-sm text-sm focus-visible:ring-2 focus-visible:outline-none"
           >
