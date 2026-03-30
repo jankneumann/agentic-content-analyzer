@@ -254,32 +254,57 @@ async def list_summaries(
 async def get_summary_stats() -> SummaryStats:
     """Get summary statistics (only content-linked summaries)."""
     with get_db() as db:
-        # Count by model (only content-linked)
-        model_counts = (
-            db.query(Summary.model_used, func.count(Summary.id))
+        # OPTIMIZATION: Combine model counts, processing time, and token usage into a single multi-dimensional query
+        # This reduces 3 separate database queries and table scans down to just 1.
+        counts_and_sums = (
+            db.query(
+                Summary.model_used,
+                func.count(Summary.id),
+                func.sum(Summary.processing_time_seconds),
+                func.sum(Summary.token_usage),
+                func.count(Summary.processing_time_seconds),
+                func.count(Summary.token_usage),
+            )
             .filter(Summary.content_id.isnot(None))
             .group_by(Summary.model_used)
             .all()
         )
-        by_model = {model: count for model, count in model_counts}
 
-        # OPTIMIZATION: Calculate total from model counts instead of separate count query
-        # Since model_used is non-nullable, the sum of counts equals the total count
-        total = sum(by_model.values())
+        total = 0
+        by_model = {}
+        total_processing_time = 0.0
+        total_processing_time_count = 0
+        total_token_usage = 0.0
+        total_token_usage_count = 0
 
-        # Average processing time (only content-linked)
-        avg_time_result = (
-            db.query(func.avg(Summary.processing_time_seconds))
-            .filter(Summary.content_id.isnot(None))
-            .scalar()
+        for (
+            model_used,
+            count,
+            processing_time_sum,
+            token_usage_sum,
+            processing_time_count,
+            token_usage_count,
+        ) in counts_and_sums:
+            total += count
+            if model_used:
+                by_model[model_used] = by_model.get(model_used, 0) + count
+
+            if processing_time_sum is not None:
+                total_processing_time += float(processing_time_sum)
+                total_processing_time_count += processing_time_count
+
+            if token_usage_sum is not None:
+                total_token_usage += float(token_usage_sum)
+                total_token_usage_count += token_usage_count
+
+        avg_processing_time = (
+            total_processing_time / total_processing_time_count
+            if total_processing_time_count > 0
+            else 0.0
         )
-        avg_processing_time = float(avg_time_result) if avg_time_result else 0.0
-
-        # Average token usage (only content-linked)
-        avg_tokens_result = (
-            db.query(func.avg(Summary.token_usage)).filter(Summary.content_id.isnot(None)).scalar()
+        avg_token_usage = (
+            total_token_usage / total_token_usage_count if total_token_usage_count > 0 else 0.0
         )
-        avg_token_usage = float(avg_tokens_result) if avg_tokens_result else 0.0
 
         return SummaryStats(
             total=total,
