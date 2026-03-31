@@ -13,7 +13,7 @@
 #
 # Custom postgresql.conf and init scripts are still applied.
 #############################################
-FROM paradedb/paradedb:0.22.2-pg17
+FROM paradedb/paradedb:v0.22.3-pg17
 
 # Copy custom PostgreSQL configuration
 COPY postgresql.conf /etc/postgresql/postgresql.conf
