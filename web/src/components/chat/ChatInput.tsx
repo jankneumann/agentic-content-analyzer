@@ -318,7 +318,8 @@ export function ChatInput({
                   aria-label="Send message"
                   className={cn(
                     "h-9 w-9 shrink-0",
-                    !canSubmit && "cursor-not-allowed opacity-50"
+                    !canSubmit &&
+                      "hover:bg-primary hover:text-primary-foreground cursor-not-allowed opacity-50"
                   )}
                 >
                   {isLoading ? (

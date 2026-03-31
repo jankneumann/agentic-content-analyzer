@@ -190,27 +190,33 @@ export function RevisionChatPanel({
   const canGenerate = !isStreaming && !isGenerating && !isPreviewMode
 
   // Handle chat message submission
-  const handleSubmit = React.useCallback(() => {
-    if (!canSubmit) return
+  const handleSubmit = React.useCallback(
+    (e?: React.MouseEvent | React.KeyboardEvent) => {
+      if (!canSubmit) {
+        if (e) e.preventDefault()
+        return
+      }
 
-    onSendMessage(input.trim(), {
-      enableWebSearch: webSearchEnabled,
-      model: selectedModel,
-    })
-    setInput("")
+      onSendMessage(input.trim(), {
+        enableWebSearch: webSearchEnabled,
+        model: selectedModel,
+      })
+      setInput("")
 
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-    }
-  }, [canSubmit, input, webSearchEnabled, selectedModel, onSendMessage])
+      // Reset textarea height
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto"
+      }
+    },
+    [canSubmit, input, webSearchEnabled, selectedModel, onSendMessage]
+  )
 
   // Handle keyboard shortcuts
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault()
-        handleSubmit()
+        handleSubmit(e)
       }
     },
     [handleSubmit]
@@ -238,6 +244,17 @@ export function RevisionChatPanel({
     // Small delay to allow state to update before generating
     setTimeout(() => onGeneratePreview(), 100)
   }, [onRejectPreview, onGeneratePreview])
+
+  const handleGeneratePreview = React.useCallback(
+    (e?: React.MouseEvent | React.KeyboardEvent) => {
+      if (!canGenerate) {
+        if (e) e.preventDefault()
+        return
+      }
+      onGeneratePreview()
+    },
+    [canGenerate, onGeneratePreview]
+  )
 
   // Handle fetching debug context
   const handleFetchDebugContext = React.useCallback(async () => {
@@ -501,29 +518,24 @@ export function RevisionChatPanel({
               <div className="absolute right-2 bottom-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {/* Wrap in span to ensure tooltip works when button is disabled (pointer-events-none) */}
-                    <span
-                      tabIndex={canSubmit ? -1 : 0}
-                      className="inline-block outline-none"
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleSubmit}
+                      aria-disabled={!canSubmit}
+                      className={cn(
+                        "h-7 w-7 p-0",
+                        !canSubmit &&
+                          "hover:text-foreground cursor-not-allowed opacity-50 hover:bg-transparent"
+                      )}
+                      aria-label="Send message"
                     >
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleSubmit}
-                        disabled={!canSubmit}
-                        className={cn(
-                          "h-7 w-7 p-0",
-                          !canSubmit && "pointer-events-none"
-                        )}
-                        aria-label="Send message"
-                      >
-                        {isStreaming ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <MessageSquare className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </span>
+                      {isStreaming ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MessageSquare className="h-4 w-4" />
+                      )}
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Send message</p>
@@ -583,27 +595,23 @@ export function RevisionChatPanel({
               {/* Generate Preview button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span
-                    tabIndex={canGenerate ? -1 : 0}
-                    className="inline-block outline-none"
+                  <Button
+                    size="sm"
+                    onClick={handleGeneratePreview}
+                    aria-disabled={!canGenerate}
+                    className={cn(
+                      "gap-1.5",
+                      !canGenerate &&
+                        "hover:bg-primary hover:text-primary-foreground cursor-not-allowed opacity-50"
+                    )}
                   >
-                    <Button
-                      size="sm"
-                      onClick={onGeneratePreview}
-                      disabled={!canGenerate}
-                      className={cn(
-                        "gap-1.5",
-                        !canGenerate && "pointer-events-none"
-                      )}
-                    >
-                      {isGenerating ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-4 w-4" />
-                      )}
-                      Generate Preview
-                    </Button>
-                  </span>
+                    {isGenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    Generate Preview
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>{generatePreviewTooltip}</p>
