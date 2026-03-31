@@ -695,6 +695,7 @@ class Settings(BaseSettings):
     tree_search_max_documents: int = 3  # Max docs for tree search per query; range: 1-20
     tree_search_timeout_seconds: int = 5  # Per-document timeout; range: 1-30
     tree_search_max_selected_nodes: int = 10  # Cap on LLM-selected nodes; range: 1-50
+    search_tree_weight: float = 0.5  # RRF weight for tree search (alongside bm25/vector)
 
     # Local embedding model advanced settings
     embedding_trust_remote_code: bool = False  # Allow trust_remote_code for sentence-transformers

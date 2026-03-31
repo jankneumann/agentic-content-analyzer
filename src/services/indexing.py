@@ -217,6 +217,10 @@ async def _summarize_tree_nodes(
         async with semaphore:
             child_texts = children_text.get(chunk.id, [])
             if not child_texts:
+                logger.warning(
+                    f"Summary node {chunk.id} ('{chunk.heading_text}') has no children "
+                    f"— possible malformed tree structure"
+                )
                 chunk.chunk_text = chunk.heading_text or "Empty section"
                 return
 
@@ -301,7 +305,7 @@ def build_tree_index(content_id: int, db: Session, force: bool = False) -> int:
     # Load content
     from src.models.content import Content
 
-    content = db.query(Content).get(content_id)
+    content = db.get(Content, content_id)
     if not content or not content.markdown_content:
         return 0
 

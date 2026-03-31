@@ -9,7 +9,6 @@ from src.services.search import (
     HybridSearchService,
     _extract_query_terms,
     _generate_highlight,
-    _run_async_safe,
 )
 
 # --- Unit tests for helper functions ---

@@ -39,19 +39,6 @@ from src.services.search_strategy import BM25SearchStrategy, get_bm25_strategy
 logger = logging.getLogger(__name__)
 
 
-def _run_async_safe(coro):  # type: ignore[no-untyped-def]
-    """Run async coroutine from sync-or-async context."""
-    try:
-        asyncio.get_running_loop()
-        # Already in async context — create task
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, coro).result()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-
 class HybridSearchService:
     """Combines BM25 keyword search and vector semantic search using RRF.
 
@@ -152,7 +139,7 @@ class HybridSearchService:
         # Tree search: identify tree-indexed content and run LLM search
         tree_scores: dict[int, float] = {}
         tree_reasoning_map: dict[int, str] = {}  # content_id → reasoning
-        tree_weight = 0.5  # Weight for tree search in RRF
+        tree_weight = settings.search_tree_weight
 
         if settings.tree_search_enabled and chunk_content_map:
             tree_content_ids = self._find_tree_indexed_content(
@@ -179,7 +166,7 @@ class HybridSearchService:
                 top_tree_ids = [cid for cid, _ in sorted_tree[: settings.tree_search_max_documents]]
 
                 try:
-                    tree_results = _run_async_safe(self._tree_search(query.query, top_tree_ids))
+                    tree_results = await self._tree_search(query.query, top_tree_ids)
                     for chunk_id, content_id, score, reasoning in tree_results:
                         tree_scores[chunk_id] = score
                         chunk_content_map[chunk_id] = content_id
@@ -740,6 +727,13 @@ class HybridSearchService:
             parent_id = node.pop("parent_db_id")
             if parent_id and parent_id in nodes:
                 nodes[parent_id]["children"].append(node)
+            elif parent_id:
+                # Orphaned node — parent not in current tree (data corruption)
+                logger.warning(
+                    f"Tree node {node['node_id']} references missing parent {parent_id} "
+                    f"for content {content_id}, treating as root"
+                )
+                roots.append(node)
             else:
                 roots.append(node)
 

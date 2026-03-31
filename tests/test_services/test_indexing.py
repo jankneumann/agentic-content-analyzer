@@ -75,10 +75,10 @@ class TestBuildTreeIndex:
         # First call: count existing
         db.query.return_value.filter.return_value.count.return_value = 5
 
-        # Second call: get content
+        # db.get(Content, content_id) returns content
         mock_content = MagicMock()
         mock_content.markdown_content = "# Title\n\n## Section A\n\nContent A.\n\n## Section B\n\nContent B."
-        db.query.return_value.get.return_value = mock_content
+        db.get.return_value = mock_content
 
         # Mock async operations (summarization + embedding)
         mock_async.return_value = None
@@ -102,7 +102,7 @@ class TestBuildTreeIndex:
         )
         db = MagicMock()
         db.query.return_value.filter.return_value.count.return_value = 0
-        db.query.return_value.get.return_value = None  # Content not found
+        db.get.return_value = None  # Content not found
 
         result = build_tree_index(99, db, force=True)
         assert result == 0

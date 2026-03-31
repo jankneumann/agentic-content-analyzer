@@ -855,15 +855,23 @@ class ChunkingService:
                 should_tree_index = True
 
         if should_tree_index:
-            tree_strategy = TreeIndexChunkingStrategy()
-            tree_chunks = tree_strategy.chunk(
-                content=content.markdown_content,
-                metadata=metadata,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-            )
-            for tc in tree_chunks:
-                tc.content_id = content.id
+            try:
+                tree_strategy = TreeIndexChunkingStrategy()
+                tree_chunks = tree_strategy.chunk(
+                    content=content.markdown_content,
+                    metadata=metadata,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                )
+                for tc in tree_chunks:
+                    tc.content_id = content.id
+            except Exception:
+                logger.warning(
+                    f"Tree index construction failed for content {content.id}, "
+                    f"continuing with flat chunks only",
+                    exc_info=True,
+                )
+                tree_chunks = []
 
         logger.info(
             f"Chunked content {content.id} with strategy '{strategy.name}': "
