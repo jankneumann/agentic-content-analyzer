@@ -60,9 +60,12 @@ def run_collectors_parallel(
                     source=name,
                     status="error",
                     duration_ms=duration_ms,
-                    messages=[f"Collector '{name}' timed out after {timeout_per_collector}s"],
+                    messages=[
+                        f"Collector '{name}' timed out after "
+                        f"{timeout_per_collector}s"
+                    ],
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 duration_ms = int((time.monotonic() - start) * 1000)
                 result = SourceResult(
                     source=name,
@@ -75,12 +78,14 @@ def run_collectors_parallel(
     return results
 
 
-def _run_one(name: str, func: Callable[[str], SourceResult], project_dir: str) -> SourceResult:
+def _run_one(
+    name: str, func: Callable[[str], SourceResult], project_dir: str
+) -> SourceResult:
     """Execute a single collector, timing it and wrapping exceptions."""
     start = time.monotonic()
     try:
         result = func(project_dir)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         duration_ms = int((time.monotonic() - start) * 1000)
         return SourceResult(
             source=name,

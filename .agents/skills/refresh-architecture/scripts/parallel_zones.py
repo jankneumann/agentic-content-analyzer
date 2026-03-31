@@ -14,8 +14,8 @@ import argparse
 import json
 import logging
 import sys
-from collections import defaultdict
-from datetime import UTC, datetime
+from collections import defaultdict, deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -30,17 +30,17 @@ from arch_utils.constants import DEPENDENCY_EDGE_TYPES  # noqa: E402
 from arch_utils.graph_io import load_graph  # noqa: E402
 from arch_utils.traversal import reachable_from  # noqa: E402
 
+
 # ---------------------------------------------------------------------------
 # Union-Find for weakly connected components
 # ---------------------------------------------------------------------------
-
 
 class UnionFind:
     """Disjoint-set / union-find with path compression and union by rank."""
 
     def __init__(self, elements: list[str]) -> None:
         self._parent: dict[str, str] = {e: e for e in elements}
-        self._rank: dict[str, int] = dict.fromkeys(elements, 0)
+        self._rank: dict[str, int] = {e: 0 for e in elements}
 
     def find(self, x: str) -> str:
         root = x
@@ -74,7 +74,6 @@ class UnionFind:
 # Dependency-edge filtering
 # ---------------------------------------------------------------------------
 
-
 def _is_dependency_edge(edge: dict) -> bool:
     """Return True if this edge should be considered a dependency link."""
     return edge.get("type") in DEPENDENCY_EDGE_TYPES
@@ -83,7 +82,6 @@ def _is_dependency_edge(edge: dict) -> bool:
 # ---------------------------------------------------------------------------
 # Core analysis functions
 # ---------------------------------------------------------------------------
-
 
 def compute_connected_components(
     node_ids: list[str],
@@ -164,13 +162,11 @@ def find_high_impact_modules(
     for node_id in sorted(node_ids):
         dependents = compute_impact_radius(node_id, dependents_graph)
         if len(dependents) > threshold:
-            results.append(
-                {
-                    "id": node_id,
-                    "dependent_count": len(dependents),
-                    "dependents": dependents,
-                }
-            )
+            results.append({
+                "id": node_id,
+                "dependent_count": len(dependents),
+                "dependents": dependents,
+            })
     # Sort by dependent count descending for readability
     results.sort(key=lambda r: -r["dependent_count"])
     return results
@@ -201,7 +197,6 @@ def _language_mix(module_ids: list[str]) -> list[str]:
 # Output construction
 # ---------------------------------------------------------------------------
 
-
 def build_output(
     graph: dict,
     components: list[list[str]],
@@ -212,14 +207,12 @@ def build_output(
     """Assemble the parallel_zones.json structure."""
     independent_groups = []
     for idx, group in enumerate(components):
-        independent_groups.append(
-            {
-                "id": idx,
-                "modules": sorted(group),
-                "language_mix": _language_mix(group),
-                "size": len(group),
-            }
-        )
+        independent_groups.append({
+            "id": idx,
+            "modules": sorted(group),
+            "language_mix": _language_mix(group),
+            "size": len(group),
+        })
 
     leaf_modules = sorted(
         [
@@ -238,7 +231,7 @@ def build_output(
     largest = max((len(g) for g in components), default=0)
 
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "independent_groups": independent_groups,
         "leaf_modules": leaf_modules,
         "high_impact_modules": high_impact,
@@ -255,7 +248,6 @@ def build_output(
 # ---------------------------------------------------------------------------
 # Work-packages validation mode
 # ---------------------------------------------------------------------------
-
 
 def _validate_packages_mode(args: argparse.Namespace) -> int:
     """Validate scope and lock non-overlap for parallel work packages."""
@@ -320,7 +312,6 @@ def _validate_packages_mode(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -395,9 +386,7 @@ def main(argv: list[str] | None = None) -> int:
     leaf_ids = find_leaf_modules(node_id_set, edges)
     dependents_graph = compute_dependents_graph(edges)
     high_impact = find_high_impact_modules(
-        node_id_set,
-        dependents_graph,
-        args.impact_threshold,
+        node_id_set, dependents_graph, args.impact_threshold,
     )
 
     # --- Impact for a specific module ---
@@ -425,11 +414,11 @@ def main(argv: list[str] | None = None) -> int:
     # --- Summary to stdout ---
     s = output["summary"]
     logger.info("Wrote %s", args.output)
-    logger.info("  Total modules:      %d", s["total_modules"])
-    logger.info("  Independent groups: %d", s["total_groups"])
-    logger.info("  Largest group:      %d", s["largest_group_size"])
-    logger.info("  Leaf modules:       %d", s["leaf_count"])
-    logger.info("  High-impact (>%d): %d", args.impact_threshold, s["high_impact_count"])
+    logger.info("  Total modules:      %d", s['total_modules'])
+    logger.info("  Independent groups: %d", s['total_groups'])
+    logger.info("  Largest group:      %d", s['largest_group_size'])
+    logger.info("  Leaf modules:       %d", s['leaf_count'])
+    logger.info("  High-impact (>%d): %d", args.impact_threshold, s['high_impact_count'])
 
     return 0
 

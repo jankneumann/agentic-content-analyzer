@@ -11,15 +11,15 @@ import pytest
 
 # Ensure scripts dir is importable
 sys.path.insert(
-    0,
-    str(Path(__file__).resolve().parent.parent / "scripts"),
+    0, str(Path(__file__).resolve().parent.parent / "scripts"),
 )
 
-from vendor_dispatch import (
+from vendor_dispatch import (  # noqa: E402
     discover_vendors,
     route_prompts_to_vendors,
     write_vendor_prompt_files,
 )
+
 
 # ---------------------------------------------------------------------------
 # route_prompts_to_vendors
@@ -130,8 +130,7 @@ class TestDiscoverVendors:
     """Vendor discovery with mocked ReviewOrchestrator."""
 
     def _make_mock_orchestrator(
-        self,
-        vendors: list[str],
+        self, vendors: list[str],
     ) -> MagicMock:
         """Create a mock ReviewOrchestrator with given vendor types."""
         orch = MagicMock()
@@ -145,15 +144,15 @@ class TestDiscoverVendors:
 
     @patch("vendor_dispatch.sys")
     def test_returns_requested_filtered_by_available(
-        self,
-        mock_sys: MagicMock,
+        self, mock_sys: MagicMock,
     ) -> None:
         """requested_vendors filters to those that are available."""
         mock_sys.path = sys.path.copy()
 
         orch = self._make_mock_orchestrator(["claude", "codex", "gemini"])
 
-        with patch.dict("sys.modules", {}), patch("vendor_dispatch.sys", mock_sys):
+        with patch.dict("sys.modules", {}), \
+             patch("vendor_dispatch.sys", mock_sys):
             # Patch the import chain: make ReviewOrchestrator importable
             mock_module = MagicMock()
             mock_module.ReviewOrchestrator.from_coordinator.return_value = orch

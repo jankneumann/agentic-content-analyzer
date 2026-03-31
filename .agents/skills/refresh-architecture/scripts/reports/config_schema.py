@@ -50,13 +50,19 @@ DEFAULT_SECTIONS: list[str] = [
 
 # Default explanations and expected categories (match pre-config behaviour)
 DEFAULT_CATEGORY_EXPLANATIONS: dict[str, str] = {
-    "test_coverage": ("functions lack test references — consider adding tests for critical paths"),
-    "orphan": ("symbols are unreachable from any entrypoint — may be dead code or missing wiring"),
+    "test_coverage": (
+        "functions lack test references — consider adding tests for critical paths"
+    ),
+    "orphan": (
+        "symbols are unreachable from any entrypoint — may be dead code or missing wiring"
+    ),
     "disconnected_flow": (
         "MCP routes have no frontend callers — "
         "expected for an MCP server (clients are AI agents, not browsers)"
     ),
-    "reachability": ("entrypoints have downstream dependencies but no DB writes or side effects"),
+    "reachability": (
+        "entrypoints have downstream dependencies but no DB writes or side effects"
+    ),
 }
 
 DEFAULT_EXPECTED_CATEGORIES: set[str] = {"disconnected_flow"}

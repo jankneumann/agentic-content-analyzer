@@ -22,7 +22,7 @@ import re
 import subprocess
 import sys
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,10 +35,10 @@ from arch_utils.traversal import (  # noqa: E402
     reachable_from,
 )
 
+
 # ---------------------------------------------------------------------------
 # Data helpers
 # ---------------------------------------------------------------------------
-
 
 def _build_adjacency(graph: dict) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """Build forward and reverse adjacency lists from edges."""
@@ -67,7 +67,6 @@ def _edge_types_for(node_id: str, graph: dict) -> set[str]:
 # Scope resolution
 # ---------------------------------------------------------------------------
 
-
 def _resolve_changed_files(
     files_arg: str | None,
     diff_arg: str | None,
@@ -94,7 +93,11 @@ def _resolve_changed_files(
                 text=True,
                 check=True,
             )
-            changed.extend(line.strip() for line in result.stdout.splitlines() if line.strip())
+            changed.extend(
+                line.strip()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            )
         except subprocess.CalledProcessError as exc:
             logger.warning("diff command failed: %s", exc.stderr.strip())
 
@@ -203,17 +206,15 @@ def check_reachability(
         reachable.discard(node_id)  # exclude self
 
         if not reachable:
-            findings.append(
-                _finding(
-                    "warning",
-                    "reachability",
-                    f"Entrypoint '{node.get('name', node_id)}' has no downstream dependencies",
-                    node_id=node_id,
-                    file=node.get("file"),
-                    line=node.get("span", {}).get("start"),
-                    suggestion="Add downstream calls or tag this entrypoint as 'pure' if it has no side effects",
-                )
-            )
+            findings.append(_finding(
+                "warning",
+                "reachability",
+                f"Entrypoint '{node.get('name', node_id)}' has no downstream dependencies",
+                node_id=node_id,
+                file=node.get("file"),
+                line=node.get("span", {}).get("start"),
+                suggestion="Add downstream calls or tag this entrypoint as 'pure' if it has no side effects",
+            ))
             continue
 
         # Check for at least one DB/side-effect dependency in the reachable set
@@ -230,20 +231,18 @@ def check_reachability(
                 break
 
         if not has_db_or_side_effect:
-            findings.append(
-                _finding(
-                    "info",
-                    "reachability",
-                    (
-                        f"Entrypoint '{node.get('name', node_id)}' has downstream dependencies "
-                        f"but none touch a DB or produce side effects"
-                    ),
-                    node_id=node_id,
-                    file=node.get("file"),
-                    line=node.get("span", {}).get("start"),
-                    suggestion="Verify this is expected, or tag the entrypoint as 'pure'",
-                )
-            )
+            findings.append(_finding(
+                "info",
+                "reachability",
+                (
+                    f"Entrypoint '{node.get('name', node_id)}' has downstream dependencies "
+                    f"but none touch a DB or produce side effects"
+                ),
+                node_id=node_id,
+                file=node.get("file"),
+                line=node.get("span", {}).get("start"),
+                suggestion="Verify this is expected, or tag the entrypoint as 'pure'",
+            ))
 
     return findings, checked
 
@@ -251,7 +250,6 @@ def check_reachability(
 # ---------------------------------------------------------------------------
 # Check: Disconnected flows
 # ---------------------------------------------------------------------------
-
 
 def check_disconnected_flows(
     graph: dict,
@@ -297,17 +295,15 @@ def check_disconnected_flows(
                     break
 
         if not has_caller:
-            findings.append(
-                _finding(
-                    "warning",
-                    "disconnected_flow",
-                    f"Backend route '{node.get('name', node_id)}' has no frontend callers",
-                    node_id=node_id,
-                    file=node.get("file"),
-                    line=node.get("span", {}).get("start"),
-                    suggestion="Add a frontend caller or remove the unused route",
-                )
-            )
+            findings.append(_finding(
+                "warning",
+                "disconnected_flow",
+                f"Backend route '{node.get('name', node_id)}' has no frontend callers",
+                node_id=node_id,
+                file=node.get("file"),
+                line=node.get("span", {}).get("start"),
+                suggestion="Add a frontend caller or remove the unused route",
+            ))
 
     # Frontend API calls with no backend handlers
     for edge in graph.get("edges", []):
@@ -323,17 +319,15 @@ def check_disconnected_flows(
             continue
 
         if target_id not in nodes:
-            findings.append(
-                _finding(
-                    "error",
-                    "disconnected_flow",
-                    f"Frontend API call from '{source_node.get('name', source_id)}' targets unknown node '{target_id}'",
-                    node_id=source_id,
-                    file=source_node.get("file"),
-                    line=source_node.get("span", {}).get("start"),
-                    suggestion="Ensure the backend handler exists and is registered in the graph",
-                )
-            )
+            findings.append(_finding(
+                "error",
+                "disconnected_flow",
+                f"Frontend API call from '{source_node.get('name', source_id)}' targets unknown node '{target_id}'",
+                node_id=source_id,
+                file=source_node.get("file"),
+                line=source_node.get("span", {}).get("start"),
+                suggestion="Ensure the backend handler exists and is registered in the graph",
+            ))
 
     return findings
 
@@ -424,26 +418,27 @@ def check_test_coverage(
 
         # A node has coverage if it is directly referenced by a test or
         # its name appears in any test_referenced_names
-        has_coverage = nid in test_referenced_node_ids or node["name"] in test_referenced_names
+        has_coverage = (
+            nid in test_referenced_node_ids
+            or node["name"] in test_referenced_names
+        )
 
         if has_coverage:
             with_coverage += 1
         else:
             without_coverage += 1
-            findings.append(
-                _finding(
-                    "warning",
-                    "test_coverage",
-                    f"Function '{node['name']}' has no corresponding test references",
-                    node_id=nid,
-                    file=node.get("file"),
-                    line=node.get("span", {}).get("start"),
-                    suggestion=(
-                        f"Add tests that reference '{node['name']}' "
-                        f"(e.g., test_{node['name']} or import it in a test file)"
-                    ),
-                )
-            )
+            findings.append(_finding(
+                "warning",
+                "test_coverage",
+                f"Function '{node['name']}' has no corresponding test references",
+                node_id=nid,
+                file=node.get("file"),
+                line=node.get("span", {}).get("start"),
+                suggestion=(
+                    f"Add tests that reference '{node['name']}' "
+                    f"(e.g., test_{node['name']} or import it in a test file)"
+                ),
+            ))
 
     return findings, with_coverage, without_coverage
 
@@ -451,7 +446,6 @@ def check_test_coverage(
 # ---------------------------------------------------------------------------
 # Check: Orphaned code
 # ---------------------------------------------------------------------------
-
 
 def check_orphaned_code(
     graph: dict,
@@ -501,17 +495,15 @@ def check_orphaned_code(
             continue
 
         if nid not in all_reachable:
-            findings.append(
-                _finding(
-                    "warning",
-                    "orphan",
-                    f"'{node['name']}' is unreachable from any entrypoint or test",
-                    node_id=nid,
-                    file=node.get("file"),
-                    line=node.get("span", {}).get("start"),
-                    suggestion="Remove the dead code or add an entrypoint/test that exercises it",
-                )
-            )
+            findings.append(_finding(
+                "warning",
+                "orphan",
+                f"'{node['name']}' is unreachable from any entrypoint or test",
+                node_id=nid,
+                file=node.get("file"),
+                line=node.get("span", {}).get("start"),
+                suggestion="Remove the dead code or add an entrypoint/test that exercises it",
+            ))
 
     return findings
 
@@ -519,7 +511,6 @@ def check_orphaned_code(
 # ---------------------------------------------------------------------------
 # Check: Pattern consistency
 # ---------------------------------------------------------------------------
-
 
 def check_pattern_consistency(
     graph: dict,
@@ -598,45 +589,42 @@ def check_pattern_consistency(
         kind = node.get("kind", "")
         name = node.get("name", "")
         sigs = node.get("signatures", {})
-        decorators = (
-            set(sigs.get("decorators", [])) if isinstance(sigs.get("decorators"), list) else set()
-        )
+        decorators = set(sigs.get("decorators", [])) if isinstance(sigs.get("decorators"), list) else set()
 
         # Check decorator consistency
         if kind in dominant_decorators:
             missing = dominant_decorators[kind] - decorators
             for dec in missing:
-                findings.append(
-                    _finding(
-                        "info",
-                        "pattern_consistency",
-                        (
-                            f"'{name}' ({kind}) is missing decorator '@{dec}' "
-                            f"which is used by most {kind}s in the codebase"
-                        ),
-                        node_id=nid,
-                        file=node.get("file"),
-                        line=node.get("span", {}).get("start"),
-                        suggestion=f"Consider adding '@{dec}' for consistency",
-                    )
-                )
+                findings.append(_finding(
+                    "info",
+                    "pattern_consistency",
+                    (
+                        f"'{name}' ({kind}) is missing decorator '@{dec}' "
+                        f"which is used by most {kind}s in the codebase"
+                    ),
+                    node_id=nid,
+                    file=node.get("file"),
+                    line=node.get("span", {}).get("start"),
+                    suggestion=f"Consider adding '@{dec}' for consistency",
+                ))
 
         # Check naming convention
         if kind in dominant_naming:
             expected_conv = dominant_naming[kind]
             actual_conv = _classify_name(name)
             if actual_conv and actual_conv != expected_conv:
-                findings.append(
-                    _finding(
-                        "info",
-                        "pattern_consistency",
-                        (f"'{name}' uses {actual_conv} but most {kind}s use {expected_conv}"),
-                        node_id=nid,
-                        file=node.get("file"),
-                        line=node.get("span", {}).get("start"),
-                        suggestion=f"Rename to follow {expected_conv} convention",
-                    )
-                )
+                findings.append(_finding(
+                    "info",
+                    "pattern_consistency",
+                    (
+                        f"'{name}' uses {actual_conv} but most {kind}s "
+                        f"use {expected_conv}"
+                    ),
+                    node_id=nid,
+                    file=node.get("file"),
+                    line=node.get("span", {}).get("start"),
+                    suggestion=f"Rename to follow {expected_conv} convention",
+                ))
 
     return findings
 
@@ -644,7 +632,6 @@ def check_pattern_consistency(
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
-
 
 def validate_flows(
     graph_path: Path,
@@ -662,40 +649,25 @@ def validate_flows(
 
     # 1. Reachability
     reachability_findings, entrypoints_checked = check_reachability(
-        graph,
-        nodes,
-        forward,
-        changed_files,
+        graph, nodes, forward, changed_files,
     )
     all_findings.extend(reachability_findings)
 
     # 2. Disconnected flows
     disconnected_findings = check_disconnected_flows(
-        graph,
-        nodes,
-        forward,
-        reverse,
-        changed_files,
+        graph, nodes, forward, reverse, changed_files,
     )
     all_findings.extend(disconnected_findings)
 
     # 3. Test coverage alignment
     coverage_findings, flows_with, flows_without = check_test_coverage(
-        graph,
-        nodes,
-        forward,
-        reverse,
-        changed_files,
+        graph, nodes, forward, reverse, changed_files,
     )
     all_findings.extend(coverage_findings)
 
     # 4. Orphaned code
     orphan_findings = check_orphaned_code(
-        graph,
-        nodes,
-        forward,
-        reverse,
-        changed_files,
+        graph, nodes, forward, reverse, changed_files,
     )
     all_findings.extend(orphan_findings)
 
@@ -709,7 +681,7 @@ def validate_flows(
     info = sum(1 for f in all_findings if f["severity"] == "info")
 
     report = {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "scope": "changed" if changed_files is not None else "full",
         "changed_files": changed_files or [],
         "findings": all_findings,
@@ -736,7 +708,6 @@ def validate_flows(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -790,20 +761,13 @@ def main() -> int:
     report = validate_flows(args.graph, args.output, changed_files)
 
     summary = report["summary"]
-    scope_label = (
-        f" (scope: {len(report['changed_files'])} files)" if report["scope"] == "changed" else ""
-    )
+    scope_label = f" (scope: {len(report['changed_files'])} files)" if report["scope"] == "changed" else ""
     logger.info("Flow validation complete%s.", scope_label)
-    logger.info("  Entrypoints checked: %d", summary["entrypoints_checked"])
-    logger.info("  Flows with test coverage: %d", summary["flows_with_coverage"])
-    logger.info("  Flows without test coverage: %d", summary["flows_without_coverage"])
-    logger.info(
-        "  Findings: %d total (%d errors, %d warnings, %d info)",
-        summary["total_findings"],
-        summary["errors"],
-        summary["warnings"],
-        summary["info"],
-    )
+    logger.info("  Entrypoints checked: %d", summary['entrypoints_checked'])
+    logger.info("  Flows with test coverage: %d", summary['flows_with_coverage'])
+    logger.info("  Flows without test coverage: %d", summary['flows_without_coverage'])
+    logger.info("  Findings: %d total (%d errors, %d warnings, %d info)",
+                summary['total_findings'], summary['errors'], summary['warnings'], summary['info'])
     logger.info("  Output: %s", args.output)
 
     if summary["errors"] > 0:

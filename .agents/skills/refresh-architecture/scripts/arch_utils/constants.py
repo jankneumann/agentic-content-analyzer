@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from enum import Enum
 
+
 # ---------------------------------------------------------------------------
 # Edge types
 # ---------------------------------------------------------------------------
@@ -32,23 +33,19 @@ class EdgeType(str, Enum):
 
 # Edges that represent structural dependency (used for cycle detection,
 # parallel-zone computation, and impact analysis).
-DEPENDENCY_EDGE_TYPES: frozenset[str] = frozenset(
-    {
-        EdgeType.CALL.value,
-        EdgeType.IMPORT.value,
-        EdgeType.FK_REFERENCE.value,
-        EdgeType.HOOK_USAGE.value,
-        EdgeType.COMPONENT_CHILD.value,
-    }
-)
+DEPENDENCY_EDGE_TYPES: frozenset[str] = frozenset({
+    EdgeType.CALL.value,
+    EdgeType.IMPORT.value,
+    EdgeType.FK_REFERENCE.value,
+    EdgeType.HOOK_USAGE.value,
+    EdgeType.COMPONENT_CHILD.value,
+})
 
 # Edges that represent side-effect relationships (DB writes, API calls).
-SIDE_EFFECT_EDGE_TYPES: frozenset[str] = frozenset(
-    {
-        EdgeType.DB_ACCESS.value,
-        EdgeType.API_CALL.value,
-    }
-)
+SIDE_EFFECT_EDGE_TYPES: frozenset[str] = frozenset({
+    EdgeType.DB_ACCESS.value,
+    EdgeType.API_CALL.value,
+})
 
 
 # ---------------------------------------------------------------------------

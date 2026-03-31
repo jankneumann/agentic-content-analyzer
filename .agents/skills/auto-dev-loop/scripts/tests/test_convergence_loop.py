@@ -6,30 +6,33 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+
 # Ensure the convergence_loop module can find its dependencies
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent)
 _PARALLEL_DIR = str(
-    Path(__file__).resolve().parent.parent.parent.parent / "parallel-infrastructure" / "scripts"
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "parallel-infrastructure"
+    / "scripts"
 )
 for p in (_SCRIPTS_DIR, _PARALLEL_DIR):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from consensus_synthesizer import (
-    ConsensusFinding,
-    ConsensusReport,
-)
 from convergence_loop import (
     _is_blocking,
     build_review_prompt,
     converge,
 )
+from consensus_synthesizer import (
+    ConsensusFinding,
+    ConsensusReport,
+)
 from review_dispatcher import ReviewResult
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
 
 def _make_review_result(
     vendor: str,
@@ -115,7 +118,9 @@ def _setup_converge(
     real_synth_for_dict = __import__(
         "consensus_synthesizer", fromlist=["ConsensusSynthesizer"]
     ).ConsensusSynthesizer()
-    to_dict_returns = [real_synth_for_dict.to_dict(r) for r in consensus_reports_per_round]
+    to_dict_returns = [
+        real_synth_for_dict.to_dict(r) for r in consensus_reports_per_round
+    ]
     mock_synthesizer.to_dict.side_effect = to_dict_returns
 
     return {
@@ -129,7 +134,6 @@ def _setup_converge(
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-
 
 class TestConvergenceZeroFindings:
     """2 vendors return empty findings → converged in 1 round."""
@@ -223,36 +227,16 @@ class TestMaxRoundsNotConverged:
         reports_per_round = []
 
         for _ in range(3):
-            results_per_round.append(
-                [
-                    _make_review_result(
-                        "vendor_a",
-                        success=True,
-                        findings=[
-                            {
-                                "id": 1,
-                                "type": "bug",
-                                "criticality": "high",
-                                "description": "Critical bug",
-                                "disposition": "fix",
-                            }
-                        ],
-                    ),
-                    _make_review_result(
-                        "vendor_b",
-                        success=True,
-                        findings=[
-                            {
-                                "id": 1,
-                                "type": "bug",
-                                "criticality": "high",
-                                "description": "Critical bug",
-                                "disposition": "fix",
-                            }
-                        ],
-                    ),
-                ]
-            )
+            results_per_round.append([
+                _make_review_result("vendor_a", success=True, findings=[{
+                    "id": 1, "type": "bug", "criticality": "high",
+                    "description": "Critical bug", "disposition": "fix",
+                }]),
+                _make_review_result("vendor_b", success=True, findings=[{
+                    "id": 1, "type": "bug", "criticality": "high",
+                    "description": "Critical bug", "disposition": "fix",
+                }]),
+            ])
             reports_per_round.append(_make_consensus_report(findings=[finding]))
 
         ctx = _setup_converge(results_per_round, reports_per_round, tmp_path)
@@ -285,38 +269,18 @@ class TestStallDetection:
                 _make_consensus_finding(i, status="confirmed", criticality="medium")
                 for i in range(1, 6)
             ]
-            results_per_round.append(
-                [
-                    _make_review_result(
-                        "vendor_a",
-                        success=True,
-                        findings=[
-                            {
-                                "id": i,
-                                "type": "bug",
-                                "criticality": "medium",
-                                "description": f"Bug {i}",
-                                "disposition": "fix",
-                            }
-                            for i in range(1, 6)
-                        ],
-                    ),
-                    _make_review_result(
-                        "vendor_b",
-                        success=True,
-                        findings=[
-                            {
-                                "id": i,
-                                "type": "bug",
-                                "criticality": "medium",
-                                "description": f"Bug {i}",
-                                "disposition": "fix",
-                            }
-                            for i in range(1, 6)
-                        ],
-                    ),
-                ]
-            )
+            results_per_round.append([
+                _make_review_result("vendor_a", success=True, findings=[
+                    {"id": i, "type": "bug", "criticality": "medium",
+                     "description": f"Bug {i}", "disposition": "fix"}
+                    for i in range(1, 6)
+                ]),
+                _make_review_result("vendor_b", success=True, findings=[
+                    {"id": i, "type": "bug", "criticality": "medium",
+                     "description": f"Bug {i}", "disposition": "fix"}
+                    for i in range(1, 6)
+                ]),
+            ])
             reports_per_round.append(_make_consensus_report(findings=findings))
 
         ctx = _setup_converge(results_per_round, reports_per_round, tmp_path)
@@ -349,38 +313,18 @@ class TestStallNotTriggeredWhenDecreasing:
                 _make_consensus_finding(i, status="confirmed", criticality="medium")
                 for i in range(1, count + 1)
             ]
-            results_per_round.append(
-                [
-                    _make_review_result(
-                        "vendor_a",
-                        success=True,
-                        findings=[
-                            {
-                                "id": i,
-                                "type": "bug",
-                                "criticality": "medium",
-                                "description": f"Bug {i}",
-                                "disposition": "fix",
-                            }
-                            for i in range(1, count + 1)
-                        ],
-                    ),
-                    _make_review_result(
-                        "vendor_b",
-                        success=True,
-                        findings=[
-                            {
-                                "id": i,
-                                "type": "bug",
-                                "criticality": "medium",
-                                "description": f"Bug {i}",
-                                "disposition": "fix",
-                            }
-                            for i in range(1, count + 1)
-                        ],
-                    ),
-                ]
-            )
+            results_per_round.append([
+                _make_review_result("vendor_a", success=True, findings=[
+                    {"id": i, "type": "bug", "criticality": "medium",
+                     "description": f"Bug {i}", "disposition": "fix"}
+                    for i in range(1, count + 1)
+                ]),
+                _make_review_result("vendor_b", success=True, findings=[
+                    {"id": i, "type": "bug", "criticality": "medium",
+                     "description": f"Bug {i}", "disposition": "fix"}
+                    for i in range(1, count + 1)
+                ]),
+            ])
             reports_per_round.append(_make_consensus_report(findings=findings))
 
         ctx = _setup_converge(results_per_round, reports_per_round, tmp_path)
@@ -407,32 +351,14 @@ class TestDisagreementEscalate:
         finding.vendor_dispositions = {"vendor_a": "fix", "vendor_b": "accept"}
 
         results = [
-            _make_review_result(
-                "vendor_a",
-                success=True,
-                findings=[
-                    {
-                        "id": 1,
-                        "type": "bug",
-                        "criticality": "medium",
-                        "description": "Disputed issue",
-                        "disposition": "fix",
-                    }
-                ],
-            ),
-            _make_review_result(
-                "vendor_b",
-                success=True,
-                findings=[
-                    {
-                        "id": 1,
-                        "type": "bug",
-                        "criticality": "medium",
-                        "description": "Disputed issue",
-                        "disposition": "accept",
-                    }
-                ],
-            ),
+            _make_review_result("vendor_a", success=True, findings=[{
+                "id": 1, "type": "bug", "criticality": "medium",
+                "description": "Disputed issue", "disposition": "fix",
+            }]),
+            _make_review_result("vendor_b", success=True, findings=[{
+                "id": 1, "type": "bug", "criticality": "medium",
+                "description": "Disputed issue", "disposition": "accept",
+            }]),
         ]
         report = _make_consensus_report(findings=[finding])
 
@@ -464,79 +390,37 @@ class TestUnconfirmedRelaxedFinalRound:
 
         # Round 1: confirmed blocking
         f1 = _make_consensus_finding(1, status="confirmed", criticality="medium")
-        results_per_round.append(
-            [
-                _make_review_result(
-                    "vendor_a",
-                    success=True,
-                    findings=[
-                        {
-                            "id": 1,
-                            "type": "bug",
-                            "criticality": "medium",
-                            "description": "Bug 1",
-                            "disposition": "fix",
-                        }
-                    ],
-                ),
-                _make_review_result(
-                    "vendor_b",
-                    success=True,
-                    findings=[
-                        {
-                            "id": 1,
-                            "type": "bug",
-                            "criticality": "medium",
-                            "description": "Bug 1",
-                            "disposition": "fix",
-                        }
-                    ],
-                ),
-            ]
-        )
+        results_per_round.append([
+            _make_review_result("vendor_a", success=True, findings=[
+                {"id": 1, "type": "bug", "criticality": "medium",
+                 "description": "Bug 1", "disposition": "fix"}
+            ]),
+            _make_review_result("vendor_b", success=True, findings=[
+                {"id": 1, "type": "bug", "criticality": "medium",
+                 "description": "Bug 1", "disposition": "fix"}
+            ]),
+        ])
         reports_per_round.append(_make_consensus_report(findings=[f1]))
 
         # Round 2: fewer confirmed (decreasing trend)
-        results_per_round.append(
-            [
-                _make_review_result("vendor_a", success=True, findings=[]),
-                _make_review_result(
-                    "vendor_b",
-                    success=True,
-                    findings=[
-                        {
-                            "id": 2,
-                            "type": "style",
-                            "criticality": "medium",
-                            "description": "Style nit",
-                            "disposition": "accept",
-                        }
-                    ],
-                ),
-            ]
-        )
+        results_per_round.append([
+            _make_review_result("vendor_a", success=True, findings=[]),
+            _make_review_result("vendor_b", success=True, findings=[
+                {"id": 2, "type": "style", "criticality": "medium",
+                 "description": "Style nit", "disposition": "accept"}
+            ]),
+        ])
         f2_unconfirmed = _make_consensus_finding(2, status="unconfirmed", criticality="medium")
         reports_per_round.append(_make_consensus_report(findings=[f2_unconfirmed]))
 
         # Round 3 (final): only unconfirmed medium → relaxed
-        results_per_round.append(
-            [
-                _make_review_result("vendor_a", success=True, findings=[]),
-                _make_review_result(
-                    "vendor_b",
-                    success=True,
-                    findings=[
-                        {
-                            "id": 3,
-                            "type": "style",
-                            "criticality": "medium",
-                            "description": "Minor nit",
-                            "disposition": "accept",
-                        }
-                    ],
-                ),
-            ]
-        )
+        results_per_round.append([
+            _make_review_result("vendor_a", success=True, findings=[]),
+            _make_review_result("vendor_b", success=True, findings=[
+                {"id": 3, "type": "style", "criticality": "medium",
+                 "description": "Minor nit", "disposition": "accept"}
+            ]),
+        ])
         f3_unconfirmed = _make_consensus_finding(3, status="unconfirmed", criticality="medium")
         reports_per_round.append(_make_consensus_report(findings=[f3_unconfirmed]))
 
@@ -567,24 +451,13 @@ class TestUnconfirmedBlocksEarlyRounds:
         results_per_round = []
         reports_per_round = []
         for _ in range(3):
-            results_per_round.append(
-                [
-                    _make_review_result(
-                        "vendor_a",
-                        success=True,
-                        findings=[
-                            {
-                                "id": 1,
-                                "type": "bug",
-                                "criticality": "medium",
-                                "description": "Unconfirmed bug",
-                                "disposition": "fix",
-                            }
-                        ],
-                    ),
-                    _make_review_result("vendor_b", success=True, findings=[]),
-                ]
-            )
+            results_per_round.append([
+                _make_review_result("vendor_a", success=True, findings=[
+                    {"id": 1, "type": "bug", "criticality": "medium",
+                     "description": "Unconfirmed bug", "disposition": "fix"}
+                ]),
+                _make_review_result("vendor_b", success=True, findings=[]),
+            ])
             reports_per_round.append(_make_consensus_report(findings=[finding]))
 
         ctx = _setup_converge(results_per_round, reports_per_round, tmp_path)
@@ -614,19 +487,10 @@ class TestUnconfirmedBlocksEarlyRounds:
 
         # Round 1: unconfirmed blocks
         results_round1 = [
-            _make_review_result(
-                "vendor_a",
-                success=True,
-                findings=[
-                    {
-                        "id": 1,
-                        "type": "bug",
-                        "criticality": "medium",
-                        "description": "Unconfirmed bug",
-                        "disposition": "fix",
-                    }
-                ],
-            ),
+            _make_review_result("vendor_a", success=True, findings=[
+                {"id": 1, "type": "bug", "criticality": "medium",
+                 "description": "Unconfirmed bug", "disposition": "fix"}
+            ]),
             _make_review_result("vendor_b", success=True, findings=[]),
         ]
         report1 = _make_consensus_report(findings=[finding])
@@ -673,45 +537,23 @@ class TestFixCallbackCalled:
         reports_per_round = []
 
         # Round 1: blocking finding → fix_callback called
-        results_per_round.append(
-            [
-                _make_review_result(
-                    "vendor_a",
-                    success=True,
-                    findings=[
-                        {
-                            "id": 1,
-                            "type": "bug",
-                            "criticality": "high",
-                            "description": "High bug",
-                            "disposition": "fix",
-                        }
-                    ],
-                ),
-                _make_review_result(
-                    "vendor_b",
-                    success=True,
-                    findings=[
-                        {
-                            "id": 1,
-                            "type": "bug",
-                            "criticality": "high",
-                            "description": "High bug",
-                            "disposition": "fix",
-                        }
-                    ],
-                ),
-            ]
-        )
+        results_per_round.append([
+            _make_review_result("vendor_a", success=True, findings=[
+                {"id": 1, "type": "bug", "criticality": "high",
+                 "description": "High bug", "disposition": "fix"}
+            ]),
+            _make_review_result("vendor_b", success=True, findings=[
+                {"id": 1, "type": "bug", "criticality": "high",
+                 "description": "High bug", "disposition": "fix"}
+            ]),
+        ])
         reports_per_round.append(_make_consensus_report(findings=[finding]))
 
         # Round 2: no findings → converged
-        results_per_round.append(
-            [
-                _make_review_result("vendor_a", success=True, findings=[]),
-                _make_review_result("vendor_b", success=True, findings=[]),
-            ]
-        )
+        results_per_round.append([
+            _make_review_result("vendor_a", success=True, findings=[]),
+            _make_review_result("vendor_b", success=True, findings=[]),
+        ])
         reports_per_round.append(_make_consensus_report(findings=[]))
 
         ctx = _setup_converge(results_per_round, reports_per_round, tmp_path)
@@ -805,19 +647,13 @@ class TestIsBlocking:
         assert _is_blocking({"status": "unconfirmed", "agreed_criticality": "medium"}) is True
 
     def test_unconfirmed_medium_relaxed(self) -> None:
-        assert (
-            _is_blocking(
-                {"status": "unconfirmed", "agreed_criticality": "medium"},
-                relax_unconfirmed=True,
-            )
-            is False
-        )
+        assert _is_blocking(
+            {"status": "unconfirmed", "agreed_criticality": "medium"},
+            relax_unconfirmed=True,
+        ) is False
 
     def test_confirmed_high_not_relaxed(self) -> None:
-        assert (
-            _is_blocking(
-                {"status": "confirmed", "agreed_criticality": "high"},
-                relax_unconfirmed=True,
-            )
-            is True
-        )
+        assert _is_blocking(
+            {"status": "confirmed", "agreed_criticality": "high"},
+            relax_unconfirmed=True,
+        ) is True

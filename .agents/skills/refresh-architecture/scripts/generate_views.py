@@ -38,6 +38,7 @@ from arch_utils.constants import EdgeType  # noqa: E402
 from arch_utils.graph_io import load_graph as _load_graph  # noqa: E402
 from arch_utils.node_id import mermaid_id as _mermaid_id  # noqa: E402
 
+
 # ---------------------------------------------------------------------------
 # Graph loading
 # ---------------------------------------------------------------------------
@@ -108,7 +109,6 @@ def _top_level_directory(file_path: str) -> str:
 # Container View
 # ---------------------------------------------------------------------------
 
-
 def generate_container_view(graph: Graph) -> str:
     """Generate Mermaid flowchart showing high-level containers with connections.
 
@@ -134,7 +134,7 @@ def generate_container_view(graph: Graph) -> str:
         src_container = node_container.get(edge["from"])
         dst_container = node_container.get(edge["to"])
         if src_container and dst_container and src_container != dst_container:
-            cross_edges[src_container, dst_container].add(edge["type"])
+            cross_edges[(src_container, dst_container)].add(edge["type"])
 
     # Build Mermaid output.
     lines: list[str] = ["flowchart TB"]
@@ -163,7 +163,6 @@ def generate_container_view(graph: Graph) -> str:
 # Backend Component View
 # ---------------------------------------------------------------------------
 
-
 def generate_backend_component_view(graph: Graph) -> str:
     """Generate Mermaid flowchart for Python packages with dependency edges.
 
@@ -177,7 +176,7 @@ def generate_backend_component_view(graph: Graph) -> str:
     # Filter to Python nodes.
     py_nodes = [n for n in nodes if n["language"] == "python"]
     if not py_nodes:
-        return 'flowchart TB\n    empty["No Python nodes found"]\n'
+        return "flowchart TB\n    empty[\"No Python nodes found\"]\n"
 
     # Map node id -> package.
     node_package: dict[str, str] = {}
@@ -193,8 +192,13 @@ def generate_backend_component_view(graph: Graph) -> str:
     for edge in edges:
         src_pkg = node_package.get(edge["from"])
         dst_pkg = node_package.get(edge["to"])
-        if src_pkg and dst_pkg and src_pkg != dst_pkg and edge["type"] in relevant_types:
-            pkg_edges[src_pkg, dst_pkg].add(edge["type"])
+        if (
+            src_pkg
+            and dst_pkg
+            and src_pkg != dst_pkg
+            and edge["type"] in relevant_types
+        ):
+            pkg_edges[(src_pkg, dst_pkg)].add(edge["type"])
 
     # Build Mermaid.
     lines: list[str] = ["flowchart TB"]
@@ -206,7 +210,9 @@ def generate_backend_component_view(graph: Graph) -> str:
 
     for (src, dst), edge_types in sorted(pkg_edges.items()):
         label = ", ".join(sorted(edge_types))
-        lines.append(f"    {_mermaid_id(src)} -->|{_quote(label)}| {_mermaid_id(dst)}")
+        lines.append(
+            f"    {_mermaid_id(src)} -->|{_quote(label)}| {_mermaid_id(dst)}"
+        )
 
     return "\n".join(lines) + "\n"
 
@@ -214,7 +220,6 @@ def generate_backend_component_view(graph: Graph) -> str:
 # ---------------------------------------------------------------------------
 # Frontend Component View
 # ---------------------------------------------------------------------------
-
 
 def generate_frontend_component_view(graph: Graph) -> str:
     """Generate Mermaid flowchart for TypeScript modules grouped by directory.
@@ -228,7 +233,7 @@ def generate_frontend_component_view(graph: Graph) -> str:
     # Filter to TypeScript nodes.
     ts_nodes = [n for n in nodes if n["language"] == "typescript"]
     if not ts_nodes:
-        return 'flowchart TB\n    empty["No TypeScript nodes found"]\n'
+        return "flowchart TB\n    empty[\"No TypeScript nodes found\"]\n"
 
     # Map node id -> directory.
     node_dir: dict[str, str] = {}
@@ -244,8 +249,13 @@ def generate_frontend_component_view(graph: Graph) -> str:
     for edge in edges:
         src_dir = node_dir.get(edge["from"])
         dst_dir = node_dir.get(edge["to"])
-        if src_dir and dst_dir and src_dir != dst_dir and edge["type"] in relevant_types:
-            dir_edges[src_dir, dst_dir].add(edge["type"])
+        if (
+            src_dir
+            and dst_dir
+            and src_dir != dst_dir
+            and edge["type"] in relevant_types
+        ):
+            dir_edges[(src_dir, dst_dir)].add(edge["type"])
 
     # Build Mermaid.
     lines: list[str] = ["flowchart TB"]
@@ -257,7 +267,9 @@ def generate_frontend_component_view(graph: Graph) -> str:
 
     for (src, dst), edge_types in sorted(dir_edges.items()):
         label = ", ".join(sorted(edge_types))
-        lines.append(f"    {_mermaid_id(src)} -->|{_quote(label)}| {_mermaid_id(dst)}")
+        lines.append(
+            f"    {_mermaid_id(src)} -->|{_quote(label)}| {_mermaid_id(dst)}"
+        )
 
     return "\n".join(lines) + "\n"
 
@@ -265,7 +277,6 @@ def generate_frontend_component_view(graph: Graph) -> str:
 # ---------------------------------------------------------------------------
 # DB ERD
 # ---------------------------------------------------------------------------
-
 
 def _column_type_str(sig: dict) -> str:
     """Extract a display type string from column signatures."""
@@ -295,7 +306,7 @@ def generate_db_erd(graph: Graph) -> str:
     column_nodes = [n for n in nodes if n["language"] == "sql" and n["kind"] == "column"]
 
     if not table_nodes:
-        return 'erDiagram\n    EMPTY {\n        string note "No tables found"\n    }\n'
+        return "erDiagram\n    EMPTY {\n        string note \"No tables found\"\n    }\n"
 
     # Map table name -> columns.
     # Columns can be associated via their id prefix or via parent edges.
@@ -319,7 +330,9 @@ def generate_db_erd(graph: Graph) -> str:
         table_id_to_name[t["id"]] = qual
 
     # Collect FK relationships.
-    fk_edges: list[dict] = [e for e in edges if e["type"] == EdgeType.FK_REFERENCE]
+    fk_edges: list[dict] = [
+        e for e in edges if e["type"] == EdgeType.FK_REFERENCE
+    ]
 
     # Derive table relationships from FK edges.
     # FK edge goes from the referencing column/table to the referenced column/table.
@@ -357,7 +370,9 @@ def generate_db_erd(graph: Graph) -> str:
                     pk_marker = " PK"
                 elif _is_fk_column(col["id"], fk_edges):
                     pk_marker = " FK"
-                lines.append(f"        {_mermaid_id(col_type)} {col_safe}{pk_marker}")
+                lines.append(
+                    f"        {_mermaid_id(col_type)} {col_safe}{pk_marker}"
+                )
         else:
             # If no columns found, add a placeholder from signatures.
             sig = table.get("signatures", {})
@@ -375,7 +390,9 @@ def generate_db_erd(graph: Graph) -> str:
                         )
             elif isinstance(columns_meta, dict):
                 for cname, ctype in columns_meta.items():
-                    lines.append(f"        {_mermaid_id(str(ctype))} {_mermaid_id(cname)}")
+                    lines.append(
+                        f"        {_mermaid_id(str(ctype))} {_mermaid_id(cname)}"
+                    )
         lines.append("    }")
 
     # Relationships.
@@ -414,7 +431,6 @@ def _is_fk_column(col_id: str, fk_edges: list[dict]) -> bool:
 # ---------------------------------------------------------------------------
 # Feature Slice View
 # ---------------------------------------------------------------------------
-
 
 def _matches_any_pattern(file_path: str, patterns: list[str]) -> bool:
     """Check whether a file path matches any of the given patterns.
@@ -459,7 +475,8 @@ def generate_feature_slice(
     # Extract relevant nodes and edges.
     relevant_nodes = [n for n in nodes if n["id"] in all_relevant_ids]
     relevant_edges = [
-        e for e in edges if e["from"] in all_relevant_ids and e["to"] in all_relevant_ids
+        e for e in edges
+        if e["from"] in all_relevant_ids and e["to"] in all_relevant_ids
     ]
 
     # Build subgraph JSON.
@@ -473,7 +490,10 @@ def generate_feature_slice(
 
     # Build Mermaid diagram.
     if not relevant_nodes:
-        mermaid = 'flowchart TB\n    empty["No nodes match the given feature files"]\n'
+        mermaid = (
+            "flowchart TB\n"
+            "    empty[\"No nodes match the given feature files\"]\n"
+        )
         return mermaid, subgraph
 
     lines: list[str] = ["flowchart TB"]
@@ -515,7 +535,6 @@ def generate_feature_slice(
 # Output
 # ---------------------------------------------------------------------------
 
-
 def write_view(output_dir: Path, filename: str, content: str) -> Path:
     """Write a view file and return its path."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -527,7 +546,6 @@ def write_view(output_dir: Path, filename: str, content: str) -> Path:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(

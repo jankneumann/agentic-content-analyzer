@@ -36,10 +36,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
-
 
 @dataclass
 class ModuleInfo:
@@ -100,7 +100,6 @@ class ImportEdge:
 # ---------------------------------------------------------------------------
 # AST helper utilities
 # ---------------------------------------------------------------------------
-
 
 def decorator_to_string(node: ast.expr) -> str:
     """Convert a decorator AST node to its string representation."""
@@ -172,18 +171,9 @@ def _expr_to_string(node: ast.expr) -> str:
 
 def _op_symbol(op: ast.operator) -> str:
     symbols = {
-        ast.Add: "+",
-        ast.Sub: "-",
-        ast.Mult: "*",
-        ast.Div: "/",
-        ast.Mod: "%",
-        ast.Pow: "**",
-        ast.BitOr: "|",
-        ast.BitAnd: "&",
-        ast.BitXor: "^",
-        ast.FloorDiv: "//",
-        ast.LShift: "<<",
-        ast.RShift: ">>",
+        ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/",
+        ast.Mod: "%", ast.Pow: "**", ast.BitOr: "|", ast.BitAnd: "&",
+        ast.BitXor: "^", ast.FloorDiv: "//", ast.LShift: "<<", ast.RShift: ">>",
         ast.MatMult: "@",
     }
     return symbols.get(type(op), "?")
@@ -245,21 +235,20 @@ _EVENT_HANDLER_PATTERNS: list[re.Pattern[str]] = [
 
 # MCP (Model Context Protocol) decorator patterns
 _MCP_TOOL_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"^(?:\w+)\.tool\("),  # @mcp.tool() or @server.tool()
+    re.compile(r"^(?:\w+)\.tool\("),      # @mcp.tool() or @server.tool()
 ]
 
 _MCP_RESOURCE_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"^(?:\w+)\.resource\("),  # @mcp.resource('uri')
+    re.compile(r"^(?:\w+)\.resource\("),   # @mcp.resource('uri')
 ]
 
 _MCP_PROMPT_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"^(?:\w+)\.prompt\("),  # @mcp.prompt()
+    re.compile(r"^(?:\w+)\.prompt\("),     # @mcp.prompt()
 ]
 
 
 def _detect_entry_point(
-    qualified_name: str,
-    decorators: list[str],
+    qualified_name: str, decorators: list[str],
 ) -> EntryPoint | None:
     """Detect if a function is an entry point based on its decorators."""
     for dec_str in decorators:
@@ -376,7 +365,7 @@ def _extract_route_path(dec_str: str) -> str | None:
 _ORM_ATTRIBUTE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\.query\b"),
     re.compile(r"\bdb\.session\b"),
-    re.compile(r"\.objects\b"),  # Django ORM
+    re.compile(r"\.objects\b"),          # Django ORM
     re.compile(r"\.filter\b"),
     re.compile(r"\.filter_by\b"),
     re.compile(r"\.select\b"),
@@ -468,23 +457,9 @@ class _DbPatternDetector:
                     table = m.group(1)
                     # Filter out SQL keywords that might be matched
                     if table.upper() not in {
-                        "SELECT",
-                        "FROM",
-                        "WHERE",
-                        "SET",
-                        "INTO",
-                        "VALUES",
-                        "AND",
-                        "OR",
-                        "NOT",
-                        "NULL",
-                        "TABLE",
-                        "INDEX",
-                        "VIEW",
-                        "AS",
-                        "ON",
-                        "IN",
-                        "IS",
+                        "SELECT", "FROM", "WHERE", "SET", "INTO",
+                        "VALUES", "AND", "OR", "NOT", "NULL", "TABLE",
+                        "INDEX", "VIEW", "AS", "ON", "IN", "IS",
                     }:
                         if table not in self.tables:
                             self.tables.append(table)
@@ -498,7 +473,6 @@ class _DbPatternDetector:
 # ---------------------------------------------------------------------------
 # Main AST visitors
 # ---------------------------------------------------------------------------
-
 
 class _CallExtractor(ast.NodeVisitor):
     """Extracts function calls and database patterns from a function body."""
@@ -590,8 +564,7 @@ class ModuleAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _analyze_function(
-        self,
-        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> FunctionInfo:
         """Analyze a function or async function definition."""
         name = node.name
@@ -644,13 +617,11 @@ class ModuleAnalyzer(ast.NodeVisitor):
 
         # Record DB access
         if extractor.db_detector.has_db_access:
-            self.db_accesses.append(
-                DbAccess(
-                    function=qualified,
-                    tables=extractor.db_detector.tables,
-                    pattern=extractor.db_detector.pattern or "orm",
-                )
-            )
+            self.db_accesses.append(DbAccess(
+                function=qualified,
+                tables=extractor.db_detector.tables,
+                pattern=extractor.db_detector.pattern or "orm",
+            ))
             if "db_access" not in tags:
                 func_info.tags.append("db_access")
 
@@ -708,7 +679,6 @@ class ModuleAnalyzer(ast.NodeVisitor):
 # File discovery
 # ---------------------------------------------------------------------------
 
-
 def discover_python_files(
     root: Path,
     include_patterns: list[str],
@@ -718,7 +688,10 @@ def discover_python_files(
     files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         # Skip __pycache__ directories
-        dirnames[:] = [d for d in dirnames if d != "__pycache__" and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames
+            if d != "__pycache__" and not d.startswith(".")
+        ]
 
         for filename in filenames:
             if not filename.endswith(".py"):
@@ -762,7 +735,6 @@ def file_to_module_name(filepath: Path, root: Path) -> str:
 # Post-processing
 # ---------------------------------------------------------------------------
 
-
 def _populate_called_by(functions: list[FunctionInfo]) -> None:
     """Populate called_by reverse relationships across all functions."""
     # Build a lookup from function names (various forms) to qualified names
@@ -776,7 +748,9 @@ def _populate_called_by(functions: list[FunctionInfo]) -> None:
             partial = ".".join(parts[i:])
             name_to_qualified[partial].append(func.qualified_name)
 
-    qualified_to_func: dict[str, FunctionInfo] = {f.qualified_name: f for f in functions}
+    qualified_to_func: dict[str, FunctionInfo] = {
+        f.qualified_name: f for f in functions
+    }
 
     for func in functions:
         for call_name in func.calls:
@@ -838,7 +812,6 @@ def _compute_summary(
 # Serialization
 # ---------------------------------------------------------------------------
 
-
 def _serialize_output(
     modules: list[ModuleInfo],
     functions: list[FunctionInfo],
@@ -850,7 +823,10 @@ def _serialize_output(
 ) -> dict[str, Any]:
     """Serialize analysis results to the output JSON format."""
     return {
-        "modules": [{"name": m.name, "file": m.file, "imports": m.imports} for m in modules],
+        "modules": [
+            {"name": m.name, "file": m.file, "imports": m.imports}
+            for m in modules
+        ],
         "functions": [
             {
                 "name": f.name,
@@ -881,7 +857,10 @@ def _serialize_output(
             }
             for c in classes
         ],
-        "import_graph": [{"from": e.from_module, "to": e.to_module} for e in import_edges],
+        "import_graph": [
+            {"from": e.from_module, "to": e.to_module}
+            for e in import_edges
+        ],
         "entry_points": [
             {
                 k: v
@@ -910,7 +889,6 @@ def _serialize_output(
 # ---------------------------------------------------------------------------
 # Main analysis pipeline
 # ---------------------------------------------------------------------------
-
 
 def analyze_directory(
     root: Path,
@@ -988,19 +966,12 @@ def analyze_directory(
 
     # Compute summary
     summary = _compute_summary(
-        all_modules,
-        all_functions,
-        all_classes,
-        all_entry_points,
+        all_modules, all_functions, all_classes, all_entry_points,
     )
 
     return _serialize_output(
-        all_modules,
-        all_functions,
-        all_classes,
-        unique_edges,
-        all_entry_points,
-        all_db_accesses,
+        all_modules, all_functions, all_classes,
+        unique_edges, all_entry_points, all_db_accesses,
         summary,
     )
 
@@ -1008,7 +979,6 @@ def analyze_directory(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
@@ -1033,7 +1003,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         action="append",
         default=None,
-        help="Glob pattern(s) for files to include (e.g. '*.py'). Can be specified multiple times.",
+        help="Glob pattern(s) for files to include (e.g. '*.py'). "
+        "Can be specified multiple times.",
     )
     parser.add_argument(
         "--exclude",
@@ -1083,13 +1054,13 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = result["summary"]
     logger.info("\nAnalysis complete. Results written to: %s", output_path)
-    logger.info("  Modules:    %d", summary["total_modules"])
-    logger.info("  Functions:  %d", summary["total_functions"])
-    logger.info("  Classes:    %d", summary["total_classes"])
-    logger.info("  Async:      %d", summary["async_functions"])
-    logger.info("  Entry pts:  %d", summary["entry_points"])
-    logger.info("  Dead code:  %d candidates", len(summary["dead_code_candidates"]))
-    logger.info("  Hot funcs:  %d", len(summary["hot_functions"]))
+    logger.info("  Modules:    %d", summary['total_modules'])
+    logger.info("  Functions:  %d", summary['total_functions'])
+    logger.info("  Classes:    %d", summary['total_classes'])
+    logger.info("  Async:      %d", summary['async_functions'])
+    logger.info("  Entry pts:  %d", summary['entry_points'])
+    logger.info("  Dead code:  %d candidates", len(summary['dead_code_candidates']))
+    logger.info("  Hot funcs:  %d", len(summary['hot_functions']))
 
     return 0
 

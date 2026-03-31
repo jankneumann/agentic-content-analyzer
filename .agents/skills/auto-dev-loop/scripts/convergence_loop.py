@@ -23,29 +23,30 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # ---------------------------------------------------------------------------
 # Import review_dispatcher and consensus_synthesizer from parallel-infrastructure
 # ---------------------------------------------------------------------------
 
 _PARALLEL_INFRA_DIR = str(
-    Path(__file__).resolve().parent.parent.parent / "parallel-infrastructure" / "scripts"
+    Path(__file__).resolve().parent.parent.parent
+    / "parallel-infrastructure"
+    / "scripts"
 )
 if _PARALLEL_INFRA_DIR not in sys.path:
     sys.path.insert(0, _PARALLEL_INFRA_DIR)
 
+from review_dispatcher import (  # noqa: E402
+    ReviewOrchestrator,
+    ReviewResult,
+)
 from consensus_synthesizer import (  # noqa: E402
     ConsensusSynthesizer,
     Finding,
     VendorResult,
-)
-from review_dispatcher import (  # noqa: E402
-    ReviewOrchestrator,
-    ReviewResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,6 @@ _BLOCKING_CRITICALITIES = {"medium", "high", "critical"}
 # ---------------------------------------------------------------------------
 # Result dataclass
 # ---------------------------------------------------------------------------
-
 
 @dataclass
 class ConvergenceResult:
@@ -73,7 +73,6 @@ class ConvergenceResult:
 # ---------------------------------------------------------------------------
 # Review prompt builder
 # ---------------------------------------------------------------------------
-
 
 def build_review_prompt(artifacts_dir: Path, round_num: int) -> str:
     """Build a review instruction from the artifacts directory.
@@ -103,16 +102,14 @@ def build_review_prompt(artifacts_dir: Path, round_num: int) -> str:
         parts.append(design.read_text()[:4000])
         parts.append("")
 
-    parts.extend(
-        [
-            "### Instructions",
-            "Return findings as JSON with a top-level `findings` array.",
-            "Each finding must have: id, type, criticality, description, "
-            "disposition (fix/accept/escalate/regenerate), and optionally file_path and line_range.",
-            "",
-            f"This is round {round_num}. Focus on remaining issues.",
-        ]
-    )
+    parts.extend([
+        "### Instructions",
+        "Return findings as JSON with a top-level `findings` array.",
+        "Each finding must have: id, type, criticality, description, "
+        "disposition (fix/accept/escalate/regenerate), and optionally file_path and line_range.",
+        "",
+        f"This is round {round_num}. Focus on remaining issues.",
+    ])
 
     return "\n".join(parts)
 
@@ -120,7 +117,6 @@ def build_review_prompt(artifacts_dir: Path, round_num: int) -> str:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _review_results_to_vendor_results(
     results: list[ReviewResult],
@@ -136,18 +132,15 @@ def _review_results_to_vendor_results(
                 except (KeyError, TypeError):
                     logger.warning(
                         "Skipping malformed finding from %s: %s",
-                        r.vendor,
-                        f_data,
+                        r.vendor, f_data,
                     )
-        vendor_results.append(
-            VendorResult(
-                vendor=r.vendor,
-                findings=findings,
-                success=r.success,
-                elapsed_seconds=r.elapsed_seconds,
-                error=r.error,
-            )
-        )
+        vendor_results.append(VendorResult(
+            vendor=r.vendor,
+            findings=findings,
+            success=r.success,
+            elapsed_seconds=r.elapsed_seconds,
+            error=r.error,
+        ))
     return vendor_results
 
 
@@ -179,7 +172,6 @@ def _is_blocking(
 # ---------------------------------------------------------------------------
 # Main convergence loop
 # ---------------------------------------------------------------------------
-
 
 def converge(
     change_id: str,
@@ -227,10 +219,7 @@ def converge(
     # 2. Loop through rounds
     for round_num in range(1, max_rounds + 1):
         logger.info(
-            "Convergence round %d/%d for %s",
-            round_num,
-            max_rounds,
-            change_id,
+            "Convergence round %d/%d for %s", round_num, max_rounds, change_id,
         )
 
         # 2a. Dispatch reviews
@@ -247,9 +236,7 @@ def converge(
         if len(successful) < min_quorum:
             logger.warning(
                 "Quorum lost: %d/%d (need %d)",
-                len(successful),
-                len(results),
-                min_quorum,
+                len(successful), len(results), min_quorum,
             )
             return ConvergenceResult(
                 converged=False,
@@ -272,15 +259,13 @@ def converge(
 
         # 2f. Check for disagreement findings → escalate
         disagreement_findings = [
-            cf
-            for cf in consensus_dict.get("consensus_findings", [])
+            cf for cf in consensus_dict.get("consensus_findings", [])
             if cf.get("status") == "disagreement"
         ]
         if disagreement_findings:
             logger.info(
                 "Disagreement found in round %d, escalating %d findings",
-                round_num,
-                len(disagreement_findings),
+                round_num, len(disagreement_findings),
             )
             if memory_callback:
                 memory_callback(
@@ -300,8 +285,7 @@ def converge(
 
         # 2h. Relax unconfirmed in final round
         blocking = [
-            cf
-            for cf in consensus_dict.get("consensus_findings", [])
+            cf for cf in consensus_dict.get("consensus_findings", [])
             if _is_blocking(cf, relax_unconfirmed=is_final_round)
         ]
 
@@ -330,8 +314,7 @@ def converge(
         # 2j. 3-point stall detection
         if len(trend) >= 3 and trend[-1] >= trend[-3]:
             logger.warning(
-                "Stall detected: trend %s",
-                trend[-3:],
+                "Stall detected: trend %s", trend[-3:],
             )
             return ConvergenceResult(
                 converged=False,
@@ -344,8 +327,7 @@ def converge(
         # 2k. Dispatch fixes
         if fix_callback is not None:
             logger.info(
-                "Dispatching fixes for %d blocking findings",
-                len(blocking),
+                "Dispatching fixes for %d blocking findings", len(blocking),
             )
             fix_callback(blocking, worktree_path)
 

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 import jsonschema
 
+
 SCHEMA_PATH = Path(__file__).parent / "architecture_schema.json"
 
 
@@ -47,7 +48,9 @@ def validate_graph(graph_path: str | Path) -> list[str]:
 
     for i, ep in enumerate(graph.get("entrypoints", [])):
         if ep["node_id"] not in node_ids:
-            errors.append(f"entrypoints[{i}].node_id: node '{ep['node_id']}' not found in nodes")
+            errors.append(
+                f"entrypoints[{i}].node_id: node '{ep['node_id']}' not found in nodes"
+            )
 
     return errors
 

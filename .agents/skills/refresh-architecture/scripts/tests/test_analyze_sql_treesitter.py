@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -104,17 +105,13 @@ class TestSplitStatements:
 
 class TestCreateTable:
     def test_basic_table(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE users (
                 id UUID PRIMARY KEY,
                 name TEXT NOT NULL,
                 email TEXT DEFAULT 'unknown'
             );
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -139,16 +136,12 @@ class TestCreateTable:
         assert email_col["default"] == "'unknown'"
 
     def test_schema_qualified(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE auth.roles (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL
             );
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -156,33 +149,25 @@ class TestCreateTable:
         assert output["tables"][0]["schema"] == "auth"
 
     def test_if_not_exists(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE IF NOT EXISTS configs (
                 key TEXT PRIMARY KEY,
                 value JSONB
             );
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
         assert len(output["tables"]) == 1
         assert output["tables"][0]["name"] == "public.configs"
 
     def test_inline_foreign_key(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE departments (id UUID PRIMARY KEY);
             CREATE TABLE employees (
                 id UUID PRIMARY KEY,
                 dept_id UUID REFERENCES departments(id) ON DELETE CASCADE
             );
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -203,13 +188,9 @@ class TestCreateTable:
 class TestAlterTable:
     def test_add_column(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
         write_migration(migrations_dir, "001.sql", "CREATE TABLE users (id UUID PRIMARY KEY);")
-        write_migration(
-            migrations_dir,
-            "002.sql",
-            """
+        write_migration(migrations_dir, "002.sql", """
             ALTER TABLE users ADD COLUMN email TEXT DEFAULT NULL;
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -220,22 +201,14 @@ class TestAlterTable:
     def test_add_foreign_key_constraint(
         self, parser: TreeSitterSchemaParser, migrations_dir: Path
     ) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE parents (id UUID PRIMARY KEY);
             CREATE TABLE children (id UUID PRIMARY KEY, parent_id UUID);
-        """,
-        )
-        write_migration(
-            migrations_dir,
-            "002.sql",
-            """
+        """)
+        write_migration(migrations_dir, "002.sql", """
             ALTER TABLE children ADD CONSTRAINT fk_parent
             FOREIGN KEY (parent_id) REFERENCES parents(id) ON DELETE CASCADE;
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -254,14 +227,10 @@ class TestAlterTable:
 
 class TestCreateIndex:
     def test_simple_index(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE users (id UUID PRIMARY KEY, email TEXT);
             CREATE INDEX idx_users_email ON users (email);
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -273,42 +242,30 @@ class TestCreateIndex:
         assert idx["unique"] is False
 
     def test_unique_index(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE users (id UUID PRIMARY KEY, email TEXT);
             CREATE UNIQUE INDEX idx_users_email ON users (email);
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
         assert output["indexes"][0]["unique"] is True
 
     def test_composite_index(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE logs (id UUID PRIMARY KEY, level TEXT, ts TIMESTAMPTZ);
             CREATE INDEX idx_logs_level_ts ON logs (level, ts);
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
         assert output["indexes"][0]["columns"] == ["level", "ts"]
 
     def test_functional_index(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE users (id UUID PRIMARY KEY, email TEXT);
             CREATE INDEX idx_users_lower_email ON users (lower(email));
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -324,18 +281,14 @@ class TestCreateIndex:
 
 class TestCreateFunction:
     def test_basic_function(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE OR REPLACE FUNCTION my_func()
             RETURNS void LANGUAGE plpgsql AS $$
             BEGIN
                 RETURN;
             END;
             $$;
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -348,16 +301,12 @@ class TestCreateFunction:
     def test_function_with_params(
         self, parser: TreeSitterSchemaParser, migrations_dir: Path
     ) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE FUNCTION add_numbers(a INTEGER, b INTEGER)
             RETURNS INTEGER LANGUAGE sql AS $$
             SELECT a + b;
             $$;
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -368,10 +317,7 @@ class TestCreateFunction:
     def test_plpgsql_table_references(
         self, parser: TreeSitterSchemaParser, migrations_dir: Path
     ) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE orders (id UUID PRIMARY KEY);
             CREATE FUNCTION process_order()
             RETURNS void LANGUAGE plpgsql AS $$
@@ -380,29 +326,22 @@ class TestCreateFunction:
                 UPDATE orders SET id = id;
             END;
             $$;
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
         fn = output["stored_functions"][0]
         assert "public.orders" in fn["referenced_tables"]
 
-    def test_create_or_replace(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+    def test_create_or_replace(
+        self, parser: TreeSitterSchemaParser, migrations_dir: Path
+    ) -> None:
+        write_migration(migrations_dir, "001.sql", """
             CREATE FUNCTION my_func() RETURNS void LANGUAGE sql AS $$ SELECT 1; $$;
-        """,
-        )
-        write_migration(
-            migrations_dir,
-            "002.sql",
-            """
+        """)
+        write_migration(migrations_dir, "002.sql", """
             CREATE OR REPLACE FUNCTION my_func() RETURNS void LANGUAGE sql AS $$ SELECT 2; $$;
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -410,18 +349,14 @@ class TestCreateFunction:
         assert output["stored_functions"][0]["file"] == "002.sql"
 
     def test_returns_trigger(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE OR REPLACE FUNCTION immutable_error()
             RETURNS TRIGGER AS $$
             BEGIN
                 RAISE EXCEPTION 'immutable';
             END;
             $$ LANGUAGE plpgsql;
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -438,18 +373,14 @@ class TestCreateFunction:
 
 class TestCreateTrigger:
     def test_basic_trigger(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE users (id UUID PRIMARY KEY, updated_at TIMESTAMPTZ);
             CREATE FUNCTION update_ts() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN NEW.updated_at = now(); RETURN NEW; END; $$;
             CREATE TRIGGER trg_update_ts
             BEFORE UPDATE ON users
             FOR EACH ROW EXECUTE FUNCTION update_ts();
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -469,15 +400,11 @@ class TestCreateTrigger:
 
 class TestSummary:
     def test_summary_counts(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE a (id UUID PRIMARY KEY, name TEXT);
             CREATE TABLE b (id UUID PRIMARY KEY, a_id UUID REFERENCES a(id));
             CREATE INDEX idx_b_a ON b (a_id);
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -487,14 +414,10 @@ class TestSummary:
         assert output["summary"]["total_indexes"] == 1
 
     def test_fk_graph(self, parser: TreeSitterSchemaParser, migrations_dir: Path) -> None:
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE parents (id UUID PRIMARY KEY);
             CREATE TABLE children (id UUID PRIMARY KEY, parent_id UUID REFERENCES parents(id));
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -512,20 +435,12 @@ class TestMigrationOrdering:
     def test_files_parsed_in_order(
         self, parser: TreeSitterSchemaParser, migrations_dir: Path
     ) -> None:
-        write_migration(
-            migrations_dir,
-            "002_later.sql",
-            """
+        write_migration(migrations_dir, "002_later.sql", """
             ALTER TABLE users ADD COLUMN role TEXT;
-        """,
-        )
-        write_migration(
-            migrations_dir,
-            "001_first.sql",
-            """
+        """)
+        write_migration(migrations_dir, "001_first.sql", """
             CREATE TABLE users (id UUID PRIMARY KEY);
-        """,
-        )
+        """)
         parser.parse_directory(migrations_dir)
         output = parser.build_output()
 
@@ -542,13 +457,9 @@ class TestCLI:
     def test_main(self, migrations_dir: Path, tmp_path: Path) -> None:
         from analyze_sql_treesitter import main
 
-        write_migration(
-            migrations_dir,
-            "001.sql",
-            """
+        write_migration(migrations_dir, "001.sql", """
             CREATE TABLE test (id UUID PRIMARY KEY);
-        """,
-        )
+        """)
         output_path = tmp_path / "output.json"
         rc = main([str(migrations_dir), "--output", str(output_path)])
 

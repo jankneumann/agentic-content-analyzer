@@ -22,51 +22,42 @@ from pathlib import Path
 SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Specific vendor patterns first (before generic ones)
     ("aws-access-key", re.compile(r"(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])")),
-    (
-        "aws-secret-key",
-        re.compile(
-            r"(?i)(?:aws_secret_access_key|aws_secret)\s*[=:]\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?"
-        ),
-    ),
+    ("aws-secret-key", re.compile(
+        r"(?i)(?:aws_secret_access_key|aws_secret)\s*[=:]\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?"
+    )),
     ("github-token", re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}")),
     ("anthropic-key", re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")),
     ("openai-key", re.compile(r"sk-[A-Za-z0-9]{20,}")),
-    ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")),
-    ("connection-string", re.compile(r"(?i)(?:postgres(?:ql)?|mysql|mongodb|redis|amqp)://\S+")),
+    ("private-key", re.compile(
+        r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
+    )),
+    ("connection-string", re.compile(
+        r"(?i)(?:postgres(?:ql)?|mysql|mongodb|redis|amqp)://\S+"
+    )),
     # Generic patterns last
-    (
-        "api-key",
-        re.compile(r"(?i)(?:api[_-]?key|apikey)\s*[=:]\s*['\"]?([A-Za-z0-9_\-]{20,})['\"]?"),
-    ),
-    (
-        "bearer-token",
-        re.compile(
-            r"(?i)(?:bearer|token|authorization)\s*[=:]\s*['\"]?([A-Za-z0-9_\-.]{20,})['\"]?"
-        ),
-    ),
-    ("password", re.compile(r"(?i)(?:password|passwd|pwd)\s*[=:]\s*['\"]?(\S{8,})['\"]?")),
-    (
-        "generic-secret",
-        re.compile(r"(?i)(?:secret|credential|auth_token)\s*[=:]\s*['\"]?(\S{8,})['\"]?"),
-    ),
-    (
-        "env-var-value",
-        re.compile(
-            r"(?i)(?:export\s+)?[A-Z_]{2,}(?:_KEY|_SECRET|_TOKEN|_PASSWORD|_CREDENTIAL)\s*=\s*['\"]?(\S+)['\"]?"
-        ),
-    ),
+    ("api-key", re.compile(
+        r"(?i)(?:api[_-]?key|apikey)\s*[=:]\s*['\"]?([A-Za-z0-9_\-]{20,})['\"]?"
+    )),
+    ("bearer-token", re.compile(
+        r"(?i)(?:bearer|token|authorization)\s*[=:]\s*['\"]?([A-Za-z0-9_\-.]{20,})['\"]?"
+    )),
+    ("password", re.compile(
+        r"(?i)(?:password|passwd|pwd)\s*[=:]\s*['\"]?(\S{8,})['\"]?"
+    )),
+    ("generic-secret", re.compile(
+        r"(?i)(?:secret|credential|auth_token)\s*[=:]\s*['\"]?(\S{8,})['\"]?"
+    )),
+    ("env-var-value", re.compile(
+        r"(?i)(?:export\s+)?[A-Z_]{2,}(?:_KEY|_SECRET|_TOKEN|_PASSWORD|_CREDENTIAL)\s*=\s*['\"]?(\S+)['\"]?"
+    )),
 ]
 
 # Patterns that should NOT be redacted (common development identifiers)
 ALLOWLIST_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"^[0-9a-f]{7,40}$"),  # git SHAs
-    re.compile(
-        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
-    ),  # UUIDs
+    re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE),  # UUIDs
     re.compile(r"^openspec/"),  # OpenSpec paths
-    re.compile(
-        r"^[a-z0-9](?:[a-z0-9-]{0,50}[a-z0-9])?$"
-    ),  # kebab-case identifiers (change-ids, max 52 chars)
+    re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,50}[a-z0-9])?$"),  # kebab-case identifiers (change-ids, max 52 chars)
 ]
 
 # Home directory patterns to normalize
@@ -84,7 +75,10 @@ def shannon_entropy(s: str) -> float:
     for c in s:
         freq[c] = freq.get(c, 0) + 1
     length = len(s)
-    return -sum((count / length) * math.log2(count / length) for count in freq.values())
+    return -sum(
+        (count / length) * math.log2(count / length)
+        for count in freq.values()
+    )
 
 
 def is_allowlisted(s: str) -> bool:
@@ -102,7 +96,6 @@ def redact_secrets(content: str) -> tuple[str, list[dict[str, str]]]:
     result = content
 
     for secret_type, pattern in SECRET_PATTERNS:
-
         def replace_match(m: re.Match[str], st: str = secret_type) -> str:
             redactions.append({"type": st, "position": str(m.start())})
             return f"[REDACTED:{st}]"
@@ -121,9 +114,7 @@ def redact_high_entropy(content: str) -> tuple[str, list[dict[str, str]]]:
     redactions: list[dict[str, str]] = []
 
     # Match quoted strings or long non-whitespace tokens
-    token_pattern = re.compile(
-        r"""(?:['"]([^'"]{21,})['"])|(?:(?<!\w)([A-Za-z0-9/+=_\-]{21,})(?!\w))"""
-    )
+    token_pattern = re.compile(r"""(?:['"]([^'"]{21,})['"])|(?:(?<!\w)([A-Za-z0-9/+=_\-]{21,})(?!\w))""")
 
     def check_and_redact(m: re.Match[str]) -> str:
         token = m.group(1) or m.group(2)
@@ -133,13 +124,11 @@ def redact_high_entropy(content: str) -> tuple[str, list[dict[str, str]]]:
             return m.group(0)
         entropy = shannon_entropy(token)
         if entropy > 4.5:
-            redactions.append(
-                {
-                    "type": "high-entropy",
-                    "entropy": f"{entropy:.2f}",
-                    "position": str(m.start()),
-                }
-            )
+            redactions.append({
+                "type": "high-entropy",
+                "entropy": f"{entropy:.2f}",
+                "position": str(m.start()),
+            })
             return "[REDACTED:high-entropy]"
         return m.group(0)
 
@@ -183,7 +172,8 @@ def main() -> int:
     parser.add_argument("input", help="Input session-log file path")
     parser.add_argument("output", help="Output sanitized file path")
     parser.add_argument(
-        "--dry-run", action="store_true", help="Print redaction summary without writing output"
+        "--dry-run", action="store_true",
+        help="Print redaction summary without writing output"
     )
     args = parser.parse_args()
 

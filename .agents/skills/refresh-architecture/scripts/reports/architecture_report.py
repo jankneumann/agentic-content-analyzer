@@ -26,12 +26,12 @@ import logging
 import re
 import sys
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from arch_utils.graph_io import load_graph
+from arch_utils.graph_io import load_graph  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,6 @@ from generate_views import (  # noqa: E402
     generate_db_erd,
     generate_frontend_component_view,
 )
-
 from reports.config_schema import (  # noqa: E402
     KNOWN_SECTIONS,
     ReportConfig,
@@ -143,7 +142,7 @@ def _section_system_overview(
 
     # Metadata
     git_sha = "unknown"
-    generated_at = datetime.now(UTC).isoformat()
+    generated_at = datetime.now(timezone.utc).isoformat()
     if summary:
         git_sha = summary.get("git_sha", git_sha)
         generated_at = summary.get("generated_at", generated_at)
@@ -171,7 +170,9 @@ def _section_system_overview(
         }
         protocol = protocol_map.get(cfg.project.protocol.lower(), cfg.project.protocol)
     else:
-        methods = Counter(ep.get("method", "unknown") for ep in graph.get("entrypoints", []))
+        methods = Counter(
+            ep.get("method", "unknown") for ep in graph.get("entrypoints", [])
+        )
         protocol = "MCP server" if methods.get("MCP", 0) > 0 else "service"
 
     # Detect primary language — config override or auto-detect
@@ -179,7 +180,10 @@ def _section_system_overview(
         primary_lang = cfg.project.primary_language
     else:
         code_languages = {k: v for k, v in by_language.items() if k.lower() != "sql"}
-        primary_lang = max(code_languages, key=code_languages.get) if code_languages else "Python"
+        primary_lang = (
+            max(code_languages, key=code_languages.get) if code_languages
+            else "Python"
+        )
 
     # Count async from python_analysis if available
     py_summary = py.get("summary", {}) if py else {}
@@ -325,8 +329,7 @@ def _section_module_map(
     # Derive role description from function names / docstrings
     def derive_role(mod_name: str) -> str:
         mod_funcs = [
-            f
-            for f in py.get("functions", [])
+            f for f in py.get("functions", [])
             if f["qualified_name"].split(".")[0] == mod_name
             and "." not in f["qualified_name"].split(f"{mod_name}.")[1]
             # skip nested class methods for the summary
@@ -339,9 +342,9 @@ def _section_module_map(
 
         # Try class-level: find first class method with docstring
         mod_class_funcs = [
-            f
-            for f in py.get("functions", [])
-            if f["qualified_name"].startswith(f"{mod_name}.") and f.get("docstring")
+            f for f in py.get("functions", [])
+            if f["qualified_name"].startswith(f"{mod_name}.")
+            and f.get("docstring")
         ]
         if mod_class_funcs:
             return _first_line(mod_class_funcs[0]["docstring"])
@@ -386,7 +389,10 @@ def _section_dependency_layers(
 ) -> str:
     """Show dependency flow as a layered text diagram."""
     lines: list[str] = ["## Dependency Layers", ""]
-    lines.append("*Data source: [python_analysis.json](python_analysis.json)*")
+    lines.append(
+        "*Data source: "
+        "[python_analysis.json](python_analysis.json)*"
+    )
     lines.append("")
 
     if not py:
@@ -423,7 +429,7 @@ def _section_dependency_layers(
     if services:
         svc_list = sorted(services)
         # Split into rows of ~4 for readability
-        rows = [svc_list[i : i + 4] for i in range(0, len(svc_list), 4)]
+        rows = [svc_list[i:i + 4] for i in range(0, len(svc_list), 4)]
         first = True
         for row in rows:
             label = "  SERVICE    " if first else "             "
@@ -535,7 +541,10 @@ def _section_health(
     severity_thresholds = cfg.health.severity_thresholds
 
     lines: list[str] = ["## Architecture Health", ""]
-    lines.append("*Data source: [architecture.diagnostics.json](architecture.diagnostics.json)*")
+    lines.append(
+        "*Data source: "
+        "[architecture.diagnostics.json](architecture.diagnostics.json)*"
+    )
     lines.append("")
 
     if not diagnostics:
@@ -700,7 +709,10 @@ def _section_impact_analysis(
 def _section_code_health(py: PyAnalysis | None) -> str:
     """Surface dead code, hot functions, docstring coverage, async ratio."""
     lines: list[str] = ["## Code Health Indicators", ""]
-    lines.append("*Data source: [python_analysis.json](python_analysis.json)*")
+    lines.append(
+        "*Data source: "
+        "[python_analysis.json](python_analysis.json)*"
+    )
     lines.append("")
 
     if not py:
@@ -721,9 +733,7 @@ def _section_code_health(py: PyAnalysis | None) -> str:
     lines.append("")
     lines.append("| Indicator | Value |")
     lines.append("|-----------|-------|")
-    lines.append(
-        f"| Async ratio | {async_funcs}/{total_funcs} ({round(100 * async_funcs / total_funcs) if total_funcs else 0}%) |"
-    )
+    lines.append(f"| Async ratio | {async_funcs}/{total_funcs} ({round(100 * async_funcs / total_funcs) if total_funcs else 0}%) |")
     lines.append(f"| Docstring coverage | {with_doc}/{total_funcs} ({doc_pct}%) |")
     lines.append(f"| Dead code candidates | {len(py_summary.get('dead_code_candidates', []))} |")
     lines.append("")
@@ -733,9 +743,7 @@ def _section_code_health(py: PyAnalysis | None) -> str:
     if hot:
         lines.append("### Hot Functions")
         lines.append("")
-        lines.append(
-            "Functions called by the most other functions — changes here have wide blast radius:"
-        )
+        lines.append("Functions called by the most other functions — changes here have wide blast radius:")
         lines.append("")
         lines.append("| Function | Callers |")
         lines.append("|----------|---------|")
@@ -779,7 +787,10 @@ def _section_code_health(py: PyAnalysis | None) -> str:
 def _section_parallel_zones(zones_data: dict[str, Any] | None) -> str:
     """Show independent groups for safe parallel modification."""
     lines: list[str] = ["## Parallel Modification Zones", ""]
-    lines.append("*Data source: [parallel_zones.json](parallel_zones.json)*")
+    lines.append(
+        "*Data source: "
+        "[parallel_zones.json](parallel_zones.json)*"
+    )
     lines.append("")
 
     if not zones_data:
@@ -826,9 +837,7 @@ def _section_parallel_zones(zones_data: dict[str, Any] | None) -> str:
             size = group.get("size", len(members))
             # Show unique module names (strip py: prefix)
             mod_names = sorted({_module_name(m) for m in members})
-            lines.append(
-                f"**Group {gid}** ({size} members spanning {len(mod_names)} modules): {', '.join(f'`{m}`' for m in mod_names[:8])}"
-            )
+            lines.append(f"**Group {gid}** ({size} members spanning {len(mod_names)} modules): {', '.join(f'`{m}`' for m in mod_names[:8])}")
             if len(mod_names) > 8:
                 lines.append(f"  ... and {len(mod_names) - 8} more modules")
             lines.append("")
@@ -837,7 +846,9 @@ def _section_parallel_zones(zones_data: dict[str, Any] | None) -> str:
     leaves = zones_data.get("leaf_modules", [])
     if leaves:
         singleton_count = total_groups - len(large_groups)
-        lines.append(f"### Leaf Modules ({leaf_count})")
+        lines.append(
+            f"### Leaf Modules ({leaf_count})"
+        )
         lines.append("")
         lines.append(
             f"{leaf_count} modules have no dependents — changes are fully isolated. "
@@ -875,9 +886,7 @@ def _section_cross_layer_flows(
         "[architecture.summary.json](architecture.summary.json)*"
     )
     lines.append("")
-    lines.append(
-        f"{_fmt_count(len(flows), 'flow')} detected spanning frontend → backend → database."
-    )
+    lines.append(f"{_fmt_count(len(flows), 'flow')} detected spanning frontend → backend → database.")
     lines.append("")
 
     by_conf: dict[str, list[dict[str, Any]]] = {"high": [], "medium": [], "low": []}
@@ -913,7 +922,10 @@ def _section_cross_layer_flows(
 def _section_mermaid_diagrams(graph: Graph) -> str:
     """Build the Mermaid diagrams section."""
     lines: list[str] = ["## Architecture Diagrams", ""]
-    lines.append("*Data source: [architecture.graph.json](architecture.graph.json)*")
+    lines.append(
+        "*Data source: "
+        "[architecture.graph.json](architecture.graph.json)*"
+    )
     lines.append("")
 
     lines.append("### Container View")
@@ -1038,9 +1050,7 @@ def generate_report(
 
     # Map section names to builder callables (lazy — only invoked when enabled)
     builders: dict[str, Any] = {
-        "system_overview": lambda: _section_system_overview(
-            graph, summary, python_analysis, config=cfg
-        ),
+        "system_overview": lambda: _section_system_overview(graph, summary, python_analysis, config=cfg),
         "module_map": lambda: _section_module_map(python_analysis, graph),
         "dependency_layers": lambda: _section_dependency_layers(python_analysis),
         "entry_points": lambda: _section_entry_points(graph, python_analysis),
@@ -1126,12 +1136,7 @@ def main(argv: list[str] | None = None) -> int:
     python_analysis = _load_json(input_dir / "python_analysis.json")
 
     report = generate_report(
-        graph,
-        summary,
-        diagnostics,
-        flows_data,
-        impact_data,
-        zones_data,
+        graph, summary, diagnostics, flows_data, impact_data, zones_data,
         python_analysis=python_analysis,
         config=config,
     )

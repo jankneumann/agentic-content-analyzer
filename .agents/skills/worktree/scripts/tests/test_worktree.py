@@ -1,31 +1,32 @@
 """Tests for scripts/worktree.py."""
 
 import argparse
+import json
 import os
 import subprocess
-
-# Import the module under test
-import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import pytest
 
+# Import the module under test
+import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import worktree
 from worktree import (
-    cmd_gc,
+    worktree_path,
+    default_branch,
+    load_registry,
+    save_registry,
+    find_entry,
+    remove_entry,
+    parse_duration_hours,
     cmd_heartbeat,
     cmd_list,
     cmd_pin,
     cmd_unpin,
-    default_branch,
-    find_entry,
-    load_registry,
-    parse_duration_hours,
-    remove_entry,
-    save_registry,
-    worktree_path,
+    cmd_gc,
 )
 
 
@@ -47,7 +48,9 @@ def git_repo(tmp_path: Path) -> Path:
     )
     # Create initial commit so we have a main branch
     (tmp_path / "README.md").write_text("test")
-    subprocess.run(["git", "add", "README.md"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], cwd=str(tmp_path), check=True, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "init"],
         cwd=str(tmp_path),
@@ -132,56 +135,38 @@ class TestRegistry:
         assert reg == {"version": 1, "entries": []}
 
     def test_save_load_roundtrip(self, tmp_path: Path) -> None:
-        reg = {
-            "version": 1,
-            "entries": [
-                {
-                    "change_id": "c1",
-                    "agent_id": None,
-                    "branch": "openspec/c1",
-                    "worktree_path": "/tmp/wt",
-                    "created_at": "2026-01-01T00:00:00+00:00",
-                    "last_heartbeat": "2026-01-01T00:00:00+00:00",
-                    "pinned": False,
-                },
-            ],
-        }
+        reg = {"version": 1, "entries": [
+            {"change_id": "c1", "agent_id": None, "branch": "openspec/c1",
+             "worktree_path": "/tmp/wt", "created_at": "2026-01-01T00:00:00+00:00",
+             "last_heartbeat": "2026-01-01T00:00:00+00:00", "pinned": False},
+        ]}
         save_registry(tmp_path, reg)
         loaded = load_registry(tmp_path)
         assert loaded == reg
 
     def test_find_entry_by_change_id_and_agent_id(self) -> None:
-        reg = {
-            "version": 1,
-            "entries": [
-                {"change_id": "c1", "agent_id": None},
-                {"change_id": "c1", "agent_id": "w1"},
-                {"change_id": "c2", "agent_id": None},
-            ],
-        }
+        reg = {"version": 1, "entries": [
+            {"change_id": "c1", "agent_id": None},
+            {"change_id": "c1", "agent_id": "w1"},
+            {"change_id": "c2", "agent_id": None},
+        ]}
         assert find_entry(reg, "c1", "w1") == {"change_id": "c1", "agent_id": "w1"}
         assert find_entry(reg, "c1") == {"change_id": "c1", "agent_id": None}
         assert find_entry(reg, "c3") is None
 
     def test_remove_entry_returns_true(self) -> None:
-        reg = {
-            "version": 1,
-            "entries": [
-                {"change_id": "c1", "agent_id": None},
-                {"change_id": "c2", "agent_id": None},
-            ],
-        }
+        reg = {"version": 1, "entries": [
+            {"change_id": "c1", "agent_id": None},
+            {"change_id": "c2", "agent_id": None},
+        ]}
         assert remove_entry(reg, "c1") is True
         assert len(reg["entries"]) == 1
         assert reg["entries"][0]["change_id"] == "c2"
 
     def test_remove_entry_missing_returns_false(self) -> None:
-        reg = {
-            "version": 1,
-            "entries": [
-                {"change_id": "c1", "agent_id": None},
-            ],
-        }
+        reg = {"version": 1, "entries": [
+            {"change_id": "c1", "agent_id": None},
+        ]}
         assert remove_entry(reg, "nonexistent") is False
         assert len(reg["entries"]) == 1
 
@@ -234,9 +219,7 @@ class TestCmdSetup:
         )
         assert "custom/branch" in branches.stdout
 
-    def test_output_contains_worktree_path(
-        self, git_repo: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_output_contains_worktree_path(self, git_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
         args = _make_args("setup", change_id="test-feature")
         with _chdir(git_repo):
             worktree.cmd_setup(args)
@@ -269,9 +252,7 @@ class TestCmdTeardown:
 
 
 class TestCmdStatus:
-    def test_specific_worktree_exists(
-        self, git_repo: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_specific_worktree_exists(self, git_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
         setup_args = _make_args("setup", change_id="test-feature")
         with _chdir(git_repo):
             worktree.cmd_setup(setup_args)
@@ -283,9 +264,7 @@ class TestCmdStatus:
         captured = capsys.readouterr()
         assert "EXISTS=true" in captured.out
 
-    def test_specific_worktree_not_found(
-        self, git_repo: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_specific_worktree_not_found(self, git_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
         status_args = _make_args("status", change_id="nonexistent")
         with _chdir(git_repo):
             result = worktree.cmd_status(status_args)
@@ -441,7 +420,7 @@ class TestCmdGc:
         reg = load_registry(git_repo)
         entry = find_entry(reg, "gc-stale")
         assert entry is not None
-        old_ts = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
         entry["last_heartbeat"] = old_ts
         save_registry(git_repo, reg)
 
@@ -484,7 +463,7 @@ class TestCmdGc:
         reg = load_registry(git_repo)
         entry = find_entry(reg, "gc-pinned")
         assert entry is not None
-        old_ts = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
         entry["last_heartbeat"] = old_ts
         save_registry(git_repo, reg)
 
@@ -510,7 +489,7 @@ class TestCmdGc:
         reg = load_registry(git_repo)
         entry = find_entry(reg, "gc-force")
         assert entry is not None
-        old_ts = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
         entry["last_heartbeat"] = old_ts
         save_registry(git_repo, reg)
 
@@ -539,7 +518,6 @@ class TestParseDurationHours:
 
 
 # --- Helpers ---
-
 
 class _chdir:
     """Context manager to temporarily change directory."""

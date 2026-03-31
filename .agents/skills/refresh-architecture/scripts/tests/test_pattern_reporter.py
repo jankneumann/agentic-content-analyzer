@@ -17,6 +17,7 @@ if str(SCRIPTS_DIR / "insights") not in sys.path:
 
 from insights.pattern_reporter import compute_pattern_insights, main
 
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -41,75 +42,40 @@ def enrichment() -> dict[str, Any]:
                     {"file": "c.py", "line": 5, "enclosing_node": None},
                 ],
             },
-            "context_managers": {
-                "count": 1,
-                "items": [
-                    {"file": "a.py", "line": 30, "enclosing_node": None},
-                ],
-            },
+            "context_managers": {"count": 1, "items": [
+                {"file": "a.py", "line": 30, "enclosing_node": None},
+            ]},
             "type_hints": {
                 "count": 4,
                 "items": [
-                    {
-                        "file": "a.py",
-                        "line": 1,
-                        "function": "foo",
-                        "kind": "return_type",
-                        "enclosing_node": None,
-                    },
-                    {
-                        "file": "a.py",
-                        "line": 1,
-                        "parameter": "x",
-                        "kind": "param_type",
-                        "enclosing_node": None,
-                    },
-                    {
-                        "file": "b.py",
-                        "line": 1,
-                        "function": "bar",
-                        "kind": "return_type",
-                        "enclosing_node": None,
-                    },
-                    {
-                        "file": "b.py",
-                        "line": 1,
-                        "parameter": "y",
-                        "kind": "param_type",
-                        "enclosing_node": None,
-                    },
+                    {"file": "a.py", "line": 1, "function": "foo", "kind": "return_type",
+                     "enclosing_node": None},
+                    {"file": "a.py", "line": 1, "parameter": "x", "kind": "param_type",
+                     "enclosing_node": None},
+                    {"file": "b.py", "line": 1, "function": "bar", "kind": "return_type",
+                     "enclosing_node": None},
+                    {"file": "b.py", "line": 1, "parameter": "y", "kind": "param_type",
+                     "enclosing_node": None},
                 ],
             },
             "assertions": {"count": 0, "items": []},
         },
         "typescript_patterns": {
-            "empty_catch": {
-                "count": 1,
-                "items": [
-                    {"file": "x.ts", "line": 3, "is_empty": True, "enclosing_node": None},
-                ],
-            },
-            "catch_clauses": {
-                "count": 2,
-                "items": [
-                    {"file": "x.ts", "line": 3, "is_empty": True, "enclosing_node": None},
-                    {"file": "x.ts", "line": 10, "is_empty": False, "enclosing_node": None},
-                ],
-            },
+            "empty_catch": {"count": 1, "items": [
+                {"file": "x.ts", "line": 3, "is_empty": True, "enclosing_node": None},
+            ]},
+            "catch_clauses": {"count": 2, "items": [
+                {"file": "x.ts", "line": 3, "is_empty": True, "enclosing_node": None},
+                {"file": "x.ts", "line": 10, "is_empty": False, "enclosing_node": None},
+            ]},
             "dynamic_imports": {"count": 0, "items": []},
         },
         "security_patterns": {
             "total": 1,
             "by_severity": {"high": 1},
             "items": [
-                {
-                    "file": "a.py",
-                    "line": 50,
-                    "category": "eval_exec",
-                    "severity": "high",
-                    "detail": "eval() usage",
-                    "enclosing_node": None,
-                },
+                {"file": "a.py", "line": 50, "category": "eval_exec",
+                 "severity": "high", "detail": "eval() usage", "enclosing_node": None},
             ],
         },
     }

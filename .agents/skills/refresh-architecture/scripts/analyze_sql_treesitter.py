@@ -28,8 +28,8 @@ logger = logging.getLogger("analyze_sql_treesitter")
 # ---------------------------------------------------------------------------
 
 try:
-    import tree_sitter_sql
     from tree_sitter import Language, Node, Parser
+    import tree_sitter_sql
 
     SQL_LANGUAGE = Language(tree_sitter_sql.language())
     TREESITTER_AVAILABLE = True
@@ -247,41 +247,15 @@ def _extract_column_type(col_def: Node) -> str:
     keyword_timestamptz, etc. We collect them until we hit a non-type node.
     """
     type_keywords = set()
-    for kw in [
-        "keyword_uuid",
-        "keyword_text",
-        "keyword_int",
-        "keyword_integer",
-        "keyword_bigint",
-        "keyword_smallint",
-        "keyword_boolean",
-        "keyword_bool",
-        "keyword_float",
-        "keyword_real",
-        "keyword_double",
-        "keyword_numeric",
-        "keyword_decimal",
-        "keyword_serial",
-        "keyword_bigserial",
-        "keyword_varchar",
-        "keyword_char",
-        "keyword_character",
-        "keyword_timestamp",
-        "keyword_timestamptz",
-        "keyword_date",
-        "keyword_time",
-        "keyword_interval",
-        "keyword_json",
-        "keyword_jsonb",
-        "keyword_bytea",
-        "keyword_xml",
-        "keyword_trigger",
-        "int",
-        "bigint",
-        "smallint",
-        "float",
-        "double",
-    ]:
+    for kw in ["keyword_uuid", "keyword_text", "keyword_int", "keyword_integer",
+               "keyword_bigint", "keyword_smallint", "keyword_boolean", "keyword_bool",
+               "keyword_float", "keyword_real", "keyword_double", "keyword_numeric",
+               "keyword_decimal", "keyword_serial", "keyword_bigserial",
+               "keyword_varchar", "keyword_char", "keyword_character",
+               "keyword_timestamp", "keyword_timestamptz", "keyword_date",
+               "keyword_time", "keyword_interval", "keyword_json", "keyword_jsonb",
+               "keyword_bytea", "keyword_xml", "keyword_trigger",
+               "int", "bigint", "smallint", "float", "double"]:
         type_keywords.add(kw)
 
     type_parts = []
@@ -318,28 +292,13 @@ def _extract_column_type(col_def: Node) -> str:
             found_name = True
             continue
         if found_name and child.type not in (
-            "keyword_not",
-            "keyword_null",
-            "keyword_default",
-            "keyword_primary",
-            "keyword_key",
-            "keyword_references",
-            "keyword_unique",
-            "keyword_check",
-            "keyword_on",
-            "keyword_delete",
-            "keyword_cascade",
-            "keyword_restrict",
-            "keyword_set",
-            "keyword_action",
-            "keyword_no",
-            "literal",
-            "invocation",
-            "object_reference",
-            ",",
-            "(",
-            ")",
-            "keyword_constraint",
+            "keyword_not", "keyword_null", "keyword_default",
+            "keyword_primary", "keyword_key", "keyword_references",
+            "keyword_unique", "keyword_check", "keyword_on",
+            "keyword_delete", "keyword_cascade", "keyword_restrict",
+            "keyword_set", "keyword_action", "keyword_no",
+            "literal", "invocation", "object_reference",
+            ",", "(", ")", "keyword_constraint",
         ):
             return _node_text(child).upper()
 
@@ -531,36 +490,23 @@ class TreeSitterSchemaParser:
             if child.type == "keyword_default":
                 found_default = True
             elif found_default:
-                if child.type in (
-                    "literal",
-                    "invocation",
-                    "identifier",
-                    "keyword_true",
-                    "keyword_false",
-                    "keyword_null",
-                ):
+                if child.type in ("literal", "invocation", "identifier", "keyword_true",
+                                  "keyword_false", "keyword_null"):
                     default_val = _node_text(child)
                     break
-                elif child.type in (
-                    "keyword_not",
-                    "keyword_primary",
-                    "keyword_references",
-                    "keyword_unique",
-                    "keyword_check",
-                ):
+                elif child.type in ("keyword_not", "keyword_primary", "keyword_references",
+                                    "keyword_unique", "keyword_check"):
                     break
                 else:
                     default_val = _node_text(child)
                     break
 
-        table.columns.append(
-            Column(
-                name=col_name,
-                type=col_type,
-                nullable=nullable,
-                default=default_val,
-            )
-        )
+        table.columns.append(Column(
+            name=col_name,
+            type=col_type,
+            nullable=nullable,
+            default=default_val,
+        ))
 
         # Check inline REFERENCES (FK)
         if _has_child_type(node, "keyword_references"):
@@ -588,15 +534,13 @@ class TreeSitterSchemaParser:
         if ref_table:
             if not ref_cols:
                 ref_cols = ["id"]  # Default FK target
-            self.foreign_keys.append(
-                ForeignKey(
-                    from_table=from_table,
-                    from_columns=[from_col],
-                    to_table=ref_table,
-                    to_columns=ref_cols,
-                    on_delete=on_delete,
-                )
-            )
+            self.foreign_keys.append(ForeignKey(
+                from_table=from_table,
+                from_columns=[from_col],
+                to_table=ref_table,
+                to_columns=ref_cols,
+                on_delete=on_delete,
+            ))
 
     def _parse_table_constraint(self, node: Node, table: Table) -> None:
         """Parse a table-level constraint (PRIMARY KEY or FOREIGN KEY)."""
@@ -638,16 +582,14 @@ class TreeSitterSchemaParser:
         if to_table and from_cols:
             if not to_cols:
                 to_cols = ["id"]
-            self.foreign_keys.append(
-                ForeignKey(
-                    from_table=from_table,
-                    from_columns=from_cols,
-                    to_table=to_table,
-                    to_columns=to_cols,
-                    constraint_name=constraint_name,
-                    on_delete=on_delete,
-                )
-            )
+            self.foreign_keys.append(ForeignKey(
+                from_table=from_table,
+                from_columns=from_cols,
+                to_table=to_table,
+                to_columns=to_cols,
+                constraint_name=constraint_name,
+                on_delete=on_delete,
+            ))
 
     def _extract_ordered_columns(self, node: Node) -> list[str]:
         """Extract column names from ordered_columns or similar node."""
@@ -710,7 +652,9 @@ class TreeSitterSchemaParser:
 
         if constraint_node:
             if _has_child_type(constraint_node, "keyword_foreign"):
-                self._parse_table_fk_constraint(constraint_node, table_name, constraint_name)
+                self._parse_table_fk_constraint(
+                    constraint_node, table_name, constraint_name
+                )
             elif _has_child_type(constraint_node, "keyword_primary"):
                 table = self.tables.get(table_name)
                 if table:
@@ -749,14 +693,12 @@ class TreeSitterSchemaParser:
                         columns.append(text)
 
         if idx_name and table_name:
-            self.indexes.append(
-                Index(
-                    name=idx_name,
-                    table=table_name,
-                    columns=columns,
-                    unique=unique,
-                )
-            )
+            self.indexes.append(Index(
+                name=idx_name,
+                table=table_name,
+                columns=columns,
+                unique=unique,
+            ))
 
     # -- CREATE FUNCTION ----------------------------------------------------
 
@@ -788,7 +730,9 @@ class TreeSitterSchemaParser:
             if found_lang_kw and language == "unknown":
                 # In deeply broken ERROR nodes, the language identifier may not
                 # appear as a child. Fall back to regex on the raw node text.
-                lang_match = re.search(r"(?i)\bLANGUAGE\s+(\w+)", _node_text(node))
+                lang_match = re.search(
+                    r"(?i)\bLANGUAGE\s+(\w+)", _node_text(node)
+                )
                 if lang_match:
                     language = lang_match.group(1).lower()
 
@@ -834,7 +778,7 @@ class TreeSitterSchemaParser:
             if len(dollar_quotes) >= 2:
                 start = dollar_quotes[0].end_byte
                 end = dollar_quotes[1].start_byte
-                body_bytes = node.text[start - node.start_byte : end - node.start_byte]
+                body_bytes = node.text[start - node.start_byte:end - node.start_byte]
                 if body_bytes:
                     referenced_tables = self._extract_table_refs_from_body(
                         body_bytes.decode("utf8", errors="replace")
@@ -851,19 +795,19 @@ class TreeSitterSchemaParser:
                 existing.referenced_tables = referenced_tables
                 return
 
-        self.functions.append(
-            StoredFunction(
-                name=func_name,
-                file=filename,
-                line=line,
-                language=language,
-                parameters=parameters,
-                return_type=return_type,
-                referenced_tables=referenced_tables,
-            )
-        )
+        self.functions.append(StoredFunction(
+            name=func_name,
+            file=filename,
+            line=line,
+            language=language,
+            parameters=parameters,
+            return_type=return_type,
+            referenced_tables=referenced_tables,
+        ))
 
-    def _extract_function_params(self, node: Node, params: list[dict[str, str]]) -> None:
+    def _extract_function_params(
+        self, node: Node, params: list[dict[str, str]]
+    ) -> None:
         """Extract parameters from function_arguments node."""
         # Parameters appear as identifier pairs (name type) or just (type)
         children = [c for c in node.children if c.type not in ("(", ")", ",")]
@@ -927,15 +871,13 @@ class TreeSitterSchemaParser:
         if len(obj_refs) >= 3:
             func_name = _qualify(_object_ref_name(obj_refs[2]))
 
-        self.triggers.append(
-            Trigger(
-                name=trigger_name,
-                table=table_name,
-                event="|".join(events),
-                timing=timing,
-                function=func_name,
-            )
-        )
+        self.triggers.append(Trigger(
+            name=trigger_name,
+            table=table_name,
+            event="|".join(events),
+            timing=timing,
+            function=func_name,
+        ))
 
     # -- Output -------------------------------------------------------------
 
@@ -943,24 +885,22 @@ class TreeSitterSchemaParser:
         """Build the final JSON-serializable output (same schema as analyze_postgres.py)."""
         tables_out = []
         for t in self.tables.values():
-            tables_out.append(
-                {
-                    "name": t.name,
-                    "schema": t.schema,
-                    "columns": [
-                        {
-                            "name": c.name,
-                            "type": c.type,
-                            "nullable": c.nullable,
-                            "default": c.default,
-                        }
-                        for c in t.columns
-                    ],
-                    "primary_key": t.primary_key,
-                    "file": t.file,
-                    "line": t.line,
-                }
-            )
+            tables_out.append({
+                "name": t.name,
+                "schema": t.schema,
+                "columns": [
+                    {
+                        "name": c.name,
+                        "type": c.type,
+                        "nullable": c.nullable,
+                        "default": c.default,
+                    }
+                    for c in t.columns
+                ],
+                "primary_key": t.primary_key,
+                "file": t.file,
+                "line": t.line,
+            })
 
         fks_out = [
             {
@@ -1022,7 +962,8 @@ class TreeSitterSchemaParser:
         for fk in self.foreign_keys:
             ref_counter[fk.to_table] += 1
         most_referenced = [
-            {"table": tbl, "references": count} for tbl, count in ref_counter.most_common(10)
+            {"table": tbl, "references": count}
+            for tbl, count in ref_counter.most_common(10)
         ]
         widest = sorted(
             [{"table": t.name, "column_count": len(t.columns)} for t in self.tables.values()],
@@ -1084,7 +1025,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not TREESITTER_AVAILABLE:
         logger.error(
-            "tree-sitter is not installed. Run 'cd scripts && uv sync' to install dependencies."
+            "tree-sitter is not installed. "
+            "Run 'cd scripts && uv sync' to install dependencies."
         )
         return 1
 

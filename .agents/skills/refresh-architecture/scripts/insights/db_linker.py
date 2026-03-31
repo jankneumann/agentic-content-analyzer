@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from arch_utils.constants import EdgeType
-from arch_utils.graph_io import load_graph, save_json
-from arch_utils.node_id import make_node_id
+from arch_utils.constants import EdgeType  # noqa: E402
+from arch_utils.graph_io import load_graph, save_json  # noqa: E402
+from arch_utils.node_id import make_node_id  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -115,29 +115,25 @@ def link_backend_to_database(
                 continue
             if table_lower in table_qualified:
                 table_nid = make_node_id("pg", table_qualified[table_lower])
-                edges.append(
-                    {
-                        "from": func_nid,
-                        "to": table_nid,
-                        "type": EdgeType.DB_ACCESS,
-                        "confidence": "medium",
-                        "evidence": f"table_ref:{table_ref}",
-                    }
-                )
+                edges.append({
+                    "from": func_nid,
+                    "to": table_nid,
+                    "type": EdgeType.DB_ACCESS,
+                    "confidence": "medium",
+                    "evidence": f"table_ref:{table_ref}",
+                })
         for sql_pattern in func.get("sql_patterns", []):
             sql_lower = sql_pattern.lower()
             for table_name, qualified in table_qualified.items():
                 if table_name in sql_lower and (func_qn, table_name) not in existing_db_edges:
                     table_nid = make_node_id("pg", qualified)
-                    edges.append(
-                        {
-                            "from": func_nid,
-                            "to": table_nid,
-                            "type": EdgeType.DB_ACCESS,
-                            "confidence": "low",
-                            "evidence": f"sql_pattern:{sql_pattern[:80]}",
-                        }
-                    )
+                    edges.append({
+                        "from": func_nid,
+                        "to": table_nid,
+                        "type": EdgeType.DB_ACCESS,
+                        "confidence": "low",
+                        "evidence": f"sql_pattern:{sql_pattern[:80]}",
+                    })
                     existing_db_edges.add((func_qn, table_name))
     return edges
 
@@ -153,7 +149,10 @@ def run(input_dir: Path, output_path: Path) -> int:
 
     graph = load_graph(input_dir / "architecture.graph.json")
     if not graph:
-        logger.error("architecture.graph.json not found or empty. Run graph_builder.py first.")
+        logger.error(
+            "architecture.graph.json not found or empty. "
+            "Run graph_builder.py first."
+        )
         return 1
 
     py_data = load_graph(input_dir / "python_analysis.json", quiet=True) or None
@@ -194,7 +193,8 @@ def run(input_dir: Path, output_path: Path) -> int:
     # --- Write updated graph ---
     save_json(output_path, graph)
     logger.info(
-        f"Wrote {output_path} ({len(graph.get('nodes', []))} nodes, {len(all_edges)} edges)"
+        f"Wrote {output_path} "
+        f"({len(graph.get('nodes', []))} nodes, {len(all_edges)} edges)"
     )
 
     return 0

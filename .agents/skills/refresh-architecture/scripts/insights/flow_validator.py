@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from validate_flows import validate_flows
+from validate_flows import validate_flows  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -73,24 +73,20 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     # Import the scope resolver from validate_flows
-    from validate_flows import _resolve_changed_files
+    from validate_flows import _resolve_changed_files  # noqa: E402
 
     changed_files = _resolve_changed_files(args.files, args.diff, args.glob)
 
     report = validate_flows(graph_path, args.output, changed_files)
 
     summary = report["summary"]
-    scope_label = (
-        f" (scope: {len(report['changed_files'])} files)" if report["scope"] == "changed" else ""
-    )
+    scope_label = f" (scope: {len(report['changed_files'])} files)" if report["scope"] == "changed" else ""
     logger.info(f"Flow validation complete{scope_label}.")
     logger.info(f"  Entrypoints checked: {summary['entrypoints_checked']}")
     logger.info(f"  Flows with test coverage: {summary['flows_with_coverage']}")
     logger.info(f"  Flows without test coverage: {summary['flows_without_coverage']}")
-    logger.info(
-        f"  Findings: {summary['total_findings']} total "
-        f"({summary['errors']} errors, {summary['warnings']} warnings, {summary['info']} info)"
-    )
+    logger.info(f"  Findings: {summary['total_findings']} total "
+               f"({summary['errors']} errors, {summary['warnings']} warnings, {summary['info']} info)")
     logger.info(f"  Output: {args.output}")
 
     if summary["errors"] > 0:

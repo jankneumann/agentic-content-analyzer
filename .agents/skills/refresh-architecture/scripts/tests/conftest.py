@@ -47,9 +47,7 @@ def postgres_analysis() -> dict[str, Any]:
 
 
 @pytest.fixture
-def input_dir(
-    tmp_path: Path, python_analysis: dict, ts_analysis: dict, postgres_analysis: dict
-) -> Path:
+def input_dir(tmp_path: Path, python_analysis: dict, ts_analysis: dict, postgres_analysis: dict) -> Path:
     """Create a temporary input directory with all Layer 1 fixtures."""
     with open(tmp_path / "python_analysis.json", "w") as f:
         json.dump(python_analysis, f)

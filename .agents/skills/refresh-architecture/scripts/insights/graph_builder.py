@@ -16,13 +16,14 @@ import json
 import logging
 import subprocess
 import sys
-from datetime import UTC, datetime
+from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from arch_utils.constants import EdgeType
-from arch_utils.node_id import make_node_id
+from arch_utils.constants import DEPENDENCY_EDGE_TYPES, EdgeType  # noqa: E402
+from arch_utils.node_id import make_node_id  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -118,18 +119,16 @@ def ingest_python(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[En
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "module",
-                "language": "python",
-                "name": mod.get("name", ""),
-                "file": mod.get("file", ""),
-                "span": _resolve_span(mod),
-                "tags": mod.get("tags", []),
-                "signatures": mod.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "module",
+            "language": "python",
+            "name": mod.get("name", ""),
+            "file": mod.get("file", ""),
+            "span": _resolve_span(mod),
+            "tags": mod.get("tags", []),
+            "signatures": mod.get("signatures", {}),
+        })
 
     # --- classes ---
     for cls in data.get("classes", []):
@@ -137,18 +136,16 @@ def ingest_python(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[En
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "class",
-                "language": "python",
-                "name": cls.get("name", ""),
-                "file": cls.get("file", ""),
-                "span": _resolve_span(cls),
-                "tags": cls.get("tags", []),
-                "signatures": cls.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "class",
+            "language": "python",
+            "name": cls.get("name", ""),
+            "file": cls.get("file", ""),
+            "span": _resolve_span(cls),
+            "tags": cls.get("tags", []),
+            "signatures": cls.get("signatures", {}),
+        })
 
     # --- functions ---
     for func in data.get("functions", []):
@@ -196,30 +193,26 @@ def ingest_python(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[En
         for call_name in func.get("calls", []):
             to_id = name_to_nid.get(call_name)
             if to_id and to_id != from_id:
-                edges.append(
-                    {
-                        "from": from_id,
-                        "to": to_id,
-                        "type": EdgeType.CALL,
-                        "confidence": "high",
-                        "evidence": f"ast:call:{call_name}",
-                    }
-                )
+                edges.append({
+                    "from": from_id,
+                    "to": to_id,
+                    "type": EdgeType.CALL,
+                    "confidence": "high",
+                    "evidence": f"ast:call:{call_name}",
+                })
 
     # --- intra-language edges: imports ---
     for edge in data.get("import_graph", data.get("import_edges", [])):
         from_id = make_node_id("py", edge.get("from", ""))
         to_id = make_node_id("py", edge.get("to", ""))
         if from_id != to_id:
-            edges.append(
-                {
-                    "from": from_id,
-                    "to": to_id,
-                    "type": EdgeType.IMPORT,
-                    "confidence": "high",
-                    "evidence": "ast:import",
-                }
-            )
+            edges.append({
+                "from": from_id,
+                "to": to_id,
+                "type": EdgeType.IMPORT,
+                "confidence": "high",
+                "evidence": "ast:import",
+            })
 
     # --- intra-language edges: db_access ---
     for da in data.get("db_access", data.get("db_access_edges", [])):
@@ -231,15 +224,13 @@ def ingest_python(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[En
             to_id = make_node_id(
                 "pg", f"public.{table_name}" if "." not in table_name else table_name
             )
-            edges.append(
-                {
-                    "from": from_id,
-                    "to": to_id,
-                    "type": EdgeType.DB_ACCESS,
-                    "confidence": da.get("confidence", "medium"),
-                    "evidence": f"orm:{da.get('pattern', 'model_usage')}",
-                }
-            )
+            edges.append({
+                "from": from_id,
+                "to": to_id,
+                "type": EdgeType.DB_ACCESS,
+                "confidence": da.get("confidence", "medium"),
+                "evidence": f"orm:{da.get('pattern', 'model_usage')}",
+            })
 
     # --- entrypoints from entry_points array ---
     for ep in data.get("entry_points", []):
@@ -274,18 +265,16 @@ def ingest_typescript(data: dict[str, Any]) -> tuple[list[Node], list[Edge], lis
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "module",
-                "language": "typescript",
-                "name": mod.get("name", ""),
-                "file": mod.get("file", ""),
-                "span": _resolve_span(mod),
-                "tags": mod.get("tags", []),
-                "signatures": mod.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "module",
+            "language": "typescript",
+            "name": mod.get("name", ""),
+            "file": mod.get("file", ""),
+            "span": _resolve_span(mod),
+            "tags": mod.get("tags", []),
+            "signatures": mod.get("signatures", {}),
+        })
 
     # --- components ---
     for comp in data.get("components", []):
@@ -293,18 +282,16 @@ def ingest_typescript(data: dict[str, Any]) -> tuple[list[Node], list[Edge], lis
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "component",
-                "language": "typescript",
-                "name": comp.get("name", ""),
-                "file": comp.get("file", ""),
-                "span": _resolve_span(comp),
-                "tags": comp.get("tags", []),
-                "signatures": comp.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "component",
+            "language": "typescript",
+            "name": comp.get("name", ""),
+            "file": comp.get("file", ""),
+            "span": _resolve_span(comp),
+            "tags": comp.get("tags", []),
+            "signatures": comp.get("signatures", {}),
+        })
 
     # --- hooks ---
     for hook in data.get("hooks", []):
@@ -312,18 +299,16 @@ def ingest_typescript(data: dict[str, Any]) -> tuple[list[Node], list[Edge], lis
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "hook",
-                "language": "typescript",
-                "name": hook.get("name", ""),
-                "file": hook.get("file", ""),
-                "span": _resolve_span(hook),
-                "tags": hook.get("tags", []),
-                "signatures": hook.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "hook",
+            "language": "typescript",
+            "name": hook.get("name", ""),
+            "file": hook.get("file", ""),
+            "span": _resolve_span(hook),
+            "tags": hook.get("tags", []),
+            "signatures": hook.get("signatures", {}),
+        })
 
     # --- functions ---
     for func in data.get("functions", []):
@@ -331,74 +316,64 @@ def ingest_typescript(data: dict[str, Any]) -> tuple[list[Node], list[Edge], lis
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "function",
-                "language": "typescript",
-                "name": func.get("name", ""),
-                "file": func.get("file", ""),
-                "span": _resolve_span(func),
-                "tags": func.get("tags", []),
-                "signatures": func.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "function",
+            "language": "typescript",
+            "name": func.get("name", ""),
+            "file": func.get("file", ""),
+            "span": _resolve_span(func),
+            "tags": func.get("tags", []),
+            "signatures": func.get("signatures", {}),
+        })
 
     # --- intra-language edges: imports ---
     for edge in data.get("import_edges", []):
         from_id = make_node_id("ts", edge.get("from", ""))
         to_id = make_node_id("ts", edge.get("to", ""))
-        edges.append(
-            {
-                "from": from_id,
-                "to": to_id,
-                "type": EdgeType.IMPORT,
-                "confidence": edge.get("confidence", "high"),
-                "evidence": edge.get("evidence", "ast:import"),
-            }
-        )
+        edges.append({
+            "from": from_id,
+            "to": to_id,
+            "type": EdgeType.IMPORT,
+            "confidence": edge.get("confidence", "high"),
+            "evidence": edge.get("evidence", "ast:import"),
+        })
 
     # --- intra-language edges: component_child ---
     for edge in data.get("component_child_edges", []):
         from_id = make_node_id("ts", edge.get("from", ""))
         to_id = make_node_id("ts", edge.get("to", ""))
-        edges.append(
-            {
-                "from": from_id,
-                "to": to_id,
-                "type": EdgeType.COMPONENT_CHILD,
-                "confidence": edge.get("confidence", "high"),
-                "evidence": edge.get("evidence", "jsx:child_component"),
-            }
-        )
+        edges.append({
+            "from": from_id,
+            "to": to_id,
+            "type": EdgeType.COMPONENT_CHILD,
+            "confidence": edge.get("confidence", "high"),
+            "evidence": edge.get("evidence", "jsx:child_component"),
+        })
 
     # --- intra-language edges: hook_usage ---
     for edge in data.get("hook_usage_edges", []):
         from_id = make_node_id("ts", edge.get("from", ""))
         to_id = make_node_id("ts", edge.get("to", ""))
-        edges.append(
-            {
-                "from": from_id,
-                "to": to_id,
-                "type": EdgeType.HOOK_USAGE,
-                "confidence": edge.get("confidence", "high"),
-                "evidence": edge.get("evidence", "ast:hook_call"),
-            }
-        )
+        edges.append({
+            "from": from_id,
+            "to": to_id,
+            "type": EdgeType.HOOK_USAGE,
+            "confidence": edge.get("confidence", "high"),
+            "evidence": edge.get("evidence", "ast:hook_call"),
+        })
 
     # --- intra-language edges: calls ---
     for edge in data.get("call_edges", []):
         from_id = make_node_id("ts", edge.get("from", ""))
         to_id = make_node_id("ts", edge.get("to", ""))
-        edges.append(
-            {
-                "from": from_id,
-                "to": to_id,
-                "type": EdgeType.CALL,
-                "confidence": edge.get("confidence", "high"),
-                "evidence": edge.get("evidence", "ast:call"),
-            }
-        )
+        edges.append({
+            "from": from_id,
+            "to": to_id,
+            "type": EdgeType.CALL,
+            "confidence": edge.get("confidence", "high"),
+            "evidence": edge.get("evidence", "ast:call"),
+        })
 
     # --- entrypoints ---
     for ep in data.get("entrypoints", []):
@@ -434,18 +409,16 @@ def ingest_postgres(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "table",
-                "language": "sql",
-                "name": table_name,
-                "file": table.get("file", table.get("migration_file", "")),
-                "span": _resolve_span(table),
-                "tags": table.get("tags", []),
-                "signatures": table.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "table",
+            "language": "sql",
+            "name": table_name,
+            "file": table.get("file", table.get("migration_file", "")),
+            "span": _resolve_span(table),
+            "tags": table.get("tags", []),
+            "signatures": table.get("signatures", {}),
+        })
 
         # --- columns as nodes (optional, if present) ---
         for col in table.get("columns", []):
@@ -454,18 +427,16 @@ def ingest_postgres(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[
             if col_nid in node_ids:
                 continue
             node_ids.add(col_nid)
-            nodes.append(
-                {
-                    "id": col_nid,
-                    "kind": "column",
-                    "language": "sql",
-                    "name": col.get("name", ""),
-                    "file": table.get("file", table.get("migration_file", "")),
-                    "span": _resolve_span(col),
-                    "tags": col.get("tags", []),
-                    "signatures": col.get("signatures", {"type": col.get("type", "")}),
-                }
-            )
+            nodes.append({
+                "id": col_nid,
+                "kind": "column",
+                "language": "sql",
+                "name": col.get("name", ""),
+                "file": table.get("file", table.get("migration_file", "")),
+                "span": _resolve_span(col),
+                "tags": col.get("tags", []),
+                "signatures": col.get("signatures", {"type": col.get("type", "")}),
+            })
 
     # --- indexes ---
     for idx in data.get("indexes", []):
@@ -473,18 +444,16 @@ def ingest_postgres(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "index",
-                "language": "sql",
-                "name": idx.get("name", ""),
-                "file": idx.get("file", ""),
-                "span": _resolve_span(idx),
-                "tags": idx.get("tags", []),
-                "signatures": idx.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "index",
+            "language": "sql",
+            "name": idx.get("name", ""),
+            "file": idx.get("file", ""),
+            "span": _resolve_span(idx),
+            "tags": idx.get("tags", []),
+            "signatures": idx.get("signatures", {}),
+        })
 
     # --- stored functions ---
     for func in data.get("stored_functions", []):
@@ -495,18 +464,16 @@ def ingest_postgres(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "stored_function",
-                "language": "sql",
-                "name": func_name,
-                "file": func.get("file", ""),
-                "span": _resolve_span(func),
-                "tags": func.get("tags", []),
-                "signatures": func.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "stored_function",
+            "language": "sql",
+            "name": func_name,
+            "file": func.get("file", ""),
+            "span": _resolve_span(func),
+            "tags": func.get("tags", []),
+            "signatures": func.get("signatures", {}),
+        })
 
     # --- triggers ---
     for trigger in data.get("triggers", []):
@@ -514,42 +481,36 @@ def ingest_postgres(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[
         if nid in node_ids:
             continue
         node_ids.add(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "kind": "trigger",
-                "language": "sql",
-                "name": trigger.get("name", ""),
-                "file": trigger.get("file", ""),
-                "span": _resolve_span(trigger),
-                "tags": trigger.get("tags", []),
-                "signatures": trigger.get("signatures", {}),
-            }
-        )
+        nodes.append({
+            "id": nid,
+            "kind": "trigger",
+            "language": "sql",
+            "name": trigger.get("name", ""),
+            "file": trigger.get("file", ""),
+            "span": _resolve_span(trigger),
+            "tags": trigger.get("tags", []),
+            "signatures": trigger.get("signatures", {}),
+        })
 
     # --- migrations as entrypoints ---
     for migration in data.get("migrations", []):
         nid = make_node_id("pg", migration.get("qualified_name", migration.get("name", "")))
         if nid not in node_ids:
             node_ids.add(nid)
-            nodes.append(
-                {
-                    "id": nid,
-                    "kind": "migration",
-                    "language": "sql",
-                    "name": migration.get("name", ""),
-                    "file": migration.get("file", ""),
-                    "span": _resolve_span(migration),
-                    "tags": migration.get("tags", []),
-                    "signatures": migration.get("signatures", {}),
-                }
-            )
-        entrypoints.append(
-            {
-                "node_id": nid,
+            nodes.append({
+                "id": nid,
                 "kind": "migration",
-            }
-        )
+                "language": "sql",
+                "name": migration.get("name", ""),
+                "file": migration.get("file", ""),
+                "span": _resolve_span(migration),
+                "tags": migration.get("tags", []),
+                "signatures": migration.get("signatures", {}),
+            })
+        entrypoints.append({
+            "node_id": nid,
+            "kind": "migration",
+        })
 
     # --- foreign key edges ---
     for fk in data.get("foreign_keys", []):
@@ -559,15 +520,13 @@ def ingest_postgres(data: dict[str, Any]) -> tuple[list[Node], list[Edge], list[
         # from analyze_postgres.py's _qualify() helper — do NOT prepend schema again
         from_id = make_node_id("pg", from_table)
         to_id = make_node_id("pg", to_table)
-        edges.append(
-            {
-                "from": from_id,
-                "to": to_id,
-                "type": EdgeType.FK_REFERENCE,
-                "confidence": "high",
-                "evidence": fk.get("evidence", f"fk:{fk.get('constraint_name', 'unnamed')}"),
-            }
-        )
+        edges.append({
+            "from": from_id,
+            "to": to_id,
+            "type": EdgeType.FK_REFERENCE,
+            "confidence": "high",
+            "evidence": fk.get("evidence", f"fk:{fk.get('constraint_name', 'unnamed')}"),
+        })
 
     return nodes, edges, entrypoints
 
@@ -647,7 +606,10 @@ def build_graph(
     pg_data = load_intermediate(input_dir / "postgres_analysis.json")
 
     if py_data is None and ts_data is None and pg_data is None:
-        logger.error("No intermediate analysis files found. Run the per-language analyzers first.")
+        logger.error(
+            "No intermediate analysis files found. "
+            "Run the per-language analyzers first."
+        )
         return 1
 
     notes: list[str] = []
@@ -693,14 +655,10 @@ def build_graph(
 
     # --- Build snapshot ---
     git_sha = get_git_sha()
-    generated_at = datetime.now(UTC).isoformat()
+    generated_at = datetime.now(timezone.utc).isoformat()
 
     tool_versions: dict[str, str] = {"graph_builder": "2.0.0"}
-    for label, data in [
-        ("python_analyzer", py_data),
-        ("ts_analyzer", ts_data),
-        ("postgres_analyzer", pg_data),
-    ]:
+    for label, data in [("python_analyzer", py_data), ("ts_analyzer", ts_data), ("postgres_analyzer", pg_data)]:
         if data is not None and "tool_version" in data:
             tool_versions[label] = data["tool_version"]
 

@@ -9,10 +9,10 @@ from typing import Any
 
 def test_flow_tracer_infers_flows(input_dir: Path) -> None:
     """flow_tracer should infer cross-layer flows from a linked graph."""
+    from insights.graph_builder import build_graph
     from insights.cross_layer_linker import run_cross_layer_linking
     from insights.db_linker import run as run_db_linker
     from insights.flow_tracer import main as flow_tracer_main
-    from insights.graph_builder import build_graph
 
     # Build and link the graph
     graph_path = input_dir / "architecture.graph.json"
@@ -22,14 +22,10 @@ def test_flow_tracer_infers_flows(input_dir: Path) -> None:
 
     # Run flow tracer
     flows_path = input_dir / "cross_layer_flows.json"
-    rc = flow_tracer_main(
-        [
-            "--input-dir",
-            str(input_dir),
-            "--output",
-            str(flows_path),
-        ]
-    )
+    rc = flow_tracer_main([
+        "--input-dir", str(input_dir),
+        "--output", str(flows_path),
+    ])
     assert rc == 0
     assert flows_path.exists()
 

@@ -18,12 +18,12 @@ import json
 import logging
 import sys
 from collections import defaultdict, deque
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from arch_utils.constants import DEPENDENCY_EDGE_TYPES
+from arch_utils.constants import DEPENDENCY_EDGE_TYPES  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +75,10 @@ def compute_high_impact_nodes(
                 if dep not in visited:
                     queue.append(dep)
         if len(visited) >= threshold:
-            high_impact.append(
-                {
-                    "id": nid,
-                    "dependent_count": len(visited),
-                }
-            )
+            high_impact.append({
+                "id": nid,
+                "dependent_count": len(visited),
+            })
 
     high_impact.sort(key=lambda x: x["dependent_count"], reverse=True)
     return high_impact
@@ -94,7 +92,9 @@ def compute_high_impact_nodes(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description=("Rank architecture nodes by impact (reverse transitive dependent count)."),
+        description=(
+            "Rank architecture nodes by impact (reverse transitive dependent count)."
+        ),
     )
     parser.add_argument(
         "--input-dir",
@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     high_impact = compute_high_impact_nodes(all_nodes, all_edges, threshold=args.threshold)
 
     output_data: dict[str, Any] = {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "threshold": args.threshold,
         "total_nodes": len(all_nodes),
         "total_edges": len(all_edges),

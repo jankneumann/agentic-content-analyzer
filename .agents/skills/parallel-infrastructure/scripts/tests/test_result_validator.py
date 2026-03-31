@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 _SKILL_SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SKILL_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_SCRIPTS_DIR))
@@ -93,32 +95,24 @@ def _make_package_def(
 class TestValidateRevisionMatch:
     def test_matching_revisions(self) -> None:
         result = _make_result(contracts_revision=2, plan_revision=3)
-        errors = validate_revision_match(
-            result, expected_contracts_revision=2, expected_plan_revision=3
-        )
+        errors = validate_revision_match(result, expected_contracts_revision=2, expected_plan_revision=3)
         assert errors == []
 
     def test_contracts_revision_mismatch(self) -> None:
         result = _make_result(contracts_revision=1, plan_revision=1)
-        errors = validate_revision_match(
-            result, expected_contracts_revision=2, expected_plan_revision=1
-        )
+        errors = validate_revision_match(result, expected_contracts_revision=2, expected_plan_revision=1)
         assert len(errors) == 1
         assert "contracts_revision mismatch" in errors[0]
 
     def test_plan_revision_mismatch(self) -> None:
         result = _make_result(contracts_revision=1, plan_revision=1)
-        errors = validate_revision_match(
-            result, expected_contracts_revision=1, expected_plan_revision=2
-        )
+        errors = validate_revision_match(result, expected_contracts_revision=1, expected_plan_revision=2)
         assert len(errors) == 1
         assert "plan_revision mismatch" in errors[0]
 
     def test_both_mismatch(self) -> None:
         result = _make_result(contracts_revision=1, plan_revision=1)
-        errors = validate_revision_match(
-            result, expected_contracts_revision=2, expected_plan_revision=3
-        )
+        errors = validate_revision_match(result, expected_contracts_revision=2, expected_plan_revision=3)
         assert len(errors) == 2
 
 
@@ -158,26 +152,24 @@ class TestValidateOutputKeys:
         assert errors == []
 
     def test_multiple_steps_with_different_metrics(self) -> None:
-        result = _make_result(
-            verification_steps=[
-                {
-                    "name": "lint",
-                    "kind": "command",
-                    "command": "ruff check",
-                    "exit_code": 0,
-                    "passed": True,
-                    "evidence": {"artifacts": [], "metrics": {"lint_passed": True}},
-                },
-                {
-                    "name": "test",
-                    "kind": "command",
-                    "command": "pytest",
-                    "exit_code": 0,
-                    "passed": True,
-                    "evidence": {"artifacts": [], "metrics": {"test_count": 42}},
-                },
-            ]
-        )
+        result = _make_result(verification_steps=[
+            {
+                "name": "lint",
+                "kind": "command",
+                "command": "ruff check",
+                "exit_code": 0,
+                "passed": True,
+                "evidence": {"artifacts": [], "metrics": {"lint_passed": True}},
+            },
+            {
+                "name": "test",
+                "kind": "command",
+                "command": "pytest",
+                "exit_code": 0,
+                "passed": True,
+                "evidence": {"artifacts": [], "metrics": {"test_count": 42}},
+            },
+        ])
         pkg = _make_package_def(result_keys=["test_count", "lint_passed", "files_modified"])
         # lint_passed is in metrics, not top-level, but we check metrics
         errors = validate_output_keys(result, pkg)
@@ -192,8 +184,7 @@ class TestValidatePackageResult:
         result = _make_result()
         pkg = _make_package_def(result_keys=["files_modified", "test_count"])
         validation = validate_package_result(
-            result,
-            pkg,
+            result, pkg,
             expected_contracts_revision=1,
             expected_plan_revision=1,
         )
@@ -207,8 +198,7 @@ class TestValidatePackageResult:
         del result["feature_id"]  # Remove required field
         pkg = _make_package_def()
         validation = validate_package_result(
-            result,
-            pkg,
+            result, pkg,
             expected_contracts_revision=1,
             expected_plan_revision=1,
         )
@@ -219,8 +209,7 @@ class TestValidatePackageResult:
         result = _make_result(contracts_revision=1)
         pkg = _make_package_def(result_keys=["files_modified", "test_count"])
         validation = validate_package_result(
-            result,
-            pkg,
+            result, pkg,
             expected_contracts_revision=2,
             expected_plan_revision=1,
         )
@@ -231,8 +220,7 @@ class TestValidatePackageResult:
         result = _make_result()
         pkg = _make_package_def(result_keys=["nonexistent_key"])
         validation = validate_package_result(
-            result,
-            pkg,
+            result, pkg,
             expected_contracts_revision=1,
             expected_plan_revision=1,
         )
@@ -243,8 +231,7 @@ class TestValidatePackageResult:
         result = _make_result()
         pkg = _make_package_def()
         validation = validate_package_result(
-            result,
-            pkg,
+            result, pkg,
             expected_contracts_revision=1,
             expected_plan_revision=1,
         )
@@ -264,8 +251,7 @@ class TestValidatePackageResult:
         result["verification"]["steps"][0]["passed"] = False
         pkg = _make_package_def(result_keys=["files_modified", "test_count"])
         validation = validate_package_result(
-            result,
-            pkg,
+            result, pkg,
             expected_contracts_revision=1,
             expected_plan_revision=1,
         )
@@ -276,8 +262,7 @@ class TestValidatePackageResult:
         result = _make_result(files_modified=["src/frontend/bad.tsx"])
         pkg = _make_package_def(result_keys=["files_modified"])
         validation = validate_package_result(
-            result,
-            pkg,
+            result, pkg,
             expected_contracts_revision=1,
             expected_plan_revision=1,
         )

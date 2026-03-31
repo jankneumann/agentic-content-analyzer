@@ -67,16 +67,11 @@ def get_review_threads(pr_number: int) -> list[dict]:
 
     while True:
         gql_args = [
-            "api",
-            "graphql",
-            "-F",
-            f"owner={owner}",
-            "-F",
-            f"repo={repo}",
-            "-F",
-            f"pr={pr_number}",
-            "-f",
-            f"query={REVIEW_THREADS_QUERY}",
+            "api", "graphql",
+            "-F", f"owner={owner}",
+            "-F", f"repo={repo}",
+            "-F", f"pr={pr_number}",
+            "-f", f"query={REVIEW_THREADS_QUERY}",
         ]
         if cursor:
             gql_args.extend(["-F", f"cursor={cursor}"])
@@ -169,21 +164,19 @@ def format_threads(raw_threads: list[dict]) -> list[dict]:
         last_body = last.get("body", "")
         first_comment = first_body[:200] + ("…" if len(first_body) > 200 else "")
         last_comment = last_body[:200] + ("…" if len(last_body) > 200 else "")
-        result.append(
-            {
-                "thread_id": thread["id"],
-                "file": thread.get("path", "unknown"),
-                "line": thread.get("line"),
-                "is_resolved": thread.get("isResolved", False),
-                "is_outdated": thread.get("isOutdated", False),
-                "reviewer": safe_author(first),
-                "comment_count": len(comments),
-                "first_comment": first_comment,
-                "last_comment": last_comment,
-                "created_at": first.get("createdAt", ""),
-                "updated_at": last.get("updatedAt", ""),
-            }
-        )
+        result.append({
+            "thread_id": thread["id"],
+            "file": thread.get("path", "unknown"),
+            "line": thread.get("line"),
+            "is_resolved": thread.get("isResolved", False),
+            "is_outdated": thread.get("isOutdated", False),
+            "reviewer": safe_author(first),
+            "comment_count": len(comments),
+            "first_comment": first_comment,
+            "last_comment": last_comment,
+            "created_at": first.get("createdAt", ""),
+            "updated_at": last.get("updatedAt", ""),
+        })
     return result
 
 
@@ -215,7 +208,10 @@ def analyze(pr_number: int) -> dict:
         "outdated_count": len(outdated),
         "threads": threads,
         "unresolved_threads": unresolved,
-        "reviews": [{"reviewer": k, "state": v} for k, v in review_states.items()],
+        "reviews": [
+            {"reviewer": k, "state": v}
+            for k, v in review_states.items()
+        ],
         "has_unresolved": len(unresolved) > 0,
     }
     if warnings:

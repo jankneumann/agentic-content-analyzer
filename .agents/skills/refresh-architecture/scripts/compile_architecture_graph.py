@@ -30,22 +30,20 @@ import json
 import logging
 import sqlite3
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "insights"))
 
-from arch_utils.graph_io import load_graph, save_json
-from insights import (
-    cross_layer_linker,
-    db_linker,
-    flow_tracer,
-    graph_builder,
-    impact_ranker,
-    summary_builder,
-)
+from arch_utils.graph_io import load_graph, save_json  # noqa: E402
+from insights import cross_layer_linker  # noqa: E402
+from insights import db_linker  # noqa: E402
+from insights import flow_tracer  # noqa: E402
+from insights import graph_builder  # noqa: E402
+from insights import impact_ranker  # noqa: E402
+from insights import summary_builder  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +163,6 @@ def emit_sqlite(graph: dict[str, Any], output_path: Path) -> None:
 
 async def _run_flow_tracer(graph: dict[str, Any], output_path: Path) -> None:
     """Run flow tracing in a thread to avoid blocking the event loop."""
-
     def _work() -> list[dict[str, Any]]:
         nodes = graph.get("nodes", [])
         edges = graph.get("edges", [])
@@ -174,7 +171,7 @@ async def _run_flow_tracer(graph: dict[str, Any], output_path: Path) -> None:
 
     flows = await asyncio.to_thread(_work)
     result = {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "flows": flows,
     }
     save_json(output_path, result)
@@ -183,7 +180,6 @@ async def _run_flow_tracer(graph: dict[str, Any], output_path: Path) -> None:
 
 async def _run_impact_ranker(graph: dict[str, Any], output_path: Path, threshold: int = 5) -> None:
     """Run impact ranking in a thread."""
-
     def _work() -> list[dict[str, Any]]:
         nodes = graph.get("nodes", [])
         edges = graph.get("edges", [])
@@ -191,7 +187,7 @@ async def _run_impact_ranker(graph: dict[str, Any], output_path: Path, threshold
 
     high_impact = await asyncio.to_thread(_work)
     result = {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "threshold": threshold,
         "total_high_impact": len(high_impact),
         "high_impact_nodes": high_impact,
@@ -208,7 +204,6 @@ async def _run_summary_builder(
     summary_limit: int,
 ) -> None:
     """Run summary generation in a thread (depends on flows + impact results)."""
-
     def _work() -> dict[str, Any]:
         # Load the flows and impact data produced by the parallel tasks
         flows = _load_json_safe(flows_path, "flows")
@@ -219,17 +214,11 @@ async def _run_summary_builder(
 
         snapshots = graph.get("snapshots", [])
         git_sha = snapshots[-1].get("git_sha", "unknown") if snapshots else "unknown"
-        generated_at = datetime.now(UTC).isoformat()
+        generated_at = datetime.now(timezone.utc).isoformat()
 
         return summary_builder.generate_summary(
-            graph,
-            flows,
-            disconnected_eps,
-            disconnected_fc,
-            impact_data,
-            summary_limit,
-            git_sha,
-            generated_at,
+            graph, flows, disconnected_eps, disconnected_fc,
+            impact_data, summary_limit, git_sha, generated_at,
         )
 
     result = await asyncio.to_thread(_work)

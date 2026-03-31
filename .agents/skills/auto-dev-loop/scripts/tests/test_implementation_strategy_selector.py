@@ -28,19 +28,16 @@ class TestSelectStrategies:
 
     def test_small_ambiguous_package_selects_alternatives(self, tmp_path: Path) -> None:
         """loc=100, alternatives=3, kind=algorithm, 3 vendors -> alternatives."""
-        wp = _write_packages(
-            tmp_path,
-            [
-                {
-                    "package_id": "wp-algo",
-                    "metadata": {
-                        "loc_estimate": 100,
-                        "alternatives_count": 3,
-                        "package_kind": "algorithm",
-                    },
+        wp = _write_packages(tmp_path, [
+            {
+                "package_id": "wp-algo",
+                "metadata": {
+                    "loc_estimate": 100,
+                    "alternatives_count": 3,
+                    "package_kind": "algorithm",
                 },
-            ],
-        )
+            },
+        ])
         result = select_strategies(
             wp,
             available_vendors=["claude", "gpt4", "gemini"],
@@ -49,19 +46,16 @@ class TestSelectStrategies:
 
     def test_large_straightforward_selects_lead_review(self, tmp_path: Path) -> None:
         """loc=400, alternatives=0, kind=crud -> lead_review."""
-        wp = _write_packages(
-            tmp_path,
-            [
-                {
-                    "package_id": "wp-crud",
-                    "metadata": {
-                        "loc_estimate": 400,
-                        "alternatives_count": 0,
-                        "package_kind": "crud",
-                    },
+        wp = _write_packages(tmp_path, [
+            {
+                "package_id": "wp-crud",
+                "metadata": {
+                    "loc_estimate": 400,
+                    "alternatives_count": 0,
+                    "package_kind": "crud",
                 },
-            ],
-        )
+            },
+        ])
         result = select_strategies(
             wp,
             available_vendors=["claude", "gpt4"],
@@ -70,12 +64,9 @@ class TestSelectStrategies:
 
     def test_no_metadata_defaults_to_lead_review(self, tmp_path: Path) -> None:
         """Package without metadata -> lead_review."""
-        wp = _write_packages(
-            tmp_path,
-            [
-                {"package_id": "wp-bare"},
-            ],
-        )
+        wp = _write_packages(tmp_path, [
+            {"package_id": "wp-bare"},
+        ])
         result = select_strategies(
             wp,
             available_vendors=["claude", "gpt4", "gemini"],
@@ -88,19 +79,16 @@ class TestSelectStrategies:
         loc < 200 (1.0) + alternatives >= 2 (1.0) = 2.0, with
         kind=crud (0.0) and 2 vendors (0.0).
         """
-        wp = _write_packages(
-            tmp_path,
-            [
-                {
-                    "package_id": "wp-boundary",
-                    "metadata": {
-                        "loc_estimate": 150,
-                        "alternatives_count": 2,
-                        "package_kind": "crud",
-                    },
+        wp = _write_packages(tmp_path, [
+            {
+                "package_id": "wp-boundary",
+                "metadata": {
+                    "loc_estimate": 150,
+                    "alternatives_count": 2,
+                    "package_kind": "crud",
                 },
-            ],
-        )
+            },
+        ])
         result = select_strategies(
             wp,
             available_vendors=["claude", "gpt4"],
@@ -112,19 +100,16 @@ class TestSelectStrategies:
 
         loc < 200 (1.0) only, all other criteria 0.
         """
-        wp = _write_packages(
-            tmp_path,
-            [
-                {
-                    "package_id": "wp-low",
-                    "metadata": {
-                        "loc_estimate": 50,
-                        "alternatives_count": 1,
-                        "package_kind": "crud",
-                    },
+        wp = _write_packages(tmp_path, [
+            {
+                "package_id": "wp-low",
+                "metadata": {
+                    "loc_estimate": 50,
+                    "alternatives_count": 1,
+                    "package_kind": "crud",
                 },
-            ],
-        )
+            },
+        ])
         result = select_strategies(
             wp,
             available_vendors=["claude", "gpt4"],
@@ -138,19 +123,16 @@ class TestSelectStrategies:
         loc (1.0) + kind=algorithm (1.0) = 2.0 still alternatives.
         But with alternatives_count=1 -> loc(1.0) + kind(1.0) = 2.0.
         """
-        wp = _write_packages(
-            tmp_path,
-            [
-                {
-                    "package_id": "wp-few-vendors",
-                    "metadata": {
-                        "loc_estimate": 100,
-                        "alternatives_count": 1,
-                        "package_kind": "algorithm",
-                    },
+        wp = _write_packages(tmp_path, [
+            {
+                "package_id": "wp-few-vendors",
+                "metadata": {
+                    "loc_estimate": 100,
+                    "alternatives_count": 1,
+                    "package_kind": "algorithm",
                 },
-            ],
-        )
+            },
+        ])
         # With 3 vendors: loc(1) + alt(0) + kind(1) + vendors(1) = 3 -> alternatives
         result_3v = select_strategies(
             wp,
@@ -167,19 +149,16 @@ class TestSelectStrategies:
 
         # With 2 vendors and kind=crud: loc(1) + alt(0) + kind(0) + vendors(0) = 1 -> lead_review
         (tmp_path / "sub").mkdir(exist_ok=True)
-        wp2 = _write_packages(
-            tmp_path / "sub",
-            [
-                {
-                    "package_id": "wp-few-vendors",
-                    "metadata": {
-                        "loc_estimate": 100,
-                        "alternatives_count": 1,
-                        "package_kind": "crud",
-                    },
+        wp2 = _write_packages(tmp_path / "sub", [
+            {
+                "package_id": "wp-few-vendors",
+                "metadata": {
+                    "loc_estimate": 100,
+                    "alternatives_count": 1,
+                    "package_kind": "crud",
                 },
-            ],
-        )
+            },
+        ])
         result_2v_crud = select_strategies(
             wp2,
             available_vendors=["claude", "gpt4"],
@@ -188,35 +167,32 @@ class TestSelectStrategies:
 
     def test_mixed_packages(self, tmp_path: Path) -> None:
         """Multiple packages with different metadata -> correct per-package strategy."""
-        wp = _write_packages(
-            tmp_path,
-            [
-                {
-                    "package_id": "wp-algo",
-                    "metadata": {
-                        "loc_estimate": 80,
-                        "alternatives_count": 3,
-                        "package_kind": "algorithm",
-                    },
+        wp = _write_packages(tmp_path, [
+            {
+                "package_id": "wp-algo",
+                "metadata": {
+                    "loc_estimate": 80,
+                    "alternatives_count": 3,
+                    "package_kind": "algorithm",
                 },
-                {
-                    "package_id": "wp-crud",
-                    "metadata": {
-                        "loc_estimate": 500,
-                        "alternatives_count": 0,
-                        "package_kind": "crud",
-                    },
+            },
+            {
+                "package_id": "wp-crud",
+                "metadata": {
+                    "loc_estimate": 500,
+                    "alternatives_count": 0,
+                    "package_kind": "crud",
                 },
-                {
-                    "package_id": "wp-model",
-                    "metadata": {
-                        "loc_estimate": 120,
-                        "alternatives_count": 2,
-                        "package_kind": "data_model",
-                    },
+            },
+            {
+                "package_id": "wp-model",
+                "metadata": {
+                    "loc_estimate": 120,
+                    "alternatives_count": 2,
+                    "package_kind": "data_model",
                 },
-            ],
-        )
+            },
+        ])
         result = select_strategies(
             wp,
             available_vendors=["claude", "gpt4", "gemini"],
@@ -227,28 +203,25 @@ class TestSelectStrategies:
 
     def test_skip_integration_packages(self, tmp_path: Path) -> None:
         """Integration-type packages always get lead_review."""
-        wp = _write_packages(
-            tmp_path,
-            [
-                {
-                    "package_id": "wp-integration-final",
-                    "task_type": "integrate",
-                    "metadata": {
-                        "loc_estimate": 50,
-                        "alternatives_count": 5,
-                        "package_kind": "algorithm",
-                    },
+        wp = _write_packages(tmp_path, [
+            {
+                "package_id": "wp-integration-final",
+                "task_type": "integrate",
+                "metadata": {
+                    "loc_estimate": 50,
+                    "alternatives_count": 5,
+                    "package_kind": "algorithm",
                 },
-                {
-                    "package_id": "wp-integration-glue",
-                    "metadata": {
-                        "loc_estimate": 50,
-                        "alternatives_count": 5,
-                        "package_kind": "algorithm",
-                    },
+            },
+            {
+                "package_id": "wp-integration-glue",
+                "metadata": {
+                    "loc_estimate": 50,
+                    "alternatives_count": 5,
+                    "package_kind": "algorithm",
                 },
-            ],
-        )
+            },
+        ])
         result = select_strategies(
             wp,
             available_vendors=["claude", "gpt4", "gemini"],
@@ -264,7 +237,6 @@ class TestSelectLeadVendor:
 
     def test_recall_fn_selects_best_vendor(self) -> None:
         """Mock recall returns vendor stats -> best vendor selected as lead."""
-
         def mock_recall(topic: str) -> list[dict]:
             return [
                 {"vendor": "claude", "fix_success_rate": 0.85},
@@ -293,7 +265,6 @@ class TestSelectLeadVendor:
 
     def test_recall_fn_raises_exception(self) -> None:
         """recall_fn raises -> graceful fallback to first vendor."""
-
         def broken_recall(topic: str) -> list[dict]:
             raise RuntimeError("connection failed")
 

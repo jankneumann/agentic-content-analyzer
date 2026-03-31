@@ -25,10 +25,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
-
 
 @dataclass
 class Finding:
@@ -46,7 +46,7 @@ class Finding:
     vendor: str = ""
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], vendor: str) -> Finding:
+    def from_dict(cls, data: dict[str, Any], vendor: str) -> "Finding":
         line_range = data.get("line_range", {})
         return cls(
             id=data["id"],
@@ -312,20 +312,18 @@ class ConsensusSynthesizer:
         for i, m in enumerate(matches, 1):
             if not m.matched:
                 # Single vendor finding — unconfirmed
-                results.append(
-                    ConsensusFinding(
-                        id=i,
-                        status="unconfirmed",
-                        primary_vendor=m.primary.vendor,
-                        primary_finding_id=m.primary.id,
-                        matched_findings=[],
-                        match_score=0.0,
-                        agreed_type=m.primary.type,
-                        agreed_criticality=m.primary.criticality,
-                        recommended_disposition="accept",
-                        description=m.primary.description,
-                    )
-                )
+                results.append(ConsensusFinding(
+                    id=i,
+                    status="unconfirmed",
+                    primary_vendor=m.primary.vendor,
+                    primary_finding_id=m.primary.id,
+                    matched_findings=[],
+                    match_score=0.0,
+                    agreed_type=m.primary.type,
+                    agreed_criticality=m.primary.criticality,
+                    recommended_disposition="accept",
+                    description=m.primary.description,
+                ))
                 continue
 
             # Multi-vendor match — check for disposition agreement
@@ -342,41 +340,39 @@ class ConsensusSynthesizer:
 
             if len(unique_dispositions) == 1:
                 # All vendors agree on disposition
-                results.append(
-                    ConsensusFinding(
-                        id=i,
-                        status="confirmed",
-                        primary_vendor=m.primary.vendor,
-                        primary_finding_id=m.primary.id,
-                        matched_findings=[
-                            {"vendor": mf.vendor, "finding_id": mf.id} for mf in m.matched
-                        ],
-                        match_score=m.score,
-                        agreed_type=m.primary.type,
-                        agreed_criticality=agreed_crit,
-                        recommended_disposition=m.primary.disposition,
-                        description=m.primary.description,
-                    )
-                )
+                results.append(ConsensusFinding(
+                    id=i,
+                    status="confirmed",
+                    primary_vendor=m.primary.vendor,
+                    primary_finding_id=m.primary.id,
+                    matched_findings=[
+                        {"vendor": mf.vendor, "finding_id": mf.id}
+                        for mf in m.matched
+                    ],
+                    match_score=m.score,
+                    agreed_type=m.primary.type,
+                    agreed_criticality=agreed_crit,
+                    recommended_disposition=m.primary.disposition,
+                    description=m.primary.description,
+                ))
             else:
                 # Disposition disagreement
-                results.append(
-                    ConsensusFinding(
-                        id=i,
-                        status="disagreement",
-                        primary_vendor=m.primary.vendor,
-                        primary_finding_id=m.primary.id,
-                        matched_findings=[
-                            {"vendor": mf.vendor, "finding_id": mf.id} for mf in m.matched
-                        ],
-                        match_score=m.score,
-                        agreed_type=m.primary.type,
-                        agreed_criticality=agreed_crit,
-                        recommended_disposition="escalate",
-                        description=m.primary.description,
-                        vendor_dispositions=all_dispositions,
-                    )
-                )
+                results.append(ConsensusFinding(
+                    id=i,
+                    status="disagreement",
+                    primary_vendor=m.primary.vendor,
+                    primary_finding_id=m.primary.id,
+                    matched_findings=[
+                        {"vendor": mf.vendor, "finding_id": mf.id}
+                        for mf in m.matched
+                    ],
+                    match_score=m.score,
+                    agreed_type=m.primary.type,
+                    agreed_criticality=agreed_crit,
+                    recommended_disposition="escalate",
+                    description=m.primary.description,
+                    vendor_dispositions=all_dispositions,
+                ))
 
         return results
 
@@ -402,11 +398,7 @@ class ConsensusSynthesizer:
                     "agreed_criticality": cf.agreed_criticality,
                     "recommended_disposition": cf.recommended_disposition,
                     "description": cf.description,
-                    **(
-                        {"vendor_dispositions": cf.vendor_dispositions}
-                        if cf.vendor_dispositions
-                        else {}
-                    ),
+                    **({"vendor_dispositions": cf.vendor_dispositions} if cf.vendor_dispositions else {}),
                 }
                 for cf in report.consensus_findings
             ],
@@ -430,7 +422,6 @@ class ConsensusSynthesizer:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-
 def main() -> int:
     """Synthesize consensus from per-vendor findings files.
 
@@ -446,23 +437,18 @@ def main() -> int:
         description="Synthesize multi-vendor review consensus",
     )
     parser.add_argument(
-        "--review-type",
-        required=True,
+        "--review-type", required=True,
         choices=["plan", "implementation"],
     )
     parser.add_argument("--target", required=True, help="Feature or package ID")
     parser.add_argument(
-        "--findings",
-        nargs="+",
-        required=True,
+        "--findings", nargs="+", required=True,
         help="Per-vendor findings JSON files",
     )
     parser.add_argument("--output", required=True, help="Output consensus JSON path")
     parser.add_argument("--quorum", type=int, default=2, help="Minimum reviewers")
     parser.add_argument(
-        "--threshold",
-        type=float,
-        default=MATCH_THRESHOLD,
+        "--threshold", type=float, default=MATCH_THRESHOLD,
         help="Match score threshold for confirmed status",
     )
     args = parser.parse_args()
@@ -473,23 +459,21 @@ def main() -> int:
         p = Path(fpath)
         if not p.exists():
             print(f"Warning: {fpath} not found, skipping", file=__import__("sys").stderr)
-            vendor_results.append(
-                VendorResult(
-                    vendor=p.stem,
-                    findings=[],
-                    success=False,
-                    error=f"File not found: {fpath}",
-                )
-            )
+            vendor_results.append(VendorResult(
+                vendor=p.stem, findings=[], success=False,
+                error=f"File not found: {fpath}",
+            ))
             continue
         data = json.loads(p.read_text())
         vendor = data.get("reviewer_vendor", p.stem.split("-")[-1])
-        findings = [Finding.from_dict(f, vendor=vendor) for f in data.get("findings", [])]
+        findings = [
+            Finding.from_dict(f, vendor=vendor)
+            for f in data.get("findings", [])
+        ]
         vendor_results.append(VendorResult(vendor=vendor, findings=findings))
 
     synth = ConsensusSynthesizer(
-        match_threshold=args.threshold,
-        quorum=args.quorum,
+        match_threshold=args.threshold, quorum=args.quorum,
     )
     report = synth.synthesize(
         review_type=args.review_type,
@@ -499,17 +483,13 @@ def main() -> int:
     synth.write_report(report, Path(args.output))
 
     # Print summary
-    print(
-        f"Consensus: {report.total_unique} findings "
-        f"({report.confirmed_count} confirmed, "
-        f"{report.unconfirmed_count} unconfirmed, "
-        f"{report.disagreement_count} disagreement)"
-    )
+    print(f"Consensus: {report.total_unique} findings "
+          f"({report.confirmed_count} confirmed, "
+          f"{report.unconfirmed_count} unconfirmed, "
+          f"{report.disagreement_count} disagreement)")
     print(f"Blocking: {report.blocking_count}")
-    print(
-        f"Quorum: {'met' if report.quorum_met else 'NOT met'} "
-        f"({report.quorum_received}/{report.quorum_requested})"
-    )
+    print(f"Quorum: {'met' if report.quorum_met else 'NOT met'} "
+          f"({report.quorum_received}/{report.quorum_requested})")
     print(f"Written to: {args.output}")
     return 0
 

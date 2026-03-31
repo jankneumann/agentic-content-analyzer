@@ -144,9 +144,7 @@ def _parse_column_type(raw: str) -> tuple[str, bool, str | None]:
         raw,
         re.IGNORECASE,
     )
-    col_type = (
-        type_match.group(1).strip() if type_match else raw.split()[0] if raw.split() else "unknown"
-    )
+    col_type = type_match.group(1).strip() if type_match else raw.split()[0] if raw.split() else "unknown"
     # Collapse whitespace in type
     col_type = re.sub(r"\s+", " ", col_type).strip()
 
@@ -156,7 +154,6 @@ def _parse_column_type(raw: str) -> tuple[str, bool, str | None]:
 # ---------------------------------------------------------------------------
 # SQL statement splitter
 # ---------------------------------------------------------------------------
-
 
 def _split_statements(sql: str) -> list[tuple[str, int]]:
     """Split SQL text into individual statements, respecting dollar-quoted
@@ -266,7 +263,6 @@ def _split_statements(sql: str) -> list[tuple[str, int]]:
 # Parser
 # ---------------------------------------------------------------------------
 
-
 class SchemaParser:
     """Regex-based SQL migration parser."""
 
@@ -322,35 +318,14 @@ class SchemaParser:
                 self._parse_create_trigger(stripped, filename, line)
             elif re.match(r"(?i)^DROP\s+TRIGGER\b", stripped):
                 pass  # informational, nothing to extract
-            elif re.match(
-                r"(?i)^(DO\s*\$|CREATE\s+SCHEMA|CREATE\s+ROLE|GRANT|ALTER\s+DEFAULT|CREATE\s+POLICY|CREATE\s+PUBLICATION|ALTER\s+PUBLICATION|CREATE\s+TYPE|CREATE\s+OR\s+REPLACE\s+VIEW)\b",
-                stripped,
-            ):
+            elif re.match(r"(?i)^(DO\s*\$|CREATE\s+SCHEMA|CREATE\s+ROLE|GRANT|ALTER\s+DEFAULT|CREATE\s+POLICY|CREATE\s+PUBLICATION|ALTER\s+PUBLICATION|CREATE\s+TYPE|CREATE\s+OR\s+REPLACE\s+VIEW)\b", stripped):
                 pass  # intentionally skipped, not part of required output
             else:
                 # Unknown statement type - skip silently for common SQL
-                if upper.startswith(
-                    (
-                        "INSERT",
-                        "UPDATE",
-                        "DELETE",
-                        "SELECT",
-                        "SET",
-                        "COMMENT",
-                        "REVOKE",
-                        "REASSIGN",
-                        "NOTIFY",
-                        "LISTEN",
-                    )
-                ):
+                if upper.startswith(("INSERT", "UPDATE", "DELETE", "SELECT", "SET", "COMMENT", "REVOKE", "REASSIGN", "NOTIFY", "LISTEN")):
                     pass
                 else:
-                    logger.debug(
-                        "Skipping unrecognized statement in %s:%d: %.80s...",
-                        filename,
-                        line,
-                        stripped,
-                    )
+                    logger.debug("Skipping unrecognized statement in %s:%d: %.80s...", filename, line, stripped)
         except Exception as exc:
             logger.warning(
                 "Could not parse statement in %s:%d – %s: %.120s",
@@ -398,7 +373,10 @@ class SchemaParser:
                 seg_stripped,
             )
             if pk_match:
-                table.primary_key = [_strip_quotes(c.strip()) for c in pk_match.group(1).split(",")]
+                table.primary_key = [
+                    _strip_quotes(c.strip())
+                    for c in pk_match.group(1).split(",")
+                ]
                 continue
 
             # Table-level UNIQUE constraint
@@ -420,16 +398,14 @@ class SchemaParser:
                 od_match = re.search(r"(?i)ON\s+DELETE\s+(\w+(?:\s+\w+)?)", fk_match.group(5))
                 if od_match:
                     on_delete = od_match.group(1).upper()
-                self.foreign_keys.append(
-                    ForeignKey(
-                        from_table=qualified,
-                        from_columns=from_cols,
-                        to_table=to_table,
-                        to_columns=to_cols,
-                        constraint_name=constraint_name,
-                        on_delete=on_delete,
-                    )
-                )
+                self.foreign_keys.append(ForeignKey(
+                    from_table=qualified,
+                    from_columns=from_cols,
+                    to_table=to_table,
+                    to_columns=to_cols,
+                    constraint_name=constraint_name,
+                    on_delete=on_delete,
+                ))
                 continue
 
             # Table-level CHECK constraint
@@ -536,9 +512,7 @@ class SchemaParser:
         rest = col_match.group(2).strip()
 
         # Skip if this looks like a constraint keyword rather than a type
-        if rest.upper().startswith(
-            ("FOREIGN", "PRIMARY", "UNIQUE", "CHECK", "CONSTRAINT", "EXCLUDE")
-        ):
+        if rest.upper().startswith(("FOREIGN", "PRIMARY", "UNIQUE", "CHECK", "CONSTRAINT", "EXCLUDE")):
             return None
 
         col_type, nullable, default = _parse_column_type(rest)
@@ -556,16 +530,14 @@ class SchemaParser:
             od_match = re.search(r"(?i)ON\s+DELETE\s+(\w+(?:\s+\w+)?)", ref_match.group(3))
             if od_match:
                 on_delete = od_match.group(1).upper()
-            self.foreign_keys.append(
-                ForeignKey(
-                    from_table=table_name,
-                    from_columns=[col_name],
-                    to_table=to_table,
-                    to_columns=to_cols,
-                    constraint_name="",
-                    on_delete=on_delete,
-                )
-            )
+            self.foreign_keys.append(ForeignKey(
+                from_table=table_name,
+                from_columns=[col_name],
+                to_table=to_table,
+                to_columns=to_cols,
+                constraint_name="",
+                on_delete=on_delete,
+            ))
 
         return Column(name=col_name, type=col_type, nullable=nullable, default=default)
 
@@ -639,16 +611,14 @@ class SchemaParser:
             od_match = re.search(r"(?i)ON\s+DELETE\s+(\w+(?:\s+\w+)?)", fk_match.group(5))
             if od_match:
                 on_delete = od_match.group(1).upper()
-            self.foreign_keys.append(
-                ForeignKey(
-                    from_table=qualified,
-                    from_columns=from_cols,
-                    to_table=to_table,
-                    to_columns=to_cols,
-                    constraint_name=constraint_name,
-                    on_delete=on_delete,
-                )
-            )
+            self.foreign_keys.append(ForeignKey(
+                from_table=qualified,
+                from_columns=from_cols,
+                to_table=to_table,
+                to_columns=to_cols,
+                constraint_name=constraint_name,
+                on_delete=on_delete,
+            ))
             return
 
         # Other ALTER TABLE forms we skip silently
@@ -680,18 +650,14 @@ class SchemaParser:
             part = part.strip()
             if part:
                 # For functional indexes, keep the expression; for simple ones, strip quotes
-                columns.append(
-                    _strip_quotes(part) if re.match(r"^[\w\"]+$", part) else part.strip()
-                )
+                columns.append(_strip_quotes(part) if re.match(r"^[\w\"]+$", part) else part.strip())
 
-        self.indexes.append(
-            Index(
-                name=idx_name,
-                table=table_name,
-                columns=columns,
-                unique=unique,
-            )
-        )
+        self.indexes.append(Index(
+            name=idx_name,
+            table=table_name,
+            columns=columns,
+            unique=unique,
+        ))
 
     # -- CREATE FUNCTION ----------------------------------------------------
 
@@ -725,14 +691,12 @@ class SchemaParser:
                 existing.language = language
                 return
 
-        self.functions.append(
-            StoredFunction(
-                name=func_name,
-                file=filename,
-                line=line,
-                language=language,
-            )
-        )
+        self.functions.append(StoredFunction(
+            name=func_name,
+            file=filename,
+            line=line,
+            language=language,
+        ))
 
     # -- CREATE TRIGGER -----------------------------------------------------
 
@@ -757,17 +721,17 @@ class SchemaParser:
         func_name = m.group(5).strip().rstrip(";").rstrip("()").strip()
 
         # Normalize events: "UPDATE OR DELETE" -> "UPDATE|DELETE"
-        events = "|".join(e.strip() for e in re.split(r"\s+OR\s+", events_raw) if e.strip())
-
-        self.triggers.append(
-            Trigger(
-                name=trigger_name,
-                table=table_name,
-                event=events,
-                timing=timing,
-                function=func_name,
-            )
+        events = "|".join(
+            e.strip() for e in re.split(r"\s+OR\s+", events_raw) if e.strip()
         )
+
+        self.triggers.append(Trigger(
+            name=trigger_name,
+            table=table_name,
+            event=events,
+            timing=timing,
+            function=func_name,
+        ))
 
     # -- output -------------------------------------------------------------
 
@@ -775,24 +739,22 @@ class SchemaParser:
         """Build the final JSON-serializable output dictionary."""
         tables_out = []
         for t in self.tables.values():
-            tables_out.append(
-                {
-                    "name": t.name,
-                    "schema": t.schema,
-                    "columns": [
-                        {
-                            "name": c.name,
-                            "type": c.type,
-                            "nullable": c.nullable,
-                            "default": c.default,
-                        }
-                        for c in t.columns
-                    ],
-                    "primary_key": t.primary_key,
-                    "file": t.file,
-                    "line": t.line,
-                }
-            )
+            tables_out.append({
+                "name": t.name,
+                "schema": t.schema,
+                "columns": [
+                    {
+                        "name": c.name,
+                        "type": c.type,
+                        "nullable": c.nullable,
+                        "default": c.default,
+                    }
+                    for c in t.columns
+                ],
+                "primary_key": t.primary_key,
+                "file": t.file,
+                "line": t.line,
+            })
 
         fks_out = [
             {
@@ -853,7 +815,8 @@ class SchemaParser:
         for fk in self.foreign_keys:
             ref_counter[fk.to_table] += 1
         most_referenced = [
-            {"table": tbl, "references": count} for tbl, count in ref_counter.most_common(10)
+            {"table": tbl, "references": count}
+            for tbl, count in ref_counter.most_common(10)
         ]
         widest = sorted(
             [{"table": t.name, "column_count": len(t.columns)} for t in self.tables.values()],
@@ -885,7 +848,6 @@ class SchemaParser:
 # Live database mode
 # ---------------------------------------------------------------------------
 
-
 def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
     """Query a live Postgres database for schema information.
 
@@ -896,7 +858,9 @@ def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
         import psycopg2  # type: ignore[import-untyped]
         import psycopg2.extras  # type: ignore[import-untyped]
     except ImportError:
-        logger.error("psycopg2 is not installed. Install it with: pip install psycopg2-binary")
+        logger.error(
+            "psycopg2 is not installed. Install it with: pip install psycopg2-binary"
+        )
         sys.exit(1)
 
     connect_kwargs: dict[str, Any] = {}
@@ -938,14 +902,12 @@ def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
                     "file": "(live database)",
                     "line": 0,
                 }
-            tables_dict[qualified]["columns"].append(
-                {
-                    "name": row["column_name"],
-                    "type": row["udt_name"] or row["data_type"],
-                    "nullable": row["is_nullable"] == "YES",
-                    "default": row["column_default"],
-                }
-            )
+            tables_dict[qualified]["columns"].append({
+                "name": row["column_name"],
+                "type": row["udt_name"] or row["data_type"],
+                "nullable": row["is_nullable"] == "YES",
+                "default": row["column_default"],
+            })
 
         # Primary keys
         cur.execute("""
@@ -997,9 +959,7 @@ def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
                     "to_table": row["to_table"],
                     "to_columns": [],
                     "constraint_name": row["constraint_name"],
-                    "on_delete": row["delete_rule"].replace(" ", "_")
-                    if row["delete_rule"]
-                    else "NO ACTION",
+                    "on_delete": row["delete_rule"].replace(" ", "_") if row["delete_rule"] else "NO ACTION",
                 }
             fk_map[key]["from_columns"].append(row["from_column"])
             fk_map[key]["to_columns"].append(row["to_column"])
@@ -1023,14 +983,12 @@ def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
         """)
         indexes_out = []
         for row in cur.fetchall():
-            indexes_out.append(
-                {
-                    "name": row["index_name"],
-                    "table": row["table_name"],
-                    "columns": row["columns"],
-                    "unique": row["is_unique"],
-                }
-            )
+            indexes_out.append({
+                "name": row["index_name"],
+                "table": row["table_name"],
+                "columns": row["columns"],
+                "unique": row["is_unique"],
+            })
 
         # Functions
         cur.execute("""
@@ -1070,15 +1028,13 @@ def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
         triggers_out = []
         for row in cur.fetchall():
             event = row["event"].strip("|")
-            triggers_out.append(
-                {
-                    "name": row["trigger_name"],
-                    "table": row["table_name"],
-                    "event": event,
-                    "timing": row["timing"],
-                    "function": row["function_name"],
-                }
-            )
+            triggers_out.append({
+                "name": row["trigger_name"],
+                "table": row["table_name"],
+                "event": event,
+                "timing": row["timing"],
+                "function": row["function_name"],
+            })
 
         tables_out = list(tables_dict.values())
         fks_out = list(fk_map.values())
@@ -1095,7 +1051,8 @@ def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
         for fk in fks_out:
             ref_counter[fk["to_table"]] += 1
         most_referenced = [
-            {"table": tbl, "references": count} for tbl, count in ref_counter.most_common(10)
+            {"table": tbl, "references": count}
+            for tbl, count in ref_counter.most_common(10)
         ]
         widest = sorted(
             [{"table": t["name"], "column_count": len(t["columns"])} for t in tables_out],
@@ -1127,7 +1084,6 @@ def _query_live_db(dsn: str | None = None) -> dict[str, Any]:
 # CLI
 # ---------------------------------------------------------------------------
 
-
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Analyze Postgres schema from SQL migration files.",
@@ -1150,8 +1106,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Write JSON output to this file (default: stdout)",
     )
     parser.add_argument(
-        "--verbose",
-        "-v",
+        "--verbose", "-v",
         action="store_true",
         default=False,
         help="Enable verbose logging",
@@ -1205,10 +1160,7 @@ def main(argv: list[str] | None = None) -> None:
         s = result["summary"]
         logger.info(
             "Schema analysis complete: %d tables, %d columns, %d FKs, %d indexes",
-            s["total_tables"],
-            s["total_columns"],
-            s["total_foreign_keys"],
-            s["total_indexes"],
+            s['total_tables'], s['total_columns'], s['total_foreign_keys'], s['total_indexes'],
         )
     else:
         sys.stdout.write(json_str + "\n")

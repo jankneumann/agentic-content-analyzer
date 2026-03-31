@@ -93,14 +93,10 @@ def test_report_generation(input_dir: Path) -> None:
     from reports.architecture_report import main as report_main
 
     report_path = input_dir / "architecture.report.md"
-    rc = report_main(
-        [
-            "--input-dir",
-            str(input_dir),
-            "--output",
-            str(report_path),
-        ]
-    )
+    rc = report_main([
+        "--input-dir", str(input_dir),
+        "--output", str(report_path),
+    ])
 
     assert rc == 0
     assert report_path.exists()
@@ -155,16 +151,11 @@ def test_report_generation_with_config(input_dir: Path) -> None:
     from reports.architecture_report import main as report_main
 
     report_path = input_dir / "architecture.report.md"
-    rc = report_main(
-        [
-            "--input-dir",
-            str(input_dir),
-            "--output",
-            str(report_path),
-            "--config",
-            str(config_path),
-        ]
-    )
+    rc = report_main([
+        "--input-dir", str(input_dir),
+        "--output", str(report_path),
+        "--config", str(config_path),
+    ])
 
     assert rc == 0
     content = report_path.read_text()
@@ -212,14 +203,10 @@ def test_report_no_config_backwards_compatible(input_dir: Path) -> None:
 
     report_path = input_dir / "architecture.report.md"
     # No --config flag — should use defaults
-    rc = report_main(
-        [
-            "--input-dir",
-            str(input_dir),
-            "--output",
-            str(report_path),
-        ]
-    )
+    rc = report_main([
+        "--input-dir", str(input_dir),
+        "--output", str(report_path),
+    ])
 
     assert rc == 0
     content = report_path.read_text()
@@ -261,16 +248,11 @@ def test_health_custom_expected_categories(input_dir: Path) -> None:
     from reports.architecture_report import main as report_main
 
     report_path = input_dir / "architecture.report.md"
-    rc = report_main(
-        [
-            "--input-dir",
-            str(input_dir),
-            "--output",
-            str(report_path),
-            "--config",
-            str(config_path),
-        ]
-    )
+    rc = report_main([
+        "--input-dir", str(input_dir),
+        "--output", str(report_path),
+        "--config", str(config_path),
+    ])
 
     assert rc == 0
     content = report_path.read_text()

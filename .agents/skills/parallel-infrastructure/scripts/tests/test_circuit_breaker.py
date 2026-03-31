@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -83,7 +83,7 @@ class TestTimeoutAndBudget:
 
 class TestHeartbeat:
     def test_heartbeat_records_time(self, breaker: CircuitBreaker) -> None:
-        now = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
         breaker.heartbeat("wp-backend", now)
         # Not stuck if checked immediately
         stuck = breaker.check_stuck_packages(now + timedelta(minutes=1))
@@ -96,13 +96,13 @@ class TestHeartbeat:
 
 class TestStuckDetection:
     def test_not_stuck_within_timeout(self, breaker: CircuitBreaker) -> None:
-        now = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
         breaker.heartbeat("wp-backend", now)
         stuck = breaker.check_stuck_packages(now + timedelta(minutes=30))
         assert stuck == []
 
     def test_stuck_after_timeout(self, breaker: CircuitBreaker) -> None:
-        now = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
         breaker.heartbeat("wp-backend", now)
         stuck = breaker.check_stuck_packages(now + timedelta(minutes=61))
         assert len(stuck) == 1
@@ -111,7 +111,7 @@ class TestStuckDetection:
         assert stuck[0]["elapsed_minutes"] > 60
 
     def test_stuck_respects_per_package_timeout(self, breaker: CircuitBreaker) -> None:
-        now = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
         breaker.heartbeat("wp-contracts", now)  # 30 min timeout
         breaker.heartbeat("wp-backend", now)  # 60 min timeout
 
@@ -121,14 +121,14 @@ class TestStuckDetection:
         assert stuck[0]["package_id"] == "wp-contracts"
 
     def test_tripped_packages_not_reported_as_stuck(self, breaker: CircuitBreaker) -> None:
-        now = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
         breaker.heartbeat("wp-backend", now)
         breaker.trip("wp-backend")
         stuck = breaker.check_stuck_packages(now + timedelta(minutes=120))
         assert stuck == []
 
     def test_heartbeat_refresh_resets_timer(self, breaker: CircuitBreaker) -> None:
-        now = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
         breaker.heartbeat("wp-backend", now)
         # Refresh heartbeat at minute 50
         breaker.heartbeat("wp-backend", now + timedelta(minutes=50))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -129,7 +130,11 @@ class TestFindEnclosingNode:
 
 class TestCommentExtraction:
     def test_python_comments(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("# This is a comment\nx = 1  # inline\n# TODO: fix this\n")
+        (py_src / "test.py").write_text(
+            "# This is a comment\n"
+            "x = 1  # inline\n"
+            "# TODO: fix this\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
@@ -142,7 +147,11 @@ class TestCommentExtraction:
         assert "TODO" in todo_comments[0]["markers"]
 
     def test_typescript_comments(self, enricher: TreeSitterEnricher, ts_src: Path) -> None:
-        (ts_src / "test.ts").write_text("// Line comment\n/* Block comment */\n// FIXME: broken\n")
+        (ts_src / "test.ts").write_text(
+            "// Line comment\n"
+            "/* Block comment */\n"
+            "// FIXME: broken\n"
+        )
         enricher.enrich_typescript(ts_src)
         output = enricher.build_output()
 
@@ -156,7 +165,10 @@ class TestCommentExtraction:
         self, enricher_with_graph: TreeSitterEnricher, py_src: Path
     ) -> None:
         (py_src / "test_module.py").write_text(
-            "# line 1\ndef foo():\n    # inside foo (line 3)\n    pass\n"
+            "# line 1\n"
+            "def foo():\n"
+            "    # inside foo (line 3)\n"
+            "    pass\n"
         )
         enricher_with_graph.enrich_python(py_src)
         output = enricher_with_graph.build_output()
@@ -175,21 +187,36 @@ class TestCommentExtraction:
 
 class TestPythonPatterns:
     def test_bare_except(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("try:\n    pass\nexcept:\n    pass\n")
+        (py_src / "test.py").write_text(
+            "try:\n"
+            "    pass\n"
+            "except:\n"
+            "    pass\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
         assert output["python_patterns"]["bare_except"]["count"] == 1
 
     def test_broad_except(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("try:\n    pass\nexcept Exception:\n    pass\n")
+        (py_src / "test.py").write_text(
+            "try:\n"
+            "    pass\n"
+            "except Exception:\n"
+            "    pass\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
         assert output["python_patterns"]["broad_except"]["count"] == 1
 
     def test_typed_except_not_bare(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("try:\n    pass\nexcept ValueError:\n    pass\n")
+        (py_src / "test.py").write_text(
+            "try:\n"
+            "    pass\n"
+            "except ValueError:\n"
+            "    pass\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
@@ -197,7 +224,11 @@ class TestPythonPatterns:
 
     def test_dotted_except_not_bare(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
         (py_src / "test.py").write_text(
-            "import json\ntry:\n    pass\nexcept json.JSONDecodeError:\n    pass\n"
+            "import json\n"
+            "try:\n"
+            "    pass\n"
+            "except json.JSONDecodeError:\n"
+            "    pass\n"
         )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
@@ -205,7 +236,10 @@ class TestPythonPatterns:
         assert output["python_patterns"]["bare_except"]["count"] == 0
 
     def test_context_managers(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("with open('file') as f:\n    data = f.read()\n")
+        (py_src / "test.py").write_text(
+            "with open('file') as f:\n"
+            "    data = f.read()\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
@@ -213,7 +247,8 @@ class TestPythonPatterns:
 
     def test_type_hints(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
         (py_src / "test.py").write_text(
-            "def greet(name: str) -> str:\n    return f'Hello {name}'\n"
+            "def greet(name: str) -> str:\n"
+            "    return f'Hello {name}'\n"
         )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
@@ -224,7 +259,10 @@ class TestPythonPatterns:
         assert "param_type" in kinds
 
     def test_assertions(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("assert True\nassert x > 0, 'x must be positive'\n")
+        (py_src / "test.py").write_text(
+            "assert True\n"
+            "assert x > 0, 'x must be positive'\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
@@ -238,7 +276,12 @@ class TestPythonPatterns:
 
 class TestTypeScriptPatterns:
     def test_empty_catch(self, enricher: TreeSitterEnricher, ts_src: Path) -> None:
-        (ts_src / "test.ts").write_text("try {\n  doSomething();\n} catch {\n}\n")
+        (ts_src / "test.ts").write_text(
+            "try {\n"
+            "  doSomething();\n"
+            "} catch {\n"
+            "}\n"
+        )
         enricher.enrich_typescript(ts_src)
         output = enricher.build_output()
 
@@ -247,7 +290,11 @@ class TestTypeScriptPatterns:
 
     def test_non_empty_catch(self, enricher: TreeSitterEnricher, ts_src: Path) -> None:
         (ts_src / "test.ts").write_text(
-            "try {\n  doSomething();\n} catch (e) {\n  console.log(e);\n}\n"
+            "try {\n"
+            "  doSomething();\n"
+            "} catch (e) {\n"
+            "  console.log(e);\n"
+            "}\n"
         )
         enricher.enrich_typescript(ts_src)
         output = enricher.build_output()
@@ -256,7 +303,9 @@ class TestTypeScriptPatterns:
         assert output["typescript_patterns"]["catch_clauses"]["count"] == 1
 
     def test_dynamic_import(self, enricher: TreeSitterEnricher, ts_src: Path) -> None:
-        (ts_src / "test.ts").write_text("const mod = await import('./module');\n")
+        (ts_src / "test.ts").write_text(
+            "const mod = await import('./module');\n"
+        )
         enricher.enrich_typescript(ts_src)
         output = enricher.build_output()
 
@@ -270,53 +319,70 @@ class TestTypeScriptPatterns:
 
 class TestSecurityPatterns:
     def test_eval_detection(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("result = eval('1 + 2')\n")
+        (py_src / "test.py").write_text(
+            "result = eval('1 + 2')\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
         assert output["security_patterns"]["total"] >= 1
         eval_findings = [
-            f for f in output["security_patterns"]["items"] if f["category"] == "eval_exec"
+            f for f in output["security_patterns"]["items"]
+            if f["category"] == "eval_exec"
         ]
         assert len(eval_findings) >= 1
 
     def test_exec_detection(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("exec('print(1)')\n")
+        (py_src / "test.py").write_text(
+            "exec('print(1)')\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
         eval_findings = [
-            f for f in output["security_patterns"]["items"] if f["category"] == "eval_exec"
+            f for f in output["security_patterns"]["items"]
+            if f["category"] == "eval_exec"
         ]
         assert len(eval_findings) >= 1
 
     def test_no_false_positives(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("x = tuple()\ny = set()\nprint('hello')\n")
+        (py_src / "test.py").write_text(
+            "x = tuple()\n"
+            "y = set()\n"
+            "print('hello')\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
         eval_findings = [
-            f for f in output["security_patterns"]["items"] if f["category"] == "eval_exec"
+            f for f in output["security_patterns"]["items"]
+            if f["category"] == "eval_exec"
         ]
         assert len(eval_findings) == 0
 
     def test_sql_concatenation(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("query = 'SELECT * FROM users WHERE id = ' + user_id\n")
+        (py_src / "test.py").write_text(
+            "query = 'SELECT * FROM users WHERE id = ' + user_id\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
         sql_findings = [
-            f for f in output["security_patterns"]["items"] if f["category"] == "sql_concatenation"
+            f for f in output["security_patterns"]["items"]
+            if f["category"] == "sql_concatenation"
         ]
         assert len(sql_findings) >= 1
 
     def test_hardcoded_secret(self, enricher: TreeSitterEnricher, py_src: Path) -> None:
-        (py_src / "test.py").write_text("api_key = 'sk-1234567890'\n")
+        (py_src / "test.py").write_text(
+            "api_key = 'sk-1234567890'\n"
+        )
         enricher.enrich_python(py_src)
         output = enricher.build_output()
 
         secret_findings = [
-            f for f in output["security_patterns"]["items"] if f["category"] == "hardcoded_secret"
+            f for f in output["security_patterns"]["items"]
+            if f["category"] == "hardcoded_secret"
         ]
         assert len(secret_findings) >= 1
 
@@ -333,16 +399,11 @@ class TestCLI:
         (py_src / "test.py").write_text("# Hello\nx = 1\n")
         output = tmp_path / "enrichment.json"
 
-        rc = main(
-            [
-                "--python-src",
-                str(py_src),
-                "--queries",
-                str(QUERIES_DIR),
-                "--output",
-                str(output),
-            ]
-        )
+        rc = main([
+            "--python-src", str(py_src),
+            "--queries", str(QUERIES_DIR),
+            "--output", str(output),
+        ])
         assert rc == 0
         assert output.exists()
         data = json.loads(output.read_text())
@@ -353,14 +414,9 @@ class TestCLI:
         from enrich_with_treesitter import main
 
         output = tmp_path / "enrichment.json"
-        rc = main(
-            [
-                "--python-src",
-                str(tmp_path / "nonexistent"),
-                "--queries",
-                str(QUERIES_DIR),
-                "--output",
-                str(output),
-            ]
-        )
+        rc = main([
+            "--python-src", str(tmp_path / "nonexistent"),
+            "--queries", str(QUERIES_DIR),
+            "--output", str(output),
+        ])
         assert rc == 0  # Graceful skip, not error

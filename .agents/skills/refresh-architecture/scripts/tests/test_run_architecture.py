@@ -20,22 +20,14 @@ def test_main_passes_target_env_and_overrides(tmp_path: Path) -> None:
     with patch("run_architecture.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0)
 
-        rc = run_architecture.main(
-            [
-                "--target-dir",
-                str(target),
-                "--python-src-dir",
-                "app",
-                "--ts-src-dir",
-                "frontend",
-                "--migrations-dir",
-                "db/migrations",
-                "--arch-dir",
-                "docs/architecture-analysis",
-                "--python",
-                "python3.11",
-            ]
-        )
+        rc = run_architecture.main([
+            "--target-dir", str(target),
+            "--python-src-dir", "app",
+            "--ts-src-dir", "frontend",
+            "--migrations-dir", "db/migrations",
+            "--arch-dir", "docs/architecture-analysis",
+            "--python", "python3.11",
+        ])
 
     assert rc == 0
     args, kwargs = mock_run.call_args
@@ -59,13 +51,10 @@ def test_main_quick_adds_flag(tmp_path: Path) -> None:
     with patch("run_architecture.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0)
 
-        rc = run_architecture.main(
-            [
-                "--target-dir",
-                str(target),
-                "--quick",
-            ]
-        )
+        rc = run_architecture.main([
+            "--target-dir", str(target),
+            "--quick",
+        ])
 
     assert rc == 0
     args, _ = mock_run.call_args

@@ -21,7 +21,7 @@ import json
 import logging
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +32,10 @@ logger = logging.getLogger("enrich_with_treesitter")
 # ---------------------------------------------------------------------------
 
 try:
+    from tree_sitter import Language, Node, Parser, Query, QueryCursor
+
     import tree_sitter_python
     import tree_sitter_typescript
-    from tree_sitter import Language, Node, Parser, Query, QueryCursor
 
     PY_LANGUAGE = Language(tree_sitter_python.language())
     TS_LANGUAGE = Language(tree_sitter_typescript.language_typescript())
@@ -54,10 +55,10 @@ _MARKER_RE = re.compile(
 )
 
 _COMMENT_TYPES = {
-    "py_line": "inline",  # Python # comments
-    "py_docstring": "doc",  # Python """ docstrings
-    "ts_line": "inline",  # TypeScript // comments
-    "ts_block": "block",  # TypeScript /* */ comments
+    "py_line": "inline",      # Python # comments
+    "py_docstring": "doc",    # Python """ docstrings
+    "ts_line": "inline",      # TypeScript // comments
+    "ts_block": "block",      # TypeScript /* */ comments
 }
 
 
@@ -185,8 +186,7 @@ class TreeSitterEnricher:
             return
 
         ts_files = sorted(
-            f
-            for f in src_dir.rglob("*")
+            f for f in src_dir.rglob("*")
             if f.suffix in (".ts", ".tsx") and "node_modules" not in f.parts
         )
         for ts_file in ts_files:
@@ -248,24 +248,24 @@ class TreeSitterEnricher:
                 enclosing = find_enclosing_node(line, file_nodes)
 
                 # Determine comment type
-                if language == "python" or text.startswith("//"):
+                if language == "python":
+                    comment_type = "inline"
+                elif text.startswith("//"):
                     comment_type = "inline"
                 elif text.startswith("/*"):
                     comment_type = "block"
                 else:
                     comment_type = "inline"
 
-                self.comments.append(
-                    {
-                        "file": rel_path,
-                        "line": line,
-                        "text": text.strip(),
-                        "language": language,
-                        "type": comment_type,
-                        "markers": classification["markers"],
-                        "enclosing_node": enclosing,
-                    }
-                )
+                self.comments.append({
+                    "file": rel_path,
+                    "line": line,
+                    "text": text.strip(),
+                    "language": language,
+                    "type": comment_type,
+                    "markers": classification["markers"],
+                    "enclosing_node": enclosing,
+                })
 
     def _run_python_patterns(
         self,
@@ -286,75 +286,63 @@ class TreeSitterEnricher:
             has_type = any(c.type in _EXCEPT_TYPE_NODES for c in node.children)
             if not has_type:
                 # Bare except (no exception type)
-                self.python_patterns["bare_except"].append(
-                    {
-                        "file": rel_path,
-                        "line": line,
-                        "enclosing_node": find_enclosing_node(line, file_nodes),
-                    }
-                )
+                self.python_patterns["bare_except"].append({
+                    "file": rel_path,
+                    "line": line,
+                    "enclosing_node": find_enclosing_node(line, file_nodes),
+                })
 
         # Broad except (catches Exception) — manually filter
         for node in captures.get("except.broad_type", []):
             text = node.text.decode("utf8") if node.text else ""
             if text == "Exception":
                 line = node.start_point[0] + 1
-                self.python_patterns["broad_except"].append(
-                    {
-                        "file": rel_path,
-                        "line": line,
-                        "enclosing_node": find_enclosing_node(line, file_nodes),
-                    }
-                )
+                self.python_patterns["broad_except"].append({
+                    "file": rel_path,
+                    "line": line,
+                    "enclosing_node": find_enclosing_node(line, file_nodes),
+                })
 
         # Context managers
         for node in captures.get("context_manager.usage", []):
             line = node.start_point[0] + 1
-            self.python_patterns["context_managers"].append(
-                {
-                    "file": rel_path,
-                    "line": line,
-                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                }
-            )
+            self.python_patterns["context_managers"].append({
+                "file": rel_path,
+                "line": line,
+                "enclosing_node": find_enclosing_node(line, file_nodes),
+            })
 
         # Type hints
         for node in captures.get("type_hint.function_name", []):
             line = node.start_point[0] + 1
             func_name = node.text.decode("utf8") if node.text else ""
-            self.python_patterns["type_hints"].append(
-                {
-                    "file": rel_path,
-                    "line": line,
-                    "function": func_name,
-                    "kind": "return_type",
-                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                }
-            )
+            self.python_patterns["type_hints"].append({
+                "file": rel_path,
+                "line": line,
+                "function": func_name,
+                "kind": "return_type",
+                "enclosing_node": find_enclosing_node(line, file_nodes),
+            })
 
         for node in captures.get("type_hint.param_name", []):
             line = node.start_point[0] + 1
             param_name = node.text.decode("utf8") if node.text else ""
-            self.python_patterns["type_hints"].append(
-                {
-                    "file": rel_path,
-                    "line": line,
-                    "parameter": param_name,
-                    "kind": "param_type",
-                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                }
-            )
+            self.python_patterns["type_hints"].append({
+                "file": rel_path,
+                "line": line,
+                "parameter": param_name,
+                "kind": "param_type",
+                "enclosing_node": find_enclosing_node(line, file_nodes),
+            })
 
         # Assertions
         for node in captures.get("assertion.usage", []):
             line = node.start_point[0] + 1
-            self.python_patterns["assertions"].append(
-                {
-                    "file": rel_path,
-                    "line": line,
-                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                }
-            )
+            self.python_patterns["assertions"].append({
+                "file": rel_path,
+                "line": line,
+                "enclosing_node": find_enclosing_node(line, file_nodes),
+            })
 
     def _run_typescript_patterns(
         self,
@@ -392,16 +380,16 @@ class TreeSitterEnricher:
         # Dynamic imports
         for node in captures.get("import.dynamic", []):
             line = node.start_point[0] + 1
-            self.typescript_patterns["dynamic_imports"].append(
-                {
-                    "file": rel_path,
-                    "line": line,
-                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                }
-            )
+            self.typescript_patterns["dynamic_imports"].append({
+                "file": rel_path,
+                "line": line,
+                "enclosing_node": find_enclosing_node(line, file_nodes),
+            })
 
     _EVAL_EXEC_NAMES = {"eval", "exec"}
-    _SECRET_VAR_RE = re.compile(r"(?i)(secret|password|token|api_key|apikey|private_key)")
+    _SECRET_VAR_RE = re.compile(
+        r"(?i)(secret|password|token|api_key|apikey|private_key)"
+    )
 
     def _run_security_patterns(
         self,
@@ -424,16 +412,14 @@ class TreeSitterEnricher:
             if text not in self._EVAL_EXEC_NAMES:
                 continue
             line = node.start_point[0] + 1
-            self.security_patterns.append(
-                {
-                    "file": rel_path,
-                    "line": line,
-                    "category": "eval_exec",
-                    "severity": "high",
-                    "detail": f"{text}() usage detected",
-                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                }
-            )
+            self.security_patterns.append({
+                "file": rel_path,
+                "line": line,
+                "category": "eval_exec",
+                "severity": "high",
+                "detail": f"{text}() usage detected",
+                "enclosing_node": find_enclosing_node(line, file_nodes),
+            })
 
         # Hardcoded secrets — filter manually since #match? not applied
         for node in captures.get("security.secret_var_name", []):
@@ -441,16 +427,14 @@ class TreeSitterEnricher:
             if not self._SECRET_VAR_RE.search(var_name):
                 continue
             line = node.start_point[0] + 1
-            self.security_patterns.append(
-                {
-                    "file": rel_path,
-                    "line": line,
-                    "category": "hardcoded_secret",
-                    "severity": "medium",
-                    "detail": f"Potential hardcoded secret in '{var_name}'",
-                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                }
-            )
+            self.security_patterns.append({
+                "file": rel_path,
+                "line": line,
+                "category": "hardcoded_secret",
+                "severity": "medium",
+                "detail": f"Potential hardcoded secret in '{var_name}'",
+                "enclosing_node": find_enclosing_node(line, file_nodes),
+            })
 
         # Also check for SQL string concatenation using manual tree walking
         self._check_sql_string_patterns(tree.root_node, rel_path, file_nodes, source)
@@ -473,20 +457,20 @@ class TreeSitterEnricher:
                     for kw in sql_keywords:
                         if kw in text.upper():
                             line = node.start_point[0] + 1
-                            self.security_patterns.append(
-                                {
-                                    "file": rel_path,
-                                    "line": line,
-                                    "category": "sql_concatenation",
-                                    "severity": "high",
-                                    "detail": "SQL built via string concatenation",
-                                    "enclosing_node": find_enclosing_node(line, file_nodes),
-                                }
-                            )
+                            self.security_patterns.append({
+                                "file": rel_path,
+                                "line": line,
+                                "category": "sql_concatenation",
+                                "severity": "high",
+                                "detail": "SQL built via string concatenation",
+                                "enclosing_node": find_enclosing_node(
+                                    line, file_nodes
+                                ),
+                            })
                             break
 
     @staticmethod
-    def _walk_tree(node: Node):
+    def _walk_tree(node: Node):  # noqa: ANN205 — generator
         """Depth-first walk of all nodes in the tree (generator)."""
         cursor = node.walk()
         visited = False
@@ -503,7 +487,7 @@ class TreeSitterEnricher:
     def build_output(self) -> dict[str, Any]:
         """Build the final enrichment JSON."""
         return {
-            "generated_at": datetime.now(UTC).isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "treesitter_version": _get_treesitter_version(),
             "comments": {
                 "total": len(self.comments),
@@ -536,7 +520,6 @@ def _get_treesitter_version() -> str:
     """Get tree-sitter version string."""
     try:
         import tree_sitter
-
         return getattr(tree_sitter, "__version__", "unknown")
     except ImportError:
         return "unavailable"
@@ -599,7 +582,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not TREESITTER_AVAILABLE:
         logger.error(
-            "tree-sitter is not installed. Run 'cd scripts && uv sync' to install dependencies."
+            "tree-sitter is not installed. "
+            "Run 'cd scripts && uv sync' to install dependencies."
         )
         return 1
 

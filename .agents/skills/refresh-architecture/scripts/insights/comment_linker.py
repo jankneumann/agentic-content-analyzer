@@ -18,7 +18,7 @@ import json
 import logging
 import sys
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -86,17 +86,15 @@ def compute_comment_insights(
     file_summaries = []
     for file_path in sorted(by_file.keys()):
         fc = by_file[file_path]
-        file_summaries.append(
-            {
-                "file": file_path,
-                "total_comments": len(fc),
-                "with_markers": sum(1 for c in fc if c.get("markers")),
-                "languages": list({c["language"] for c in fc}),
-            }
-        )
+        file_summaries.append({
+            "file": file_path,
+            "total_comments": len(fc),
+            "with_markers": sum(1 for c in fc if c.get("markers")),
+            "languages": list({c["language"] for c in fc}),
+        })
 
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "summary": {
             "total_comments": len(comments),
             "total_with_markers": sum(1 for c in comments if c.get("markers")),

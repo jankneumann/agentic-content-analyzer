@@ -8,8 +8,8 @@ from pathlib import Path
 
 def test_cross_layer_linker_adds_api_call_edges(input_dir: Path) -> None:
     """cross_layer_linker should add api_call edges between TS and Python nodes."""
-    from insights.cross_layer_linker import run_cross_layer_linking
     from insights.graph_builder import build_graph
+    from insights.cross_layer_linker import run_cross_layer_linking
 
     graph_path = input_dir / "architecture.graph.json"
     build_graph(input_dir=input_dir, output_path=graph_path)
@@ -30,8 +30,8 @@ def test_cross_layer_linker_adds_api_call_edges(input_dir: Path) -> None:
 
 def test_cross_layer_linker_stores_disconnected(input_dir: Path) -> None:
     """cross_layer_linker should track disconnected endpoints in the graph metadata."""
-    from insights.cross_layer_linker import run_cross_layer_linking
     from insights.graph_builder import build_graph
+    from insights.cross_layer_linker import run_cross_layer_linking
 
     graph_path = input_dir / "architecture.graph.json"
     build_graph(input_dir=input_dir, output_path=graph_path)
@@ -47,8 +47,8 @@ def test_cross_layer_linker_stores_disconnected(input_dir: Path) -> None:
 
 def test_cross_layer_linker_idempotent(input_dir: Path) -> None:
     """Running cross_layer_linker twice should not duplicate edges."""
-    from insights.cross_layer_linker import run_cross_layer_linking
     from insights.graph_builder import build_graph
+    from insights.cross_layer_linker import run_cross_layer_linking
 
     graph_path = input_dir / "architecture.graph.json"
     build_graph(input_dir=input_dir, output_path=graph_path)

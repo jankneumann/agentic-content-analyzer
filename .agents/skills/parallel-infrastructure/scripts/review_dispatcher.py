@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 # Error classification
 # ---------------------------------------------------------------------------
 
-
 class ErrorClass(str, Enum):
     """Classification of vendor subprocess errors."""
 
@@ -80,7 +79,6 @@ def classify_error(stderr: str) -> ErrorClass:
 # converts its types to these.
 # ---------------------------------------------------------------------------
 
-
 @dataclass
 class PollConfig:
     """Polling configuration for async dispatch modes."""
@@ -115,13 +113,27 @@ class CliConfig:
 
 
 @dataclass
+class SdkConfig:
+    """SDK dispatch configuration for an agent."""
+
+    package: str
+    model: str
+    method: str = "messages.create"
+    model_fallbacks: list[str] = field(default_factory=list)
+    api_key_env: str = ""
+    max_tokens: int = 16384
+
+
+@dataclass
 class ReviewerInfo:
     """Information about an available reviewer."""
 
     vendor: str
     agent_id: str
     cli_config: CliConfig | None = None
+    sdk_config: SdkConfig | None = None
     available: bool = True
+    dispatch_tier: str = "skip"  # "cli", "sdk", or "skip"
 
 
 @dataclass
@@ -144,14 +156,20 @@ class ReviewResult:
 # Generic CLI adapter
 # ---------------------------------------------------------------------------
 
-
 class CliVendorAdapter:
     """Config-driven vendor adapter — one class handles all vendors."""
 
-    def __init__(self, agent_id: str, vendor: str, cli_config: CliConfig) -> None:
+    def __init__(
+        self,
+        agent_id: str,
+        vendor: str,
+        cli_config: CliConfig,
+        transport: str = "mcp",
+    ) -> None:
         self.agent_id = agent_id
         self.vendor = vendor
         self.cli_config = cli_config
+        self.transport = transport
 
     def can_dispatch(self, mode: str) -> bool:
         """Check if this adapter can dispatch the given mode."""
@@ -237,11 +255,10 @@ class CliVendorAdapter:
 
                 if last_error_class == ErrorClass.AUTH:
                     # Auth errors can't be fixed by model fallback
-                    relogin = _RELOGIN_COMMANDS.get(
-                        self.cli_config.command, f"{self.cli_config.command} login"
-                    )
+                    relogin = _RELOGIN_COMMANDS.get(self.cli_config.command, f"{self.cli_config.command} login")
                     msg = (
-                        f"[WARN] {self.vendor} review failed: auth expired.\n       Run: {relogin}"
+                        f"[WARN] {self.vendor} review failed: auth expired.\n"
+                        f"       Run: {relogin}"
                     )
                     print(msg, file=sys.stderr)
                     return ReviewResult(
@@ -257,8 +274,7 @@ class CliVendorAdapter:
                     # Try next model in fallback chain
                     logger.info(
                         "%s model %s capacity exhausted, trying fallback",
-                        self.vendor,
-                        model_name,
+                        self.vendor, model_name,
                     )
                     continue
 
@@ -309,7 +325,7 @@ class CliVendorAdapter:
         brace_end = text.rfind("}")
         if brace_start >= 0 and brace_end > brace_start:
             try:
-                data = json.loads(text[brace_start : brace_end + 1])
+                data = json.loads(text[brace_start:brace_end + 1])
                 if isinstance(data, dict) and "findings" in data:
                     return data
             except json.JSONDecodeError:
@@ -331,8 +347,7 @@ class CliVendorAdapter:
         mode_config = self.cli_config.dispatch_modes[mode]
         if not mode_config.async_dispatch or not mode_config.poll:
             return ReviewResult(
-                vendor=self.vendor,
-                success=False,
+                vendor=self.vendor, success=False,
                 error="Mode is not configured for async dispatch",
             )
 
@@ -361,8 +376,7 @@ class CliVendorAdapter:
                 )
             except subprocess.TimeoutExpired:
                 return ReviewResult(
-                    vendor=self.vendor,
-                    success=False,
+                    vendor=self.vendor, success=False,
                     models_attempted=models_attempted,
                     error="Timeout submitting async task",
                     error_class=ErrorClass.TRANSIENT,
@@ -385,8 +399,7 @@ class CliVendorAdapter:
                         file=sys.stderr,
                     )
                     return ReviewResult(
-                        vendor=self.vendor,
-                        success=False,
+                        vendor=self.vendor, success=False,
                         models_attempted=models_attempted,
                         elapsed_seconds=elapsed,
                         error=f"Auth expired. Run: {relogin}",
@@ -395,14 +408,12 @@ class CliVendorAdapter:
                 if error_class == ErrorClass.CAPACITY:
                     logger.info(
                         "%s async model %s capacity exhausted, trying fallback",
-                        self.vendor,
-                        model_name,
+                        self.vendor, model_name,
                     )
                     continue
                 # Non-retryable error
                 return ReviewResult(
-                    vendor=self.vendor,
-                    success=False,
+                    vendor=self.vendor, success=False,
                     models_attempted=models_attempted,
                     elapsed_seconds=elapsed,
                     error=result.stderr[:500],
@@ -413,8 +424,7 @@ class CliVendorAdapter:
             match = re.search(mode_config.poll.task_id_pattern, combined)
             if not match:
                 return ReviewResult(
-                    vendor=self.vendor,
-                    success=False,
+                    vendor=self.vendor, success=False,
                     models_attempted=models_attempted,
                     elapsed_seconds=elapsed,
                     error=f"Could not extract task ID from output: {combined[:300]}",
@@ -427,9 +437,7 @@ class CliVendorAdapter:
                 match.group(0),
             )
             logger.info(
-                "Async task submitted for %s: task_id=%s",
-                self.vendor,
-                task_id,
+                "Async task submitted for %s: task_id=%s", self.vendor, task_id,
             )
 
             return ReviewResult(
@@ -466,7 +474,10 @@ class CliVendorAdapter:
         Returns:
             ReviewResult with findings if successful, error otherwise.
         """
-        poll_cmd = [arg.replace("{task_id}", task_id) for arg in poll_config.command_template]
+        poll_cmd = [
+            arg.replace("{task_id}", task_id)
+            for arg in poll_config.command_template
+        ]
 
         success_re = re.compile(poll_config.success_pattern, re.IGNORECASE)
         failure_re = re.compile(poll_config.failure_pattern, re.IGNORECASE)
@@ -478,10 +489,7 @@ class CliVendorAdapter:
         while time.monotonic() < deadline:
             attempts += 1
             logger.info(
-                "Polling %s task %s (attempt %d)",
-                self.vendor,
-                task_id,
-                attempts,
+                "Polling %s task %s (attempt %d)", self.vendor, task_id, attempts,
             )
 
             try:
@@ -536,61 +544,317 @@ class CliVendorAdapter:
 
 
 # ---------------------------------------------------------------------------
+# SDK adapter
+# ---------------------------------------------------------------------------
+
+class SdkVendorAdapter:
+    """SDK-based vendor adapter — dispatches via vendor Python SDKs.
+
+    Used as a fallback when the vendor's CLI is not installed but an API
+    key is available.  Only supports the ``review`` dispatch mode (read-only).
+    """
+
+    def __init__(
+        self,
+        agent_id: str,
+        vendor: str,
+        sdk_config: SdkConfig,
+        openbao_role_id: str | None = None,
+    ) -> None:
+        self.agent_id = agent_id
+        self.vendor = vendor
+        self.sdk_config = sdk_config
+        self.openbao_role_id = openbao_role_id
+
+    def can_dispatch(self, mode: str) -> bool:
+        """Check if SDK dispatch is available for the given mode.
+
+        Only ``review`` mode is supported (read-only).  Also checks
+        that the SDK package is importable.
+        """
+        if mode != "review":
+            return False
+        return self._can_import_sdk()
+
+    def _can_import_sdk(self) -> bool:
+        """Check if the vendor SDK package is importable (without importing)."""
+        import importlib.util
+
+        pkg = self.sdk_config.package
+        # Map pip package names to import names
+        import_map = {
+            "google-generativeai": "google.generativeai",
+        }
+        import_name = import_map.get(pkg, pkg)
+        return importlib.util.find_spec(import_name) is not None
+
+    def dispatch(
+        self,
+        mode: str,
+        prompt: str,
+        cwd: Path,
+        timeout_seconds: int = 300,
+        api_key: str | None = None,
+    ) -> ReviewResult:
+        """Dispatch a review via vendor SDK with model fallback."""
+        if not api_key:
+            return ReviewResult(
+                vendor=self.vendor,
+                success=False,
+                error="No API key available for SDK dispatch",
+            )
+
+        models_to_try = [self.sdk_config.model, *self.sdk_config.model_fallbacks]
+        models_attempted: list[str] = []
+        last_error = ""
+        dispatch_start = time.monotonic()
+
+        for model in models_to_try:
+            models_attempted.append(model)
+            try:
+                findings = self._call_sdk(
+                    prompt=prompt,
+                    model=model,
+                    api_key=api_key,
+                    timeout=timeout_seconds,
+                )
+                return ReviewResult(
+                    vendor=self.vendor,
+                    success=findings is not None,
+                    findings=findings,
+                    model_used=model,
+                    models_attempted=models_attempted,
+                    elapsed_seconds=time.monotonic() - dispatch_start,
+                    error=None if findings else "Invalid JSON in SDK response",
+                )
+            except _SdkCapacityError:
+                logger.info(
+                    "%s SDK model %s capacity exhausted, trying fallback",
+                    self.vendor, model,
+                )
+                continue
+            except _SdkAuthError as exc:
+                return ReviewResult(
+                    vendor=self.vendor,
+                    success=False,
+                    models_attempted=models_attempted,
+                    elapsed_seconds=time.monotonic() - dispatch_start,
+                    error=f"SDK auth error: {exc}",
+                    error_class=ErrorClass.AUTH,
+                )
+            except _SdkTransientError as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "%s SDK transient error: %s", self.vendor, str(exc)[:200],
+                )
+                break
+
+        return ReviewResult(
+            vendor=self.vendor,
+            success=False,
+            models_attempted=models_attempted,
+            elapsed_seconds=time.monotonic() - dispatch_start,
+            error=last_error[:500] or "All models exhausted",
+            error_class=ErrorClass.CAPACITY if not last_error else ErrorClass.UNKNOWN,
+        )
+
+    def _call_sdk(
+        self,
+        prompt: str,
+        model: str,
+        api_key: str,
+        timeout: int,
+    ) -> dict[str, Any] | None:
+        """Call the vendor SDK and parse JSON findings from response."""
+        pkg = self.sdk_config.package
+        if pkg == "anthropic":
+            return self._call_anthropic(prompt, model, api_key, timeout)
+        elif pkg == "openai":
+            return self._call_openai(prompt, model, api_key, timeout)
+        elif pkg == "google-generativeai":
+            return self._call_google(prompt, model, api_key, timeout)
+        else:
+            raise ValueError(f"Unknown SDK package: {pkg}")
+
+    def _call_anthropic(
+        self, prompt: str, model: str, api_key: str, timeout: int,
+    ) -> dict[str, Any] | None:
+        """Dispatch via Anthropic SDK."""
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=self.sdk_config.max_tokens,
+                system=_SDK_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = response.content[0].text if response.content else ""
+            return CliVendorAdapter._parse_findings(text)
+        except anthropic.RateLimitError:
+            raise _SdkCapacityError()
+        except anthropic.AuthenticationError as exc:
+            raise _SdkAuthError(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            raise _SdkTransientError(str(exc))
+
+    def _call_openai(
+        self, prompt: str, model: str, api_key: str, timeout: int,
+    ) -> dict[str, Any] | None:
+        """Dispatch via OpenAI SDK."""
+        import openai
+
+        client = openai.OpenAI(api_key=api_key, timeout=timeout)
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                max_tokens=self.sdk_config.max_tokens,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": _SDK_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            text = response.choices[0].message.content or ""
+            return CliVendorAdapter._parse_findings(text)
+        except openai.RateLimitError:
+            raise _SdkCapacityError()
+        except openai.AuthenticationError as exc:
+            raise _SdkAuthError(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            raise _SdkTransientError(str(exc))
+
+    def _call_google(
+        self, prompt: str, model: str, api_key: str, timeout: int,
+    ) -> dict[str, Any] | None:
+        """Dispatch via Google Generative AI SDK."""
+        import google.generativeai as genai
+
+        genai.configure(api_key=api_key)
+        gen_model = genai.GenerativeModel(model)
+        try:
+            response = gen_model.generate_content(
+                f"{_SDK_SYSTEM_PROMPT}\n\n{prompt}",
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    max_output_tokens=self.sdk_config.max_tokens,
+                ),
+            )
+            text = response.text if response.text else ""
+            return CliVendorAdapter._parse_findings(text)
+        except Exception as exc:  # noqa: BLE001
+            err_lower = str(exc).lower()
+            if "429" in err_lower or "resource_exhausted" in err_lower:
+                raise _SdkCapacityError()
+            if "401" in err_lower or "api_key" in err_lower:
+                raise _SdkAuthError(str(exc))
+            raise _SdkTransientError(str(exc))
+
+
+class _SdkCapacityError(Exception):
+    """Raised when SDK returns a rate limit / capacity error."""
+
+
+class _SdkAuthError(Exception):
+    """Raised when SDK returns an authentication error."""
+
+
+class _SdkTransientError(Exception):
+    """Raised when SDK returns a transient/network error."""
+
+
+_SDK_SYSTEM_PROMPT = (
+    "You are a code reviewer. Analyze the provided artifacts and output "
+    "ONLY valid JSON conforming to review-findings.schema.json. Do not "
+    "include any text outside the JSON object."
+)
+
+
+# ---------------------------------------------------------------------------
 # Review orchestrator
 # ---------------------------------------------------------------------------
 
-
 class ReviewOrchestrator:
-    """Multi-vendor review dispatch orchestrator."""
+    """Multi-vendor review dispatch orchestrator.
 
-    def __init__(self, adapters: dict[str, CliVendorAdapter]) -> None:
+    Supports both CLI and SDK adapters with three-tier dispatch selection:
+    Tier 1 (Local CLI) → Tier 2 (SDK/API) → Tier 3 (Skip).
+    """
+
+    def __init__(
+        self,
+        adapters: dict[str, CliVendorAdapter],
+        sdk_adapters: dict[str, SdkVendorAdapter] | None = None,
+    ) -> None:
         self.adapters = adapters
+        self.sdk_adapters = sdk_adapters or {}
 
     @classmethod
-    def from_config_dict(cls, data: dict[str, Any]) -> ReviewOrchestrator:
+    def from_config_dict(cls, data: dict[str, Any]) -> "ReviewOrchestrator":
         """Create orchestrator from a config dict (as returned by coordinator).
 
         The dict should have an ``agents`` key containing a list of agent
-        config dicts, each with ``agent_id``, ``type``, and ``cli``.
+        config dicts, each with ``agent_id``, ``type``, ``cli``, and
+        optionally ``sdk``.
         """
         adapters: dict[str, CliVendorAdapter] = {}
+        sdk_adapters: dict[str, SdkVendorAdapter] = {}
         for agent in data.get("agents", []):
             cli = agent.get("cli")
-            if not cli:
+            sdk = agent.get("sdk")
+            if not cli and not sdk:
                 continue
-            dispatch_modes: dict[str, ModeConfig] = {}
-            for mode_name, mode_data in cli.get("dispatch_modes", {}).items():
-                poll_data = mode_data.get("poll")
-                poll_cfg = (
-                    PollConfig(
+
+            # Build CLI adapter
+            if cli:
+                dispatch_modes: dict[str, ModeConfig] = {}
+                for mode_name, mode_data in cli.get("dispatch_modes", {}).items():
+                    poll_data = mode_data.get("poll")
+                    poll_cfg = PollConfig(
                         command_template=poll_data["command_template"],
                         task_id_pattern=poll_data["task_id_pattern"],
                         success_pattern=poll_data["success_pattern"],
                         failure_pattern=poll_data.get("failure_pattern", "failed|error"),
                         interval_seconds=poll_data.get("interval_seconds", 30),
                         timeout_seconds=poll_data.get("timeout_seconds", 600),
+                    ) if poll_data else None
+                    dispatch_modes[mode_name] = ModeConfig(
+                        args=mode_data["args"],
+                        async_dispatch=mode_data.get("async", False),
+                        poll=poll_cfg,
                     )
-                    if poll_data
-                    else None
+                adapters[agent["agent_id"]] = CliVendorAdapter(
+                    agent_id=agent["agent_id"],
+                    vendor=agent["type"],
+                    cli_config=CliConfig(
+                        command=cli["command"],
+                        dispatch_modes=dispatch_modes,
+                        model_flag=cli.get("model_flag", "-m"),
+                        model=cli.get("model"),
+                        model_fallbacks=cli.get("model_fallbacks", []),
+                        prompt_via_stdin=cli.get("prompt_via_stdin", False),
+                    ),
+                    transport=agent.get("transport", "mcp"),
                 )
-                dispatch_modes[mode_name] = ModeConfig(
-                    args=mode_data["args"],
-                    async_dispatch=mode_data.get("async", False),
-                    poll=poll_cfg,
+
+            # Build SDK adapter
+            if sdk:
+                sdk_adapters[agent["agent_id"]] = SdkVendorAdapter(
+                    agent_id=agent["agent_id"],
+                    vendor=agent["type"],
+                    sdk_config=SdkConfig(
+                        package=sdk["package"],
+                        model=sdk["model"],
+                        method=sdk.get("method", "messages.create"),
+                        model_fallbacks=sdk.get("model_fallbacks", []),
+                        api_key_env=sdk.get("api_key_env", ""),
+                        max_tokens=sdk.get("max_tokens", 16384),
+                    ),
+                    openbao_role_id=agent.get("openbao_role_id"),
                 )
-            adapters[agent["agent_id"]] = CliVendorAdapter(
-                agent_id=agent["agent_id"],
-                vendor=agent["type"],
-                cli_config=CliConfig(
-                    command=cli["command"],
-                    dispatch_modes=dispatch_modes,
-                    model_flag=cli.get("model_flag", "-m"),
-                    model=cli.get("model"),
-                    model_fallbacks=cli.get("model_fallbacks", []),
-                    prompt_via_stdin=cli.get("prompt_via_stdin", False),
-                ),
-            )
-        return cls(adapters)
+
+        return cls(adapters, sdk_adapters)
 
     @classmethod
     def _find_coordinator_dir(cls) -> tuple[str, Path] | None:
@@ -620,7 +884,7 @@ class ReviewOrchestrator:
             return None
 
     @classmethod
-    def from_coordinator(cls) -> ReviewOrchestrator:
+    def from_coordinator(cls) -> "ReviewOrchestrator":
         """Create orchestrator by calling get_dispatch_configs via subprocess.
 
         Discovers the agent-coordinator directory from the coordination
@@ -642,14 +906,11 @@ class ReviewOrchestrator:
         try:
             result = subprocess.run(
                 [python_bin, str(script)],
-                capture_output=True,
-                text=True,
-                timeout=15,
+                capture_output=True, text=True, timeout=15,
             )
             if result.returncode != 0:
                 logger.warning(
-                    "Coordinator query failed: %s",
-                    result.stderr[:200],
+                    "Coordinator query failed: %s", result.stderr[:200],
                 )
                 return cls({})
             data = json.loads(result.stdout)
@@ -659,7 +920,7 @@ class ReviewOrchestrator:
             return cls({})
 
     @classmethod
-    def from_agents_yaml(cls, path: Path | None = None) -> ReviewOrchestrator:
+    def from_agents_yaml(cls, path: Path | None = None) -> "ReviewOrchestrator":
         """Create orchestrator from an explicit agents.yaml path.
 
         Uses ``_find_coordinator_dir()`` to locate the
@@ -687,15 +948,11 @@ class ReviewOrchestrator:
 
         try:
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=15,
+                cmd, capture_output=True, text=True, timeout=15,
             )
             if result.returncode != 0:
                 logger.warning(
-                    "agents.yaml load failed: %s",
-                    result.stderr[:200],
+                    "agents.yaml load failed: %s", result.stderr[:200],
                 )
                 return cls({})
             data = json.loads(result.stdout)
@@ -704,20 +961,71 @@ class ReviewOrchestrator:
             logger.warning("agents.yaml load error: %s", exc)
             return cls({})
 
-    def discover_reviewers(self, exclude_vendor: str | None = None) -> list[ReviewerInfo]:
-        """Discover available reviewers, optionally excluding the primary vendor."""
-        reviewers: list[ReviewerInfo] = []
+    def discover_reviewers(
+        self,
+        exclude_vendor: str | None = None,
+        dispatch_mode: str = "review",
+    ) -> list[ReviewerInfo]:
+        """Discover available reviewers with three-tier selection.
+
+        For each vendor, selects the best available dispatch method:
+        Tier 1 (Local CLI) → Tier 2 (SDK/API) → Tier 3 (Skip).
+        Deduplicates by vendor — at most one reviewer per vendor type.
+        """
+        # Collect all CLI adapters (local transport only)
+        cli_by_vendor: dict[str, tuple[str, CliVendorAdapter]] = {}
         for agent_id, adapter in self.adapters.items():
             if exclude_vendor and adapter.vendor == exclude_vendor:
                 continue
-            reviewers.append(
-                ReviewerInfo(
-                    vendor=adapter.vendor,
-                    agent_id=agent_id,
-                    cli_config=adapter.cli_config,
-                    available=shutil.which(adapter.cli_config.command) is not None,
-                )
-            )
+            # Only consider local agents (transport=mcp) for CLI dispatch
+            if adapter.transport == "mcp" and adapter.vendor not in cli_by_vendor:
+                cli_by_vendor[adapter.vendor] = (agent_id, adapter)
+
+        # Collect all SDK adapters
+        sdk_by_vendor: dict[str, tuple[str, SdkVendorAdapter]] = {}
+        for agent_id, adapter in self.sdk_adapters.items():
+            if exclude_vendor and adapter.vendor == exclude_vendor:
+                continue
+            if adapter.vendor not in sdk_by_vendor:
+                sdk_by_vendor[adapter.vendor] = (agent_id, adapter)
+
+        # Three-tier selection per vendor
+        all_vendors = set(cli_by_vendor.keys()) | set(sdk_by_vendor.keys())
+        reviewers: list[ReviewerInfo] = []
+
+        for vendor in sorted(all_vendors):
+            # Tier 1: Local CLI
+            if vendor in cli_by_vendor:
+                agent_id, cli_adapter = cli_by_vendor[vendor]
+                cli_available = shutil.which(cli_adapter.cli_config.command) is not None
+                if cli_available:
+                    logger.info("Tier 1 (CLI) selected for %s: %s", vendor, agent_id)
+                    reviewers.append(ReviewerInfo(
+                        vendor=vendor,
+                        agent_id=agent_id,
+                        cli_config=cli_adapter.cli_config,
+                        available=True,
+                        dispatch_tier="cli",
+                    ))
+                    continue
+
+            # Tier 2: SDK/API
+            if vendor in sdk_by_vendor:
+                agent_id, sdk_adapter = sdk_by_vendor[vendor]
+                if sdk_adapter.can_dispatch(dispatch_mode):
+                    logger.info("Tier 2 (SDK) selected for %s: %s", vendor, agent_id)
+                    reviewers.append(ReviewerInfo(
+                        vendor=vendor,
+                        agent_id=agent_id,
+                        sdk_config=sdk_adapter.sdk_config,
+                        available=True,
+                        dispatch_tier="sdk",
+                    ))
+                    continue
+
+            # Tier 3: Skip
+            logger.info("Tier 3 (skip) for %s: no CLI or SDK available", vendor)
+
         return reviewers
 
     def dispatch_and_wait(
@@ -729,62 +1037,107 @@ class ReviewOrchestrator:
         timeout_seconds: int = 300,
         exclude_vendor: str | None = None,
     ) -> list[ReviewResult]:
-        """Dispatch reviews to all available vendors and collect results.
+        """Dispatch reviews to available vendors and collect results.
 
-        Currently dispatches sequentially. Future: parallel subprocess.
+        Uses three-tier selection: CLI → SDK → skip.
+        Currently dispatches sequentially.
         """
-        reviewers = self.discover_reviewers(exclude_vendor=exclude_vendor)
+        try:
+            from api_key_resolver import ApiKeyResolver
+        except ImportError:
+            # When not running from the scripts directory, try relative path
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "api_key_resolver",
+                Path(__file__).parent / "api_key_resolver.py",
+            )
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)  # type: ignore[union-attr]
+                ApiKeyResolver = mod.ApiKeyResolver  # type: ignore[no-redef] # noqa: N806
+            else:
+                raise
+
+        reviewers = self.discover_reviewers(
+            exclude_vendor=exclude_vendor,
+            dispatch_mode=dispatch_mode,
+        )
         available = [r for r in reviewers if r.available]
 
         if not available:
-            logger.warning("No vendor CLIs available for review dispatch")
+            logger.warning("No vendors available for review dispatch")
             return []
 
+        api_key_resolver = ApiKeyResolver()
         results: list[ReviewResult] = []
+
         for reviewer in available:
-            adapter = self.adapters[reviewer.agent_id]
-            if not adapter.can_dispatch(dispatch_mode):
-                logger.info(
-                    "Skipping %s: dispatch mode '%s' not configured",
-                    reviewer.agent_id,
-                    dispatch_mode,
-                )
-                continue
-
-            mode_config = adapter.cli_config.dispatch_modes[dispatch_mode]
-
-            if mode_config.async_dispatch:
-                logger.info(
-                    "Async dispatching %s review to %s",
-                    review_type,
-                    reviewer.agent_id,
-                )
-                submit_result = adapter.dispatch_async(
-                    mode=dispatch_mode,
-                    prompt=prompt,
-                    cwd=cwd,
-                )
-                if submit_result.success and submit_result.task_id and mode_config.poll:
-                    # Poll for completion
-                    poll_result = adapter.poll_for_result(
-                        submit_result.task_id,
-                        mode_config.poll,
-                        cwd=cwd,
+            if reviewer.dispatch_tier == "cli":
+                # CLI dispatch
+                adapter = self.adapters[reviewer.agent_id]
+                if not adapter.can_dispatch(dispatch_mode):
+                    logger.info(
+                        "Skipping %s: dispatch mode '%s' not configured",
+                        reviewer.agent_id, dispatch_mode,
                     )
-                    results.append(poll_result)
+                    continue
+
+                mode_config = adapter.cli_config.dispatch_modes[dispatch_mode]
+
+                if mode_config.async_dispatch:
+                    logger.info(
+                        "Async CLI dispatching %s review to %s",
+                        review_type, reviewer.agent_id,
+                    )
+                    submit_result = adapter.dispatch_async(
+                        mode=dispatch_mode, prompt=prompt, cwd=cwd,
+                    )
+                    if submit_result.success and submit_result.task_id and mode_config.poll:
+                        poll_result = adapter.poll_for_result(
+                            submit_result.task_id, mode_config.poll, cwd=cwd,
+                        )
+                        results.append(poll_result)
+                    else:
+                        results.append(submit_result)
                 else:
-                    results.append(submit_result)
-            else:
-                logger.info(
-                    "Sync dispatching %s review to %s",
-                    review_type,
-                    reviewer.agent_id,
+                    logger.info(
+                        "Sync CLI dispatching %s review to %s",
+                        review_type, reviewer.agent_id,
+                    )
+                    result = adapter.dispatch(
+                        mode=dispatch_mode,
+                        prompt=prompt,
+                        cwd=cwd,
+                        timeout_seconds=timeout_seconds,
+                    )
+                    results.append(result)
+
+            elif reviewer.dispatch_tier == "sdk":
+                # SDK dispatch
+                sdk_adapter = self.sdk_adapters[reviewer.agent_id]
+                api_key = api_key_resolver.resolve(
+                    sdk_adapter.openbao_role_id,
+                    sdk_adapter.sdk_config.api_key_env,
                 )
-                result = adapter.dispatch(
+                logger.info(
+                    "SDK dispatching %s review to %s (key: %s)",
+                    review_type, reviewer.agent_id,
+                    "resolved" if api_key else "missing",
+                )
+                if not api_key:
+                    results.append(ReviewResult(
+                        vendor=reviewer.vendor,
+                        success=False,
+                        error="No API key available for SDK dispatch",
+                    ))
+                    continue
+
+                result = sdk_adapter.dispatch(
                     mode=dispatch_mode,
                     prompt=prompt,
                     cwd=cwd,
                     timeout_seconds=timeout_seconds,
+                    api_key=api_key,
                 )
                 results.append(result)
 
@@ -825,7 +1178,6 @@ class ReviewOrchestrator:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-
 def main() -> int:
     """Dispatch reviews to vendor CLIs and collect results.
 
@@ -843,8 +1195,7 @@ def main() -> int:
         description="Dispatch multi-vendor review via CLI",
     )
     parser.add_argument(
-        "--list-agents",
-        action="store_true",
+        "--list-agents", action="store_true",
         help="List available agents with CLI dispatch configs and exit",
     )
     parser.add_argument(
@@ -852,41 +1203,31 @@ def main() -> int:
         choices=["plan", "implementation"],
     )
     parser.add_argument(
-        "--mode",
-        default="review",
+        "--mode", default="review",
         help="Dispatch mode: review (read-only) or alternative (write access)",
     )
     parser.add_argument(
-        "--prompt",
-        help="Review prompt text (inline)",
+        "--prompt", help="Review prompt text (inline)",
     )
     parser.add_argument(
-        "--prompt-file",
-        help="Read prompt from file",
+        "--prompt-file", help="Read prompt from file",
     )
     parser.add_argument(
-        "--cwd",
-        default=".",
-        help="Working directory for vendor CLIs",
+        "--cwd", default=".", help="Working directory for vendor CLIs",
     )
     parser.add_argument(
-        "--output-dir",
-        default="reviews",
+        "--output-dir", default="reviews",
         help="Directory for per-vendor findings and manifest",
     )
     parser.add_argument(
-        "--exclude-vendor",
-        help="Exclude this vendor type from dispatch",
+        "--exclude-vendor", help="Exclude this vendor type from dispatch",
     )
     parser.add_argument(
-        "--timeout",
-        type=int,
-        default=300,
+        "--timeout", type=int, default=300,
         help="Per-vendor timeout in seconds",
     )
     parser.add_argument(
-        "--agents-yaml",
-        help="Path to agents.yaml (default: auto-detect)",
+        "--agents-yaml", help="Path to agents.yaml (default: auto-detect)",
     )
     args = parser.parse_args()
 
@@ -898,22 +1239,36 @@ def main() -> int:
             orch = ReviewOrchestrator.from_coordinator()
             if not orch.adapters:
                 orch = ReviewOrchestrator.from_agents_yaml()
-        if not orch.adapters:
-            print("No agents with CLI dispatch configs found")
+        if not orch.adapters and not orch.sdk_adapters:
+            print("No agents with dispatch configs found")
             return 1
-        print(
-            f"{'Agent':<20} {'Vendor':<15} {'Command':<10} {'Modes':<30} {'Stdin':<6} {'Fallbacks'}"
-        )
-        print("-" * 100)
+        reviewers = orch.discover_reviewers()
+        print(f"{'Agent':<20} {'Vendor':<15} {'Tier':<6} {'Command/SDK':<20} {'Modes':<25} {'Fallbacks'}")
+        print("-" * 110)
+        for reviewer in reviewers:
+            if reviewer.dispatch_tier == "cli" and reviewer.agent_id in orch.adapters:
+                c = orch.adapters[reviewer.agent_id].cli_config
+                modes = ", ".join(
+                    f"{m}{'*' if c.dispatch_modes[m].async_dispatch else ''}"
+                    for m in c.dispatch_modes
+                )
+                fb = ", ".join(c.model_fallbacks) or "(none)"
+                print(f"{reviewer.agent_id:<20} {reviewer.vendor:<15} {'CLI':<6} {c.command:<20} {modes:<25} {fb}")
+            elif reviewer.dispatch_tier == "sdk" and reviewer.agent_id in orch.sdk_adapters:
+                s = orch.sdk_adapters[reviewer.agent_id].sdk_config
+                fb = ", ".join(s.model_fallbacks) or "(none)"
+                print(f"{reviewer.agent_id:<20} {reviewer.vendor:<15} {'SDK':<6} {s.package:<20} {'review':<25} {fb}")
+
+        # Also show skipped vendors
         for agent_id, adapter in orch.adapters.items():
-            c = adapter.cli_config
-            modes = ", ".join(
-                f"{m}{'*' if c.dispatch_modes[m].async_dispatch else ''}" for m in c.dispatch_modes
-            )
-            fb = ", ".join(c.model_fallbacks) or "(none)"
-            print(
-                f"{agent_id:<20} {adapter.vendor:<15} {c.command:<10} {modes:<30} {'yes' if c.prompt_via_stdin else 'no':<6} {fb}"
-            )
+            if not any(r.agent_id == agent_id for r in reviewers):
+                c = adapter.cli_config
+                print(f"{agent_id:<20} {adapter.vendor:<15} {'---':<6} {c.command + ' (missing)':<20} {'---':<25} ---")
+        for agent_id, adapter in orch.sdk_adapters.items():
+            if not any(r.agent_id == agent_id for r in reviewers):
+                s = adapter.sdk_config
+                print(f"{agent_id:<20} {adapter.vendor:<15} {'---':<6} {s.package + ' (no key)':<20} {'---':<25} ---")
+
         print("\n* = async dispatch (submit + poll)")
         return 0
 
@@ -939,13 +1294,16 @@ def main() -> int:
             logger.info("Coordinator unavailable, trying agents.yaml on disk")
             orch = ReviewOrchestrator.from_agents_yaml()
 
-    # Discover
-    reviewers = orch.discover_reviewers(exclude_vendor=args.exclude_vendor)
+    # Discover (three-tier selection)
+    reviewers = orch.discover_reviewers(
+        exclude_vendor=args.exclude_vendor,
+        dispatch_mode=args.mode,
+    )
     available = [r for r in reviewers if r.available]
-    print(f"Available reviewers: {[r.agent_id for r in available]}")
+    print(f"Available reviewers: {[(r.agent_id, r.dispatch_tier) for r in available]}")
 
     if not available:
-        print("No vendor CLIs available", file=sys.stderr)
+        print("No vendors available (no CLI or SDK dispatch)", file=sys.stderr)
         return 1
 
     # Dispatch
@@ -968,14 +1326,11 @@ def main() -> int:
             fpath = output_dir / f"findings-{result.vendor}-{args.review_type}.json"
             with open(fpath, "w") as f:
                 json.dump(result.findings, f, indent=2)
-            print(
-                f"[OK] {result.vendor}: {len(result.findings.get('findings', []))} findings"
-                f" (model: {result.model_used}, {result.elapsed_seconds:.1f}s)"
-            )
+            print(f"[OK] {result.vendor}: {len(result.findings.get('findings', []))} findings"
+                  f" (model: {result.model_used}, {result.elapsed_seconds:.1f}s)")
         else:
-            print(
-                f"[FAIL] {result.vendor}: {result.error} (models tried: {result.models_attempted})"
-            )
+            print(f"[FAIL] {result.vendor}: {result.error}"
+                  f" (models tried: {result.models_attempted})")
 
     # Write manifest
     manifest_path = output_dir / "review-manifest.json"

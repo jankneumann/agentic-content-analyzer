@@ -1,6 +1,6 @@
 ---
 name: iterate-on-plan
-description: Iteratively refine an OpenSpec proposal by identifying and fixing completeness, clarity, feasibility, scope, consistency, testability, and parallelizability issues
+description: Iteratively refine an OpenSpec proposal by identifying and fixing completeness, clarity, feasibility, scope, consistency, testability, parallelizability, and assumptions issues
 category: Git Workflow
 tags: [openspec, refinement, iteration, planning, quality]
 triggers:
@@ -18,7 +18,7 @@ Iteratively refine an OpenSpec proposal after `/plan-feature` creates it. Each i
 
 ## Arguments
 
-`$ARGUMENTS` - OpenSpec change-id (required), optionally followed by `--max <N>` (default: 3) and `--threshold <level>` (default: "medium"; values: "critical", "high", "medium", "low")
+`$ARGUMENTS` - OpenSpec change-id (required), optionally followed by `--max <N>` (default: 3), `--threshold <level>` (default: "medium"; values: "critical", "high", "medium", "low"), and `--vendor-review` (dispatch multi-vendor review after iterate loop converges; automatic in coordinated tier)
 
 ## Prerequisites
 
@@ -78,6 +78,15 @@ THRESHOLD="medium"  # critical > high > medium > low
 Parse optional flags from `$ARGUMENTS`:
 - `--max <N>` overrides MAX_ITERATIONS
 - `--threshold <level>` overrides THRESHOLD
+- `--vendor-review` sets VENDOR_REVIEW=true
+
+```bash
+# Vendor review: explicit flag OR auto-enable in coordinated tier
+VENDOR_REVIEW=false
+if [[ "$ARGUMENTS" == *"--vendor-review"* ]] || [[ "$COORDINATOR_AVAILABLE" == "true" ]]; then
+  VENDOR_REVIEW=true
+fi
+```
 
 ### 2. Verify Proposal Exists
 
@@ -163,10 +172,11 @@ Produce a **structured plan analysis** with findings in this format:
 - **consistency**: Contradictions between proposal.md and design.md, requirement wording mismatches across documents, affected specs listed in Impact but no corresponding delta (or vice versa), duplicate requirements
 - **testability**: Scenarios that can't be verified, requirements without measurable acceptance criteria, WHEN/THEN using subjective language ("properly", "correctly", "as expected")
 - **parallelizability**: How well the task decomposition supports parallel multi-agent execution via `/parallel-implement`. Evaluates whether tasks have explicit dependency declarations, whether task scopes are isolated to separate modules/files (no shared-file overlap that would cause merge conflicts), whether tasks are granular enough for independent agent assignment, and whether sequencing maximizes concurrent execution width
+- **assumptions**: Implicit decisions that could reasonably go either way — assumed authentication mechanism, data format, deployment target, backward-compatibility requirement, performance threshold, technology choice, or scope boundary. When an assumption is identified that has multiple valid interpretations, it MUST be surfaced to the user via **AskUserQuestion** rather than documented and moved on from. Present the assumption, the alternatives, and ask the user to decide.
 
 **Criticality levels:**
 - **critical**: `openspec validate --strict` failures, missing spec deltas for capabilities listed in Impact, requirements without any scenarios, proposal.md missing required sections (Why, What Changes, Impact)
-- **high**: Ambiguous requirements that could be implemented multiple valid ways, tasks not traceable to requirements, scenarios using subjective/unmeasurable criteria, contradictions between documents, tasks with implicit shared-state or shared-file dependencies that would cause merge conflicts if parallelized
+- **high**: Ambiguous requirements that could be implemented multiple valid ways, tasks not traceable to requirements, scenarios using subjective/unmeasurable criteria, contradictions between documents, tasks with implicit shared-state or shared-file dependencies that would cause merge conflicts if parallelized, unstated assumptions about scope or technology choice that could invalidate the plan if wrong
 - **medium**: Missing edge-case scenarios (only success path covered), tasks too coarse for single-commit implementation, design.md needed but absent, incomplete impact analysis, tasks missing explicit dependency annotations, tasks that could be split into independent units for better parallelism
 - **low**: Wording polish, minor formatting, task ordering optimization for parallel execution, optional design.md sections
 
@@ -183,6 +193,7 @@ Produce a **structured plan analysis** with findings in this format:
 - Monolithic task (single task that could be decomposed into independent subtasks for parallel agents)
 - Missing dependency graph (tasks lack explicit dependency annotations needed by `/parallel-implement` and Beads `--blocked-by`)
 - Coupled scope (tasks that modify overlapping files or modules, preventing isolated worktree execution)
+- Unstated assumption (plan proceeds on an assumption about scope, technology choice, or constraint that was never confirmed with the user — could validly go multiple ways)
 
 ### 6. Check Termination Conditions
 
@@ -202,6 +213,7 @@ Fix all findings at or above the criticality threshold by modifying the proposal
 - **tasks.md**: Split giant tasks, add missing tasks for orphan requirements, add explicit ordering and dependency notes, improve verifiability, restructure for parallel execution where possible
 - **design.md**: Create if needed (per criteria below), add missing decision rationale, document alternatives considered, add risks/trade-offs
 - **Spec deltas**: Add missing requirements, add WHEN/THEN scenarios for uncovered paths, fix requirement wording to use SHALL/MUST, add failure/edge-case scenarios, split monolithic spec files
+- **Assumptions**: For each assumption-type finding, use **AskUserQuestion** to surface it interactively. Present the implicit assumption, explain why it matters (what would change if the assumption is wrong), and offer the alternatives as selectable options. Wait for the user's response. Then update the relevant document (proposal.md, design.md, or spec delta) to convert the assumption into an explicit, documented decision with rationale.
 
 **When to create design.md** (if one does not exist):
 - Change affects multiple capabilities or introduces a new pattern
@@ -269,6 +281,75 @@ ITERATION=$((ITERATION + 1))
 
 ## After Loop
 
+### 10. Multi-Vendor Review (Conditional)
+
+**Skip this step** if `VENDOR_REVIEW=false`.
+
+After the iterate loop converges (all findings below threshold) or max iterations are reached, dispatch a multi-vendor review for a final independent validation pass.
+
+#### 10a. Dispatch `/parallel-review-plan`
+
+Write a review prompt and dispatch to other vendor CLIs:
+
+```bash
+# Create review prompt for vendor dispatch
+mkdir -p openspec/changes/$CHANGE_ID/reviews
+
+cat > openspec/changes/$CHANGE_ID/reviews/review-prompt.md <<'PROMPT'
+Review the OpenSpec plan artifacts in openspec/changes/$CHANGE_ID/.
+Read proposal.md, tasks.md, design.md (if present), and all spec deltas.
+Output ONLY valid JSON conforming to review-findings.schema.json.
+Focus on: specification completeness, contract consistency, architecture alignment, security, and work package validity.
+PROMPT
+
+# Dispatch to other vendors (excludes current agent's vendor)
+python3 "<skill-base-dir>/../parallel-infrastructure/scripts/review_dispatcher.py" \
+  --review-type plan \
+  --mode review \
+  --prompt-file "openspec/changes/$CHANGE_ID/reviews/review-prompt.md" \
+  --cwd "$(pwd)" \
+  --output-dir "openspec/changes/$CHANGE_ID/reviews" \
+  --exclude-vendor claude_code \
+  --timeout 600
+```
+
+Also produce your own findings as the primary reviewer (Steps 1-5 of `/parallel-review-plan`): read plan artifacts, evaluate against the review checklist, and write findings to `openspec/changes/$CHANGE_ID/review-findings-plan.json`.
+
+#### 10b. Synthesize Consensus
+
+```bash
+python3 "<skill-base-dir>/../parallel-infrastructure/scripts/consensus_synthesizer.py" \
+  --review-type plan \
+  --target "$CHANGE_ID" \
+  --findings "openspec/changes/$CHANGE_ID/review-findings-plan.json" \
+             "openspec/changes/$CHANGE_ID/reviews/findings-"*"-plan.json" \
+  --output "openspec/changes/$CHANGE_ID/reviews/consensus-plan.json"
+```
+
+Present consensus summary:
+- **Confirmed findings** (2+ vendors agree) — high confidence
+- **Unconfirmed findings** (single vendor) — lower confidence, warnings
+- **Disagreements** (vendors disagree on disposition) — escalate to human
+
+If no other vendors are available (CLIs not installed), skip dispatch and proceed with single-vendor findings only.
+
+#### 10c. Feed Back Findings Above Remediation Threshold
+
+The remediation threshold is the user's `--threshold` setting if provided, otherwise medium.
+
+If the consensus or vendor review surfaces new findings **at or above the remediation threshold**:
+
+1. Append the new findings to `openspec/changes/$CHANGE_ID/plan-findings.md`
+2. Run **one additional iterate cycle** (Steps 5-9) to address them
+3. Commit with message: `refine(plan): vendor-review remediation - <summary>`
+4. Do NOT re-dispatch vendor review (prevents infinite recursion)
+
+If all vendor review findings are below the remediation threshold, proceed to the summary.
+
+---
+
+### 11. Present Summary
+
 Present a summary of all iterations:
 
 ```
@@ -303,6 +384,12 @@ If `CAN_HANDOFF=true`, write a completion handoff containing:
 - Termination reason: <threshold met | max iterations reached>
 - Validation status: <openspec validate --strict result>
 
+### Vendor Review (if dispatched)
+- Vendors dispatched: <list or "skipped">
+- Consensus findings: <confirmed count> confirmed, <unconfirmed count> unconfirmed, <disagreement count> disagreements
+- Remediation cycle: <ran / not needed>
+- New findings addressed in remediation: <count or "N/A">
+
 ### Parallelizability Assessment
 - Independent tasks: <N>
 - Sequential chains: <M>
@@ -327,6 +414,7 @@ If `CAN_HANDOFF=true`, write a completion handoff containing:
 - Parallelizability assessment with dependency graph summary
 - Final proposal readiness checklist
 - Validated, refined OpenSpec proposal ready for human approval
+- Vendor review consensus (if `--vendor-review` or coordinated tier): `openspec/changes/<change-id>/reviews/consensus-plan.json`
 
 ## Next Step
 

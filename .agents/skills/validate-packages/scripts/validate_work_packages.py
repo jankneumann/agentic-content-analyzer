@@ -36,13 +36,10 @@ except ImportError:
 def _find_repo_root() -> Path:
     """Find the git repository root."""
     import subprocess
-
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True,
         )
         return Path(result.stdout.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -170,11 +167,7 @@ def validate_lock_keys(packages: list[dict[str, Any]]) -> list[str]:
         for key in pkg.get("locks", {}).get("keys", []):
             matched = False
             for pat_prefix in sorted_prefixes:
-                if (
-                    key == pat_prefix
-                    or key.startswith(pat_prefix + ":")
-                    or key.startswith(pat_prefix + " ")
-                ):
+                if key == pat_prefix or key.startswith(pat_prefix + ":") or key.startswith(pat_prefix + " "):
                     pattern = LOCK_KEY_PATTERNS[pat_prefix]
                     if pattern.match(key):
                         matched = True
@@ -282,14 +275,18 @@ def validate_lock_overlap(packages: list[dict[str, Any]]) -> list[str]:
         b_keys = set(pkg_map[b_id].get("locks", {}).get("keys", []))
         overlap = a_keys & b_keys
         if overlap:
-            errors.append(f"  parallel pair ({a_id}, {b_id}): lock key overlap: {sorted(overlap)}")
+            errors.append(
+                f"  parallel pair ({a_id}, {b_id}): "
+                f"lock key overlap: {sorted(overlap)}"
+            )
 
         a_files = set(pkg_map[a_id].get("locks", {}).get("files", []))
         b_files = set(pkg_map[b_id].get("locks", {}).get("files", []))
         file_overlap = a_files & b_files
         if file_overlap:
             errors.append(
-                f"  parallel pair ({a_id}, {b_id}): file lock overlap: {sorted(file_overlap)}"
+                f"  parallel pair ({a_id}, {b_id}): "
+                f"file lock overlap: {sorted(file_overlap)}"
             )
 
     return errors

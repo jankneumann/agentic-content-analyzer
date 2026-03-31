@@ -9,9 +9,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import pytest
-from render_report import render_json, render_markdown, write_report
 
 from models import BugScrubReport, Finding
+from render_report import render_json, render_markdown, write_report
 
 # ---------------------------------------------------------------------------
 # Fixtures — reusable sample data
@@ -269,7 +269,9 @@ class TestEmptyReport:
         assert "## Medium Findings" not in md
         assert "## Low / Info Findings" not in md
 
-    def test_no_findings_with_warnings(self, empty_report_with_warnings: BugScrubReport) -> None:
+    def test_no_findings_with_warnings(
+        self, empty_report_with_warnings: BugScrubReport
+    ) -> None:
         md = render_markdown(empty_report_with_warnings)
         assert "No findings at or above the severity threshold." in md
         assert "Clean bill of health" not in md
@@ -282,7 +284,9 @@ class TestEmptyReport:
 
 
 class TestWriteReport:
-    def test_write_creates_md_and_json(self, tmp_path: Path, mixed_report: BugScrubReport) -> None:
+    def test_write_creates_md_and_json(
+        self, tmp_path: Path, mixed_report: BugScrubReport
+    ) -> None:
         written = write_report(mixed_report, str(tmp_path), fmt="both")
         assert len(written) == 2
         md_path = tmp_path / "bug-scrub-report.md"
@@ -292,19 +296,25 @@ class TestWriteReport:
         assert str(md_path) in written
         assert str(json_path) in written
 
-    def test_md_file_content(self, tmp_path: Path, mixed_report: BugScrubReport) -> None:
+    def test_md_file_content(
+        self, tmp_path: Path, mixed_report: BugScrubReport
+    ) -> None:
         write_report(mixed_report, str(tmp_path), fmt="md")
         md_path = tmp_path / "bug-scrub-report.md"
         content = md_path.read_text()
         assert "# Bug Scrub Report" in content
 
-    def test_json_file_content(self, tmp_path: Path, mixed_report: BugScrubReport) -> None:
+    def test_json_file_content(
+        self, tmp_path: Path, mixed_report: BugScrubReport
+    ) -> None:
         write_report(mixed_report, str(tmp_path), fmt="json")
         json_path = tmp_path / "bug-scrub-report.json"
         parsed = json.loads(json_path.read_text())
         assert parsed["timestamp"] == "2026-02-21T10:00:00Z"
 
-    def test_creates_output_directory(self, tmp_path: Path, empty_report: BugScrubReport) -> None:
+    def test_creates_output_directory(
+        self, tmp_path: Path, empty_report: BugScrubReport
+    ) -> None:
         nested = tmp_path / "a" / "b" / "c"
         assert not nested.exists()
         write_report(empty_report, str(nested), fmt="both")
@@ -337,7 +347,9 @@ class TestFormatOptions:
         extensions = {Path(p).suffix for p in written}
         assert extensions == {".md", ".json"}
 
-    def test_default_is_both(self, tmp_path: Path, mixed_report: BugScrubReport) -> None:
+    def test_default_is_both(
+        self, tmp_path: Path, mixed_report: BugScrubReport
+    ) -> None:
         written = write_report(mixed_report, str(tmp_path))
         assert len(written) == 2
         assert (tmp_path / "bug-scrub-report.md").exists()

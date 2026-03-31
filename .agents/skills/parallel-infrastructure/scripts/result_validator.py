@@ -30,6 +30,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from validate_work_result import (
+    load_schema,
     validate_result as validate_result_base,
 )
 
@@ -56,7 +57,8 @@ def validate_revision_match(
     actual_plan = result_data.get("plan_revision")
     if actual_plan != expected_plan_revision:
         errors.append(
-            f"  plan_revision mismatch: result={actual_plan}, expected={expected_plan_revision}"
+            f"  plan_revision mismatch: "
+            f"result={actual_plan}, expected={expected_plan_revision}"
         )
 
     return errors
@@ -108,7 +110,9 @@ def validate_output_keys(
 
     missing = declared_keys - available_keys
     if missing:
-        errors.append(f"  Missing declared output keys: {sorted(missing)}")
+        errors.append(
+            f"  Missing declared output keys: {sorted(missing)}"
+        )
 
     return errors
 

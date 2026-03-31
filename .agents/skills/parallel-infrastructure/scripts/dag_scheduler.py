@@ -101,7 +101,9 @@ def compute_topo_order(packages: list[dict[str, Any]]) -> list[str]:
     return order
 
 
-def validate_contracts_exist(data: dict[str, Any], base_dir: Path) -> list[str]:
+def validate_contracts_exist(
+    data: dict[str, Any], base_dir: Path
+) -> list[str]:
     """Check that all declared contract files exist on disk.
 
     Returns list of missing file paths.
@@ -174,8 +176,12 @@ def prepare_task_submissions(
             "priority": pkg.get("priority", defaults.get("priority", 5)),
             "input_data": context,
             "depends_on_packages": list(pkg.get("depends_on", [])),
-            "timeout_minutes": pkg.get("timeout_minutes", defaults.get("timeout_minutes", 60)),
-            "retry_budget": pkg.get("retry_budget", defaults.get("retry_budget", 1)),
+            "timeout_minutes": pkg.get(
+                "timeout_minutes", defaults.get("timeout_minutes", 60)
+            ),
+            "retry_budget": pkg.get(
+                "retry_budget", defaults.get("retry_budget", 1)
+            ),
         }
         submissions.append(submission)
 
@@ -227,7 +233,9 @@ class DAGScheduler:
         result["checks"]["contracts"] = a2
         if not a2["passed"]:
             result["valid"] = False
-            result["errors"].extend([f"Missing contract: {f}" for f in a2.get("missing", [])])
+            result["errors"].extend(
+                [f"Missing contract: {f}" for f in a2.get("missing", [])]
+            )
             return result
 
         # A3: Compute DAG order

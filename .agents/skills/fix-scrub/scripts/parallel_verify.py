@@ -45,7 +45,8 @@ def verify_parallel(
 
     with ThreadPoolExecutor(max_workers=len(tools)) as executor:
         future_to_tool = {
-            executor.submit(_run_check, cmd, project_dir): tool_name for tool_name, cmd in tools
+            executor.submit(_run_check, cmd, project_dir): tool_name
+            for tool_name, cmd in tools
         }
         for future in as_completed(future_to_tool):
             tool_name = future_to_tool[future]
@@ -65,7 +66,8 @@ def verify_parallel(
             new_failures = current_failures - original_failures[tool_name]
             if new_failures:
                 regressions.extend(
-                    f"[{tool_name}] NEW: {failure}" for failure in sorted(new_failures)
+                    f"[{tool_name}] NEW: {failure}"
+                    for failure in sorted(new_failures)
                 )
 
         if "not available" in output:

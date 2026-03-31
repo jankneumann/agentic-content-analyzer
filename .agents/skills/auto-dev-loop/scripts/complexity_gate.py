@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 
+
 # Built-in default thresholds
 DEFAULT_MAX_LOC = 500
 DEFAULT_MAX_PACKAGES = 4
@@ -104,7 +105,9 @@ def _text_contains_signal(text: str, signals: set[str]) -> bool:
     return any(signal in text_lower for signal in signals)
 
 
-def _check_signals(packages: list[dict[str, Any]], signals: set[str]) -> bool:
+def _check_signals(
+    packages: list[dict[str, Any]], signals: set[str]
+) -> bool:
     """Check package descriptions and lock keys for signal keywords."""
     for pkg in packages:
         description = pkg.get("description", "")
@@ -153,13 +156,17 @@ def assess_complexity(
     total_loc = _sum_loc(packages)
     if total_loc is not None and total_loc > max_loc:
         result.force_required = True
-        result.warnings.append(f"Total LOC estimate ({total_loc}) exceeds threshold ({max_loc})")
+        result.warnings.append(
+            f"Total LOC estimate ({total_loc}) exceeds threshold ({max_loc})"
+        )
 
     # 2. Package count check
     impl_count = _count_impl_packages(packages)
     if impl_count > max_packages:
         result.force_required = True
-        result.warnings.append(f"Package count ({impl_count}) exceeds threshold ({max_packages})")
+        result.warnings.append(
+            f"Package count ({impl_count}) exceeds threshold ({max_packages})"
+        )
 
     # 3. External dependencies check
     ext_deps = _count_external_deps(packages)

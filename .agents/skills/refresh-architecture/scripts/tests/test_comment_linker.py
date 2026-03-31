@@ -17,6 +17,7 @@ if str(SCRIPTS_DIR / "insights") not in sys.path:
 
 from insights.comment_linker import compute_comment_insights, main
 
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -29,51 +30,16 @@ def enrichment() -> dict[str, Any]:
             "total": 5,
             "with_markers": 2,
             "items": [
-                {
-                    "file": "a.py",
-                    "line": 1,
-                    "text": "# Setup",
-                    "language": "python",
-                    "type": "inline",
-                    "markers": [],
-                    "enclosing_node": "py:a.foo",
-                },
-                {
-                    "file": "a.py",
-                    "line": 5,
-                    "text": "# TODO: refactor",
-                    "language": "python",
-                    "type": "inline",
-                    "markers": ["TODO"],
-                    "enclosing_node": "py:a.foo",
-                },
-                {
-                    "file": "b.py",
-                    "line": 1,
-                    "text": "# Module B",
-                    "language": "python",
-                    "type": "inline",
-                    "markers": [],
-                    "enclosing_node": None,
-                },
-                {
-                    "file": "b.py",
-                    "line": 3,
-                    "text": "# FIXME: broken",
-                    "language": "python",
-                    "type": "inline",
-                    "markers": ["FIXME"],
-                    "enclosing_node": "py:b.bar",
-                },
-                {
-                    "file": "c.ts",
-                    "line": 1,
-                    "text": "// comment",
-                    "language": "typescript",
-                    "type": "inline",
-                    "markers": [],
-                    "enclosing_node": None,
-                },
+                {"file": "a.py", "line": 1, "text": "# Setup", "language": "python",
+                 "type": "inline", "markers": [], "enclosing_node": "py:a.foo"},
+                {"file": "a.py", "line": 5, "text": "# TODO: refactor", "language": "python",
+                 "type": "inline", "markers": ["TODO"], "enclosing_node": "py:a.foo"},
+                {"file": "b.py", "line": 1, "text": "# Module B", "language": "python",
+                 "type": "inline", "markers": [], "enclosing_node": None},
+                {"file": "b.py", "line": 3, "text": "# FIXME: broken", "language": "python",
+                 "type": "inline", "markers": ["FIXME"], "enclosing_node": "py:b.bar"},
+                {"file": "c.ts", "line": 1, "text": "// comment", "language": "typescript",
+                 "type": "inline", "markers": [], "enclosing_node": None},
             ],
         },
     }

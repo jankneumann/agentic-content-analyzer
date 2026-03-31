@@ -18,7 +18,7 @@ import json
 import logging
 import sys
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +47,11 @@ def compute_pattern_insights(enrichment: dict[str, Any]) -> dict[str, Any]:
 
     # Type hint coverage
     type_hints = py_patterns.get("type_hints", {}).get("items", [])
-    functions_with_return_type = len(
-        {(h["file"], h.get("function", "")) for h in type_hints if h.get("kind") == "return_type"}
-    )
+    functions_with_return_type = len({
+        (h["file"], h.get("function", ""))
+        for h in type_hints
+        if h.get("kind") == "return_type"
+    })
     typed_params = len([h for h in type_hints if h.get("kind") == "param_type"])
 
     # Exception handling summary
@@ -86,7 +88,7 @@ def compute_pattern_insights(enrichment: dict[str, Any]) -> dict[str, Any]:
     }
 
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "python_patterns": py_summary,
         "typescript_patterns": ts_summary,
         "type_hint_coverage": {

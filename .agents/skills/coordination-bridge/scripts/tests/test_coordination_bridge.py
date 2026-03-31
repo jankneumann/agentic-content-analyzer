@@ -124,9 +124,7 @@ def test_detect_coordination_partial_capabilities(monkeypatch) -> None:
 
 
 def test_try_lock_skips_when_capability_missing(monkeypatch) -> None:
-    monkeypatch.setattr(
-        coordination_bridge, "detect_coordination", lambda **_: _state(CAN_LOCK=False)
-    )
+    monkeypatch.setattr(coordination_bridge, "detect_coordination", lambda **_: _state(CAN_LOCK=False))
 
     result = coordination_bridge.try_lock(
         file_path="a.py",
@@ -139,9 +137,7 @@ def test_try_lock_skips_when_capability_missing(monkeypatch) -> None:
 
 
 def test_try_lock_returns_ok(monkeypatch) -> None:
-    monkeypatch.setattr(
-        coordination_bridge, "detect_coordination", lambda **_: _state(CAN_LOCK=True)
-    )
+    monkeypatch.setattr(coordination_bridge, "detect_coordination", lambda **_: _state(CAN_LOCK=True))
     monkeypatch.setattr(
         coordination_bridge,
         "_http_request",
@@ -160,9 +156,7 @@ def test_try_lock_returns_ok(monkeypatch) -> None:
 
 
 def test_try_lock_degrades_on_unreachable(monkeypatch) -> None:
-    monkeypatch.setattr(
-        coordination_bridge, "detect_coordination", lambda **_: _state(CAN_LOCK=True)
-    )
+    monkeypatch.setattr(coordination_bridge, "detect_coordination", lambda **_: _state(CAN_LOCK=True))
     monkeypatch.setattr(
         coordination_bridge,
         "_http_request",
@@ -180,9 +174,7 @@ def test_try_lock_degrades_on_unreachable(monkeypatch) -> None:
 
 
 def test_try_handoff_write_skips_when_endpoints_missing(monkeypatch) -> None:
-    monkeypatch.setattr(
-        coordination_bridge, "detect_coordination", lambda **_: _state(CAN_HANDOFF=True)
-    )
+    monkeypatch.setattr(coordination_bridge, "detect_coordination", lambda **_: _state(CAN_HANDOFF=True))
     monkeypatch.setattr(
         coordination_bridge,
         "_http_request",

@@ -19,9 +19,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,8 +49,7 @@ def _entrypoint_set(graph: dict) -> dict[str, dict]:
 
 
 def diff_graphs(
-    baseline: dict[str, Any],
-    current: dict[str, Any],
+    baseline: dict[str, Any], current: dict[str, Any],
 ) -> dict[str, Any]:
     """Compare two architecture graphs and produce a diff report."""
     b_nodes = _node_set(baseline)
@@ -77,19 +77,16 @@ def diff_graphs(
     new_high_impact = []
     for node_id, deps in c_deps.items():
         if len(deps) > 10 and node_id not in b_deps:
-            new_high_impact.append(
-                {
-                    "id": node_id,
-                    "dependent_count": len(deps),
-                }
-            )
+            new_high_impact.append({
+                "id": node_id,
+                "dependent_count": len(deps),
+            })
 
     # New entrypoints without tests
     new_eps = set(c_eps) - set(b_eps)
     # Check if test nodes exist for new entrypoints
     test_nodes = {
-        nid
-        for nid in c_nodes
+        nid for nid in c_nodes
         if "test" in nid.lower() or c_nodes[nid].get("file", "").startswith("test")
     }
     untested_new_routes = []
@@ -98,13 +95,11 @@ def diff_graphs(
         name = c_nodes.get(ep_id, {}).get("name", "")
         has_test = any(f"test_{name}" in tid or name in tid for tid in test_nodes)
         if not has_test:
-            untested_new_routes.append(
-                {
-                    "node_id": ep_id,
-                    "kind": ep.get("kind", "unknown"),
-                    "path": ep.get("path", ""),
-                }
-            )
+            untested_new_routes.append({
+                "node_id": ep_id,
+                "kind": ep.get("kind", "unknown"),
+                "path": ep.get("path", ""),
+            })
 
     # New DB table nodes
     new_db_tables = [
@@ -114,10 +109,8 @@ def diff_graphs(
     ]
 
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
-        "baseline_snapshot": (
-            baseline.get("snapshots", [{}])[0] if baseline.get("snapshots") else {}
-        ),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "baseline_snapshot": (baseline.get("snapshots", [{}])[0] if baseline.get("snapshots") else {}),
         "current_snapshot": (current.get("snapshots", [{}])[0] if current.get("snapshots") else {}),
         "summary": {
             "nodes_added": len(added_nodes),
@@ -152,8 +145,7 @@ def main() -> int:
     parser.add_argument("--baseline", required=True, help="Path to baseline graph JSON")
     parser.add_argument("--current", required=True, help="Path to current graph JSON")
     parser.add_argument(
-        "--output",
-        default="docs/architecture-analysis/architecture.diff.json",
+        "--output", default="docs/architecture-analysis/architecture.diff.json",
         help="Output path for diff report",
     )
     args = parser.parse_args()
@@ -175,21 +167,16 @@ def main() -> int:
     output_path = save_json(Path(args.output), report)
 
     s = report["summary"]
-    logger.info(
-        "Architecture diff: +%d/-%d nodes, +%d/-%d edges",
-        s["nodes_added"],
-        s["nodes_removed"],
-        s["edges_added"],
-        s["edges_removed"],
-    )
+    logger.info("Architecture diff: +%d/-%d nodes, +%d/-%d edges",
+                s['nodes_added'], s['nodes_removed'], s['edges_added'], s['edges_removed'])
     if s["new_cycles"]:
-        logger.warning("%d new dependency cycle(s)", s["new_cycles"])
+        logger.warning("%d new dependency cycle(s)", s['new_cycles'])
     if s["new_high_impact_modules"]:
-        logger.warning("%d new high-impact module(s)", s["new_high_impact_modules"])
+        logger.warning("%d new high-impact module(s)", s['new_high_impact_modules'])
     if s["untested_new_routes"]:
-        logger.warning("%d new route(s) without tests", s["untested_new_routes"])
+        logger.warning("%d new route(s) without tests", s['untested_new_routes'])
     if s["new_db_tables"]:
-        logger.info("%d new database table(s)", s["new_db_tables"])
+        logger.info("%d new database table(s)", s['new_db_tables'])
 
     logger.info("Report written to %s", output_path)
     return 0

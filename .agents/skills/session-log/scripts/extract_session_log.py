@@ -19,8 +19,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+
 
 # --- Tier 1: Claude Code session transcript ---
 
@@ -120,7 +121,10 @@ def try_extract_from_handoffs(
         return None
 
     # Filter for relevant handoffs
-    relevant = [h for h in handoff_docs if change_id in json.dumps(h)]
+    relevant = [
+        h for h in handoff_docs
+        if change_id in json.dumps(h)
+    ]
 
     if not relevant:
         return None
@@ -129,8 +133,7 @@ def try_extract_from_handoffs(
 
 
 def _format_handoffs_as_session_log(
-    handoffs: list[dict],
-    change_id: str,
+    handoffs: list[dict], change_id: str,
 ) -> str:
     """Format handoff documents into session-log.md structure."""
     sections: dict[str, list[str]] = {
@@ -150,11 +153,11 @@ def _format_handoffs_as_session_log(
             sections["completed"].extend(h["completed_work"])
         if "next_steps" in h and isinstance(h["next_steps"], list):
             sections["next_steps"].extend(h["next_steps"])
-        if h.get("session_id"):
+        if "session_id" in h and h["session_id"]:
             session_ids.append(str(h["session_id"]))
-        if h.get("agent_name"):
+        if "agent_name" in h and h["agent_name"]:
             agent_names.add(str(h["agent_name"]))
-        if h.get("created_at"):
+        if "created_at" in h and h["created_at"]:
             dates.append(str(h["created_at"]))
 
     lines: list[str] = [f"# Session Log: {change_id}", ""]
@@ -163,11 +166,7 @@ def _format_handoffs_as_session_log(
     lines.append("## Summary")
     lines.append("")
     summary_parts = [h.get("summary", "") for h in handoffs if h.get("summary")]
-    lines.append(
-        " ".join(summary_parts)
-        if summary_parts
-        else "Session context compiled from handoff documents."
-    )
+    lines.append(" ".join(summary_parts) if summary_parts else "Session context compiled from handoff documents.")
     lines.append("")
 
     # Key Decisions
@@ -183,9 +182,7 @@ def _format_handoffs_as_session_log(
     # Alternatives Considered
     lines.append("## Alternatives Considered")
     lines.append("")
-    lines.append(
-        "Not available from handoff documents — handoffs capture decisions but not alternatives."
-    )
+    lines.append("Not available from handoff documents — handoffs capture decisions but not alternatives.")
     lines.append("")
 
     # Trade-offs
@@ -254,7 +251,7 @@ List any unresolved questions as checklist items.
 Fill in the metadata table with:
 - Agent Type: (your agent type)
 - Session ID(s): (current session ID if available)
-- Date Range: {datetime.now(UTC).strftime("%Y-%m-%d")}
+- Date Range: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}
 - Interactions: (approximate count)
 - Source: self-summary
 
@@ -340,7 +337,7 @@ def _format_transcript_as_session_log(
     lines.append("|-------|-------|")
     lines.append("| Agent Type | claude |")
     lines.append(f"| Session ID(s) | {Path(source_path).stem} |")
-    lines.append(f"| Date Range | {datetime.now(UTC).strftime('%Y-%m-%d')} |")
+    lines.append(f"| Date Range | {datetime.now(timezone.utc).strftime('%Y-%m-%d')} |")
     lines.append(f"| Interactions | {len(messages)} |")
     lines.append(f"| Source | {source_type} |")
     lines.append("")
@@ -357,19 +354,21 @@ def main() -> int:
     )
     parser.add_argument("--change-id", required=True, help="OpenSpec change-id")
     parser.add_argument(
-        "--agent-type",
-        default="claude",
+        "--agent-type", default="claude",
         choices=["claude", "codex", "gemini", "other"],
-        help="Agent type for extraction strategy (default: claude)",
+        help="Agent type for extraction strategy (default: claude)"
     )
     parser.add_argument(
-        "--handoff-source", help="Path to handoff documents JSON file (for tier 2 extraction)"
+        "--handoff-source",
+        help="Path to handoff documents JSON file (for tier 2 extraction)"
     )
-    parser.add_argument("--output", help="Output file path (default: stdout)")
     parser.add_argument(
-        "--prompt-only",
-        action="store_true",
-        help="Only output the self-summary prompt (tier 3), skip tiers 1 and 2",
+        "--output",
+        help="Output file path (default: stdout)"
+    )
+    parser.add_argument(
+        "--prompt-only", action="store_true",
+        help="Only output the self-summary prompt (tier 3), skip tiers 1 and 2"
     )
     args = parser.parse_args()
 

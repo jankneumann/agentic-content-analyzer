@@ -7,6 +7,7 @@ and can report them consistently to stderr or serialise them to JSON.
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -99,7 +100,5 @@ class DiagnosticCollector:
         c = self.count_by_severity()
         logger.info(
             "Diagnostics: %d error(s), %d warning(s), %d info(s)",
-            c["error"],
-            c["warning"],
-            c["info"],
+            c['error'], c['warning'], c['info'],
         )

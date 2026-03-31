@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fix_models import ClassifiedFinding, FixGroup, FixPlan, severity_rank
+from fix_models import ClassifiedFinding, FixGroup, FixPlan, severity_rank  # noqa: E402
 
 
 def assert_no_file_overlap(auto_groups: list[FixGroup]) -> None:
@@ -26,12 +26,18 @@ def assert_no_file_overlap(auto_groups: list[FixGroup]) -> None:
             overlaps: dict[str, list[int]] = {}
             for i, g in enumerate(auto_groups):
                 overlaps.setdefault(g.file_path, []).append(i)
-            duplicated = {path: indices for path, indices in overlaps.items() if len(indices) > 1}
+            duplicated = {
+                path: indices
+                for path, indices in overlaps.items()
+                if len(indices) > 1
+            }
             msg_parts = [
-                f"  {path!r} in groups {indices}" for path, indices in sorted(duplicated.items())
+                f"  {path!r} in groups {indices}"
+                for path, indices in sorted(duplicated.items())
             ]
             raise AssertionError(
-                "File overlap detected across auto-fix groups:\n" + "\n".join(msg_parts)
+                "File overlap detected across auto-fix groups:\n"
+                + "\n".join(msg_parts)
             )
         seen[fp] = idx
 
@@ -70,7 +76,8 @@ def plan(
 
     # Build auto groups
     auto_groups = [
-        FixGroup(file_path=fp, classified_findings=cfs) for fp, cfs in sorted(auto_by_file.items())
+        FixGroup(file_path=fp, classified_findings=cfs)
+        for fp, cfs in sorted(auto_by_file.items())
     ]
 
     # Build agent groups with max limit
@@ -78,7 +85,9 @@ def plan(
     all_agent_cfs = []
     for cfs in agent_by_file.values():
         all_agent_cfs.extend(cfs)
-    all_agent_cfs.sort(key=lambda cf: -severity_rank(cf.finding.severity))
+    all_agent_cfs.sort(
+        key=lambda cf: -severity_rank(cf.finding.severity)
+    )
 
     # Take top max_agent_fixes
     selected_agent_cfs = all_agent_cfs[:max_agent_fixes]

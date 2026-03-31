@@ -10,6 +10,7 @@ from typing import Any
 
 from models import GateResult, normalize_severity, severity_rank
 
+
 DEGRADED_STATUSES = {"unavailable", "error"}
 
 
@@ -36,7 +37,9 @@ def evaluate_gate(
 
     reasons: list[str] = []
     if degraded and not allow_degraded_pass:
-        reasons.append("Scanner execution incomplete: " + ", ".join(sorted(set(degraded))))
+        reasons.append(
+            "Scanner execution incomplete: " + ", ".join(sorted(set(degraded)))
+        )
         if triggered:
             reasons.append(
                 "Threshold findings present but decision held INCONCLUSIVE due to incomplete coverage"
@@ -49,7 +52,9 @@ def evaluate_gate(
         )
 
     if triggered:
-        reasons.append(f"{len(triggered)} finding(s) met or exceeded fail_on={fail_on_norm}")
+        reasons.append(
+            f"{len(triggered)} finding(s) met or exceeded fail_on={fail_on_norm}"
+        )
         return GateResult(
             decision="FAIL",
             fail_on=fail_on_norm,
@@ -58,7 +63,9 @@ def evaluate_gate(
         )
 
     if degraded and allow_degraded_pass:
-        reasons.append("Degraded execution allowed by policy; no threshold findings detected")
+        reasons.append(
+            "Degraded execution allowed by policy; no threshold findings detected"
+        )
 
     return GateResult(
         decision="PASS",

@@ -17,13 +17,13 @@ import logging
 import re
 import sys
 from collections import deque
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from arch_utils.constants import EdgeType
-from arch_utils.traversal import build_adjacency
+from arch_utils.constants import EdgeType  # noqa: E402
+from arch_utils.traversal import build_adjacency  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +97,9 @@ def infer_cross_layer_flows(
             if current_node.get("kind") == "table":
                 db_tables.append(current)
                 continue
-            if (
-                current != backend_handler_id
+            if (current != backend_handler_id
                 and current_node.get("language") == "python"
-                and current_node.get("kind") in ("function", "class")
-            ):
+                and current_node.get("kind") in ("function", "class")):
                 service_functions.append(current)
             for neighbor in adj.get(current, []):
                 if neighbor not in visited:
@@ -157,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
 
     graph_path = args.input_dir / "architecture.graph.json"
     if not graph_path.exists():
-        logger.error(f"{graph_path} not found. Run the graph builder first.")
+        logger.error(
+            f"{graph_path} not found. Run the graph builder first."
+        )
         return 1
 
     logger.info(f"Loading graph from {graph_path}...")
@@ -168,12 +168,15 @@ def main(argv: list[str] | None = None) -> int:
     all_edges: list[Edge] = graph.get("edges", [])
     entrypoints: list[Entrypoint] = graph.get("entrypoints", [])
 
-    logger.info(f"  {len(all_nodes)} nodes, {len(all_edges)} edges, {len(entrypoints)} entrypoints")
+    logger.info(
+        f"  {len(all_nodes)} nodes, {len(all_edges)} edges, "
+        f"{len(entrypoints)} entrypoints"
+    )
 
     flows = infer_cross_layer_flows(all_nodes, all_edges, entrypoints)
 
     output_data: dict[str, Any] = {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "flows": flows,
     }
 

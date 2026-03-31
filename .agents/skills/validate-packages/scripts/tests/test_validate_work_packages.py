@@ -336,11 +336,7 @@ class TestCLI:
         import subprocess
 
         result = subprocess.run(
-            [
-                sys.executable,
-                str(Path(__file__).parent.parent / "validate_work_packages.py"),
-                "--help",
-            ],
+            [sys.executable, str(Path(__file__).parent.parent / "validate_work_packages.py"), "--help"],
             capture_output=True,
             text=True,
         )
@@ -348,16 +344,12 @@ class TestCLI:
         assert "work-packages.yaml" in result.stdout
 
     def test_valid_file(self, tmp_path):
-        import shutil
         import subprocess
+        import shutil
 
         shutil.copy(FIXTURES / "sample-work-packages.yaml", tmp_path / "wp.yaml")
         result = subprocess.run(
-            [
-                sys.executable,
-                str(Path(__file__).parent.parent / "validate_work_packages.py"),
-                str(tmp_path / "wp.yaml"),
-            ],
+            [sys.executable, str(Path(__file__).parent.parent / "validate_work_packages.py"), str(tmp_path / "wp.yaml")],
             capture_output=True,
             text=True,
         )
@@ -365,8 +357,8 @@ class TestCLI:
         assert "VALID" in result.stdout
 
     def test_json_output(self, tmp_path):
-        import shutil
         import subprocess
+        import shutil
 
         shutil.copy(FIXTURES / "sample-work-packages.yaml", tmp_path / "wp.yaml")
         result = subprocess.run(

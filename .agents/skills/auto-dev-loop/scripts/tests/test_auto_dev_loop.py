@@ -27,6 +27,7 @@ from auto_dev_loop import (
     transition,
 )
 
+
 # ---------------------------------------------------------------------------
 # State persistence
 # ---------------------------------------------------------------------------
@@ -211,13 +212,9 @@ def test_full_happy_path(tmp_path: Path) -> None:
     assess_mock = MagicMock(return_value={"force_required": False, "val_review_enabled": False})
 
     # Convergence: always converges immediately
-    converge_mock = MagicMock(
-        return_value={
-            "converged": True,
-            "findings_count": 0,
-            "blocking_findings": [],
-        }
-    )
+    converge_mock = MagicMock(return_value={
+        "converged": True, "findings_count": 0, "blocking_findings": [],
+    })
 
     result = run_loop(
         "happy-1",
@@ -247,14 +244,12 @@ def test_plan_review_fix_loop(tmp_path: Path) -> None:
     wt.mkdir()
 
     # First call: not converged; second call: converged
-    converge_results = iter(
-        [
-            {"converged": False, "findings_count": 3, "blocking_findings": [{"id": "F1"}]},
-            {"converged": True, "findings_count": 0, "blocking_findings": []},
-            # For IMPL_REVIEW
-            {"converged": True, "findings_count": 0, "blocking_findings": []},
-        ]
-    )
+    converge_results = iter([
+        {"converged": False, "findings_count": 3, "blocking_findings": [{"id": "F1"}]},
+        {"converged": True, "findings_count": 0, "blocking_findings": []},
+        # For IMPL_REVIEW
+        {"converged": True, "findings_count": 0, "blocking_findings": []},
+    ])
     converge_mock = MagicMock(side_effect=lambda **kw: next(converge_results))
     assess_mock = MagicMock(return_value={"force_required": False, "val_review_enabled": False})
 
@@ -305,22 +300,16 @@ def test_complexity_gate_enables_val_review(tmp_path: Path) -> None:
     wt = tmp_path / "wt"
     wt.mkdir()
 
-    assess_mock = MagicMock(
-        return_value={
-            "force_required": False,
-            "val_review_enabled": True,
-            "strategies": {"default": "parallel"},
-        }
-    )
+    assess_mock = MagicMock(return_value={
+        "force_required": False,
+        "val_review_enabled": True,
+        "strategies": {"default": "parallel"},
+    })
 
     # Need convergence to work for all review phases
-    converge_mock = MagicMock(
-        return_value={
-            "converged": True,
-            "findings_count": 0,
-            "blocking_findings": [],
-        }
-    )
+    converge_mock = MagicMock(return_value={
+        "converged": True, "findings_count": 0, "blocking_findings": [],
+    })
 
     result = run_loop(
         "val-review-1",

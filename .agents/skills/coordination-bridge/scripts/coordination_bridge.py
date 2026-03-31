@@ -11,7 +11,9 @@ import argparse
 import json
 import os
 from typing import Any
-from urllib import error as url_error, parse as url_parse, request as url_request
+from urllib import error as url_error
+from urllib import parse as url_parse
+from urllib import request as url_request
 
 DEFAULT_TIMEOUT_SECONDS = float(os.environ.get("COORDINATION_HTTP_TIMEOUT", "1.5"))
 
@@ -110,7 +112,7 @@ def _coordinator_state(
     reason: str | None = None,
     flags: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
-    capability_flags = dict.fromkeys(_CAPABILITY_FLAGS, False)
+    capability_flags = {name: False for name in _CAPABILITY_FLAGS}
     if flags:
         capability_flags.update(flags)
 
@@ -320,7 +322,9 @@ def _skipped_operation(
         "status": "skipped",
         "operation": operation,
         "reason": reason,
-        "COORDINATOR_AVAILABLE": bool(state and state.get("COORDINATOR_AVAILABLE", False)),
+        "COORDINATOR_AVAILABLE": bool(
+            state and state.get("COORDINATOR_AVAILABLE", False)
+        ),
         "COORDINATION_TRANSPORT": (
             state.get("COORDINATION_TRANSPORT", "none") if state else "none"
         ),

@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 _SKILL_SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SKILL_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_SCRIPTS_DIR))
@@ -171,16 +173,14 @@ class TestBuildResult:
             files_modified=["src/api/users.py"],
             git_base_ref="main",
             git_head_commit="abc1234def",
-            verification_steps=[
-                {
-                    "name": "unit-tests",
-                    "kind": "command",
-                    "command": "pytest tests/api/",
-                    "exit_code": 0,
-                    "passed": True,
-                    "evidence": {"artifacts": [], "metrics": {"test_count": 10}},
-                }
-            ],
+            verification_steps=[{
+                "name": "unit-tests",
+                "kind": "command",
+                "command": "pytest tests/api/",
+                "exit_code": 0,
+                "passed": True,
+                "evidence": {"artifacts": [], "metrics": {"test_count": 10}},
+            }],
             git_branch="openspec/test-feature",
             git_worktree="wp-backend",
         )
@@ -188,18 +188,9 @@ class TestBuildResult:
     def test_required_fields_present(self) -> None:
         result = self._build_default_result()
         required = [
-            "schema_version",
-            "feature_id",
-            "package_id",
-            "plan_revision",
-            "contracts_revision",
-            "status",
-            "locks",
-            "scope",
-            "files_modified",
-            "git",
-            "verification",
-            "escalations",
+            "schema_version", "feature_id", "package_id", "plan_revision",
+            "contracts_revision", "status", "locks", "scope", "files_modified",
+            "git", "verification", "escalations",
         ]
         for field in required:
             assert field in result, f"Missing required field: {field}"
@@ -258,17 +249,15 @@ class TestBuildResult:
 
     def test_escalations_included(self) -> None:
         executor = _make_executor()
-        executor.add_escalation(
-            {
-                "escalation_id": "esc-001",
-                "feature_id": "test-feature",
-                "package_id": "wp-backend",
-                "type": "SCOPE_VIOLATION",
-                "severity": "HIGH",
-                "summary": "File outside scope",
-                "detected_at": "2026-01-01T00:00:00Z",
-            }
-        )
+        executor.add_escalation({
+            "escalation_id": "esc-001",
+            "feature_id": "test-feature",
+            "package_id": "wp-backend",
+            "type": "SCOPE_VIOLATION",
+            "severity": "HIGH",
+            "summary": "File outside scope",
+            "detected_at": "2026-01-01T00:00:00Z",
+        })
         result = self._build_default_result(executor)
         assert len(result["escalations"]) == 1
         assert result["escalations"][0]["type"] == "SCOPE_VIOLATION"
@@ -281,16 +270,14 @@ class TestBuildResult:
             files_modified=[],
             git_base_ref="main",
             git_head_commit="abc1234def",
-            verification_steps=[
-                {
-                    "name": "unit-tests",
-                    "kind": "command",
-                    "command": "pytest",
-                    "exit_code": 1,
-                    "passed": False,
-                    "evidence": {"artifacts": [], "metrics": {}},
-                }
-            ],
+            verification_steps=[{
+                "name": "unit-tests",
+                "kind": "command",
+                "command": "pytest",
+                "exit_code": 1,
+                "passed": False,
+                "evidence": {"artifacts": [], "metrics": {}},
+            }],
             error_code="VERIFICATION_FAILED",
         )
         assert result["status"] == "failed"
@@ -310,16 +297,14 @@ class TestBuildResult:
             files_modified=["src/frontend/bad.tsx"],
             git_base_ref="main",
             git_head_commit="abc1234def",
-            verification_steps=[
-                {
-                    "name": "test",
-                    "kind": "command",
-                    "command": "pytest",
-                    "exit_code": 0,
-                    "passed": True,
-                    "evidence": {"artifacts": [], "metrics": {}},
-                }
-            ],
+            verification_steps=[{
+                "name": "test",
+                "kind": "command",
+                "command": "pytest",
+                "exit_code": 0,
+                "passed": True,
+                "evidence": {"artifacts": [], "metrics": {}},
+            }],
         )
         assert result["scope_check"]["passed"] is False
         assert "src/frontend/bad.tsx" in result["scope_check"]["violations"]
@@ -349,18 +334,9 @@ class TestBuildFailureResult:
             git_head_commit="abc1234def",
         )
         required = [
-            "schema_version",
-            "feature_id",
-            "package_id",
-            "plan_revision",
-            "contracts_revision",
-            "status",
-            "locks",
-            "scope",
-            "files_modified",
-            "git",
-            "verification",
-            "escalations",
+            "schema_version", "feature_id", "package_id", "plan_revision",
+            "contracts_revision", "status", "locks", "scope", "files_modified",
+            "git", "verification", "escalations",
         ]
         for field in required:
             assert field in result, f"Missing required field: {field}"

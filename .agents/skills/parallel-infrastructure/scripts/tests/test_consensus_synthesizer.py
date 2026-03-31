@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from consensus_synthesizer import (
     ConsensusSynthesizer,
     Finding,
@@ -14,10 +16,10 @@ from consensus_synthesizer import (
     match_score,
 )
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _finding(
     id: int = 1,
@@ -31,22 +33,16 @@ def _finding(
     line_end: int | None = None,
 ) -> Finding:
     return Finding(
-        id=id,
-        type=type,
-        criticality=criticality,
-        description=description,
-        disposition=disposition,
-        vendor=vendor,
-        file_path=file_path,
-        line_start=line_start,
-        line_end=line_end,
+        id=id, type=type, criticality=criticality,
+        description=description, disposition=disposition,
+        vendor=vendor, file_path=file_path,
+        line_start=line_start, line_end=line_end,
     )
 
 
 # ---------------------------------------------------------------------------
 # Tokenization + similarity
 # ---------------------------------------------------------------------------
-
 
 class TestTokenization:
     def test_tokenize_basic(self) -> None:
@@ -72,7 +68,6 @@ class TestTokenization:
 # ---------------------------------------------------------------------------
 # Match scoring
 # ---------------------------------------------------------------------------
-
 
 class TestMatchScore:
     def test_different_types_no_match(self) -> None:
@@ -123,7 +118,6 @@ class TestMatchScore:
 # Consensus synthesis
 # ---------------------------------------------------------------------------
 
-
 class TestConsensusSynthesizer:
     def test_confirmed_finding(self) -> None:
         """Two vendors agree on same finding with same disposition."""
@@ -132,33 +126,12 @@ class TestConsensusSynthesizer:
             review_type="plan",
             target="test-feature",
             vendor_results=[
-                VendorResult(
-                    vendor="codex",
-                    findings=[
-                        _finding(
-                            id=1,
-                            file_path="src/api.py",
-                            line_start=42,
-                            line_end=45,
-                            description="Missing auth check on user endpoint",
-                            disposition="fix",
-                        ),
-                    ],
-                ),
-                VendorResult(
-                    vendor="gemini",
-                    findings=[
-                        _finding(
-                            id=1,
-                            file_path="src/api.py",
-                            line_start=42,
-                            line_end=50,
-                            description="Auth check missing on user endpoint",
-                            disposition="fix",
-                            vendor="gemini",
-                        ),
-                    ],
-                ),
+                VendorResult(vendor="codex", findings=[
+                    _finding(id=1, file_path="src/api.py", line_start=42, line_end=45, description="Missing auth check on user endpoint", disposition="fix"),
+                ]),
+                VendorResult(vendor="gemini", findings=[
+                    _finding(id=1, file_path="src/api.py", line_start=42, line_end=50, description="Auth check missing on user endpoint", disposition="fix", vendor="gemini"),
+                ]),
             ],
         )
         assert result.confirmed_count == 1
@@ -172,22 +145,12 @@ class TestConsensusSynthesizer:
             review_type="plan",
             target="test-feature",
             vendor_results=[
-                VendorResult(
-                    vendor="codex",
-                    findings=[
-                        _finding(id=1, description="Unique codex-only finding about frobnication"),
-                    ],
-                ),
-                VendorResult(
-                    vendor="gemini",
-                    findings=[
-                        _finding(
-                            id=1,
-                            description="Completely different concern about widgets",
-                            vendor="gemini",
-                        ),
-                    ],
-                ),
+                VendorResult(vendor="codex", findings=[
+                    _finding(id=1, description="Unique codex-only finding about frobnication"),
+                ]),
+                VendorResult(vendor="gemini", findings=[
+                    _finding(id=1, description="Completely different concern about widgets", vendor="gemini"),
+                ]),
             ],
         )
         assert result.unconfirmed_count == 2
@@ -200,31 +163,12 @@ class TestConsensusSynthesizer:
             review_type="plan",
             target="test-feature",
             vendor_results=[
-                VendorResult(
-                    vendor="codex",
-                    findings=[
-                        _finding(
-                            id=1,
-                            file_path="src/handler.py",
-                            line_start=10,
-                            description="Missing error handling for edge case",
-                            disposition="fix",
-                        ),
-                    ],
-                ),
-                VendorResult(
-                    vendor="gemini",
-                    findings=[
-                        _finding(
-                            id=1,
-                            file_path="src/handler.py",
-                            line_start=10,
-                            description="Error handling missing for edge case scenario",
-                            disposition="accept",
-                            vendor="gemini",
-                        ),
-                    ],
-                ),
+                VendorResult(vendor="codex", findings=[
+                    _finding(id=1, file_path="src/handler.py", line_start=10, description="Missing error handling for edge case", disposition="fix"),
+                ]),
+                VendorResult(vendor="gemini", findings=[
+                    _finding(id=1, file_path="src/handler.py", line_start=10, description="Error handling missing for edge case scenario", disposition="accept", vendor="gemini"),
+                ]),
             ],
         )
         assert result.disagreement_count == 1
@@ -282,31 +226,12 @@ class TestConsensusSynthesizer:
             review_type="plan",
             target="test-feature",
             vendor_results=[
-                VendorResult(
-                    vendor="codex",
-                    findings=[
-                        _finding(
-                            id=1,
-                            criticality="medium",
-                            description="Input validation missing for API",
-                            file_path="src/api.py",
-                            line_start=10,
-                        ),
-                    ],
-                ),
-                VendorResult(
-                    vendor="gemini",
-                    findings=[
-                        _finding(
-                            id=1,
-                            criticality="high",
-                            description="Missing input validation for API endpoint",
-                            vendor="gemini",
-                            file_path="src/api.py",
-                            line_start=10,
-                        ),
-                    ],
-                ),
+                VendorResult(vendor="codex", findings=[
+                    _finding(id=1, criticality="medium", description="Input validation missing for API", file_path="src/api.py", line_start=10),
+                ]),
+                VendorResult(vendor="gemini", findings=[
+                    _finding(id=1, criticality="high", description="Missing input validation for API endpoint", vendor="gemini", file_path="src/api.py", line_start=10),
+                ]),
             ],
         )
         confirmed = [cf for cf in result.consensus_findings if cf.status == "confirmed"]
@@ -320,48 +245,14 @@ class TestConsensusSynthesizer:
             review_type="plan",
             target="test-feature",
             vendor_results=[
-                VendorResult(
-                    vendor="codex",
-                    findings=[
-                        _finding(
-                            id=1,
-                            description="Security issue with authentication",
-                            disposition="fix",
-                            file_path="src/auth.py",
-                            line_start=5,
-                        ),
-                        _finding(
-                            id=2,
-                            description="Performance concern with database query",
-                            disposition="fix",
-                            type="performance",
-                            file_path="src/db.py",
-                            line_start=20,
-                        ),
-                    ],
-                ),
-                VendorResult(
-                    vendor="gemini",
-                    findings=[
-                        _finding(
-                            id=1,
-                            description="Authentication security vulnerability",
-                            disposition="fix",
-                            vendor="gemini",
-                            file_path="src/auth.py",
-                            line_start=5,
-                        ),
-                        _finding(
-                            id=2,
-                            description="Database query performance issue",
-                            disposition="accept",
-                            vendor="gemini",
-                            type="performance",
-                            file_path="src/db.py",
-                            line_start=20,
-                        ),
-                    ],
-                ),
+                VendorResult(vendor="codex", findings=[
+                    _finding(id=1, description="Security issue with authentication", disposition="fix", file_path="src/auth.py", line_start=5),
+                    _finding(id=2, description="Performance concern with database query", disposition="fix", type="performance", file_path="src/db.py", line_start=20),
+                ]),
+                VendorResult(vendor="gemini", findings=[
+                    _finding(id=1, description="Authentication security vulnerability", disposition="fix", vendor="gemini", file_path="src/auth.py", line_start=5),
+                    _finding(id=2, description="Database query performance issue", disposition="accept", vendor="gemini", type="performance", file_path="src/db.py", line_start=20),
+                ]),
             ],
         )
         # Finding 1: confirmed fix (blocking)
@@ -375,12 +266,9 @@ class TestConsensusSynthesizer:
             review_type="plan",
             target="test-feature",
             vendor_results=[
-                VendorResult(
-                    vendor="codex",
-                    findings=[
-                        _finding(id=1, description="Test finding about missing validation"),
-                    ],
-                ),
+                VendorResult(vendor="codex", findings=[
+                    _finding(id=1, description="Test finding about missing validation"),
+                ]),
             ],
         )
         d = synth.to_dict(result)

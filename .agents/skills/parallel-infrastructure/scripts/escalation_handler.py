@@ -98,20 +98,20 @@ class EscalationHandler:
             decision = handler_func(self, escalation)
         else:
             decision = self._handle_unknown(escalation)
-        self._decisions.append(
-            {
-                "escalation_id": escalation.get("escalation_id"),
-                "type": esc_type,
-                "decision": decision.to_dict(),
-            }
-        )
+        self._decisions.append({
+            "escalation_id": escalation.get("escalation_id"),
+            "type": esc_type,
+            "decision": decision.to_dict(),
+        })
         return decision
 
     def get_decisions(self) -> list[dict[str, Any]]:
         """Return all decisions made so far."""
         return list(self._decisions)
 
-    def _handle_contract_revision_required(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_contract_revision_required(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """CONTRACT_REVISION_REQUIRED: Pause all, bump contracts.revision, reschedule."""
         impacted = escalation.get("impact", {}).get("impacted_packages", [])
         return EscalationDecision(
@@ -122,7 +122,9 @@ class EscalationHandler:
             impacted_packages=impacted or None,
         )
 
-    def _handle_plan_revision_required(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_plan_revision_required(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """PLAN_REVISION_REQUIRED: Pause all, bump plan_revision, replan."""
         impacted = escalation.get("impact", {}).get("impacted_packages", [])
         return EscalationDecision(
@@ -133,14 +135,18 @@ class EscalationHandler:
             impacted_packages=impacted or None,
         )
 
-    def _handle_resource_conflict(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_resource_conflict(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """RESOURCE_CONFLICT: Retry with backoff."""
         return EscalationDecision(
             action=EscalationAction.RETRY_PACKAGE,
             reason=f"Resource conflict: {escalation.get('summary', '')}",
         )
 
-    def _handle_verification_infeasible(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_verification_infeasible(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """VERIFICATION_INFEASIBLE: Fail package (no silent tier downgrade)."""
         return EscalationDecision(
             action=EscalationAction.FAIL_PACKAGE,
@@ -148,21 +154,27 @@ class EscalationHandler:
             requires_human=True,
         )
 
-    def _handle_scope_violation(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_scope_violation(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """SCOPE_VIOLATION: Fail the package."""
         return EscalationDecision(
             action=EscalationAction.FAIL_PACKAGE,
             reason=f"Scope violation: {escalation.get('summary', '')}",
         )
 
-    def _handle_env_resource_conflict(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_env_resource_conflict(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """ENV_RESOURCE_CONFLICT: Retry with resource reallocation."""
         return EscalationDecision(
             action=EscalationAction.RETRY_PACKAGE,
             reason=f"Environment resource conflict: {escalation.get('summary', '')}",
         )
 
-    def _handle_security_escalation(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_security_escalation(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """SECURITY_ESCALATION: Fail, require human review."""
         return EscalationDecision(
             action=EscalationAction.REQUIRE_HUMAN,
@@ -171,7 +183,9 @@ class EscalationHandler:
             requires_human=True,
         )
 
-    def _handle_flaky_test_quarantine(self, escalation: dict[str, Any]) -> EscalationDecision:
+    def _handle_flaky_test_quarantine(
+        self, escalation: dict[str, Any]
+    ) -> EscalationDecision:
         """FLAKY_TEST_QUARANTINE_REQUEST: Quarantine and retry."""
         return EscalationDecision(
             action=EscalationAction.QUARANTINE_AND_RETRY,

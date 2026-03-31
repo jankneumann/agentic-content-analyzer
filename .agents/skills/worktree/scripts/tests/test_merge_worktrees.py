@@ -4,20 +4,19 @@ from __future__ import annotations
 
 import json
 import subprocess
-
-# Import the module under test
-import sys
 from pathlib import Path
 
 import pytest
 
+# Import the module under test
+import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from merge_worktrees import format_human, main, merge_packages
+from merge_worktrees import merge_packages, format_human, main  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Test helpers
 # ---------------------------------------------------------------------------
-
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run a git command in the given directory."""
@@ -77,20 +76,14 @@ def _create_feature_branch(repo: Path, change_id: str) -> None:
 # Tests: successful merges
 # ---------------------------------------------------------------------------
 
-
 class TestSuccessfulMerge:
     def test_merge_single_package(self, tmp_path: Path) -> None:
         repo = _init_repo(tmp_path)
         change_id = "test-feature"
         _create_feature_branch(repo, change_id)
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-backend",
-            {
-                "src/backend.py": "print('backend')\n",
-            },
-        )
+        _create_package_branch(repo, change_id, "wp-backend", {
+            "src/backend.py": "print('backend')\n",
+        })
 
         result = merge_packages(
             change_id=change_id,
@@ -111,22 +104,12 @@ class TestSuccessfulMerge:
         repo = _init_repo(tmp_path)
         change_id = "multi-pkg"
         _create_feature_branch(repo, change_id)
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-backend",
-            {
-                "src/backend.py": "print('backend')\n",
-            },
-        )
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-frontend",
-            {
-                "src/frontend.js": "console.log('frontend');\n",
-            },
-        )
+        _create_package_branch(repo, change_id, "wp-backend", {
+            "src/backend.py": "print('backend')\n",
+        })
+        _create_package_branch(repo, change_id, "wp-frontend", {
+            "src/frontend.js": "console.log('frontend');\n",
+        })
 
         result = merge_packages(
             change_id=change_id,
@@ -147,22 +130,12 @@ class TestSuccessfulMerge:
         repo = _init_repo(tmp_path)
         change_id = "order-test"
         _create_feature_branch(repo, change_id)
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-alpha",
-            {
-                "alpha.txt": "alpha\n",
-            },
-        )
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-beta",
-            {
-                "beta.txt": "beta\n",
-            },
-        )
+        _create_package_branch(repo, change_id, "wp-alpha", {
+            "alpha.txt": "alpha\n",
+        })
+        _create_package_branch(repo, change_id, "wp-beta", {
+            "beta.txt": "beta\n",
+        })
 
         result = merge_packages(
             change_id=change_id,
@@ -184,7 +157,6 @@ class TestSuccessfulMerge:
 # ---------------------------------------------------------------------------
 # Tests: conflict detection
 # ---------------------------------------------------------------------------
-
 
 class TestConflictDetection:
     def test_conflict_detected_and_aborted(self, tmp_path: Path) -> None:
@@ -236,14 +208,9 @@ class TestConflictDetection:
         _git(repo, "checkout", "main")
 
         # Clean package (no conflict)
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-clean",
-            {
-                "clean.py": "no conflict\n",
-            },
-        )
+        _create_package_branch(repo, change_id, "wp-clean", {
+            "clean.py": "no conflict\n",
+        })
 
         # Conflicting package
         pkg_branch = f"openspec/{change_id}--wp-conflict"
@@ -284,21 +251,15 @@ class TestConflictDetection:
 # Tests: dry-run mode
 # ---------------------------------------------------------------------------
 
-
 class TestDryRun:
     def test_dry_run_no_persist(self, tmp_path: Path) -> None:
         """Dry-run merges do not persist on the feature branch."""
         repo = _init_repo(tmp_path)
         change_id = "dry-run"
         _create_feature_branch(repo, change_id)
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-backend",
-            {
-                "src/backend.py": "print('backend')\n",
-            },
-        )
+        _create_package_branch(repo, change_id, "wp-backend", {
+            "src/backend.py": "print('backend')\n",
+        })
 
         # Record the commit before merge
         _git(repo, "checkout", f"openspec/{change_id}")
@@ -373,20 +334,14 @@ class TestDryRun:
 # Tests: JSON output format
 # ---------------------------------------------------------------------------
 
-
 class TestJsonOutput:
     def test_json_structure(self, tmp_path: Path) -> None:
         repo = _init_repo(tmp_path)
         change_id = "json-test"
         _create_feature_branch(repo, change_id)
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-api",
-            {
-                "api.py": "pass\n",
-            },
-        )
+        _create_package_branch(repo, change_id, "wp-api", {
+            "api.py": "pass\n",
+        })
 
         result = merge_packages(
             change_id=change_id,
@@ -411,20 +366,14 @@ class TestJsonOutput:
 # Tests: CLI via main()
 # ---------------------------------------------------------------------------
 
-
 class TestCLI:
     def test_main_success_exit_code(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         repo = _init_repo(tmp_path)
         change_id = "cli-test"
         _create_feature_branch(repo, change_id)
-        _create_package_branch(
-            repo,
-            change_id,
-            "wp-core",
-            {
-                "core.py": "pass\n",
-            },
-        )
+        _create_package_branch(repo, change_id, "wp-core", {
+            "core.py": "pass\n",
+        })
 
         monkeypatch.chdir(repo)
         exit_code = main(["cli-test", "wp-core", "--json"])
@@ -451,10 +400,7 @@ class TestCLI:
         assert exit_code == 0
 
     def test_main_json_output(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
     ) -> None:
         repo = _init_repo(tmp_path)
         change_id = "cli-json"
@@ -470,10 +416,7 @@ class TestCLI:
         assert data["merged"] == ["wp-out"]
 
     def test_main_human_output(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
     ) -> None:
         repo = _init_repo(tmp_path)
         change_id = "cli-human"
@@ -491,7 +434,6 @@ class TestCLI:
 # ---------------------------------------------------------------------------
 # Tests: human-readable formatting
 # ---------------------------------------------------------------------------
-
 
 class TestFormatHuman:
     def test_success_format(self) -> None:
@@ -513,14 +455,12 @@ class TestFormatHuman:
             "change_id": "test",
             "feature_branch": "openspec/test",
             "merged": ["wp-a"],
-            "conflicts": [
-                {
-                    "package": "wp-b",
-                    "branch": "openspec/test--wp-b",
-                    "files": ["shared.py"],
-                    "error": "Merge conflict in shared.py",
-                }
-            ],
+            "conflicts": [{
+                "package": "wp-b",
+                "branch": "openspec/test--wp-b",
+                "files": ["shared.py"],
+                "error": "Merge conflict in shared.py",
+            }],
         }
         output = format_human(result)
         assert "FAILED" in output

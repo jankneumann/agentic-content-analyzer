@@ -41,10 +41,11 @@ Usage:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from scope_checker import check_scope_compliance
+
 
 PAUSE_LOCK_PREFIX = "feature:"
 PAUSE_LOCK_SUFFIX = ":pause"
@@ -125,11 +126,11 @@ class PackageExecutor:
 
     def mark_started(self) -> None:
         """Record execution start time."""
-        self._started_at = datetime.now(UTC)
+        self._started_at = datetime.now(timezone.utc)
 
     def mark_finished(self) -> None:
         """Record execution finish time."""
-        self._finished_at = datetime.now(UTC)
+        self._finished_at = datetime.now(timezone.utc)
 
     def check_scope(self, files_modified: list[str]) -> dict[str, Any]:
         """B7: Deterministic scope check via file list.
@@ -185,8 +186,12 @@ class PackageExecutor:
         scope_result = self.check_scope(files_modified)
 
         # Compute verification summary
-        verification_passed = all(step.get("passed", False) for step in verification_steps)
-        verification_tier = self.package_def.get("verification", {}).get("tier_required", "A")
+        verification_passed = all(
+            step.get("passed", False) for step in verification_steps
+        )
+        verification_tier = self.package_def.get("verification", {}).get(
+            "tier_required", "A"
+        )
 
         result: dict[str, Any] = {
             "schema_version": 1,
@@ -256,16 +261,14 @@ class PackageExecutor:
             files_modified=[],
             git_base_ref=git_base_ref,
             git_head_commit=git_head_commit,
-            verification_steps=[
-                {
-                    "name": "aborted",
-                    "kind": "command",
-                    "command": "N/A",
-                    "exit_code": 1,
-                    "passed": False,
-                    "evidence": {"artifacts": [], "metrics": {}},
-                }
-            ],
+            verification_steps=[{
+                "name": "aborted",
+                "kind": "command",
+                "command": "N/A",
+                "exit_code": 1,
+                "passed": False,
+                "evidence": {"artifacts": [], "metrics": {}},
+            }],
             error_code=error_code,
             notes=notes,
         )

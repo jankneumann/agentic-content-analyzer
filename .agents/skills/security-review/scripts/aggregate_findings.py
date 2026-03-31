@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +64,7 @@ def aggregate(
         }
 
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "profile": profile,
         "fail_on": normalize_severity(fail_on),
         "scanner_results": scanner_results,
@@ -98,7 +98,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    payloads = [json.loads(Path(path).read_text(encoding="utf-8")) for path in args.input]
+    payloads = [
+        json.loads(Path(path).read_text(encoding="utf-8"))
+        for path in args.input
+    ]
     profile = None
     if args.profile_json:
         profile = json.loads(Path(args.profile_json).read_text(encoding="utf-8"))

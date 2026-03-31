@@ -30,9 +30,9 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from arch_utils.constants import EdgeType
-from arch_utils.node_id import make_node_id
-from graph_builder import deduplicate_edges, validate_edges
+from arch_utils.constants import EdgeType  # noqa: E402
+from arch_utils.node_id import make_node_id  # noqa: E402
+from graph_builder import deduplicate_edges, validate_edges  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +107,10 @@ def link_frontend_to_backend(
         # No TS analysis: all backend routes are disconnected from frontend
         for ep in py_entrypoints:
             if ep["kind"] == "route":
-                disconnected_endpoints.append(
-                    {
-                        "node_id": ep["node_id"],
-                        "path": ep.get("path", ""),
-                    }
-                )
+                disconnected_endpoints.append({
+                    "node_id": ep["node_id"],
+                    "path": ep.get("path", ""),
+                })
         return cross_edges, disconnected_endpoints, disconnected_frontend_calls
 
     # Build a lookup of backend routes: path -> list of entrypoint info
@@ -138,15 +136,13 @@ def link_frontend_to_backend(
         if normalized_url in route_lookup:
             for ep in route_lookup[normalized_url]:
                 caller_id = make_node_id("ts", call.get("qualified_name", call.get("from", "")))
-                cross_edges.append(
-                    {
-                        "from": caller_id,
-                        "to": ep["node_id"],
-                        "type": EdgeType.API_CALL,
-                        "confidence": "high",
-                        "evidence": f"string_match:{url}",
-                    }
-                )
+                cross_edges.append({
+                    "from": caller_id,
+                    "to": ep["node_id"],
+                    "type": EdgeType.API_CALL,
+                    "confidence": "high",
+                    "evidence": f"string_match:{url}",
+                })
                 matched_routes.add(ep["node_id"])
                 matched_frontend_calls.add(idx)
 
@@ -166,15 +162,13 @@ def link_frontend_to_backend(
             if re.match(pattern, normalized_url):
                 for ep in eps:
                     caller_id = make_node_id("ts", call.get("qualified_name", call.get("from", "")))
-                    cross_edges.append(
-                        {
-                            "from": caller_id,
-                            "to": ep["node_id"],
-                            "type": EdgeType.API_CALL,
-                            "confidence": "medium",
-                            "evidence": f"param_match:{url}~{ep.get('path', '')}",
-                        }
-                    )
+                    cross_edges.append({
+                        "from": caller_id,
+                        "to": ep["node_id"],
+                        "type": EdgeType.API_CALL,
+                        "confidence": "medium",
+                        "evidence": f"param_match:{url}~{ep.get('path', '')}",
+                    })
                     matched_routes.add(ep["node_id"])
                     matched_frontend_calls.add(idx)
             else:
@@ -182,18 +176,14 @@ def link_frontend_to_backend(
                 url_pattern = _to_regex_pattern(normalized_url)
                 if re.match(url_pattern, route_path):
                     for ep in eps:
-                        caller_id = make_node_id(
-                            "ts", call.get("qualified_name", call.get("from", ""))
-                        )
-                        cross_edges.append(
-                            {
-                                "from": caller_id,
-                                "to": ep["node_id"],
-                                "type": EdgeType.API_CALL,
-                                "confidence": "medium",
-                                "evidence": f"param_match:{url}~{ep.get('path', '')}",
-                            }
-                        )
+                        caller_id = make_node_id("ts", call.get("qualified_name", call.get("from", "")))
+                        cross_edges.append({
+                            "from": caller_id,
+                            "to": ep["node_id"],
+                            "type": EdgeType.API_CALL,
+                            "confidence": "medium",
+                            "evidence": f"param_match:{url}~{ep.get('path', '')}",
+                        })
                         matched_routes.add(ep["node_id"])
                         matched_frontend_calls.add(idx)
 
@@ -235,38 +225,32 @@ def link_frontend_to_backend(
 
         if best_match_ep is not None:
             caller_id = make_node_id("ts", call.get("qualified_name", call.get("from", "")))
-            cross_edges.append(
-                {
-                    "from": caller_id,
-                    "to": best_match_ep["node_id"],
-                    "type": EdgeType.API_CALL,
-                    "confidence": "low",
-                    "evidence": f"heuristic_match:{url}~{best_route_path}",
-                }
-            )
+            cross_edges.append({
+                "from": caller_id,
+                "to": best_match_ep["node_id"],
+                "type": EdgeType.API_CALL,
+                "confidence": "low",
+                "evidence": f"heuristic_match:{url}~{best_route_path}",
+            })
             matched_routes.add(best_match_ep["node_id"])
             matched_frontend_calls.add(idx)
 
     # Disconnected backend endpoints (routes not called by any frontend)
     for ep in py_entrypoints:
         if ep["kind"] == "route" and ep["node_id"] not in matched_routes:
-            disconnected_endpoints.append(
-                {
-                    "node_id": ep["node_id"],
-                    "path": ep.get("path", ""),
-                }
-            )
+            disconnected_endpoints.append({
+                "node_id": ep["node_id"],
+                "path": ep.get("path", ""),
+            })
 
     # Disconnected frontend calls (no matching backend route)
     for idx, call in enumerate(api_calls):
         if idx not in matched_frontend_calls:
             caller_id = make_node_id("ts", call.get("qualified_name", call.get("from", "")))
-            disconnected_frontend_calls.append(
-                {
-                    "node_id": caller_id,
-                    "url": call.get("url", ""),
-                }
-            )
+            disconnected_frontend_calls.append({
+                "node_id": caller_id,
+                "url": call.get("url", ""),
+            })
 
     return cross_edges, disconnected_endpoints, disconnected_frontend_calls
 
@@ -304,7 +288,10 @@ def run_cross_layer_linking(input_dir: Path, output_path: Path) -> int:
     graph_path = input_dir / "architecture.graph.json"
     graph = load_json(graph_path)
     if graph is None:
-        logger.error(f"architecture.graph.json not found in {input_dir}. Run graph_builder first.")
+        logger.error(
+            f"architecture.graph.json not found in {input_dir}. "
+            "Run graph_builder first."
+        )
         return 1
 
     # Load optional ts_analysis.json for API call sites
@@ -316,11 +303,14 @@ def run_cross_layer_linking(input_dir: Path, output_path: Path) -> int:
     ]
     all_nodes: list[Node] = graph.get("nodes", [])
 
-    logger.info(f"  Found {len(py_entrypoints)} route entrypoints, {len(all_nodes)} nodes in graph")
+    logger.info(
+        f"  Found {len(py_entrypoints)} route entrypoints, "
+        f"{len(all_nodes)} nodes in graph"
+    )
 
     # Run the 3-pass linking
-    cross_edges, disconnected_endpoints, disconnected_frontend_calls = link_frontend_to_backend(
-        ts_data, py_entrypoints, all_nodes
+    cross_edges, disconnected_endpoints, disconnected_frontend_calls = (
+        link_frontend_to_backend(ts_data, py_entrypoints, all_nodes)
     )
 
     logger.info(
@@ -357,12 +347,16 @@ def run_cross_layer_linking(input_dir: Path, output_path: Path) -> int:
     )
 
     if disconnected_endpoints:
-        logger.info(f"  Disconnected backend endpoints: {len(disconnected_endpoints)}")
+        logger.info(
+            f"  Disconnected backend endpoints: {len(disconnected_endpoints)}"
+        )
         for dep in disconnected_endpoints:
             logger.info(f"    - {dep['node_id']} ({dep.get('path', '')})")
 
     if disconnected_frontend_calls:
-        logger.info(f"  Disconnected frontend calls: {len(disconnected_frontend_calls)}")
+        logger.info(
+            f"  Disconnected frontend calls: {len(disconnected_frontend_calls)}"
+        )
         for dfc in disconnected_frontend_calls:
             logger.info(f"    - {dfc['node_id']} -> {dfc.get('url', '')}")
 
@@ -395,7 +389,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--output",
         type=Path,
         default=None,
-        help=("Output path for the updated graph (default: <input-dir>/architecture.graph.json)"),
+        help=(
+            "Output path for the updated graph "
+            "(default: <input-dir>/architecture.graph.json)"
+        ),
     )
     return parser.parse_args(argv)
 

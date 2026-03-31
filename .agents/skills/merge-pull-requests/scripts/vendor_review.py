@@ -30,16 +30,10 @@ SMALL_PR_MAX_FILES = 3
 DEFAULT_TIMEOUT = 300
 
 # Origins that always skip vendor review (scoped automated fixes / dep bumps)
-SKIP_ORIGINS = frozenset(
-    {
-        "sentinel",
-        "bolt",
-        "palette",
-        "jules",
-        "dependabot",
-        "renovate",
-    }
-)
+SKIP_ORIGINS = frozenset({
+    "sentinel", "bolt", "palette", "jules",
+    "dependabot", "renovate",
+})
 
 # Origins that are candidates for vendor review
 REVIEW_ORIGINS = frozenset({"openspec", "codex", "other"})
@@ -49,7 +43,6 @@ REVIEW_ORIGINS = frozenset({"openspec", "codex", "other"})
 # PR size computation
 # ---------------------------------------------------------------------------
 
-
 def compute_pr_size(pr_number: int) -> dict:
     """Compute changed lines and file count from PR diff.
 
@@ -58,17 +51,14 @@ def compute_pr_size(pr_number: int) -> dict:
          "changed_files": int, "files": [str]}
     """
     try:
-        raw = run_gh(
-            [
-                "pr",
-                "diff",
-                str(pr_number),
-                "--name-only",
-            ]
-        )
+        raw = run_gh([
+            "pr", "diff", str(pr_number), "--name-only",
+        ])
     except RuntimeError as e:
-        print(f"Warning: Could not fetch diff file list for PR #{pr_number}: {e}", file=sys.stderr)
-        return {"additions": 0, "deletions": 0, "changed_lines": 0, "changed_files": 0, "files": []}
+        print(f"Warning: Could not fetch diff file list for PR #{pr_number}: {e}",
+              file=sys.stderr)
+        return {"additions": 0, "deletions": 0, "changed_lines": 0,
+                "changed_files": 0, "files": []}
 
     files = [f for f in raw.strip().splitlines() if f.strip()]
     changed_files = len(files)
@@ -77,20 +67,15 @@ def compute_pr_size(pr_number: int) -> dict:
     additions = 0
     deletions = 0
     try:
-        stat_raw = run_gh(
-            [
-                "pr",
-                "view",
-                str(pr_number),
-                "--json",
-                "additions,deletions",
-            ]
-        )
+        stat_raw = run_gh([
+            "pr", "view", str(pr_number), "--json", "additions,deletions",
+        ])
         stat_data = json.loads(stat_raw)
         additions = stat_data.get("additions", 0)
         deletions = stat_data.get("deletions", 0)
     except (RuntimeError, json.JSONDecodeError) as e:
-        print(f"Warning: Could not fetch PR stats for #{pr_number}: {e}", file=sys.stderr)
+        print(f"Warning: Could not fetch PR stats for #{pr_number}: {e}",
+              file=sys.stderr)
 
     return {
         "additions": additions,
@@ -104,7 +89,6 @@ def compute_pr_size(pr_number: int) -> dict:
 # ---------------------------------------------------------------------------
 # Review eligibility
 # ---------------------------------------------------------------------------
-
 
 def check_review_eligibility(
     pr_number: int,
@@ -131,10 +115,8 @@ def check_review_eligibility(
         return {
             "eligible": False,
             "reason": "skip_origin",
-            "details": {
-                "origin": origin,
-                "message": f"Origin '{origin}' is auto-skip (scoped automation or dependency update)",
-            },
+            "details": {"origin": origin,
+                         "message": f"Origin '{origin}' is auto-skip (scoped automation or dependency update)"},
         }
 
     # Small PRs skip
@@ -155,7 +137,10 @@ def check_review_eligibility(
 
     # Check existing reviews — skip if there's a fresh approval
     if existing_reviews:
-        approvals = [r for r in existing_reviews if r.get("state") == "APPROVED"]
+        approvals = [
+            r for r in existing_reviews
+            if r.get("state") == "APPROVED"
+        ]
         if approvals:
             return {
                 "eligible": False,
@@ -166,7 +151,10 @@ def check_review_eligibility(
                     "message": f"PR already has {len(approvals)} approval(s) — skipping review",
                 },
             }
-        changes_requested = [r for r in existing_reviews if r.get("state") == "CHANGES_REQUESTED"]
+        changes_requested = [
+            r for r in existing_reviews
+            if r.get("state") == "CHANGES_REQUESTED"
+        ]
         if changes_requested:
             return {
                 "eligible": False,
@@ -193,13 +181,12 @@ def check_review_eligibility(
 # Review prompt construction
 # ---------------------------------------------------------------------------
 
-
 def build_review_prompt(pr_number: int, pr_size: dict) -> str:
     """Build a review prompt for vendor dispatch."""
     files_list = "\n".join(f"  - {f}" for f in pr_size.get("files", []))
     return f"""Review pull request #{pr_number}.
 
-This PR modifies {pr_size["changed_files"]} files with {pr_size["additions"]} additions and {pr_size["deletions"]} deletions.
+This PR modifies {pr_size['changed_files']} files with {pr_size['additions']} additions and {pr_size['deletions']} deletions.
 
 Changed files:
 {files_list}
@@ -239,7 +226,6 @@ Use `gh pr diff {pr_number}` to read the actual diff before reviewing.
 # Dispatch reviews
 # ---------------------------------------------------------------------------
 
-
 def dispatch_vendor_reviews(
     pr_number: int,
     pr_size: dict,
@@ -264,7 +250,8 @@ def dispatch_vendor_reviews(
 
     # Import review infrastructure — lives in parallel-infrastructure
     dispatcher_dir = (
-        Path(__file__).resolve().parent.parent.parent / "parallel-infrastructure" / "scripts"
+        Path(__file__).resolve().parent.parent.parent
+        / "parallel-infrastructure" / "scripts"
     )
     if not dispatcher_dir.exists():
         return {
@@ -276,12 +263,12 @@ def dispatch_vendor_reviews(
 
     sys.path.insert(0, str(dispatcher_dir))
     try:
+        from review_dispatcher import ReviewOrchestrator, ReviewResult
         from consensus_synthesizer import (
             ConsensusSynthesizer,
             Finding,
             VendorResult,
         )
-        from review_dispatcher import ReviewOrchestrator, ReviewResult
     except ImportError as e:
         return {
             "dispatched": False,
@@ -344,22 +331,19 @@ def dispatch_vendor_reviews(
 
         if r.success and r.findings:
             findings = [
-                Finding.from_dict(f, vendor=r.vendor) for f in r.findings.get("findings", [])
+                Finding.from_dict(f, vendor=r.vendor)
+                for f in r.findings.get("findings", [])
             ]
-            vendor_results.append(
-                VendorResult(
-                    vendor=r.vendor,
-                    findings=findings,
-                    elapsed_seconds=r.elapsed_seconds,
-                )
-            )
+            vendor_results.append(VendorResult(
+                vendor=r.vendor,
+                findings=findings,
+                elapsed_seconds=r.elapsed_seconds,
+            ))
 
     # Synthesize consensus if we have results
     consensus_dict = None
     if vendor_results:
-        synth = ConsensusSynthesizer(
-            quorum=1
-        )  # quorum=1 since single vendor is acceptable for PR review
+        synth = ConsensusSynthesizer(quorum=1)  # quorum=1 since single vendor is acceptable for PR review
         report = synth.synthesize(
             review_type="pr",
             target=f"PR #{pr_number}",
@@ -379,29 +363,21 @@ def dispatch_vendor_reviews(
 # Main
 # ---------------------------------------------------------------------------
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Conditional multi-vendor review for pull requests.",
     )
     parser.add_argument("pr_number", type=int, help="PR number to review")
-    parser.add_argument(
-        "--origin", required=True, help="PR origin classification (openspec, codex, other, etc.)"
-    )
-    parser.add_argument(
-        "--reviews-json",
-        help="Path to JSON file with existing review data from analyze_comments.py",
-    )
-    parser.add_argument("--is-draft", action="store_true", help="Whether the PR is a draft")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Report eligibility without dispatching reviews"
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=DEFAULT_TIMEOUT,
-        help=f"Per-vendor timeout in seconds (default: {DEFAULT_TIMEOUT})",
-    )
+    parser.add_argument("--origin", required=True,
+                        help="PR origin classification (openspec, codex, other, etc.)")
+    parser.add_argument("--reviews-json",
+                        help="Path to JSON file with existing review data from analyze_comments.py")
+    parser.add_argument("--is-draft", action="store_true",
+                        help="Whether the PR is a draft")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Report eligibility without dispatching reviews")
+    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
+                        help=f"Per-vendor timeout in seconds (default: {DEFAULT_TIMEOUT})")
     args = parser.parse_args()
 
     check_gh()
@@ -416,7 +392,8 @@ def main() -> int:
             data = json.loads(Path(args.reviews_json).read_text())
             existing_reviews = data.get("reviews", [])
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Warning: Could not load reviews from {args.reviews_json}: {e}", file=sys.stderr)
+            print(f"Warning: Could not load reviews from {args.reviews_json}: {e}",
+                  file=sys.stderr)
 
     # Check eligibility
     eligibility = check_review_eligibility(

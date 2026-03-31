@@ -47,13 +47,11 @@ def check_scope_compliance(
         denied = False
         for pattern in deny:
             if fnmatch(file_path, pattern):
-                violations.append(
-                    {
-                        "file": file_path,
-                        "reason": "denied",
-                        "pattern": pattern,
-                    }
-                )
+                violations.append({
+                    "file": file_path,
+                    "reason": "denied",
+                    "pattern": pattern,
+                })
                 denied = True
                 break
 
@@ -68,13 +66,11 @@ def check_scope_compliance(
                 break
 
         if not allowed:
-            violations.append(
-                {
-                    "file": file_path,
-                    "reason": "not_in_write_allow",
-                    "pattern": "",
-                }
-            )
+            violations.append({
+                "file": file_path,
+                "reason": "not_in_write_allow",
+                "pattern": "",
+            })
 
     compliant = len(violations) == 0
 

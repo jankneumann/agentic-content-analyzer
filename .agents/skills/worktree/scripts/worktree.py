@@ -25,14 +25,14 @@ import os
 import re
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
 
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
-
 
 def run_git(*args: str, cwd: str | None = None, check: bool = True) -> str:
     """Run a git command and return stripped stdout."""
@@ -49,10 +49,7 @@ def run_git(*args: str, cwd: str | None = None, check: bool = True) -> str:
         if result.stderr.strip():
             msg += f": {result.stderr.strip()}"
         raise subprocess.CalledProcessError(
-            result.returncode,
-            result.args,
-            result.stdout,
-            result.stderr,
+            result.returncode, result.args, result.stdout, result.stderr,
         )
     return result.stdout.strip()
 
@@ -70,7 +67,6 @@ def resolve_main_repo(cwd: str | None = None) -> Path:
 # ---------------------------------------------------------------------------
 # Path computation
 # ---------------------------------------------------------------------------
-
 
 def worktree_path(
     main_repo: Path,
@@ -135,7 +131,7 @@ def _registry_path(main_repo: Path) -> Path:
 
 
 def _utcnow_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def load_registry(main_repo: Path) -> dict[str, Any]:
@@ -178,8 +174,7 @@ def remove_entry(
     """Remove a registry entry. Returns True if found and removed."""
     before = len(registry["entries"])
     registry["entries"] = [
-        e
-        for e in registry["entries"]
+        e for e in registry["entries"]
         if not (e["change_id"] == change_id and e.get("agent_id") == agent_id)
     ]
     return len(registry["entries"]) < before
@@ -188,7 +183,6 @@ def remove_entry(
 # ---------------------------------------------------------------------------
 # Duration parsing
 # ---------------------------------------------------------------------------
-
 
 def parse_duration_hours(duration: str) -> float:
     """Parse a duration string like '24h', '48h', '7d' into hours."""
@@ -210,7 +204,6 @@ def parse_duration_hours(duration: str) -> float:
 # Commands
 # ---------------------------------------------------------------------------
 
-
 def cmd_setup(args: argparse.Namespace) -> int:
     """Create a worktree for the given change-id."""
     cwd = os.getcwd()
@@ -224,7 +217,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     # Check if already in the target worktree
     try:
-        current_toplevel = Path(run_git("rev-parse", "--show-toplevel", cwd=cwd))
+        current_toplevel = Path(
+            run_git("rev-parse", "--show-toplevel", cwd=cwd)
+        )
         if current_toplevel == wt_path:
             print(f"WORKTREE_PATH={wt_path}")
             print("ALREADY_EXISTS=true", file=sys.stderr)
@@ -241,10 +236,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # Create branch if it doesn't exist
     try:
         run_git(
-            "show-ref",
-            "--verify",
-            "--quiet",
-            f"refs/heads/{branch}",
+            "show-ref", "--verify", "--quiet", f"refs/heads/{branch}",
             cwd=str(main_repo),
         )
     except subprocess.CalledProcessError:
@@ -276,17 +268,15 @@ def cmd_setup(args: argparse.Namespace) -> int:
     if existing:
         existing["last_heartbeat"] = now
     else:
-        registry["entries"].append(
-            {
-                "change_id": change_id,
-                "agent_id": agent_id,
-                "branch": branch,
-                "worktree_path": str(wt_path),
-                "created_at": now,
-                "last_heartbeat": now,
-                "pinned": False,
-            }
-        )
+        registry["entries"].append({
+            "change_id": change_id,
+            "agent_id": agent_id,
+            "branch": branch,
+            "worktree_path": str(wt_path),
+            "created_at": now,
+            "last_heartbeat": now,
+            "pinned": False,
+        })
     save_registry(main_repo, registry)
 
     # Bootstrap the worktree (copy .env, install deps, sync skills)
@@ -324,10 +314,9 @@ def cmd_teardown(args: argparse.Namespace) -> int:
     wt_path = worktree_path(main_repo, change_id, agent_id, prefix)
 
     if not wt_path.is_dir():
-        print(
-            f"No worktree found for {change_id}" + (f" (agent: {agent_id})" if agent_id else ""),
-            file=sys.stderr,
-        )
+        print(f"No worktree found for {change_id}"
+              + (f" (agent: {agent_id})" if agent_id else ""),
+              file=sys.stderr)
         print("REMOVED=false")
         return 1
 
@@ -423,10 +412,9 @@ def cmd_heartbeat(args: argparse.Namespace) -> int:
     registry = load_registry(main_repo)
     entry = find_entry(registry, change_id, agent_id)
     if entry is None:
-        print(
-            f"No registry entry for {change_id}" + (f" (agent: {agent_id})" if agent_id else ""),
-            file=sys.stderr,
-        )
+        print(f"No registry entry for {change_id}"
+              + (f" (agent: {agent_id})" if agent_id else ""),
+              file=sys.stderr)
         return 1
 
     entry["last_heartbeat"] = _utcnow_iso()
@@ -444,7 +432,7 @@ def cmd_list(_args: argparse.Namespace) -> int:
         print("No active worktrees registered.")
         return 0
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     stale_threshold_hours = 1.0
 
     # Header
@@ -484,15 +472,15 @@ def cmd_pin(args: argparse.Namespace) -> int:
     registry = load_registry(main_repo)
     entry = find_entry(registry, change_id, agent_id)
     if entry is None:
-        print(
-            f"No registry entry for {change_id}" + (f" (agent: {agent_id})" if agent_id else ""),
-            file=sys.stderr,
-        )
+        print(f"No registry entry for {change_id}"
+              + (f" (agent: {agent_id})" if agent_id else ""),
+              file=sys.stderr)
         return 1
 
     entry["pinned"] = True
     save_registry(main_repo, registry)
-    print(f"Pinned: {change_id}" + (f"/{agent_id}" if agent_id else ""), file=sys.stderr)
+    print(f"Pinned: {change_id}" + (f"/{agent_id}" if agent_id else ""),
+          file=sys.stderr)
     return 0
 
 
@@ -506,15 +494,15 @@ def cmd_unpin(args: argparse.Namespace) -> int:
     registry = load_registry(main_repo)
     entry = find_entry(registry, change_id, agent_id)
     if entry is None:
-        print(
-            f"No registry entry for {change_id}" + (f" (agent: {agent_id})" if agent_id else ""),
-            file=sys.stderr,
-        )
+        print(f"No registry entry for {change_id}"
+              + (f" (agent: {agent_id})" if agent_id else ""),
+              file=sys.stderr)
         return 1
 
     entry["pinned"] = False
     save_registry(main_repo, registry)
-    print(f"Unpinned: {change_id}" + (f"/{agent_id}" if agent_id else ""), file=sys.stderr)
+    print(f"Unpinned: {change_id}" + (f"/{agent_id}" if agent_id else ""),
+          file=sys.stderr)
     return 0
 
 
@@ -526,7 +514,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
     stale_hours = parse_duration_hours(args.stale_after)
 
     registry = load_registry(main_repo)
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     removed: list[str] = []
     kept: list[dict[str, Any]] = []
 
@@ -537,11 +525,9 @@ def cmd_gc(args: argparse.Namespace) -> int:
 
         # Orphaned registry entry (directory gone) — always remove
         if not wt.is_dir():
-            print(
-                f"Removing orphaned entry: {entry['change_id']}"
-                + (f"/{entry.get('agent_id', '')}" if entry.get("agent_id") else ""),
-                file=sys.stderr,
-            )
+            print(f"Removing orphaned entry: {entry['change_id']}"
+                  + (f"/{entry.get('agent_id', '')}" if entry.get("agent_id") else ""),
+                  file=sys.stderr)
             removed.append(str(wt))
             continue
 
@@ -552,19 +538,16 @@ def cmd_gc(args: argparse.Namespace) -> int:
 
         # Pinned and not forced — keep
         if entry.get("pinned") and not force:
-            print(
-                f"Skipping pinned: {entry['change_id']}"
-                + (f"/{entry.get('agent_id', '')}" if entry.get("agent_id") else ""),
-                file=sys.stderr,
-            )
+            print(f"Skipping pinned: {entry['change_id']}"
+                  + (f"/{entry.get('agent_id', '')}" if entry.get("agent_id") else ""),
+                  file=sys.stderr)
             kept.append(entry)
             continue
 
         # Stale (and unpinned, or forced) — remove
-        label = entry["change_id"] + (
-            f"/{entry.get('agent_id', '')}" if entry.get("agent_id") else ""
-        )
-        print(f"Removing stale worktree: {label} (age: {age_hours:.1f}h)", file=sys.stderr)
+        label = entry["change_id"] + (f"/{entry.get('agent_id', '')}" if entry.get("agent_id") else "")
+        print(f"Removing stale worktree: {label} (age: {age_hours:.1f}h)",
+              file=sys.stderr)
         try:
             run_git("worktree", "remove", str(wt), cwd=str(main_repo))
         except subprocess.CalledProcessError:
@@ -582,9 +565,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
         branch = entry["branch"]
         try:
             run_git(
-                "branch",
-                "-d",
-                branch,
+                "branch", "-d", branch,
                 cwd=str(main_repo),
                 check=True,
             )
@@ -605,14 +586,9 @@ def cmd_gc(args: argparse.Namespace) -> int:
 # CLI
 # ---------------------------------------------------------------------------
 
-
 def _add_agent_id_flag(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--agent-id",
-        dest="agent_id",
-        default=None,
-        help="Agent identifier for parallel disambiguation",
-    )
+    parser.add_argument("--agent-id", dest="agent_id", default=None,
+                        help="Agent identifier for parallel disambiguation")
 
 
 def main() -> int:
@@ -628,8 +604,7 @@ def main() -> int:
     setup_parser.add_argument("--branch", help="Branch name (default: openspec/<change-id>)")
     setup_parser.add_argument("--prefix", help="Path prefix (e.g., fix-scrub)")
     setup_parser.add_argument(
-        "--no-bootstrap",
-        action="store_true",
+        "--no-bootstrap", action="store_true",
         help="Skip environment bootstrap (deps, .env copy, skills sync)",
     )
     setup_parser.set_defaults(func=cmd_setup)
@@ -675,10 +650,10 @@ def main() -> int:
 
     # gc
     gc_parser = subparsers.add_parser("gc", help="Remove stale worktrees")
-    gc_parser.add_argument(
-        "--stale-after", default="24h", help="Duration threshold (e.g., 24h, 48h, 7d)"
-    )
-    gc_parser.add_argument("--force", action="store_true", help="Remove pinned worktrees too")
+    gc_parser.add_argument("--stale-after", default="24h",
+                           help="Duration threshold (e.g., 24h, 48h, 7d)")
+    gc_parser.add_argument("--force", action="store_true",
+                           help="Remove pinned worktrees too")
     gc_parser.set_defaults(func=cmd_gc)
 
     parsed = parser.parse_args()

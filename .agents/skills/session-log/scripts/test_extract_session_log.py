@@ -6,6 +6,8 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from extract_session_log import (
     _format_handoffs_as_session_log,
     _parse_jsonl_messages,
@@ -13,13 +15,15 @@ from extract_session_log import (
     try_extract_from_handoffs,
 )
 
+
 # --- JSONL parsing ---
 
 
 class TestParseJsonlMessages:
     def test_simple_messages(self) -> None:
         content = (
-            '{"role": "user", "content": "Hello"}\n{"role": "assistant", "content": "Hi there"}\n'
+            '{"role": "user", "content": "Hello"}\n'
+            '{"role": "assistant", "content": "Hi there"}\n'
         )
         messages = _parse_jsonl_messages(content)
         assert len(messages) == 2
@@ -27,18 +31,13 @@ class TestParseJsonlMessages:
         assert messages[0]["content"] == "Hello"
 
     def test_structured_content_blocks(self) -> None:
-        content = (
-            json.dumps(
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": "Part 1"},
-                        {"type": "text", "text": "Part 2"},
-                    ],
-                }
-            )
-            + "\n"
-        )
+        content = json.dumps({
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Part 1"},
+                {"type": "text", "text": "Part 2"},
+            ]
+        }) + "\n"
         messages = _parse_jsonl_messages(content)
         assert len(messages) == 1
         assert "Part 1" in messages[0]["content"]
@@ -52,7 +51,7 @@ class TestParseJsonlMessages:
     def test_invalid_json_skipped(self) -> None:
         content = (
             '{"role": "user", "content": "Hello"}\n'
-            "not valid json\n"
+            'not valid json\n'
             '{"role": "assistant", "content": "Hi"}\n'
         )
         messages = _parse_jsonl_messages(content)
@@ -88,7 +87,9 @@ class TestHandoffExtraction:
                 "created_at": "2026-03-27T10:00:00Z",
             }
         ]
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
             json.dump(handoffs, f)
             f.flush()
 
@@ -107,7 +108,9 @@ class TestHandoffExtraction:
 
     def test_no_relevant_handoffs(self) -> None:
         handoffs = [{"summary": "Unrelated work", "decisions": []}]
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
             json.dump(handoffs, f)
             f.flush()
 

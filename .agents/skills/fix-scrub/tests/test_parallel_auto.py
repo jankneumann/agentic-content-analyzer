@@ -12,14 +12,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from fix_models import ClassifiedFinding, Finding, FixGroup
-from parallel_auto import execute_auto_fixes_parallel
-from plan_fixes import assert_no_file_overlap
+from fix_models import ClassifiedFinding, Finding, FixGroup  # noqa: E402
+from parallel_auto import execute_auto_fixes_parallel  # noqa: E402
+from plan_fixes import assert_no_file_overlap  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _make_finding(
     finding_id: str,
@@ -54,7 +54,6 @@ def _classified(finding: Finding) -> ClassifiedFinding:
 # 1. Parallel execution of non-overlapping groups
 # ---------------------------------------------------------------------------
 
-
 class TestParallelExecution:
     """Non-overlapping groups are dispatched concurrently."""
 
@@ -72,9 +71,7 @@ class TestParallelExecution:
         group_b = _make_fix_group("src/b.py", [f2])
 
         resolved, persisting = execute_auto_fixes_parallel(
-            [group_a, group_b],
-            project_dir="/repo",
-            max_workers=2,
+            [group_a, group_b], project_dir="/repo", max_workers=2,
         )
 
         assert len(resolved) == 2
@@ -83,7 +80,6 @@ class TestParallelExecution:
     @patch("execute_auto.subprocess.run")
     def test_parallel_three_groups_mixed_results(self, mock_run: MagicMock) -> None:
         """Three groups: first all resolved, second has persisting, third all resolved."""
-
         # Each group triggers 2 subprocess calls (fix + verify).
         # We need to handle interleaved calls from threads.
         # Use a side_effect function keyed on the file argument.
@@ -93,14 +89,10 @@ class TestParallelExecution:
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="[]", stderr="")
 
             if "--output-format=json" in args and "src/b.py" in file_arg:
-                remaining = json.dumps(
-                    [
-                        {"filename": "src/b.py", "location": {"row": 3}, "code": "W291"},
-                    ]
-                )
-                return subprocess.CompletedProcess(
-                    args=args, returncode=1, stdout=remaining, stderr=""
-                )
+                remaining = json.dumps([
+                    {"filename": "src/b.py", "location": {"row": 3}, "code": "W291"},
+                ])
+                return subprocess.CompletedProcess(args=args, returncode=1, stdout=remaining, stderr="")
 
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="[]", stderr="")
 
@@ -115,9 +107,7 @@ class TestParallelExecution:
         group_c = _make_fix_group("src/c.py", [f3])
 
         resolved, persisting = execute_auto_fixes_parallel(
-            [group_a, group_b, group_c],
-            project_dir="/repo",
-            max_workers=3,
+            [group_a, group_b, group_c], project_dir="/repo", max_workers=3,
         )
 
         assert len(resolved) == 2
@@ -128,7 +118,6 @@ class TestParallelExecution:
 # ---------------------------------------------------------------------------
 # 2. Resolved and persisting findings collected correctly
 # ---------------------------------------------------------------------------
-
 
 class TestResultCollection:
     """Results from all groups are aggregated into the returned tuple."""
@@ -149,9 +138,7 @@ class TestResultCollection:
             groups.append(_make_fix_group(fp, [f]))
 
         resolved, persisting = execute_auto_fixes_parallel(
-            groups,
-            project_dir="/repo",
-            max_workers=4,
+            groups, project_dir="/repo", max_workers=4,
         )
 
         all_ids = {cf.finding.id for cf in resolved} | {cf.finding.id for cf in persisting}
@@ -162,7 +149,6 @@ class TestResultCollection:
 # ---------------------------------------------------------------------------
 # 3. Overlap assertion
 # ---------------------------------------------------------------------------
-
 
 class TestAssertNoFileOverlap:
     """assert_no_file_overlap validates that no file appears in multiple groups."""
@@ -210,7 +196,6 @@ class TestAssertNoFileOverlap:
 # 4. Single group (degenerate case)
 # ---------------------------------------------------------------------------
 
-
 class TestSingleGroup:
     """A single group should work correctly through the parallel path."""
 
@@ -224,9 +209,7 @@ class TestSingleGroup:
         group = _make_fix_group("src/app.py", [f1])
 
         resolved, persisting = execute_auto_fixes_parallel(
-            [group],
-            project_dir="/repo",
-            max_workers=1,
+            [group], project_dir="/repo", max_workers=1,
         )
 
         assert len(resolved) == 1
@@ -234,24 +217,18 @@ class TestSingleGroup:
 
     @patch("execute_auto.subprocess.run")
     def test_single_group_persisting(self, mock_run: MagicMock) -> None:
-        remaining = json.dumps(
-            [
-                {"filename": "src/app.py", "location": {"row": 10}, "code": "E501"},
-            ]
-        )
+        remaining = json.dumps([
+            {"filename": "src/app.py", "location": {"row": 10}, "code": "E501"},
+        ])
         fix_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        verify_result = subprocess.CompletedProcess(
-            args=[], returncode=1, stdout=remaining, stderr=""
-        )
+        verify_result = subprocess.CompletedProcess(args=[], returncode=1, stdout=remaining, stderr="")
         mock_run.side_effect = [fix_result, verify_result]
 
         f1 = _classified(_make_finding("ruff-E501-src/app.py:10"))
         group = _make_fix_group("src/app.py", [f1])
 
         resolved, persisting = execute_auto_fixes_parallel(
-            [group],
-            project_dir="/repo",
-            max_workers=1,
+            [group], project_dir="/repo", max_workers=1,
         )
 
         assert len(resolved) == 0
@@ -261,7 +238,6 @@ class TestSingleGroup:
 # ---------------------------------------------------------------------------
 # 5. Empty input
 # ---------------------------------------------------------------------------
-
 
 class TestEmptyInput:
     """Empty auto_groups should short-circuit."""

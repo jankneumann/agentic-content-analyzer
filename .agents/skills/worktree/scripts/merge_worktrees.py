@@ -16,10 +16,10 @@ import subprocess
 import sys
 from typing import Any
 
+
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
-
 
 def run_git(
     *args: str,
@@ -50,7 +50,6 @@ def resolve_repo_root(cwd: str | None = None) -> str:
 # Branch name computation
 # ---------------------------------------------------------------------------
 
-
 def feature_branch(change_id: str) -> str:
     """Compute the feature branch name for a change-id."""
     return f"openspec/{change_id}"
@@ -69,15 +68,11 @@ def package_branch(change_id: str, package_id: str) -> str:
 # Merge logic
 # ---------------------------------------------------------------------------
 
-
 def _get_conflict_files(cwd: str) -> list[str]:
     """Return list of files with merge conflicts."""
     result = run_git(
-        "diff",
-        "--name-only",
-        "--diff-filter=U",
-        cwd=cwd,
-        check=False,
+        "diff", "--name-only", "--diff-filter=U",
+        cwd=cwd, check=False,
     )
     if result.returncode != 0:
         return []
@@ -116,45 +111,33 @@ def merge_packages(
 
         # Verify branch exists
         ref_check = run_git(
-            "show-ref",
-            "--verify",
-            "--quiet",
-            f"refs/heads/{branch}",
-            cwd=cwd,
-            check=False,
+            "show-ref", "--verify", "--quiet", f"refs/heads/{branch}",
+            cwd=cwd, check=False,
         )
         if ref_check.returncode != 0:
-            conflicts.append(
-                {
-                    "package": pkg_id,
-                    "branch": branch,
-                    "files": [],
-                    "error": f"Branch {branch} does not exist",
-                }
-            )
+            conflicts.append({
+                "package": pkg_id,
+                "branch": branch,
+                "files": [],
+                "error": f"Branch {branch} does not exist",
+            })
             continue
 
         if dry_run:
             # Test merge without committing
             result = run_git(
-                "merge",
-                "--no-commit",
-                "--no-ff",
-                branch,
-                cwd=cwd,
-                check=False,
+                "merge", "--no-commit", "--no-ff", branch,
+                cwd=cwd, check=False,
             )
             if result.returncode != 0:
                 conflict_files = _get_conflict_files(cwd)
                 error_msg = result.stderr.strip() or result.stdout.strip()
-                conflicts.append(
-                    {
-                        "package": pkg_id,
-                        "branch": branch,
-                        "files": conflict_files,
-                        "error": error_msg,
-                    }
-                )
+                conflicts.append({
+                    "package": pkg_id,
+                    "branch": branch,
+                    "files": conflict_files,
+                    "error": error_msg,
+                })
             else:
                 merged.append(pkg_id)
             # Always abort in dry-run mode to restore state
@@ -162,25 +145,19 @@ def merge_packages(
         else:
             # Real merge
             result = run_git(
-                "merge",
-                "--no-ff",
-                branch,
-                "-m",
-                f"merge: {pkg_id} into feature branch",
-                cwd=cwd,
-                check=False,
+                "merge", "--no-ff", branch,
+                "-m", f"merge: {pkg_id} into feature branch",
+                cwd=cwd, check=False,
             )
             if result.returncode != 0:
                 conflict_files = _get_conflict_files(cwd)
                 error_msg = result.stderr.strip() or result.stdout.strip()
-                conflicts.append(
-                    {
-                        "package": pkg_id,
-                        "branch": branch,
-                        "files": conflict_files,
-                        "error": error_msg,
-                    }
-                )
+                conflicts.append({
+                    "package": pkg_id,
+                    "branch": branch,
+                    "files": conflict_files,
+                    "error": error_msg,
+                })
                 # Abort the failed merge
                 run_git("merge", "--abort", cwd=cwd, check=False)
             else:
@@ -199,7 +176,6 @@ def merge_packages(
 # ---------------------------------------------------------------------------
 # Output formatting
 # ---------------------------------------------------------------------------
-
 
 def format_human(result: dict[str, Any]) -> str:
     """Format merge result as human-readable text."""
@@ -230,27 +206,21 @@ def format_human(result: dict[str, Any]) -> str:
 # CLI
 # ---------------------------------------------------------------------------
 
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Merge per-package branches into a feature branch",
     )
     parser.add_argument("change_id", help="OpenSpec change identifier")
     parser.add_argument(
-        "package_ids",
-        nargs="+",
-        metavar="package-id",
+        "package_ids", nargs="+", metavar="package-id",
         help="Package identifiers to merge (in order)",
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
+        "--dry-run", action="store_true",
         help="Test merges without persisting them",
     )
     parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
+        "--json", dest="json_output", action="store_true",
         help="Output results as JSON",
     )
 

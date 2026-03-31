@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -185,10 +185,7 @@ class TestSeedDbEngine:
         client.secrets.database.configure.assert_called_once()
         # Verify the connection URL is built correctly from the DSN
         configure_call = client.secrets.database.configure.call_args
-        assert (
-            configure_call.kwargs["connection_url"]
-            == "postgresql://{{username}}:{{password}}@host:5432/db"
-        )
+        assert configure_call.kwargs["connection_url"] == "postgresql://{{username}}:{{password}}@host:5432/db"
         assert configure_call.kwargs["username"] == "user"
         assert configure_call.kwargs["password"] == "pass"
         client.secrets.database.create_role.assert_called_once()

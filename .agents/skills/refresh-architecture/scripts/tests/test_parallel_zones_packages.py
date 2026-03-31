@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SCRIPT = Path(__file__).resolve().parent.parent / "parallel_zones.py"
 
@@ -14,12 +16,7 @@ SCRIPT = Path(__file__).resolve().parent.parent / "parallel_zones.py"
 class TestValidatePackagesCLI:
     def test_valid_packages_text(self):
         result = subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPT),
-                "--validate-packages",
-                str(FIXTURES / "sample-work-packages.yaml"),
-            ],
+            [sys.executable, str(SCRIPT), "--validate-packages", str(FIXTURES / "sample-work-packages.yaml")],
             capture_output=True,
             text=True,
         )

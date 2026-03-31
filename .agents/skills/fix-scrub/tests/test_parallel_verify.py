@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from parallel_verify import verify_parallel
-from verify import verify
+from verify import VerificationResult, verify
+
 
 # ---------------------------------------------------------------------------
 # All checks run and results collected
@@ -272,7 +273,9 @@ class TestEquivalenceWithSequentialVerify:
         }
 
         seq_result = verify("/fake/project", original_failures=original_failures)
-        par_result = verify_parallel("/fake/project", original_failures=original_failures)
+        par_result = verify_parallel(
+            "/fake/project", original_failures=original_failures
+        )
 
         assert seq_result.to_dict() == par_result.to_dict()
 
@@ -296,7 +299,9 @@ class TestEquivalenceWithSequentialVerify:
         }
 
         seq_result = verify("/fake/project", original_failures=original_failures)
-        par_result = verify_parallel("/fake/project", original_failures=original_failures)
+        par_result = verify_parallel(
+            "/fake/project", original_failures=original_failures
+        )
 
         assert seq_result.to_dict() == par_result.to_dict()
 

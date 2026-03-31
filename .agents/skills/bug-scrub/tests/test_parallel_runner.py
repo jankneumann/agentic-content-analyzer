@@ -7,14 +7,15 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # sys.path insertion so we can import modules from scripts/
 # ---------------------------------------------------------------------------
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from parallel_runner import run_collectors_parallel
-
 from models import Finding, SourceResult
+from parallel_runner import run_collectors_parallel
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +118,9 @@ class TestParallelRunnerFailure:
             "fast": _ok_collector("fast"),
             "slow": _slow_collector("slow", delay=5.0),
         }
-        results = run_collectors_parallel(collectors, "/tmp/proj", timeout_per_collector=1)
+        results = run_collectors_parallel(
+            collectors, "/tmp/proj", timeout_per_collector=1
+        )
         assert len(results) == 2
         assert results[0].status == "ok"
         assert results[1].status == "error"
@@ -157,12 +160,13 @@ class TestParallelRunnerMaxWorkers:
         """max_workers is forwarded to ThreadPoolExecutor."""
         collectors = {"a": _ok_collector("a")}
         with patch(
-            "parallel_runner.ThreadPoolExecutor",
-            wraps=__import__(
+            "parallel_runner.ThreadPoolExecutor", wraps=__import__(
                 "concurrent.futures", fromlist=["ThreadPoolExecutor"]
-            ).ThreadPoolExecutor,
+            ).ThreadPoolExecutor
         ) as mock_pool:
-            run_collectors_parallel(collectors, "/tmp/proj", max_workers=3)
+            run_collectors_parallel(
+                collectors, "/tmp/proj", max_workers=3
+            )
             mock_pool.assert_called_once_with(max_workers=3)
 
 
@@ -201,7 +205,9 @@ class TestParallelRunnerEquivalence:
             sequential_results.append(func("/tmp/proj"))
 
         # Parallel execution
-        parallel_results = run_collectors_parallel(collectors, "/tmp/proj")
+        parallel_results = run_collectors_parallel(
+            collectors, "/tmp/proj"
+        )
 
         assert len(sequential_results) == len(parallel_results)
         for seq, par in zip(sequential_results, parallel_results):

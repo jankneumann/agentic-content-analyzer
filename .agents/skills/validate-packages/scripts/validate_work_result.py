@@ -23,17 +23,13 @@ try:
 except ImportError:
     sys.exit("jsonschema is required: pip install jsonschema")
 
-
 def _find_repo_root() -> Path:
     """Find the git repository root."""
     import subprocess
-
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True,
         )
         return Path(result.stdout.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -46,7 +42,12 @@ def _find_repo_root() -> Path:
         return Path(__file__).resolve().parent.parent
 
 
-SCHEMA_PATH = _find_repo_root() / "openspec" / "schemas" / "work-queue-result.schema.json"
+SCHEMA_PATH = (
+    _find_repo_root()
+    / "openspec"
+    / "schemas"
+    / "work-queue-result.schema.json"
+)
 
 
 def load_schema(path: Path | None = None) -> dict[str, Any]:
@@ -100,10 +101,14 @@ def validate_verification_consistency(data: dict[str, Any]) -> list[str]:
 
     if overall_passed and not all_steps_passed:
         failing = [s["name"] for s in steps if not s.get("passed", False)]
-        errors.append(f"  verification.passed=true but steps failed: {failing}")
+        errors.append(
+            f"  verification.passed=true but steps failed: {failing}"
+        )
 
     if not overall_passed and all_steps_passed:
-        errors.append("  verification.passed=false but all steps passed")
+        errors.append(
+            "  verification.passed=false but all steps passed"
+        )
 
     return errors
 

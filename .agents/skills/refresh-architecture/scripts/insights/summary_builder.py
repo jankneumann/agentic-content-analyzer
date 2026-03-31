@@ -17,13 +17,13 @@ import logging
 import subprocess
 import sys
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from arch_utils.constants import EdgeType
-from arch_utils.graph_io import load_graph, save_json
+from arch_utils.constants import EdgeType  # noqa: E402
+from arch_utils.graph_io import load_graph, save_json  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +76,10 @@ def find_disconnected_endpoints(
     disconnected: list[dict[str, str]] = []
     for ep in graph.get("entrypoints", []):
         if ep.get("kind") == "route" and ep["node_id"] not in api_call_targets:
-            disconnected.append(
-                {
-                    "node_id": ep["node_id"],
-                    "path": ep.get("path", ""),
-                }
-            )
+            disconnected.append({
+                "node_id": ep["node_id"],
+                "path": ep.get("path", ""),
+            })
     return disconnected
 
 
@@ -98,12 +96,10 @@ def find_disconnected_frontend_calls(
     disconnected: list[dict[str, str]] = []
     for edge in graph.get("edges", []):
         if edge.get("type") == EdgeType.API_CALL and edge["to"] not in node_ids:
-            disconnected.append(
-                {
-                    "node_id": edge["from"],
-                    "url": edge.get("evidence", ""),
-                }
-            )
+            disconnected.append({
+                "node_id": edge["from"],
+                "url": edge.get("evidence", ""),
+            })
     return disconnected
 
 
@@ -255,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         git_sha = latest_snapshot.get("git_sha", get_git_sha())
     else:
         git_sha = get_git_sha()
-    generated_at = datetime.now(UTC).isoformat()
+    generated_at = datetime.now(timezone.utc).isoformat()
 
     # --- Load Layer 2 artifacts ---
     logger.info("Loading Layer 2 artifacts...")
@@ -316,13 +312,22 @@ def main(argv: list[str] | None = None) -> int:
         f"{stats['total_edges']} edges, "
         f"{stats['entrypoint_count']} entrypoints"
     )
-    logger.info(f"  Flows included: {len(summary['cross_layer_flows'])} (limit: {summary_limit})")
+    logger.info(
+        f"  Flows included: {len(summary['cross_layer_flows'])} "
+        f"(limit: {summary_limit})"
+    )
     if disconnected_endpoints:
-        logger.info(f"  Disconnected backend endpoints: {len(disconnected_endpoints)}")
+        logger.info(
+            f"  Disconnected backend endpoints: {len(disconnected_endpoints)}"
+        )
     if disconnected_frontend_calls:
-        logger.info(f"  Disconnected frontend calls: {len(disconnected_frontend_calls)}")
+        logger.info(
+            f"  Disconnected frontend calls: {len(disconnected_frontend_calls)}"
+        )
     if high_impact_nodes:
-        logger.info(f"  High-impact nodes: {len(high_impact_nodes)}")
+        logger.info(
+            f"  High-impact nodes: {len(high_impact_nodes)}"
+        )
 
     return 0
 

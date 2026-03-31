@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Ensure scripts directory is on the path
@@ -21,10 +21,9 @@ from collect_openspec import collect as collect_openspec
 from collect_pytest import collect as collect_pytest
 from collect_ruff import collect as collect_ruff
 from collect_security import collect as collect_security
+from models import SourceResult
 from parallel_runner import run_collectors_parallel
 from render_report import write_report
-
-from models import SourceResult
 
 ALL_SOURCES = {
     "pytest": collect_pytest,
@@ -86,9 +85,7 @@ def run(
         for result in results:
             status_icon = "ok" if result.status == "ok" else result.status
             finding_count = len(result.findings)
-            print(
-                f"  {result.source}: {status_icon}, {finding_count} findings ({result.duration_ms}ms)"
-            )
+            print(f"  {result.source}: {status_icon}, {finding_count} findings ({result.duration_ms}ms)")
     else:
         results: list[SourceResult] = []
         for source_name, collector in collectors.items():
@@ -100,7 +97,7 @@ def run(
             print(f"  {status_icon}: {finding_count} findings ({result.duration_ms}ms)")
 
     # Aggregate
-    timestamp = datetime.now(UTC).isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     report = aggregate(results, severity_filter=severity, timestamp=timestamp)
 
     # Report

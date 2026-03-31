@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import parallel_zones as pz
+import parallel_zones as pz  # noqa: E402
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -53,16 +53,11 @@ def main(argv: list[str] | None = None) -> int:
     graph_path = args.input_dir / "architecture.graph.json"
 
     # Delegate to the original parallel_zones module with its expected args
-    return pz.main(
-        [
-            "--graph",
-            str(graph_path),
-            "--output",
-            str(args.output),
-            "--impact-threshold",
-            str(args.impact_threshold),
-        ]
-    )
+    return pz.main([
+        "--graph", str(graph_path),
+        "--output", str(args.output),
+        "--impact-threshold", str(args.impact_threshold),
+    ])
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ Usage:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
@@ -70,19 +70,21 @@ class CircuitBreaker:
         Called when the orchestrator detects activity from a package's agent
         (e.g., via discover_agents() or get_task() polling).
         """
-        self._heartbeats[package_id] = timestamp or datetime.now(UTC)
+        self._heartbeats[package_id] = timestamp or datetime.now(timezone.utc)
 
     def start_monitoring(self, package_id: str) -> None:
         """Start monitoring a package (records initial heartbeat)."""
         self.heartbeat(package_id)
 
-    def check_stuck_packages(self, now: datetime | None = None) -> list[dict[str, Any]]:
+    def check_stuck_packages(
+        self, now: datetime | None = None
+    ) -> list[dict[str, Any]]:
         """Check for packages that have exceeded their timeout.
 
         Returns list of dicts with package_id, last_heartbeat, timeout_minutes,
         and elapsed_minutes for each stuck package.
         """
-        now = now or datetime.now(UTC)
+        now = now or datetime.now(timezone.utc)
         stuck = []
 
         for pid, last_hb in self._heartbeats.items():
@@ -91,14 +93,12 @@ class CircuitBreaker:
             timeout = self.get_timeout_minutes(pid)
             elapsed = (now - last_hb).total_seconds() / 60
             if elapsed > timeout:
-                stuck.append(
-                    {
-                        "package_id": pid,
-                        "last_heartbeat": last_hb.isoformat(),
-                        "timeout_minutes": timeout,
-                        "elapsed_minutes": round(elapsed, 1),
-                    }
-                )
+                stuck.append({
+                    "package_id": pid,
+                    "last_heartbeat": last_hb.isoformat(),
+                    "timeout_minutes": timeout,
+                    "elapsed_minutes": round(elapsed, 1),
+                })
 
         return stuck
 

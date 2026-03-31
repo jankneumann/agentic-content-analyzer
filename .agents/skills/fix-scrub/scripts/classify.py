@@ -9,25 +9,12 @@ from pathlib import Path
 # Add fix-scrub scripts to path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fix_models import ClassifiedFinding, Finding, severity_rank
+from fix_models import ClassifiedFinding, Finding, FixTier, severity_rank  # noqa: E402
 
 # Ruff rules known to support --fix
 _RUFF_FIXABLE_PREFIXES = {
-    "F",
-    "E",
-    "W",
-    "I",
-    "UP",
-    "B",
-    "SIM",
-    "RUF",
-    "D",
-    "C4",
-    "PT",
-    "RSE",
-    "RET",
-    "TCH",
-    "TID",
+    "F", "E", "W", "I", "UP", "B", "SIM", "RUF",
+    "D", "C4", "PT", "RSE", "RET", "TCH", "TID",
 }
 
 
@@ -50,7 +37,7 @@ def _marker_has_sufficient_context(finding: Finding) -> bool:
     # Strip leading colon/whitespace
     for prefix in (":", " "):
         if detail.startswith(prefix):
-            detail = detail[len(prefix) :]
+            detail = detail[len(prefix):]
     return len(detail.strip()) >= 10
 
 

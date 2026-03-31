@@ -47,9 +47,7 @@ def handler() -> EscalationHandler:
 
 class TestContractRevisionRequired:
     def test_action(self, handler: EscalationHandler) -> None:
-        esc = _make_escalation(
-            "CONTRACT_REVISION_REQUIRED", impacted_packages=["wp-backend", "wp-frontend"]
-        )
+        esc = _make_escalation("CONTRACT_REVISION_REQUIRED", impacted_packages=["wp-backend", "wp-frontend"])
         decision = handler.handle(esc)
         assert decision.action == EscalationAction.PAUSE_AND_RESCHEDULE
         assert decision.pause_required is True
