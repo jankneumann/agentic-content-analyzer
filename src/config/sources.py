@@ -48,8 +48,9 @@ class SourceDefaults(BaseModel):
     chunk_size_tokens: int | None = None  # Override global CHUNK_SIZE_TOKENS
     chunk_overlap_tokens: int | None = None  # Override global CHUNK_OVERLAP_TOKENS
     chunking_strategy: str | None = (
-        None  # Force: structured, youtube_transcript, gemini_summary, markdown, section
+        None  # Force: structured, youtube_transcript, gemini_summary, markdown, section, tree_index
     )
+    min_node_tokens: int | None = None  # Override global min_node_tokens for chunk thinning
     # Content relevance filtering
     content_filter_strategy: Literal["none", "keyword", "llm", "keyword+llm"] | None = None
     content_filter_topics: list[str] | None = None
@@ -173,7 +174,6 @@ class ArxivSource(SourceBase):
     max_pdf_pages: int = 80
 
 
-
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -245,7 +245,6 @@ class SourcesConfig(BaseModel):
     def get_arxiv_sources(self) -> list[ArxivSource]:
         """Get all enabled arXiv sources."""
         return [s for s in self.sources if isinstance(s, ArxivSource) and s.enabled]
-
 
 
 # --- Source File Model (per-file schema) ---

@@ -519,3 +519,91 @@ def resolve_refs(
             typer.echo(
                 "Auto-ingest: use 'aca manage extract-refs' + queue worker for automated ingestion"
             )
+
+
+@app.command("backfill-tree-index")
+def backfill_tree_index_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without changes"),
+    content_id: int | None = typer.Option(None, "--content-id", help="Target specific content"),
+    force: bool = typer.Option(False, "--force", help="Rebuild existing tree indexes"),
+) -> None:
+    """Build tree indexes for qualifying existing content.
+
+    Scans content records for documents that qualify for tree indexing
+    (token count > tree_index_min_tokens AND heading depth >= tree_index_min_heading_depth).
+    Preserves existing flat chunks.
+    """
+    from src.config.settings import get_settings
+    from src.services.chunking import _count_tokens, _detect_heading_depth
+    from src.storage.database import get_db
+
+    settings = get_settings()
+
+    with get_db() as db:
+        from src.models.content import Content
+
+        if content_id:
+            contents = db.query(Content).filter(Content.id == content_id).all()
+        else:
+            contents = db.query(Content).filter(Content.markdown_content.isnot(None)).all()
+
+        qualifying = []
+        for c in contents:
+            if not c.markdown_content:
+                continue
+            tokens = _count_tokens(c.markdown_content)
+            depth = _detect_heading_depth(c.markdown_content)
+            if (
+                tokens > settings.tree_index_min_tokens
+                and depth >= settings.tree_index_min_heading_depth
+            ):
+                qualifying.append(c)
+
+        if not qualifying:
+            if not is_json_mode():
+                typer.echo("No qualifying content found for tree indexing.")
+            else:
+                output_result({"qualifying": 0, "indexed": 0, "skipped": 0})
+            return
+
+        if dry_run:
+            if not is_json_mode():
+                typer.echo(f"Would index {len(qualifying)} content records:")
+                for c in qualifying:
+                    typer.echo(f"  - Content {c.id}: {c.title[:60] if c.title else 'Untitled'}")
+            else:
+                output_result(
+                    {
+                        "dry_run": True,
+                        "qualifying": len(qualifying),
+                        "content_ids": [c.id for c in qualifying],
+                    }
+                )
+            return
+
+        from src.services.indexing import build_tree_index
+
+        indexed = 0
+        skipped = 0
+        for c in qualifying:
+            try:
+                assert c.id is not None
+                count = build_tree_index(c.id, db, force=force)
+                if count > 0:
+                    indexed += 1
+                    if not is_json_mode():
+                        typer.echo(f"  Indexed content {c.id}: {count} tree chunks")
+                else:
+                    skipped += 1
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                if not is_json_mode():
+                    typer.echo(f"  Failed for content {c.id}: {e}", err=True)
+
+        if is_json_mode():
+            output_result({"qualifying": len(qualifying), "indexed": indexed, "skipped": skipped})
+        else:
+            typer.echo(
+                f"Done: {indexed} indexed, {skipped} skipped out of {len(qualifying)} qualifying."
+            )

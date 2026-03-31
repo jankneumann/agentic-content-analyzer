@@ -91,12 +91,44 @@ def _index_content_impl(content: object, db: Session) -> None:
         logger.debug(f"No chunks produced for content {content_id}")
         return
 
-    # Save chunks to database
-    for chunk in chunks:
-        db.add(chunk)
-    db.flush()  # Ensure chunk IDs are assigned
+    # Save chunks to database — resolve tree parent_chunk_id references
+    flat_chunks = [c for c in chunks if c.tree_depth is None]
+    tree_chunks = [c for c in chunks if c.tree_depth is not None]
 
-    logger.info(f"Created {len(chunks)} chunks for content {content_id}")
+    # Insert flat chunks first
+    for chunk in flat_chunks:
+        db.add(chunk)
+    db.flush()
+
+    # Insert tree chunks with parent FK resolution
+    if tree_chunks:
+        _insert_tree_chunks(tree_chunks, db)
+
+    logger.info(
+        f"Created {len(flat_chunks)} flat + {len(tree_chunks)} tree chunks for content {content_id}"
+    )
+
+    # Summarize tree nodes (async, fail-safe — delete tree on failure)
+    if tree_chunks:
+        try:
+            summary_chunks = [c for c in tree_chunks if c.is_summary]
+            if summary_chunks:
+                _run_async(_summarize_tree_nodes(summary_chunks, tree_chunks, db))
+        except Exception:
+            logger.warning(
+                f"Tree summarization failed for content {content_id}, "
+                f"deleting tree chunks (flat chunks preserved)",
+                exc_info=True,
+            )
+            db.execute(
+                text(
+                    "DELETE FROM document_chunks WHERE content_id = :cid AND tree_depth IS NOT NULL"
+                ),
+                {"cid": content_id},
+            )
+            db.flush()
+            # Update chunks list to remove tree chunks
+            chunks = flat_chunks
 
     # Generate embeddings (async, run in sync context)
     try:
@@ -138,6 +170,223 @@ def _index_content_impl(content: object, db: Session) -> None:
             f"chunks saved without embeddings (BM25-searchable only)",
             exc_info=True,
         )
+
+
+def _insert_tree_chunks(tree_chunks: list, db: Session) -> None:
+    """Insert tree chunks resolving parent_chunk_id from _parent_index."""
+    # Map _parent_index → assigned DB id
+    index_to_id: dict[int, int] = {}
+    all_chunks_in_order = tree_chunks  # Already in parent-before-child order
+
+    for i, chunk in enumerate(all_chunks_in_order):
+        parent_idx = getattr(chunk, "_parent_index", None)
+        if parent_idx is not None and parent_idx in index_to_id:
+            chunk.parent_chunk_id = index_to_id[parent_idx]
+
+        db.add(chunk)
+        db.flush()  # Get ID assigned
+        # Store this chunk's position → DB id mapping
+        # The _parent_index on children references the position in the original list
+        # Find this chunk's position in the original tree_chunks list
+        index_to_id[i] = chunk.id
+
+
+async def _summarize_tree_nodes(
+    summary_chunks: list,
+    all_tree_chunks: list,
+    db: Session,
+) -> None:
+    """Summarize internal tree nodes bottom-up with bounded concurrency."""
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.tree_summarization_max_concurrent)
+
+    # Group by tree_depth for bottom-up processing
+    max_depth = max((c.tree_depth for c in summary_chunks), default=0)
+
+    # Build chunk_id → children text map
+    children_text: dict[int, list[str]] = {}
+    for chunk in all_tree_chunks:
+        if chunk.parent_chunk_id:
+            if chunk.parent_chunk_id not in children_text:
+                children_text[chunk.parent_chunk_id] = []
+            text_val = chunk.chunk_text or chunk.heading_text or ""
+            if text_val:
+                children_text[chunk.parent_chunk_id].append(text_val)
+
+    async def _summarize_single(chunk) -> None:  # type: ignore[no-untyped-def]
+        async with semaphore:
+            child_texts = children_text.get(chunk.id, [])
+            if not child_texts:
+                chunk.chunk_text = chunk.heading_text or "Empty section"
+                return
+
+            # Use LLM to summarize children
+            from src.config.models import ModelStep, get_model_config
+            from src.services.llm_router import LLMRouter
+
+            model_config = get_model_config()
+            model = model_config.get_model_for_step(ModelStep.TREE_SUMMARIZATION)
+            router = LLMRouter(model_config)
+
+            prompt = (
+                f"Summarize the following section titled '{chunk.heading_text or 'Section'}'.\n"
+                f"Content from subsections:\n\n"
+                + "\n---\n".join(child_texts[:10])  # Cap input
+                + "\n\nProvide a concise 2-3 sentence summary."
+            )
+
+            try:
+                response = await router.generate(
+                    model=model,
+                    system_prompt="You are a document section summarizer. Provide concise summaries.",
+                    user_prompt=prompt,
+                    max_tokens=256,
+                    temperature=0.0,
+                )
+                chunk.chunk_text = response.content or chunk.heading_text or "Summary unavailable"
+            except Exception as e:
+                logger.warning(f"Failed to summarize chunk {chunk.id}: {e}")
+                raise  # Propagate to trigger tree rollback
+
+    for depth in range(max_depth, -1, -1):
+        level_chunks = [c for c in summary_chunks if c.tree_depth == depth]
+        if level_chunks:
+            await asyncio.gather(*[_summarize_single(c) for c in level_chunks])
+
+    # Update summaries in DB
+    for chunk in summary_chunks:
+        if chunk.chunk_text:
+            db.execute(
+                text("UPDATE document_chunks SET chunk_text = :txt WHERE id = :id"),
+                {"txt": chunk.chunk_text, "id": chunk.id},
+            )
+    db.flush()
+
+
+def build_tree_index(content_id: int, db: Session, force: bool = False) -> int:
+    """Build tree index for a single content record (tree chunks only).
+
+    Preserves flat chunks. Used by backfill command.
+
+    Args:
+        content_id: Content record ID
+        db: SQLAlchemy session
+        force: If True, delete existing tree chunks and rebuild
+
+    Returns:
+        Number of tree chunks created (0 if skipped)
+    """
+    from src.models.chunk import DocumentChunk
+
+    # Check for existing tree chunks
+    existing_tree = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.content_id == content_id,
+            DocumentChunk.tree_depth.isnot(None),
+        )
+        .count()
+    )
+
+    if existing_tree > 0 and not force:
+        return 0
+
+    if existing_tree > 0 and force:
+        db.execute(
+            text("DELETE FROM document_chunks WHERE content_id = :cid AND tree_depth IS NOT NULL"),
+            {"cid": content_id},
+        )
+        db.flush()
+
+    # Load content
+    from src.models.content import Content
+
+    content = db.query(Content).get(content_id)
+    if not content or not content.markdown_content:
+        return 0
+
+    settings = get_settings()
+    from src.services.chunking import (
+        TreeIndexChunkingStrategy,
+        _count_tokens,
+        _detect_heading_depth,
+    )
+
+    # Check qualifications (unless force)
+    tokens = _count_tokens(content.markdown_content)
+    heading_depth = _detect_heading_depth(content.markdown_content)
+    if not force and (
+        tokens <= settings.tree_index_min_tokens
+        or heading_depth < settings.tree_index_min_heading_depth
+    ):
+        return 0
+
+    # Build tree chunks
+    strategy = TreeIndexChunkingStrategy()
+    tree_chunks = strategy.chunk(
+        content=content.markdown_content,
+        metadata={"content_id": content_id},
+    )
+    for tc in tree_chunks:
+        tc.content_id = content_id
+
+    if not tree_chunks:
+        return 0
+
+    # Insert tree chunks
+    _insert_tree_chunks(tree_chunks, db)
+
+    # Summarize
+    summary_chunks = [c for c in tree_chunks if c.is_summary]
+    if summary_chunks:
+        try:
+            _run_async(_summarize_tree_nodes(summary_chunks, tree_chunks, db))
+        except Exception:
+            logger.warning(
+                f"Tree summarization failed for content {content_id} during backfill, "
+                f"deleting tree chunks",
+                exc_info=True,
+            )
+            db.execute(
+                text(
+                    "DELETE FROM document_chunks WHERE content_id = :cid AND tree_depth IS NOT NULL"
+                ),
+                {"cid": content_id},
+            )
+            db.flush()
+            return 0
+
+    # Generate embeddings for tree chunks
+    try:
+        from src.services.embedding import embed_chunks, get_embedding_provider
+
+        provider = get_embedding_provider()
+        embeddings = _run_async(embed_chunks(tree_chunks, provider))
+
+        for chunk, embedding in zip(tree_chunks, embeddings, strict=False):
+            vec = list(embedding) if not isinstance(embedding, list) else embedding
+            db.execute(
+                text("""
+                    UPDATE document_chunks
+                    SET embedding = CAST(:embedding AS vector),
+                        embedding_provider = :provider,
+                        embedding_model = :model
+                    WHERE id = :id
+                """),
+                {
+                    "embedding": str(vec),
+                    "provider": provider.name,
+                    "model": settings.embedding_model,
+                    "id": chunk.id,
+                },
+            )
+    except Exception:
+        logger.warning(
+            f"Embedding generation failed for tree chunks of content {content_id}",
+            exc_info=True,
+        )
+
+    return len(tree_chunks)
 
 
 def reindex_content(content: object, db: Session) -> None:

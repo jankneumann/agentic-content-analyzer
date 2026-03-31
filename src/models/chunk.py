@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -80,6 +81,15 @@ class DocumentChunk(Base):  # type: ignore[valid-type, misc]
     timestamp_end = Column(Float, nullable=True)
     deep_link_url = Column(String(2000), nullable=True)  # Direct link to chunk location
 
+    # Tree index columns (nullable — flat chunks have all NULL)
+    parent_chunk_id = Column(
+        Integer,
+        ForeignKey("document_chunks.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    tree_depth = Column(Integer, nullable=True)  # NULL=flat, 0=root, 1+=children
+    is_summary = Column(Boolean, nullable=True, default=False)  # True=LLM summary node
+
     # Embedding provenance metadata
     embedding_provider = Column(String(50), nullable=True)  # e.g. "openai", "local", "unknown"
     embedding_model = Column(String(100), nullable=True)  # e.g. "text-embedding-3-small"
@@ -98,9 +108,25 @@ class DocumentChunk(Base):  # type: ignore[valid-type, misc]
         foreign_keys=[content_id],
     )
 
+    # Tree relationships (self-referential)
+    parent: Mapped["DocumentChunk | None"] = relationship(
+        "DocumentChunk",
+        remote_side="DocumentChunk.id",
+        foreign_keys=[parent_chunk_id],
+        back_populates="children",
+    )
+    children: Mapped[list["DocumentChunk"]] = relationship(
+        "DocumentChunk",
+        foreign_keys=[parent_chunk_id],
+        back_populates="parent",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
         Index("ix_document_chunks_content_id", "content_id"),
         Index("ix_document_chunks_chunk_type", "chunk_type"),
+        Index("ix_document_chunks_parent_chunk_id", "parent_chunk_id"),
+        Index("ix_document_chunks_content_tree", "content_id", "tree_depth"),
     )
 
     def __repr__(self) -> str:

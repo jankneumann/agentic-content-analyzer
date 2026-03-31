@@ -94,6 +94,8 @@ class ModelStep(StrEnum):
     IMAGE_SUGGESTION = "image_suggestion"  # LLM-based image content analysis
     CLOUD_STT = "cloud_stt"  # Cloud speech-to-text transcription
     CONTENT_FILTERING = "content_filtering"  # Content relevance classification
+    TREE_SUMMARIZATION = "tree_summarization"  # Tree index node summarization
+    TREE_SEARCH = "tree_search"  # Tree search retrieval
 
 
 # Map of env var names per model step (e.g., MODEL_SUMMARIZATION)
