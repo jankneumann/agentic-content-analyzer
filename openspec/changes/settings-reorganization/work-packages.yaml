@@ -1,12 +1,17 @@
 # Work Packages for settings-reorganization
 # Tier: coordinated
-# DAG: wp-backend-registry -> wp-backend-migration -> wp-frontend-tabs -> wp-frontend-status -> wp-integration
+#
+# DAG (parallel branches shown with braces):
+#   {wp-backend-registry, wp-frontend-tabs, wp-backend-status} (parallel)
+#   wp-backend-registry -> wp-backend-migration
+#   {wp-backend-status, wp-frontend-tabs} -> wp-frontend-status
+#   {wp-backend-migration, wp-frontend-status} -> wp-docs -> wp-integration
 
 packages:
   - id: wp-backend-registry
     title: "ConfigRegistry service and settings/ YAML directory"
-    description: "Create ConfigRegistry, settings/ directory, move YAML files, register domains"
-    tasks: ["1.1", "1.2", "1.3", "1.11"]
+    description: "Create ConfigRegistry, settings/ directory, move/create YAML files, register domains at startup"
+    tasks: ["1.1", "1.2", "1.3a", "1.3b", "1.3c", "1.3d", "1.11"]
     priority: 1
     scope:
       write_allow:
@@ -33,7 +38,7 @@ packages:
   - id: wp-backend-migration
     title: "Migrate existing services to use ConfigRegistry"
     description: "Update PromptService, ModelConfig, voice/notification routes to use registry for YAML loading"
-    tasks: ["1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.12"]
+    tasks: ["1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.12"]
     priority: 2
     scope:
       write_allow:
@@ -67,7 +72,7 @@ packages:
   - id: wp-frontend-tabs
     title: "Frontend tabbed settings navigation"
     description: "Convert monolithic settings page to tabbed sub-pages with React Router nested routes"
-    tasks: ["2.1", "2.2", "2.3", "2.4", "2.5"]
+    tasks: ["2.1", "2.2a", "2.2b", "2.2c", "2.2d", "2.3", "2.4", "2.5"]
     priority: 2
     scope:
       write_allow:
@@ -94,7 +99,7 @@ packages:
     title: "Connection status endpoint migration to /status"
     description: "Move connection health endpoint, add redirect, create status router"
     tasks: ["3.1", "3.2", "3.3", "3.4"]
-    priority: 3
+    priority: 2
     scope:
       write_allow:
         - "src/api/status_routes.py"
@@ -122,12 +127,13 @@ packages:
 
   - id: wp-frontend-status
     title: "Frontend status page"
-    description: "Create top-level /status page with ConnectionDashboard, update navigation"
+    description: "Create top-level /status page with ConnectionDashboard, update navigation, remove from settings"
     tasks: ["3.5", "3.6", "3.7", "3.8", "3.9"]
     priority: 3
     scope:
       write_allow:
         - "web/src/routes/status.tsx"
+        - "web/src/routes/settings.tsx"
         - "web/src/lib/api/settings.ts"
         - "web/src/lib/api/query-keys.ts"
         - "web/tests/e2e/**/*status*"
@@ -147,31 +153,32 @@ packages:
     verification: "tier_a"
 
   - id: wp-docs
-    title: "Documentation updates"
-    description: "Update CLAUDE.md, SETUP.md, MODEL_CONFIGURATION.md, GOTCHAS.md"
+    title: "Documentation updates and cleanup"
+    description: "Update CLAUDE.md, SETUP.md, MODEL_CONFIGURATION.md, delete old YAML files"
     tasks: ["4.1", "4.2", "4.3", "4.4"]
     priority: 4
     scope:
       write_allow:
         - "CLAUDE.md"
         - "docs/**"
+        - "src/config/prompts.yaml"
+        - "src/config/model_registry.yaml"
       read_allow:
         - "**"
       deny:
-        - "src/**"
         - "web/**"
     locks:
       keys:
         - "docs:claude-md"
         - "docs:setup"
       ttl_minutes: 60
-      reason: "Documentation updates for settings reorganization"
+      reason: "Documentation updates and old file cleanup"
     dependencies: ["wp-backend-migration", "wp-frontend-status"]
     verification: "tier_c"
 
   - id: wp-integration
     title: "Integration testing and final verification"
-    description: "Full test suite, E2E tests, verify all YAML paths resolve, verify tab navigation end-to-end"
+    description: "Full test suite, E2E tests, verify all YAML paths resolve, verify tab navigation and status page end-to-end"
     tasks: []
     priority: 5
     scope:

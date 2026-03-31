@@ -23,7 +23,7 @@ The current settings system has grown organically and suffers from three problem
   - `settings/notifications.yaml` (new, defaults extracted from `Settings` class)
 - Update all Python imports and file references to point to the new locations
 - Keep both DB tables (`prompt_overrides`, `settings_overrides`) as-is
-- Add a YAML-loading service that each settings domain can use to read its defaults
+- Create a `ConfigRegistry` service that coordinates YAML file loading for all settings domains. Domain-specific logic (template rendering, DB override resolution) remains in `PromptService`, `SettingsService`, and route handlers — the registry only handles YAML loading, caching, and validation
 - Create a new `/api/v1/status/connections` endpoint (moved from `/api/v1/settings/connections`)
 
 ### Frontend
@@ -97,23 +97,31 @@ Instead of just moving files, create a `ConfigRegistry` service that abstracts o
 - Over-engineers for 4 YAML files
 - Higher risk — new service could have bugs in the registry logic itself
 
-**Effort:** L
+**Effort:** M
 
 ### Selected Approach: C (Config Registry Service)
 
-The user chose Approach C for its future-proof extensibility. The `ConfigRegistry` service will make adding new settings domains trivial — just drop a YAML file and register a domain. This is worth the additional engineering because:
-1. The settings surface area is actively growing (tree-index-chunking adds 5+ settings, more features planned)
-2. A registry abstraction centralizes validation, default resolution, and change notification
-3. Hot-reload capability prevents the need to restart the server when tweaking YAML defaults during development
-4. Clean testing story — mock the registry, not individual YAML file reads
+Approach A was initially recommended for its simplicity and lower risk. However, the user chose Approach C for its future-proof extensibility after considering the trade-offs:
+
+**Why Approach A was demoted**: While Approach A minimizes risk per phase, it doesn't address the root cause — the settings surface area is actively growing (tree-index-chunking adds 5+ settings, more features are planned). Each new domain would require its own ad-hoc YAML loading pattern, perpetuating the current fragmentation.
+
+**Why Approach C was selected**: The `ConfigRegistry` service will make adding new settings domains trivial — just drop a YAML file and register a domain. The additional engineering effort is justified because:
+1. The settings surface area is actively growing — a unified loading pattern pays for itself quickly
+2. A registry abstraction centralizes validation, default resolution, and error handling
+3. Clean testing story — mock the registry, not individual YAML file reads
+4. Consistent domain-registration pattern for all future features
+
+**Migration strategy**: All code will be updated to use ConfigRegistry directly. No symlinks from old YAML paths — old paths (`src/config/prompts.yaml`, `src/config/model_registry.yaml`) will be deleted after migration.
+
+**Hot-reload**: Mtime-based cache invalidation is deferred to a future enhancement. Phase 1 uses explicit `reload()` calls only.
 
 Implementation will follow an incremental delivery order despite the larger scope:
 - Phase 1: `ConfigRegistry` service + `settings/` directory with migrated YAML files
 - Phase 2: Frontend tab routing under `/settings`
-- Phase 3: `/status` page for connections, wired through the registry
+- Phase 3: `/status` page for connections
 
 **Demoted approaches:**
-- **Approach A (Incremental):** Simpler but doesn't address the growing settings sprawl
+- **Approach A (Incremental):** Simpler but doesn't address growing settings sprawl — each new domain requires ad-hoc loading
 - **Approach B (Full Restructure):** Same scope as C minus the registry — no future-proofing benefit
 
 ## Out of Scope
@@ -124,5 +132,5 @@ Implementation will follow an incremental delivery order despite the larger scop
 - Settings import/export functionality
 
 ## Dependencies
-- Should coordinate with `add-api-versioning` if it modifies router registration in `app.py`
-- `tree-index-chunking` adds new settings that should land in the new `settings/` YAML structure
+- SHALL coordinate with `add-api-versioning` if it modifies router registration in `app.py` — both changes register routers in `src/api/app.py`, so merge order must be explicit
+- `tree-index-chunking` adds new settings that SHALL use the `settings/` YAML structure and register via `ConfigRegistry` once this change lands

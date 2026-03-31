@@ -13,7 +13,7 @@ src/config/
 ├── config_registry.py             # NEW — ConfigRegistry service
 ├── settings.py                    # Modified — delegates to registry
 ├── models.py                      # Modified — uses registry for YAML loading
-└── prompts.py                     # Removed — absorbed into registry
+├── prompts.py                     # Removed — YAML loading moved to ConfigRegistry; template rendering stays in PromptService
 
 src/services/
 ├── prompt_service.py              # Modified — uses registry for defaults
@@ -73,27 +73,32 @@ registry.register(ConfigDomain(name="notifications", yaml_file="notifications.ya
 
 **Why**: Declarative registration makes it trivial to add new domains. The `tree-index-chunking` feature can just add a `register()` call with its YAML file instead of creating new loading boilerplate.
 
+**Key path notation**: Keys use dot-separated paths to traverse nested YAML. For `chat: { summary: { system: "..." } }`, the key is `"chat.summary.system"`. Only leaf nodes (scalar values, not dicts) are returned. Array indices are not supported — only dict-key traversal. If a key contains a literal dot, it must be escaped or use a different separator via the `key_separator` field.
+
+**Duplicate domain registration**: Calling `register()` with a domain name that is already registered SHALL raise `ValueError`. Domains must be unique.
+
 ### D3: Lazy Loading with Cache Invalidation
 
 YAML files are loaded lazily on first access per domain, then cached. Cache invalidation happens via:
 - `registry.reload(domain)` — explicit reload for a single domain
 - `registry.reload_all()` — reload all domains
-- File mtime checking (optional, for dev hot-reload)
+
+**Deferred**: File mtime-based hot-reload is out of scope for Phase 1. The initial implementation uses explicit `reload()` calls only. Mtime checking can be added as a future enhancement for dev-mode convenience.
 
 ```python
 class ConfigRegistry:
-    _cache: dict[str, tuple[float, dict]]  # domain -> (mtime, parsed_yaml)
+    _cache: dict[str, dict]  # domain -> parsed_yaml
 
     def get(self, domain: str, key: str) -> Any:
         self._ensure_loaded(domain)
         return self._resolve_key(domain, key)
 
     def _ensure_loaded(self, domain: str) -> None:
-        if domain not in self._cache or self._is_stale(domain):
+        if domain not in self._cache:
             self._load(domain)
 ```
 
-**Why**: Lazy loading avoids startup penalty when not all domains are needed (e.g., CLI commands that only touch one domain). Mtime-based staleness checking enables hot-reload during development without requiring a restart.
+**Why**: Lazy loading avoids startup penalty when not all domains are needed (e.g., CLI commands that only touch one domain).
 
 **Rejected alternative**: Eager loading at startup. This would load all YAML files even for CLI commands that don't need them (e.g., `aca ingest gmail` doesn't need voice settings).
 
@@ -126,7 +131,9 @@ The settings page becomes a layout route with child routes:
 
 `SettingsLayout` renders a tab bar and an `<Outlet />` for child routes. Each tab is a `<NavLink>` that highlights when active.
 
-**Why**: This is the standard React Router nested route pattern. Each sub-page loads its own data via existing React Query hooks, so navigating between tabs doesn't re-fetch everything.
+**Why**: This is the standard React Router nested route pattern. Each sub-page loads its own data via existing React Query hooks. Navigating between tabs triggers only the active tab's API call — no HTTP requests are made for inactive tabs' data. React Query caching prevents re-fetching when returning to a previously visited tab within the cache TTL.
+
+**Invalid tab paths** (e.g., `/settings/unknown`) render a 404 or redirect to `/settings/prompts`.
 
 ### D6: Connection Status Moves to /status
 
@@ -169,6 +176,19 @@ defaults:
 ```
 
 **Why**: Making defaults explicit in YAML means they can be reviewed and changed without code changes. This is consistent with how prompts and models already work.
+
+### D8: No Symlinks — Direct Migration to ConfigRegistry
+
+Old YAML file paths (`src/config/prompts.yaml`, `src/config/model_registry.yaml`) will be deleted after all code is updated to use ConfigRegistry. No symlinks are created.
+
+**Why**: Symlinks add filesystem dependency and obscure the actual file location. A clean migration — update all code to use the registry, then delete old files — is simpler and more maintainable.
+
+**Migration procedure**:
+1. Create `settings/` directory with all YAML files (task 1.3)
+2. Update `PromptService` to use `ConfigRegistry.get()` instead of direct file read (task 1.6)
+3. Update `load_model_registry()` to use `ConfigRegistry.get()` (task 1.8)
+4. Delete `src/config/prompts.yaml` and `src/config/model_registry.yaml` (task 4.3)
+5. Update all tests that reference old paths (task 1.12)
 
 ## Non-Goals
 
