@@ -311,4 +311,3 @@ The frontend SHALL display `ARXIV` as a recognized source type with an appropria
 - **WHEN** a user views the content list page
 - **THEN** arXiv records display with the "arXiv" label and FileText icon
 - **AND** can be filtered by the arXiv source type
-

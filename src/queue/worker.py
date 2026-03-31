@@ -315,6 +315,7 @@ def register_all_handlers() -> None:
     # Import here to avoid circular imports — these modules register
     # handlers via the @register_handler decorator or direct assignment.
     _register_content_handlers()
+    _register_reference_handlers()
     logger.info(f"Registered {len(_handlers)} job handlers: {list(_handlers.keys())}")
 
 
@@ -574,3 +575,24 @@ def _register_content_handlers() -> None:
             sources=sources,
             on_progress=_sync_progress,
         )
+
+
+def _register_reference_handlers() -> None:
+    """Register reference resolution handlers."""
+
+    @register_handler("resolve_references")
+    async def _handle_resolve_references(job_id: int, payload: dict) -> None:
+        from src.services.reference_resolver import ReferenceResolver
+        from src.storage.database import get_db
+
+        content_id = payload.get("content_id")
+        batch_size = payload.get("batch_size", 100)
+
+        with get_db() as db:
+            resolver = ReferenceResolver(db)
+            if content_id:
+                resolved = resolver.resolve_for_content(content_id)
+            else:
+                resolved = resolver.resolve_batch(batch_size)
+
+        logger.info("Resolved %d references (job_id=%d)", resolved, job_id)

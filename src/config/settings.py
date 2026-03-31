@@ -479,6 +479,13 @@ class Settings(BaseSettings):
     # Semantic Scholar Configuration
     semantic_scholar_api_key: str = ""  # Semantic Scholar API key (optional, increases rate limits)
 
+    # Reference extraction and resolution
+    reference_extraction_enabled: bool = True  # Extract refs on ingestion
+    reference_auto_ingest_enabled: bool = False  # Auto-ingest unresolved refs (opt-in)
+    reference_auto_ingest_max_depth: int = 1  # Max recursive auto-ingest depth
+    reference_neo4j_sync_enabled: bool = True  # Sync resolved refs to Neo4j
+    reference_min_confidence: float = 0.5  # Skip low-confidence URL-only refs below this threshold
+
     # Perplexity Search Configuration
     perplexity_api_key: str | None = None  # Perplexity API key
     perplexity_model: str = "sonar"  # sonar or sonar-pro

@@ -120,6 +120,16 @@ settings:
     web_search_provider: "${WEB_SEARCH_PROVIDER:-tavily}"
 
   # ---------------------------------------------------------------------------
+  # Reference Management
+  # ---------------------------------------------------------------------------
+  references:
+    reference_extraction_enabled: ${REFERENCE_EXTRACTION_ENABLED:-true}
+    reference_auto_ingest_enabled: ${REFERENCE_AUTO_INGEST_ENABLED:-false}
+    reference_auto_ingest_max_depth: ${REFERENCE_AUTO_INGEST_MAX_DEPTH:-1}
+    reference_neo4j_sync_enabled: ${REFERENCE_NEO4J_SYNC_ENABLED:-true}
+    reference_min_confidence: ${REFERENCE_MIN_CONFIDENCE:-0.5}
+
+  # ---------------------------------------------------------------------------
   # Crawl4AI Settings
   # ---------------------------------------------------------------------------
   crawl4ai:

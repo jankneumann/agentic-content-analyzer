@@ -31,6 +31,9 @@ from src.api.app import app
 from src.models.audio_digest import AudioDigest  # noqa: F401 - registers with Base.metadata
 from src.models.base import Base
 from src.models.content import ContentStatus
+from src.models.content_reference import (
+    ContentReference,  # noqa: F401 - registers with Base.metadata
+)
 from src.models.notification import (  # noqa: F401 - registers with Base.metadata
     DeviceRegistration,
     NotificationEvent,
@@ -214,6 +217,7 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         "src.api.image_generation_routes.get_db",
         "src.api.notification_routes.get_db",
         "src.api.notification_preferences_routes.get_db",
+        "src.api.reference_routes.get_db",
         "src.api.theme_routes.get_db",
         "src.services.script_review_service.get_db",
         "src.services.content_query.get_db",
