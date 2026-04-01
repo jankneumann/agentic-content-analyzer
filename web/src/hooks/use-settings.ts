@@ -81,7 +81,7 @@ export function useResetVoice() {
 
 export function useConnectionStatus() {
   return useQuery({
-    queryKey: queryKeys.settings.connections(),
+    queryKey: queryKeys.status.connections(),
     queryFn: fetchConnectionStatus,
     refetchInterval: 60000, // refresh every 60s
   })

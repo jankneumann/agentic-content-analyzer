@@ -53,5 +53,5 @@ export async function resetVoiceSetting(
 // ── Connection Status ──
 
 export async function fetchConnectionStatus(): Promise<ConnectionStatusResponse> {
-  return apiClient.get<ConnectionStatusResponse>("/settings/connections")
+  return apiClient.get<ConnectionStatusResponse>("/status/connections")
 }

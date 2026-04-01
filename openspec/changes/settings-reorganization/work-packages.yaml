@@ -1,0 +1,193 @@
+# Work Packages for settings-reorganization
+# Tier: coordinated
+#
+# DAG (parallel branches shown with braces):
+#   {wp-backend-registry, wp-frontend-tabs, wp-backend-status} (parallel)
+#   wp-backend-registry -> wp-backend-migration
+#   {wp-backend-status, wp-frontend-tabs} -> wp-frontend-status
+#   {wp-backend-migration, wp-frontend-status} -> wp-docs -> wp-integration
+
+packages:
+  - id: wp-backend-registry
+    title: "ConfigRegistry service and settings/ YAML directory"
+    description: "Create ConfigRegistry, settings/ directory, move/create YAML files, register domains at startup"
+    tasks: ["1.1", "1.2", "1.3a", "1.3b", "1.3c", "1.3d", "1.11"]
+    priority: 1
+    scope:
+      write_allow:
+        - "src/config/config_registry.py"
+        - "settings/**"
+        - "tests/config/test_config_registry.py"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+        - "tests/**"
+      deny:
+        - "web/**"
+    locks:
+      files:
+        - "src/config/config_registry.py"
+      keys:
+        - "config:registry"
+        - "config:settings-dir"
+      ttl_minutes: 120
+      reason: "ConfigRegistry service creation"
+    dependencies: []
+    verification: "tier_a"
+
+  - id: wp-backend-migration
+    title: "Migrate existing services to use ConfigRegistry"
+    description: "Update PromptService, ModelConfig, voice/notification routes to use registry for YAML loading"
+    tasks: ["1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.12"]
+    priority: 2
+    scope:
+      write_allow:
+        - "src/services/prompt_service.py"
+        - "src/config/models.py"
+        - "src/api/voice_settings_routes.py"
+        - "src/api/notification_preferences_routes.py"
+        - "tests/services/test_prompt_service*.py"
+        - "tests/config/test_models*.py"
+        - "tests/api/test_voice_settings*.py"
+        - "tests/api/test_notification*.py"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+        - "tests/**"
+      deny:
+        - "web/**"
+        - "src/config/config_registry.py"
+    locks:
+      files:
+        - "src/services/prompt_service.py"
+        - "src/config/models.py"
+      keys:
+        - "service:prompt-service"
+        - "config:model-registry"
+      ttl_minutes: 120
+      reason: "Service migration to ConfigRegistry"
+    dependencies: ["wp-backend-registry"]
+    verification: "tier_a"
+
+  - id: wp-frontend-tabs
+    title: "Frontend tabbed settings navigation"
+    description: "Convert monolithic settings page to tabbed sub-pages with React Router nested routes"
+    tasks: ["2.1", "2.2a", "2.2b", "2.2c", "2.2d", "2.3", "2.4", "2.5"]
+    priority: 2
+    scope:
+      write_allow:
+        - "web/src/routes/settings.tsx"
+        - "web/src/routes/settings/**"
+        - "web/tests/e2e/**/*settings*"
+      read_allow:
+        - "web/**"
+      deny:
+        - "src/**"
+        - "settings/**"
+    locks:
+      files:
+        - "web/src/routes/settings.tsx"
+      keys:
+        - "frontend:settings-page"
+        - "frontend:router-config"
+      ttl_minutes: 120
+      reason: "Frontend settings tab restructure"
+    dependencies: []
+    verification: "tier_a"
+
+  - id: wp-backend-status
+    title: "Connection status endpoint migration to /status"
+    description: "Move connection health endpoint, add redirect, create status router"
+    tasks: ["3.1", "3.2", "3.3", "3.4"]
+    priority: 2
+    scope:
+      write_allow:
+        - "src/api/status_routes.py"
+        - "src/api/connection_status_routes.py"
+        - "src/api/app.py"
+        - "tests/api/test_status*.py"
+        - "tests/api/test_connection*.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+      deny:
+        - "web/**"
+        - "settings/**"
+    locks:
+      files:
+        - "src/api/status_routes.py"
+        - "src/api/app.py"
+      keys:
+        - "api:GET /v1/status/connections"
+        - "api:GET /v1/settings/connections"
+      ttl_minutes: 90
+      reason: "Status endpoint migration"
+    dependencies: []
+    verification: "tier_b"
+
+  - id: wp-frontend-status
+    title: "Frontend status page"
+    description: "Create top-level /status page with ConnectionDashboard, update navigation, remove from settings"
+    tasks: ["3.5", "3.6", "3.7", "3.8", "3.9"]
+    priority: 3
+    scope:
+      write_allow:
+        - "web/src/routes/status.tsx"
+        - "web/src/routes/settings.tsx"
+        - "web/src/lib/api/settings.ts"
+        - "web/src/lib/api/query-keys.ts"
+        - "web/tests/e2e/**/*status*"
+      read_allow:
+        - "web/**"
+      deny:
+        - "src/**"
+        - "settings/**"
+    locks:
+      files:
+        - "web/src/routes/status.tsx"
+      keys:
+        - "frontend:status-page"
+      ttl_minutes: 90
+      reason: "Frontend status page creation"
+    dependencies: ["wp-backend-status", "wp-frontend-tabs"]
+    verification: "tier_a"
+
+  - id: wp-docs
+    title: "Documentation updates and cleanup"
+    description: "Update CLAUDE.md, SETUP.md, MODEL_CONFIGURATION.md, delete old YAML files"
+    tasks: ["4.1", "4.2", "4.3", "4.4"]
+    priority: 4
+    scope:
+      write_allow:
+        - "CLAUDE.md"
+        - "docs/**"
+        - "src/config/prompts.yaml"
+        - "src/config/model_registry.yaml"
+      read_allow:
+        - "**"
+      deny:
+        - "web/**"
+    locks:
+      keys:
+        - "docs:claude-md"
+        - "docs:setup"
+      ttl_minutes: 60
+      reason: "Documentation updates and old file cleanup"
+    dependencies: ["wp-backend-migration", "wp-frontend-status"]
+    verification: "tier_c"
+
+  - id: wp-integration
+    title: "Integration testing and final verification"
+    description: "Full test suite, E2E tests, verify all YAML paths resolve, verify tab navigation and status page end-to-end"
+    tasks: []
+    priority: 5
+    scope:
+      read_allow:
+        - "**"
+      write_allow:
+        - "tests/**"
+        - "web/tests/**"
+      deny: []
+    locks: {}
+    dependencies: ["wp-backend-migration", "wp-frontend-tabs", "wp-frontend-status", "wp-docs"]
+    verification: "tier_a"

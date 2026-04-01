@@ -1,0 +1,23 @@
+# Voice Configuration Defaults
+# These defaults match the Settings class fields in src/config/settings.py
+# Override via: env vars (AUDIO_DIGEST_*) > DB (voice.*) > these defaults
+
+provider: openai
+default_voice: nova
+speed: 1.0
+max_duration_minutes: 30
+
+# Voice presets — map friendly names to provider-specific voice IDs
+presets:
+  professional:
+    openai: onyx
+    elevenlabs: nPczCjzI2devNBz1zQrb
+  warm:
+    openai: nova
+    elevenlabs: XrExE9yKIg1WjnnlVkGX
+  energetic:
+    openai: shimmer
+    elevenlabs: SAz9YHcvj6GT2YYXdXww
+  calm:
+    openai: alloy
+    elevenlabs: CwhRBWXzGAHq8TQ4Fs17

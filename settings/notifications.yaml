@@ -1,0 +1,12 @@
+# Notification Preference Defaults
+# All event types are enabled by default
+# Override via: env vars (NOTIFICATION_*) > DB (notification.*) > these defaults
+
+defaults:
+  batch_summary: true
+  theme_analysis: true
+  digest_creation: true
+  script_generation: true
+  audio_generation: true
+  pipeline_completion: true
+  job_failure: true

@@ -1,66 +1,28 @@
 """
-Connection Status API Routes
+Connection Status API Routes — Redirect to /api/v1/status/connections
 
-Read-only dashboard showing health status for all configured
-backend services (PostgreSQL, Neo4j, LLM, TTS, embedding).
+This endpoint now redirects to the new status endpoint.
+The redirect preserves query parameters and will be removed after one release cycle.
 """
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
-
-from src.api.dependencies import verify_admin_key
-from src.services.connection_checker import check_all_connections
+from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 
 router = APIRouter(prefix="/api/v1/settings/connections", tags=["settings"])
 
 
-# ============================================================================
-# Response Models
-# ============================================================================
-
-
-class ServiceStatusInfo(BaseModel):
-    """Health status for a single service."""
-
-    name: str
-    status: str  # "ok" | "unavailable" | "not_configured" | "error"
-    details: str = ""
-    latency_ms: float | None = None
-
-
-class ConnectionStatusResponse(BaseModel):
-    """Health status for all configured services."""
-
-    services: list[ServiceStatusInfo]
-    all_ok: bool
-
-
-# ============================================================================
-# Endpoints
-# ============================================================================
-
-
 @router.get(
     "",
-    response_model=ConnectionStatusResponse,
-    dependencies=[Depends(verify_admin_key)],
+    response_class=RedirectResponse,
+    status_code=307,
 )
-async def get_connection_status() -> ConnectionStatusResponse:
-    """Get health status for all configured backend services.
+async def get_connection_status_redirect(request: Request) -> RedirectResponse:
+    """Redirect to new status endpoint at /api/v1/status/connections.
 
-    Runs all checks concurrently with per-service timeout.
-    Statuses: ok, unavailable, not_configured, error.
+    Returns 307 Temporary Redirect to preserve request method and headers.
+    Query parameters are forwarded. This redirect will be removed after one release cycle.
     """
-    result = await check_all_connections()
-    return ConnectionStatusResponse(
-        services=[
-            ServiceStatusInfo(
-                name=s.name,
-                status=s.status,
-                details=s.details,
-                latency_ms=s.latency_ms,
-            )
-            for s in result.services
-        ],
-        all_ok=result.all_ok,
-    )
+    target = "/api/v1/status/connections"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(url=target, status_code=307)

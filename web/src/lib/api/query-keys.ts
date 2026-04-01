@@ -285,7 +285,14 @@ export const settingsKeys = {
   all: ["settings"] as const,
   models: () => [...settingsKeys.all, "models"] as const,
   voice: () => [...settingsKeys.all, "voice"] as const,
-  connections: () => [...settingsKeys.all, "connections"] as const,
+}
+
+/**
+ * Query keys for system status
+ */
+export const statusKeys = {
+  all: ["status"] as const,
+  connections: () => [...statusKeys.all, "connections"] as const,
 }
 
 /**
@@ -324,5 +331,6 @@ export const queryKeys = {
   system: systemKeys,
   prompts: promptKeys,
   settings: settingsKeys,
+  status: statusKeys,
   notifications: notificationKeys,
 }
