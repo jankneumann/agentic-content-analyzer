@@ -61,6 +61,7 @@ function NavItemComponent({
   if (isCollapsed) {
     const baseClasses = cn(
       "flex h-10 w-10 items-center justify-center rounded-md",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       item.disabled && "pointer-events-none opacity-50"
     )
 
@@ -99,6 +100,7 @@ function NavItemComponent({
   // Expanded mode - full navigation item
   const baseClasses = cn(
     "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     item.disabled && "pointer-events-none opacity-50"
   )
 
@@ -122,7 +124,7 @@ function NavItemComponent({
       <span className="truncate">{item.title}</span>
       {/* Badge for counts/notifications */}
       {item.badge && (
-        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-medium text-primary">
+        <span className="bg-primary/10 text-primary ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium">
           {item.badge}
         </span>
       )}
@@ -144,7 +146,7 @@ export function Sidebar({
     <aside
       className={cn(
         // Base styles
-        "flex h-full flex-col border-r bg-sidebar",
+        "bg-sidebar flex h-full flex-col border-r",
         // Width transition
         "transition-all duration-300 ease-in-out",
         isCollapsed ? "w-16" : "w-64",
@@ -170,20 +172,20 @@ export function Sidebar({
 
       {/* Navigation */}
       <ScrollArea className="flex-1 py-4">
-        <nav className={cn("flex flex-col gap-4", isCollapsed ? "px-2" : "px-3")}>
+        <nav
+          className={cn("flex flex-col gap-4", isCollapsed ? "px-2" : "px-3")}
+        >
           {navigation.map((group, groupIndex) => (
             <div key={group.title}>
               {/* Group title - hidden when collapsed */}
               {!isCollapsed && (
-                <h4 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <h4 className="text-muted-foreground mb-2 px-3 text-xs font-semibold tracking-wider uppercase">
                   {group.title}
                 </h4>
               )}
 
               {/* Separator between groups when collapsed */}
-              {isCollapsed && groupIndex > 0 && (
-                <Separator className="my-2" />
-              )}
+              {isCollapsed && groupIndex > 0 && <Separator className="my-2" />}
 
               {/* Navigation items */}
               <div
