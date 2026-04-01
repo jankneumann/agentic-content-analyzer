@@ -97,6 +97,8 @@ MODEL_YOUTUBE_PROCESSING=gemini-2.5-flash
 
 See [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) for full list.
 
+**Settings** — YAML defaults in `settings/`: `prompts.yaml` (prompt templates), `models.yaml` (model registry + defaults), `voice.yaml` (TTS config), `notifications.yaml` (event toggles). Loaded via `ConfigRegistry` (`src/config/config_registry.py`). Override precedence: env var > DB override > YAML default.
+
 **Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_rss.yaml`, `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
 
 ## Critical Gotchas (Top 10)
