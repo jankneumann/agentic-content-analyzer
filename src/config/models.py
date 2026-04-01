@@ -208,7 +208,15 @@ def load_model_registry() -> tuple[
 
     if config is None:
         # Fallback: direct YAML read (for tests or early startup)
-        settings_path = Path(__file__).resolve().parent.parent / "settings" / "models.yaml"
+        # Walk up from src/config/ to find project root (contains pyproject.toml)
+        current = Path(__file__).resolve().parent
+        project_root = current
+        for parent in [current, *current.parents]:
+            if (parent / "pyproject.toml").exists():
+                project_root = parent
+                break
+
+        settings_path = project_root / "settings" / "models.yaml"
         config_dir = Path(__file__).parent
         yaml_path = config_dir / "model_registry.yaml"
 

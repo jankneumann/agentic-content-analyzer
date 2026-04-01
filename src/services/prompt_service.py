@@ -85,8 +85,16 @@ class PromptService:
             pass
 
         # Fallback: direct YAML read (for tests or early startup before registry init)
-        config_path = Path(__file__).parent.parent / "config" / "prompts.yaml"
-        settings_path = Path(__file__).resolve().parent.parent.parent / "settings" / "prompts.yaml"
+        # Walk up from src/services/ to find project root (contains pyproject.toml)
+        current = Path(__file__).resolve().parent
+        project_root = current
+        for parent in [current, *current.parents]:
+            if (parent / "pyproject.toml").exists():
+                project_root = parent
+                break
+
+        settings_path = project_root / "settings" / "prompts.yaml"
+        config_path = project_root / "src" / "config" / "prompts.yaml"
 
         yaml_path = settings_path if settings_path.exists() else config_path
 
