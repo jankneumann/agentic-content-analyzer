@@ -317,3 +317,240 @@ class TestIndexContent:
 
         # Should NOT raise
         index_content(mock_content, mock_db)
+
+
+# --- RRF Multi-source tests ---
+
+
+class TestRRFMulti:
+    def setup_method(self):
+        self.mock_session = MagicMock()
+        self.mock_bm25 = MagicMock()
+        self.mock_bm25.name = "test_bm25"
+        self.mock_embedder = MagicMock()
+        self.mock_embedder.name = "test_embedder"
+        self.service = HybridSearchService(
+            session=self.mock_session,
+            bm25_strategy=self.mock_bm25,
+            embedding_provider=self.mock_embedder,
+        )
+
+    def test_three_source_fusion(self):
+        """Three score sources should all contribute to RRF."""
+        bm25 = {1: 10.0, 2: 5.0}
+        vector = {1: 0.9, 3: 0.8}
+        tree = {1: 1.0, 4: 0.5}
+
+        rrf = self.service._calculate_rrf_multi(
+            [bm25, vector, tree],
+            weights=[0.5, 0.5, 0.5],
+            k=60,
+        )
+
+        # Chunk 1 appears in all 3 sources — highest score
+        assert rrf[1] > rrf[2]
+        assert rrf[1] > rrf[3]
+        assert rrf[1] > rrf[4]
+        assert 2 in rrf
+        assert 3 in rrf
+        assert 4 in rrf
+
+    def test_empty_tree_scores_no_effect(self):
+        """Empty tree scores with weight 0 should produce same as 2-source RRF."""
+        bm25 = {1: 10.0, 2: 5.0}
+        vector = {1: 0.9}
+
+        rrf = self.service._calculate_rrf_multi(
+            [bm25, vector, {}],
+            weights=[0.5, 0.5, 0.0],
+            k=60,
+        )
+
+        rrf2 = self.service._calculate_rrf(bm25, vector, 0.5, 0.5, 60)
+
+        # Should produce same results
+        assert set(rrf.keys()) == set(rrf2.keys())
+        for k in rrf:
+            assert abs(rrf[k] - rrf2[k]) < 1e-10
+
+
+# --- Tree search unit tests ---
+
+
+class TestTreeSearchHelpers:
+    def setup_method(self):
+        self.mock_session = MagicMock()
+        self.mock_bm25 = MagicMock()
+        self.mock_bm25.name = "test_bm25"
+        self.mock_embedder = MagicMock()
+        self.mock_embedder.name = "test_embedder"
+        self.service = HybridSearchService(
+            session=self.mock_session,
+            bm25_strategy=self.mock_bm25,
+            embedding_provider=self.mock_embedder,
+        )
+
+    def test_find_tree_indexed_content_empty(self):
+        """No content IDs should return empty set."""
+        result = self.service._find_tree_indexed_content([])
+        assert result == set()
+
+    def test_find_tree_indexed_content(self):
+        """Should query for content with tree_depth IS NOT NULL."""
+        mock_result = MagicMock()
+        mock_result.__iter__ = lambda self: iter(
+            [MagicMock(content_id=1), MagicMock(content_id=3)]
+        )
+        self.mock_session.execute.return_value = mock_result
+
+        result = self.service._find_tree_indexed_content([1, 2, 3])
+        assert result == {1, 3}
+
+    def test_load_tree_structure_empty(self):
+        """No tree chunks should return empty."""
+        mock_result = MagicMock()
+        mock_result.__iter__ = lambda self: iter([])
+        self.mock_session.execute.return_value = mock_result
+
+        tree_json, id_mapping = self.service._load_tree_structure(42)
+        assert tree_json == ""
+        assert id_mapping == {}
+
+    def test_load_tree_structure_builds_compact_ids(self):
+        """Should assign N001, N002 IDs and use json.dumps."""
+        rows = [
+            MagicMock(
+                id=100, chunk_text="Root summary", heading_text="Document",
+                tree_depth=0, parent_chunk_id=None, is_summary=True,
+            ),
+            MagicMock(
+                id=101, chunk_text="Section summary", heading_text="Section A",
+                tree_depth=1, parent_chunk_id=100, is_summary=True,
+            ),
+            MagicMock(
+                id=102, chunk_text="Leaf content", heading_text="Sub A.1",
+                tree_depth=2, parent_chunk_id=101, is_summary=False,
+            ),
+        ]
+        mock_result = MagicMock()
+        mock_result.__iter__ = lambda self: iter(rows)
+        self.mock_session.execute.return_value = mock_result
+
+        tree_json, id_mapping = self.service._load_tree_structure(42)
+
+        assert "N001" in tree_json
+        assert "N002" in tree_json
+        assert id_mapping["N001"] == 100
+        assert id_mapping["N002"] == 101
+
+        # Should be valid JSON (json.dumps was used)
+        import json
+        parsed = json.loads(tree_json)
+        assert isinstance(parsed, list)
+
+    def test_get_tree_leaves_empty(self):
+        result = self.service._get_tree_leaves([], 42)
+        assert result == []
+
+    @pytest.mark.asyncio
+    @patch("src.services.search.get_settings")
+    async def test_tree_search_handles_invalid_json(self, mock_settings):
+        """Invalid JSON from LLM should return empty results."""
+        mock_settings.return_value = MagicMock(
+            tree_search_timeout_seconds=5,
+            tree_search_max_selected_nodes=10,
+        )
+
+        # Mock _load_tree_structure
+        self.service._load_tree_structure = MagicMock(
+            return_value=('{"node_id": "N001"}', {"N001": 100})
+        )
+
+        # Mock LLM to return invalid JSON
+        with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
+            mock_router = MagicMock()
+            mock_router.generate = AsyncMock(
+                return_value=MagicMock(content="not valid json {{{")
+            )
+            mock_router_cls.return_value = mock_router
+
+            with patch("src.config.models.get_model_config"):
+                results = await self.service._tree_search_single("test query", 42)
+                assert results == []
+
+    @pytest.mark.asyncio
+    @patch("src.services.search.get_settings")
+    async def test_tree_search_caps_node_list(self, mock_settings):
+        """node_list exceeding max_selected_nodes should be truncated."""
+        mock_settings.return_value = MagicMock(
+            tree_search_timeout_seconds=5,
+            tree_search_max_selected_nodes=2,  # Low cap
+        )
+
+        id_mapping = {f"N{i:03d}": 100 + i for i in range(1, 11)}
+        self.service._load_tree_structure = MagicMock(
+            return_value=('{"tree": "data"}', id_mapping)
+        )
+
+        # Mock LLM to return 5 nodes
+        import json
+        llm_response = json.dumps({
+            "thinking": "test",
+            "node_list": ["N001", "N002", "N003", "N004", "N005"],
+        })
+
+        with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
+            mock_router = MagicMock()
+            mock_router.generate = AsyncMock(
+                return_value=MagicMock(content=llm_response)
+            )
+            mock_router_cls.return_value = mock_router
+
+            # Mock leaf fetching
+            mock_leaf_result = MagicMock()
+            mock_leaf_result.__iter__ = lambda self: iter(
+                [MagicMock(id=101), MagicMock(id=102)]
+            )
+            self.mock_session.execute.return_value = mock_leaf_result
+
+            with patch("src.config.models.get_model_config"):
+                results = await self.service._tree_search_single("test", 42)
+                # Should only process first 2 nodes (max_selected_nodes=2)
+                assert len(results) <= 2
+
+    @pytest.mark.asyncio
+    @patch("src.services.search.get_settings")
+    async def test_tree_search_skips_invalid_node_ids(self, mock_settings):
+        """Node IDs not matching N\\d{3,} pattern should be skipped."""
+        mock_settings.return_value = MagicMock(
+            tree_search_timeout_seconds=5,
+            tree_search_max_selected_nodes=10,
+        )
+
+        self.service._load_tree_structure = MagicMock(
+            return_value=('{}', {"N001": 100, "N002": 101})
+        )
+
+        import json
+        llm_response = json.dumps({
+            "thinking": "test",
+            "node_list": ["N001", "INVALID", "42", "N002"],
+        })
+
+        with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
+            mock_router = MagicMock()
+            mock_router.generate = AsyncMock(
+                return_value=MagicMock(content=llm_response)
+            )
+            mock_router_cls.return_value = mock_router
+
+            mock_leaf_result = MagicMock()
+            mock_leaf_result.__iter__ = lambda self: iter(
+                [MagicMock(id=100), MagicMock(id=101)]
+            )
+            self.mock_session.execute.return_value = mock_leaf_result
+
+            with patch("src.config.models.get_model_config"):
+                results = await self.service._tree_search_single("test", 42)
+                # Only N001 and N002 should be processed (INVALID and 42 skipped)
+                assert len(results) <= 2

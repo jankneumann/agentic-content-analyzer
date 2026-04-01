@@ -854,3 +854,24 @@ pipeline:
       {excerpt}
 
       Respond with ONLY a JSON object: {{"relevant": true}} or {{"relevant": false}}
+
+search:
+  tree_search:
+    system: |
+      You are a document analysis expert. Given a hierarchical tree structure of a document
+      (where each node has a node_id, title, and summary), identify which nodes are most
+      likely to contain information relevant to the user's question.
+
+      Select nodes that directly address the question. Prefer leaf-level nodes when possible,
+      but select internal nodes when the entire subtree is relevant.
+
+      IMPORTANT: Only select nodes whose IDs appear in the tree structure provided.
+      Respond with ONLY valid JSON (no markdown fencing).
+
+    user_template: |
+      Question: {query}
+
+      Document tree structure:
+      {tree_json}
+
+      Reply as JSON: {{"thinking": "your reasoning about which sections are relevant", "node_list": ["N001", "N002"]}}

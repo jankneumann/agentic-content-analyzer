@@ -84,6 +84,7 @@ class SearchResult(BaseModel):
         default_factory=list,
         description="Top matching chunks from this document (max 3)",
     )
+    tree_reasoning: str | None = None  # LLM reasoning trace from tree search
 
 
 class SearchMeta(BaseModel):

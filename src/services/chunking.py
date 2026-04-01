@@ -222,6 +222,10 @@ class StructuredChunkingStrategy:
                 chunk.heading_text = heading_text
                 chunks.append(chunk)
 
+        # Apply chunk thinning before index assignment
+        settings = get_settings()
+        chunks = _thin_chunks(chunks, settings.min_node_tokens)
+
         # Assign chunk_index
         for i, chunk in enumerate(chunks):
             chunk.chunk_index = i
@@ -453,6 +457,10 @@ class MarkdownChunkingStrategy:
                 chunk.heading_text = heading_text
                 chunks.append(chunk)
 
+        # Apply chunk thinning before index assignment
+        settings = get_settings()
+        chunks = _thin_chunks(chunks, settings.min_node_tokens)
+
         for i, chunk in enumerate(chunks):
             chunk.chunk_index = i
 
@@ -513,6 +521,203 @@ class SectionChunkingStrategy:
         return chunks
 
 
+# --- Chunk Thinning ---
+
+
+def _thin_chunks(chunks: list[DocumentChunk], min_tokens: int) -> list[DocumentChunk]:
+    """Merge undersized chunks into adjacent ones.
+
+    Merges into the preceding chunk (append) by default. If no predecessor exists,
+    merges into the following chunk (prepend). TABLE and CODE chunks are exempt —
+    they preserve semantic classification regardless of size.
+
+    Args:
+        chunks: List of chunks to thin (mutated in place).
+        min_tokens: Minimum token threshold. 0 = disabled.
+
+    Returns:
+        New list with undersized chunks merged.
+    """
+    if min_tokens <= 0 or len(chunks) <= 1:
+        return chunks
+
+    exempt_types = {ChunkType.TABLE, ChunkType.CODE}
+    result: list[DocumentChunk] = []
+
+    for chunk in chunks:
+        # Exempt: keep TABLE/CODE chunks regardless of size
+        if chunk.chunk_type in exempt_types:
+            result.append(chunk)
+            continue
+
+        tokens = _count_tokens(chunk.chunk_text)
+        if tokens >= min_tokens:
+            result.append(chunk)
+            continue
+
+        # Undersized — try to merge into preceding non-exempt chunk
+        if result and result[-1].chunk_type not in exempt_types:
+            # Merge into preceding chunk (append)
+            result[-1].chunk_text = result[-1].chunk_text + "\n\n" + chunk.chunk_text
+        else:
+            # No predecessor — store and try to merge forward later
+            result.append(chunk)
+            continue
+
+    # Handle case where first chunk was undersized and needs forward merge
+    if len(result) >= 2:
+        first = result[0]
+        if first.chunk_type not in exempt_types and _count_tokens(first.chunk_text) < min_tokens:
+            # Prepend to following chunk
+            result[1].chunk_text = first.chunk_text + "\n\n" + result[1].chunk_text
+            result.pop(0)
+
+    return result
+
+
+# --- Tree Index Chunking Strategy ---
+
+
+class TreeIndexChunkingStrategy:
+    """Builds hierarchical tree index from heading structure (H1-H6).
+
+    Creates tree chunks only — flat chunks are produced separately by the
+    standard strategy. Internal nodes have placeholder empty text (summaries
+    populated async by indexing service). Leaf nodes contain actual content.
+    """
+
+    @property
+    def name(self) -> str:
+        return "tree_index"
+
+    def chunk(
+        self,
+        content: str,
+        metadata: dict,
+        chunk_size: int = 512,
+        chunk_overlap: int = 64,
+    ) -> list[DocumentChunk]:
+        if not content or not content.strip():
+            return []
+
+        settings = get_settings()
+        max_depth = settings.tree_max_depth
+
+        # Parse heading hierarchy
+        sections = re.split(r"(?=^#{1,6}\s)", content, flags=re.MULTILINE)
+        if not sections:
+            return []
+
+        # Build tree structure: each node is (level, heading_text, content_text, children)
+        nodes: list[dict] = []
+        stack: list[dict] = []  # Stack of parent nodes
+
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
+
+            heading_match = re.match(r"^(#{1,6})\s+(.+?)$", section, re.MULTILINE)
+            if heading_match:
+                level = len(heading_match.group(1))
+                heading_text = heading_match.group(2).strip()
+                # Remove heading line from content
+                body = section[heading_match.end() :].strip()
+            else:
+                level = 0
+                heading_text = None
+                body = section
+
+            # Enforce max depth — cap level
+            effective_depth = min(level, max_depth)
+
+            node: dict[str, object] = {
+                "level": level,
+                "effective_depth": effective_depth,
+                "heading_text": heading_text,
+                "body": body,
+                "children": [],
+                "section_path_parts": [],
+            }
+
+            # Pop stack until we find a parent at a lower level
+            while stack and stack[-1]["level"] >= level:
+                stack.pop()
+
+            if stack:
+                stack[-1]["children"].append(node)
+                # Build section path
+                node["section_path_parts"] = stack[-1]["section_path_parts"][:]
+                if heading_text:
+                    node["section_path_parts"].append(f"{'#' * level} {heading_text}")
+            else:
+                nodes.append(node)
+                if heading_text:
+                    node["section_path_parts"] = [f"{'#' * level} {heading_text}"]
+
+            stack.append(node)
+
+        # Convert tree structure to DocumentChunks
+        chunks: list[DocumentChunk] = []
+        self._flatten_tree(nodes, chunks, depth=0)
+
+        # Assign chunk_index
+        for i, chunk in enumerate(chunks):
+            chunk.chunk_index = i
+
+        return chunks
+
+    def _flatten_tree(
+        self,
+        nodes: list[dict],
+        chunks: list[DocumentChunk],
+        depth: int,
+        parent_index: int | None = None,
+    ) -> None:
+        """Recursively convert tree nodes to DocumentChunks."""
+        for node in nodes:
+            has_children = bool(node["children"])
+            section_path = (
+                " > ".join(node["section_path_parts"]) if node["section_path_parts"] else None
+            )
+
+            chunk = DocumentChunk()
+            chunk.heading_text = node["heading_text"]
+            chunk.section_path = section_path
+            chunk.tree_depth = depth
+
+            if has_children:
+                # Internal node: placeholder for LLM summary
+                chunk.chunk_text = ""  # Populated by indexing service
+                chunk.chunk_type = ChunkType.SECTION
+                chunk.is_summary = True
+            else:
+                # Leaf node: actual content
+                chunk.chunk_text = node["body"] if node["body"] else (node["heading_text"] or "")
+                chunk.chunk_type = ChunkType.PARAGRAPH
+                chunk.is_summary = False
+
+            # Store parent index for post-insert FK resolution
+            chunk._parent_index = parent_index  # type: ignore[attr-defined]
+            current_index = len(chunks)
+            chunks.append(chunk)
+
+            # Recurse into children
+            if has_children:
+                self._flatten_tree(node["children"], chunks, depth + 1, current_index)
+
+
+def _detect_heading_depth(content: str) -> int:
+    """Detect the maximum heading nesting depth in markdown content.
+
+    Returns the number of distinct heading levels present (e.g., H1+H2+H3 = 3).
+    """
+    levels_found: set[int] = set()
+    for match in re.finditer(r"^(#{1,6})\s", content, re.MULTILINE):
+        levels_found.add(len(match.group(1)))
+    return len(levels_found)
+
+
 # --- Strategy Registry and Factory ---
 
 STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = {
@@ -521,6 +726,7 @@ STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = {
     "gemini_summary": GeminiSummaryChunkingStrategy,
     "markdown": MarkdownChunkingStrategy,
     "section": SectionChunkingStrategy,
+    "tree_index": TreeIndexChunkingStrategy,
 }
 
 PARSER_TO_STRATEGY: dict[str, str] = {
@@ -631,9 +837,47 @@ class ChunkingService:
         for chunk in chunks:
             chunk.content_id = content.id
 
+        # Check if tree index should also be built
+        tree_chunks: list[DocumentChunk] = []
+        should_tree_index = False
+
+        if strategy_override == "tree_index":
+            # Explicit override: always build tree index
+            should_tree_index = True
+        elif strategy_override is None or strategy_override in ("structured", "markdown"):
+            # Auto-detect: check qualifications
+            tokens = _count_tokens(content.markdown_content)
+            heading_depth = _detect_heading_depth(content.markdown_content)
+            if (
+                tokens > settings.tree_index_min_tokens
+                and heading_depth >= settings.tree_index_min_heading_depth
+            ):
+                should_tree_index = True
+
+        if should_tree_index:
+            try:
+                tree_strategy = TreeIndexChunkingStrategy()
+                tree_chunks = tree_strategy.chunk(
+                    content=content.markdown_content,
+                    metadata=metadata,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                )
+                for tc in tree_chunks:
+                    tc.content_id = content.id
+            except Exception:
+                logger.warning(
+                    f"Tree index construction failed for content {content.id}, "
+                    f"continuing with flat chunks only",
+                    exc_info=True,
+                )
+                tree_chunks = []
+
         logger.info(
             f"Chunked content {content.id} with strategy '{strategy.name}': "
-            f"{len(chunks)} chunks (size={chunk_size}, overlap={chunk_overlap})"
+            f"{len(chunks)} flat chunks"
+            + (f" + {len(tree_chunks)} tree chunks" if tree_chunks else "")
+            + f" (size={chunk_size}, overlap={chunk_overlap})"
         )
 
-        return chunks
+        return chunks + tree_chunks

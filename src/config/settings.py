@@ -681,6 +681,22 @@ class Settings(BaseSettings):
     search_max_limit: int = 100
     enable_search_indexing: bool = True
 
+    # Chunk thinning — merge undersized chunks into adjacent ones
+    min_node_tokens: int = 50  # 0 = disabled; range: 0-5000
+
+    # Tree index chunking — hierarchical tree index for long structured documents
+    tree_index_min_tokens: int = 8000  # Min content tokens for auto-selection; range: 1000-100000
+    tree_index_min_heading_depth: int = 3  # Min heading depth (H1>H2>H3); range: 2-10
+    tree_summarization_max_concurrent: int = 10  # Semaphore bound for LLM calls; range: 1-50
+    tree_max_depth: int = 10  # Max tree nesting depth; range: 2-20
+
+    # Tree search retrieval — LLM-based tree search for qualifying documents
+    tree_search_enabled: bool = True
+    tree_search_max_documents: int = 3  # Max docs for tree search per query; range: 1-20
+    tree_search_timeout_seconds: int = 5  # Per-document timeout; range: 1-30
+    tree_search_max_selected_nodes: int = 10  # Cap on LLM-selected nodes; range: 1-50
+    search_tree_weight: float = 0.5  # RRF weight for tree search (alongside bm25/vector)
+
     # Local embedding model advanced settings
     embedding_trust_remote_code: bool = False  # Allow trust_remote_code for sentence-transformers
     embedding_max_seq_length: int | None = None  # Override model's max_seq_length
