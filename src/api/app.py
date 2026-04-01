@@ -39,6 +39,7 @@ from src.api.settings_routes import router as settings_router
 from src.api.share_routes import router as share_router
 from src.api.shared_routes import router as shared_router
 from src.api.source_routes import router as source_router
+from src.api.status_routes import router as status_router
 from src.api.summary_routes import router as summary_router
 from src.api.theme_routes import router as theme_router
 from src.api.upload_routes import router as upload_router
@@ -56,6 +57,18 @@ async def lifespan(app: FastAPI):
     from src.utils.logging import get_logger
 
     logger = get_logger(__name__)
+
+    # Startup: Initialize ConfigRegistry with all settings domains
+    from src.config.config_registry import register_all_domains
+
+    try:
+        register_all_domains()
+        logger.info("ConfigRegistry initialized with all settings domains")
+    except Exception:
+        logger.warning(
+            "ConfigRegistry initialization failed, services will use fallback YAML loading",
+            exc_info=True,
+        )
 
     # Startup: Initialize telemetry (observability provider + OTel infrastructure)
     from src.telemetry import setup_telemetry
@@ -168,7 +181,8 @@ app.include_router(model_settings_router)
 app.include_router(voice_settings_router)
 app.include_router(voice_cleanup_router)
 app.include_router(voice_stream_router)  # WebSocket voice streaming (cloud STT)
-app.include_router(connection_status_router)
+app.include_router(connection_status_router)  # Redirects to /api/v1/status/connections
+app.include_router(status_router)  # System status endpoints
 app.include_router(upload_router)
 app.include_router(files_router)
 app.include_router(save_router)  # Mobile content capture

@@ -62,19 +62,37 @@ class PromptService:
         cls._CACHED_DEFAULTS = None
 
     def _load_defaults(self) -> dict[str, Any]:
-        """Load default prompts from YAML configuration."""
+        """Load default prompts from ConfigRegistry.
+
+        Uses the centralized ConfigRegistry to load from settings/prompts.yaml.
+        Falls back to direct YAML file read if registry is not initialized
+        (e.g., during early startup or in tests).
+        """
         if PromptService._CACHED_DEFAULTS is not None:
             return PromptService._CACHED_DEFAULTS
 
-        config_path = Path(__file__).parent.parent / "config" / "prompts.yaml"
+        try:
+            from src.config.config_registry import get_config_registry
 
-        if not config_path.exists():
+            registry = get_config_registry()
+            if "prompts" in registry.registered_domains:
+                PromptService._CACHED_DEFAULTS = registry.get_raw("prompts")
+                return PromptService._CACHED_DEFAULTS
+        except Exception:
+            pass
+
+        # Fallback: direct YAML read (for tests or early startup before registry init)
+        config_path = Path(__file__).parent.parent / "config" / "prompts.yaml"
+        settings_path = Path(__file__).resolve().parent.parent.parent / "settings" / "prompts.yaml"
+
+        yaml_path = settings_path if settings_path.exists() else config_path
+
+        if not yaml_path.exists():
             raise FileNotFoundError(
-                f"Prompts configuration not found: {config_path}. "
-                "Ensure src/config/prompts.yaml exists."
+                f"Prompts configuration not found. Checked: {settings_path}, {config_path}"
             )
 
-        with open(config_path) as f:
+        with open(yaml_path) as f:
             PromptService._CACHED_DEFAULTS = yaml.safe_load(f) or {}
             return PromptService._CACHED_DEFAULTS
 

@@ -5,11 +5,9 @@ Read-only dashboard showing health status for all configured
 backend services (PostgreSQL, Neo4j, LLM, TTS, embedding).
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-
-from src.api.dependencies import verify_admin_key
-from src.services.connection_checker import check_all_connections
 
 router = APIRouter(prefix="/api/v1/settings/connections", tags=["settings"])
 
@@ -42,25 +40,13 @@ class ConnectionStatusResponse(BaseModel):
 
 @router.get(
     "",
-    response_model=ConnectionStatusResponse,
-    dependencies=[Depends(verify_admin_key)],
+    response_class=RedirectResponse,
+    status_code=307,
 )
-async def get_connection_status() -> ConnectionStatusResponse:
-    """Get health status for all configured backend services.
+async def get_connection_status_redirect() -> RedirectResponse:
+    """Redirect to new status endpoint at /api/v1/status/connections.
 
-    Runs all checks concurrently with per-service timeout.
-    Statuses: ok, unavailable, not_configured, error.
+    Returns 307 Temporary Redirect to preserve request method and headers.
+    This redirect will be removed after one release cycle.
     """
-    result = await check_all_connections()
-    return ConnectionStatusResponse(
-        services=[
-            ServiceStatusInfo(
-                name=s.name,
-                status=s.status,
-                details=s.details,
-                latency_ms=s.latency_ms,
-            )
-            for s in result.services
-        ],
-        all_ok=result.all_ok,
-    )
+    return RedirectResponse(url="/api/v1/status/connections", status_code=307)

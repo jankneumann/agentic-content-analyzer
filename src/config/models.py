@@ -193,18 +193,32 @@ def load_model_registry() -> tuple[
     Returns:
         Tuple of (model_registry, provider_model_configs, default_models)
     """
-    # Find the YAML file
-    config_dir = Path(__file__).parent
-    yaml_path = config_dir / "model_registry.yaml"
+    # Load from ConfigRegistry if available, otherwise fallback to direct file read
+    config = None
+    try:
+        from src.config.config_registry import get_config_registry
 
-    if not yaml_path.exists():
-        raise FileNotFoundError(
-            f"Model registry not found: {yaml_path}. Ensure src/config/model_registry.yaml exists."
-        )
+        registry = get_config_registry()
+        if "models" in registry.registered_domains:
+            config = registry.get_raw("models")
+    except Exception:
+        pass
 
-    # Load YAML
-    with open(yaml_path) as f:
-        config = yaml.safe_load(f)
+    if config is None:
+        # Fallback: direct YAML read (for tests or early startup)
+        config_dir = Path(__file__).parent
+        yaml_path = config_dir / "model_registry.yaml"
+        settings_path = Path(__file__).resolve().parent.parent / "settings" / "models.yaml"
+
+        actual_path = settings_path if settings_path.exists() else yaml_path
+
+        if not actual_path.exists():
+            raise FileNotFoundError(
+                f"Model registry not found. Checked: {settings_path}, {yaml_path}"
+            )
+
+        with open(actual_path) as f:
+            config = yaml.safe_load(f)
 
     # Parse models (now family-based IDs)
     model_registry = {}
