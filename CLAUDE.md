@@ -23,6 +23,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
 | [Desktop](docs/DESKTOP_DEPLOYMENT.md) | Tauri desktop app: build, distribute, remote backend, CORS |
 | [Gotchas](docs/GOTCHAS.md) | Comprehensive list of pitfalls organized by area |
+| [OpenBao](docs/OPENBAO.md) | OpenBao secrets management: setup, AppRole, seeding, audit events |
 
 **Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
 

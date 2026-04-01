@@ -194,8 +194,9 @@ def resolve_secret(
 
     Resolution order (highest to lowest priority):
     1. Environment variable
-    2. Secrets file (.secrets.yaml)
-    3. Default value
+    2. OpenBao KV v2 (when BAO_ADDR is configured)
+    3. Secrets file (.secrets.yaml)
+    4. Default value
 
     Args:
         key: The secret key to look up
@@ -209,6 +210,13 @@ def resolve_secret(
     env_value = os.environ.get(key)
     if env_value is not None:
         return env_value
+
+    # Check OpenBao (when configured)
+    from src.config.bao_secrets import get_bao_secret
+
+    bao_value = get_bao_secret(key)
+    if bao_value is not None:
+        return bao_value
 
     # Check secrets file
     if secrets is None:

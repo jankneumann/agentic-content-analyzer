@@ -1,0 +1,30 @@
+# Local Development + OpenBao Secrets
+# =====================================
+# Extends local profile with OpenBao for secrets management.
+# Secrets are loaded from OpenBao KV v2 instead of .secrets.yaml.
+#
+# Prerequisites:
+#   docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d
+#   BAO_ADDR=http://localhost:8200 BAO_TOKEN=dev-root-token \
+#     python scripts/bao_seed_newsletter.py
+#
+# Usage:
+#   export PROFILE=local-openbao
+#   export BAO_ADDR=http://localhost:8200
+#   export BAO_TOKEN=dev-root-token   # dev only; use AppRole in production
+#   python -m src.api.app
+
+name: local-openbao
+extends: local
+description: Local development with OpenBao secrets management
+
+# Providers - same as local, but secrets come from OpenBao
+providers:
+  database: local
+  neo4j: local
+  storage: local
+  observability: noop
+
+settings:
+  environment: development
+  log_level: DEBUG
