@@ -259,6 +259,15 @@ web/.vite/
 # Claude Code worktrees (temporary agent working directories)
 .claude/worktrees/
 
+# Git worktrees (temporary working directories)
+.git-worktrees/
+
+# Private keys and certificates (defense-in-depth)
+*.pem
+*.key
+*.p12
+*.pfx
+
 # Tauri
 web/src-tauri/target/
 web/src-tauri/gen/

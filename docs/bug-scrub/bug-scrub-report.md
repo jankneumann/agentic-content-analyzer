@@ -32,49 +32,49 @@
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/api/test_upload_auth.py:103
+- **Location**: tests/api/test_upload_auth.py:103
 - **Detail**: asser...
 
 ### [HIGH] Test failure: TestParallelIngestionPartialFailure::test_pipeline_succeeds_when_two_sources_fail
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/cli/test_pipeline_integration.py:302
+- **Location**: tests/cli/test_pipeline_integration.py:302
 - **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
 
 ### [HIGH] Test failure: TestParallelIngestionPartialFailure::test_pipeline_succeeds_when_three_sources_fail
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/cli/test_pipeline_integration.py:302
+- **Location**: tests/cli/test_pipeline_integration.py:302
 - **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
 
 ### [HIGH] Test failure: TestParallelIngestionAllFail::test_pipeline_reports_all_source_errors
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/cli/test_pipeline_integration.py:302
+- **Location**: tests/cli/test_pipeline_integration.py:302
 - **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
 
 ### [HIGH] Test failure: TestParallelExecution::test_ingestion_uses_asyncio_gather
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/cli/test_pipeline_integration.py:302
+- **Location**: tests/cli/test_pipeline_integration.py:302
 - **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
 
 ### [HIGH] Test failure: TestParallelExecution::test_partial_failure_returns_successful_sources_only
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/cli/test_pipeline_integration.py:302
+- **Location**: tests/cli/test_pipeline_integration.py:302
 - **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
 
 ### [HIGH] Test failure: TestParallelExecution::test_all_fail_raises_runtime_error
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/cli/test_pipeline_integration.py:302
+- **Location**: tests/cli/test_pipeline_integration.py:302
 - **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
 
 ### [HIGH] Test failure: TestWorkerInitialization::test_run_worker_initializes_queue
@@ -105,126 +105,126 @@
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_neon_integration.py:224
+- **Location**: tests/integration/test_neon_integration.py:224
 - **Detail**: AssertionError: assert None == 404
 
 ### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_create_and_delete_branch
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_neon_integration.py:224
+- **Location**: tests/integration/test_neon_integration.py:224
 - **Detail**: AssertionError: assert None == 404
 
 ### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_get_connection_string
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_neon_integration.py:224
+- **Location**: tests/integration/test_neon_integration.py:224
 - **Detail**: AssertionError: assert None == 404
 
 ### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_branch_context_creates_and_cleans_up
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_neon_integration.py:224
+- **Location**: tests/integration/test_neon_integration.py:224
 - **Detail**: AssertionError: assert None == 404
 
 ### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_delete_nonexistent_branch_raises_error
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_neon_integration.py:224
+- **Location**: tests/integration/test_neon_integration.py:224
 - **Detail**: AssertionError: assert None == 404
 
 ### [HIGH] Test failure: TestSupabaseConnection::test_pooled_connection_works
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnection::test_ssl_connection_required
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnection::test_database_version
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnection::test_health_check_passes
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnection::test_connection_timeout_is_set
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseDirectConnection::test_direct_connection_works
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseDirectConnection::test_direct_connection_ssl
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseDirectConnection::test_can_check_alembic_version_table
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseDirectConnection::test_can_execute_ddl_operations
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnectionPooling::test_multiple_sequential_connections
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnectionPooling::test_concurrent_connections
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnectionPooling::test_connection_pool_exhaustion_recovery
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: TestSupabaseConnectionPooling::test_transaction_mode_isolation
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/integration/test_supabase_provider.py:60
+- **Location**: tests/integration/test_supabase_provider.py:60
 - **Detail**: assert False is True
 
 ### [HIGH] Test failure: test_digest_routes_protected_in_production
@@ -377,7 +377,7 @@
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/test_processors/test_audio_digest_generator.py:29
+- **Location**: tests/test_processors/test_audio_digest_generator.py:29
 - **Detail**: AssertionError: assert <MagicMock name='settings.get_effective_voice()' id='4767335104'> == 'nova'
 
 ### [HIGH] Test failure: test_create_digest_success
@@ -468,42 +468,42 @@
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/test_services/test_url_extractor.py:209
+- **Location**: tests/test_services/test_url_extractor.py:209
 - **Detail**: AssertionError: Regex pattern did not match.
 
 ### [HIGH] Test failure: TestFetchURL::test_fetch_url_follows_redirects
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/test_services/test_url_extractor.py:209
+- **Location**: tests/test_services/test_url_extractor.py:209
 - **Detail**: AssertionError: Regex pattern did not match.
 
 ### [HIGH] Test failure: TestFetchURL::test_fetch_url_raises_on_http_error
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/test_services/test_url_extractor.py:209
+- **Location**: tests/test_services/test_url_extractor.py:209
 - **Detail**: AssertionError: Regex pattern did not match.
 
 ### [HIGH] Test failure: TestFetchURL::test_fetch_url_rejects_oversized_content_header
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/test_services/test_url_extractor.py:209
+- **Location**: tests/test_services/test_url_extractor.py:209
 - **Detail**: AssertionError: Regex pattern did not match.
 
 ### [HIGH] Test failure: TestFetchURL::test_fetch_url_rejects_oversized_content_body
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/test_services/test_url_extractor.py:209
+- **Location**: tests/test_services/test_url_extractor.py:209
 - **Detail**: AssertionError: Regex pattern did not match.
 
 ### [HIGH] Test failure: TestFetchURL::test_fetch_url_rejects_non_html_content
 
 - **Source**: pytest
 - **Category**: test-failure
-- **Location**: /Users/jankneumann/Coding/agentic-newsletter-aggregator/tests/test_services/test_url_extractor.py:209
+- **Location**: tests/test_services/test_url_extractor.py:209
 - **Detail**: AssertionError: Regex pattern did not match.
 
 ### [HIGH] Test failure: TestTokenCounter::test_initialization
