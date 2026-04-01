@@ -129,6 +129,19 @@ Instead of integrating OpenBao into the Python runtime, use a sidecar process or
 
 **Approach A: Pydantic Settings Source Integration** — selected because it follows the established provider pattern, requires zero changes to consuming code, and supports the full production scope (token refresh, audit logging, dynamic credentials) within the existing architecture.
 
+## Impact
+
+### Affected Specs
+- **settings-management**: Resolution chain extends from 5 sources to 6 (OpenBao inserted at priority 3). Precedence documentation updated per openbao-secrets.15.
+
+### Affected Code
+- `src/config/secrets.py` — `resolve_secret()` gains OpenBao tier
+- `src/config/settings.py` — `settings_customise_sources()` adds `BaoSettingsSource`
+- No changes to consuming code (all existing `Settings` field access and `resolve_secret()` callers work unchanged)
+
+### Backward Compatibility
+- Fully backward compatible. When `BAO_ADDR` is not set, behavior is identical to current state — zero overhead, zero log output.
+
 ## Scope
 
 ### In Scope
@@ -140,8 +153,10 @@ Instead of integrating OpenBao into the Python runtime, use a sidecar process or
 - `hvac` optional dependency
 - Dynamic PostgreSQL credentials via database secrets engine
 - Structured audit logging for secret access
-- Token lifecycle management (refresh before expiry)
-- Documentation (architecture, quick-start, production deployment)
+- Token lifecycle management (refresh before expiry, shutdown cleanup)
+- Thread-safe concurrent access for multi-threaded FastAPI server
+- Exception isolation in BaoSettingsSource (never prevents Settings instantiation)
+- Documentation (architecture, quick-start, production deployment, audit event reference)
 
 ### Out of Scope
 - Kubernetes External Secrets / Sealed Secrets operator

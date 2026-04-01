@@ -114,20 +114,26 @@ bao_seed_newsletter.py
   └── seed_db_engine()      ─ PostgreSQL dynamic credentials
 ```
 
-The script reads `.secrets.yaml` from the project root (not the coordinator's). Shared key seeding **merges** with existing `secret/shared/` data to avoid overwriting the coordinator's keys.
+The script reads `.secrets.yaml` from the project root (not the coordinator's). Shared key seeding **merges** with existing `secret/shared/` data — newsletter values win on key conflicts, but keys from other projects (e.g., coordinator) are preserved.
+
+## Thread Safety
+
+`_load_bao_secrets()` uses a `threading.Lock` to ensure only one thread fetches from OpenBao during initial load. The cache dict is replaced atomically (reference swap, not mutation) during both initial load and token-refresh cycles, ensuring threads reading the cache never see a partially-updated state.
 
 ## File Changes
 
 | File | Change |
 |------|--------|
-| `src/config/bao_secrets.py` | **New** — Core module |
+| `src/config/bao_secrets.py` | **New** — Core module (auth, cache, thread safety, BaoSettingsSource, token manager, audit) |
 | `src/config/secrets.py` | **Modify** — Add OpenBao tier to `resolve_secret()` |
-| `src/config/settings.py` | **Modify** — Wire `BaoSettingsSource` into source chain |
-| `scripts/bao_seed_newsletter.py` | **New** — Seeding script |
-| `docker-compose.openbao.yml` | **New** — Docker overlay |
-| `profiles/local-openbao.yaml` | **New** — Dev profile |
-| `pyproject.toml` | **Modify** — Add `[vault]` optional dependency |
+| `src/config/settings.py` | **Modify** — Wire `BaoSettingsSource` into source chain as priority 3 |
+| `scripts/bao_seed_newsletter.py` | **New** — Seeding script with merge semantics for shared keys |
+| `docker-compose.openbao.yml` | **New** — Docker overlay for local dev |
+| `profiles/local-openbao.yaml` | **New** — Dev profile extending `local` |
+| `pyproject.toml` | **Modify** — Add `[vault]` optional dependency (`hvac>=2.1.0`) |
 | `CLAUDE.md` | **Modify** — Add docs/OPENBAO.md to doc index |
-| `docs/OPENBAO.md` | **New** — Integration documentation |
-| `tests/test_config/test_bao_secrets.py` | **New** — Unit tests |
-| `tests/test_config/test_bao_settings_integration.py` | **New** — Integration tests |
+| `.secrets.yaml.example` | **Modify** — Add `BAO_*` variable examples in comments |
+| `docs/OPENBAO.md` | **New** — Integration documentation with audit event reference |
+| `tests/test_config/test_bao_secrets.py` | **New** — Unit tests (auth, cache, thread safety, degradation) |
+| `tests/test_config/test_bao_settings_integration.py` | **New** — Integration tests (settings chain, resolve_secret) |
+| `tests/test_config/test_bao_seeding.py` | **New** — Seeding script tests (merge, AppRole, DB engine, failures) |
