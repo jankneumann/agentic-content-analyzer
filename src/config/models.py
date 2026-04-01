@@ -201,15 +201,16 @@ def load_model_registry() -> tuple[
         registry = get_config_registry()
         if "models" in registry.registered_domains:
             config = registry.get_raw("models")
-    except Exception:
+    except (ImportError, ValueError, FileNotFoundError):
         pass
 
     if config is None:
         # Fallback: direct YAML read (for tests or early startup)
+        settings_path = Path(__file__).resolve().parent.parent / "settings" / "models.yaml"
         config_dir = Path(__file__).parent
         yaml_path = config_dir / "model_registry.yaml"
-        settings_path = Path(__file__).resolve().parent.parent / "settings" / "models.yaml"
 
+        # Prefer settings/ path over legacy src/config/ path
         actual_path = settings_path if settings_path.exists() else yaml_path
 
         if not actual_path.exists():

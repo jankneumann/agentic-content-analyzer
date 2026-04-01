@@ -1,41 +1,14 @@
 """
-Connection Status API Routes
+Connection Status API Routes — Redirect to /api/v1/status/connections
 
-Read-only dashboard showing health status for all configured
-backend services (PostgreSQL, Neo4j, LLM, TTS, embedding).
+This endpoint now redirects to the new status endpoint.
+The redirect preserves query parameters and will be removed after one release cycle.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/settings/connections", tags=["settings"])
-
-
-# ============================================================================
-# Response Models
-# ============================================================================
-
-
-class ServiceStatusInfo(BaseModel):
-    """Health status for a single service."""
-
-    name: str
-    status: str  # "ok" | "unavailable" | "not_configured" | "error"
-    details: str = ""
-    latency_ms: float | None = None
-
-
-class ConnectionStatusResponse(BaseModel):
-    """Health status for all configured services."""
-
-    services: list[ServiceStatusInfo]
-    all_ok: bool
-
-
-# ============================================================================
-# Endpoints
-# ============================================================================
 
 
 @router.get(
@@ -43,10 +16,13 @@ class ConnectionStatusResponse(BaseModel):
     response_class=RedirectResponse,
     status_code=307,
 )
-async def get_connection_status_redirect() -> RedirectResponse:
+async def get_connection_status_redirect(request: Request) -> RedirectResponse:
     """Redirect to new status endpoint at /api/v1/status/connections.
 
     Returns 307 Temporary Redirect to preserve request method and headers.
-    This redirect will be removed after one release cycle.
+    Query parameters are forwarded. This redirect will be removed after one release cycle.
     """
-    return RedirectResponse(url="/api/v1/status/connections", status_code=307)
+    target = "/api/v1/status/connections"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(url=target, status_code=307)

@@ -194,6 +194,10 @@ def register_all_domains(registry: ConfigRegistry | None = None) -> ConfigRegist
         if domain.name not in registry.registered_domains:
             registry.register(domain)
 
+    # Eagerly validate all YAML files are loadable at startup
+    for domain in domains:
+        registry.get_raw(domain.name)  # Forces load, raises on missing/invalid YAML
+
     return registry
 
 

@@ -78,7 +78,10 @@ class PromptService:
             if "prompts" in registry.registered_domains:
                 PromptService._CACHED_DEFAULTS = registry.get_raw("prompts")
                 return PromptService._CACHED_DEFAULTS
-        except Exception:
+        except (ImportError, ValueError, FileNotFoundError):
+            # ImportError: registry module not available (unusual)
+            # ValueError: domain not registered (registry not initialized yet)
+            # FileNotFoundError: YAML file missing (registry misconfigured)
             pass
 
         # Fallback: direct YAML read (for tests or early startup before registry init)
