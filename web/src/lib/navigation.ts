@@ -23,6 +23,7 @@ import {
   Settings,
   CheckSquare,
   ClipboardList,
+  Activity,
   type LucideIcon,
 } from "lucide-react"
 
@@ -150,6 +151,12 @@ export const navigation: NavGroup[] = [
         href: "/settings",
         icon: Settings,
         description: "Application configuration",
+      },
+      {
+        title: "Status",
+        href: "/status",
+        icon: Activity,
+        description: "System health and connections",
       },
     ],
   },

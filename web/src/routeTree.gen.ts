@@ -20,6 +20,11 @@ import { SummaryReviewRoute } from "./routes/review/summary.$id"
 import { DigestReviewRoute } from "./routes/review/digest.$id"
 import { ScriptReviewRoute } from "./routes/review/script.$id"
 import { SettingsRoute } from "./routes/settings"
+import { SettingsPromptsRoute } from "./routes/settings/prompts"
+import { SettingsModelsRoute } from "./routes/settings/models"
+import { SettingsVoiceRoute } from "./routes/settings/voice"
+import { SettingsNotificationsRoute } from "./routes/settings/notifications"
+import { StatusRoute } from "./routes/status"
 import { TaskHistoryRoute } from "./routes/task-history"
 import { LoginRoute } from "./routes/login"
 
@@ -31,11 +36,25 @@ import { LoginRoute } from "./routes/login"
  * - /review/summary/:id (summary review)
  * - /review/digest/:id (digest review)
  * - /review/script/:id (script review)
+ *
+ * Settings routes have nested children:
+ * - /settings (redirects to /settings/prompts)
+ * - /settings/prompts
+ * - /settings/models
+ * - /settings/voice
+ * - /settings/notifications
  */
 const ReviewRouteWithChildren = ReviewRoute.addChildren([
   SummaryReviewRoute,
   DigestReviewRoute,
   ScriptReviewRoute,
+])
+
+const SettingsRouteWithChildren = SettingsRoute.addChildren([
+  SettingsPromptsRoute,
+  SettingsModelsRoute,
+  SettingsVoiceRoute,
+  SettingsNotificationsRoute,
 ])
 
 export const routeTree = rootRoute.addChildren([
@@ -50,7 +69,8 @@ export const routeTree = rootRoute.addChildren([
   AudioDigestsRoute,
   ReviewRouteWithChildren,
   TaskHistoryRoute,
-  SettingsRoute,
+  SettingsRouteWithChildren,
+  StatusRoute,
   LoginRoute,
 ])
 
