@@ -85,7 +85,7 @@ The agentic AI landscape (OpenClaw, Nanobot, NanoClaw, NemoClaw) demonstrates th
     - `POST /api/v1/agent/task` — Submit a research/analysis task
     - `GET /api/v1/agent/task/{id}` — Get task status and results
     - `GET /api/v1/agent/insights` — List generated insights
-    - `POST /api/v1/agent/chat` — Interactive research conversation
+    - *Deferred to v2*: `POST /api/v1/agent/chat` — Interactive multi-turn research conversation
 
 11. **CLI commands**:
     - `aca agent task "research question"` — Submit a task

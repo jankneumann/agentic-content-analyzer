@@ -89,7 +89,7 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
 **Given** the conductor delegates a content acquisition sub-task
 **When** the IngestionSpecialist receives it
 **Then** it SHALL:
-  - Request approval for medium-risk ingestion actions
+  - Check each ingestion action against the approval gate (actions classified as MEDIUM or higher in `approval.yaml` or persona overrides)
   - Invoke the appropriate ingestion service(s)
   - Report back the count and summary of new content acquired
   - Trigger summarization for new content if requested
@@ -337,9 +337,11 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
   - Remain fully backward-compatible (new params are optional with defaults)
 
 #### agentic-analysis.19 — Planning method
-**Given** `generate_with_planning()` is called
+**Given** `generate_with_planning()` is called with a goal, tools, and tool executor
+**When** the router begins the planning phase
 **Then** the router SHALL:
-  - First ask the model to create an explicit step-by-step plan
-  - Execute each plan step via `generate_with_tools()`
-  - Allow the model to revise the plan based on intermediate results
-  - Track total cost and tokens across all plan steps
+  - First ask the model to create an explicit step-by-step plan (max `max_plan_steps` steps, default 5)
+  - Execute each plan step via `generate_with_tools()` with the step's sub-goal
+  - After each step, present intermediate results to the model and allow plan revision (max 2 revisions per plan)
+  - Track total cost and tokens across all plan steps (subject to `cost_limit`)
+  - If cost_limit is reached mid-plan, return results from completed steps with `partial = true`

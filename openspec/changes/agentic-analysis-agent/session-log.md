@@ -12,7 +12,7 @@
 3. **Memory provider with strategy pattern** — Abstracted memory using graph (Graphiti), vector (pgvector), and keyword (BM25) strategies with configurable weighted RRF fusion. Goes beyond OpenClaw's flat MEMORY.md.
 4. **Conductor + Specialist topology** — Meta-cognitive conductor delegates to domain-specific specialists (Research, Analysis, Synthesis, Ingestion). Inspired by OpenClaw 2.0.
 5. **Tiered approval gates** — NemoClaw-inspired risk classification (low/medium/high/critical) with configurable auto-approve thresholds.
-6. **Full proactive pipeline** — Nanobot-inspired heartbeat scheduler using PGQueuer for: source scanning, trend detection, weekly synthesis, knowledge graph maintenance, cross-theme discovery, daily digest drafting.
+6. **Full proactive pipeline** — Nanobot-inspired schedule-driven scheduler using PGQueuer for: source scanning, trend detection, weekly synthesis, knowledge graph maintenance, cross-theme discovery, daily digest drafting.
 7. **Configurable YAML persona** — Non-self-modifiable agent identity (unlike OpenClaw's SOUL.md) for predictable, reproducible behavior.
 
 ### Alternatives Considered
@@ -68,3 +68,29 @@ Planned the Agentic Analysis Agent feature based on comparative analysis of Open
 
 ### Context
 Four parallel analysis agents identified 53 raw findings (22 unique after dedup). This iteration addressed all 4 CRITICAL and 10 HIGH findings. Key gaps were: missing error/failure scenarios, no measurable acceptance criteria, incomplete naming consistency, missing impact analysis for modified components, and no explicit PG enum migration strategy.
+
+---
+
+## Phase: Plan Iteration 2 (2026-04-02)
+
+**Agent**: claude-opus-4-6 | **Session**: N/A
+
+### Decisions
+1. **Fixed last "heartbeat" reference** — session-log.md Phase 1 decision 6 still had "heartbeat scheduler"; changed to "schedule-driven scheduler".
+2. **Clarified ingestion approval trigger** — Scenario .8 now references the approval gate and `approval.yaml` classification instead of vague "medium-risk" language.
+3. **Split Conductor task 5.2** — Original task implemented full state machine + persona + delegation in one commit. Split into 5.2 (core state machine + persona scaffold) and 5.2a (delegation logic + tool filtering).
+4. **Added measurable criteria to planning method** — Scenario .19 now specifies max_plan_steps, max 2 revisions, cost_limit enforcement, and partial result behavior.
+5. **Deferred chat endpoint to v2** — `POST /api/v1/agent/chat` was in proposal.md but had no spec scenario or task. Explicitly marked as deferred rather than silently dropped.
+6. **Clarified SSE task scope** — Task 7.1 no longer references SSE (that's 7.3/7.4). Task 7.1 focuses on REST endpoints only.
+
+### Alternatives Considered
+- Implementing chat endpoint in v1: rejected — interactive multi-turn conversation is a significant feature that would expand scope without clear user requirement yet
+
+### Trade-offs
+- Accepted 57 tasks (up from 52 original) because the added granularity makes each task implementable in a single commit
+
+### Open Questions
+- (none new — previous open questions remain)
+
+### Context
+Second iteration addressed 6 remaining MEDIUM findings identified by a focused review pass. All findings were clarity, consistency, or feasibility issues. No CRITICAL or HIGH findings remain.

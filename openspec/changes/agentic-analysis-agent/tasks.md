@@ -186,13 +186,16 @@
   **Design decisions**: D1 (conductor as stateful task manager)
   **Dependencies**: 3.12 (specialist registry), 4.2 (approval gates), 4.5 (persona), 1.13 (memory)
 
-- [ ] 5.2 Implement Conductor agent in `src/agents/conductor.py` — task state machine, planning, delegation, synthesis
+- [ ] 5.2 Implement Conductor agent core in `src/agents/conductor.py` — task state machine (received→planning→delegating→monitoring→completed/failed), persona loading, and basic task execution scaffold
   **Dependencies**: 5.1
+
+- [ ] 5.2a Implement Conductor delegation logic — specialist selection based on task type, tool filtering via persona, sub-task creation and monitoring
+  **Dependencies**: 5.2
 
 - [ ] 5.3 Write tests for Conductor goal decomposition — complex task broken into specialist sub-tasks with dependencies
   **Spec scenarios**: agentic-analysis.1 (task decomposition)
   **Design decisions**: D1 (conductor plans and delegates)
-  **Dependencies**: 5.2
+  **Dependencies**: 5.2a
 
 - [ ] 5.4 Implement goal decomposition and sub-task management in Conductor
   **Dependencies**: 5.3
@@ -240,8 +243,8 @@
 
 *Priority: User-facing interfaces. Depend on conductor and all supporting infrastructure.*
 
-- [ ] 7.1 Write tests for agent API endpoints — task CRUD, insight listing, approval handling, schedule management
-  **Spec scenarios**: agentic-analysis.15 (API endpoints), agentic-analysis.16 (SSE streaming)
+- [ ] 7.1 Write tests for agent API endpoints — task CRUD, insight CRUD, approval handling, schedule listing, persona listing (all REST endpoints from agentic-analysis.15)
+  **Spec scenarios**: agentic-analysis.15 (API endpoints)
   **Design decisions**: D8 (data models)
   **Dependencies**: 5.6, 6.5
 
@@ -309,11 +312,11 @@
 | 2. LLMRouter | 2.1–2.6 | Reflection, planning, memory hooks |
 | 3. Specialists | 3.1–3.12 | Four specialist agents + registry |
 | 4. Approval & Persona | 4.1–4.8 | Approval gates, multi-persona system, YAML configs |
-| 5. Conductor | 5.1–5.7 | Persona-aware orchestrating intelligence |
+| 5. Conductor | 5.1–5.7 (incl. 5.2a) | Persona-aware orchestrating intelligence |
 | 6. Scheduler | 6.1–6.6 | Schedule-driven proactive tasks (with persona + output + source) |
 | 7. API & CLI | 7.1–7.7 | User-facing interfaces (with persona selection) |
 | 8. Integration | 8.1–8.6 (incl. 8.1a-c) | E2E tests (incl. persona, error, approval flows), docs, observability |
 
-**Total**: 56 tasks across 8 phases
+**Total**: 57 tasks across 8 phases
 **Estimated new files**: ~33 (including persona YAML files)
 **Modified files**: ~5 (LLMRouter, worker, FastAPI app, ARCHITECTURE.md, CLAUDE.md)
