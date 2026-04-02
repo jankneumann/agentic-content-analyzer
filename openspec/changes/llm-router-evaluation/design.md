@@ -258,6 +258,7 @@ CREATE TABLE evaluation_results (
     preference VARCHAR(20) NOT NULL,       -- 'strong_wins', 'weak_wins', 'tie'
     critiques JSONB NOT NULL,              -- {"accuracy": {"verdict": "pass", "explanation": "..."}, ...}
     reasoning TEXT,
+    position_order VARCHAR(20),            -- 'strong_first' or 'weak_first' (tracks A/B randomization for bias analysis)
     weight FLOAT DEFAULT 1.0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
