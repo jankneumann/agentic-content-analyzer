@@ -25,6 +25,7 @@ from typing import Annotated
 
 import typer
 
+from src.cli.agent_commands import app as agent_app
 from src.cli.analyze_commands import app as analyze_app
 from src.cli.digest_commands import app as digest_app
 from src.cli.edit_commands import app as edit_app
@@ -66,6 +67,7 @@ app.add_typer(digest_app, name="create-digest")
 app.add_typer(edit_app, name="edit")
 app.add_typer(pipeline_app, name="pipeline")
 app.add_typer(review_app, name="review")
+app.add_typer(agent_app, name="agent")
 app.add_typer(analyze_app, name="analyze")
 app.add_typer(graph_app, name="graph")
 app.add_typer(podcast_app, name="podcast")
