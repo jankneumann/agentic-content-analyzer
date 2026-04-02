@@ -52,6 +52,7 @@ REQUIRED_PAYLOAD_FIELDS: dict[str, set[str]] = {
     "summarize_content": {"content_id"},
     "extract_url_content": {"content_id"},
     "ingest_content": {"source"},  # max_results is optional (None = source config defaults)
+    "execute_agent_task": {"task_id"},
 }
 REQUIRED_QUEUE_COLUMNS: set[str] = {
     "id",

@@ -58,7 +58,7 @@ class LLMSummarizationAgent(SummarizationAgent):
         # Create LLMRouter for provider-agnostic generation
         self.router = LLMRouter(model_config)
 
-        logger.info(f"Initialized LLMSummarizationAgent with model: {self.model}")
+        logger.info("Initialized LLMSummarizationAgent with model: %s", self.model)
 
     def summarize_content(self, content: Content) -> AgentResponse:
         """
@@ -71,7 +71,7 @@ class LLMSummarizationAgent(SummarizationAgent):
             AgentResponse with SummaryData
         """
         source_type_str = content.source_type.value if content.source_type else "unknown"
-        logger.info(f"Summarizing content: {content.title} (source: {source_type_str})")
+        logger.info("Summarizing content: %s (source: %s)", content.title, source_type_str)
 
         prompt = self._create_content_prompt(content)
         system_prompt = self.prompt_service.get_pipeline_prompt("summarization")
@@ -154,7 +154,7 @@ class LLMSummarizationAgent(SummarizationAgent):
         try:
             # Parse JSON response
             response_text = llm_response.text
-            logger.debug(f"LLM response: {response_text[:200]}...")
+            logger.debug("LLM response: %s...", response_text[:200])
 
             summary_dict = self._extract_json_from_response(response_text)
 

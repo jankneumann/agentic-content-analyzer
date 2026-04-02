@@ -223,6 +223,7 @@ ignore = [
     "B007",   # Loop variable not used (sometimes intentional)
 ]
 "alembic/*" = ["E402"]  # Imports not at top of file
+"src/agents/memory/strategies/*" = ["S608"]  # SQL uses parameterized queries with f-string constants
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]

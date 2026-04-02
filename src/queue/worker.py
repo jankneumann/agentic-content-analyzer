@@ -316,6 +316,7 @@ def register_all_handlers() -> None:
     # handlers via the @register_handler decorator or direct assignment.
     _register_content_handlers()
     _register_reference_handlers()
+    _register_agent_handlers()
     logger.info(f"Registered {len(_handlers)} job handlers: {list(_handlers.keys())}")
 
 
@@ -596,3 +597,92 @@ def _register_reference_handlers() -> None:
                 resolved = resolver.resolve_batch(batch_size)
 
         logger.info("Resolved %d references (job_id=%d)", resolved, job_id)
+
+
+def _register_agent_handlers() -> None:
+    """Register handlers for agent task execution."""
+
+    @register_handler("execute_agent_task")
+    async def execute_agent_task(job_id: int, payload: dict) -> None:
+        """Execute an agent task through the conductor lifecycle."""
+        from src.agents.approval.gates import ApprovalGate
+        from src.agents.conductor import Conductor
+        from src.agents.memory.provider import MemoryProvider
+        from src.agents.registry import SpecialistRegistry
+        from src.services.agent_service import AgentInsightService, AgentTaskService
+        from src.services.llm_router import LLMRouter
+        from src.storage.database import get_db
+
+        task_id = payload["task_id"]
+        task_type = payload.get("task_type", "research")
+        persona = payload.get("persona", "default")
+        prompt = payload.get("prompt", "")
+
+        # Update task to PLANNING
+        with get_db() as db:
+            svc = AgentTaskService(db)
+            svc.update_task_status(task_id, "planning")
+
+        try:
+            # Build conductor with real dependencies
+            from src.config import get_model_config
+
+            llm_router = LLMRouter(get_model_config())
+            registry = SpecialistRegistry.create_default(llm_router)
+            memory_provider = MemoryProvider(
+                strategies={}
+            )  # Empty until memory backends configured
+            approval_gate = ApprovalGate()
+            conductor = Conductor(
+                registry=registry,
+                memory_provider=memory_provider,
+                approval_gate=approval_gate,
+                llm_router=llm_router,
+            )
+
+            result = await conductor.execute_task(
+                task_id=task_id,
+                task_type=task_type,
+                prompt=prompt,
+                persona=persona,
+            )
+
+            # Persist results
+            with get_db() as db:
+                task_svc = AgentTaskService(db)
+                task_svc.update_task_status(
+                    task_id,
+                    status=result.status,
+                    result=result.result,
+                    error=result.error,
+                    cost=result.cost_total,
+                    tokens=result.tokens_total,
+                    persona_config=result.persona_snapshot,
+                )
+
+                # Store insights
+                insight_svc = AgentInsightService(db)
+                for insight in result.insights:
+                    insight_svc.create_insight(
+                        task_id=task_id,
+                        insight_type=insight.get("type", "summary"),
+                        title=insight.get("title", "Untitled"),
+                        content=insight.get("content", ""),
+                        confidence=insight.get("confidence", 0.0),
+                        tags=[insight.get("type", "summary")],
+                    )
+
+            logger.info(
+                "Agent task %s completed: status=%s, insights=%d, cost=$%.4f",
+                task_id,
+                result.status,
+                len(result.insights),
+                result.cost_total,
+            )
+
+        except Exception as e:
+            logger.exception("Agent task %s failed: %s", task_id, e)
+            with get_db() as db:
+                svc = AgentTaskService(db)
+                svc.update_task_status(task_id, "failed", error=str(e))
+            raise

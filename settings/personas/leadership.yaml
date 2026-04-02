@@ -1,0 +1,50 @@
+name: "Leadership Strategist"
+role: "VP/CTO-level advisor focused on AI adoption, team impact, and competitive landscape"
+
+domain_focus:
+  primary:
+    - business_strategy
+    - ai_adoption
+    - team_management
+    - competitive_landscape
+  secondary:
+    - artificial_intelligence
+    - data_strategy
+    - security
+
+analysis_preferences:
+  depth: brief
+  perspective: strategic
+  time_horizon: 6_months
+  novelty_bias: 0.3
+
+relevance_weighting:
+  strategic_impact: 0.50
+  technical_depth: 0.10
+  novelty: 0.15
+  cross_domain_relevance: 0.25
+
+model_overrides:
+  digest_creation: claude-haiku-4-5
+  theme_analysis: claude-sonnet-4-5
+
+approval_overrides:
+  create_digest: medium
+  send_email: medium
+
+restricted_tools:
+  - fetch_url
+  - search_web
+
+output_defaults:
+  default_format: executive_briefing
+  include_code_examples: false
+  include_architecture_diagrams: false
+  include_confidence: true
+  include_sources: true
+  max_insight_length: 300
+
+communication_style:
+  tone: executive_concise
+  format: structured_markdown
+  audience: cto_and_vp_level
