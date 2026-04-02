@@ -607,3 +607,113 @@ def backfill_tree_index_cmd(
             typer.echo(
                 f"Done: {indexed} indexed, {skipped} skipped out of {len(qualifying)} qualifying."
             )
+
+
+@app.command("update-model-pricing")
+def update_model_pricing_cmd(
+    provider: list[str] | None = typer.Option(
+        None, "--provider", "-p", help="Limit to specific providers (repeatable)"
+    ),
+    dry_run: bool = typer.Option(
+        True, "--dry-run/--apply", help="Preview changes (default) or apply to models.yaml"
+    ),
+    model: str = typer.Option(
+        "claude-haiku-4-5", "--model", "-m", help="LLM model to use for extraction"
+    ),
+) -> None:
+    """Extract model pricing from provider pages and update models.yaml.
+
+    Fetches pricing pages from Anthropic, OpenAI, Google AI, and AWS Bedrock,
+    uses an LLM to extract structured pricing data, and diffs it against the
+    current settings/models.yaml.
+
+    By default runs in --dry-run mode (preview only). Pass --apply to write.
+
+    Examples:
+        aca manage update-model-pricing                    # Preview all providers
+        aca manage update-model-pricing -p anthropic       # Preview Anthropic only
+        aca manage update-model-pricing --apply             # Apply changes
+    """
+    import asyncio
+
+    from src.services.model_pricing_extractor import ModelPricingExtractor
+
+    extractor = ModelPricingExtractor(extraction_model=model)
+    report = asyncio.run(extractor.run(providers=provider, dry_run=dry_run))
+
+    if is_json_mode():
+        output_result({
+            "providers_fetched": report.providers_fetched,
+            "providers_failed": report.providers_failed,
+            "diffs": [
+                {
+                    "key": d.provider_key,
+                    "field": d.field,
+                    "current": d.current_value,
+                    "extracted": d.extracted_value,
+                }
+                for d in report.diffs
+            ],
+            "new_models": [
+                {
+                    "model_id": m.model_id,
+                    "provider_model_id": m.provider_model_id,
+                    "cost_input": m.cost_per_mtok_input,
+                    "cost_output": m.cost_per_mtok_output,
+                    "notes": m.notes,
+                }
+                for m in report.new_models
+            ],
+            "errors": report.extraction_errors,
+            "applied": report.applied,
+        })
+        return
+
+    # Human-readable output
+    typer.echo()
+    mode = typer.style("DRY RUN", fg=typer.colors.YELLOW) if dry_run else typer.style(
+        "APPLY", fg=typer.colors.GREEN
+    )
+    typer.echo(f"Model Pricing Extraction — {mode}")
+    typer.echo("=" * 60)
+
+    if report.providers_fetched:
+        typer.echo(f"\nProviders fetched: {', '.join(report.providers_fetched)}")
+    if report.providers_failed:
+        typer.echo(
+            typer.style(
+                f"Providers failed: {', '.join(report.providers_failed)}",
+                fg=typer.colors.RED,
+            )
+        )
+
+    if report.diffs:
+        typer.echo(f"\n--- Pricing changes detected ({len(report.diffs)}) ---")
+        for d in report.diffs:
+            typer.echo(
+                f"  {d.provider_key}.{d.field}: "
+                f"{typer.style(str(d.current_value), fg=typer.colors.RED)} → "
+                f"{typer.style(str(d.extracted_value), fg=typer.colors.GREEN)}"
+            )
+    else:
+        typer.echo(typer.style("\nNo pricing changes detected.", fg=typer.colors.GREEN))
+
+    if report.new_models:
+        typer.echo(f"\n--- New models found ({len(report.new_models)}) ---")
+        for m in report.new_models:
+            typer.echo(
+                f"  {m.model_id}: ${m.cost_per_mtok_input:.2f}/${m.cost_per_mtok_output:.2f} "
+                f"per Mtok — {m.notes}"
+            )
+
+    if report.extraction_errors:
+        typer.echo(f"\n--- Errors ({len(report.extraction_errors)}) ---")
+        for e in report.extraction_errors:
+            typer.echo(typer.style(f"  {e}", fg=typer.colors.RED))
+
+    if report.applied:
+        typer.echo(
+            typer.style("\n✓ Changes applied to settings/models.yaml", fg=typer.colors.GREEN)
+        )
+    elif report.has_changes and dry_run:
+        typer.echo("\nRun with --apply to write changes to settings/models.yaml")
