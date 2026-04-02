@@ -40,7 +40,7 @@ def mock_upload_dependencies():
             parser_used="markitdown",
         )
         mock_instance = mock_service.return_value
-        mock_instance.ingest_bytes = AsyncMock(return_value=mock_content)
+        mock_instance.ingest_file = AsyncMock(return_value=mock_content)
 
         # Mock Router
         mock_router = MagicMock()

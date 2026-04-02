@@ -625,7 +625,6 @@ def ingest_arxiv_paper(
         service.close()
 
 
-
 def ingest_url(
     *,
     url: str,
