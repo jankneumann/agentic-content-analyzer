@@ -249,22 +249,27 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Customize settings sources to include profile configuration.
+        """Customize settings sources to include profile and OpenBao configuration.
 
         Priority order (highest to lowest):
         1. init_settings (values passed to Settings())
         2. env_settings (environment variables)
-        3. profile_settings (from profiles/{name}.yaml when PROFILE is set)
-        4. dotenv_settings (.env file)
-        5. file_secret_settings
+        3. bao_settings (OpenBao KV v2, when BAO_ADDR is configured)
+        4. profile_settings (from profiles/{name}.yaml when PROFILE is set)
+        5. dotenv_settings (.env file)
+        6. file_secret_settings
 
-        This ensures environment variables always win, but profile values
-        take precedence over .env file values.
+        OpenBao is fully optional: when BAO_ADDR is not set or hvac is
+        not installed, BaoSettingsSource returns empty and has zero overhead.
         """
+        from src.config.bao_secrets import BaoSettingsSource
+
         profile_settings = ProfileSettingsSource(settings_cls)
-        return (
+        bao_settings = BaoSettingsSource(settings_cls)
+        return (  # type: ignore[return-value]
             init_settings,
             env_settings,
+            bao_settings,
             profile_settings,
             dotenv_settings,
             file_secret_settings,

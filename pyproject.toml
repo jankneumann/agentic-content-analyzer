@@ -122,6 +122,9 @@ braintrust = [
 metrics = [
     "opentelemetry-exporter-prometheus>=0.41b0",  # Prometheus metrics export
 ]
+vault = [
+    "hvac>=2.1.0",  # HashiCorp Vault / OpenBao client for secrets management
+]
 embeddings = [
     "sentence-transformers>=2.2.0",  # Local embedding models (CPU)
     "voyageai>=0.2.0",              # Voyage AI embeddings (retrieval-optimized)
