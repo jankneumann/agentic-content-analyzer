@@ -19,7 +19,11 @@ def test_upload_exception_leak(client: TestClient):
         files = {"file": ("test.txt", b"dummy content", "text/plain")}
 
         # Perform the request
-        response = client.post("/api/v1/documents/upload", files=files)
+        response = client.post(
+            "/api/v1/documents/upload",
+            files=files,
+            headers={"X-Admin-Key": "test-admin-key"}
+        )
 
         # Assertions
         assert response.status_code == 500

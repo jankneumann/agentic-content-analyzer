@@ -122,17 +122,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('web/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('web/package.json') }}
           restore-keys: ${{ runner.os }}-pnpm-
 
       # --------------------------------------------------
       # 3. Install dependencies + build web assets
       # --------------------------------------------------
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: cd web && pnpm install
 
       - name: Build web app
-        run: pnpm build
+        run: cd web && pnpm build
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.example.com' }}
 

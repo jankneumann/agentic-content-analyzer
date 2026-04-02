@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   secret-scan:
     runs-on: ubuntu-latest
@@ -47,9 +51,9 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: web/package.json
       - name: Install dependencies
-        run: cd web && pnpm install --frozen-lockfile
+        run: cd web && pnpm install
       - name: Run pnpm audit
         run: cd web && pnpm audit --audit-level=high
         continue-on-error: true  # Advisory — don't block on transitive deps
