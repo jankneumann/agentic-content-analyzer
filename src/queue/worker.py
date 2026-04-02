@@ -625,7 +625,9 @@ def _register_agent_handlers() -> None:
 
         try:
             # Build conductor with real dependencies
-            llm_router = LLMRouter()
+            from src.config import get_model_config
+
+            llm_router = LLMRouter(get_model_config())
             registry = SpecialistRegistry.create_default(llm_router)
             memory_provider = MemoryProvider(
                 strategies={}
