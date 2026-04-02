@@ -25,13 +25,13 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
   - Store the final result and any generated insights
   - Update status to `completed`
 
-#### agentic-analysis.2 — Heartbeat triggers a proactive task
-**Given** the heartbeat scheduler determines a scheduled task is due
-**When** it enqueues an `agent_task` job
+#### agentic-analysis.2 — Scheduler triggers a proactive task
+**Given** the current time matches a cron expression in `settings/schedule.yaml`
+**When** the scheduler enqueues an `agent_task` job with the schedule's `persona`, `output`, `sources`, and `params`
 **Then** the conductor SHALL handle it identically to a user task, except:
-  - The `source` field is `heartbeat` (not `user`)
-  - Priority is as configured in `heartbeat.yaml`
-  - If a previous run of the same schedule is still active, the new task SHALL be skipped
+  - The `source` field is `schedule` (not `user`)
+  - Priority is as configured in the schedule entry
+  - If a previous run of the same schedule is still in_progress or delegating, the scheduler SHALL skip enqueuing a new task
 
 #### agentic-analysis.3 — Task requires human approval
 **Given** a specialist needs to perform a HIGH or CRITICAL risk action
@@ -89,7 +89,7 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
 **Given** the conductor delegates a content acquisition sub-task
 **When** the IngestionSpecialist receives it
 **Then** it SHALL:
-  - Request approval for medium-risk ingestion actions
+  - Check each ingestion action against the approval gate (actions classified as MEDIUM or higher in `approval.yaml` or persona overrides)
   - Invoke the appropriate ingestion service(s)
   - Report back the count and summary of new content acquired
   - Trigger summarization for new content if requested
@@ -107,15 +107,15 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
   - Update `access_count` and `last_accessed_at` for returned entries
 
 #### agentic-analysis.10 — Memory strategy configuration
-**Given** a memory provider is initialized with a strategy configuration
-**When** strategies are loaded
+**Given** a memory provider is initialized with a strategy configuration dict (e.g., `{"graph": 0.4, "vector": 0.4, "keyword": 0.2}`)
+**When** the provider validates and instantiates each configured strategy
 **Then** the provider SHALL:
   - Support any combination of: `graph`, `vector`, `keyword`
   - Accept per-strategy weight configuration (0.0 to 1.0)
   - Gracefully degrade if a backend is unavailable (e.g., Neo4j down → skip graph strategy)
   - Log warnings for unavailable strategies without failing
 
-### Heartbeat Scheduler
+### Proactive Scheduler
 
 #### agentic-analysis.11 — Schedule execution
 **Given** a schedule is defined in `settings/schedule.yaml`
@@ -176,7 +176,8 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
 ### API Endpoints
 
 #### agentic-analysis.15 — Task submission and tracking
-**Given** a user interacts with the agent API
+**Given** the FastAPI application is running with the agent router registered
+**When** a user sends HTTP requests to agent endpoints
 **Then** the following endpoints SHALL be available:
   - `POST /api/v1/agent/task` — Submit a task (accepts optional `persona`, `output`, `sources` params; returns task ID)
   - `GET /api/v1/agent/task/{id}` — Get task status, plan, and results
@@ -213,6 +214,120 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
 
 ### LLMRouter Extensions
 
+### Measurement & Thresholds
+
+#### agentic-analysis.20 — Confidence scoring
+**Given** any agent component produces a confidence value
+**Then** the following scale SHALL apply:
+  - Confidence is a float in `[0.0, 1.0]`
+  - `>= 0.8` — high confidence (suitable for automated actions)
+  - `0.5 – 0.79` — moderate confidence (suitable for human review)
+  - `< 0.5` — low confidence (flagged as uncertain)
+  - Insights stored with `confidence < 0.3` SHALL be tagged as `speculative`
+
+#### agentic-analysis.21 — Iteration and cost budgets
+**Given** a specialist or conductor executes a reasoning loop
+**Then** the following defaults SHALL apply (overridable per task):
+  - `max_iterations`: 10 (per specialist tool loop)
+  - `max_plan_steps`: 5 (per conductor planning phase)
+  - `cost_limit`: $1.00 USD (per individual task, including sub-tasks)
+  - When `cost_limit` is exceeded, the task SHALL terminate gracefully with partial results and status `failed` with error `cost_limit_exceeded`
+  - When `max_iterations` is exceeded, the specialist SHALL return its best current result with a reduced confidence score (multiplied by 0.7)
+
+#### agentic-analysis.22 — Reciprocal Rank Fusion (RRF) formula
+**Given** the memory provider merges results from multiple strategies
+**Then** it SHALL use weighted RRF with the formula:
+  - `score(d) = Σ_s (weight_s / (k + rank_s(d)))` where `k = 60` (standard RRF constant)
+  - Default weights: `graph = 0.4`, `vector = 0.4`, `keyword = 0.2`
+  - Results with `score < 0.01` SHALL be filtered out
+  - Maximum returned entries: 20 (unless caller specifies a different limit)
+
+#### agentic-analysis.23 — Retry policy
+**Given** a specialist fails during execution
+**Then** the conductor SHALL apply this retry policy:
+  - Maximum retries per specialist: 2
+  - Backoff: exponential with base 2 seconds (2s, 4s)
+  - A different specialist MAY be tried if the original fails all retries
+  - Total task timeout: 10 minutes (configurable per schedule or task submission)
+  - Sub-task timeout: 3 minutes per specialist invocation
+
+### Error Handling
+
+#### agentic-analysis.24 — Specialist execution failure
+**Given** a specialist raises an unhandled exception during execution
+**When** the conductor receives the failure
+**Then** it SHALL:
+  - Log the exception with full traceback and task context
+  - Apply the retry policy (agentic-analysis.23)
+  - If all retries exhausted: store any partial results as insights with `confidence` multiplied by 0.5
+  - Mark the sub-task as `failed` with the error message
+  - Decide whether the parent task can still complete (partial success) or must also fail
+  - A parent task with >= 1 successful sub-task and >= 1 failed sub-task SHALL be marked `completed` with `metadata.partial = true`
+
+#### agentic-analysis.25 — Tool execution failure within specialist
+**Given** a tool call within a specialist's reasoning loop raises an error
+**When** the specialist receives the tool error
+**Then** it SHALL:
+  - Include the error in the conversation context for the LLM to reason about
+  - Allow the LLM to decide: retry the tool, try an alternative tool, or return partial results
+  - NOT automatically retry the same tool call with identical parameters
+  - After 3 consecutive tool failures, abort the specialist and return partial results
+
+#### agentic-analysis.26 — Memory backend unavailability
+**Given** a memory strategy backend is unavailable (e.g., Neo4j down, pgvector timeout)
+**When** the memory provider attempts to query that strategy
+**Then** it SHALL:
+  - Log a warning with the strategy name and error details
+  - Skip the unavailable strategy and continue with remaining strategies
+  - If all strategies are unavailable, return an empty result set (not an error)
+  - Recalculate RRF weights among available strategies (redistribute proportionally)
+  - Set a circuit breaker: skip the failed strategy for 60 seconds before retrying
+
+#### agentic-analysis.27 — Approval request timeout
+**Given** an approval request is created for a HIGH or CRITICAL action
+**When** no human decision is received within the configured timeout
+**Then** the system SHALL:
+  - Default approval timeout: 24 hours (configurable)
+  - After timeout: mark the approval as `expired`
+  - Notify the conductor that the approval expired
+  - The conductor SHALL treat an expired approval as a denial and re-plan without the blocked action
+
+#### agentic-analysis.28 — Task timeout
+**Given** a task has been running longer than its configured timeout
+**When** the timeout is reached
+**Then** the system SHALL:
+  - Send a cancellation signal to the active specialist
+  - Allow the specialist 30 seconds for graceful shutdown (store partial results)
+  - Mark the task as `failed` with error `task_timeout`
+  - Store any partial results or insights generated before timeout
+
+### Integration with Existing Components
+
+#### agentic-analysis.29 — LLMRouter backward compatibility
+**Given** the LLMRouter is extended with new parameters
+**When** existing callers invoke `generate_with_tools()` without new parameters
+**Then** behavior SHALL be identical to the current implementation — no reflection, no memory injection, no cost tracking
+
+#### agentic-analysis.30 — Pipeline Runner integration
+**Given** the IngestionSpecialist delegates to the existing pipeline
+**When** it requests a partial pipeline run (e.g., ingest-only)
+**Then** it SHALL:
+  - Call the existing pipeline runner with stage-specific parameters
+  - Accept optional date ranges, source filters, and focus topics from the conductor
+  - Return pipeline results (counts, errors) to the specialist for reporting back to the conductor
+  - NOT modify the pipeline runner's existing behavior for full runs
+
+#### agentic-analysis.31 — Job queue agent_task entrypoint
+**Given** a new `agent_task` job type is registered with PGQueuer
+**When** the worker picks up an `agent_task` job
+**Then** it SHALL:
+  - Instantiate a Conductor with the task's persona and parameters
+  - Execute the task via the conductor's state machine
+  - Track the job as a PGQueuer entry with standard retry/failure handling
+  - NOT interfere with existing job types (`daily_pipeline`, `send_notification`, etc.)
+
+### LLMRouter Extensions
+
 #### agentic-analysis.18 — Enhanced tool calling
 **Given** `generate_with_tools()` is called with new parameters
 **Then** the router SHALL:
@@ -222,9 +337,11 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
   - Remain fully backward-compatible (new params are optional with defaults)
 
 #### agentic-analysis.19 — Planning method
-**Given** `generate_with_planning()` is called
+**Given** `generate_with_planning()` is called with a goal, tools, and tool executor
+**When** the router begins the planning phase
 **Then** the router SHALL:
-  - First ask the model to create an explicit step-by-step plan
-  - Execute each plan step via `generate_with_tools()`
-  - Allow the model to revise the plan based on intermediate results
-  - Track total cost and tokens across all plan steps
+  - First ask the model to create an explicit step-by-step plan (max `max_plan_steps` steps, default 5)
+  - Execute each plan step via `generate_with_tools()` with the step's sub-goal
+  - After each step, present intermediate results to the model and allow plan revision (max 2 revisions per plan)
+  - Track total cost and tokens across all plan steps (subject to `cost_limit`)
+  - If cost_limit is reached mid-plan, return results from completed steps with `partial = true`

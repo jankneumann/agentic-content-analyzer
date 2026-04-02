@@ -10,7 +10,7 @@
 │                      Agent Layer (NEW)                        │
 │                                                               │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │  Conductor   │  │  Heartbeat   │  │  Approval Gates    │  │
+│  │  Conductor   │  │  Proactive   │  │  Approval Gates    │  │
 │  │  Agent       │──│  Scheduler   │  │  (risk-tiered)     │  │
 │  └──────┬───┬──┘  └──────┬───────┘  └────────┬───────────┘  │
 │         │   │            │                     │              │
@@ -52,7 +52,7 @@
 
 ### D1: Conductor Agent as Stateful Task Manager
 
-The Conductor Agent is the entry point for all agentic work — both user-initiated tasks and heartbeat-scheduled jobs. It maintains state across the lifecycle of a task.
+The Conductor Agent is the entry point for all agentic work — both user-initiated tasks and schedule-triggered proactive jobs. It maintains state across the lifecycle of a task.
 
 **State machine:**
 ```
@@ -692,7 +692,7 @@ At each iteration of the tool loop, the router can optionally query the memory p
 CREATE TABLE agent_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     task_type VARCHAR NOT NULL,          -- 'research', 'analysis', 'synthesis', 'ingestion'
-    source VARCHAR NOT NULL,             -- 'user', 'heartbeat', 'conductor'
+    source VARCHAR NOT NULL,             -- 'user', 'schedule', 'conductor'
     prompt TEXT NOT NULL,                -- Original task description
     plan JSONB,                          -- Conductor's decomposed plan
     status VARCHAR NOT NULL DEFAULT 'received',  -- State machine states
@@ -860,7 +860,7 @@ settings/
 ## Integration Points
 
 ### With Existing Pipeline
-- Heartbeat triggers `run_pipeline()` via IngestionSpecialist
+- Scheduler triggers `run_pipeline()` via IngestionSpecialist
 - Conductor can request partial pipeline runs (ingest-only, summarize-only)
 - Pipeline results fed back to conductor for synthesis decisions
 
@@ -876,10 +876,53 @@ settings/
 ### With Job Queue
 - `agent_task` registered as PGQueuer entrypoint
 - Sub-tasks tracked as dependent jobs
-- Heartbeat enqueues scheduled tasks via PGQueuer
+- Scheduler enqueues scheduled tasks via PGQueuer
 
 ### With Observability
 - Each agent task creates an OTel trace
 - Specialist invocations are child spans
 - Memory operations instrumented
 - Cost tracking per task and per agent
+
+## Mock Boundaries for Testing
+
+Tests for each component mock at well-defined boundaries to enable isolated, fast testing:
+
+| Component | Mocks | Real |
+|-----------|-------|------|
+| Conductor | All specialists (mock execute), MemoryProvider, ApprovalGate, PersonaLoader | State machine logic, planning |
+| Specialists | LLMRouter.generate_with_tools(), wrapped services (SearchService, GraphitiClient, etc.) | Tool registration, capability declaration |
+| MemoryProvider | Individual strategies (GraphStrategy, VectorStrategy, KeywordStrategy) | RRF fusion, weight calculation, dedup |
+| Individual Strategies | DB sessions (AsyncSession), GraphitiClient, embedding calls | Strategy-specific query building |
+| Scheduler | PGQueuer.enqueue(), PersonaLoader, datetime.now() | Cron matching, deduplication, schedule state |
+| ApprovalGate | DB session, notification channels | Risk resolution, persona override merging |
+| PersonaLoader | Filesystem (YAML reads) | Deep merge, validation, inheritance |
+| LLMRouter extensions | LLM API calls (provider clients) | Reflection loop, planning step execution, cost tracking |
+| API routes | Conductor, DB session | Request validation, response serialization, SSE streaming |
+
+**Principle**: Each layer mocks the layer directly below it. Integration tests use real instances of 2+ layers with only external services mocked (LLM APIs, Neo4j, filesystem).
+
+## Numeric Thresholds & Defaults
+
+Configurable values referenced across the spec and their defaults:
+
+| Parameter | Default | Configurable Via | Spec Reference |
+|-----------|---------|-----------------|----------------|
+| `max_iterations` (specialist) | 10 | Task params | agentic-analysis.21 |
+| `max_plan_steps` (conductor) | 5 | Task params | agentic-analysis.21 |
+| `cost_limit` (per task) | $1.00 | Task params, schedule | agentic-analysis.21 |
+| `task_timeout` | 10 min | Schedule, task submission | agentic-analysis.23, .28 |
+| `sub_task_timeout` | 3 min | Task params | agentic-analysis.23 |
+| `max_retries` (specialist) | 2 | approval.yaml | agentic-analysis.23 |
+| `retry_backoff_base` | 2s | Not configurable | agentic-analysis.23 |
+| `approval_timeout` | 24 hours | approval.yaml | agentic-analysis.27 |
+| `rrf_k_constant` | 60 | Not configurable | agentic-analysis.22 |
+| `rrf_min_score` | 0.01 | Not configurable | agentic-analysis.22 |
+| `memory_max_results` | 20 | Task params | agentic-analysis.22 |
+| `circuit_breaker_cooldown` | 60s | Not configurable | agentic-analysis.26 |
+| `confidence_high` | >= 0.8 | Not configurable | agentic-analysis.20 |
+| `confidence_moderate` | 0.5–0.79 | Not configurable | agentic-analysis.20 |
+| `confidence_speculative` | < 0.3 | Not configurable | agentic-analysis.20 |
+| `graph_weight` | 0.4 | MemoryProvider config | agentic-analysis.22 |
+| `vector_weight` | 0.4 | MemoryProvider config | agentic-analysis.22 |
+| `keyword_weight` | 0.2 | MemoryProvider config | agentic-analysis.22 |
