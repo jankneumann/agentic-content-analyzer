@@ -98,8 +98,10 @@ class TestGracefulDegradation:
         assert result == {}
         assert any("bao.connection_error" in r.message for r in caplog.records)
 
-    def test_empty_vault_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """spec .21: Empty vault path -> cache empty dict, return empty."""
+    def test_empty_vault_path(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """spec .21: Empty vault path -> cache empty dict, log with count 0."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
 
@@ -111,9 +113,13 @@ class TestGracefulDegradation:
         mock_hvac.Client.return_value = mock_client
 
         with patch("src.config.bao_secrets.hvac", mock_hvac):
-            result = _load_bao_secrets()
+            with caplog.at_level(logging.INFO, logger="src.config.bao_secrets"):
+                result = _load_bao_secrets()
 
         assert result == {}
+        loaded_msgs = [r for r in caplog.records if "bao.secrets_loaded" in r.message]
+        assert len(loaded_msgs) == 1
+        assert "0 secrets" in loaded_msgs[0].message
 
 
 # =========================================================================
