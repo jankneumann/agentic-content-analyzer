@@ -717,3 +717,134 @@ def update_model_pricing_cmd(
         )
     elif report.has_changes and dry_run:
         typer.echo("\nRun with --apply to write changes to settings/models.yaml")
+
+
+@app.command("list-models")
+def list_models_cmd(
+    family: str | None = typer.Option(
+        None, "--family", "-f", help="Filter by model family (claude, gemini, gpt)"
+    ),
+) -> None:
+    """List all models in the registry with their capabilities.
+
+    Shows model ID, family, name, capability flags, and available providers.
+
+    Examples:
+        aca manage list-models                # All models
+        aca manage list-models --family claude # Claude models only
+        aca manage list-models --json          # JSON output
+    """
+    from src.services.model_registry_service import ModelRegistryService
+
+    service = ModelRegistryService()
+    models = service.list_models(family=family)
+
+    if is_json_mode():
+        output_result([m.model_dump() for m in models])
+        return
+
+    if not models:
+        typer.echo("No models found.")
+        return
+
+    # Table output
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(title=f"Model Registry ({len(models)} models)")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Family", style="magenta")
+    table.add_column("Name")
+    table.add_column("Vision", justify="center")
+    table.add_column("Video", justify="center")
+    table.add_column("Audio", justify="center")
+    table.add_column("Providers")
+    table.add_column("$/MTok (in/out)", justify="right")
+
+    for m in models:
+        cost_str = ""
+        if m.cost_per_mtok_input is not None:
+            cost_str = f"${m.cost_per_mtok_input:.2f}/${m.cost_per_mtok_output:.2f}"
+
+        table.add_row(
+            m.id,
+            m.family,
+            m.name,
+            "Y" if m.supports_vision else "",
+            "Y" if m.supports_video else "",
+            "Y" if m.supports_audio else "",
+            ", ".join(m.providers),
+            cost_str,
+        )
+
+    Console().print(table)
+
+
+@app.command("model-info")
+def model_info_cmd(
+    model_id: str = typer.Argument(help="Model ID (e.g., claude-sonnet-4-5)"),
+) -> None:
+    """Show detailed model information with per-provider pricing.
+
+    Examples:
+        aca manage model-info claude-sonnet-4-5
+        aca manage model-info gemini-2.5-flash --json
+    """
+    from src.services.model_registry_service import ModelRegistryService
+
+    service = ModelRegistryService()
+    detail = service.get_model(model_id)
+
+    if not detail:
+        typer.echo(typer.style(f"Model not found: {model_id}", fg=typer.colors.RED), err=True)
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result(detail.model_dump())
+        return
+
+    # Header
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    console.print(f"\n[bold cyan]{detail.name}[/bold cyan] ({detail.id})")
+    console.print(f"  Family: {detail.family}")
+    caps = []
+    if detail.supports_vision:
+        caps.append("vision")
+    if detail.supports_video:
+        caps.append("video")
+    if detail.supports_audio:
+        caps.append("audio")
+    console.print(f"  Capabilities: {', '.join(caps) if caps else 'text only'}")
+    if detail.default_version:
+        console.print(f"  Default version: {detail.default_version}")
+
+    # Pricing table
+    if detail.provider_pricing:
+        console.print()
+        table = Table(title="Provider Pricing")
+        table.add_column("Provider", style="cyan")
+        table.add_column("API Model ID", style="dim")
+        table.add_column("Input $/MTok", justify="right", style="green")
+        table.add_column("Output $/MTok", justify="right", style="green")
+        table.add_column("Context", justify="right")
+        table.add_column("Max Output", justify="right")
+        table.add_column("Tier")
+
+        for p in detail.provider_pricing:
+            table.add_row(
+                p.provider,
+                p.provider_model_id,
+                f"${p.cost_per_mtok_input:.2f}",
+                f"${p.cost_per_mtok_output:.2f}",
+                f"{p.context_window:,}",
+                f"{p.max_output_tokens:,}",
+                p.tier,
+            )
+
+        console.print(table)
+    else:
+        console.print("\n  No provider pricing configured.")
