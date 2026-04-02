@@ -199,9 +199,7 @@ class AgentInsightService:
             query = query.filter(AgentInsight.created_at >= since)
 
         total = query.count()
-        insights = (
-            query.order_by(desc(AgentInsight.created_at)).offset(offset).limit(limit).all()
-        )
+        insights = query.order_by(desc(AgentInsight.created_at)).offset(offset).limit(limit).all()
         return insights, total
 
 

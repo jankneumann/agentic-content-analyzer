@@ -27,8 +27,16 @@ class TestAgentTaskStatusEnum:
     """Test AgentTaskStatus enum values match the state machine."""
 
     def test_all_states_present(self):
-        expected = {"received", "planning", "delegating", "monitoring",
-                    "synthesizing", "blocked", "completed", "failed"}
+        expected = {
+            "received",
+            "planning",
+            "delegating",
+            "monitoring",
+            "synthesizing",
+            "blocked",
+            "completed",
+            "failed",
+        }
         actual = {s.value for s in AgentTaskStatus}
         assert actual == expected
 
@@ -71,7 +79,9 @@ class TestRiskLevelEnum:
 
     def test_ordering_by_severity(self):
         """Risk levels should be orderable by string for comparison."""
-        levels = sorted(RiskLevel, key=lambda r: ["low", "medium", "high", "critical"].index(r.value))
+        levels = sorted(
+            RiskLevel, key=lambda r: ["low", "medium", "high", "critical"].index(r.value)
+        )
         assert [l.value for l in levels] == ["low", "medium", "high", "critical"]
 
 
@@ -111,9 +121,18 @@ class TestAgentTaskModel:
     def test_optional_fields(self):
         """Verify optional/nullable columns exist."""
         columns = {c.name for c in AgentTask.__table__.columns}
-        optional = {"plan", "result", "parent_task_id", "specialist_type",
-                     "persona_config", "cost_total", "tokens_total",
-                     "error_message", "started_at", "completed_at"}
+        optional = {
+            "plan",
+            "result",
+            "parent_task_id",
+            "specialist_type",
+            "persona_config",
+            "cost_total",
+            "tokens_total",
+            "error_message",
+            "started_at",
+            "completed_at",
+        }
         assert optional.issubset(columns)
 
     def test_indexes_defined(self):

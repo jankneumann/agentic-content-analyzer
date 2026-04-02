@@ -65,12 +65,17 @@ class TestBackwardCompatibility:
     """Existing callers without new params should work identically."""
 
     @pytest.mark.asyncio
-    async def test_generate_with_tools_no_new_params(self, router, sample_tools, mock_tool_executor):
+    async def test_generate_with_tools_no_new_params(
+        self, router, sample_tools, mock_tool_executor
+    ):
         """Calling without new params should work as before."""
-        with patch.object(router, "_generate_anthropic_with_tools", new_callable=AsyncMock) as mock_gen:
+        with patch.object(
+            router, "_generate_anthropic_with_tools", new_callable=AsyncMock
+        ) as mock_gen:
             mock_gen.return_value = LLMResponse(text="result", input_tokens=10, output_tokens=5)
             with patch.object(router, "resolve_provider") as mock_resolve:
                 from src.config.models import Provider
+
                 mock_resolve.return_value = Provider.ANTHROPIC
                 with patch.object(router, "_trace_llm_call"):
                     response = await router.generate_with_tools(
@@ -85,6 +90,7 @@ class TestBackwardCompatibility:
     def test_new_params_have_defaults(self):
         """All new params should have default values."""
         import inspect
+
         sig = inspect.signature(LLMRouter.generate_with_tools)
         new_params = ["enable_reflection", "reflection_prompt", "memory_context", "cost_limit"]
         for param_name in new_params:
@@ -108,11 +114,16 @@ class TestReflection:
                 output_tokens=10,
             )
             from src.config.models import Provider
+
             original = LLMResponse(text="original answer", input_tokens=100, output_tokens=50)
             result = await router._reflect_on_response(
-                model="test", provider=Provider.ANTHROPIC,
-                system_prompt="", response=original,
-                reflection_prompt=None, max_tokens=8192, temperature=0.7,
+                model="test",
+                provider=Provider.ANTHROPIC,
+                system_prompt="",
+                response=original,
+                reflection_prompt=None,
+                max_tokens=8192,
+                temperature=0.7,
             )
             assert result.text == "original answer"
             # Tokens should include both original and reflection
@@ -129,11 +140,16 @@ class TestReflection:
                 output_tokens=30,
             )
             from src.config.models import Provider
+
             original = LLMResponse(text="original answer", input_tokens=100, output_tokens=50)
             result = await router._reflect_on_response(
-                model="test", provider=Provider.ANTHROPIC,
-                system_prompt="", response=original,
-                reflection_prompt=None, max_tokens=8192, temperature=0.7,
+                model="test",
+                provider=Provider.ANTHROPIC,
+                system_prompt="",
+                response=original,
+                reflection_prompt=None,
+                max_tokens=8192,
+                temperature=0.7,
             )
             assert result.text == "improved answer with more detail"
 
@@ -145,12 +161,16 @@ class TestReflection:
                 text="REFLECTION: SATISFACTORY", input_tokens=10, output_tokens=5
             )
             from src.config.models import Provider
+
             original = LLMResponse(text="answer", input_tokens=50, output_tokens=25)
             await router._reflect_on_response(
-                model="test", provider=Provider.ANTHROPIC,
-                system_prompt="", response=original,
+                model="test",
+                provider=Provider.ANTHROPIC,
+                system_prompt="",
+                response=original,
                 reflection_prompt="Check for technical accuracy only.",
-                max_tokens=8192, temperature=0.7,
+                max_tokens=8192,
+                temperature=0.7,
             )
             call_args = mock_gen.call_args
             assert "Check for technical accuracy only." in call_args.kwargs["user_prompt"]
@@ -163,17 +183,22 @@ class TestReflection:
 
 class TestMemoryContextInjection:
     @pytest.mark.asyncio
-    async def test_memory_context_prepended_to_user_prompt(self, router, sample_tools, mock_tool_executor):
+    async def test_memory_context_prepended_to_user_prompt(
+        self, router, sample_tools, mock_tool_executor
+    ):
         """Memory entries should be injected into user prompt (not system) for trust boundary."""
         memory_entries = [
             MagicMock(content="AI agents are trending in enterprise"),
             MagicMock(content="RAG systems are maturing"),
         ]
 
-        with patch.object(router, "_generate_anthropic_with_tools", new_callable=AsyncMock) as mock_gen:
+        with patch.object(
+            router, "_generate_anthropic_with_tools", new_callable=AsyncMock
+        ) as mock_gen:
             mock_gen.return_value = LLMResponse(text="result", input_tokens=10, output_tokens=5)
             with patch.object(router, "resolve_provider") as mock_resolve:
                 from src.config.models import Provider
+
                 mock_resolve.return_value = Provider.ANTHROPIC
                 with patch.object(router, "_trace_llm_call"):
                     await router.generate_with_tools(
@@ -188,7 +213,9 @@ class TestMemoryContextInjection:
             # Memory should be in user prompt, NOT system prompt
             call_args = mock_gen.call_args
             system_prompt_arg = call_args[0][2]  # positional: model, provider, system_prompt
-            user_prompt_arg = call_args[0][3]  # positional: model, provider, system_prompt, user_prompt
+            user_prompt_arg = call_args[0][
+                3
+            ]  # positional: model, provider, system_prompt, user_prompt
             assert "AI agents are trending" not in system_prompt_arg
             assert "AI agents are trending" in user_prompt_arg
             assert "RAG systems are maturing" in user_prompt_arg
@@ -197,10 +224,13 @@ class TestMemoryContextInjection:
     @pytest.mark.asyncio
     async def test_no_memory_context_unchanged(self, router, sample_tools, mock_tool_executor):
         """Without memory_context, system prompt should be unchanged."""
-        with patch.object(router, "_generate_anthropic_with_tools", new_callable=AsyncMock) as mock_gen:
+        with patch.object(
+            router, "_generate_anthropic_with_tools", new_callable=AsyncMock
+        ) as mock_gen:
             mock_gen.return_value = LLMResponse(text="result", input_tokens=10, output_tokens=5)
             with patch.object(router, "resolve_provider") as mock_resolve:
                 from src.config.models import Provider
+
                 mock_resolve.return_value = Provider.ANTHROPIC
                 with patch.object(router, "_trace_llm_call"):
                     await router.generate_with_tools(
@@ -242,20 +272,25 @@ class TestCostLimit:
 
 class TestPlanning:
     @pytest.mark.asyncio
-    async def test_generate_with_planning_creates_plan(self, router, sample_tools, mock_tool_executor):
+    async def test_generate_with_planning_creates_plan(
+        self, router, sample_tools, mock_tool_executor
+    ):
         """Planning should first ask model to create a plan, then execute steps."""
         # generate() is called for: 1) planning, 2) revision check after step 1,
         # 3) revision check after step 2 (skipped since it's last step), 4) synthesis
         generate_responses = [
-            LLMResponse(text="1. Search for AI trends\n2. Analyze results",
-                        input_tokens=50, output_tokens=20),
+            LLMResponse(
+                text="1. Search for AI trends\n2. Analyze results",
+                input_tokens=50,
+                output_tokens=20,
+            ),
             LLMResponse(text="NO REVISION NEEDED", input_tokens=10, output_tokens=5),
-            LLMResponse(text="Final synthesis of AI trends",
-                        input_tokens=30, output_tokens=40),
+            LLMResponse(text="Final synthesis of AI trends", input_tokens=30, output_tokens=40),
         ]
 
-        with patch.object(router, "generate", new_callable=AsyncMock,
-                          side_effect=generate_responses):
+        with patch.object(
+            router, "generate", new_callable=AsyncMock, side_effect=generate_responses
+        ):
             with patch.object(router, "generate_with_tools", new_callable=AsyncMock) as mock_gwt:
                 mock_gwt.return_value = LLMResponse(
                     text="step result", input_tokens=50, output_tokens=25
@@ -274,11 +309,13 @@ class TestPlanning:
     @pytest.mark.asyncio
     async def test_planning_respects_max_plan_steps(self, router, sample_tools, mock_tool_executor):
         """Plan should be limited to max_plan_steps."""
+
         async def mock_generate(**kwargs):
             if "planning mode" in kwargs.get("system_prompt", ""):
                 return LLMResponse(
                     text="1. Step A\n2. Step B\n3. Step C\n4. Step D\n5. Step E\n6. Step F\n7. Step G",
-                    input_tokens=50, output_tokens=20,
+                    input_tokens=50,
+                    output_tokens=20,
                 )
             return LLMResponse(text="NO REVISION NEEDED", input_tokens=10, output_tokens=5)
 
@@ -298,9 +335,23 @@ class TestPlanning:
     def test_planning_method_signature(self):
         """Verify generate_with_planning has the expected parameters."""
         import inspect
+
         sig = inspect.signature(LLMRouter.generate_with_planning)
         params = set(sig.parameters.keys())
-        expected = {"self", "goal", "model", "tools", "tool_executor", "system_prompt",
-                    "provider", "max_tokens", "temperature", "max_plan_steps",
-                    "max_iterations_per_step", "max_revisions", "memory_context", "cost_limit"}
+        expected = {
+            "self",
+            "goal",
+            "model",
+            "tools",
+            "tool_executor",
+            "system_prompt",
+            "provider",
+            "max_tokens",
+            "temperature",
+            "max_plan_steps",
+            "max_iterations_per_step",
+            "max_revisions",
+            "memory_context",
+            "cost_limit",
+        }
         assert expected.issubset(params)

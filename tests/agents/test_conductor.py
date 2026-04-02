@@ -352,9 +352,7 @@ class TestSynthesis:
         specialist.execute = AsyncMock(
             return_value=_make_specialist_result(
                 content="Analysis result",
-                findings=[
-                    {"title": "Finding 1", "content": "Detail", "confidence": 0.9}
-                ],
+                findings=[{"title": "Finding 1", "content": "Detail", "confidence": 0.9}],
             )
         )
 
@@ -391,9 +389,7 @@ class TestSynthesis:
     @pytest.mark.asyncio
     async def test_synthesis_counts_successes(self, conductor):
         specialist = conductor.registry.get.return_value
-        specialist.execute = AsyncMock(
-            return_value=_make_specialist_result(success=True)
-        )
+        specialist.execute = AsyncMock(return_value=_make_specialist_result(success=True))
 
         result = await conductor.execute_task(
             task_id="task-1",
@@ -443,9 +439,7 @@ class TestMemoryQueryBeforePlanning:
 
     @pytest.mark.asyncio
     async def test_memory_failure_graceful_degradation(self, conductor):
-        conductor.memory_provider.recall = AsyncMock(
-            side_effect=RuntimeError("Memory unavailable")
-        )
+        conductor.memory_provider.recall = AsyncMock(side_effect=RuntimeError("Memory unavailable"))
 
         result = await conductor.execute_task(
             task_id="task-1",
@@ -460,9 +454,7 @@ class TestMemoryQueryBeforePlanning:
         specialist = conductor.registry.get.return_value
         specialist.execute = AsyncMock(
             return_value=_make_specialist_result(
-                findings=[
-                    {"title": "Stored insight", "content": "Detail", "confidence": 0.9}
-                ],
+                findings=[{"title": "Stored insight", "content": "Detail", "confidence": 0.9}],
             )
         )
 
@@ -480,9 +472,7 @@ class TestCostTracking:
     @pytest.mark.asyncio
     async def test_cost_accumulated(self, conductor):
         specialist = conductor.registry.get.return_value
-        specialist.execute = AsyncMock(
-            return_value=_make_specialist_result(cost=0.05, tokens=500)
-        )
+        specialist.execute = AsyncMock(return_value=_make_specialist_result(cost=0.05, tokens=500))
 
         result = await conductor.execute_task(
             task_id="task-1",
@@ -533,10 +523,12 @@ class TestLLMRouterPlanning:
     ):
         import json
 
-        plan_json = json.dumps([
-            {"specialist": "research", "prompt": "Step 1", "params": {}},
-            {"specialist": "analysis", "prompt": "Step 2", "params": {}},
-        ])
+        plan_json = json.dumps(
+            [
+                {"specialist": "research", "prompt": "Step 1", "params": {}},
+                {"specialist": "analysis", "prompt": "Step 2", "params": {}},
+            ]
+        )
         llm_response = MagicMock()
         llm_response.text = plan_json
         llm_router = MagicMock()
@@ -545,15 +537,11 @@ class TestLLMRouterPlanning:
         research_spec = MagicMock()
         research_spec.name = "research"
         research_spec.get_tools.return_value = []
-        research_spec.execute = AsyncMock(
-            return_value=_make_specialist_result(task_id="t1.sub.0")
-        )
+        research_spec.execute = AsyncMock(return_value=_make_specialist_result(task_id="t1.sub.0"))
         analysis_spec = MagicMock()
         analysis_spec.name = "analysis"
         analysis_spec.get_tools.return_value = []
-        analysis_spec.execute = AsyncMock(
-            return_value=_make_specialist_result(task_id="t1.sub.1")
-        )
+        analysis_spec.execute = AsyncMock(return_value=_make_specialist_result(task_id="t1.sub.1"))
         mock_registry.get.side_effect = lambda name: {
             "research": research_spec,
             "analysis": analysis_spec,

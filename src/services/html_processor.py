@@ -235,8 +235,6 @@ def _rewrite_image_urls(markdown: str, url_mapping: dict[str, str]) -> str:
 
     # Replace each URL that we successfully downloaded
     for original_url, storage_url in url_mapping.items():
-        # Escape special regex characters in the URL
-        escaped_url = re.escape(original_url)
-        result = re.sub(escaped_url, storage_url, result)
+        result = result.replace(original_url, storage_url)
 
     return result

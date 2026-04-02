@@ -43,9 +43,7 @@ class RelevanceWeighting(BaseModel):
             + self.cross_domain_relevance
         )
         if abs(total - 1.0) > 0.01:
-            raise ValueError(
-                f"Relevance weights must sum to 1.0 (±0.01), got {total:.4f}"
-            )
+            raise ValueError(f"Relevance weights must sum to 1.0 (±0.01), got {total:.4f}")
         return self
 
 
@@ -111,7 +109,5 @@ class PersonaConfig(BaseModel):
         The persona specifies *how to write it* (e.g., max_insight_length).
         """
         if schedule_output:
-            return self.output_defaults.model_copy(
-                update={"default_format": schedule_output}
-            )
+            return self.output_defaults.model_copy(update={"default_format": schedule_output})
         return self.output_defaults

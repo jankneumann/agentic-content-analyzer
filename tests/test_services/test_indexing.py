@@ -77,7 +77,9 @@ class TestBuildTreeIndex:
 
         # db.get(Content, content_id) returns content
         mock_content = MagicMock()
-        mock_content.markdown_content = "# Title\n\n## Section A\n\nContent A.\n\n## Section B\n\nContent B."
+        mock_content.markdown_content = (
+            "# Title\n\n## Section A\n\nContent A.\n\n## Section B\n\nContent B."
+        )
         db.get.return_value = mock_content
 
         # Mock async operations (summarization + embedding)

@@ -35,7 +35,10 @@ class TestUploadContentSecurity:
         # Should be rejected with 415 Unsupported Media Type or 400 Bad Request
         # The current implementation might return 415 for signature mismatch
         assert response.status_code in [400, 415]
-        assert "signature" in response.json()["detail"].lower() or "does not match expected format" in response.json()["detail"].lower()
+        assert (
+            "signature" in response.json()["detail"].lower()
+            or "does not match expected format" in response.json()["detail"].lower()
+        )
 
     def test_reject_executable_content(self, db_session):
         """Test rejection of executable file signatures even with safe extensions."""
@@ -56,7 +59,10 @@ class TestUploadContentSecurity:
 
         assert response.status_code in [400, 415]
         # Should detect binary content or signature mismatch
-        assert "format" in response.json()["detail"].lower() or "signature" in response.json()["detail"].lower()
+        assert (
+            "format" in response.json()["detail"].lower()
+            or "signature" in response.json()["detail"].lower()
+        )
 
     def test_allow_valid_pdf(self, db_session):
         """Test acceptance of valid PDF file."""
@@ -76,7 +82,7 @@ class TestUploadContentSecurity:
                     source_id="file_1",
                     markdown_content="",
                     metadata_json={},
-                    parser_used="mock"
+                    parser_used="mock",
                 )
             )
 
@@ -105,7 +111,7 @@ class TestUploadContentSecurity:
                     source_id="file_1",
                     markdown_content="",
                     metadata_json={},
-                    parser_used="mock"
+                    parser_used="mock",
                 )
             )
 

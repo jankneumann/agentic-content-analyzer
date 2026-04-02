@@ -283,9 +283,7 @@ async def handle_approval(request_id: str, decision: ApprovalDecision) -> dict:
     with get_db() as db:
         result = ApprovalService(db).decide_request(req_uuid, decision.approved, decision.reason)
         if result is None:
-            raise HTTPException(
-                status_code=404, detail=f"Approval request {request_id} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Approval request {request_id} not found")
         # Check if we should re-enqueue the associated task
         if result.status == ApprovalStatus.APPROVED and result.task_id:
             task = AgentTaskService(db).get_task(result.task_id)
