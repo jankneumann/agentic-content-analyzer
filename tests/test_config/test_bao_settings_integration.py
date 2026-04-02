@@ -7,7 +7,6 @@ Covers spec scenarios openbao-secrets.15 (settings chain), .3 (env override),
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,12 +27,10 @@ def _mock_vault(secrets: dict[str, str]):
     """Context manager that mocks hvac to return given secrets."""
     mock_client = MagicMock()
     mock_client.is_authenticated.return_value = True
-    mock_client.secrets.kv.v2.read_secret_version.return_value = {
-        "data": {"data": secrets}
-    }
+    mock_client.secrets.kv.v2.read_secret_version.return_value = {"data": {"data": secrets}}
     mock_hvac = MagicMock()
     mock_hvac.Client.return_value = mock_client
-    return patch("src.config.bao_secrets.hvac", mock_hvac, create=True)
+    return patch("src.config.bao_secrets.hvac", mock_hvac)
 
 
 # =========================================================================
@@ -55,9 +52,7 @@ class TestResolveSecretWithBao:
 
         assert result == "sk-from-vault"
 
-    def test_env_var_overrides_vault(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_env_var_overrides_vault(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .3: Env var wins over OpenBao."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
@@ -68,9 +63,7 @@ class TestResolveSecretWithBao:
 
         assert result == "from-env"
 
-    def test_vault_overrides_secrets_file(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_vault_overrides_secrets_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """OpenBao wins over .secrets.yaml."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
@@ -83,9 +76,7 @@ class TestResolveSecretWithBao:
 
         assert result == "from-vault"
 
-    def test_partial_response_falls_through(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_partial_response_falls_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .19: Missing vault key falls through to secrets file."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
@@ -98,9 +89,7 @@ class TestResolveSecretWithBao:
 
         assert result == "from-file"
 
-    def test_cache_isolation_after_clear(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_cache_isolation_after_clear(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .16: After clear_bao_cache(), re-fetches from vault."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
@@ -115,7 +104,7 @@ class TestResolveSecretWithBao:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             first = resolve_secret("K", secrets={})
             assert first == "v1"
 

@@ -13,7 +13,6 @@ Covers spec scenarios openbao-secrets.1 through .23, organized by concern:
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -63,22 +62,11 @@ class TestGracefulDegradation:
         """spec .8: hvac missing -> debug log, empty dict."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
-        with patch.dict("sys.modules", {"hvac": None}):
-            # Force ImportError by patching builtins import
-            original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
-
-            def mock_import(name, *args, **kwargs):
-                if name == "hvac":
-                    raise ImportError("No module named 'hvac'")
-                return original_import(name, *args, **kwargs)
-
-            with patch("builtins.__import__", side_effect=mock_import):
-                result = _load_bao_secrets()
+        with patch("src.config.bao_secrets.hvac", None):
+            result = _load_bao_secrets()
         assert result == {}
 
-    def test_connection_failure_returns_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_connection_failure_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .7: Unreachable OpenBao -> WARNING, empty dict."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
@@ -88,14 +76,8 @@ class TestGracefulDegradation:
         mock_client.is_authenticated.return_value = False
         mock_hvac.Client.return_value = mock_client
 
-        with patch.dict("sys.modules", {"hvac": mock_hvac}):
-            with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
-                # Re-import to pick up the mock
-                import importlib
-                import src.config.bao_secrets as bao_mod
-                # Directly test: simulate auth failure
-                clear_bao_cache()
-                result = _load_bao_secrets()
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
+            result = _load_bao_secrets()
 
         assert result == {}
 
@@ -109,11 +91,12 @@ class TestGracefulDegradation:
         mock_hvac = MagicMock()
         mock_hvac.Client.side_effect = Exception("Connection refused")
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
-            with patch("src.config.bao_secrets._is_bao_configured", return_value=True):
-                with caplog.at_level(logging.WARNING, logger="src.config.bao_secrets"):
-                    # Need to bypass the import check
-                    clear_bao_cache()
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
+            with caplog.at_level(logging.WARNING, logger="src.config.bao_secrets"):
+                result = _load_bao_secrets()
+
+        assert result == {}
+        assert any("bao.connection_error" in r.message for r in caplog.records)
 
     def test_empty_vault_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .21: Empty vault path -> cache empty dict, return empty."""
@@ -122,14 +105,12 @@ class TestGracefulDegradation:
 
         mock_client = MagicMock()
         mock_client.is_authenticated.return_value = True
-        mock_client.secrets.kv.v2.read_secret_version.return_value = {
-            "data": {"data": {}}
-        }
+        mock_client.secrets.kv.v2.read_secret_version.return_value = {"data": {"data": {}}}
 
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             result = _load_bao_secrets()
 
         assert result == {}
@@ -150,9 +131,7 @@ class TestAuthentication:
         monkeypatch.setenv("BAO_SECRET_ID", "test-secret-id")
 
         mock_client = MagicMock()
-        mock_client.auth.approle.login.return_value = {
-            "auth": {"lease_duration": 3600}
-        }
+        mock_client.auth.approle.login.return_value = {"auth": {"lease_duration": 3600}}
         mock_client.is_authenticated.return_value = True
         mock_client.secrets.kv.v2.read_secret_version.return_value = {
             "data": {"data": {"ANTHROPIC_API_KEY": "sk-test"}}
@@ -161,7 +140,7 @@ class TestAuthentication:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             result = _load_bao_secrets()
 
         mock_client.auth.approle.login.assert_called_once_with(
@@ -185,15 +164,13 @@ class TestAuthentication:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             result = _load_bao_secrets()
 
         assert mock_client.token == "dev-root-token"
         assert result == {"KEY": "value"}
 
-    def test_no_credentials_returns_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_credentials_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .23 related: No auth creds -> warning, empty dict."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.delenv("BAO_ROLE_ID", raising=False)
@@ -206,7 +183,7 @@ class TestAuthentication:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             result = _load_bao_secrets()
 
         assert result == {}
@@ -220,17 +197,13 @@ class TestAuthentication:
 class TestSecretLoading:
     """Verify secret resolution, key mapping, and edge cases."""
 
-    def _setup_vault(
-        self, monkeypatch: pytest.MonkeyPatch, secrets: dict[str, str]
-    ) -> None:
+    def _setup_vault(self, monkeypatch: pytest.MonkeyPatch, secrets: dict[str, str]) -> None:
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
 
         mock_client = MagicMock()
         mock_client.is_authenticated.return_value = True
-        mock_client.secrets.kv.v2.read_secret_version.return_value = {
-            "data": {"data": secrets}
-        }
+        mock_client.secrets.kv.v2.read_secret_version.return_value = {"data": {"data": secrets}}
 
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
@@ -239,16 +212,14 @@ class TestSecretLoading:
     def test_secret_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .2: Resolve secret from OpenBao."""
         self._setup_vault(monkeypatch, {"ANTHROPIC_API_KEY": "sk-ant-test"})
-        with patch("src.config.bao_secrets.hvac", self._mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", self._mock_hvac):
             result = get_bao_secret("ANTHROPIC_API_KEY")
         assert result == "sk-ant-test"
 
-    def test_key_mapping_upper_to_lower(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_key_mapping_upper_to_lower(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .17: BaoSettingsSource maps UPPER to lower."""
         self._setup_vault(monkeypatch, {"ANTHROPIC_API_KEY": "sk-test"})
-        with patch("src.config.bao_secrets.hvac", self._mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", self._mock_hvac):
             source = BaoSettingsSource(object)
             data = source()
         assert "anthropic_api_key" in data
@@ -258,7 +229,7 @@ class TestSecretLoading:
         """spec .19: Partial vault response cached as-is."""
         partial = {"KEY_A": "val_a", "KEY_B": "val_b"}
         self._setup_vault(monkeypatch, partial)
-        with patch("src.config.bao_secrets.hvac", self._mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", self._mock_hvac):
             result = _load_bao_secrets()
         assert result == partial
         assert get_bao_secret("KEY_C") is None  # Falls through
@@ -267,7 +238,7 @@ class TestSecretLoading:
         """spec .20: Special chars preserved exactly."""
         special_value = 'pa$$w{or}d\nwith "quotes" and ünïcödé'
         self._setup_vault(monkeypatch, {"SECRET": special_value})
-        with patch("src.config.bao_secrets.hvac", self._mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", self._mock_hvac):
             result = get_bao_secret("SECRET")
         assert result == special_value
 
@@ -296,7 +267,7 @@ class TestCaching:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             first = _load_bao_secrets()
             assert first == {"KEY_A": "first"}
 
@@ -304,23 +275,19 @@ class TestCaching:
             second = _load_bao_secrets()
             assert second == {"KEY_B": "second"}
 
-    def test_subsequent_calls_use_cache(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_subsequent_calls_use_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Verify _load_bao_secrets() only calls vault once."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
 
         mock_client = MagicMock()
         mock_client.is_authenticated.return_value = True
-        mock_client.secrets.kv.v2.read_secret_version.return_value = {
-            "data": {"data": {"K": "V"}}
-        }
+        mock_client.secrets.kv.v2.read_secret_version.return_value = {"data": {"data": {"K": "V"}}}
 
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             _load_bao_secrets()
             _load_bao_secrets()
             _load_bao_secrets()
@@ -337,9 +304,7 @@ class TestCaching:
 class TestThreadSafety:
     """Verify concurrent access uses a single vault fetch."""
 
-    def test_concurrent_load_single_fetch(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_concurrent_load_single_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .18: Multiple threads -> one fetch, same cached dict."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
@@ -370,7 +335,7 @@ class TestThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             threads = [threading.Thread(target=worker) for _ in range(10)]
             for t in threads:
                 t.start()
@@ -453,16 +418,12 @@ class TestTokenLifecycle:
             mgr.stop()
         assert any("bao.token_manager_stopped" in r.message for r in caplog.records)
 
-    def test_refresh_updates_cache_atomically(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_refresh_updates_cache_atomically(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .6: Refresh updates cache via atomic reference swap."""
         import src.config.bao_secrets as bao_mod
 
         mock_client = MagicMock()
-        mock_client.auth.approle.login.return_value = {
-            "auth": {"lease_duration": 3600}
-        }
+        mock_client.auth.approle.login.return_value = {"auth": {"lease_duration": 3600}}
         mock_client.is_authenticated.return_value = True
         mock_client.secrets.kv.v2.read_secret_version.return_value = {
             "data": {"data": {"NEW_KEY": "new_value"}}
@@ -510,7 +471,7 @@ class TestAuditLogging:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             with caplog.at_level(logging.INFO, logger="src.config.bao_secrets"):
                 _load_bao_secrets()
 
@@ -535,7 +496,7 @@ class TestAuditLogging:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             with caplog.at_level(logging.DEBUG, logger="src.config.bao_secrets"):
                 _load_bao_secrets()
 
@@ -554,7 +515,7 @@ class TestAuditLogging:
         mock_hvac = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("src.config.bao_secrets.hvac", mock_hvac, create=True):
+        with patch("src.config.bao_secrets.hvac", mock_hvac):
             with caplog.at_level(logging.WARNING, logger="src.config.bao_secrets"):
                 _load_bao_secrets()
 
@@ -571,9 +532,7 @@ class TestAuditLogging:
 class TestBaoSettingsSourceExceptionIsolation:
     """Verify BaoSettingsSource never raises."""
 
-    def test_call_returns_empty_on_exception(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_call_returns_empty_on_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """spec .23: __call__() catches exceptions, returns {}."""
         monkeypatch.setenv("BAO_ADDR", "http://localhost:8200")
         monkeypatch.setenv("BAO_TOKEN", "dev-root-token")
@@ -598,7 +557,7 @@ class TestBaoSettingsSourceExceptionIsolation:
             side_effect=RuntimeError("unexpected"),
         ):
             source = BaoSettingsSource(object)
-            value, name, is_complex = source.get_field_value(None, "some_field")
+            value, name, _is_complex = source.get_field_value(None, "some_field")
 
         assert value is None
         assert name == "some_field"

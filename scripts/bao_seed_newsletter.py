@@ -54,7 +54,7 @@ def _repo_root() -> Path:
 
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
+            ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
             capture_output=True,
             text=True,
             timeout=5,
@@ -122,10 +122,7 @@ def seed_secrets(
     secrets = {k: v for k, v in data.items() if isinstance(v, str)}
 
     if dry_run:
-        print(
-            f"[DRY RUN] Would write {len(secrets)} secrets "
-            f"to {mount_path}/{secret_path}:"
-        )
+        print(f"[DRY RUN] Would write {len(secrets)} secrets to {mount_path}/{secret_path}:")
         for key in sorted(secrets):
             print(f"  - {key}")
         return secrets
@@ -160,8 +157,7 @@ def seed_shared_keys(
     missing = set(shared_keys) - set(shared_secrets)
     if missing:
         print(
-            f"WARNING: keys not found in .secrets.yaml: "
-            f"{', '.join(sorted(missing))}",
+            f"WARNING: keys not found in .secrets.yaml: {', '.join(sorted(missing))}",
             file=sys.stderr,
         )
 
@@ -185,7 +181,7 @@ def seed_shared_keys(
             mount_point=mount_path,
         )
         existing_data = existing.get("data", {}).get("data", {})
-    except Exception:  # noqa: BLE001
+    except Exception:
         existing_data = {}
 
     # Newsletter values win on conflict; other projects' keys preserved
@@ -273,9 +269,7 @@ def seed_db_engine(
     if dry_run:
         print("[DRY RUN] Would enable database secrets engine at 'database/'")
         print("[DRY RUN] Would configure PostgreSQL connection from POSTGRES_DSN")
-        print(
-            "[DRY RUN] Would create role 'newsletter-app' (TTL: 1h, max: 24h)"
-        )
+        print("[DRY RUN] Would create role 'newsletter-app' (TTL: 1h, max: 24h)")
         return
 
     secrets_engines = client.sys.list_mounted_secrets_engines()
@@ -294,10 +288,7 @@ def seed_db_engine(
         if parsed.port:
             host_port = f"{host_port}:{parsed.port}"
         db_name = parsed.path.lstrip("/") or "postgres"
-        connection_url = (
-            f"postgresql://{{{{username}}}}:{{{{password}}}}"
-            f"@{host_port}/{db_name}"
-        )
+        connection_url = f"postgresql://{{{{username}}}}:{{{{password}}}}@{host_port}/{db_name}"
 
     client.secrets.database.configure(
         name="newsletter-postgres",
@@ -310,10 +301,8 @@ def seed_db_engine(
     print("Configured PostgreSQL connection: newsletter-postgres")
 
     creation_statements = [
-        "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' "
-        "VALID UNTIL '{{expiration}}';",
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
-        'IN SCHEMA public TO "{{name}}";',
+        "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';",
+        'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "{{name}}";',
     ]
     client.secrets.database.create_role(
         name="newsletter-app",
@@ -327,9 +316,7 @@ def seed_db_engine(
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Seed OpenBao with newsletter-aggregator secrets."
-    )
+    parser = argparse.ArgumentParser(description="Seed OpenBao with newsletter-aggregator secrets.")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -371,26 +358,20 @@ def main() -> None:
 
     # Step 1: Seed project secrets
     print("--- Seeding newsletter secrets ---")
-    secrets = seed_secrets(
-        client, args.secrets_path, mount_path, secret_path, dry_run=args.dry_run
-    )
+    secrets = seed_secrets(client, args.secrets_path, mount_path, secret_path, dry_run=args.dry_run)
     print()
 
     # Step 2: Seed shared keys (optional)
     if args.shared_keys:
         shared_keys = [k.strip() for k in args.shared_keys.split(",") if k.strip()]
         print("--- Seeding shared keys ---")
-        seed_shared_keys(
-            client, secrets, shared_keys, mount_path, dry_run=args.dry_run
-        )
+        seed_shared_keys(client, secrets, shared_keys, mount_path, dry_run=args.dry_run)
         print()
 
     # Step 3: Create AppRole (optional)
     if args.with_approle:
         print("--- Creating AppRole ---")
-        seed_approle(
-            client, mount_path, secret_path, token_ttl, dry_run=args.dry_run
-        )
+        seed_approle(client, mount_path, secret_path, token_ttl, dry_run=args.dry_run)
         print()
 
     # Step 4: Configure database engine (optional)

@@ -266,7 +266,7 @@ class Settings(BaseSettings):
 
         profile_settings = ProfileSettingsSource(settings_cls)
         bao_settings = BaoSettingsSource(settings_cls)
-        return (
+        return (  # type: ignore[return-value]
             init_settings,
             env_settings,
             bao_settings,

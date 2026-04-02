@@ -32,6 +32,11 @@ import os
 import threading
 from typing import Any
 
+try:
+    import hvac  # type: ignore[import-untyped]
+except ImportError:
+    hvac = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -118,12 +123,9 @@ def _load_bao_secrets() -> dict[str, str]:
         if not _is_bao_configured():
             return {}
 
-        try:
-            import hvac  # type: ignore[import-untyped]
-        except ImportError:
+        if hvac is None:
             logger.debug(
-                "bao.connection_error: hvac not installed -- "
-                "install with: pip install '.[vault]'"
+                "bao.connection_error: hvac not installed -- install with: pip install '.[vault]'"
             )
             return {}
 
@@ -136,9 +138,7 @@ def _load_bao_secrets() -> dict[str, str]:
             client, token_ttl = _authenticate_client(client)
 
             if not client.is_authenticated():
-                logger.warning(
-                    "bao.auth_failure: authentication failed at %s", bao_addr
-                )
+                logger.warning("bao.auth_failure: authentication failed at %s", bao_addr)
                 return {}
 
             secrets = _fetch_secrets(client, mount_path, secret_path)
@@ -164,7 +164,7 @@ def _load_bao_secrets() -> dict[str, str]:
 
             return secrets
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning(
                 "bao.connection_error: failed to load secrets from %s",
                 bao_addr,
@@ -261,9 +261,7 @@ class _BaoTokenManager:
                 logger.warning("bao.auth_failure: token refresh authentication failed")
                 return
 
-            secrets = _fetch_secrets(
-                self._client, self._mount_path, self._secret_path
-            )
+            secrets = _fetch_secrets(self._client, self._mount_path, self._secret_path)
 
             # Atomic cache update
             _bao_cache = secrets
@@ -279,10 +277,8 @@ class _BaoTokenManager:
 
             self._schedule_refresh()
 
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "bao.connection_error: token refresh failed", exc_info=True
-            )
+        except Exception:
+            logger.warning("bao.connection_error: token refresh failed", exc_info=True)
             # Schedule retry at the same interval
             self._schedule_refresh()
 
@@ -314,7 +310,7 @@ class BaoSettingsSource:
             try:
                 raw = _load_bao_secrets()
                 self._secrets = {k.lower(): v for k, v in raw.items()}
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning(
                     "bao.connection_error: BaoSettingsSource failed to load",
                     exc_info=True,
@@ -328,14 +324,14 @@ class BaoSettingsSource:
             data = self._load_once()
             value = data.get(field_name)
             return value, field_name, False
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None, field_name, False
 
     def __call__(self) -> dict[str, Any]:
         """Return all settings from OpenBao."""
         try:
             return self._load_once()
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning(
                 "bao.connection_error: BaoSettingsSource.__call__() failed",
                 exc_info=True,

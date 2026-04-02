@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -52,26 +52,18 @@ def mock_client() -> MagicMock:
 class TestSeedSecrets:
     """Verify secret seeding from .secrets.yaml."""
 
-    def test_seeds_all_string_values(
-        self, mock_client: MagicMock, secrets_file: Path
-    ) -> None:
+    def test_seeds_all_string_values(self, mock_client: MagicMock, secrets_file: Path) -> None:
         """spec .9: Write all secrets to secret/newsletter/."""
         result = seed_secrets(mock_client, secrets_file, "secret", "newsletter")
 
         mock_client.secrets.kv.v2.create_or_update_secret.assert_called_once()
-        call_kwargs = (
-            mock_client.secrets.kv.v2.create_or_update_secret.call_args
-        )
+        call_kwargs = mock_client.secrets.kv.v2.create_or_update_secret.call_args
         assert call_kwargs.kwargs["path"] == "newsletter"
         assert len(result) == 3
 
-    def test_dry_run_no_write(
-        self, mock_client: MagicMock, secrets_file: Path
-    ) -> None:
+    def test_dry_run_no_write(self, mock_client: MagicMock, secrets_file: Path) -> None:
         """spec .13: Dry run doesn't write to OpenBao."""
-        result = seed_secrets(
-            None, secrets_file, "secret", "newsletter", dry_run=True
-        )
+        result = seed_secrets(None, secrets_file, "secret", "newsletter", dry_run=True)
 
         assert len(result) == 3
         # mock_client shouldn't be called at all (client is None in dry run)
@@ -91,9 +83,7 @@ class TestSeedSecrets:
 class TestSeedSharedKeys:
     """Verify shared key seeding with merge semantics."""
 
-    def test_merge_preserves_other_projects(
-        self, mock_client: MagicMock
-    ) -> None:
+    def test_merge_preserves_other_projects(self, mock_client: MagicMock) -> None:
         """spec .10: Newsletter wins on conflict, other keys preserved."""
         # Existing shared secrets from coordinator
         mock_client.secrets.kv.v2.read_secret_version.return_value = {
@@ -138,9 +128,7 @@ class TestSeedSharedKeys:
     ) -> None:
         """spec .10: Missing keys produce a warning."""
         secrets = {"KEY_A": "value"}
-        seed_shared_keys(
-            mock_client, secrets, ["KEY_A", "MISSING_KEY"], "secret", dry_run=True
-        )
+        seed_shared_keys(mock_client, secrets, ["KEY_A", "MISSING_KEY"], "secret", dry_run=True)
         captured = capsys.readouterr()
         assert "MISSING_KEY" in captured.err
 
@@ -156,9 +144,7 @@ class TestSeedAppRole:
     def test_creates_policy_and_role(self, mock_client: MagicMock) -> None:
         """spec .11: Creates newsletter-read policy and newsletter-app role."""
         mock_client.sys.list_auth_methods.return_value = {"approle/": {}}
-        mock_client.auth.approle.read_role_id.return_value = {
-            "data": {"role_id": "test-role-id"}
-        }
+        mock_client.auth.approle.read_role_id.return_value = {"data": {"role_id": "test-role-id"}}
 
         seed_approle(mock_client, "secret", "newsletter", 3600)
 
@@ -191,9 +177,7 @@ class TestSeedDbEngine:
             "POSTGRES_DSN",
             "postgresql://user:pass@localhost:5432/newsletters",
         )
-        mock_client.sys.list_mounted_secrets_engines.return_value = {
-            "database/": {}
-        }
+        mock_client.sys.list_mounted_secrets_engines.return_value = {"database/": {}}
 
         seed_db_engine(mock_client)
 
@@ -203,7 +187,9 @@ class TestSeedDbEngine:
         assert role_call.kwargs["default_ttl"] == "1h"
         assert role_call.kwargs["max_ttl"] == "24h"
 
-    def test_missing_dsn_exits(self, mock_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_dsn_exits(
+        self, mock_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """spec .12 error: No POSTGRES_DSN exits."""
         monkeypatch.delenv("POSTGRES_DSN", raising=False)
         with pytest.raises(SystemExit):
@@ -218,23 +204,17 @@ class TestSeedDbEngine:
 class TestSeedingFailures:
     """Verify error handling in seeding operations."""
 
-    def test_vault_write_failure(
-        self, mock_client: MagicMock, secrets_file: Path
-    ) -> None:
+    def test_vault_write_failure(self, mock_client: MagicMock, secrets_file: Path) -> None:
         """Vault write permission denied raises."""
-        mock_client.secrets.kv.v2.create_or_update_secret.side_effect = (
-            Exception("permission denied")
+        mock_client.secrets.kv.v2.create_or_update_secret.side_effect = Exception(
+            "permission denied"
         )
         with pytest.raises(Exception, match="permission denied"):
             seed_secrets(mock_client, secrets_file, "secret", "newsletter")
 
-    def test_shared_read_failure_creates_new(
-        self, mock_client: MagicMock
-    ) -> None:
+    def test_shared_read_failure_creates_new(self, mock_client: MagicMock) -> None:
         """If shared path doesn't exist yet, create from scratch."""
-        mock_client.secrets.kv.v2.read_secret_version.side_effect = Exception(
-            "not found"
-        )
+        mock_client.secrets.kv.v2.read_secret_version.side_effect = Exception("not found")
         secrets = {"KEY": "value"}
         seed_shared_keys(mock_client, secrets, ["KEY"], "secret")
 
