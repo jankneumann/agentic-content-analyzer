@@ -5,6 +5,9 @@ browsing generated insights, handling approval requests, and
 managing proactive schedules and personas.
 """
 
+import asyncio
+import json
+import uuid
 from datetime import datetime
 from typing import Any, Literal
 
@@ -12,9 +15,50 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
+from src.models.agent_task import AgentTaskStatus
+from src.models.approval_request import ApprovalStatus
+from src.queue.setup import enqueue_queue_job
+from src.services.agent_service import AgentInsightService, AgentTaskService, ApprovalService
+from src.storage.database import get_db
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _parse_uuid(value: str, name: str = "ID") -> uuid.UUID:
+    """Parse a string to UUID, raising 422 on invalid format."""
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid {name}: {value}")
+
+
+def _task_to_response(task) -> "TaskResponse":
+    """Convert an AgentTask ORM instance to a TaskResponse."""
+    return TaskResponse(
+        id=str(task.id),
+        status=task.status,
+        task_type=task.task_type,
+        prompt=task.prompt,
+        persona_name=task.persona_name,
+        result=task.result,
+        error_message=task.error_message,
+        created_at=task.created_at.isoformat() if task.created_at else None,
+    )
+
+
+def _insight_to_response(insight) -> "InsightResponse":
+    """Convert an AgentInsight ORM instance to an InsightResponse."""
+    return InsightResponse(
+        id=str(insight.id),
+        insight_type=insight.insight_type,
+        title=insight.title,
+        content=insight.content,
+        confidence=insight.confidence,
+        tags=insight.tags or [],
+        task_id=str(insight.task_id) if insight.task_id else None,
+        created_at=insight.created_at.isoformat() if insight.created_at else None,
+    )
 
 
 # ============================================================================
@@ -108,15 +152,36 @@ async def submit_task(submission: TaskSubmission) -> dict:
     Creates an agent_task record and enqueues it for processing
     by the conductor agent.
     """
-    # Stub: return a placeholder task ID
-    import uuid
+    with get_db() as db:
+        task = AgentTaskService(db).create_task(
+            prompt=submission.prompt,
+            task_type=submission.task_type,
+            persona=submission.persona,
+            source="user",
+            params=submission.params,
+        )
+        db.commit()
+        task_id = str(task.id)
+        task_type = task.task_type
+        persona_name = task.persona_name
 
-    task_id = str(uuid.uuid4())
+    # Enqueue for async processing (DB work is committed above)
+    job_id, created = await enqueue_queue_job(
+        "execute_agent_task",
+        {
+            "task_id": task_id,
+            "prompt": submission.prompt,
+            "task_type": task_type,
+            "persona": persona_name,
+        },
+    )
     logger.info(
-        "Agent task submitted: %s (type=%s, persona=%s)",
+        "Agent task submitted: %s (type=%s, persona=%s, job=%d, new=%s)",
         task_id,
-        submission.task_type,
-        submission.persona,
+        task_type,
+        persona_name,
+        job_id,
+        created,
     )
     return {"task_id": task_id, "status": "received"}
 
@@ -124,8 +189,12 @@ async def submit_task(submission: TaskSubmission) -> dict:
 @router.get("/task/{task_id}", dependencies=[Depends(verify_admin_key)])
 async def get_task(task_id: str) -> TaskResponse:
     """Get the status and result of an agent task."""
-    # Stub: return a not-found response until DB integration
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    task_uuid = _parse_uuid(task_id, "task ID")
+    with get_db() as db:
+        task = AgentTaskService(db).get_task(task_uuid)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        return _task_to_response(task)
 
 
 @router.get("/tasks", dependencies=[Depends(verify_admin_key)])
@@ -136,15 +205,23 @@ async def list_tasks(
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> list[TaskResponse]:
     """List agent tasks with optional filters."""
-    # Stub: return empty list until DB integration
-    return []
+    with get_db() as db:
+        tasks, _total = AgentTaskService(db).list_tasks(
+            status=status, persona=persona, limit=limit, offset=offset
+        )
+        return [_task_to_response(t) for t in tasks]
 
 
 @router.delete("/task/{task_id}", dependencies=[Depends(verify_admin_key)])
 async def cancel_task(task_id: str) -> dict:
     """Cancel a pending or in-progress agent task."""
-    # Stub: return not-found until DB integration
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    task_uuid = _parse_uuid(task_id, "task ID")
+    with get_db() as db:
+        task = AgentTaskService(db).cancel_task(task_uuid)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        db.commit()
+        return {"task_id": str(task.id), "status": task.status}
 
 
 # ─── Insights ──────────────────────────────────────────────────
@@ -163,22 +240,30 @@ async def list_insights(
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> list[InsightResponse]:
     """List generated agent insights with optional filters."""
-    # Validate since parameter if provided
+    since_dt: datetime | None = None
     if since is not None:
         try:
-            datetime.fromisoformat(since)
+            since_dt = datetime.fromisoformat(since)
         except ValueError:
             raise HTTPException(
                 status_code=422, detail="Invalid 'since' datetime format. Use ISO 8601."
             )
-    # Stub: return empty list until DB integration
-    return []
+    with get_db() as db:
+        insights, _total = AgentInsightService(db).list_insights(
+            insight_type=insight_type, since=since_dt, persona=persona, limit=limit, offset=offset
+        )
+        return [_insight_to_response(i) for i in insights]
 
 
 @router.get("/insights/{insight_id}", dependencies=[Depends(verify_admin_key)])
 async def get_insight(insight_id: str) -> InsightResponse:
     """Get a single agent insight by ID."""
-    raise HTTPException(status_code=404, detail=f"Insight {insight_id} not found")
+    insight_uuid = _parse_uuid(insight_id, "insight ID")
+    with get_db() as db:
+        insight = AgentInsightService(db).get_insight(insight_uuid)
+        if insight is None:
+            raise HTTPException(status_code=404, detail=f"Insight {insight_id} not found")
+        return _insight_to_response(insight)
 
 
 # ─── Approvals ─────────────────────────────────────────────────
@@ -191,8 +276,37 @@ async def handle_approval(request_id: str, decision: ApprovalDecision) -> dict:
     When approved, the blocked task resumes execution.
     When denied, the denial reason is passed to the conductor for re-planning.
     """
-    # Stub: return not-found until DB integration
-    raise HTTPException(status_code=404, detail=f"Approval request {request_id} not found")
+    req_uuid = _parse_uuid(request_id, "approval request ID")
+    task_id_str: str | None = None
+    task_was_blocked = False
+
+    with get_db() as db:
+        result = ApprovalService(db).decide_request(req_uuid, decision.approved, decision.reason)
+        if result is None:
+            raise HTTPException(
+                status_code=404, detail=f"Approval request {request_id} not found"
+            )
+        # Check if we should re-enqueue the associated task
+        if result.status == ApprovalStatus.APPROVED and result.task_id:
+            task = AgentTaskService(db).get_task(result.task_id)
+            if task and task.status == AgentTaskStatus.BLOCKED:
+                task_id_str = str(task.id)
+                task_was_blocked = True
+        db.commit()
+
+    # Re-enqueue the blocked task outside the DB session
+    if task_was_blocked and task_id_str:
+        await enqueue_queue_job(
+            "execute_agent_task",
+            {"task_id": task_id_str},
+        )
+        logger.info("Re-enqueued blocked task %s after approval", task_id_str)
+
+    return {
+        "request_id": str(result.id),
+        "status": result.status,
+        "decided_at": result.decided_at.isoformat() if result.decided_at else None,
+    }
 
 
 # ─── Schedules ─────────────────────────────────────────────────
@@ -291,19 +405,32 @@ async def stream_task_progress(task_id: str):
     """Stream task progress via Server-Sent Events."""
     from starlette.responses import StreamingResponse
 
+    task_uuid = _parse_uuid(task_id, "task ID")
+    terminal_statuses = {AgentTaskStatus.COMPLETED, AgentTaskStatus.FAILED}
+
     async def event_generator():
-        """Poll task status and yield SSE events.
+        """Poll task status from DB and yield SSE events.
 
-        This is a basic implementation — full integration with conductor
-        would use asyncio.Queue for real-time updates.
+        Polls every 1 second, breaks on terminal states (completed, failed).
+        Max 300 polls = 5 minutes.
         """
-        import asyncio
-        import json
-
         max_polls = 300  # 5 minutes at 1s intervals
         for _ in range(max_polls):
-            # Stub: in production, read from DB or message queue
-            yield f"data: {json.dumps({'status': 'in_progress', 'task_id': task_id})}\n\n"
+            with get_db() as db:
+                task = AgentTaskService(db).get_task(task_uuid)
+            if task is None:
+                yield f"data: {json.dumps({'status': 'not_found', 'task_id': task_id})}\n\n"
+                return
+            event_data = {
+                "task_id": task_id,
+                "status": task.status,
+                "error_message": task.error_message,
+            }
+            if task.result:
+                event_data["result"] = task.result
+            yield f"data: {json.dumps(event_data)}\n\n"
+            if task.status in terminal_statuses:
+                return
             await asyncio.sleep(1)
         yield f"data: {json.dumps({'status': 'timeout', 'task_id': task_id})}\n\n"
 

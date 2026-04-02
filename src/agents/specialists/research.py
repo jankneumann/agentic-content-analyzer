@@ -155,11 +155,37 @@ class ResearchSpecialist(BaseSpecialist):
             result = str(results)
             findings.append({"tool": tool_name, "query": args["query"]})
         elif tool_name == "search_web":
-            result = f"Web search for '{args['query']}' — service not yet connected"
-            findings.append({"tool": tool_name, "query": args["query"], "status": "stub"})
+            from src.services.web_search import get_web_search_provider
+
+            provider = get_web_search_provider()
+            web_results = provider.search(
+                query=args["query"], max_results=args.get("max_results", 5)
+            )
+            result = provider.format_results(web_results)
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "query": args["query"],
+                    "result_count": len(web_results),
+                }
+            )
         elif tool_name == "fetch_url":
-            result = f"Fetch URL '{args['url']}' — service not yet connected"
-            findings.append({"tool": tool_name, "url": args["url"], "status": "stub"})
+            import httpx
+
+            from src.utils.html_parser import html_to_text
+
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                resp = await client.get(args["url"], headers={"User-Agent": "ACA-Agent/1.0"})
+                resp.raise_for_status()
+            text = html_to_text(resp.text)
+            result = text[:5000]  # Truncate for LLM context window
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "url": args["url"],
+                    "chars_extracted": len(text),
+                }
+            )
         else:
             result = f"Tool '{tool_name}' not available or service not connected"
             findings.append({"tool": tool_name, "status": "unavailable"})

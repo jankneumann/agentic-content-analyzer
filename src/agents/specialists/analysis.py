@@ -4,7 +4,10 @@ Wraps ThemeAnalyzer and HistoricalContextAnalyzer to perform theme
 detection, trend analysis, and anomaly detection.
 """
 
+from datetime import UTC, datetime
 from typing import Any
+
+from sqlalchemy import func
 
 from src.agents.specialists.base import BaseSpecialist, SpecialistResult, SpecialistTask
 from src.services.llm_router import ToolDefinition
@@ -153,14 +156,99 @@ class AnalysisSpecialist(BaseSpecialist):
             result = str(context)
             findings.append({"tool": tool_name, "topic": args["topic"]})
         elif tool_name == "detect_anomalies":
-            result = f"Anomaly detection for '{args['topic']}' — service not yet connected"
-            findings.append({"tool": tool_name, "topic": args["topic"], "status": "stub"})
-        elif tool_name == "compare_periods":
-            result = (
-                f"Period comparison for '{args['topic']}' "
-                f"({args['period_a']} vs {args['period_b']}) — service not yet connected"
+            from src.models import Content
+            from src.storage.database import get_db
+
+            topic = args["topic"]
+            threshold = args.get("threshold", 0.7)
+
+            with get_db() as db:
+                # Get recent content to check for anomalies
+                recent_content = (
+                    db.query(Content.title, Content.source_type, Content.created_at)
+                    .filter(Content.title.ilike(f"%{topic}%"))
+                    .order_by(Content.created_at.desc())
+                    .limit(20)
+                    .all()
+                )
+
+            if recent_content:
+                content_summary = "\n".join(
+                    f"- {c.title} ({c.source_type}, {c.created_at.strftime('%Y-%m-%d')})"
+                    for c in recent_content
+                )
+                result = (
+                    f"Anomaly scan for '{topic}' across {len(recent_content)} recent items:\n"
+                    f"{content_summary}\n\n"
+                    f"(Threshold: {threshold} — LLM analysis would identify deviations "
+                    f"from baseline)"
+                )
+            else:
+                result = f"No content found matching topic '{topic}' for anomaly detection"
+
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "topic": topic,
+                    "threshold": threshold,
+                    "content_count": len(recent_content),
+                }
             )
-            findings.append({"tool": tool_name, "topic": args["topic"], "status": "stub"})
+        elif tool_name == "compare_periods":
+            from datetime import timedelta
+
+            from src.models import Content
+            from src.storage.database import get_db
+
+            topic = args["topic"]
+            period_a = args["period_a"]  # e.g., "7d"
+            period_b = args["period_b"]  # e.g., "30d"
+
+            def _parse_period(p: str) -> timedelta:
+                if p.endswith("d"):
+                    return timedelta(days=int(p[:-1]))
+                if p.endswith("w"):
+                    return timedelta(weeks=int(p[:-1]))
+                return timedelta(days=int(p))
+
+            now = datetime.now(UTC)
+            delta_a = _parse_period(period_a)
+            delta_b = _parse_period(period_b)
+
+            with get_db() as db:
+                count_a = (
+                    db.query(func.count(Content.id))
+                    .filter(
+                        Content.title.ilike(f"%{topic}%"),
+                        Content.created_at >= now - delta_a,
+                    )
+                    .scalar()
+                )
+                count_b = (
+                    db.query(func.count(Content.id))
+                    .filter(
+                        Content.title.ilike(f"%{topic}%"),
+                        Content.created_at >= now - delta_b,
+                        Content.created_at < now - delta_a,
+                    )
+                    .scalar()
+                )
+
+            result = (
+                f"Period comparison for '{topic}':\n"
+                f"  Recent ({period_a}): {count_a} items\n"
+                f"  Earlier ({period_b} before {period_a}): {count_b} items\n"
+                f"  Change: {'↑' if count_a > count_b else '↓' if count_a < count_b else '→'} "
+                f"({count_a - count_b:+d})"
+            )
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "topic": topic,
+                    "period_a": {"label": period_a, "count": count_a},
+                    "period_b": {"label": period_b, "count": count_b},
+                }
+            )
         else:
             result = f"Tool '{tool_name}' not available or service not connected"
             findings.append({"tool": tool_name, "status": "unavailable"})
