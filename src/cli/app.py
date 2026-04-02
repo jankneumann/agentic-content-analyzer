@@ -29,6 +29,7 @@ from src.cli.agent_commands import app as agent_app
 from src.cli.analyze_commands import app as analyze_app
 from src.cli.digest_commands import app as digest_app
 from src.cli.edit_commands import app as edit_app
+from src.cli.evaluate_commands import app as evaluate_app
 from src.cli.graph_commands import app as graph_app
 from src.cli.ingest_commands import app as ingest_app
 from src.cli.job_commands import app as job_app
@@ -79,6 +80,7 @@ app.add_typer(settings_app, name="settings")
 app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(job_app, name="jobs")
+app.add_typer(evaluate_app, name="evaluate")
 
 
 def _version_callback(value: bool) -> None:

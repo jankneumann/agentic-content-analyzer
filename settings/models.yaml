@@ -360,6 +360,36 @@ default_models:
   cloud_stt: gemini-2.5-flash  # Native audio + built-in cleanup in one API call
   content_filtering: gemini-2.5-flash-lite  # Fast, cheap for relevance classification
 
+# Routing Configuration
+# Per-step routing mode: 'fixed' uses default_models above; 'dynamic' routes by complexity
+# All steps default to fixed mode with routing disabled for safety
+# Enable dynamic routing per-step after calibration proves quality parity
+routing:
+  summarization:
+    mode: fixed
+    enabled: false
+    strong_model: claude-sonnet-4-5
+    weak_model: claude-haiku-4-5
+    threshold: 0.5
+  theme_analysis:
+    mode: fixed
+    enabled: false
+    strong_model: claude-sonnet-4-5
+    weak_model: claude-haiku-4-5
+    threshold: 0.5
+  digest_creation:
+    mode: fixed
+    enabled: false
+    strong_model: claude-sonnet-4-5
+    weak_model: claude-haiku-4-5
+    threshold: 0.5
+  podcast_script:
+    mode: fixed
+    enabled: false
+    strong_model: gemini-2.5-flash
+    weak_model: gemini-2.5-flash-lite
+    threshold: 0.5
+
 # Notes on provider tiers and pricing:
 # - Anthropic: Base pricing, direct API access
 # - AWS Bedrock: ~15% markup, pay-as-you-go "on-demand" tier

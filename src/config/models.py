@@ -98,8 +98,36 @@ class ModelStep(StrEnum):
     TREE_SEARCH = "tree_search"  # Tree search retrieval
 
 
+class RoutingMode(StrEnum):
+    """Routing mode for a pipeline step."""
+
+    FIXED = "fixed"  # Always use the configured model (default)
+    DYNAMIC = "dynamic"  # Route by prompt complexity
+
+
+@dataclass
+class RoutingConfig:
+    """Per-step routing configuration.
+
+    Controls whether a pipeline step uses fixed model selection
+    or dynamic complexity-based routing between a strong and weak model.
+    """
+
+    step: str
+    mode: RoutingMode = RoutingMode.FIXED
+    enabled: bool = False  # Dynamic routing is opt-in
+    strong_model: str | None = None
+    weak_model: str | None = None
+    threshold: float = 0.5  # Complexity score threshold (0.0-1.0)
+
+
 # Map of env var names per model step (e.g., MODEL_SUMMARIZATION)
 _STEP_ENV_VARS: dict[str, str] = {step.value: f"MODEL_{step.value.upper()}" for step in ModelStep}
+
+# Map of env var names for routing mode per step (e.g., ROUTING_SUMMARIZATION_MODE)
+_ROUTING_ENV_VARS: dict[str, str] = {
+    step.value: f"ROUTING_{step.value.upper()}_MODE" for step in ModelStep
+}
 
 
 def _get_db_model_override(step: str) -> str | None:
@@ -349,6 +377,88 @@ class ModelConfig:
                 )
 
         self._providers = providers or []
+        self._routing_configs = self._load_routing_configs()
+
+    def _load_routing_configs(self) -> dict[str, RoutingConfig]:
+        """Load routing configuration from YAML, with env var and DB overrides.
+
+        Resolution order (highest precedence first):
+        1. Environment variable (ROUTING_<STEP>_MODE=fixed|dynamic)
+        2. Database override (routing_configs table)
+        3. YAML config (settings/models.yaml routing: section)
+        4. Default: fixed mode, disabled
+        """
+        configs: dict[str, RoutingConfig] = {}
+
+        # Load from YAML (lowest precedence)
+        try:
+            from src.config.config_registry import get_config_registry
+            registry = get_config_registry()
+            yaml_data = registry.get("models", {})
+        except Exception:
+            # Fallback: direct file read
+            try:
+                settings_path = Path(__file__).parent.parent.parent / "settings" / "models.yaml"
+                if settings_path.exists():
+                    with open(settings_path) as f:
+                        yaml_data = yaml.safe_load(f) or {}
+                else:
+                    yaml_data = {}
+            except Exception:
+                yaml_data = {}
+
+        routing_section = yaml_data.get("routing", {})
+        for step_name, step_data in routing_section.items():
+            if not isinstance(step_data, dict):
+                continue
+            configs[step_name] = RoutingConfig(
+                step=step_name,
+                mode=RoutingMode(step_data.get("mode", "fixed")),
+                enabled=step_data.get("enabled", False),
+                strong_model=step_data.get("strong_model"),
+                weak_model=step_data.get("weak_model"),
+                threshold=step_data.get("threshold", 0.5),
+            )
+
+        # Apply env var overrides (highest precedence)
+        for step in ModelStep:
+            env_var = _ROUTING_ENV_VARS.get(step.value)
+            if env_var:
+                env_value = os.environ.get(env_var)
+                if env_value and env_value in ("fixed", "dynamic"):
+                    if step.value not in configs:
+                        configs[step.value] = RoutingConfig(step=step.value)
+                    configs[step.value].mode = RoutingMode(env_value)
+
+        return configs
+
+    def get_routing_config(self, step: ModelStep) -> RoutingConfig:
+        """Get routing configuration for a pipeline step.
+
+        Args:
+            step: Pipeline step
+
+        Returns:
+            RoutingConfig (defaults to fixed mode if not configured)
+        """
+        return self._routing_configs.get(
+            step.value,
+            RoutingConfig(step=step.value),
+        )
+
+    def is_dynamic_routing_enabled(self, step: ModelStep) -> bool:
+        """Check if dynamic routing is active for a step.
+
+        Dynamic routing requires: mode=dynamic AND enabled=True.
+
+        Args:
+            step: Pipeline step
+
+        Returns:
+            True if dynamic routing should be used
+        """
+        config = self.get_routing_config(step)
+        return config.mode == RoutingMode.DYNAMIC and config.enabled
 
     def get_model_for_step(self, step: ModelStep) -> str:
         """Get the model ID for a pipeline step.

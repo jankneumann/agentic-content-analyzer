@@ -111,13 +111,16 @@ class LLMRouter:
         ModelFamily.GPT: Provider.OPENAI,
     }
 
-    def __init__(self, model_config: ModelConfig):
+    def __init__(self, model_config: ModelConfig, complexity_router=None):
         """Initialize the router.
 
         Args:
             model_config: Model configuration for provider info and pricing
+            complexity_router: Optional ComplexityRouter for dynamic model selection.
+                              If None, dynamic routing falls back to fixed mode.
         """
         self.model_config = model_config
+        self.complexity_router = complexity_router
 
     def get_family(self, model: str) -> ModelFamily:
         """Get the model family for routing.
@@ -206,6 +209,7 @@ class LLMRouter:
         provider: Provider | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
+        step: "ModelStep | None" = None,
     ) -> LLMResponse:
         """Generate a simple text response (no tools).
 
@@ -216,6 +220,10 @@ class LLMRouter:
             provider: Optional explicit provider. If None, uses family default.
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            step: Optional pipeline step for dynamic routing. If provided and
+                  dynamic routing is enabled for this step, the model may be
+                  overridden based on prompt complexity. If None, the explicitly
+                  provided model is used (backward compatible).
 
         Returns:
             LLMResponse with generated text
@@ -226,8 +234,35 @@ class LLMRouter:
 
             # Explicit provider (AWS Bedrock for Claude)
             response = await router.generate("claude-sonnet-4-5", provider=Provider.AWS_BEDROCK, ...)
+
+            # With dynamic routing (step-aware)
+            response = await router.generate("claude-sonnet-4-5", step=ModelStep.SUMMARIZATION, ...)
         """
         import time
+
+        routing_decision = None
+
+        # Dynamic routing: override model based on complexity if step is provided
+        if step is not None and self.model_config.is_dynamic_routing_enabled(step):
+            routing_config = self.model_config.get_routing_config(step)
+            if (
+                self.complexity_router is not None
+                and routing_config.strong_model
+                and routing_config.weak_model
+            ):
+                routing_decision = self.complexity_router.classify(
+                    prompt=user_prompt,
+                    step=step.value,
+                    strong_model=routing_config.strong_model,
+                    weak_model=routing_config.weak_model,
+                    threshold=routing_config.threshold,
+                )
+                model = routing_decision.model_selected
+                logger.info(
+                    "Dynamic routing for step=%s: score=%.3f, threshold=%.3f, selected=%s",
+                    step.value, routing_decision.complexity_score,
+                    routing_decision.threshold, model,
+                )
 
         resolved_provider = self.resolve_provider(model, provider)
         logger.info(f"Generating with model={model}, provider={resolved_provider.value}")
@@ -263,6 +298,10 @@ class LLMRouter:
             duration_ms=duration_ms,
             max_tokens=max_tokens,
         )
+
+        # Log routing decision if dynamic routing was used
+        if routing_decision is not None:
+            self._log_routing_decision(routing_decision, response)
 
         return response
 
@@ -1032,6 +1071,33 @@ class LLMRouter:
     # =========================================================================
     # Telemetry
     # =========================================================================
+
+    def _log_routing_decision(self, decision, response: LLMResponse) -> None:
+        """Log a routing decision to the routing_decisions table.
+
+        Non-blocking: errors are logged but don't affect generation.
+        """
+        try:
+            from src.models.evaluation import RoutingDecision
+            from src.storage.database import get_db
+
+            with get_db() as db:
+                record = RoutingDecision(
+                    step=decision.step,
+                    prompt_hash=decision.prompt_hash,
+                    complexity_score=decision.complexity_score,
+                    threshold=decision.threshold,
+                    model_selected=decision.model_selected,
+                    strong_model=decision.strong_model,
+                    weak_model=decision.weak_model,
+                    cost_actual=None,  # Could be populated later
+                    tokens_input=response.input_tokens,
+                    tokens_output=response.output_tokens,
+                )
+                db.add(record)
+                db.commit()
+        except Exception as e:
+            logger.debug("Failed to log routing decision: %s", e)
 
     def _trace_llm_call(
         self,

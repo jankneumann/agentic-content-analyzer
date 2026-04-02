@@ -17,6 +17,7 @@ from src.api.chat_routes import router as chat_router
 from src.api.connection_status_routes import router as connection_status_router
 from src.api.content_routes import router as content_router
 from src.api.digest_routes import router as digest_router
+from src.api.evaluation_routes import router as evaluation_router
 from src.api.files_routes import router as files_router
 from src.api.health_routes import router as health_router
 from src.api.image_generation_routes import router as image_generation_router
@@ -200,6 +201,7 @@ app.include_router(pipeline_router)  # Pipeline execution (daily/weekly)
 app.include_router(reference_router)  # Content reference tracking
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 app.include_router(agent_router)  # Agentic analysis (tasks, insights, approvals)
+app.include_router(evaluation_router)  # LLM router evaluation and calibration
 
 
 @app.get("/api/v1/system/config", tags=["system"])

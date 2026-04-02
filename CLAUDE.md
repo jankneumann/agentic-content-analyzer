@@ -66,6 +66,13 @@ aca agent insights --type trend        # Browse insights
 aca agent personas                     # List personas
 aca agent schedule                     # Manage schedules
 
+# LLM Router Evaluation
+aca evaluate list-datasets             # List evaluation datasets
+aca evaluate create-dataset --step summarization  # Create dataset
+aca evaluate run <dataset-id>          # Run judge evaluation
+aca evaluate calibrate --step summarization       # Calibrate threshold
+aca evaluate report                    # Cost savings report
+
 # Testing
 pytest                                  # All tests
 pytest tests/api/ -v                   # API tests

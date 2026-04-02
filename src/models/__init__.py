@@ -43,6 +43,18 @@ from src.models.agent_insight import AgentInsight, InsightType
 from src.models.agent_memory import AgentMemory, MemoryType
 from src.models.agent_task import AgentTask, AgentTaskSource, AgentTaskStatus
 from src.models.approval_request import ApprovalRequest, ApprovalStatus, RiskLevel
+from src.models.evaluation import (
+    DatasetStatus,
+    EvaluationConsensus,
+    EvaluationDataset,
+    EvaluationResult,
+    EvaluationSample,
+    JudgeType,
+    Preference,
+    RoutingConfig,
+    RoutingDecision,
+    RoutingMode,
+)
 from src.models.settings import PromptOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
@@ -133,6 +145,17 @@ __all__ = [
     "ApprovalRequest",
     "ApprovalStatus",
     "RiskLevel",
+    # Evaluation / Routing
+    "RoutingConfig",
+    "RoutingMode",
+    "EvaluationDataset",
+    "EvaluationSample",
+    "EvaluationResult",
+    "EvaluationConsensus",
+    "RoutingDecision",
+    "DatasetStatus",
+    "JudgeType",
+    "Preference",
     # Settings
     "PromptOverride",
     # YouTube
