@@ -68,7 +68,7 @@ function Breadcrumbs() {
           <div key={crumb.href} className="flex items-center gap-1">
             {/* Separator (except for first item) */}
             {index > 0 && (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <ChevronRight className="text-muted-foreground h-4 w-4" />
             )}
 
             {/* Breadcrumb item */}
@@ -82,7 +82,7 @@ function Breadcrumbs() {
               <a
                 href={crumb.href}
                 onClick={handleClick(crumb.href)}
-                className="text-sm text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded-sm text-sm focus-visible:ring-2 focus-visible:outline-none"
               >
                 {crumb.title}
               </a>
@@ -121,7 +121,8 @@ function ThemeToggle() {
 
   // Track whether the user has explicitly toggled the theme
   const [hasUserChoice, setHasUserChoice] = useState(
-    () => typeof window !== "undefined" && localStorage.getItem("theme") !== null
+    () =>
+      typeof window !== "undefined" && localStorage.getItem("theme") !== null
   )
 
   // Sync theme changes — only persist when the user has made an explicit choice
@@ -148,11 +149,7 @@ function ThemeToggle() {
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="ghost" size="icon" onClick={toggleTheme}>
-          {isDark ? (
-            <Sun className="h-5 w-5" />
-          ) : (
-            <Moon className="h-5 w-5" />
-          )}
+          {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           <span className="sr-only">{label}</span>
         </Button>
       </TooltipTrigger>
@@ -170,7 +167,7 @@ export function Header({ onMenuClick, className }: HeaderProps) {
   return (
     <header
       className={cn(
-        "flex h-16 items-center gap-4 border-b bg-background px-4",
+        "bg-background flex h-16 items-center gap-4 border-b px-4",
         className
       )}
     >
