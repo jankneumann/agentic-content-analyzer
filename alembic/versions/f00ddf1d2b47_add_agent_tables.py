@@ -3,16 +3,11 @@
 Creates tables: agent_tasks, agent_insights, agent_memories,
 approval_requests, agent_schedules.
 
-Creates PG enums: agent_task_status, agent_task_source, insight_type,
-memory_type, risk_level, approval_status.
+Uses VARCHAR columns (not native PG enums) for all status/type fields.
+Python StrEnum is the source of truth; DB uses plain strings.
+No ALTER TYPE migrations needed when adding new values.
 
-Enum Extension Pattern:
-    When adding new values to these enums, create a new migration with:
-        ALTER TYPE <enum_name> ADD VALUE '<new_value>';
-    This must run outside a transaction on PostgreSQL < 12.
-    Use op.execute() with autocommit=True or a separate migration.
-
-Revision ID: a1b2c3d4e5f6
+Revision ID: f00ddf1d2b47
 Revises: f9a8b7c6d5e5
 Create Date: 2026-04-02 12:00:00.000000
 """
@@ -25,7 +20,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
+revision: str = "f00ddf1d2b47"
 down_revision: Union[str, None] = "f9a8b7c6d5e5"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

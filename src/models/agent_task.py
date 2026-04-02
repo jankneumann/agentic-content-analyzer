@@ -4,16 +4,14 @@ Tracks the lifecycle of agentic tasks from submission through planning,
 delegation, monitoring, and completion. Supports both user-initiated
 and schedule-triggered tasks.
 
-Enum Migration Strategy:
-    New PG enums (agent_task_status, agent_task_source, insight_type,
-    memory_type, risk_level) are created via CREATE TYPE in the Alembic
-    migration. When extending these enums later, use:
-        ALTER TYPE <enum_name> ADD VALUE '<new_value>';
-    This must be in its own migration (cannot be inside a transaction
-    on PostgreSQL < 12). See CLAUDE.md gotchas.
+Enum Strategy:
+    All status/type fields use VARCHAR columns with Python StrEnum as
+    the source of truth. No native PG enums are used, so adding new
+    values only requires updating the StrEnum class — no ALTER TYPE
+    migration needed.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 
 from sqlalchemy import (
@@ -86,13 +84,13 @@ class AgentTask(Base):
     cost_total = Column(Float, nullable=True)
     tokens_total = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
-    sub_tasks = relationship("AgentTask", backref="parent_task", remote_side="AgentTask.id")
+    sub_tasks = relationship("AgentTask", backref="parent_task", remote_side=[id])
     insights = relationship("AgentInsight", back_populates="task")
     approval_requests = relationship("ApprovalRequest", back_populates="task")
 

@@ -4,7 +4,7 @@ Tracks approval requests created when agents attempt HIGH or CRITICAL
 risk actions. Supports the full approval lifecycle: pending → approved/denied/expired.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text
@@ -49,7 +49,7 @@ class ApprovalRequest(Base):
     status = Column(String, nullable=False, default=ApprovalStatus.PENDING)
     decision_reason = Column(Text, nullable=True)
     decided_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     task = relationship("AgentTask", back_populates="approval_requests")
