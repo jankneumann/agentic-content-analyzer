@@ -14,9 +14,6 @@ from pydantic import BaseModel, ConfigDict
 from src.config.models import (
     MODEL_REGISTRY,
     PROVIDER_MODEL_CONFIGS,
-    ModelFamily,
-    Provider,
-    load_model_registry,
 )
 from src.utils.logging import get_logger
 
@@ -158,7 +155,7 @@ class ModelRegistryService:
                     family=info.family.value,
                     supports_vision=info.supports_vision,
                     supports_video=info.supports_video,
-                    supports_audio=getattr(info, "supports_audio", False),
+                    supports_audio=info.supports_audio,
                     default_version=info.default_version,
                     providers=sorted(providers),
                     cost_per_mtok_input=cost_input,
@@ -201,7 +198,7 @@ class ModelRegistryService:
             family=info.family.value,
             supports_vision=info.supports_vision,
             supports_video=info.supports_video,
-            supports_audio=getattr(info, "supports_audio", False),
+            supports_audio=info.supports_audio,
             default_version=info.default_version,
             provider_pricing=sorted(pricing, key=lambda p: p.provider),
         )

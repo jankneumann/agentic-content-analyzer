@@ -163,3 +163,13 @@ class TestPricingStatus:
             assert "message" in data
         finally:
             mod._last_refresh_report = original
+
+    def test_status_route_not_captured_by_model_id(self, client):
+        """Verify /pricing/status is not matched as /{model_id} with model_id='pricing'.
+
+        This is a regression test for the FastAPI route ordering bug where
+        dynamic /{model_id} was defined before static /pricing/status.
+        """
+        resp = client.get("/api/v1/models/pricing/status")
+        # Should return 200 (status endpoint), not 404 (model_id='pricing' not found)
+        assert resp.status_code == 200
