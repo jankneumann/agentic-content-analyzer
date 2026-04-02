@@ -84,7 +84,7 @@ Phases 1-2 and Phase 4 have **no cross-dependencies** and can run in parallel:
 - [ ] 4.2 Create `settings/evaluation.yaml` with quality criteria per step (summarization, digest_creation, podcast_script) and `_default` fallback (accuracy, completeness, conciseness, clarity). Include `description` and `fail_when` with concrete examples per dimension
   **Spec scenarios**: llm-router-evaluation.10, llm-router-evaluation.15g
   **Files**: `settings/evaluation.yaml` (new)
-  **Dependencies**: None (can parallel with 4.1)
+  **Dependencies**: None
 
 - [ ] 4.3 Create `src/evaluation/criteria.py` — `QualityCriteria` class, per-step rubric loading with `_default` fallback
   **Files**: `src/evaluation/criteria.py` (new)
@@ -191,7 +191,7 @@ Phases 1-2 and Phase 4 have **no cross-dependencies** and can run in parallel:
 
 - [ ] 8.5 End-to-end integration test — create dataset → run evaluation → calibrate → enable dynamic routing → verify routing decisions logged
   **Files**: `tests/integration/test_evaluation_e2e.py` (new)
-  **Dependencies**: All previous phases
+  **Dependencies**: 8.2, 8.4
 
 ## Task Summary
 
