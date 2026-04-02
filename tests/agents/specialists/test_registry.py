@@ -1,10 +1,24 @@
 """Tests for the SpecialistRegistry."""
 
+from dataclasses import dataclass
+from typing import Any
+
 import pytest
 
 from src.agents.registry import SpecialistRegistry
 from src.agents.specialists.base import BaseSpecialist, SpecialistResult, SpecialistTask
-from src.services.llm_router import ToolDefinition
+
+
+# -- Lightweight tool stand-in (avoids heavy src.services import chain) --
+
+
+@dataclass
+class _Tool:
+    """Minimal ToolDefinition-compatible object for testing."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
 
 
 # -- Mock specialists for testing --
@@ -14,9 +28,9 @@ class MockResearchSpecialist(BaseSpecialist):
     async def execute(self, task: SpecialistTask) -> SpecialistResult:
         return SpecialistResult(task_id=task.task_id, success=True)
 
-    def get_tools(self) -> list[ToolDefinition]:
+    def get_tools(self) -> list:
         return [
-            ToolDefinition(
+            _Tool(
                 name="search_content",
                 description="Search content",
                 parameters={"type": "object", "properties": {}},
@@ -35,14 +49,14 @@ class MockAnalysisSpecialist(BaseSpecialist):
     async def execute(self, task: SpecialistTask) -> SpecialistResult:
         return SpecialistResult(task_id=task.task_id, success=True)
 
-    def get_tools(self) -> list[ToolDefinition]:
+    def get_tools(self) -> list:
         return [
-            ToolDefinition(
+            _Tool(
                 name="analyze_themes",
                 description="Analyze themes",
                 parameters={"type": "object", "properties": {}},
             ),
-            ToolDefinition(
+            _Tool(
                 name="detect_anomalies",
                 description="Detect anomalies",
                 parameters={"type": "object", "properties": {}},
@@ -61,9 +75,9 @@ class MockSynthesisSpecialist(BaseSpecialist):
     async def execute(self, task: SpecialistTask) -> SpecialistResult:
         return SpecialistResult(task_id=task.task_id, success=True)
 
-    def get_tools(self) -> list[ToolDefinition]:
+    def get_tools(self) -> list:
         return [
-            ToolDefinition(
+            _Tool(
                 name="create_report",
                 description="Create report",
                 parameters={"type": "object", "properties": {}},
@@ -196,9 +210,9 @@ class TestToolAggregation:
             async def execute(self, task):
                 return SpecialistResult(task_id=task.task_id, success=True)
 
-            def get_tools(self) -> list[ToolDefinition]:
+            def get_tools(self) -> list:
                 return [
-                    ToolDefinition(
+                    _Tool(
                         name="search_content",
                         description="Alt search",
                         parameters={"type": "object", "properties": {}},

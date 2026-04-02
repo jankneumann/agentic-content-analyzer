@@ -4,9 +4,15 @@ Provides lookup by name and capability, and aggregates tools from
 all registered specialists for the conductor's planning phase.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from src.agents.specialists.base import BaseSpecialist
-from src.services.llm_router import ToolDefinition
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.services.llm_router import ToolDefinition
 
 logger = get_logger(__name__)
 
@@ -42,12 +48,17 @@ class SpecialistRegistry:
             if capability in s.get_capabilities()
         ]
 
-    def get_all_tools(self) -> list[ToolDefinition]:
+    def get_all_tools(self) -> list[Any]:
         """Aggregate tools from all registered specialists.
 
         Tool names are prefixed with the specialist name to avoid
         collisions (e.g., "research.search_content").
+
+        Returns a list of ToolDefinition instances (typed as Any to
+        avoid heavy transitive imports at module load time).
         """
+        from src.services.llm_router import ToolDefinition
+
         tools: list[ToolDefinition] = []
         for specialist in self._specialists.values():
             for tool in specialist.get_tools():

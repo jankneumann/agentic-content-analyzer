@@ -1,0 +1,117 @@
+# Schedule-driven proactive tasks
+#
+# Each entry defines a cron-triggered task. The scheduler checks these
+# against the current time and enqueues matching tasks into PGQueuer.
+#
+# Fields (all optional except cron + task_type):
+#   cron          - Standard 5-field cron expression
+#   task_type     - ingestion | analysis | synthesis | maintenance
+#   persona       - Which persona to use (default: "default")
+#   output        - Output format override (technical_report, executive_briefing, digest, raw_insights)
+#   sources       - Restrict to specific source types (e.g., [arxiv, scholar])
+#   params        - Additional task-specific parameters
+#   description   - Human-readable description
+#   priority      - low | medium | high
+#   enabled       - true/false (default: true)
+
+schedules:
+  # ─── Infrastructure (no persona) ────────────────────────────
+  scan_sources:
+    cron: "0 */4 * * *"
+    task_type: ingestion
+    description: "Scan all enabled sources for new content"
+    priority: low
+
+  knowledge_maintenance:
+    cron: "0 3 * * *"
+    task_type: maintenance
+    params:
+      actions: [prune_stale, merge_duplicates, refresh_embeddings]
+    description: "Knowledge graph maintenance and optimization"
+    priority: low
+
+  # ─── Analysis ──────────────────────────────────────────────
+  # Same persona, different source scopes:
+  trend_detection_tech:
+    cron: "0 9 * * *"
+    task_type: analysis
+    persona: ai-ml-technology
+    output: technical_report
+    params:
+      lookback_days: 1
+      focus: emerging_trends
+    description: "Detect emerging AI/ML trends in yesterday's content"
+    priority: medium
+
+  trend_detection_tech_arxiv_only:
+    cron: "0 11 * * *"
+    task_type: analysis
+    persona: ai-ml-technology
+    output: technical_report
+    sources: [arxiv, scholar]
+    params:
+      lookback_days: 7
+      focus: research_breakthroughs
+    description: "Weekly research paper trend analysis"
+    priority: low
+
+  trend_detection_leadership:
+    cron: "0 9 * * *"
+    task_type: analysis
+    persona: leadership
+    output: executive_briefing
+    params:
+      lookback_days: 1
+      focus: strategic_shifts
+    description: "Detect strategic leadership trends"
+    priority: medium
+
+  # ─── Synthesis ─────────────────────────────────────────────
+  weekly_synthesis_tech:
+    cron: "0 10 * * MON"
+    task_type: synthesis
+    persona: ai-ml-technology
+    output: technical_report
+    params:
+      lookback_days: 7
+    description: "Weekly AI/ML trend synthesis"
+    priority: medium
+
+  weekly_synthesis_leadership:
+    cron: "0 10 * * MON"
+    task_type: synthesis
+    persona: leadership
+    output: executive_briefing
+    params:
+      lookback_days: 7
+    description: "Weekly leadership briefing"
+    priority: medium
+
+  cross_theme_discovery:
+    cron: "0 14 * * WED"
+    task_type: analysis
+    persona: ai-ml-technology
+    output: raw_insights
+    params:
+      lookback_days: 30
+      focus: cross_theme_connections
+    description: "Discover connections between themes across 30 days"
+    priority: low
+
+  # ─── Daily Digests ─────────────────────────────────────────
+  # Same persona can produce different output formats:
+  draft_daily_digest_tech:
+    cron: "0 17 * * MON-FRI"
+    task_type: synthesis
+    persona: ai-ml-technology
+    output: digest
+    description: "Draft daily AI/ML digest"
+    priority: medium
+
+  draft_daily_digest_leadership:
+    cron: "0 17 * * MON-FRI"
+    task_type: synthesis
+    persona: leadership
+    output: digest
+    description: "Draft daily leadership digest"
+    priority: medium
