@@ -22,6 +22,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
 | [Desktop](docs/DESKTOP_DEPLOYMENT.md) | Tauri desktop app: build, distribute, remote backend, CORS |
+| [**ACA Agents**](docs/ACA-AGENTS.md) | Agentic analysis: personas, specialists, memory, approvals, scheduling |
 | [Gotchas](docs/GOTCHAS.md) | Comprehensive list of pitfalls organized by area |
 | [OpenBao](docs/OPENBAO.md) | OpenBao secrets management: setup, AppRole, seeding, audit events |
 
@@ -57,6 +58,13 @@ aca ingest url <url>                   # Direct URL
 # Processing
 aca summarize pending                  # Summarize pending content
 aca create-digest daily|weekly         # Create digest
+
+# Agentic analysis
+aca agent task "prompt"                # Submit analysis task
+aca agent status [task-id]             # Check task status
+aca agent insights --type trend        # Browse insights
+aca agent personas                     # List personas
+aca agent schedule                     # Manage schedules
 
 # Testing
 pytest                                  # All tests
@@ -137,6 +145,11 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 
 ### Deployment
 - [Railway guide](docs/MOBILE_DEPLOYMENT.md) | [Desktop/Tauri](docs/DESKTOP_DEPLOYMENT.md) | [Docker entrypoint](docs/MOBILE_DEPLOYMENT.md#docker-entrypoint-pattern)
+
+### Agentic Analysis
+- [ACA Agents guide](docs/ACA-AGENTS.md) | [Personas](docs/ACA-AGENTS.md#personas) | [Schedules](docs/ACA-AGENTS.md#schedules) | [Approval gates](docs/ACA-AGENTS.md#approval-gates)
+- Key files: `src/agents/conductor.py` (orchestrator), `src/agents/specialists/` (4 specialists), `src/services/agent_service.py` (CRUD)
+- Config: `settings/personas/` (persona YAML), `settings/schedule.yaml` (cron), `settings/approval.yaml` (risk levels)
 
 ### Review & Delivery
 - [Digest review](docs/REVIEW_SYSTEM.md) | [Podcast generation](docs/REVIEW_SYSTEM.md#podcast-scripts) | [Audio digests](docs/REVIEW_SYSTEM.md#audio-digests)
