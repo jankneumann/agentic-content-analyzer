@@ -83,6 +83,13 @@ Things that will bite you if ignored. Organized by area.
 | gitleaks pre-commit blocks commit | Check `.gitleaks.toml` allowlist; add path or regex exception for intentional test fixtures |
 | Security headers break iframe embedding | `X-Frame-Options: DENY` prevents embedding; if embedding needed, switch to CSP `frame-ancestors` directive |
 
+## API Routes
+
+| Issue | Solution |
+|-------|----------|
+| FastAPI route ordering: `/{id}` shadows static paths | Define static routes (`/pricing/status`) BEFORE dynamic routes (`/{model_id}`) — FastAPI matches in definition order and `{model_id}` captures any string including "pricing" |
+| String-level YAML editing offset drift | When applying multiple replacements to file content, collect `(start, end, new_text)` tuples and apply in **reverse offset order** — forward-order replacements shift subsequent offsets |
+
 ## Testing
 
 | Issue | Solution |
