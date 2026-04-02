@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.agent_routes import router as agent_router
 from src.api.audio_digest_routes import router as audio_digest_router
 from src.api.auth_routes import router as auth_router
 from src.api.chat_routes import router as chat_router
@@ -198,6 +199,7 @@ app.include_router(notification_preferences_router)  # Notification preferences
 app.include_router(pipeline_router)  # Pipeline execution (daily/weekly)
 app.include_router(reference_router)  # Content reference tracking
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
+app.include_router(agent_router)  # Agentic analysis (tasks, insights, approvals)
 
 
 @app.get("/api/v1/system/config", tags=["system"])

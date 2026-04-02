@@ -277,6 +277,11 @@ class LLMRouter:
         max_tokens: int = 8192,
         temperature: float = 0.7,
         max_iterations: int = 20,
+        # --- Agentic extensions (all optional, backward-compatible) ---
+        enable_reflection: bool = False,
+        reflection_prompt: str | None = None,
+        memory_context: list[Any] | None = None,
+        cost_limit: float | None = None,
     ) -> LLMResponse:
         """Generate with tool use in an agentic loop.
 
@@ -292,6 +297,15 @@ class LLMRouter:
             max_tokens: Maximum tokens per generation
             temperature: Sampling temperature
             max_iterations: Maximum agentic loop iterations
+            enable_reflection: If True, model reviews its output after tool loop completes.
+                If reflection identifies issues, the loop may continue. (agentic-analysis.18)
+            reflection_prompt: Custom reflection instruction. Default asks model to review
+                quality and completeness of its response.
+            memory_context: List of memory entries to inject as context. Appended to
+                system prompt as prior knowledge. (agentic-analysis.18)
+            cost_limit: Maximum USD cost for this generation. If exceeded, returns
+                partial results. Tracks cost via input/output token counts and
+                model pricing. (agentic-analysis.18, agentic-analysis.21)
 
         Returns:
             LLMResponse with final text and usage stats
@@ -300,6 +314,14 @@ class LLMRouter:
 
         resolved_provider = self.resolve_provider(model, provider)
         logger.info(f"Generating with tools: model={model}, provider={resolved_provider.value}")
+
+        # Inject memory context into system prompt if provided
+        if memory_context:
+            memory_text = "\n\n## Prior Knowledge (from memory)\n"
+            for entry in memory_context:
+                content = getattr(entry, "content", str(entry))
+                memory_text += f"- {content}\n"
+            system_prompt = system_prompt + memory_text
 
         start_time = time.monotonic()
 
@@ -346,6 +368,41 @@ class LLMRouter:
         else:
             raise ValueError(f"Unsupported provider: {resolved_provider}")
 
+        # Cost limit check
+        if cost_limit is not None:
+            estimated_cost = self._estimate_cost(
+                response.input_tokens, response.output_tokens, model
+            )
+            if estimated_cost > cost_limit:
+                logger.warning(
+                    f"Cost limit exceeded: ${estimated_cost:.4f} > ${cost_limit:.2f}. "
+                    "Returning partial results."
+                )
+                duration_ms = (time.monotonic() - start_time) * 1000
+                self._trace_llm_call(
+                    model=model,
+                    provider=resolved_provider.value,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    response=response,
+                    duration_ms=duration_ms,
+                    max_tokens=max_tokens,
+                    metadata={"tool_count": len(tools), "cost_limit_exceeded": True},
+                )
+                return response
+
+        # Reflection step (agentic-analysis.18)
+        if enable_reflection:
+            response = await self._reflect_on_response(
+                model=model,
+                provider=resolved_provider,
+                system_prompt=system_prompt,
+                response=response,
+                reflection_prompt=reflection_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+
         duration_ms = (time.monotonic() - start_time) * 1000
         self._trace_llm_call(
             model=model,
@@ -355,10 +412,279 @@ class LLMRouter:
             response=response,
             duration_ms=duration_ms,
             max_tokens=max_tokens,
-            metadata={"tool_count": len(tools), "max_iterations": max_iterations},
+            metadata={"tool_count": len(tools), "max_iterations": max_iterations,
+                       "reflection": enable_reflection},
         )
 
         return response
+
+    async def generate_with_planning(
+        self,
+        goal: str,
+        model: str,
+        tools: list[ToolDefinition],
+        tool_executor: ToolExecutor,
+        system_prompt: str = "",
+        provider: Provider | None = None,
+        max_tokens: int = 8192,
+        temperature: float = 0.7,
+        max_plan_steps: int = 5,
+        max_iterations_per_step: int = 10,
+        max_revisions: int = 2,
+        memory_context: list[Any] | None = None,
+        cost_limit: float | None = None,
+    ) -> LLMResponse:
+        """Generate with an explicit planning phase before tool execution.
+
+        First asks the model to create a step-by-step plan, then executes
+        each step via generate_with_tools(). The model can revise the plan
+        based on intermediate results. (agentic-analysis.19)
+
+        Args:
+            goal: The high-level goal to accomplish
+            model: Model ID
+            tools: Available tools for each step
+            tool_executor: Tool execution function
+            system_prompt: System instructions
+            provider: Optional explicit provider
+            max_tokens: Maximum tokens per generation
+            temperature: Sampling temperature
+            max_plan_steps: Maximum number of steps in the plan (default 5)
+            max_iterations_per_step: Max tool iterations per step (default 10)
+            max_revisions: Max times the plan can be revised (default 2)
+            memory_context: Memory entries to inject as context
+            cost_limit: Total USD cost limit across all steps
+
+        Returns:
+            LLMResponse with synthesized results from all plan steps
+        """
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cost = 0.0
+        step_results: list[str] = []
+
+        # Phase 1: Create the plan
+        planning_prompt = (
+            f"Create a step-by-step plan to accomplish this goal:\n\n{goal}\n\n"
+            f"Return a numbered list of up to {max_plan_steps} concrete steps. "
+            "Each step should be a specific action that can be accomplished with the available tools. "
+            "Format: one step per line, numbered 1-N."
+        )
+
+        plan_response = await self.generate(
+            model=model,
+            system_prompt=system_prompt + (
+                "\n\nYou are in planning mode. Create a clear, actionable plan."
+            ),
+            user_prompt=planning_prompt,
+            provider=provider,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        total_input_tokens += plan_response.input_tokens
+        total_output_tokens += plan_response.output_tokens
+
+        # Parse plan steps
+        plan_text = plan_response.text
+        steps = [
+            line.strip() for line in plan_text.strip().split("\n")
+            if line.strip() and any(line.strip().startswith(f"{i}") for i in range(1, 20))
+        ]
+        steps = steps[:max_plan_steps]
+
+        if not steps:
+            # Fallback: treat the entire response as a single step
+            steps = [plan_text.strip()]
+
+        logger.info(f"Planning phase complete: {len(steps)} steps")
+
+        # Phase 2: Execute each step
+        revisions_remaining = max_revisions
+        step_idx = 0
+
+        while step_idx < len(steps):
+            step = steps[step_idx]
+            logger.info(f"Executing plan step {step_idx + 1}/{len(steps)}: {step[:80]}...")
+
+            # Cost check before each step
+            if cost_limit is not None and total_cost >= cost_limit:
+                logger.warning(f"Cost limit reached (${total_cost:.4f}). Returning partial results.")
+                break
+
+            remaining_budget = None
+            if cost_limit is not None:
+                remaining_budget = cost_limit - total_cost
+
+            step_context = ""
+            if step_results:
+                step_context = "\n\nResults from previous steps:\n" + "\n".join(
+                    f"Step {i+1}: {r[:200]}" for i, r in enumerate(step_results)
+                )
+
+            step_response = await self.generate_with_tools(
+                model=model,
+                system_prompt=system_prompt + step_context,
+                user_prompt=f"Execute this plan step:\n{step}",
+                tools=tools,
+                tool_executor=tool_executor,
+                provider=provider,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                max_iterations=max_iterations_per_step,
+                memory_context=memory_context,
+                cost_limit=remaining_budget,
+            )
+
+            total_input_tokens += step_response.input_tokens
+            total_output_tokens += step_response.output_tokens
+            total_cost += self._estimate_cost(
+                step_response.input_tokens, step_response.output_tokens, model
+            )
+            step_results.append(step_response.text)
+            step_idx += 1
+
+            # Allow plan revision after each step (if revisions remain)
+            if revisions_remaining > 0 and step_idx < len(steps):
+                revision_prompt = (
+                    f"You completed step {step_idx} with this result:\n{step_response.text[:500]}\n\n"
+                    f"Remaining steps:\n" + "\n".join(f"  {s}" for s in steps[step_idx:]) + "\n\n"
+                    "Should the remaining plan be revised? Reply 'NO REVISION NEEDED' if the plan is fine, "
+                    "or provide a revised numbered list of remaining steps."
+                )
+                revision_response = await self.generate(
+                    model=model,
+                    system_prompt=system_prompt,
+                    user_prompt=revision_prompt,
+                    provider=provider,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                total_input_tokens += revision_response.input_tokens
+                total_output_tokens += revision_response.output_tokens
+
+                if "NO REVISION NEEDED" not in revision_response.text.upper():
+                    # Parse revised steps
+                    revised = [
+                        line.strip() for line in revision_response.text.strip().split("\n")
+                        if line.strip() and any(line.strip().startswith(f"{i}") for i in range(1, 20))
+                    ]
+                    if revised:
+                        steps = steps[:step_idx] + revised[:max_plan_steps - step_idx]
+                        revisions_remaining -= 1
+                        logger.info(f"Plan revised. {revisions_remaining} revisions remaining.")
+
+        # Phase 3: Synthesize results
+        synthesis_prompt = (
+            f"You executed a {len(step_results)}-step plan for this goal:\n{goal}\n\n"
+            "Step results:\n" + "\n".join(
+                f"Step {i+1}: {r}" for i, r in enumerate(step_results)
+            ) + "\n\nSynthesize these results into a coherent final response."
+        )
+
+        synthesis_response = await self.generate(
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=synthesis_prompt,
+            provider=provider,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        total_input_tokens += synthesis_response.input_tokens
+        total_output_tokens += synthesis_response.output_tokens
+
+        return LLMResponse(
+            text=synthesis_response.text,
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            provider=synthesis_response.provider,
+            model_version=synthesis_response.model_version,
+            raw_response={"plan_steps": len(steps), "step_results": step_results},
+        )
+
+    async def _reflect_on_response(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        response: LLMResponse,
+        reflection_prompt: str | None,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        """Post-loop reflection: model reviews its own output quality.
+
+        If the reflection identifies issues, the response text is updated
+        with the improved version.
+        """
+        default_reflection = (
+            "Review your previous response for:\n"
+            "1. Completeness — did you address all aspects of the question?\n"
+            "2. Accuracy — are the facts and reasoning sound?\n"
+            "3. Quality — is the response well-structured and clear?\n\n"
+            "If improvements are needed, provide an improved version. "
+            "If the response is satisfactory, reply with 'REFLECTION: SATISFACTORY'."
+        )
+
+        reflection_response = await self.generate(
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=(
+                f"Your previous response:\n{response.text}\n\n"
+                f"{reflection_prompt or default_reflection}"
+            ),
+            provider=provider,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        if "REFLECTION: SATISFACTORY" not in reflection_response.text.upper():
+            logger.info("Reflection identified improvements, updating response")
+            return LLMResponse(
+                text=reflection_response.text,
+                input_tokens=response.input_tokens + reflection_response.input_tokens,
+                output_tokens=response.output_tokens + reflection_response.output_tokens,
+                provider=response.provider,
+                model_version=response.model_version,
+                raw_response=response.raw_response,
+            )
+
+        logger.info("Reflection: response satisfactory")
+        return LLMResponse(
+            text=response.text,
+            input_tokens=response.input_tokens + reflection_response.input_tokens,
+            output_tokens=response.output_tokens + reflection_response.output_tokens,
+            provider=response.provider,
+            model_version=response.model_version,
+            raw_response=response.raw_response,
+        )
+
+    @staticmethod
+    def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
+        """Rough cost estimate for a generation call.
+
+        Uses approximate pricing per 1M tokens. This is intentionally
+        conservative (overestimates) to avoid exceeding cost limits.
+        """
+        # Approximate $/1M tokens (input, output) — conservative estimates
+        pricing = {
+            "claude-opus": (15.0, 75.0),
+            "claude-sonnet": (3.0, 15.0),
+            "claude-haiku": (0.25, 1.25),
+            "gemini-2.5-flash": (0.15, 0.60),
+            "gemini-2.5-pro": (1.25, 10.0),
+            "gpt-4o": (2.50, 10.0),
+            "gpt-4o-mini": (0.15, 0.60),
+        }
+        # Find best matching pricing tier
+        rates = (3.0, 15.0)  # Default to sonnet-tier
+        for prefix, p in pricing.items():
+            if prefix in model.lower():
+                rates = p
+                break
+
+        input_cost = (input_tokens / 1_000_000) * rates[0]
+        output_cost = (output_tokens / 1_000_000) * rates[1]
+        return input_cost + output_cost
 
     async def generate_with_video(
         self,
