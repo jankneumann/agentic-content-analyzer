@@ -10,8 +10,6 @@ by focusing on the registry catalog and pricing data.
 
 from __future__ import annotations
 
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -56,6 +54,10 @@ class ModelListResponse(BaseModel):
 
 # ---------------------------------------------------------------------------
 # Endpoints
+#
+# IMPORTANT: Static path routes (/pricing/status, /pricing/refresh) MUST be
+# defined BEFORE dynamic path routes (/{model_id}) to avoid FastAPI matching
+# "pricing" as a model_id parameter.
 # ---------------------------------------------------------------------------
 
 
@@ -73,34 +75,6 @@ async def list_models(
     """
     models = _service.list_models(family=family)
     return ModelListResponse(models=models, count=len(models))
-
-
-@router.get(
-    "/{model_id}",
-    response_model=ModelDetail,
-    summary="Get model details with provider pricing",
-)
-async def get_model(model_id: str) -> ModelDetail:
-    """Get detailed information about a specific model including per-provider pricing."""
-    detail = _service.get_model(model_id)
-    if not detail:
-        raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
-    return detail
-
-
-@router.get(
-    "/{model_id}/pricing",
-    summary="Get pricing breakdown for a model across providers",
-)
-async def get_model_pricing(model_id: str) -> dict:
-    """Get pricing comparison for a model across all available providers."""
-    detail = _service.get_model(model_id)
-    if not detail:
-        raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
-    return {
-        "model_id": model_id,
-        "providers": [p.model_dump() for p in detail.provider_pricing],
-    }
 
 
 @router.post(
@@ -133,3 +107,31 @@ async def get_pricing_status() -> PricingRefreshReport | dict:
     if not report:
         return {"message": "No pricing refresh has been executed yet"}
     return report
+
+
+@router.get(
+    "/{model_id}",
+    response_model=ModelDetail,
+    summary="Get model details with provider pricing",
+)
+async def get_model(model_id: str) -> ModelDetail:
+    """Get detailed information about a specific model including per-provider pricing."""
+    detail = _service.get_model(model_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
+    return detail
+
+
+@router.get(
+    "/{model_id}/pricing",
+    summary="Get pricing breakdown for a model across providers",
+)
+async def get_model_pricing(model_id: str) -> dict:
+    """Get pricing comparison for a model across all available providers."""
+    detail = _service.get_model(model_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
+    return {
+        "model_id": model_id,
+        "providers": [p.model_dump() for p in detail.provider_pricing],
+    }

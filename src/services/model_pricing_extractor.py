@@ -326,9 +326,7 @@ class ModelPricingExtractor:
         for key, config in registry_configs.items():
             # registry_configs keys are (model_id, Provider) tuples
             model_id, provider = key
-            if provider.value == provider_key or (
-                provider_key == "aws_bedrock" and provider == Provider.AWS_BEDROCK
-            ):
+            if provider.value == provider_key:
                 config_key = f"{provider.value}.{model_id}"
                 entries[config_key] = {
                     "provider_model_id": config.provider_model_id,
@@ -453,34 +451,32 @@ class ModelPricingExtractor:
         Instead of round-tripping through a YAML library (which would lose
         comments and formatting), we do targeted string replacements on
         the raw YAML text.
+
+        Replacements are collected as (abs_start, abs_end, new_text) tuples
+        and applied in reverse offset order so earlier offsets remain valid.
         """
+        import re
+
         yaml_path = self._find_models_yaml()
         content = yaml_path.read_text()
 
+        # Collect all replacements as (start, end, new_text) tuples
+        replacements: list[tuple[int, int, str]] = []
+
         for diff in report.diffs:
-            # e.g. provider_key="anthropic.claude-sonnet-4-5", field="cost_per_mtok_input"
-            # We look for lines like "  cost_per_mtok_input: 3.00" under the
-            # section headed by "  anthropic.claude-sonnet-4-5:"
             section_key = diff.provider_key
             field_name = diff.field
 
-            # Find the section in YAML
             section_marker = f"  {section_key}:"
             section_idx = content.find(section_marker)
             if section_idx == -1:
                 logger.warning(f"Could not find section {section_key} in models.yaml")
                 continue
 
-            # Find the field within that section (search from section start to next section)
-            section_end = content.find("\n  ", section_idx + len(section_marker) + 1)
-            # Look further — sections are separated by blank lines or new top-level keys
-            # Search for the field line within ~20 lines after section header
+            # Search for the field line within ~800 chars after section header
             search_start = section_idx
             search_end = min(len(content), section_idx + 800)
             section_block = content[search_start:search_end]
-
-            # Find the specific field line
-            import re
 
             # Match "    field_name: value" possibly with comment
             pattern = rf"^(    {re.escape(field_name)}:\s*)(.+?)(\s*#.*)?$"
@@ -494,7 +490,6 @@ class ModelPricingExtractor:
             # Format the new value
             new_val = diff.extracted_value
             if isinstance(new_val, float):
-                # Format to match YAML style: remove trailing zeros but keep at least 2 decimals
                 new_val_str = f"{new_val:.2f}"
             elif isinstance(new_val, int):
                 new_val_str = str(new_val)
@@ -502,26 +497,27 @@ class ModelPricingExtractor:
                 new_val_str = f'"{new_val}"'
 
             # Reconstruct the line preserving inline comments
-            old_line = match.group(0)
             comment = match.group(3) or ""
             new_line = f"{match.group(1)}{new_val_str}{comment}"
 
-            # Replace in full content (use the absolute position)
             abs_start = search_start + match.start()
             abs_end = search_start + match.end()
+            replacements.append((abs_start, abs_end, new_line))
+
+        # Apply replacements in reverse offset order to preserve positions
+        for abs_start, abs_end, new_line in sorted(replacements, reverse=True):
             content = content[:abs_start] + new_line + content[abs_end:]
 
         # Update the "Pricing updated" timestamp
-        import re as re_mod
         from datetime import UTC, datetime
 
         today = datetime.now(UTC).strftime("%B %Y")
-        content = re_mod.sub(
+        content = re.sub(
             r"# Pricing updated:.*",
             f"# Pricing updated: {today}",
             content,
         )
-        content = re_mod.sub(
+        content = re.sub(
             r"# Updated:.*",
             f"# Updated: {today} (auto-extracted)",
             content,
