@@ -1,0 +1,16 @@
+risk_levels:
+  search_content: low
+  query_knowledge_graph: low
+  analyze_themes: low
+  get_historical_context: low
+  ingest_source: medium
+  ingest_url: medium
+  run_pipeline: medium
+  summarize_content: medium
+  create_digest: high
+  send_email: high
+  publish_digest: high
+  store_graph_episode: high
+  delete_content: critical
+  modify_agent_config: critical
+  bulk_operations: critical
