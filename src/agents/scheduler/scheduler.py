@@ -8,11 +8,12 @@ infrastructure.
 
 import logging
 import re
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -68,8 +69,8 @@ def _parse_cron_field(field: str, value: int, max_value: int) -> bool:
     range_match = re.match(r"^([A-Z]+|\d+)-([A-Z]+|\d+)$", field)
     if range_match:
         start_str, end_str = range_match.group(1), range_match.group(2)
-        start = _WEEKDAY_MAP.get(start_str, None)
-        end = _WEEKDAY_MAP.get(end_str, None)
+        start = _WEEKDAY_MAP.get(start_str)
+        end = _WEEKDAY_MAP.get(end_str)
         if start is None:
             start = int(start_str)
         if end is None:
@@ -145,6 +146,8 @@ class AgentScheduler:
         self._schedules: dict[str, ScheduleEntry] = {}
         self._last_run: dict[str, datetime] = {}
         self._active_tasks: dict[str, str] = {}  # schedule_id -> task_id
+        self._file_mtime: float | None = None
+        self._running: bool = False
 
     def load_schedules(self) -> None:
         """Load schedules from YAML file."""
@@ -169,7 +172,42 @@ class AgentScheduler:
             except Exception:
                 logger.exception("Failed to parse schedule entry: %s", schedule_id)
 
+        # Track file mtime for hot-reload
+        self._file_mtime = path.stat().st_mtime
+
         logger.info("Loaded %d schedules from %s", len(self._schedules), self._schedule_path)
+
+    def reload_if_changed(self) -> bool:
+        """Reload schedules if the YAML file has been modified.
+
+        Returns True if schedules were reloaded.
+        """
+        path = Path(self._schedule_path)
+        if not path.exists():
+            return False
+        current_mtime = path.stat().st_mtime
+        if self._file_mtime is not None and current_mtime == self._file_mtime:
+            return False
+        self._file_mtime = current_mtime
+        self.load_schedules()
+        logger.info("Schedules reloaded (file modified)")
+        return True
+
+    def start(self) -> None:
+        """Start the scheduler. Safe to call multiple times."""
+        if self._running:
+            logger.warning("Scheduler already running, ignoring start()")
+            return
+        self.load_schedules()
+        self._running = True
+        logger.info("Agent scheduler started")
+
+    def stop(self) -> None:
+        """Stop the scheduler. Resets internal state for clean restart."""
+        self._running = False
+        self._active_tasks.clear()
+        self._last_run.clear()
+        logger.info("Agent scheduler stopped")
 
     def get_due_schedules(self, now: datetime | None = None) -> list[ScheduleEntry]:
         """Return schedules whose cron matches the current time.
@@ -178,7 +216,7 @@ class AgentScheduler:
         in the current minute (deduplication).
         """
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
         due: list[ScheduleEntry] = []
         for schedule_id, entry in self._schedules.items():
@@ -214,8 +252,13 @@ class AgentScheduler:
         Returns:
             List of enqueued task IDs.
         """
+        if not self._running:
+            return []
+
+        self.reload_if_changed()
+
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
         due = self.get_due_schedules(now)
         if not due:

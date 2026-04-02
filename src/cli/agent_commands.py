@@ -65,7 +65,9 @@ def task_status(
     """
     if task_id:
         if is_json_mode():
-            output_result({"task_id": task_id, "status": "unknown", "message": "DB integration pending"})
+            output_result(
+                {"task_id": task_id, "status": "unknown", "message": "DB integration pending"}
+            )
             return
         console.print(f"[yellow]Task {task_id}:[/yellow] status lookup not yet wired to DB")
     else:
@@ -77,7 +79,9 @@ def task_status(
 
 @app.command("insights")
 def list_insights(
-    insight_type: Annotated[str | None, typer.Option("--type", help="Filter by insight type")] = None,
+    insight_type: Annotated[
+        str | None, typer.Option("--type", help="Filter by insight type")
+    ] = None,
     since: Annotated[str | None, typer.Option(help="ISO datetime filter")] = None,
     persona: Annotated[str | None, typer.Option(help="Filter by persona")] = None,
 ) -> None:
@@ -103,7 +107,7 @@ def list_personas() -> None:
     """List available personas."""
     from pathlib import Path
 
-    import yaml
+    import yaml  # type: ignore[import-untyped]
 
     personas_dir = Path("settings/personas")
 
@@ -165,19 +169,21 @@ def manage_schedule(
 
     # List all schedules
     if is_json_mode():
-        output_result({
-            "schedules": [
-                {
-                    "id": s.id,
-                    "cron": s.cron,
-                    "task_type": s.task_type,
-                    "persona": s.persona,
-                    "enabled": s.enabled,
-                    "description": s.description,
-                }
-                for s in scheduler.list_schedules()
-            ]
-        })
+        output_result(
+            {
+                "schedules": [
+                    {
+                        "id": s.id,
+                        "cron": s.cron,
+                        "task_type": s.task_type,
+                        "persona": s.persona,
+                        "enabled": s.enabled,
+                        "description": s.description,
+                    }
+                    for s in scheduler.list_schedules()
+                ]
+            }
+        )
         return
 
     table = Table(title="Proactive Schedules")
@@ -210,7 +216,7 @@ def approve_request(
 @app.command("deny")
 def deny_request(
     request_id: Annotated[str, typer.Argument(help="Approval request ID")],
-    reason: Annotated[str, typer.Option(help="Reason for denial")] = ...,
+    reason: str = typer.Option(..., help="Reason for denial"),
 ) -> None:
     """Deny a pending approval request with reason."""
     if is_json_mode():

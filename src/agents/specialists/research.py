@@ -111,47 +111,21 @@ class ResearchSpecialist(BaseSpecialist):
         The specialist uses its LLM router to reason about which tools
         to call, building up findings across multiple iterations.
         """
-        logger.info(
-            "Research specialist executing task",
-            extra={"task_id": task.task_id, "task_type": task.task_type},
+        findings: list[dict[str, Any]] = []
+
+        async def tool_executor(tool_name: str, args: dict[str, Any]) -> str:
+            return await self._execute_tool(tool_name, args, findings)
+
+        result = await self._execute_with_tools(
+            task,
+            self._llm_router,
+            findings,
+            tool_executor,
+            default_model="claude-sonnet-4-5",
         )
-
-        try:
-            findings: list[dict[str, Any]] = []
-
-            async def tool_executor(tool_name: str, args: dict[str, Any]) -> str:
-                return await self._execute_tool(tool_name, args, findings)
-
-            response = await self._llm_router.generate_with_tools(
-                model=task.context.get("model", "claude-sonnet-4-5"),
-                system_prompt=self._build_system_prompt(task),
-                user_prompt=task.prompt,
-                tools=self.get_tools(),
-                tool_executor=tool_executor,
-                max_iterations=task.max_iterations,
-            )
-
-            return SpecialistResult(
-                task_id=task.task_id,
-                success=True,
-                findings=findings,
-                content=response.text,
-                confidence=self._compute_confidence(findings),
-                metadata={
-                    "iterations_used": len(findings),
-                    "tokens_used": response.input_tokens + response.output_tokens,
-                },
-            )
-        except Exception as e:
-            logger.error(
-                "Research specialist failed",
-                extra={"task_id": task.task_id, "error": str(e)},
-            )
-            return SpecialistResult(
-                task_id=task.task_id,
-                success=False,
-                error=str(e),
-            )
+        if result.success:
+            result.metadata["iterations_used"] = len(findings)
+        return result
 
     async def _execute_tool(
         self,
@@ -169,7 +143,13 @@ class ResearchSpecialist(BaseSpecialist):
                 limit=args.get("limit", 10),
             )
             result = str(results)
-            findings.append({"tool": tool_name, "query": args["query"], "result_count": len(results) if isinstance(results, list) else 0})
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "query": args["query"],
+                    "result_count": len(results) if isinstance(results, list) else 0,
+                }
+            )
         elif tool_name == "query_knowledge_graph" and self._graphiti_client is not None:
             results = await self._graphiti_client.search(query=args["query"])
             result = str(results)
@@ -197,10 +177,3 @@ class ResearchSpecialist(BaseSpecialist):
             "findings into a clear summary.\n\n"
             f"{f'Persona context: {persona_context}' if persona_context else ''}"
         )
-
-    def _compute_confidence(self, findings: list[dict[str, Any]]) -> float:
-        """Compute a confidence score based on findings quality."""
-        if not findings:
-            return 0.0
-        successful = sum(1 for f in findings if f.get("status") != "unavailable")
-        return min(1.0, successful / max(len(findings), 1) * 0.8 + 0.1)

@@ -6,6 +6,7 @@ via semantic search over graph entities and relationships.
 
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from src.agents.memory.models import MemoryEntry, MemoryFilter, MemoryType
@@ -59,9 +60,7 @@ class GraphStrategy(MemoryStrategy):
             search_filters: dict[str, Any] = {}
             if filters:
                 if filters.memory_types:
-                    search_filters["memory_types"] = [
-                        mt.value for mt in filters.memory_types
-                    ]
+                    search_filters["memory_types"] = [mt.value for mt in filters.memory_types]
                 if filters.tags:
                     search_filters["tags"] = filters.tags
                 if filters.min_confidence is not None:
@@ -91,8 +90,7 @@ class GraphStrategy(MemoryStrategy):
                         source_task_id=metadata.get("source_task_id"),
                         tags=metadata.get("tags", []),
                         confidence=float(metadata.get("confidence", 1.0)),
-                        created_at=metadata.get("created_at", None)
-                        or MemoryEntry.model_fields["created_at"].default_factory(),  # type: ignore[misc]
+                        created_at=metadata.get("created_at") or datetime.now(UTC),
                         access_count=int(metadata.get("access_count", 0)),
                         score=score,
                     )
@@ -105,7 +103,8 @@ class GraphStrategy(MemoryStrategy):
 
     async def forget(self, memory_id: str) -> bool:
         try:
-            return await self._client.delete_episode(episode_id=memory_id)
+            result = await self._client.delete_episode(episode_id=memory_id)
+            return bool(result)
         except Exception:
             logger.exception("GraphStrategy.forget failed for %s", memory_id)
             return False

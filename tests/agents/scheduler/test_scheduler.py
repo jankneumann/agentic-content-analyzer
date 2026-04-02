@@ -13,7 +13,6 @@ from src.agents.scheduler.scheduler import (
     cron_matches,
 )
 
-
 # ============================================================================
 # cron_matches tests
 # ============================================================================
@@ -283,7 +282,7 @@ class TestAgentScheduler:
             schedule_path=str(schedule_yaml),
             enqueue_fn=enqueue_fn,
         )
-        scheduler.load_schedules()
+        scheduler.start()
 
         now = datetime(2025, 6, 16, 9, 0)  # Monday 09:00
         task_ids = await scheduler.tick(now)

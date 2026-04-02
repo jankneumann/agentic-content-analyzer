@@ -4,12 +4,11 @@ Stores memory entries created during agentic analysis, supporting
 vector (pgvector), keyword (FTS), and graph (Graphiti) retrieval strategies.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 
 from src.models.base import Base
 
@@ -44,8 +43,8 @@ class AgentMemory(Base):
     source_task_id = Column(PGUUID(as_uuid=True), ForeignKey("agent_tasks.id"), nullable=True)
     confidence = Column(Float, default=1.0)
     access_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    last_accessed_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     __table_args__ = (
         Index("ix_agent_memories_type", "memory_type"),

@@ -57,15 +57,15 @@ class MemoryProvider:
 
         for name, (strategy, _weight) in self._strategies.items():
             if self._is_circuit_open(name):
-                logger.warning(f"Memory store: skipping {name} (circuit breaker open)")
+                logger.warning("Memory store: skipping %s (circuit breaker open)", name)
                 continue
             tasks.append(self._store_one(name, strategy, memory))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for i, result in enumerate(results):
+        for _i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.warning(f"Memory store failed for a strategy: {result}")
+                logger.warning("Memory store failed for a strategy: %s", result)
             elif isinstance(result, str) and result and not stored_id:
                 stored_id = result
 
@@ -89,7 +89,7 @@ class MemoryProvider:
 
         for name, (strategy, _weight) in self._strategies.items():
             if self._is_circuit_open(name):
-                logger.warning(f"Memory recall: skipping {name} (circuit breaker open)")
+                logger.warning("Memory recall: skipping %s (circuit breaker open)", name)
                 continue
             tasks.append(self._recall_one(name, strategy, query, limit, filters))
             task_names.append(name)
@@ -100,9 +100,9 @@ class MemoryProvider:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for name, result in zip(task_names, results):
+        for name, result in zip(task_names, results, strict=True):
             if isinstance(result, Exception):
-                logger.warning(f"Memory recall failed for {name}: {result}")
+                logger.warning("Memory recall failed for %s: %s", name, result)
                 self._trip_circuit(name)
             elif isinstance(result, list):
                 strategy_results[name] = result
@@ -137,7 +137,7 @@ class MemoryProvider:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         any_success = False
-        for name, result in zip(task_names, results):
+        for name, result in zip(task_names, results, strict=True):
             if isinstance(result, Exception):
                 logger.warning("Memory forget failed for %s: %s", name, result)
                 self._trip_circuit(name)
@@ -145,9 +145,7 @@ class MemoryProvider:
                 any_success = True
         return any_success
 
-    def _weighted_rrf(
-        self, strategy_results: dict[str, list[MemoryEntry]]
-    ) -> list[MemoryEntry]:
+    def _weighted_rrf(self, strategy_results: dict[str, list[MemoryEntry]]) -> list[MemoryEntry]:
         """Merge results from multiple strategies using weighted Reciprocal Rank Fusion.
 
         Formula: score(d) = Σ_s (weight_s / (k + rank_s(d)))
@@ -157,18 +155,14 @@ class MemoryProvider:
         """
         # Compute available weight total for normalization
         available_weights = {
-            name: self._strategies[name][1]
-            for name in strategy_results
-            if name in self._strategies
+            name: self._strategies[name][1] for name in strategy_results if name in self._strategies
         }
         total_weight = sum(available_weights.values())
         if total_weight == 0:
             return []
 
         # Normalize weights to sum to 1.0
-        normalized_weights = {
-            name: w / total_weight for name, w in available_weights.items()
-        }
+        normalized_weights = {name: w / total_weight for name, w in available_weights.items()}
 
         # Compute RRF scores
         doc_scores: dict[str, float] = defaultdict(float)
@@ -195,14 +189,12 @@ class MemoryProvider:
 
         return result
 
-    async def _store_one(
-        self, name: str, strategy: MemoryStrategy, memory: MemoryEntry
-    ) -> str:
+    async def _store_one(self, name: str, strategy: MemoryStrategy, memory: MemoryEntry) -> str:
         """Store in a single strategy with error handling."""
         try:
             return await strategy.store(memory)
         except Exception as e:
-            logger.warning(f"Memory store failed for {name}: {e}")
+            logger.warning("Memory store failed for %s: %s", name, e)
             self._trip_circuit(name)
             raise
 
@@ -218,7 +210,7 @@ class MemoryProvider:
         try:
             return await strategy.recall(query, limit=limit, filters=filters)
         except Exception as e:
-            logger.warning(f"Memory recall failed for {name}: {e}")
+            logger.warning("Memory recall failed for %s: %s", name, e)
             self._trip_circuit(name)
             raise
 
@@ -235,4 +227,4 @@ class MemoryProvider:
     def _trip_circuit(self, name: str) -> None:
         """Trip the circuit breaker for a strategy."""
         self._circuit_breaker[name] = time.monotonic()
-        logger.warning(f"Circuit breaker tripped for memory strategy: {name}")
+        logger.warning("Circuit breaker tripped for memory strategy: %s", name)

@@ -128,46 +128,18 @@ class SynthesisSpecialist(BaseSpecialist):
 
     async def execute(self, task: SpecialistTask) -> SpecialistResult:
         """Execute a synthesis task using iterative tool use."""
-        logger.info(
-            "Synthesis specialist executing task",
-            extra={"task_id": task.task_id, "task_type": task.task_type},
+        findings: list[dict[str, Any]] = []
+
+        async def tool_executor(tool_name: str, args: dict[str, Any]) -> str:
+            return await self._execute_tool(tool_name, args, findings)
+
+        return await self._execute_with_tools(
+            task,
+            self._llm_router,
+            findings,
+            tool_executor,
+            default_model="claude-sonnet-4-5",
         )
-
-        try:
-            findings: list[dict[str, Any]] = []
-
-            async def tool_executor(tool_name: str, args: dict[str, Any]) -> str:
-                return await self._execute_tool(tool_name, args, findings)
-
-            response = await self._llm_router.generate_with_tools(
-                model=task.context.get("model", "claude-sonnet-4-5"),
-                system_prompt=self._build_system_prompt(task),
-                user_prompt=task.prompt,
-                tools=self.get_tools(),
-                tool_executor=tool_executor,
-                max_iterations=task.max_iterations,
-            )
-
-            return SpecialistResult(
-                task_id=task.task_id,
-                success=True,
-                findings=findings,
-                content=response.text,
-                confidence=self._compute_confidence(findings),
-                metadata={
-                    "tokens_used": response.input_tokens + response.output_tokens,
-                },
-            )
-        except Exception as e:
-            logger.error(
-                "Synthesis specialist failed",
-                extra={"task_id": task.task_id, "error": str(e)},
-            )
-            return SpecialistResult(
-                task_id=task.task_id,
-                success=False,
-                error=str(e),
-            )
 
     async def _execute_tool(
         self,
@@ -191,19 +163,21 @@ class SynthesisSpecialist(BaseSpecialist):
                 f"Report '{args['title']}' with {len(args['findings'])} findings "
                 f"in {args.get('format', 'detailed')} format — generated via LLM"
             )
-            findings.append({
-                "tool": tool_name,
-                "title": args["title"],
-                "finding_count": len(args["findings"]),
-            })
-        elif tool_name == "generate_insight":
-            result = (
-                f"Insight from {len(args['observations'])} observations — generated via LLM"
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "title": args["title"],
+                    "finding_count": len(args["findings"]),
+                }
             )
-            findings.append({
-                "tool": tool_name,
-                "observation_count": len(args["observations"]),
-            })
+        elif tool_name == "generate_insight":
+            result = f"Insight from {len(args['observations'])} observations — generated via LLM"
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "observation_count": len(args["observations"]),
+                }
+            )
         elif tool_name == "create_briefing":
             result = (
                 f"Briefing on '{args['topic']}' for {args.get('audience', 'technical leaders')} "
@@ -227,10 +201,3 @@ class SynthesisSpecialist(BaseSpecialist):
             "trends and their implications.\n\n"
             f"{f'Persona context: {persona_context}' if persona_context else ''}"
         )
-
-    def _compute_confidence(self, findings: list[dict[str, Any]]) -> float:
-        """Compute a confidence score based on findings quality."""
-        if not findings:
-            return 0.0
-        successful = sum(1 for f in findings if f.get("status") != "unavailable")
-        return min(1.0, successful / max(len(findings), 1) * 0.8 + 0.1)

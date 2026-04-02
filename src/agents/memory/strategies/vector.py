@@ -7,7 +7,7 @@ are not mapped through the ORM (see CLAUDE.md gotchas).
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,7 +85,7 @@ class VectorStrategy(MemoryStrategy):
             "limit": limit,
             "recency_weight": RECENCY_WEIGHT,
             "half_life_days": RECENCY_HALF_LIFE_DAYS,
-            "now": datetime.now(timezone.utc),
+            "now": datetime.now(UTC),
         }
 
         if filters:
@@ -112,13 +112,13 @@ class VectorStrategy(MemoryStrategy):
             SELECT
                 id, content, memory_type, source_task_id, tags,
                 confidence, created_at, last_accessed_at, access_count,
-                1 - (embedding <=> :embedding::vector) AS cosine_sim,
+                1 - (embedding <=> CAST(:embedding AS vector)) AS cosine_sim,
                 EXP(-0.693 * EXTRACT(EPOCH FROM (:now - created_at)) / 86400.0 / :half_life_days)
                     AS recency_factor
             FROM agent_memories
             {where_sql}
             ORDER BY
-                (1 - :recency_weight) * (1 - (embedding <=> :embedding::vector))
+                (1 - :recency_weight) * (1 - (embedding <=> CAST(:embedding AS vector)))
                 + :recency_weight * EXP(-0.693 * EXTRACT(EPOCH FROM (:now - created_at)) / 86400.0 / :half_life_days)
                 DESC
             LIMIT :limit
@@ -129,11 +129,27 @@ class VectorStrategy(MemoryStrategy):
             result = await session.execute(sql, params)
             rows = result.fetchall()
 
+            # Update access_count and last_accessed_at for recalled memories
+            # (spec: agentic-analysis.9)
+            if rows:
+                recalled_ids = [str(row.id) for row in rows]
+                await session.execute(
+                    text(
+                        """
+                        UPDATE agent_memories
+                        SET access_count = access_count + 1,
+                            last_accessed_at = :now
+                        WHERE id = ANY(:ids)
+                        """
+                    ),
+                    {"ids": recalled_ids, "now": params["now"]},
+                )
+                await session.commit()
+
         entries: list[MemoryEntry] = []
         for row in rows:
-            combined_score = (
-                (1 - RECENCY_WEIGHT) * float(row.cosine_sim)
-                + RECENCY_WEIGHT * float(row.recency_factor)
+            combined_score = (1 - RECENCY_WEIGHT) * float(row.cosine_sim) + RECENCY_WEIGHT * float(
+                row.recency_factor
             )
             entries.append(
                 MemoryEntry(
@@ -159,7 +175,7 @@ class VectorStrategy(MemoryStrategy):
                     {"id": memory_id},
                 )
                 await session.commit()
-                return result.rowcount > 0  # type: ignore[union-attr]
+                return (result.rowcount or 0) > 0  # type: ignore[attr-defined]
         except Exception:
             logger.exception("VectorStrategy.forget failed for %s", memory_id)
             return False

@@ -16,6 +16,7 @@ State machine:
 See design doc: openspec/changes/agentic-analysis-agent/design.md (D1).
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -27,7 +28,7 @@ from src.agents.persona.loader import PersonaLoader
 from src.agents.persona.models import PersonaConfig
 from src.agents.registry import SpecialistRegistry
 from src.agents.specialists.base import SpecialistResult, SpecialistTask
-from src.models.agent_task import AgentTaskSource, AgentTaskStatus
+from src.models.agent_task import AgentTaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class ConductorResult(BaseModel):
     cost_total: float = 0.0
     tokens_total: int = 0
     error: str | None = None
+    persona_snapshot: dict[str, Any] | None = None
 
 
 # Mapping from task type keywords to specialist names.
@@ -128,9 +130,7 @@ class Conductor:
         try:
             # 1. Load persona
             status = AgentTaskStatus.PLANNING
-            logger.info(
-                "Conductor: loading persona '%s' for task %s", persona, task_id
-            )
+            logger.info("Conductor: loading persona '%s' for task %s", persona, task_id)
             persona_config = self.persona_loader.load(persona)
 
             # 2. Query memory for context
@@ -144,20 +144,16 @@ class Conductor:
                 task_id,
             )
 
-            # 4–6. Delegate each sub-task to the appropriate specialist
+            # 4-6. Delegate each sub-task to the appropriate specialist
             status = AgentTaskStatus.DELEGATING
             for i, sub_task in enumerate(plan):
-                specialist_name = sub_task.get(
-                    "specialist", self._select_specialist(task_type)
-                )
+                specialist_name = sub_task.get("specialist", self._select_specialist(task_type))
                 sub_prompt = sub_task.get("prompt", prompt)
                 sub_params = sub_task.get("params", {})
 
                 # Check approval gate
                 action_name = f"delegate.{specialist_name}"
-                auto_approved, risk_level = self.approval_gate.check_action(
-                    action_name
-                )
+                auto_approved, risk_level = self.approval_gate.check_action(action_name)
                 if not auto_approved:
                     logger.info(
                         "Conductor: task %s blocked on approval for %s (risk=%s)",
@@ -196,9 +192,7 @@ class Conductor:
                     },
                 )
 
-                result = await self._delegate_with_retry(
-                    specialist_name, spec_task, persona_config
-                )
+                result = await self._delegate_with_retry(specialist_name, spec_task, persona_config)
                 partial_results.append(result)
 
                 # Accumulate costs from specialist metadata
@@ -230,17 +224,17 @@ class Conductor:
                 insights=insights,
                 cost_total=cost_total,
                 tokens_total=tokens_total,
+                persona_snapshot=persona_config.model_dump(),
             )
 
         except Exception as e:
             logger.exception("Conductor: task %s failed: %s", task_id, e)
             # Return partial results on failure
-            partial_synthesis = {}
+            partial_synthesis: dict[str, Any] = {}
             if partial_results:
                 try:
-                    partial_synthesis = await self._synthesize_results(
-                        partial_results, prompt
-                    )
+                    partial_synthesis = await self._synthesize_results(partial_results, prompt)
+                    partial_synthesis["partial"] = True
                 except Exception:
                     logger.warning(
                         "Conductor: failed to synthesize partial results for %s",
@@ -265,10 +259,7 @@ class Conductor:
         """
         try:
             entries = await self.memory_provider.recall(prompt, limit=10)
-            return [
-                {"id": e.id, "content": e.content, "score": e.score}
-                for e in entries
-            ]
+            return [{"id": e.id, "content": e.content, "score": e.score} for e in entries]
         except Exception as e:
             logger.warning("Conductor: memory query failed: %s", e)
             return []
@@ -289,9 +280,7 @@ class Conductor:
         Returns:
             List of sub-task dicts: {specialist: str, prompt: str, params: dict}.
         """
-        if self.llm_router is not None and hasattr(
-            self.llm_router, "generate_with_planning"
-        ):
+        if self.llm_router is not None and hasattr(self.llm_router, "generate_with_planning"):
             try:
                 # Build a planning prompt that instructs the LLM to return
                 # structured sub-tasks for the available specialists.
@@ -328,17 +317,17 @@ class Conductor:
                         validated = []
                         for item in plan:
                             if isinstance(item, dict) and "specialist" in item and "prompt" in item:
-                                validated.append({
-                                    "specialist": item["specialist"],
-                                    "prompt": item["prompt"],
-                                    "params": item.get("params", {}),
-                                })
+                                validated.append(
+                                    {
+                                        "specialist": item["specialist"],
+                                        "prompt": item["prompt"],
+                                        "params": item.get("params", {}),
+                                    }
+                                )
                         if validated:
                             return validated
             except Exception as e:
-                logger.warning(
-                    "Conductor: LLM planning failed, using fallback: %s", e
-                )
+                logger.warning("Conductor: LLM planning failed, using fallback: %s", e)
 
         # Fallback: single sub-task using the appropriate specialist for the task type
         return [{"specialist": self._select_specialist(task_type), "prompt": prompt, "params": {}}]
@@ -381,9 +370,7 @@ class Conductor:
         last_result: SpecialistResult | None = None
         for attempt in range(MAX_RETRIES + 1):
             try:
-                result = await self._delegate_to_specialist(
-                    specialist_name, task, persona_config
-                )
+                result = await self._delegate_to_specialist(specialist_name, task, persona_config)
                 if result.success:
                     return result
                 last_result = result
@@ -407,12 +394,15 @@ class Conductor:
                 )
 
             if attempt < MAX_RETRIES:
+                backoff_seconds = 2 ** (attempt + 1)  # 2s, 4s
                 logger.info(
-                    "Conductor: retrying specialist '%s' (attempt %d/%d)",
+                    "Conductor: waiting %ds before retry for specialist '%s' (attempt %d/%d)",
+                    backoff_seconds,
                     specialist_name,
                     attempt + 2,
                     MAX_RETRIES + 1,
                 )
+                await asyncio.sleep(backoff_seconds)
 
         # All retries exhausted — return last result
         assert last_result is not None
@@ -443,23 +433,33 @@ class Conductor:
             if result.success:
                 success_count += 1
 
-        # Extract high-confidence findings as insights
-        insights = [
-            {
-                "type": f.get("type", "summary"),
-                "title": f.get("title", "Untitled"),
-                "content": f.get("content", ""),
-                "confidence": f.get("confidence", 0.0),
-            }
-            for f in all_findings
-            if f.get("confidence", 0.0) >= 0.7
-        ]
+        # Extract high-confidence findings as insights; tag low-confidence as speculative
+        insights = []
+        for f in all_findings:
+            conf = f.get("confidence", 0.0)
+            if conf >= 0.7:
+                insights.append(
+                    {
+                        "type": f.get("type", "summary"),
+                        "title": f.get("title", "Untitled"),
+                        "content": f.get("content", ""),
+                        "confidence": conf,
+                    }
+                )
+            elif conf < 0.3:
+                insights.append(
+                    {
+                        "type": f.get("type", "summary"),
+                        "title": f.get("title", "Untitled"),
+                        "content": f.get("content", ""),
+                        "confidence": conf,
+                        "speculative": True,
+                    }
+                )
 
-        avg_confidence = (
-            sum(r.confidence for r in results) / len(results) if results else 0.0
-        )
+        avg_confidence = sum(r.confidence for r in results) / len(results) if results else 0.0
 
-        return {
+        synthesis: dict[str, Any] = {
             "content": "\n\n".join(all_content),
             "findings": all_findings,
             "insights": insights,
@@ -468,6 +468,9 @@ class Conductor:
             "total_confidence": avg_confidence,
             "original_prompt": original_prompt,
         }
+        if success_count < len(results):
+            synthesis["partial"] = True
+        return synthesis
 
     async def _store_insights(
         self,

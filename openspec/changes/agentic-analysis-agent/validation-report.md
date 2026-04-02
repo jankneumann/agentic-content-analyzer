@@ -1,92 +1,116 @@
 # Validation Report: agentic-analysis-agent
 
-**Date**: 2026-04-02
-**Commit**: 0a2cf20
+**Date**: 2026-04-02 14:45:00
+**Commit**: 2369808
 **Branch**: claude/agentic-trend-analysis-design-vvYVe
 
 ## Phase Results
 
-### ○ Deploy: SKIPPED
-Docker unavailable in environment. No live services deployed.
+### ✓ Deploy: Services running (2 containers, postgres + neo4j)
+Docker services were already running. PostgreSQL healthy, Neo4j healthy.
+Alembic migration blocked by duplicate revision ID (`a1b2c3d4e5f6`) -- see findings below.
 
-### ✓ Smoke (Unit Tests): PASS
-239/239 agent tests passing across 14 test modules:
-- Memory models, strategies, provider (35 tests)
-- Approval gates (14 tests)
-- Persona loader and models (25 tests)
-- Scheduler (28 tests)
-- Specialist base and registry (25 tests)
-- ORM models (31 tests)
-- API routes (20 tests)
-- CLI commands (18 tests)
-- Conductor (30 tests)
-- LLMRouter extensions (13 tests)
+### ✓ Smoke: Health checks passed
+- Health endpoint: 200 OK
+- Ready endpoint: 200 OK
+- CORS preflight: 200 OK, Access-Control-Allow-Origin set correctly
+- Agent routes: 11 routes registered in code (not live -- server running old code from main)
+- Auth: Development mode (no enforcement, expected)
 
 ### ○ Security: SKIPPED
-No live services for OWASP/ZAP scanning. Code-level security findings were addressed in iterate-on-implementation:
-- Path traversal in persona loader: fixed with regex validation
-- Memory context prompt injection: moved from system to user prompt
-- API task_type validation: constrained with Literal type
+Security review orchestrator not invoked (no separate security tooling configured).
 
 ### ○ E2E: SKIPPED
-No live services for Playwright tests.
+No Playwright E2E tests for agent feature (frontend not yet implemented).
 
-### ✓ Architecture: PASS
-- **Import health**: All 12 key module imports succeed with no circular dependencies
-- **Integration wiring**: API router (11 endpoints) and CLI command group registered in main app
-- **Module structure**: All `__init__.py` files present across 7 agent subpackages
-- **Migration**: FK dependencies respected (child tables created after parent), downgrade drops in correct order
-- **Layer compliance**: New agent layer sits on top of existing services (models → agents → api/cli), no reverse imports
+### ○ Architecture: SKIPPED
+Architecture graph artifact not found (`docs/architecture-analysis/architecture.graph.json` missing).
 
-### ✓ Spec Compliance: PASS (21/22 requirements verified)
+### ✓ Spec Compliance: 20/20 requirements verified
 
-| Req ID | Description | Status |
-|--------|-------------|--------|
-| agentic-analysis.1 | Conductor lifecycle (persona → memory → plan → delegate → synthesize) | ✓ pass |
-| agentic-analysis.2 | Scheduler triggers with source=schedule, skips active | ✓ pass |
-| agentic-analysis.3 | HIGH/CRITICAL → BLOCKED status | ✓ pass |
-| agentic-analysis.4 | Specialist failure → retry → FAILED | ✓ pass |
-| agentic-analysis.5 | Research specialist tools (4 tools) | ✓ pass |
-| agentic-analysis.6 | Analysis specialist (theme + historical) | ✓ pass |
-| agentic-analysis.7 | Synthesis specialist (insights + reports) | ✓ pass |
-| agentic-analysis.8 | Ingestion specialist approval check | ⚠ partial |
-| agentic-analysis.9 | Hybrid recall with parallel strategies + RRF | ✓ pass |
-| agentic-analysis.10 | Any strategy combination, graceful degradation | ✓ pass |
-| agentic-analysis.11 | Schedule active-run check, enqueue, log | ✓ pass |
-| agentic-analysis.12 | Enable/disable via API and CLI | ✓ pass |
-| agentic-analysis.13 | Risk classification with persona overrides, no escalation | ✓ pass |
-| agentic-analysis.14 | Multi-persona loading with default.yaml inheritance | ✓ pass |
-| agentic-analysis.15 | All API endpoints (11 routes) | ✓ pass |
-| agentic-analysis.17 | All CLI commands (7 commands) | ✓ pass |
-| agentic-analysis.18 | LLMRouter: reflection, memory, cost (backward compatible) | ✓ pass |
-| agentic-analysis.19 | generate_with_planning: plan → execute → revise → synthesize | ✓ pass |
-| agentic-analysis.22 | RRF k=60, min_score=0.01, max_results=20 | ✓ pass |
-| agentic-analysis.23 | Retry policy: max 2 retries per specialist | ✓ pass |
-| agentic-analysis.26 | Circuit breaker 60s, weight redistribution | ✓ pass |
-| agentic-analysis.29 | LLMRouter backward compatibility | ✓ pass |
+| Spec ID | Status | Detail |
+|---------|--------|--------|
+| agentic-analysis.1 | pass | Conductor class with task lifecycle state machine |
+| agentic-analysis.5 | pass | ResearchSpecialist implemented |
+| agentic-analysis.6 | pass | AnalysisSpecialist implemented |
+| agentic-analysis.7 | pass | SynthesisSpecialist implemented |
+| agentic-analysis.8 | pass | IngestionSpecialist implemented |
+| agentic-analysis.9 | pass | MemoryProvider with weighted RRF fusion (k=60) |
+| agentic-analysis.10 | pass | Vector, Keyword, Graph strategies implemented |
+| agentic-analysis.11 | pass | AgentScheduler with cron expression support |
+| agentic-analysis.13 | pass | ApprovalGate with persona overrides, escalation prevention |
+| agentic-analysis.14 | pass | PersonaLoader with inheritance from default.yaml |
+| agentic-analysis.14a | pass | Persona listing via API and CLI |
+| agentic-analysis.15 | pass | 11 API endpoints (6/6 endpoint groups) |
+| agentic-analysis.17 | pass | 7/7 CLI commands (task, status, insights, personas, schedule, approve, deny) |
+| agentic-analysis.18 | pass | LLMRouter: enable_reflection, memory_context parameters |
+| agentic-analysis.19 | pass | LLMRouter: generate_with_planning() method |
+| agentic-analysis.20 | pass | Confidence scoring on SpecialistResult |
+| agentic-analysis.22 | pass | RRF formula with k=60, min_score=0.01 filter |
+| model-AgentTask | pass | ORM model with VARCHAR enums (no PG enum migration needed) |
+| model-AgentInsight | pass | ORM model implemented |
+| model-ApprovalRequest | pass | ORM model implemented |
 
-**Note on agentic-analysis.8 (partial):** Approval gating for ingestion is handled at the conductor level before delegation, not within the ingestion specialist itself. This is architecturally equivalent — the conductor centralizes safety checks for all specialists.
+### ✓ Unit Tests: 261 passed, 0 failed
+All agent-related tests pass locally across:
+- `tests/agents/memory/` (models, provider, strategies)
+- `tests/agents/approval/` (gates)
+- `tests/agents/persona/` (loader, models)
+- `tests/agents/scheduler/` (scheduler)
+- `tests/agents/specialists/` (base, registry)
+- `tests/agents/` (conductor, API routes, CLI commands, LLM router extensions, data models)
 
-### ○ Log Analysis: SKIPPED
-No live services to collect logs from.
+### ⚠ Log Analysis: Pre-existing warnings only
+- PostgreSQL collation version mismatch (2.36 vs 2.41) -- pre-existing, not related to this feature
+- No errors, no stack traces, no unhandled exceptions from agent code
 
-### ○ CI/CD: N/A
-No PR created yet for this feature branch.
+### ✗ CI/CD: 5 failures, 2 passed, 1 pending
 
-## Deferred Validations
+| Check | Status | Notes |
+|-------|--------|-------|
+| lint | fail | 31 ruff errors (mostly whitespace/formatting, auto-fixable) |
+| typecheck | fail | 11 mypy errors (yaml stubs, Ellipsis default, rowcount attr) |
+| test | pending | Still running at time of validation |
+| contract-test | fail | Pre-existing `settings_overrides` issue (not caused by this PR) |
+| secret-scan | fail | Needs investigation |
+| dependency-audit-node | fail | Needs investigation |
+| dependency-audit-python | pass | |
+| validate-profiles | pass | |
+| SonarCloud | cancelled | |
 
-The following spec requirements require live services to verify and are deferred:
-- agentic-analysis.16 (SSE progress streaming) — needs running FastAPI server
-- agentic-analysis.27 (Approval timeout) — needs running background worker
-- agentic-analysis.28 (Task timeout) — needs running conductor with real LLM
-- agentic-analysis.30 (Pipeline Runner integration) — needs full pipeline stack
-- agentic-analysis.31 (PGQueuer agent_task entrypoint) — needs running worker
+## Blocking Findings
+
+### 1. Alembic Migration: Duplicate Revision ID (CRITICAL)
+`alembic/versions/add_blog_content_source.py` and `alembic/versions/a1b2c3d4e5f6_add_arxiv_source_type_and_jsonb.py` both use revision ID `a1b2c3d4e5f6`. The blog source migration was added on this branch while the arxiv migration exists on main. The agent tables migration (`f00ddf1d2b47`) also chains from a stale `down_revision`. This blocks `alembic upgrade head`.
+
+**Fix**: Rename `add_blog_content_source.py` revision to a unique ID, rebase the agent tables migration to chain after the latest head on main.
+
+### 2. Ruff Lint Errors (31 errors, 23 auto-fixable)
+Mostly whitespace around operators (`E225`), missing blank lines, and minor formatting. Run `ruff check --fix` to resolve 23 of them.
+
+### 3. Mypy Type Errors (11 errors)
+- `yaml` stubs not installed (4 occurrences) -- add `# type: ignore[import-untyped]`
+- `Ellipsis` default for `reason` parameter in CLI -- use `typer.Option(...)` properly
+- `Result.rowcount` attribute errors in memory strategies -- need cast or type annotation
+- `Too few arguments` in graph strategy
 
 ## Result
 
-**PASS** — All code-level validations pass. 239/239 tests, 21/22 spec requirements verified, no import issues, clean architecture.
+**FAIL** -- Address the 3 blocking findings above, then re-run validation.
 
-Ready for:
+Priority order:
+1. Fix Alembic duplicate revision ID and rebase migration chain
+2. Run `ruff check --fix` and address remaining lint errors
+3. Fix mypy type errors
+4. Re-push to trigger CI re-run
+
+### Next Steps
+
 ```
-/cleanup-feature agentic-analysis-agent
+Option 1: Fix findings and re-validate:
+/iterate-on-implementation agentic-analysis-agent
+/validate-feature agentic-analysis-agent
+
+Option 2: Re-run specific failing phases:
+/validate-feature agentic-analysis-agent --phase smoke,spec,ci
 ```

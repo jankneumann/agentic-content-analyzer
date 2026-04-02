@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from src.agents.persona.models import PersonaConfig
 
@@ -53,9 +53,7 @@ class PersonaLoader:
         if not personas_dir.is_dir():
             logger.warning("Personas directory not found: %s", cls.PERSONAS_DIR)
             return []
-        return sorted(
-            p.stem for p in personas_dir.glob("*.yaml") if p.is_file()
-        )
+        return sorted(p.stem for p in personas_dir.glob("*.yaml") if p.is_file())
 
     @classmethod
     def _read_yaml(cls, name: str) -> dict[str, Any]:
@@ -93,11 +91,7 @@ class PersonaLoader:
         """
         result = base.copy()
         for key, value in override.items():
-            if (
-                key in result
-                and isinstance(result[key], dict)
-                and isinstance(value, dict)
-            ):
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = PersonaLoader._deep_merge(result[key], value)
             else:
                 result[key] = value

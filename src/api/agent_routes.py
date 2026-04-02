@@ -27,7 +27,8 @@ class TaskSubmission(BaseModel):
 
     prompt: str = Field(..., min_length=1, description="The task prompt or question")
     task_type: Literal["research", "analysis", "synthesis", "ingestion", "maintenance"] = Field(
-        default="research", description="Task type: research, analysis, synthesis, ingestion, maintenance"
+        default="research",
+        description="Task type: research, analysis, synthesis, ingestion, maintenance",
     )
     persona: str = Field(default="default", description="Persona to use for this task")
     output: str | None = Field(default=None, description="Output format override")
@@ -111,7 +112,12 @@ async def submit_task(submission: TaskSubmission) -> dict:
     import uuid
 
     task_id = str(uuid.uuid4())
-    logger.info("Agent task submitted: %s (type=%s, persona=%s)", task_id, submission.task_type, submission.persona)
+    logger.info(
+        "Agent task submitted: %s (type=%s, persona=%s)",
+        task_id,
+        submission.task_type,
+        submission.persona,
+    )
     return {"task_id": task_id, "status": "received"}
 
 
@@ -147,8 +153,12 @@ async def cancel_task(task_id: str) -> dict:
 @router.get("/insights", dependencies=[Depends(verify_admin_key)])
 async def list_insights(
     insight_type: str | None = Query(default=None, description="Filter by insight type"),
-    since: str | None = Query(default=None, description="ISO datetime — only insights after this time"),
-    persona: str | None = Query(default=None, description="Filter by persona that generated the insight"),
+    since: str | None = Query(
+        default=None, description="ISO datetime — only insights after this time"
+    ),
+    persona: str | None = Query(
+        default=None, description="Filter by persona that generated the insight"
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> list[InsightResponse]:
@@ -158,7 +168,9 @@ async def list_insights(
         try:
             datetime.fromisoformat(since)
         except ValueError:
-            raise HTTPException(status_code=422, detail="Invalid 'since' datetime format. Use ISO 8601.")
+            raise HTTPException(
+                status_code=422, detail="Invalid 'since' datetime format. Use ISO 8601."
+            )
     # Stub: return empty list until DB integration
     return []
 
@@ -249,35 +261,54 @@ async def disable_schedule(schedule_id: str) -> dict:
 async def list_personas() -> list[PersonaResponse]:
     """List available agent personas."""
     try:
-        from pathlib import Path
+        from src.agents.persona.loader import PersonaLoader
 
-        import yaml
-
-        personas_dir = Path("settings/personas")
+        loader = PersonaLoader()
+        names = loader.list_personas()
         results: list[PersonaResponse] = []
 
-        if not personas_dir.exists():
-            return results
-
-        for yaml_file in sorted(personas_dir.glob("*.yaml")):
+        for name in names:
             try:
-                with open(yaml_file) as f:
-                    data = yaml.safe_load(f) or {}
-                name = yaml_file.stem
-                description = data.get("description", "")
-                domain = data.get("domain_focus", {})
-                primary = domain.get("primary", []) if isinstance(domain, dict) else []
+                config = loader.load(name)
                 results.append(
                     PersonaResponse(
                         name=name,
-                        description=description,
-                        domain_focus=primary,
+                        description=config.role,
+                        domain_focus=config.domain_focus.primary,
                     )
                 )
             except Exception:
-                logger.warning("Failed to parse persona file: %s", yaml_file)
+                logger.warning("Failed to load persona: %s", name)
 
         return results
     except Exception:
         logger.exception("Failed to list personas")
         return []
+
+
+@router.get("/task/{task_id}/stream", dependencies=[Depends(verify_admin_key)])
+async def stream_task_progress(task_id: str):
+    """Stream task progress via Server-Sent Events."""
+    from starlette.responses import StreamingResponse
+
+    async def event_generator():
+        """Poll task status and yield SSE events.
+
+        This is a basic implementation — full integration with conductor
+        would use asyncio.Queue for real-time updates.
+        """
+        import asyncio
+        import json
+
+        max_polls = 300  # 5 minutes at 1s intervals
+        for _ in range(max_polls):
+            # Stub: in production, read from DB or message queue
+            yield f"data: {json.dumps({'status': 'in_progress', 'task_id': task_id})}\n\n"
+            await asyncio.sleep(1)
+        yield f"data: {json.dumps({'status': 'timeout', 'task_id': task_id})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

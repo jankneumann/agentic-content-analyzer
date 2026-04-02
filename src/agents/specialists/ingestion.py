@@ -104,46 +104,18 @@ class IngestionSpecialist(BaseSpecialist):
 
     async def execute(self, task: SpecialistTask) -> SpecialistResult:
         """Execute an ingestion task using iterative tool use."""
-        logger.info(
-            "Ingestion specialist executing task",
-            extra={"task_id": task.task_id, "task_type": task.task_type},
+        findings: list[dict[str, Any]] = []
+
+        async def tool_executor(tool_name: str, args: dict[str, Any]) -> str:
+            return await self._execute_tool(tool_name, args, findings)
+
+        return await self._execute_with_tools(
+            task,
+            self._llm_router,
+            findings,
+            tool_executor,
+            default_model="claude-haiku-4-5",
         )
-
-        try:
-            findings: list[dict[str, Any]] = []
-
-            async def tool_executor(tool_name: str, args: dict[str, Any]) -> str:
-                return await self._execute_tool(tool_name, args, findings)
-
-            response = await self._llm_router.generate_with_tools(
-                model=task.context.get("model", "claude-haiku-4-5"),
-                system_prompt=self._build_system_prompt(task),
-                user_prompt=task.prompt,
-                tools=self.get_tools(),
-                tool_executor=tool_executor,
-                max_iterations=task.max_iterations,
-            )
-
-            return SpecialistResult(
-                task_id=task.task_id,
-                success=True,
-                findings=findings,
-                content=response.text,
-                confidence=self._compute_confidence(findings),
-                metadata={
-                    "tokens_used": response.input_tokens + response.output_tokens,
-                },
-            )
-        except Exception as e:
-            logger.error(
-                "Ingestion specialist failed",
-                extra={"task_id": task.task_id, "error": str(e)},
-            )
-            return SpecialistResult(
-                task_id=task.task_id,
-                success=False,
-                error=str(e),
-            )
 
     async def _execute_tool(
         self,
@@ -161,11 +133,13 @@ class IngestionSpecialist(BaseSpecialist):
                 max_items=args.get("max_items", 50),
             )
             result = str(ingested)
-            findings.append({
-                "tool": tool_name,
-                "source_type": args["source_type"],
-                "items_ingested": ingested if isinstance(ingested, int) else 0,
-            })
+            findings.append(
+                {
+                    "tool": tool_name,
+                    "source_type": args["source_type"],
+                    "items_ingested": ingested if isinstance(ingested, int) else 0,
+                }
+            )
         elif tool_name == "ingest_url" and self._ingestion_service is not None:
             ingested = await self._ingestion_service.ingest_url(
                 url=args["url"],
@@ -193,10 +167,3 @@ class IngestionSpecialist(BaseSpecialist):
             "ingest from based on the task, scan for new content if needed, "
             "and report what was ingested."
         )
-
-    def _compute_confidence(self, findings: list[dict[str, Any]]) -> float:
-        """Compute a confidence score based on findings quality."""
-        if not findings:
-            return 0.0
-        successful = sum(1 for f in findings if f.get("status") != "unavailable")
-        return min(1.0, successful / max(len(findings), 1) * 0.8 + 0.1)

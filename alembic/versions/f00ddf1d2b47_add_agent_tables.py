@@ -8,7 +8,7 @@ Python StrEnum is the source of truth; DB uses plain strings.
 No ALTER TYPE migrations needed when adding new values.
 
 Revision ID: f00ddf1d2b47
-Revises: f9a8b7c6d5e5
+Revises: 02cfa5c75b82
 Create Date: 2026-04-02 12:00:00.000000
 """
 
@@ -21,7 +21,7 @@ from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
 revision: str = "f00ddf1d2b47"
-down_revision: Union[str, None] = "f9a8b7c6d5e5"
+down_revision: Union[str, None] = "02cfa5c75b82"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

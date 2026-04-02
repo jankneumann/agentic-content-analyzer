@@ -7,7 +7,7 @@ MemoryEntry is the domain model, AgentMemory is the persistence model.
 MemoryType is imported from the ORM module to ensure a single source of truth.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -27,8 +27,8 @@ class MemoryEntry(BaseModel):
     source_task_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_accessed: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_accessed: datetime = Field(default_factory=lambda: datetime.now(UTC))
     access_count: int = 0
     score: float = 0.0  # Set by retrieval strategies during recall
 

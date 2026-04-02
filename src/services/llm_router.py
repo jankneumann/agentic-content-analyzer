@@ -418,8 +418,11 @@ class LLMRouter:
             response=response,
             duration_ms=duration_ms,
             max_tokens=max_tokens,
-            metadata={"tool_count": len(tools), "max_iterations": max_iterations,
-                       "reflection": enable_reflection},
+            metadata={
+                "tool_count": len(tools),
+                "max_iterations": max_iterations,
+                "reflection": enable_reflection,
+            },
         )
 
         return response
@@ -479,9 +482,8 @@ class LLMRouter:
 
         plan_response = await self.generate(
             model=model,
-            system_prompt=system_prompt + (
-                "\n\nYou are in planning mode. Create a clear, actionable plan."
-            ),
+            system_prompt=system_prompt
+            + ("\n\nYou are in planning mode. Create a clear, actionable plan."),
             user_prompt=planning_prompt,
             provider=provider,
             max_tokens=max_tokens,
@@ -496,7 +498,8 @@ class LLMRouter:
         # Parse plan steps
         plan_text = plan_response.text
         steps = [
-            line.strip() for line in plan_text.strip().split("\n")
+            line.strip()
+            for line in plan_text.strip().split("\n")
             if line.strip() and any(line.strip().startswith(f"{i}") for i in range(1, 20))
         ]
         steps = steps[:max_plan_steps]
@@ -505,7 +508,7 @@ class LLMRouter:
             # Fallback: treat the entire response as a single step
             steps = [plan_text.strip()]
 
-        logger.info(f"Planning phase complete: {len(steps)} steps")
+        logger.info("Planning phase complete: %d steps", len(steps))
 
         # Phase 2: Execute each step
         revisions_remaining = max_revisions
@@ -513,11 +516,11 @@ class LLMRouter:
 
         while step_idx < len(steps):
             step = steps[step_idx]
-            logger.info(f"Executing plan step {step_idx + 1}/{len(steps)}: {step[:80]}...")
+            logger.info("Executing plan step %d/%d: %s...", step_idx + 1, len(steps), step[:80])
 
             # Cost check before each step
             if cost_limit is not None and total_cost >= cost_limit:
-                logger.warning(f"Cost limit reached (${total_cost:.4f}). Returning partial results.")
+                logger.warning("Cost limit reached ($%.4f). Returning partial results.", total_cost)
                 break
 
             remaining_budget = None
@@ -527,7 +530,7 @@ class LLMRouter:
             step_context = ""
             if step_results:
                 step_context = "\n\nResults from previous steps:\n" + "\n".join(
-                    f"Step {i+1}: {r[:200]}" for i, r in enumerate(step_results)
+                    f"Step {i + 1}: {r[:200]}" for i, r in enumerate(step_results)
                 )
 
             step_response = await self.generate_with_tools(
@@ -577,21 +580,23 @@ class LLMRouter:
                 if "NO REVISION NEEDED" not in revision_response.text.upper():
                     # Parse revised steps
                     revised = [
-                        line.strip() for line in revision_response.text.strip().split("\n")
-                        if line.strip() and any(line.strip().startswith(f"{i}") for i in range(1, 20))
+                        line.strip()
+                        for line in revision_response.text.strip().split("\n")
+                        if line.strip()
+                        and any(line.strip().startswith(f"{i}") for i in range(1, 20))
                     ]
                     if revised:
-                        steps = steps[:step_idx] + revised[:max_plan_steps - step_idx]
+                        steps = steps[:step_idx] + revised[: max_plan_steps - step_idx]
                         revisions_remaining -= 1
-                        logger.info(f"Plan revised. {revisions_remaining} revisions remaining.")
+                        logger.info("Plan revised. %d revisions remaining.", revisions_remaining)
 
         # Phase 3: Synthesize results (skip if cost limit exceeded or no results)
         if step_results and (cost_limit is None or total_cost < cost_limit):
             synthesis_prompt = (
                 f"You executed a {len(step_results)}-step plan for this goal:\n{goal}\n\n"
-                "Step results:\n" + "\n".join(
-                    f"Step {i+1}: {r[:500]}" for i, r in enumerate(step_results)
-                ) + "\n\nSynthesize these results into a coherent final response."
+                "Step results:\n"
+                + "\n".join(f"Step {i + 1}: {r[:500]}" for i, r in enumerate(step_results))
+                + "\n\nSynthesize these results into a coherent final response."
             )
 
             synthesis_response = await self.generate(
@@ -623,9 +628,13 @@ class LLMRouter:
             text=fallback_text,
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,
-            provider=provider.value if provider else "unknown",
+            provider=provider,
             model_version=model,
-            raw_response={"plan_steps": len(steps), "step_results": step_results, "cost_limited": True},
+            raw_response={
+                "plan_steps": len(steps),
+                "step_results": step_results,
+                "cost_limited": True,
+            },
         )
 
     async def _reflect_on_response(

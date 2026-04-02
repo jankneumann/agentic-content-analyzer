@@ -43,10 +43,7 @@ class SpecialistRegistry:
 
     def get_by_capability(self, capability: str) -> list[BaseSpecialist]:
         """Find all specialists that support a given capability."""
-        return [
-            s for s in self._specialists.values()
-            if capability in s.get_capabilities()
-        ]
+        return [s for s in self._specialists.values() if capability in s.get_capabilities()]
 
     def get_all_tools(self) -> list[Any]:
         """Aggregate tools from all registered specialists.
@@ -74,3 +71,25 @@ class SpecialistRegistry:
     def list_specialists(self) -> list[str]:
         """Return names of all registered specialists."""
         return list(self._specialists.keys())
+
+    @classmethod
+    def create_default(cls, llm_router: Any) -> SpecialistRegistry:
+        """Create a registry pre-populated with all built-in specialists.
+
+        This is the recommended way to create a registry. New specialists
+        are automatically included when they're added to the specialists package.
+        """
+        from src.agents.specialists.analysis import AnalysisSpecialist
+        from src.agents.specialists.ingestion import IngestionSpecialist
+        from src.agents.specialists.research import ResearchSpecialist
+        from src.agents.specialists.synthesis import SynthesisSpecialist
+
+        registry = cls()
+        for specialist_cls in [
+            AnalysisSpecialist,
+            IngestionSpecialist,
+            ResearchSpecialist,
+            SynthesisSpecialist,
+        ]:
+            registry.register(specialist_cls(llm_router=llm_router))
+        return registry

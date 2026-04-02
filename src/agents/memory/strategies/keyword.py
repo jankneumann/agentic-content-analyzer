@@ -7,7 +7,7 @@ for indexing and querying.
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,13 +71,11 @@ class KeywordStrategy(MemoryStrategy):
         limit: int = 10,
         filters: MemoryFilter | None = None,
     ) -> list[MemoryEntry]:
-        where_clauses: list[str] = [
-            f"content_tsv @@ plainto_tsquery('{FTS_CONFIG}', :query)"
-        ]
+        where_clauses: list[str] = [f"content_tsv @@ plainto_tsquery('{FTS_CONFIG}', :query)"]
         params: dict = {
             "query": query,
             "limit": limit,
-            "now": datetime.now(timezone.utc),
+            "now": datetime.now(UTC),
         }
 
         if filters:
@@ -116,6 +114,23 @@ class KeywordStrategy(MemoryStrategy):
             result = await session.execute(sql, params)
             rows = result.fetchall()
 
+            # Update access_count and last_accessed_at for recalled memories
+            # (spec: agentic-analysis.9)
+            if rows:
+                recalled_ids = [str(row.id) for row in rows]
+                await session.execute(
+                    text(
+                        """
+                        UPDATE agent_memories
+                        SET access_count = access_count + 1,
+                            last_accessed_at = :now
+                        WHERE id = ANY(:ids)
+                        """
+                    ),
+                    {"ids": recalled_ids, "now": params["now"]},
+                )
+                await session.commit()
+
         entries: list[MemoryEntry] = []
         for row in rows:
             entries.append(
@@ -142,7 +157,7 @@ class KeywordStrategy(MemoryStrategy):
                     {"id": memory_id},
                 )
                 await session.commit()
-                return result.rowcount > 0  # type: ignore[union-attr]
+                return (result.rowcount or 0) > 0  # type: ignore[attr-defined]
         except Exception:
             logger.exception("KeywordStrategy.forget failed for %s", memory_id)
             return False
