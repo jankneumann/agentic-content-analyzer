@@ -1893,6 +1893,85 @@ def ingest_reference(
 
 
 # ===========================================================================
+# MODEL REGISTRY TOOLS
+# ===========================================================================
+
+
+@mcp.tool()
+def list_models(family: str | None = None) -> str:
+    """List all models in the registry with capabilities and pricing.
+
+    Returns model ID, name, family, capability flags, available providers,
+    and default pricing for each model.
+
+    Args:
+        family: Optional filter by model family (e.g., "claude", "gemini", "gpt").
+
+    Returns:
+        JSON array of model summaries.
+    """
+    from src.services.model_registry_service import ModelRegistryService
+
+    service = ModelRegistryService()
+    models = service.list_models(family=family)
+    return _serialize([m.model_dump() for m in models])
+
+
+@mcp.tool()
+def get_model_pricing(model_id: str) -> str:
+    """Get detailed pricing for a specific model across all providers.
+
+    Returns the model's capabilities and a pricing breakdown showing
+    cost per million tokens, context window, and max output for each provider.
+
+    Args:
+        model_id: Family-based model ID (e.g., "claude-sonnet-4-5", "gemini-2.5-flash").
+
+    Returns:
+        JSON with model details and per-provider pricing, or error if not found.
+    """
+    from src.services.model_registry_service import ModelRegistryService
+
+    service = ModelRegistryService()
+    detail = service.get_model(model_id)
+    if not detail:
+        return _serialize({"error": f"Model not found: {model_id}"})
+    return _serialize(detail.model_dump())
+
+
+@mcp.tool()
+def refresh_model_pricing(
+    providers: str | None = None,
+    dry_run: bool = True,
+) -> str:
+    """Extract latest pricing from provider pages and compare with the registry.
+
+    Fetches pricing pages from Anthropic, OpenAI, Google AI, and/or AWS Bedrock,
+    uses LLM-based extraction to parse pricing tables, and diffs against the
+    current settings/models.yaml.
+
+    Args:
+        providers: Comma-separated provider names to check (e.g., "anthropic,openai").
+                   None = check all configured providers.
+        dry_run: If True (default), only report differences without modifying files.
+                 Set to False to apply changes to models.yaml.
+
+    Returns:
+        JSON report with diffs, new models found, and any errors.
+    """
+    import asyncio
+
+    from src.services.model_registry_service import ModelRegistryService
+
+    service = ModelRegistryService()
+    provider_list = [p.strip() for p in providers.split(",")] if providers else None
+    report = asyncio.run(
+        service.refresh_pricing(providers=provider_list, dry_run=dry_run)
+    )
+    return _serialize(report.model_dump())
+
+
+# ===========================================================================
 # Auth middleware for HTTP transports
 # ===========================================================================
 
