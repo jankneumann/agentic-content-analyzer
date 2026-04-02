@@ -5,7 +5,6 @@ extracting markdown content and images while rewriting image URLs
 to point to local storage.
 """
 
-import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
