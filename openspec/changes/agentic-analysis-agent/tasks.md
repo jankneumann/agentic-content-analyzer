@@ -141,27 +141,35 @@
 
 *Priority: Cross-cutting concerns needed by conductor. Can be built in parallel with Phase 3.*
 
-- [ ] 4.1 Write tests for approval gate system — risk classification, auto-approve, block-and-request, approval/denial flow
-  **Spec scenarios**: agentic-analysis.3 (task requires approval), agentic-analysis.13 (risk classification)
+- [ ] 4.1 Write tests for approval gate system — risk classification, auto-approve, block-and-request, approval/denial flow, per-persona overrides (lower only)
+  **Spec scenarios**: agentic-analysis.3 (task requires approval), agentic-analysis.13 (risk classification with persona overrides)
   **Design decisions**: D5 (tiered approval gates)
   **Dependencies**: 1.3 (needs ApprovalRequest model)
 
-- [ ] 4.2 Implement approval gate system in `src/agents/approval/gates.py`
+- [ ] 4.2 Implement approval gate system in `src/agents/approval/gates.py` — with persona override resolution
   **Dependencies**: 4.1
 
 - [ ] 4.3 Create `settings/approval.yaml` with default risk level configuration
   **Dependencies**: 4.2
 
-- [ ] 4.4 Write tests for persona loader — YAML loading, ConfigRegistry integration, system prompt generation
-  **Spec scenarios**: agentic-analysis.14 (persona loading and application)
-  **Design decisions**: D6 (agent persona configuration)
+- [ ] 4.4 Write tests for PersonaConfig model — domain_focus, model_overrides, approval_overrides, restricted_tools, output_defaults, communication_style
+  **Spec scenarios**: agentic-analysis.14 (multi-persona loading)
+  **Design decisions**: D6 (multi-persona configuration)
   **Dependencies**: None
 
-- [ ] 4.5 Implement persona loader in `src/agents/persona/loader.py`
+- [ ] 4.5 Implement PersonaConfig, OutputDefaults, and related Pydantic models in `src/agents/persona/models.py`
   **Dependencies**: 4.4
 
-- [ ] 4.6 Create `settings/persona.yaml` with default AI trend analyst persona
+- [ ] 4.6 Write tests for PersonaLoader — YAML loading, default inheritance (deep merge), persona listing, resolve_model, filter_tools, resolve_output
+  **Spec scenarios**: agentic-analysis.14 (multi-persona loading), agentic-analysis.14a (persona listing)
+  **Design decisions**: D6 (inheritance from default, separation from schedule)
   **Dependencies**: 4.5
+
+- [ ] 4.7 Implement PersonaLoader in `src/agents/persona/loader.py` — with default.yaml inheritance
+  **Dependencies**: 4.6
+
+- [ ] 4.8 Create `settings/personas/` directory with default.yaml, ai-ml-technology.yaml, and leadership.yaml personas
+  **Dependencies**: 4.7
 
 ## Phase 5: Conductor Agent
 
@@ -196,30 +204,30 @@
   **Design decisions**: D1 (full lifecycle)
   **Dependencies**: 5.6
 
-## Phase 6: Heartbeat Scheduler
+## Phase 6: Scheduler
 
 *Priority: Enables proactive behavior. Depends on conductor for task execution.*
 
-- [ ] 6.1 Write tests for heartbeat scheduler — cron parsing, schedule matching, deduplication, PGQueuer integration
-  **Spec scenarios**: agentic-analysis.11 (schedule execution), agentic-analysis.12 (schedule management)
-  **Design decisions**: D4 (PGQueuer extension)
-  **Dependencies**: 5.2 (conductor handles enqueued tasks)
+- [ ] 6.1 Write tests for scheduler — cron parsing, schedule matching, deduplication, PGQueuer integration, persona/output/sources passed through to task
+  **Spec scenarios**: agentic-analysis.11 (schedule execution), agentic-analysis.12 (schedule management), agentic-analysis.12a (source filtering)
+  **Design decisions**: D4 (schedule-driven proactive tasks)
+  **Dependencies**: 5.2 (conductor handles enqueued tasks), 4.7 (PersonaLoader)
 
-- [ ] 6.2 Implement heartbeat scheduler in `src/agents/heartbeat/scheduler.py`
+- [ ] 6.2 Implement scheduler in `src/agents/scheduler/scheduler.py` — reads schedule.yaml, enqueues with persona + output + sources
   **Dependencies**: 6.1
 
-- [ ] 6.3 Create `settings/heartbeat.yaml` with default proactive task schedules
+- [ ] 6.3 Create `settings/schedule.yaml` with default proactive task schedules (infrastructure + persona-driven analysis + synthesis)
   **Dependencies**: 6.2
 
-- [ ] 6.4 Write tests for proactive task definitions — scan_sources, trend_detection, weekly_synthesis, knowledge_maintenance, cross_theme_discovery
-  **Spec scenarios**: agentic-analysis.2 (heartbeat triggers), agentic-analysis.11 (schedule execution)
-  **Design decisions**: D4 (proactive tasks)
+- [ ] 6.4 Write tests for proactive task definitions — scan_sources, trend_detection (per-persona), weekly_synthesis (per-persona), knowledge_maintenance, cross_theme_discovery, source-filtered runs
+  **Spec scenarios**: agentic-analysis.2 (scheduled triggers), agentic-analysis.11 (schedule execution), agentic-analysis.12a (source filtering)
+  **Design decisions**: D4 (proactive tasks, persona separation)
   **Dependencies**: 6.2
 
-- [ ] 6.5 Implement proactive task definitions in `src/agents/heartbeat/tasks.py`
+- [ ] 6.5 Implement proactive task definitions in `src/agents/scheduler/tasks.py`
   **Dependencies**: 6.4
 
-- [ ] 6.6 Integrate heartbeat with FastAPI lifespan (start/stop scheduler) and PGQueuer worker
+- [ ] 6.6 Integrate scheduler with FastAPI lifespan (start/stop) and PGQueuer worker
   **Dependencies**: 6.5
 
 ## Phase 7: API & CLI
@@ -282,12 +290,12 @@
 | 1. Foundation | 1.1–1.13 | Data models + Memory provider |
 | 2. LLMRouter | 2.1–2.6 | Reflection, planning, memory hooks |
 | 3. Specialists | 3.1–3.12 | Four specialist agents + registry |
-| 4. Approval & Persona | 4.1–4.6 | Cross-cutting concerns |
-| 5. Conductor | 5.1–5.7 | Orchestrating intelligence |
-| 6. Heartbeat | 6.1–6.6 | Proactive scheduling |
-| 7. API & CLI | 7.1–7.7 | User-facing interfaces |
+| 4. Approval & Persona | 4.1–4.8 | Approval gates, multi-persona system, YAML configs |
+| 5. Conductor | 5.1–5.7 | Persona-aware orchestrating intelligence |
+| 6. Scheduler | 6.1–6.6 | Schedule-driven proactive tasks (with persona + output + source) |
+| 7. API & CLI | 7.1–7.7 | User-facing interfaces (with persona selection) |
 | 8. Integration | 8.1–8.6 | E2E tests, docs, observability |
 
-**Total**: 50 tasks across 8 phases
-**Estimated new files**: ~30
+**Total**: 52 tasks across 8 phases
+**Estimated new files**: ~33 (including persona YAML files)
 **Modified files**: ~5 (LLMRouter, worker, FastAPI app, ARCHITECTURE.md, CLAUDE.md)
