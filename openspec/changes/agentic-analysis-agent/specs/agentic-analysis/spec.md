@@ -118,59 +118,75 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
 ### Heartbeat Scheduler
 
 #### agentic-analysis.11 — Schedule execution
-**Given** a heartbeat schedule is defined in `heartbeat.yaml`
+**Given** a schedule is defined in `settings/schedule.yaml`
 **When** the current time matches the cron expression
 **Then** the scheduler SHALL:
   - Check if a previous run of this schedule is still active (skip if so)
-  - Enqueue an `agent_task` job with the configured parameters
-  - Update `last_run_at` and compute `next_run_at` in `heartbeat_schedules`
-  - Log the enqueued task
+  - Enqueue an `agent_task` job with the schedule's `persona`, `output`, `sources`, and `params`
+  - Update `last_run_at` and compute `next_run_at` in `agent_schedules`
+  - Log the enqueued task with persona and output information
 
 #### agentic-analysis.12 — Schedule management
-**Given** a user wants to manage heartbeat schedules
+**Given** a user wants to manage schedules
 **Then** the system SHALL support:
   - Enabling/disabling individual schedules via API or CLI
-  - Viewing schedule status (last run, next run, last status)
-  - Manually triggering a scheduled task outside its normal schedule
-  - Modifying schedules by editing `heartbeat.yaml` (hot-reload on SIGHUP or API call)
+  - Viewing schedule status (last run, next run, last status, persona used)
+  - Manually triggering a scheduled task outside its normal schedule (with optional persona/output override)
+  - Modifying schedules by editing `settings/schedule.yaml` (hot-reload on SIGHUP or API call)
+
+#### agentic-analysis.12a — Schedule-level source filtering
+**Given** a schedule specifies a `sources` field (e.g., `[arxiv, scholar]`)
+**When** the conductor executes the scheduled task
+**Then** it SHALL restrict content retrieval and analysis to only those source types, allowing the same persona to produce different analyses from different content subsets
 
 ### Approval Gates
 
-#### agentic-analysis.13 — Risk classification
-**Given** a specialist is about to execute an action
-**When** the action is checked against `approval.yaml`
+#### agentic-analysis.13 — Risk classification with persona overrides
+**Given** a specialist is about to execute an action under a specific persona
+**When** the action is checked against approval configuration
 **Then** the system SHALL:
-  - Look up the action's configured risk level
+  - Resolve effective risk level: persona `approval_overrides` > base `approval.yaml` > default MEDIUM
   - For LOW: execute immediately, no logging beyond standard OTel
   - For MEDIUM: execute immediately, log to audit trail
   - For HIGH: block and request approval
   - For CRITICAL: block, request approval, create full audit entry
-  - For unconfigured actions: default to MEDIUM
+  - Persona overrides can only lower risk levels, never escalate them
 
 ### Agent Persona
 
-#### agentic-analysis.14 — Persona loading and application
-**Given** a persona configuration exists in `settings/persona.yaml`
-**When** the conductor initializes for a task
+#### agentic-analysis.14 — Multi-persona loading and application
+**Given** persona configurations exist in `settings/personas/` directory
+**When** the conductor initializes for a task with a persona name
 **Then** it SHALL:
-  - Load persona via ConfigRegistry (supporting env var / DB overrides)
-  - Inject persona context into the conductor's system prompt
-  - Pass relevant persona attributes to specialists (domain focus, depth preference)
-  - Store a snapshot of the active persona in the task record
+  - Load the named persona YAML, inheriting missing fields from `default.yaml`
+  - Resolve model overrides for each specialist step (persona override > global MODEL_* default)
+  - Apply tool restrictions (filter out tools listed in `restricted_tools`)
+  - Configure approval gate with persona's `approval_overrides`
+  - Resolve output format (schedule override > persona `output_defaults.default_format`)
+  - Inject persona context (name, role, domain_focus, communication_style) into the conductor's system prompt
+  - Store `persona_name` and a full persona config snapshot in the task record for reproducibility
+
+#### agentic-analysis.14a — Persona listing
+**Given** a user wants to see available personas
+**Then** the system SHALL:
+  - List all YAML files in `settings/personas/` by name
+  - Display each persona's name, role, and domain focus summary
+  - Available via both API (`GET /api/v1/agent/personas`) and CLI (`aca agent personas`)
 
 ### API Endpoints
 
 #### agentic-analysis.15 — Task submission and tracking
 **Given** a user interacts with the agent API
 **Then** the following endpoints SHALL be available:
-  - `POST /api/v1/agent/task` — Submit a task (returns task ID)
+  - `POST /api/v1/agent/task` — Submit a task (accepts optional `persona`, `output`, `sources` params; returns task ID)
   - `GET /api/v1/agent/task/{id}` — Get task status, plan, and results
-  - `GET /api/v1/agent/tasks` — List tasks with filtering (status, source, date range)
+  - `GET /api/v1/agent/tasks` — List tasks with filtering (status, source, date range, persona)
   - `DELETE /api/v1/agent/task/{id}` — Cancel a running task
   - `GET /api/v1/agent/insights` — List generated insights with filtering
   - `GET /api/v1/agent/insights/{id}` — Get a specific insight
   - `POST /api/v1/agent/approval/{id}` — Approve or deny an approval request
-  - `GET /api/v1/agent/schedules` — List heartbeat schedules and status
+  - `GET /api/v1/agent/schedules` — List schedules and status
+  - `GET /api/v1/agent/personas` — List available personas with summary
 
 #### agentic-analysis.16 — SSE progress streaming
 **Given** a user submits a task via API
@@ -187,9 +203,10 @@ An autonomous analysis layer that uses a Conductor + Specialist agent topology t
 #### agentic-analysis.17 — Agent CLI interface
 **Given** a user interacts via CLI
 **Then** the following commands SHALL be available:
-  - `aca agent task "prompt"` — Submit a research/analysis task
+  - `aca agent task "prompt" [--persona NAME] [--output FORMAT] [--sources SRC,SRC]` — Submit a task with optional persona, output format, and source filter
   - `aca agent status [task-id]` — View task status and progress
-  - `aca agent insights [--type TYPE] [--since DATE]` — Browse insights
+  - `aca agent insights [--type TYPE] [--since DATE] [--persona NAME]` — Browse insights
+  - `aca agent personas` — List available personas with summary
   - `aca agent schedule [--enable|--disable SCHEDULE_ID]` — Manage schedules
   - `aca agent approve <request-id>` — Approve a pending request
   - `aca agent deny <request-id> --reason "..."` — Deny with reason
