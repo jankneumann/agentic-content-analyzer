@@ -2027,7 +2027,7 @@ def main() -> None:
 
     import uvicorn
 
-    host = os.environ.get("MCP_HOST", "0.0.0.0")
+    host = os.environ.get("MCP_HOST", "0.0.0.0")  # noqa: S104
     port = int(os.environ.get("MCP_PORT", "8100"))
 
     if transport == "sse":

@@ -104,7 +104,6 @@ async def _run_ingestion(
     if arxiv_sources:
         sources.append(("arxiv", lambda: ingest_arxiv()))
 
-
     if on_progress:
         on_progress({"stage": "ingestion", "message": f"Ingesting from {len(sources)} sources"})
 
