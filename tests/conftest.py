@@ -136,6 +136,14 @@ def test_engine():
     from src.models.settings import PromptOverride  # noqa: F401
     from src.models.summary import Summary  # noqa: F401
     from src.models.theme import ThemeAnalysis  # noqa: F401
+    from src.models.evaluation import (  # noqa: F401
+        EvaluationConsensus,
+        EvaluationDataset,
+        EvaluationResult,
+        EvaluationSample,
+        RoutingConfig,
+        RoutingDecision,
+    )
 
     engine = create_test_engine(TEST_DATABASE_URL)
 

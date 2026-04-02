@@ -1,0 +1,71 @@
+# Evaluation criteria for LLM-as-Judge framework
+# Each step defines quality dimensions with pass/fail criteria
+# Judges evaluate model outputs against these dimensions
+
+evaluation:
+  # Judge configuration
+  judges:
+    - model: claude-sonnet-4-5
+      weight: 1.0
+  human_review_weight: 2.0
+
+  # Per-step quality criteria
+  criteria:
+    _default:
+      accuracy:
+        description: "Key facts and claims are faithfully represented"
+        fail_when: "Misrepresents facts, hallucinates claims, or introduces information not in the source material"
+      completeness:
+        description: "All important points are captured"
+        fail_when: "Omits a major theme, key finding, or critical nuance"
+      conciseness:
+        description: "No unnecessary repetition or filler"
+        fail_when: "Contains redundant sentences, padding phrases, or information that adds no value"
+      clarity:
+        description: "Written in clear, accessible language for the target audience"
+        fail_when: "Uses ambiguous phrasing, undefined jargon, or convoluted sentence structure"
+
+    summarization:
+      accuracy:
+        description: "Key facts and claims are faithfully represented from the source"
+        fail_when: "Misrepresents facts, hallucinates claims, or introduces information not in the source. Example: stating a model achieved 95% accuracy when the source says 85%"
+      completeness:
+        description: "All important points from the source are captured"
+        fail_when: "Omits a major theme, key finding, or critical nuance from the source. Example: missing the paper's main contribution while focusing on minor details"
+      conciseness:
+        description: "No unnecessary repetition or filler"
+        fail_when: "Contains redundant sentences, padding phrases, or information that adds no value. Example: repeating the same point in different words across paragraphs"
+      clarity:
+        description: "Written in clear, accessible language for the target audience"
+        fail_when: "Uses ambiguous phrasing, undefined jargon, or convoluted sentence structure"
+      key_insight_capture:
+        description: "Novel, surprising, or strategically important insights are highlighted"
+        fail_when: "Buries or omits the most noteworthy insight in favor of routine information. Example: leading with background context instead of a breakthrough finding"
+
+    digest_creation:
+      narrative_flow:
+        description: "Content is organized into a coherent narrative with logical transitions"
+        fail_when: "Topics jump abruptly without transitions, or the ordering feels random rather than purposeful"
+      theme_coherence:
+        description: "Related items are grouped under meaningful themes"
+        fail_when: "Items that clearly belong together are scattered across different sections, or themes are too vague to be useful"
+      actionability:
+        description: "Reader can identify concrete next steps or implications from the digest"
+        fail_when: "Content is purely descriptive with no actionable takeaways. Example: describes a new tool without noting who should evaluate it or why"
+      depth:
+        description: "Analysis goes beyond surface-level summarization"
+        fail_when: "Simply restates headlines without synthesis, comparison, or expert-level commentary"
+
+    podcast_script:
+      conversational_tone:
+        description: "Script reads naturally as spoken dialogue between hosts"
+        fail_when: "Sounds like written prose being read aloud, uses overly formal language, or lacks natural conversation markers"
+      engagement:
+        description: "Content maintains listener interest through variety and pacing"
+        fail_when: "Monotonous structure, no questions or reactions between hosts, or dry recitation of facts"
+      technical_accuracy:
+        description: "Technical details are correctly explained at the appropriate level"
+        fail_when: "Oversimplifies to the point of inaccuracy, or uses unexplained jargon that would lose the audience"
+      pacing:
+        description: "Appropriate balance between topics, with smooth transitions"
+        fail_when: "Spends too long on minor topics while rushing through important ones, or transitions feel forced"

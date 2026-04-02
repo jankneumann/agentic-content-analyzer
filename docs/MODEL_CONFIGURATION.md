@@ -426,3 +426,65 @@ cost = config.calculate_cost(
 )
 print(f"Estimated cost: ${cost:.4f}")
 ```
+
+## Dynamic Routing
+
+The system supports **dynamic LLM routing** — automatically selecting between a strong (expensive) and weak (cheap) model per pipeline step based on prompt complexity.
+
+### How It Works
+
+1. **Complexity classification**: Each prompt is embedded, then a lightweight logistic regression classifier predicts a complexity score (0.0–1.0)
+2. **Threshold routing**: If score >= threshold → strong model; below → weak model
+3. **Cold start fallback**: Before any classifier is trained, all prompts route to the strong model (safe default)
+
+### Configuration
+
+Dynamic routing is configured in `settings/models.yaml` under the `routing:` section:
+
+```yaml
+routing:
+  summarization:
+    mode: fixed          # "fixed" or "dynamic"
+    enabled: false       # Must be true AND mode=dynamic for routing
+    strong_model: claude-sonnet-4-5
+    weak_model: claude-haiku-4-5
+    threshold: 0.5
+```
+
+Override via environment variables:
+```bash
+ROUTING_SUMMARIZATION_MODE=dynamic    # Enable dynamic mode
+```
+
+### Evaluation Framework
+
+The LLM-as-Judge evaluation framework measures whether the weak model produces acceptable quality:
+
+1. **Create dataset**: `aca evaluate create-dataset --step summarization`
+2. **Run evaluation**: `aca evaluate run <dataset-id>` — runs multi-judge consensus evaluation
+3. **Calibrate threshold**: `aca evaluate calibrate --step summarization`
+4. **View report**: `aca evaluate report --step summarization`
+
+Judges use blinded A/B comparison with position randomization to mitigate bias. Consensus is computed via majority vote across 1–3 judges.
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/evaluation/datasets` | List evaluation datasets |
+| POST | `/api/v1/evaluation/datasets` | Create dataset |
+| POST | `/api/v1/evaluation/datasets/{id}/run` | Run evaluation |
+| GET | `/api/v1/evaluation/report` | Cost savings report |
+| GET | `/api/v1/evaluation/routing-config` | List routing configs |
+| PUT | `/api/v1/evaluation/routing-config/{step}` | Update routing config |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/complexity_router.py` | Embedding + classifier routing |
+| `src/evaluation/judge.py` | LLM-as-Judge with blinded A/B |
+| `src/evaluation/consensus.py` | Multi-judge consensus engine |
+| `src/evaluation/calibrator.py` | Threshold calibration from eval data |
+| `src/services/evaluation_service.py` | Dataset management & orchestration |
+| `settings/evaluation.yaml` | Quality criteria per step |
