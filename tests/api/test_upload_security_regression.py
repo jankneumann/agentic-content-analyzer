@@ -41,7 +41,11 @@ def test_upload_value_error_leak(client):
         app.dependency_overrides[verify_admin_key] = lambda: "test-admin-key"
 
         try:
-            response = client.post("/api/v1/documents/upload", files=files)
+            response = client.post(
+                "/api/v1/documents/upload",
+                files=files,
+                headers={"X-Admin-Key": "test-admin-key"}
+            )
 
             # Assertions
             # After fix, unexpected ValueError should be 500
