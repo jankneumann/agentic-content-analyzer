@@ -205,6 +205,14 @@ class Conductor:
                 cost_total += result.metadata.get("cost", 0.0)
                 tokens_total += result.metadata.get("tokens_used", result.metadata.get("tokens", 0))
 
+            # 6b. Monitor — all delegation complete
+            status = AgentTaskStatus.MONITORING
+            logger.info(
+                "Conductor: all %d sub-tasks complete for task %s",
+                len(partial_results),
+                task_id,
+            )
+
             # 7. Synthesize results
             status = AgentTaskStatus.SYNTHESIZING
             logger.info("Conductor: synthesizing results for task %s", task_id)

@@ -5,7 +5,7 @@ controlling domain focus, analysis style, model selection, tool access,
 approval thresholds, output format, and communication style.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.models.approval_request import RiskLevel
 
@@ -27,12 +27,26 @@ class AnalysisPreferences(BaseModel):
 
 
 class RelevanceWeighting(BaseModel):
-    """Weights for scoring content relevance."""
+    """Weights for scoring content relevance. Must sum to 1.0 (±0.01)."""
 
     strategic_impact: float = 0.3
     technical_depth: float = 0.25
     novelty: float = 0.25
     cross_domain_relevance: float = 0.2
+
+    @model_validator(mode="after")
+    def _weights_sum_to_one(self) -> "RelevanceWeighting":
+        total = (
+            self.strategic_impact
+            + self.technical_depth
+            + self.novelty
+            + self.cross_domain_relevance
+        )
+        if abs(total - 1.0) > 0.01:
+            raise ValueError(
+                f"Relevance weights must sum to 1.0 (±0.01), got {total:.4f}"
+            )
+        return self
 
 
 class OutputDefaults(BaseModel):

@@ -163,8 +163,8 @@ class TestReflection:
 
 class TestMemoryContextInjection:
     @pytest.mark.asyncio
-    async def test_memory_context_appended_to_system_prompt(self, router, sample_tools, mock_tool_executor):
-        """Memory entries should be injected into the system prompt."""
+    async def test_memory_context_prepended_to_user_prompt(self, router, sample_tools, mock_tool_executor):
+        """Memory entries should be injected into user prompt (not system) for trust boundary."""
         memory_entries = [
             MagicMock(content="AI agents are trending in enterprise"),
             MagicMock(content="RAG systems are maturing"),
@@ -185,12 +185,14 @@ class TestMemoryContextInjection:
                         memory_context=memory_entries,
                     )
 
-            # Check that memory was injected into system prompt
+            # Memory should be in user prompt, NOT system prompt
             call_args = mock_gen.call_args
             system_prompt_arg = call_args[0][2]  # positional: model, provider, system_prompt
-            assert "AI agents are trending" in system_prompt_arg
-            assert "RAG systems are maturing" in system_prompt_arg
-            assert "Prior Knowledge" in system_prompt_arg
+            user_prompt_arg = call_args[0][3]  # positional: model, provider, system_prompt, user_prompt
+            assert "AI agents are trending" not in system_prompt_arg
+            assert "AI agents are trending" in user_prompt_arg
+            assert "RAG systems are maturing" in user_prompt_arg
+            assert "Prior knowledge from memory" in user_prompt_arg
 
     @pytest.mark.asyncio
     async def test_no_memory_context_unchanged(self, router, sample_tools, mock_tool_executor):

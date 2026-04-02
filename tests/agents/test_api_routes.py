@@ -163,15 +163,13 @@ class TestScheduleEndpoints:
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
-    def test_enable_schedule(self, client: TestClient):
-        resp = client.post("/api/v1/agent/schedules/some-id/enable")
-        assert resp.status_code == 200
-        assert resp.json()["enabled"] is True
+    def test_enable_nonexistent_schedule(self, client: TestClient):
+        resp = client.post("/api/v1/agent/schedules/nonexistent/enable")
+        assert resp.status_code == 404
 
-    def test_disable_schedule(self, client: TestClient):
-        resp = client.post("/api/v1/agent/schedules/some-id/disable")
-        assert resp.status_code == 200
-        assert resp.json()["enabled"] is False
+    def test_disable_nonexistent_schedule(self, client: TestClient):
+        resp = client.post("/api/v1/agent/schedules/nonexistent/disable")
+        assert resp.status_code == 404
 
 
 # ============================================================================

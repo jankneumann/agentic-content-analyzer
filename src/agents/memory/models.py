@@ -3,22 +3,15 @@
 These Pydantic models define the interface between the memory provider
 and its consumers. They are distinct from the ORM AgentMemory model —
 MemoryEntry is the domain model, AgentMemory is the persistence model.
+
+MemoryType is imported from the ORM module to ensure a single source of truth.
 """
 
-from datetime import datetime
-from enum import StrEnum
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
-
-class MemoryType(StrEnum):
-    """Types of agent memory entries."""
-
-    OBSERVATION = "observation"
-    INSIGHT = "insight"
-    TASK_RESULT = "task_result"
-    PREFERENCE = "preference"
-    META_LEARNING = "meta_learning"
+from src.models.agent_memory import MemoryType  # Single source of truth
 
 
 class MemoryEntry(BaseModel):
@@ -34,8 +27,8 @@ class MemoryEntry(BaseModel):
     source_task_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_accessed: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_accessed: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     access_count: int = 0
     score: float = 0.0  # Set by retrieval strategies during recall
 

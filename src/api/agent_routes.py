@@ -186,14 +186,25 @@ async def handle_approval(request_id: str, decision: ApprovalDecision) -> dict:
 # ─── Schedules ─────────────────────────────────────────────────
 
 
+def _get_scheduler():
+    """Lazy-init a module-level scheduler to share state across requests."""
+    global _scheduler
+    if _scheduler is None:
+        from src.agents.scheduler.scheduler import AgentScheduler
+
+        _scheduler = AgentScheduler()
+        _scheduler.load_schedules()
+    return _scheduler
+
+
+_scheduler = None
+
+
 @router.get("/schedules", dependencies=[Depends(verify_admin_key)])
 async def list_schedules() -> list[ScheduleResponse]:
     """List all proactive schedule entries."""
     try:
-        from src.agents.scheduler.scheduler import AgentScheduler
-
-        scheduler = AgentScheduler()
-        scheduler.load_schedules()
+        scheduler = _get_scheduler()
         return [
             ScheduleResponse(
                 id=s.id,
@@ -216,13 +227,19 @@ async def list_schedules() -> list[ScheduleResponse]:
 @router.post("/schedules/{schedule_id}/enable", dependencies=[Depends(verify_admin_key)])
 async def enable_schedule(schedule_id: str) -> dict:
     """Enable a proactive schedule entry."""
-    return {"schedule_id": schedule_id, "enabled": True}
+    scheduler = _get_scheduler()
+    if scheduler.enable_schedule(schedule_id):
+        return {"schedule_id": schedule_id, "enabled": True}
+    raise HTTPException(status_code=404, detail=f"Schedule not found: {schedule_id}")
 
 
 @router.post("/schedules/{schedule_id}/disable", dependencies=[Depends(verify_admin_key)])
 async def disable_schedule(schedule_id: str) -> dict:
     """Disable a proactive schedule entry."""
-    return {"schedule_id": schedule_id, "enabled": False}
+    scheduler = _get_scheduler()
+    if scheduler.disable_schedule(schedule_id):
+        return {"schedule_id": schedule_id, "enabled": False}
+    raise HTTPException(status_code=404, detail=f"Schedule not found: {schedule_id}")
 
 
 # ─── Personas ──────────────────────────────────────────────────
