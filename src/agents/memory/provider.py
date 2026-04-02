@@ -13,6 +13,7 @@ See spec: agentic-analysis.9 (hybrid recall), agentic-analysis.22 (RRF formula).
 import asyncio
 import logging
 import time
+import uuid
 from collections import defaultdict
 
 from src.agents.memory.models import MemoryEntry, MemoryFilter
@@ -48,7 +49,10 @@ class MemoryProvider:
         Returns the memory ID from the first successful store.
         Continues storing in remaining strategies even if some fail.
         """
-        stored_id = memory.id or ""
+        # Generate a consistent ID so all strategies store with the same key
+        if not memory.id:
+            memory = memory.model_copy(update={"id": str(uuid.uuid4())})
+        stored_id = memory.id
         tasks = []
 
         for name, (strategy, _weight) in self._strategies.items():
@@ -115,13 +119,31 @@ class MemoryProvider:
         return merged[:limit]
 
     async def forget(self, memory_id: str) -> bool:
-        """Remove a memory entry from all strategies."""
+        """Remove a memory entry from all strategies.
+
+        Respects circuit breaker state and trips on failure.
+        """
         tasks = []
+        task_names = []
         for name, (strategy, _weight) in self._strategies.items():
+            if self._is_circuit_open(name):
+                logger.warning("Memory forget: skipping %s (circuit breaker open)", name)
+                continue
             tasks.append(strategy.forget(memory_id))
+            task_names.append(name)
+
+        if not tasks:
+            return False
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        return any(r is True for r in results if not isinstance(r, Exception))
+        any_success = False
+        for name, result in zip(task_names, results):
+            if isinstance(result, Exception):
+                logger.warning("Memory forget failed for %s: %s", name, result)
+                self._trip_circuit(name)
+            elif result is True:
+                any_success = True
+        return any_success
 
     def _weighted_rrf(
         self, strategy_results: dict[str, list[MemoryEntry]]
@@ -156,6 +178,9 @@ class MemoryProvider:
             weight = normalized_weights.get(strategy_name, 0.0)
             for rank, entry in enumerate(entries, start=1):
                 doc_id = entry.id
+                # Entries without a usable ID can't be deduplicated; assign a unique key
+                if not doc_id:
+                    doc_id = f"_anon_{strategy_name}_{rank}"
                 rrf_contribution = weight / (RRF_K + rank)
                 doc_scores[doc_id] += rrf_contribution
                 # Keep the entry with the best content (first seen wins)

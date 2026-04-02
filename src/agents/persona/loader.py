@@ -6,6 +6,7 @@ deep merge.
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,9 @@ class PersonaLoader:
         Raises:
             FileNotFoundError: If the YAML file does not exist.
         """
+        # Validate name to prevent path traversal (only alphanum, hyphens, underscores)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+            raise ValueError(f"Invalid persona name: {name!r}")
         path = Path(cls.PERSONAS_DIR) / f"{name}.yaml"
         if not path.exists():
             raise FileNotFoundError(f"Persona file not found: {path}")

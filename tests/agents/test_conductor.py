@@ -531,13 +531,16 @@ class TestLLMRouterPlanning:
     async def test_llm_planning_used_when_available(
         self, mock_registry, mock_memory_provider, mock_approval_gate, mock_persona_loader
     ):
+        import json
+
+        plan_json = json.dumps([
+            {"specialist": "research", "prompt": "Step 1", "params": {}},
+            {"specialist": "analysis", "prompt": "Step 2", "params": {}},
+        ])
+        llm_response = MagicMock()
+        llm_response.text = plan_json
         llm_router = MagicMock()
-        llm_router.generate_with_planning = AsyncMock(
-            return_value=[
-                {"specialist": "research", "prompt": "Step 1", "params": {}},
-                {"specialist": "analysis", "prompt": "Step 2", "params": {}},
-            ]
-        )
+        llm_router.generate_with_planning = AsyncMock(return_value=llm_response)
         # Set up both specialists
         research_spec = MagicMock()
         research_spec.name = "research"

@@ -39,11 +39,11 @@ class KeywordStrategy(MemoryStrategy):
                         f"""
                         INSERT INTO agent_memories
                             (id, content, memory_type, source_task_id, tags,
-                             confidence, created_at, last_accessed, access_count,
+                             confidence, created_at, last_accessed_at, access_count,
                              content_tsv)
                         VALUES
                             (:id, :content, :memory_type, :source_task_id, :tags,
-                             :confidence, :created_at, :last_accessed, :access_count,
+                             :confidence, :created_at, :last_accessed_at, :access_count,
                              to_tsvector('{FTS_CONFIG}', :content))
                         """
                     ),
@@ -55,7 +55,7 @@ class KeywordStrategy(MemoryStrategy):
                         "tags": memory.tags,
                         "confidence": memory.confidence,
                         "created_at": memory.created_at,
-                        "last_accessed": memory.last_accessed,
+                        "last_accessed_at": memory.last_accessed,
                         "access_count": memory.access_count,
                     },
                 )
@@ -71,73 +71,68 @@ class KeywordStrategy(MemoryStrategy):
         limit: int = 10,
         filters: MemoryFilter | None = None,
     ) -> list[MemoryEntry]:
-        try:
-            where_clauses: list[str] = [
-                f"content_tsv @@ plainto_tsquery('{FTS_CONFIG}', :query)"
-            ]
-            params: dict = {
-                "query": query,
-                "limit": limit,
-                "now": datetime.now(timezone.utc),
-            }
+        where_clauses: list[str] = [
+            f"content_tsv @@ plainto_tsquery('{FTS_CONFIG}', :query)"
+        ]
+        params: dict = {
+            "query": query,
+            "limit": limit,
+            "now": datetime.now(timezone.utc),
+        }
 
-            if filters:
-                if filters.memory_types:
-                    where_clauses.append("memory_type = ANY(:memory_types)")
-                    params["memory_types"] = [mt.value for mt in filters.memory_types]
-                if filters.tags:
-                    where_clauses.append("tags && :tags")
-                    params["tags"] = filters.tags
-                if filters.min_confidence is not None:
-                    where_clauses.append("confidence >= :min_confidence")
-                    params["min_confidence"] = filters.min_confidence
-                if filters.source_task_id:
-                    where_clauses.append("source_task_id = :source_task_id")
-                    params["source_task_id"] = filters.source_task_id
-                if filters.since:
-                    where_clauses.append("created_at >= :since")
-                    params["since"] = filters.since
+        if filters:
+            if filters.memory_types:
+                where_clauses.append("memory_type = ANY(:memory_types)")
+                params["memory_types"] = [mt.value for mt in filters.memory_types]
+            if filters.tags:
+                where_clauses.append("tags && :tags")
+                params["tags"] = filters.tags
+            if filters.min_confidence is not None:
+                where_clauses.append("confidence >= :min_confidence")
+                params["min_confidence"] = filters.min_confidence
+            if filters.source_task_id:
+                where_clauses.append("source_task_id = :source_task_id")
+                params["source_task_id"] = filters.source_task_id
+            if filters.since:
+                where_clauses.append("created_at >= :since")
+                params["since"] = filters.since
 
-            where_sql = " AND ".join(where_clauses)
+        where_sql = " AND ".join(where_clauses)
 
-            sql = text(
-                f"""
-                SELECT
-                    id, content, memory_type, source_task_id, tags,
-                    confidence, created_at, last_accessed, access_count,
-                    ts_rank_cd(content_tsv, plainto_tsquery('{FTS_CONFIG}', :query)) AS rank
-                FROM agent_memories
-                WHERE {where_sql}
-                ORDER BY rank DESC
-                LIMIT :limit
-                """
-            )
+        sql = text(
+            f"""
+            SELECT
+                id, content, memory_type, source_task_id, tags,
+                confidence, created_at, last_accessed_at, access_count,
+                ts_rank_cd(content_tsv, plainto_tsquery('{FTS_CONFIG}', :query)) AS rank
+            FROM agent_memories
+            WHERE {where_sql}
+            ORDER BY rank DESC
+            LIMIT :limit
+            """
+        )
 
-            async with self._session_factory() as session:
-                result = await session.execute(sql, params)
-                rows = result.fetchall()
+        async with self._session_factory() as session:
+            result = await session.execute(sql, params)
+            rows = result.fetchall()
 
-            entries: list[MemoryEntry] = []
-            for row in rows:
-                entries.append(
-                    MemoryEntry(
-                        id=str(row.id),
-                        content=row.content,
-                        memory_type=MemoryType(row.memory_type),
-                        source_task_id=row.source_task_id,
-                        tags=row.tags or [],
-                        confidence=float(row.confidence),
-                        created_at=row.created_at,
-                        last_accessed=row.last_accessed,
-                        access_count=row.access_count,
-                        score=float(row.rank),
-                    )
+        entries: list[MemoryEntry] = []
+        for row in rows:
+            entries.append(
+                MemoryEntry(
+                    id=str(row.id),
+                    content=row.content,
+                    memory_type=MemoryType(row.memory_type),
+                    source_task_id=row.source_task_id,
+                    tags=row.tags or [],
+                    confidence=float(row.confidence),
+                    created_at=row.created_at,
+                    last_accessed=row.last_accessed_at,
+                    access_count=row.access_count,
+                    score=float(row.rank),
                 )
-            return entries
-
-        except Exception:
-            logger.exception("KeywordStrategy.recall failed for query: %s", query[:80])
-            return []
+            )
+        return entries
 
     async def forget(self, memory_id: str) -> bool:
         try:

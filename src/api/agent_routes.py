@@ -6,7 +6,7 @@ managing proactive schedules and personas.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -26,7 +26,9 @@ class TaskSubmission(BaseModel):
     """Request body for submitting a new agent task."""
 
     prompt: str = Field(..., min_length=1, description="The task prompt or question")
-    task_type: str = Field(default="research", description="Task type: research, analysis, synthesis, ingestion")
+    task_type: Literal["research", "analysis", "synthesis", "ingestion", "maintenance"] = Field(
+        default="research", description="Task type: research, analysis, synthesis, ingestion, maintenance"
+    )
     persona: str = Field(default="default", description="Persona to use for this task")
     output: str | None = Field(default=None, description="Output format override")
     sources: list[str] | None = Field(default=None, description="Restrict to specific source types")

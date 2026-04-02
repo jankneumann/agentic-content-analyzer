@@ -45,10 +45,10 @@ class VectorStrategy(MemoryStrategy):
                         """
                         INSERT INTO agent_memories
                             (id, content, memory_type, source_task_id, tags,
-                             confidence, created_at, last_accessed, access_count, embedding)
+                             confidence, created_at, last_accessed_at, access_count, embedding)
                         VALUES
                             (:id, :content, :memory_type, :source_task_id, :tags,
-                             :confidence, :created_at, :last_accessed, :access_count, :embedding)
+                             :confidence, :created_at, :last_accessed_at, :access_count, :embedding)
                         """
                     ),
                     {
@@ -59,7 +59,7 @@ class VectorStrategy(MemoryStrategy):
                         "tags": memory.tags,
                         "confidence": memory.confidence,
                         "created_at": memory.created_at,
-                        "last_accessed": memory.last_accessed,
+                        "last_accessed_at": memory.last_accessed,
                         "access_count": memory.access_count,
                         "embedding": str(embedding),
                     },
@@ -76,85 +76,80 @@ class VectorStrategy(MemoryStrategy):
         limit: int = 10,
         filters: MemoryFilter | None = None,
     ) -> list[MemoryEntry]:
-        try:
-            query_embedding = await self._embed_fn(query)
+        query_embedding = await self._embed_fn(query)
 
-            # Build dynamic WHERE clauses from filters.
-            where_clauses: list[str] = []
-            params: dict = {
-                "embedding": str(query_embedding),
-                "limit": limit,
-                "recency_weight": RECENCY_WEIGHT,
-                "half_life_days": RECENCY_HALF_LIFE_DAYS,
-                "now": datetime.now(timezone.utc),
-            }
+        # Build dynamic WHERE clauses from filters.
+        where_clauses: list[str] = []
+        params: dict = {
+            "embedding": str(query_embedding),
+            "limit": limit,
+            "recency_weight": RECENCY_WEIGHT,
+            "half_life_days": RECENCY_HALF_LIFE_DAYS,
+            "now": datetime.now(timezone.utc),
+        }
 
-            if filters:
-                if filters.memory_types:
-                    where_clauses.append("memory_type = ANY(:memory_types)")
-                    params["memory_types"] = [mt.value for mt in filters.memory_types]
-                if filters.tags:
-                    where_clauses.append("tags && :tags")
-                    params["tags"] = filters.tags
-                if filters.min_confidence is not None:
-                    where_clauses.append("confidence >= :min_confidence")
-                    params["min_confidence"] = filters.min_confidence
-                if filters.source_task_id:
-                    where_clauses.append("source_task_id = :source_task_id")
-                    params["source_task_id"] = filters.source_task_id
-                if filters.since:
-                    where_clauses.append("created_at >= :since")
-                    params["since"] = filters.since
+        if filters:
+            if filters.memory_types:
+                where_clauses.append("memory_type = ANY(:memory_types)")
+                params["memory_types"] = [mt.value for mt in filters.memory_types]
+            if filters.tags:
+                where_clauses.append("tags && :tags")
+                params["tags"] = filters.tags
+            if filters.min_confidence is not None:
+                where_clauses.append("confidence >= :min_confidence")
+                params["min_confidence"] = filters.min_confidence
+            if filters.source_task_id:
+                where_clauses.append("source_task_id = :source_task_id")
+                params["source_task_id"] = filters.source_task_id
+            if filters.since:
+                where_clauses.append("created_at >= :since")
+                params["since"] = filters.since
 
-            where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-            sql = text(
-                f"""
-                SELECT
-                    id, content, memory_type, source_task_id, tags,
-                    confidence, created_at, last_accessed, access_count,
-                    1 - (embedding <=> :embedding::vector) AS cosine_sim,
-                    EXP(-0.693 * EXTRACT(EPOCH FROM (:now - created_at)) / 86400.0 / :half_life_days)
-                        AS recency_factor
-                FROM agent_memories
-                {where_sql}
-                ORDER BY
-                    (1 - :recency_weight) * (1 - (embedding <=> :embedding::vector))
-                    + :recency_weight * EXP(-0.693 * EXTRACT(EPOCH FROM (:now - created_at)) / 86400.0 / :half_life_days)
-                    DESC
-                LIMIT :limit
-                """
+        sql = text(
+            f"""
+            SELECT
+                id, content, memory_type, source_task_id, tags,
+                confidence, created_at, last_accessed_at, access_count,
+                1 - (embedding <=> :embedding::vector) AS cosine_sim,
+                EXP(-0.693 * EXTRACT(EPOCH FROM (:now - created_at)) / 86400.0 / :half_life_days)
+                    AS recency_factor
+            FROM agent_memories
+            {where_sql}
+            ORDER BY
+                (1 - :recency_weight) * (1 - (embedding <=> :embedding::vector))
+                + :recency_weight * EXP(-0.693 * EXTRACT(EPOCH FROM (:now - created_at)) / 86400.0 / :half_life_days)
+                DESC
+            LIMIT :limit
+            """
+        )
+
+        async with self._session_factory() as session:
+            result = await session.execute(sql, params)
+            rows = result.fetchall()
+
+        entries: list[MemoryEntry] = []
+        for row in rows:
+            combined_score = (
+                (1 - RECENCY_WEIGHT) * float(row.cosine_sim)
+                + RECENCY_WEIGHT * float(row.recency_factor)
             )
-
-            async with self._session_factory() as session:
-                result = await session.execute(sql, params)
-                rows = result.fetchall()
-
-            entries: list[MemoryEntry] = []
-            for row in rows:
-                combined_score = (
-                    (1 - RECENCY_WEIGHT) * float(row.cosine_sim)
-                    + RECENCY_WEIGHT * float(row.recency_factor)
+            entries.append(
+                MemoryEntry(
+                    id=str(row.id),
+                    content=row.content,
+                    memory_type=MemoryType(row.memory_type),
+                    source_task_id=row.source_task_id,
+                    tags=row.tags or [],
+                    confidence=float(row.confidence),
+                    created_at=row.created_at,
+                    last_accessed=row.last_accessed_at,
+                    access_count=row.access_count,
+                    score=combined_score,
                 )
-                entries.append(
-                    MemoryEntry(
-                        id=str(row.id),
-                        content=row.content,
-                        memory_type=MemoryType(row.memory_type),
-                        source_task_id=row.source_task_id,
-                        tags=row.tags or [],
-                        confidence=float(row.confidence),
-                        created_at=row.created_at,
-                        last_accessed=row.last_accessed,
-                        access_count=row.access_count,
-                        score=combined_score,
-                    )
-                )
-            return entries
-
-        except Exception:
-            logger.exception("VectorStrategy.recall failed for query: %s", query[:80])
-            return []
+            )
+        return entries
 
     async def forget(self, memory_id: str) -> bool:
         try:

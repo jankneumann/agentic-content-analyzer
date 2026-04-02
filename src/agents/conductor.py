@@ -137,7 +137,7 @@ class Conductor:
             memory_context = await self._query_memory(prompt)
 
             # 3. Plan sub-tasks
-            plan = await self._plan_task(prompt, persona_config, memory_context)
+            plan = await self._plan_task(prompt, task_type, persona_config, memory_context)
             logger.info(
                 "Conductor: planned %d sub-tasks for task %s",
                 len(plan),
@@ -175,12 +175,25 @@ class Conductor:
                     )
 
                 # Delegate with retry
+                # Resolve model and tool restrictions from persona
+                model_override = persona_config.resolve_model(specialist_name)
+                specialist_obj = self.registry.get(specialist_name)
+                allowed_tool_names = None
+                if specialist_obj and persona_config.restricted_tools:
+                    filtered = persona_config.filter_tools(specialist_obj.get_tools())
+                    allowed_tool_names = [t.name for t in filtered]
+
                 spec_task = SpecialistTask(
                     task_id=f"{task_id}.sub.{i}",
                     task_type=specialist_name,
                     prompt=sub_prompt,
                     params=sub_params,
-                    context={"memory": memory_context, "persona": persona},
+                    context={
+                        "memory": memory_context,
+                        "persona": persona,
+                        "model": model_override,
+                        "allowed_tools": allowed_tool_names,
+                    },
                 )
 
                 result = await self._delegate_with_retry(
@@ -190,7 +203,7 @@ class Conductor:
 
                 # Accumulate costs from specialist metadata
                 cost_total += result.metadata.get("cost", 0.0)
-                tokens_total += result.metadata.get("tokens", 0)
+                tokens_total += result.metadata.get("tokens_used", result.metadata.get("tokens", 0))
 
             # 7. Synthesize results
             status = AgentTaskStatus.SYNTHESIZING
@@ -255,6 +268,7 @@ class Conductor:
     async def _plan_task(
         self,
         prompt: str,
+        task_type: str,
         persona_config: PersonaConfig,
         memory_context: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
@@ -271,23 +285,55 @@ class Conductor:
             self.llm_router, "generate_with_planning"
         ):
             try:
-                plan = await self.llm_router.generate_with_planning(
-                    prompt=prompt,
-                    context={
-                        "persona": persona_config.model_dump(),
-                        "memory": memory_context,
-                        "available_specialists": self.registry.list_specialists(),
-                    },
+                # Build a planning prompt that instructs the LLM to return
+                # structured sub-tasks for the available specialists.
+                specialist_names = self.registry.list_specialists()
+                planning_goal = (
+                    f"Decompose this task into sub-tasks for these specialists: "
+                    f"{specialist_names}.\n\n"
+                    f"Task: {prompt}\n\n"
+                    f"Return a JSON list of objects with keys: specialist, prompt, params."
                 )
-                if isinstance(plan, list) and plan:
-                    return plan
+
+                response = await self.llm_router.generate_with_planning(
+                    goal=planning_goal,
+                    model=persona_config.resolve_model("conductor"),
+                    tools=[],
+                    tool_executor=lambda *a, **kw: None,
+                    system_prompt=(
+                        "You are a task planner. Decompose the goal into sub-tasks. "
+                        "Return a JSON array of {specialist, prompt, params} objects."
+                    ),
+                    memory_context=memory_context or None,
+                )
+                # Try to parse a plan from the response text
+                import json
+
+                plan_text = response.text if hasattr(response, "text") else str(response)
+                # Look for a JSON array in the response
+                start = plan_text.find("[")
+                end = plan_text.rfind("]") + 1
+                if start >= 0 and end > start:
+                    plan = json.loads(plan_text[start:end])
+                    if isinstance(plan, list) and plan:
+                        # Validate plan items have required keys
+                        validated = []
+                        for item in plan:
+                            if isinstance(item, dict) and "specialist" in item and "prompt" in item:
+                                validated.append({
+                                    "specialist": item["specialist"],
+                                    "prompt": item["prompt"],
+                                    "params": item.get("params", {}),
+                                })
+                        if validated:
+                            return validated
             except Exception as e:
                 logger.warning(
                     "Conductor: LLM planning failed, using fallback: %s", e
                 )
 
-        # Fallback: single sub-task using the full prompt
-        return [{"specialist": "research", "prompt": prompt, "params": {}}]
+        # Fallback: single sub-task using the appropriate specialist for the task type
+        return [{"specialist": self._select_specialist(task_type), "prompt": prompt, "params": {}}]
 
     async def _delegate_to_specialist(
         self,

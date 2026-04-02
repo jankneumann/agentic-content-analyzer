@@ -8,7 +8,7 @@ infrastructure.
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -178,7 +178,7 @@ class AgentScheduler:
         in the current minute (deduplication).
         """
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
         due: list[ScheduleEntry] = []
         for schedule_id, entry in self._schedules.items():
@@ -215,7 +215,7 @@ class AgentScheduler:
             List of enqueued task IDs.
         """
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
         due = self.get_due_schedules(now)
         if not due:

@@ -483,6 +483,9 @@ class LLMRouter:
         )
         total_input_tokens += plan_response.input_tokens
         total_output_tokens += plan_response.output_tokens
+        total_cost += self._estimate_cost(
+            plan_response.input_tokens, plan_response.output_tokens, model
+        )
 
         # Parse plan steps
         plan_text = plan_response.text
@@ -561,6 +564,9 @@ class LLMRouter:
                 )
                 total_input_tokens += revision_response.input_tokens
                 total_output_tokens += revision_response.output_tokens
+                total_cost += self._estimate_cost(
+                    revision_response.input_tokens, revision_response.output_tokens, model
+                )
 
                 if "NO REVISION NEEDED" not in revision_response.text.upper():
                     # Parse revised steps
@@ -591,6 +597,9 @@ class LLMRouter:
         )
         total_input_tokens += synthesis_response.input_tokens
         total_output_tokens += synthesis_response.output_tokens
+        total_cost += self._estimate_cost(
+            synthesis_response.input_tokens, synthesis_response.output_tokens, model
+        )
 
         return LLMResponse(
             text=synthesis_response.text,

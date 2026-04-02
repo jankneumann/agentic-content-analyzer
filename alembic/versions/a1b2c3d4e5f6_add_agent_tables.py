@@ -111,6 +111,16 @@ def upgrade() -> None:
         # Add pgvector embedding column (raw SQL — not ORM-mappable)
         op.execute("ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS embedding vector(1536)")
 
+        # Add tsvector column for full-text search (KeywordStrategy)
+        op.execute("ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS content_tsv tsvector")
+        op.execute("CREATE INDEX IF NOT EXISTS ix_agent_memories_content_tsv ON agent_memories USING gin(content_tsv)")
+
+        # Add HNSW index for vector similarity search (VectorStrategy)
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS ix_agent_memories_embedding "
+            "ON agent_memories USING hnsw (embedding vector_cosine_ops)"
+        )
+
     # --- approval_requests ---
     if "approval_requests" not in existing_tables:
         op.create_table(
