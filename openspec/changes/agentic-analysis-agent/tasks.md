@@ -7,12 +7,18 @@
 
 *Priority: Must complete first — all other phases depend on these models and the memory abstraction.*
 
+- [ ] 1.0 Design and document PG enum migration strategy — define all new StrEnums (AgentTaskStatus, InsightType, MemoryType, RiskLevel) and corresponding `CREATE TYPE` + `ALTER TYPE ... ADD VALUE` migrations; document enum extension pattern in migration file comments
+  **Spec scenarios**: agentic-analysis.20 (confidence scoring uses enums for classification)
+  **Design decisions**: D8 (data model extensions)
+  **Dependencies**: None
+  **Gotcha**: PG enum + Python StrEnum mismatch — adding to StrEnum requires `ALTER TYPE ... ADD VALUE` migration (see CLAUDE.md gotchas)
+
 - [ ] 1.1 Write tests for agent data models — AgentTask, AgentInsight, AgentMemory, ApprovalRequest ORM models and enums
   **Spec scenarios**: agentic-analysis.1 (task lifecycle), agentic-analysis.9 (memory storage), agentic-analysis.13 (approval model)
   **Design decisions**: D8 (data model extensions)
-  **Dependencies**: None
+  **Dependencies**: 1.0
 
-- [ ] 1.2 Create Alembic migration for agent tables — `agent_tasks`, `agent_insights`, `agent_memories`, `approval_requests`, `heartbeat_schedules` with all enums
+- [ ] 1.2 Create Alembic migration for agent tables — `agent_tasks`, `agent_insights`, `agent_memories`, `approval_requests`, `agent_schedules` with all enums
   **Dependencies**: 1.1
 
 - [ ] 1.3 Implement AgentTask, AgentInsight, AgentMemory, ApprovalRequest ORM models in `src/models/`
@@ -176,7 +182,7 @@
 *Priority: The orchestrating intelligence. Depends on specialists, memory, approval, and persona.*
 
 - [ ] 5.1 Write tests for Conductor task lifecycle — received → planning → delegating → monitoring → synthesizing → completed
-  **Spec scenarios**: agentic-analysis.1 (user task), agentic-analysis.2 (heartbeat task), agentic-analysis.4 (failure recovery)
+  **Spec scenarios**: agentic-analysis.1 (user task), agentic-analysis.2 (scheduled task), agentic-analysis.4 (failure recovery)
   **Design decisions**: D1 (conductor as stateful task manager)
   **Dependencies**: 3.12 (specialist registry), 4.2 (approval gates), 4.5 (persona), 1.13 (memory)
 
@@ -267,7 +273,19 @@
   **Spec scenarios**: All scenarios (end-to-end validation)
   **Dependencies**: 7.6
 
-- [ ] 8.2 Write integration test for proactive heartbeat flow — scheduler triggers task → conductor executes → insights generated
+- [ ] 8.1a Write integration test for persona-parameterized task flow — same task prompt run with two different personas produces differently structured outputs (e.g., technical_report vs executive_briefing)
+  **Spec scenarios**: agentic-analysis.14 (persona loading), agentic-analysis.20 (confidence scoring)
+  **Dependencies**: 8.1
+
+- [ ] 8.1b Write integration test for error recovery flow — specialist failure → retry → partial result → parent task completes with `partial = true`
+  **Spec scenarios**: agentic-analysis.4 (failure recovery), agentic-analysis.24 (specialist failure), agentic-analysis.23 (retry policy)
+  **Dependencies**: 8.1
+
+- [ ] 8.1c Write integration test for approval gate flow — task hits HIGH action → blocks → user approves → task resumes and completes
+  **Spec scenarios**: agentic-analysis.3 (approval flow), agentic-analysis.13 (risk classification)
+  **Dependencies**: 8.1
+
+- [ ] 8.2 Write integration test for proactive scheduler flow — scheduler triggers task → conductor executes → insights generated
   **Spec scenarios**: agentic-analysis.2, agentic-analysis.11
   **Dependencies**: 6.6, 7.2
 
@@ -287,15 +305,15 @@
 
 | Phase | Tasks | Focus |
 |-------|-------|-------|
-| 1. Foundation | 1.1–1.13 | Data models + Memory provider |
+| 1. Foundation | 1.0–1.13 | PG enums + Data models + Memory provider |
 | 2. LLMRouter | 2.1–2.6 | Reflection, planning, memory hooks |
 | 3. Specialists | 3.1–3.12 | Four specialist agents + registry |
 | 4. Approval & Persona | 4.1–4.8 | Approval gates, multi-persona system, YAML configs |
 | 5. Conductor | 5.1–5.7 | Persona-aware orchestrating intelligence |
 | 6. Scheduler | 6.1–6.6 | Schedule-driven proactive tasks (with persona + output + source) |
 | 7. API & CLI | 7.1–7.7 | User-facing interfaces (with persona selection) |
-| 8. Integration | 8.1–8.6 | E2E tests, docs, observability |
+| 8. Integration | 8.1–8.6 (incl. 8.1a-c) | E2E tests (incl. persona, error, approval flows), docs, observability |
 
-**Total**: 52 tasks across 8 phases
+**Total**: 56 tasks across 8 phases
 **Estimated new files**: ~33 (including persona YAML files)
 **Modified files**: ~5 (LLMRouter, worker, FastAPI app, ARCHITECTURE.md, CLAUDE.md)

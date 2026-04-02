@@ -35,3 +35,36 @@
 
 ### Context
 Planned the Agentic Analysis Agent feature based on comparative analysis of OpenClaw, Nanobot, NanoClaw, and NemoClaw frameworks. The existing codebase has strong foundations (LLMRouter with tool calling, knowledge graph, hybrid search, job queue) that map well to agentic primitives. The key gap is the orchestrating intelligence — a conductor that decides when and why to invoke existing capabilities. Selected Layered Extension approach to minimize risk while maximizing reuse.
+
+---
+
+## Phase: Plan Iteration 1 (2026-04-02)
+
+**Agent**: claude-opus-4-6 | **Session**: N/A
+
+### Decisions
+1. **Added Measurement & Thresholds section to spec** — Concrete numeric criteria for confidence scoring (0.0-1.0 scale), iteration/cost budgets, RRF formula (k=60), and retry policy (max 2, exponential backoff). Prevents ambiguous acceptance criteria.
+2. **Added Error Handling scenarios to spec** — 5 new scenarios covering specialist failure, tool failure, memory backend unavailability, approval timeout, and task timeout. Addresses missing failure paths.
+3. **Added Integration scenarios to spec** — 3 new scenarios for LLMRouter backward compatibility, Pipeline Runner integration, and Job Queue agent_task entrypoint. Documents how agent layer interacts with existing components.
+4. **Added PG enum migration task (1.0) to tasks.md** — Explicit task for designing all new StrEnums and their corresponding CREATE TYPE migrations before implementing ORM models. Addresses the known PG enum gotcha.
+5. **Fixed naming consistency** — Replaced all "Heartbeat" references with "Scheduler"/"Proactive" across all 4 proposal documents.
+6. **Added Impact section to proposal.md** — Explicit table of which existing files are modified and the risk level of each modification. No existing specs to create deltas for (this is a greenfield capability).
+7. **Added Mock Boundaries table to design.md** — Documents exactly what each component mocks in tests, enabling isolated testing at well-defined boundaries.
+8. **Added Numeric Thresholds table to design.md** — Consolidated reference of all configurable defaults with their spec cross-references.
+9. **Expanded integration test tasks** — Added 3 sub-tasks (8.1a-c) for persona-parameterized flow, error recovery flow, and approval gate flow.
+10. **Fixed vague WHEN conditions** — Scenarios .10 and .15 now have precise trigger conditions instead of generic "when strategies are loaded" / "when a user interacts".
+
+### Alternatives Considered
+- Separate spec delta files for LLMRouter/Pipeline/Worker changes: rejected because no existing OpenSpec specs exist for these components — the Impact table in proposal.md is sufficient
+- Hardcoded thresholds vs configurable: chose configurable with documented defaults; some internal constants (RRF k, confidence bands) are intentionally non-configurable to prevent misconfiguration
+
+### Trade-offs
+- Accepted larger spec surface area (14 new scenarios) over minimalism because measurable criteria and error paths are essential for implementation clarity
+- Accepted task count increase (52→56) because the new integration tests validate critical cross-component flows that were previously untested
+
+### Open Questions
+- [ ] Should circuit breaker state for memory strategies persist across task boundaries, or reset per task?
+- [ ] Should partial-success tasks be surfaced differently in the UI than fully completed tasks?
+
+### Context
+Four parallel analysis agents identified 53 raw findings (22 unique after dedup). This iteration addressed all 4 CRITICAL and 10 HIGH findings. Key gaps were: missing error/failure scenarios, no measurable acceptance criteria, incomplete naming consistency, missing impact analysis for modified components, and no explicit PG enum migration strategy.

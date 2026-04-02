@@ -21,7 +21,7 @@ The agentic AI landscape (OpenClaw, Nanobot, NanoClaw, NemoClaw) demonstrates th
 ### New Components
 
 1. **Conductor Agent** — A meta-cognitive planning agent (inspired by OpenClaw 2.0's Conductor) that:
-   - Receives tasks from users or the heartbeat scheduler
+   - Receives tasks from users or the proactive scheduler
    - Decomposes complex research goals into sub-tasks
    - Delegates to specialist agents
    - Synthesizes results into coherent insights
@@ -40,11 +40,14 @@ The agentic AI landscape (OpenClaw, Nanobot, NanoClaw, NemoClaw) demonstrates th
    - **Hybrid strategy** — Configurable blend of graph + vector + keyword (default)
    - Strategy selection configurable per agent or per task
 
-4. **Heartbeat Scheduler** — Proactive task engine (inspired by Nanobot's cron + OpenClaw's Heartbeat):
+4. **Proactive Scheduler** — Schedule-driven task engine (inspired by Nanobot's cron + OpenClaw's Heartbeat pattern):
    - Scheduled source scanning, trend detection, anomaly alerts
    - Automatic digest drafting and weekly synthesis
    - Knowledge graph maintenance and cross-theme connection discovery
-   - Configurable schedules via YAML (consistent with existing `settings/` pattern)
+   - Schedules defined in `settings/schedule.yaml` (separate from personas)
+   - Each schedule specifies: persona, output format, and optional source filtering
+   - Extends existing PGQueuer job queue for transactional guarantees
+   - Same persona can appear in multiple schedules with different source scopes
 
 5. **Approval Gate System** — Risk-tiered action control (inspired by NemoClaw):
    - Low risk (read, search, analyze) → auto-approve
@@ -88,7 +91,7 @@ The agentic AI landscape (OpenClaw, Nanobot, NanoClaw, NemoClaw) demonstrates th
     - `aca agent task "research question"` — Submit a task
     - `aca agent status` — View active/recent tasks
     - `aca agent insights` — Browse generated insights
-    - `aca agent schedule` — Manage heartbeat schedules
+    - `aca agent schedule` — Manage proactive schedules
 
 ## Approaches Considered
 
@@ -101,7 +104,7 @@ Build the agentic system as a new layer on top of existing components, extending
 ┌─────────────────────────────────────────┐
 │           NEW: Agent Layer              │
 │  Conductor → Specialists → Memory      │
-│  Heartbeat → Approval Gates → Persona  │
+│  Scheduler → Approval Gates → Persona  │
 ├─────────────────────────────────────────┤
 │        EXTENDED: Core Layer             │
 │  LLMRouter (+ reflection/planning)     │
@@ -115,7 +118,7 @@ Build the agentic system as a new layer on top of existing components, extending
 ```
 
 - New code lives in `src/agents/` (conductor, specialists, memory)
-- New config in `settings/agent.yaml`, `settings/persona.yaml`, `settings/heartbeat.yaml`
+- New config in `settings/personas/` (persona directory), `settings/schedule.yaml`, `settings/approval.yaml`
 - Existing processors wrapped as specialist tools, not modified
 - LLMRouter extended with backward-compatible new parameters
 
@@ -236,3 +239,18 @@ Build the agent as an external process that interacts with the system entirely t
 Approaches B (Deep Integration) and C (MCP-Native Agent) were rejected:
 - **B** was too risky — modifying working processors to embed agentic logic creates regression risk and mixed concerns
 - **C** was too limited — MCP overhead and loss of internal abstractions (LLMRouter, memory provider) would constrain the system's capabilities
+
+## Impact on Existing Components
+
+This change modifies the following existing components. All modifications are backward-compatible — existing behavior is preserved when the new optional parameters are not used.
+
+| Component | File(s) | Change | Risk |
+|-----------|---------|--------|------|
+| **LLMRouter** | `src/services/llm_router.py` | Add `enable_reflection`, `reflection_prompt`, `memory_context`, `cost_limit` optional params to `generate_with_tools()`; add new `generate_with_planning()` method | Low — all new params have defaults; existing callers unchanged |
+| **PGQueuer Worker** | `src/queue/worker.py` | Register `agent_task` job handler alongside existing handlers | Low — additive; existing job types unmodified |
+| **FastAPI App** | `src/api/app.py` | Mount `agent_routes` router under `/api/v1/agent/` | Low — new prefix; no overlap with existing routes |
+| **Alembic Migrations** | `alembic/versions/` | New migration for 5 tables and 3+ PG enums | Low — additive schema; no existing table modifications |
+| **ARCHITECTURE.md** | `docs/ARCHITECTURE.md` | Document agent layer in architecture docs | None — documentation only |
+| **CLAUDE.md** | `CLAUDE.md` | Add agent CLI commands to quick reference | None — documentation only |
+
+**No existing tests are modified.** A regression test (task 8.6) validates the daily pipeline still works unchanged with the agent layer present.
