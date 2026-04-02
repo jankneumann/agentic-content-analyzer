@@ -33,7 +33,7 @@
   3. If score >= threshold → select `strong_model`
   4. If score < threshold → select `weak_model`
   5. Log the routing decision to `routing_decisions` table
-  6. Proceed with generation using the selected model
+  6. Call the provider with the selected model (verifiable: provider SDK called with `model_selected`, not the originally configured model)
 
 #### llm-router-evaluation.4 — Dynamic routing disabled falls back to fixed
 **Given** a step with `mode: dynamic` but `enabled: false`
@@ -43,8 +43,8 @@
 #### llm-router-evaluation.5 — Step parameter is optional (backward compatibility)
 **Given** existing callers that do not pass `step` to `generate()`
 **When** `generate(model="claude-sonnet-4-5", ...)` is called without `step`
-**Then** the router SHALL use the explicitly provided model (no routing logic)
-**And** no routing decision SHALL be logged
+**Then** the router SHALL pass the model directly to the provider without querying `routing_configs` or invoking `ComplexityRouter`
+**And** no row SHALL be inserted into `routing_decisions`
 
 ### Complexity Classification
 
@@ -84,18 +84,28 @@
 #### llm-router-evaluation.10 — Step-specific quality dimensions with pass/fail critiques
 **Given** quality dimensions defined per `ModelStep`
 **When** a judge evaluates outputs for `SUMMARIZATION`
-**Then** it SHALL critique on: `accuracy`, `completeness`, `conciseness`, `key_insight_capture`
+**Then** it SHALL critique on: `accuracy`, `completeness`, `conciseness`, `clarity`, `key_insight_capture`
 **When** a judge evaluates outputs for `DIGEST_CREATION`
 **Then** it SHALL critique on: `narrative_flow`, `theme_coherence`, `actionability`, `depth`
 **When** a judge evaluates outputs for `PODCAST_SCRIPT`
 **Then** it SHALL critique on: `conversational_tone`, `engagement`, `technical_accuracy`, `pacing`
 **And** each dimension SHALL produce a binary `pass`/`fail` verdict with a text critique explaining the assessment
 
+#### llm-router-evaluation.10a — Position bias mitigation
+**Given** a judge is evaluating two model outputs (strong and weak)
+**When** the judge prompt is constructed
+**Then** the system SHALL randomize which output is presented as "Output A" vs "Output B" for each evaluation
+**And** the system SHALL NOT reveal which model produced which output to the judge
+**And** the system SHALL track the presentation order to correctly map the judge's preference back to strong/weak models
+**And** across the full evaluation dataset, the strong model's output SHALL appear as "Output A" approximately 50% of the time
+
 #### llm-router-evaluation.11 — Human review integration
-**Given** the `ReviewService` is configured with structured scoring
-**When** a human reviewer approves/rejects a digest with quality scores
-**Then** those scores SHALL be stored in `evaluation_results` with `judge_type: human`
-**And** human scores SHALL be weighted higher than LLM judges in calibration
+**Given** the `ReviewService` is configured with structured evaluation
+**When** a human reviewer approves/rejects a digest
+**Then** the reviewer SHALL be presented with pass/fail verdict inputs for each quality dimension (as defined in `settings/evaluation.yaml` for the relevant `ModelStep`)
+**And** the reviewer MAY provide an overall preference (`strong_wins` | `weak_wins` | `tie`) when comparing outputs
+**And** those verdicts SHALL be stored in `evaluation_results` with `judge_type: human` and `judge_model: human`
+**And** human verdicts SHALL be weighted 2.0x relative to LLM judge verdicts in consensus aggregation (configurable via `evaluation.human_review_weight` in `settings/models.yaml`)
 
 ### Threshold Calibration
 
@@ -105,7 +115,7 @@
 **Then** the engine SHALL:
   1. For each prompt, retrieve the router's complexity score
   2. Sort prompts by complexity score
-  3. Find the threshold where the weak model achieves >= target% of strong model quality (measured by judge scores)
+  3. Find the threshold where the weak model achieves >= target% consensus win-or-tie rate against the strong model (i.e., for samples below the threshold, >= target% have consensus preference of `weak_wins` or `tie`)
   4. Store the calibrated threshold in `routing_configs`
   5. Return the threshold and estimated cost savings
 
@@ -134,6 +144,63 @@
   3. Store all results in `evaluation_results`
   4. Update dataset status to `evaluated`
 
+### Error Handling & Failure Paths
+
+#### llm-router-evaluation.15a — Embedding API failure during routing
+**Given** dynamic routing is active for a step
+**When** the embedding API call fails (timeout, rate limit, or provider error) during `ComplexityRouter.classify()`
+**Then** the router SHALL fall back to `fixed` mode for that request
+**And** log a warning: "Embedding failed for step {step}, falling back to fixed mode: {error}"
+**And** no routing decision SHALL be logged (since no classification occurred)
+
+#### llm-router-evaluation.15b — Judge model failure during evaluation
+**Given** an evaluation is running with N configured judges
+**When** one judge model fails (API error, malformed response, timeout)
+**Then** the system SHALL continue evaluation with remaining judges
+**And** mark the failed judge result as `status: error` in `evaluation_results`
+**And** compute consensus from successful judges only (minimum 1 required)
+**And** if ALL judges fail, mark the sample as `status: error` and continue to next sample
+
+#### llm-router-evaluation.15c — Judge response parsing failure
+**Given** a judge returns a response that cannot be parsed into the expected format (missing preference, malformed critiques JSON)
+**When** the `LLMJudge` attempts to parse the response
+**Then** the system SHALL retry once with a more explicit prompt reminding the judge of the output format
+**And** if retry also fails, mark result as `status: parse_error` and exclude from consensus
+
+### Judge Prompt Construction
+
+#### llm-router-evaluation.15d — Judge prompt template
+**Given** an evaluation pair (prompt, strong output, weak output) and a step's quality dimensions
+**When** a judge prompt is constructed
+**Then** the prompt SHALL:
+  1. Present both outputs as "Output A" and "Output B" (randomized per scenario 10a)
+  2. List each quality dimension with its `description` and `fail_when` criteria from `settings/evaluation.yaml`
+  3. Instruct the judge to produce a structured JSON response with: `preference` (A_wins | B_wins | tie), per-dimension `critiques` (verdict: pass/fail, explanation: text), and `reasoning` (overall text)
+  4. Include 1-2 concrete examples of what constitutes a fail per dimension
+  5. NOT reveal which model produced which output
+
+### Consensus Tie-Breaking
+
+#### llm-router-evaluation.15e — Consensus with 2 judges and split preference
+**Given** 2 judges are configured
+**When** judge 1 returns `strong_wins` and judge 2 returns `weak_wins`
+**Then** the consensus preference SHALL be `tie`
+**And** `agreement_rate` SHALL be 0.0
+
+#### llm-router-evaluation.15f — Consensus with 3 judges and no majority
+**Given** 3 judges are configured
+**When** each judge returns a different preference (strong_wins, weak_wins, tie)
+**Then** the consensus preference SHALL be `tie`
+**And** `agreement_rate` SHALL be 0.33
+
+### Default Quality Dimensions
+
+#### llm-router-evaluation.15g — Default dimensions for non-enumerated steps
+**Given** a `ModelStep` that does not have custom quality dimensions defined in `settings/evaluation.yaml`
+**When** a judge evaluation is run for that step
+**Then** the system SHALL use default dimensions: `accuracy`, `completeness`, `conciseness`, `clarity`
+**And** each default dimension SHALL use generic `description` and `fail_when` criteria from the `_default` entry in `settings/evaluation.yaml`
+
 ### Routing Decision Tracking
 
 #### llm-router-evaluation.16 — Decision logging
@@ -150,8 +217,8 @@
 **When** `aca evaluate report` is run
 **Then** it SHALL display:
   - Per-step: total calls, % routed to weak, cost savings vs. all-strong
-  - Aggregate: total cost savings, quality score distribution
-  - Recommendation: steps where dynamic routing should be enabled/disabled
+  - Aggregate: total cost savings, consensus preference distribution (% strong_wins / weak_wins / tie), per-dimension pass rate
+  - Recommendation: steps where dynamic routing should be enabled/disabled based on weak model win-or-tie rate
 
 ### CLI Interface
 

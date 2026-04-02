@@ -78,7 +78,7 @@ evaluation:
     # Optional third judge:
     # - model: gpt-5-mini
     #   weight: 1.0
-  human_review_weight: 2.0  # Human scores weighted 2x vs. LLM judges
+  human_review_weight: 2.0  # Human pass/fail verdicts weighted 2x vs. LLM judges in consensus
 ```
 
 ### D5: Quality Criteria from CONTENT_GUIDELINES.md
@@ -124,6 +124,61 @@ evaluation_criteria:
 ```
 
 This binary pass/fail + text critique approach is more reliable than Likert scales because it forces judges to commit to a concrete deficiency rather than hedging with middle scores. The text critiques provide actionable feedback for understanding routing quality.
+
+### D5a: Position Bias Mitigation
+
+**Decision**: Randomize which output (strong vs. weak) is presented as "Output A" vs "Output B" in every judge evaluation. Track the mapping to correctly interpret the judge's preference.
+
+**Rationale**: LLMs exhibit well-documented position bias — a tendency to prefer whichever output appears first. Without randomization, evaluation data would be systematically biased toward whichever model's output is always presented first. This is standard practice in Chatbot Arena, LMSYS, and RouteLLM evaluation pipelines.
+
+### D5b: Judge Prompt Template
+
+**Decision**: Judge prompts are constructed programmatically by `LLMJudge` using criteria from `settings/evaluation.yaml`, not stored as raw prompt templates in `settings/prompts.yaml`.
+
+**Rationale**: Judge prompts must dynamically include the quality dimensions, their descriptions, fail_when criteria, and concrete fail examples — all of which vary per `ModelStep`. A template string would need so many variables that a programmatic builder is cleaner. The builder outputs a prompt structured as:
+
+```
+You are evaluating two outputs for a {step_name} task.
+
+## Quality Dimensions
+For each dimension, assess BOTH outputs and give a binary verdict (pass/fail) with a brief explanation.
+
+1. **{dim_name}**: {description}
+   - FAIL when: {fail_when}
+
+[...repeat for each dimension...]
+
+## Outputs
+**Output A:**
+{output_a}
+
+**Output B:**
+{output_b}
+
+## Instructions
+Return a JSON object with this exact structure:
+{
+  "preference": "A_wins" | "B_wins" | "tie",
+  "critiques": {
+    "{dim_name}": {"verdict": "pass" | "fail", "explanation": "..."},
+    ...
+  },
+  "reasoning": "Overall comparison explanation"
+}
+```
+
+### D5c: Consensus Tie-Breaking
+
+**Decision**: When judges cannot reach majority, the consensus result is `tie`.
+
+**Rules**:
+- 1 judge: judge's preference is the consensus
+- 2 judges, same preference: that preference wins (agreement_rate = 1.0)
+- 2 judges, split preference: consensus = `tie` (agreement_rate = 0.0)
+- 3 judges, 2+ agree: majority preference wins
+- 3 judges, 3-way split: consensus = `tie` (agreement_rate = 0.33)
+
+**Rationale**: Defaulting to `tie` on disagreement is conservative — it means the calibration engine treats the sample as "inconclusive" rather than guessing. For routing purposes, `tie` means the weak model is considered acceptable (it didn't lose), which aligns with cost-optimization goals.
 
 ### D6: PostgreSQL for All Persistence (not Observability Provider)
 

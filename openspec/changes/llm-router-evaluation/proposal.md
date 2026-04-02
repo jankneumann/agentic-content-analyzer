@@ -37,20 +37,20 @@ We need a **custom routing and evaluation system** inspired by RouteLLM's archit
 2. **LLM-as-Judge Evaluation Framework** — Multi-judge quality assessment system:
    - 1–3 configurable judge models (e.g., Claude Sonnet + Gemini Flash + GPT)
    - Majority-vote consensus for preference decisions (strong vs. weak vs. tie)
-   - Per-step quality criteria derived from `docs/CONTENT_GUIDELINES.md` (accuracy, completeness, actionability, etc.)
-   - Rubric-based scoring (1–5 per dimension) plus pairwise preference comparison
-   - Optional human review integration — structured scores collected during existing `ReviewService` workflow feed into calibration
+   - Per-step quality criteria derived from `docs/CONTENT_GUIDELINES.md` (accuracy, completeness, conciseness, clarity, etc.)
+   - Binary pass/fail verdicts per quality dimension with structured text critiques, plus overall binary preference (strong_wins | weak_wins | tie)
+   - Optional human review integration — pass/fail verdicts collected during existing `ReviewService` workflow feed into calibration as high-weight ground truth
 
 3. **Evaluation Dataset & Results Storage** — PostgreSQL tables for:
    - `evaluation_datasets`: Curated prompt sets per pipeline step (sampled from real pipeline inputs)
-   - `evaluation_results`: Judge scores, preferences, and reasoning per prompt/model pair
+   - `evaluation_results`: Judge preferences, per-dimension pass/fail critiques, and reasoning per prompt/model pair
    - `routing_decisions`: Runtime routing choices with outcome tracking (model selected, threshold used, cost saved)
    - `routing_configs`: Per-step routing configuration (mode, strong/weak models, threshold, active/inactive)
 
 4. **Threshold Calibration Engine** — Automated threshold discovery:
    - Generates outputs from both strong and weak models for a sample dataset
    - Runs multi-judge evaluation on each pair
-   - Computes the threshold where weak model quality meets a target percentage (e.g., 95%) of strong model quality
+   - Computes the threshold where the weak model achieves a target win-or-tie rate (e.g., 95%) against the strong model in judge consensus
    - Stores calibrated thresholds in `routing_configs` table
    - CLI command: `aca evaluate calibrate --step summarization --target-quality 0.95`
 
@@ -79,8 +79,8 @@ We need a **custom routing and evaluation system** inspired by RouteLLM's archit
    - Per-step routing configuration with sensible defaults (all steps start as `fixed`)
 
 4. **Review System** (optional integration):
-   - `ReviewService` extended with structured quality score collection
-   - Scores feed into evaluation dataset for human-calibrated ground truth
+   - `ReviewService` extended with per-dimension pass/fail verdict collection (matching LLM judge format)
+   - Human verdicts feed into evaluation dataset as high-weight ground truth for calibration
 
 ## Approaches Considered
 
