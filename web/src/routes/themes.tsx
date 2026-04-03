@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { createRoute } from "@tanstack/react-router"
-import { BarChart3, Network, Table2, RefreshCw, Loader2, CheckCircle, History, Clock } from "lucide-react"
+import { BarChart3, LayoutGrid, Network, Table2, RefreshCw, Loader2, CheckCircle, History, Clock } from "lucide-react"
 import { toast } from "sonner"
 import { format, formatDistanceToNow } from "date-fns"
 
@@ -30,6 +30,10 @@ import {
   AnalyzeThemesDialog,
   type ThemeAnalysisParams,
 } from "@/components/generation"
+import { ThemeTableView, ThemeGraphView } from "@/components/themes"
+
+type ThemeView = "cards" | "table" | "graph"
+type GraphTab = "network" | "timeline"
 
 export const ThemesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -41,6 +45,8 @@ function ThemesPage() {
   const [showAnalyzeDialog, setShowAnalyzeDialog] = useState(false)
   const [currentAnalysisId, setCurrentAnalysisId] = useState<number | null>(null)
   const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null)
+  const [view, setView] = useState<ThemeView>("cards")
+  const [graphTab, setGraphTab] = useState<GraphTab>("network")
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Clean up polling interval on unmount
@@ -69,7 +75,7 @@ function ThemesPage() {
 
   // History items: completed analyses excluding the currently displayed one
   const historyItems = (analysesList ?? []).filter(
-    (a) => a.status === "completed" && a.id !== displayAnalysis?.id
+    (a) => a.status === "completed" && (!displayAnalysis || !("id" in displayAnalysis) || a.id !== displayAnalysis.id)
   )
 
   const handleAnalyze = (params: ThemeAnalysisParams) => {
@@ -159,11 +165,24 @@ function ThemesPage() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
-          <Button variant="outline">
+          <Button
+            variant={view === "cards" ? "default" : "outline"}
+            onClick={() => setView("cards")}
+          >
+            <LayoutGrid className="mr-2 h-4 w-4" />
+            Cards
+          </Button>
+          <Button
+            variant={view === "table" ? "default" : "outline"}
+            onClick={() => setView("table")}
+          >
             <Table2 className="mr-2 h-4 w-4" />
             Table View
           </Button>
-          <Button variant="outline">
+          <Button
+            variant={view === "graph" ? "default" : "outline"}
+            onClick={() => setView("graph")}
+          >
             <Network className="mr-2 h-4 w-4" />
             Graph View
           </Button>
@@ -243,49 +262,63 @@ function ThemesPage() {
               </div>
             </div>
           ) : hasAnalysis && displayAnalysis.themes.length > 0 ? (
-            <div className="space-y-4">
-              {displayAnalysis.themes.slice(0, 10).map((theme, idx) => (
-                <div key={idx} className="flex items-start gap-4 p-4 rounded-lg border">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium">{theme.name}</h3>
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {theme.category.replace("_", " ")}
-                      </Badge>
-                      <Badge
-                        variant={
-                          theme.trend === "emerging"
-                            ? "default"
-                            : theme.trend === "growing"
-                              ? "secondary"
-                              : "outline"
-                        }
-                        className="text-xs capitalize"
-                      >
-                        {theme.trend}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{theme.description}</p>
-                    {theme.key_points.length > 0 && (
-                      <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside">
-                        {theme.key_points.slice(0, 2).map((point, i) => (
-                          <li key={i}>{point}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold">{Math.round(theme.relevance_score * 100)}%</div>
-                    <div className="text-xs text-muted-foreground">relevance</div>
-                  </div>
-                </div>
-              ))}
-              {displayAnalysis.themes.length > 10 && (
-                <p className="text-center text-sm text-muted-foreground">
-                  + {displayAnalysis.themes.length - 10} more themes
-                </p>
+            <>
+              {view === "table" && (
+                <ThemeTableView themes={displayAnalysis.themes} />
               )}
-            </div>
+              {view === "graph" && (
+                <ThemeGraphView
+                  themes={displayAnalysis.themes}
+                  activeTab={graphTab}
+                  onTabChange={setGraphTab}
+                />
+              )}
+              {view === "cards" && (
+                <div className="space-y-4">
+                  {displayAnalysis.themes.slice(0, 10).map((theme, idx) => (
+                    <div key={idx} className="flex items-start gap-4 p-4 rounded-lg border">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-medium">{theme.name}</h3>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {theme.category.replace("_", " ")}
+                          </Badge>
+                          <Badge
+                            variant={
+                              theme.trend === "emerging"
+                                ? "default"
+                                : theme.trend === "growing"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                            className="text-xs capitalize"
+                          >
+                            {theme.trend}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{theme.description}</p>
+                        {theme.key_points.length > 0 && (
+                          <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside">
+                            {theme.key_points.slice(0, 2).map((point, i) => (
+                              <li key={i}>{point}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold">{Math.round(theme.relevance_score * 100)}%</div>
+                        <div className="text-xs text-muted-foreground">relevance</div>
+                      </div>
+                    </div>
+                  ))}
+                  {displayAnalysis.themes.length > 10 && (
+                    <p className="text-center text-sm text-muted-foreground">
+                      + {displayAnalysis.themes.length - 10} more themes
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
             <div className="flex h-96 items-center justify-center rounded-lg border border-dashed">
               <div className="text-center">
