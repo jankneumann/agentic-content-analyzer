@@ -249,8 +249,14 @@ export function ThemeNetworkGraph({ themes }: ThemeNetworkGraphProps) {
     [selectedNode, selectedNeighbors],
   )
 
-  // Empty state -------------------------------------------------------------
-  if (themes.length === 0 || graphData.links.length === 0) {
+  // Active categories for filtered legend
+  const activeCategories = useMemo(() => {
+    const cats = new Set(themes.map((t) => t.category))
+    return (Object.keys(CATEGORY_COLORS) as ThemeCategory[]).filter((c) => cats.has(c))
+  }, [themes])
+
+  // Empty state — only when there are no themes at all
+  if (themes.length === 0) {
     return (
       <div style={{ position: "relative", height: GRAPH_HEIGHT }}>
         <div
@@ -266,8 +272,7 @@ export function ThemeNetworkGraph({ themes }: ThemeNetworkGraphProps) {
             padding: 24,
           }}
         >
-          No theme relationships found. Themes with related_themes connections
-          will appear as a network.
+          No themes to display. Run a theme analysis to see the network.
         </div>
       </div>
     )
@@ -355,8 +360,7 @@ export function ThemeNetworkGraph({ themes }: ThemeNetworkGraphProps) {
           color: "#94a3b8",
         }}
       >
-        {(Object.entries(CATEGORY_COLORS) as [ThemeCategory, string][]).map(
-          ([cat, color]) => (
+        {activeCategories.map((cat) => (
             <span key={cat} style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span
                 style={{
@@ -364,14 +368,13 @@ export function ThemeNetworkGraph({ themes }: ThemeNetworkGraphProps) {
                   width: 8,
                   height: 8,
                   borderRadius: "50%",
-                  backgroundColor: color,
+                  backgroundColor: CATEGORY_COLORS[cat],
                   flexShrink: 0,
                 }}
               />
               {CATEGORY_LABELS[cat]}
             </span>
-          ),
-        )}
+          ))}
       </div>
     </div>
   )

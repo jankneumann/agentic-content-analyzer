@@ -169,18 +169,22 @@ export function ThemeTimelineChart({ themes }: ThemeTimelineChartProps) {
       (a, b) =>
         new Date(a.first_seen).getTime() - new Date(b.first_seen).getTime()
     )
-    return sorted.map((theme) => ({
-      name: theme.name,
-      category: theme.category,
-      trend: theme.trend,
-      relevance: theme.relevance_score,
-      timeRange: [
-        new Date(theme.first_seen).getTime(),
-        new Date(theme.last_seen).getTime(),
-      ] as [number, number],
-      first_seen: theme.first_seen,
-      last_seen: theme.last_seen,
-    }))
+    const ONE_DAY_MS = 86_400_000
+    return sorted.map((theme) => {
+      const start = new Date(theme.first_seen).getTime()
+      let end = new Date(theme.last_seen).getTime()
+      // Ensure at least 1-day span so the bar is visible
+      if (end <= start) end = start + ONE_DAY_MS
+      return {
+        name: theme.name,
+        category: theme.category,
+        trend: theme.trend,
+        relevance: theme.relevance_score,
+        timeRange: [start, end] as [number, number],
+        first_seen: theme.first_seen,
+        last_seen: theme.last_seen,
+      }
+    })
   }, [themes])
 
   const activeCategories = useMemo(() => {
