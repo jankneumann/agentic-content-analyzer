@@ -32,5 +32,11 @@
       "Read(**/.env.*)"
     ]
   },
-    "outputStyle": "Explanatory"
+  "outputStyle": "Explanatory",
+  "mcpServers": {
+    "newsletter-aggregator": {
+      "command": ".venv/bin/aca-mcp",
+      "args": []
+    }
+  }
 }

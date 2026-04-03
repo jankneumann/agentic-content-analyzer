@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-uninstall
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -729,3 +729,60 @@ verify-staging:  ## Verify staging profile connectivity (health + readiness)
 	@source .venv/bin/activate && PROFILE=staging python -m src.cli profile inspect 2>/dev/null || true
 	@echo ""
 	@echo "✓ Staging verification passed!"
+
+# =============================================================================
+# MCP Server Installation
+# =============================================================================
+
+# The newsletter aggregator MCP server config for stdio transport
+define MCP_CONFIG
+{"mcpServers":{"newsletter-aggregator":{"command":".venv/bin/aca-mcp","args":[]}}}
+endef
+
+mcp-install-claude:  ## Install MCP server definition in .claude/settings.json
+	@echo "Installing MCP server in .claude/settings.json..."
+	@mkdir -p .claude
+	@if [ -f .claude/settings.json ]; then \
+		jq --argjson mcp '$(MCP_CONFIG)' '. * $$mcp' .claude/settings.json > .claude/settings.json.tmp && \
+		mv .claude/settings.json.tmp .claude/settings.json; \
+		echo "✓ Merged MCP server into existing .claude/settings.json"; \
+	else \
+		echo '$(MCP_CONFIG)' | jq . > .claude/settings.json; \
+		echo "✓ Created .claude/settings.json with MCP server"; \
+	fi
+
+mcp-install-codex:  ## Install MCP server definition in .codex/settings.json
+	@echo "Installing MCP server in .codex/settings.json..."
+	@mkdir -p .codex
+	@if [ -f .codex/settings.json ]; then \
+		jq --argjson mcp '$(MCP_CONFIG)' '. * $$mcp' .codex/settings.json > .codex/settings.json.tmp && \
+		mv .codex/settings.json.tmp .codex/settings.json; \
+		echo "✓ Merged MCP server into existing .codex/settings.json"; \
+	else \
+		echo '$(MCP_CONFIG)' | jq . > .codex/settings.json; \
+		echo "✓ Created .codex/settings.json with MCP server"; \
+	fi
+
+mcp-install: mcp-install-claude mcp-install-codex  ## Install MCP server in both .claude and .codex
+	@echo ""
+	@echo "Newsletter Aggregator MCP server registered!"
+	@echo ""
+	@echo "  Transport: stdio (via .venv/bin/aca-mcp)"
+	@echo "  Tools:     30+ (ingest, summarize, digest, search, ...)"
+	@echo ""
+	@echo "Restart Claude Code or Codex to pick up the new server."
+
+mcp-uninstall:  ## Remove MCP server definition from .claude and .codex
+	@echo "Removing MCP server from settings..."
+	@for dir in .claude .codex; do \
+		if [ -f "$$dir/settings.json" ]; then \
+			if jq -e '.mcpServers."newsletter-aggregator"' "$$dir/settings.json" >/dev/null 2>&1; then \
+				jq 'del(.mcpServers."newsletter-aggregator") | if .mcpServers == {} then del(.mcpServers) else . end' \
+					"$$dir/settings.json" > "$$dir/settings.json.tmp" && \
+				mv "$$dir/settings.json.tmp" "$$dir/settings.json"; \
+				echo "✓ Removed from $$dir/settings.json"; \
+			else \
+				echo "  ($$dir/settings.json: no newsletter-aggregator MCP server found)"; \
+			fi; \
+		fi; \
+	done
