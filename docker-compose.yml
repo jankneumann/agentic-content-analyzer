@@ -1,14 +1,15 @@
 services:
   postgres:
     image: paradedb/paradedb:0.22.2-pg17
-    container_name: newsletter-postgres
+    # No container_name — auto-generated from COMPOSE_PROJECT_NAME
+    # to support isolated stacks per worktree via port allocator
     environment:
       POSTGRES_DB: newsletters
       POSTGRES_USER: newsletter_user
       # WARNING: Development credentials only. Never use these values in production.
       POSTGRES_PASSWORD: newsletter_password
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init:/docker-entrypoint-initdb.d
@@ -20,15 +21,15 @@ services:
 
   neo4j:
     image: neo4j:5
-    container_name: newsletter-neo4j
+    # No container_name — same reason as postgres above
     environment:
       # WARNING: Development credentials only. Never use these values in production.
       NEO4J_AUTH: neo4j/newsletter_password
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
     ports:
-      - "7474:7474"  # HTTP
-      - "7687:7687"  # Bolt
+      - "${NEO4J_HTTP_PORT:-7474}:7474"  # HTTP
+      - "${NEO4J_BOLT_PORT:-7687}:7687"  # Bolt
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -40,15 +41,15 @@ services:
 
   neo4j-test:
     image: neo4j:5
-    container_name: newsletter-neo4j-test
+    # No container_name — same reason as postgres above
     environment:
       # WARNING: Development credentials only. Never use these values in production.
       NEO4J_AUTH: neo4j/newsletter_password
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
     ports:
-      - "7475:7474"  # HTTP (test)
-      - "7688:7687"  # Bolt (test)
+      - "${NEO4J_TEST_HTTP_PORT:-7475}:7474"  # HTTP (test)
+      - "${NEO4J_TEST_BOLT_PORT:-7688}:7687"  # Bolt (test)
     volumes:
       - neo4j_test_data:/data
       - neo4j_test_logs:/logs
@@ -62,10 +63,10 @@ services:
 
   hoverfly:
     image: spectolabs/hoverfly:v1.10.5
-    container_name: newsletter-hoverfly
+    # No container_name — same reason as postgres above
     ports:
-      - "8500:8500"  # Proxy/webserver port
-      - "8888:8888"  # Admin API port
+      - "${HOVERFLY_PORT:-8500}:8500"  # Proxy/webserver port
+      - "${HOVERFLY_ADMIN_PORT:-8888}:8888"  # Admin API port
     command: ["-webserver"]  # Webserver mode: acts as destination server, not proxy
     volumes:
       - ./tests/integration/fixtures/simulations:/simulations:ro
@@ -74,9 +75,9 @@ services:
 
   crawl4ai:
     image: unclecode/crawl4ai:latest
-    container_name: newsletter-crawl4ai
+    # No container_name — same reason as postgres above
     ports:
-      - "11235:11235"
+      - "${CRAWL4AI_PORT:-11235}:11235"
     shm_size: '1g'
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11235/health || exit 1"]

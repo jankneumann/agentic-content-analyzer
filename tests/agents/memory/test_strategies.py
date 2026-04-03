@@ -72,6 +72,7 @@ class TestVectorStrategy:
     @pytest.fixture
     def strategy(self, mock_session_factory, mock_embed_fn):
         from src.agents.memory.strategies.vector import VectorStrategy
+
         return VectorStrategy(
             db_session_factory=mock_session_factory,
             embed_fn=mock_embed_fn,
@@ -124,6 +125,7 @@ class TestKeywordStrategy:
     @pytest.fixture
     def strategy(self, mock_session_factory):
         from src.agents.memory.strategies.keyword import KeywordStrategy
+
         return KeywordStrategy(db_session_factory=mock_session_factory)
 
     @pytest.mark.asyncio
@@ -161,6 +163,7 @@ class TestGraphStrategy:
     @pytest.fixture
     def strategy(self, mock_client):
         from src.agents.memory.strategies.graph import GraphStrategy
+
         return GraphStrategy(graph_client=mock_client)
 
     @pytest.mark.asyncio

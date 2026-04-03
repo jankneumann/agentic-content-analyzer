@@ -5,7 +5,6 @@ extracting markdown content and images while rewriting image URLs
 to point to local storage.
 """
 
-import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -235,8 +234,6 @@ def _rewrite_image_urls(markdown: str, url_mapping: dict[str, str]) -> str:
 
     # Replace each URL that we successfully downloaded
     for original_url, storage_url in url_mapping.items():
-        # Escape special regex characters in the URL
-        escaped_url = re.escape(original_url)
-        result = re.sub(escaped_url, storage_url, result)
+        result = result.replace(original_url, storage_url)
 
     return result

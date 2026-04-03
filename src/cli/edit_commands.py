@@ -91,12 +91,14 @@ def edit_content(
             raise typer.Exit(1)
 
     if is_json_mode():
-        output_result({
-            "id": result.id,
-            "title": result.title,
-            "status": str(result.status),
-            "updated_fields": list(update_data.keys()),
-        })
+        output_result(
+            {
+                "id": result.id,
+                "title": result.title,
+                "status": str(result.status),
+                "updated_fields": list(update_data.keys()),
+            }
+        )
     else:
         typer.echo(f"Updated content {content_id}: {', '.join(update_data.keys())}")
 
@@ -173,12 +175,14 @@ def edit_summary(
         if is_json_mode():
             with get_db() as db:
                 s = db.query(Summary).filter(Summary.content_id == content_id).first()
-                output_result({
-                    "id": s.id if s else None,
-                    "content_id": content_id,
-                    "action": "re-summarized",
-                    "feedback": feedback,
-                })
+                output_result(
+                    {
+                        "id": s.id if s else None,
+                        "content_id": content_id,
+                        "action": "re-summarized",
+                        "feedback": feedback,
+                    }
+                )
         else:
             typer.echo(f"Re-summarized content {content_id} with feedback.")
         return
@@ -290,7 +294,9 @@ def edit_digest_section(
     ] = None,
     content: Annotated[
         str | None,
-        typer.Option(help="Direct replacement content (JSON for list/dict sections, text for string)"),
+        typer.Option(
+            help="Direct replacement content (JSON for list/dict sections, text for string)"
+        ),
     ] = None,
 ) -> None:
     """Edit a digest section with direct replacement or AI-assisted revision.
@@ -337,27 +343,23 @@ def edit_digest_section(
         session_id = f"cli-edit-{digest_id}"
 
         try:
-            ctx = asyncio.run(
-                service.start_revision_session(digest_id, session_id, "cli-editor")
-            )
+            ctx = asyncio.run(service.start_revision_session(digest_id, session_id, "cli-editor"))
             prompt = f"Please revise the '{section}' section. Feedback: {feedback}"
-            result = asyncio.run(
-                service.process_revision_turn(ctx, prompt, [], session_id)
-            )
+            result = asyncio.run(service.process_revision_turn(ctx, prompt, [], session_id))
             if result and result.get("revised_content"):
-                asyncio.run(
-                    service.apply_revision(digest_id, section, result["revised_content"])
-                )
+                asyncio.run(service.apply_revision(digest_id, section, result["revised_content"]))
         except Exception as e:
             typer.echo(f"Revision failed: {e}", err=True)
             raise typer.Exit(1)
 
         if is_json_mode():
-            output_result({
-                "digest_id": digest_id,
-                "section": section,
-                "action": "ai_revised",
-            })
+            output_result(
+                {
+                    "digest_id": digest_id,
+                    "section": section,
+                    "action": "ai_revised",
+                }
+            )
         else:
             typer.echo(f"AI-revised {section} on digest {digest_id}.")
 
@@ -422,12 +424,14 @@ def edit_script_section(
         raise typer.Exit(1)
 
     if is_json_mode():
-        output_result({
-            "script_id": result.id,
-            "section_index": section_index,
-            "revision_count": result.revision_count,
-            "action": "dialogue_replaced" if dialogue else "ai_revised",
-        })
+        output_result(
+            {
+                "script_id": result.id,
+                "section_index": section_index,
+                "revision_count": result.revision_count,
+                "action": "dialogue_replaced" if dialogue else "ai_revised",
+            }
+        )
     else:
         action = "replaced dialogue" if dialogue else "AI-revised"
         typer.echo(f"Section {section_index} of script {script_id}: {action}.")

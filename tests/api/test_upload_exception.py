@@ -20,9 +20,7 @@ def test_upload_exception_leak(client: TestClient):
 
         # Perform the request
         response = client.post(
-            "/api/v1/documents/upload",
-            files=files,
-            headers={"X-Admin-Key": "test-admin-key"}
+            "/api/v1/documents/upload", files=files, headers={"X-Admin-Key": "test-admin-key"}
         )
 
         # Assertions

@@ -398,9 +398,7 @@ class TestTreeSearchHelpers:
     def test_find_tree_indexed_content(self):
         """Should query for content with tree_depth IS NOT NULL."""
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter(
-            [MagicMock(content_id=1), MagicMock(content_id=3)]
-        )
+        mock_result.__iter__ = lambda self: iter([MagicMock(content_id=1), MagicMock(content_id=3)])
         self.mock_session.execute.return_value = mock_result
 
         result = self.service._find_tree_indexed_content([1, 2, 3])
@@ -420,16 +418,28 @@ class TestTreeSearchHelpers:
         """Should assign N001, N002 IDs and use json.dumps."""
         rows = [
             MagicMock(
-                id=100, chunk_text="Root summary", heading_text="Document",
-                tree_depth=0, parent_chunk_id=None, is_summary=True,
+                id=100,
+                chunk_text="Root summary",
+                heading_text="Document",
+                tree_depth=0,
+                parent_chunk_id=None,
+                is_summary=True,
             ),
             MagicMock(
-                id=101, chunk_text="Section summary", heading_text="Section A",
-                tree_depth=1, parent_chunk_id=100, is_summary=True,
+                id=101,
+                chunk_text="Section summary",
+                heading_text="Section A",
+                tree_depth=1,
+                parent_chunk_id=100,
+                is_summary=True,
             ),
             MagicMock(
-                id=102, chunk_text="Leaf content", heading_text="Sub A.1",
-                tree_depth=2, parent_chunk_id=101, is_summary=False,
+                id=102,
+                chunk_text="Leaf content",
+                heading_text="Sub A.1",
+                tree_depth=2,
+                parent_chunk_id=101,
+                is_summary=False,
             ),
         ]
         mock_result = MagicMock()
@@ -445,6 +455,7 @@ class TestTreeSearchHelpers:
 
         # Should be valid JSON (json.dumps was used)
         import json
+
         parsed = json.loads(tree_json)
         assert isinstance(parsed, list)
 
@@ -469,9 +480,7 @@ class TestTreeSearchHelpers:
         # Mock LLM to return invalid JSON
         with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
             mock_router = MagicMock()
-            mock_router.generate = AsyncMock(
-                return_value=MagicMock(content="not valid json {{{")
-            )
+            mock_router.generate = AsyncMock(return_value=MagicMock(content="not valid json {{{"))
             mock_router_cls.return_value = mock_router
 
             with patch("src.config.models.get_model_config"):
@@ -488,29 +497,26 @@ class TestTreeSearchHelpers:
         )
 
         id_mapping = {f"N{i:03d}": 100 + i for i in range(1, 11)}
-        self.service._load_tree_structure = MagicMock(
-            return_value=('{"tree": "data"}', id_mapping)
-        )
+        self.service._load_tree_structure = MagicMock(return_value=('{"tree": "data"}', id_mapping))
 
         # Mock LLM to return 5 nodes
         import json
-        llm_response = json.dumps({
-            "thinking": "test",
-            "node_list": ["N001", "N002", "N003", "N004", "N005"],
-        })
+
+        llm_response = json.dumps(
+            {
+                "thinking": "test",
+                "node_list": ["N001", "N002", "N003", "N004", "N005"],
+            }
+        )
 
         with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
             mock_router = MagicMock()
-            mock_router.generate = AsyncMock(
-                return_value=MagicMock(content=llm_response)
-            )
+            mock_router.generate = AsyncMock(return_value=MagicMock(content=llm_response))
             mock_router_cls.return_value = mock_router
 
             # Mock leaf fetching
             mock_leaf_result = MagicMock()
-            mock_leaf_result.__iter__ = lambda self: iter(
-                [MagicMock(id=101), MagicMock(id=102)]
-            )
+            mock_leaf_result.__iter__ = lambda self: iter([MagicMock(id=101), MagicMock(id=102)])
             self.mock_session.execute.return_value = mock_leaf_result
 
             with patch("src.config.models.get_model_config"):
@@ -528,26 +534,25 @@ class TestTreeSearchHelpers:
         )
 
         self.service._load_tree_structure = MagicMock(
-            return_value=('{}', {"N001": 100, "N002": 101})
+            return_value=("{}", {"N001": 100, "N002": 101})
         )
 
         import json
-        llm_response = json.dumps({
-            "thinking": "test",
-            "node_list": ["N001", "INVALID", "42", "N002"],
-        })
+
+        llm_response = json.dumps(
+            {
+                "thinking": "test",
+                "node_list": ["N001", "INVALID", "42", "N002"],
+            }
+        )
 
         with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
             mock_router = MagicMock()
-            mock_router.generate = AsyncMock(
-                return_value=MagicMock(content=llm_response)
-            )
+            mock_router.generate = AsyncMock(return_value=MagicMock(content=llm_response))
             mock_router_cls.return_value = mock_router
 
             mock_leaf_result = MagicMock()
-            mock_leaf_result.__iter__ = lambda self: iter(
-                [MagicMock(id=100), MagicMock(id=101)]
-            )
+            mock_leaf_result.__iter__ = lambda self: iter([MagicMock(id=100), MagicMock(id=101)])
             self.mock_session.execute.return_value = mock_leaf_result
 
             with patch("src.config.models.get_model_config"):

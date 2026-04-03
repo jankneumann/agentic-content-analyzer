@@ -42,9 +42,7 @@ def test_upload_value_error_leak(client):
 
         try:
             response = client.post(
-                "/api/v1/documents/upload",
-                files=files,
-                headers={"X-Admin-Key": "test-admin-key"}
+                "/api/v1/documents/upload", files=files, headers={"X-Admin-Key": "test-admin-key"}
             )
 
             # Assertions

@@ -1,0 +1,123 @@
+# Work Packages: Fix Theme Analysis
+
+packages:
+  - id: wp-migration
+    name: "Fix theme_analyses migration"
+    description: "Create the missing theme_analyses table via a new Alembic migration"
+    tasks: ["1.1", "1.2", "1.3"]
+    priority: 1
+    scope:
+      write_allow:
+        - "alembic/versions/**"
+      read_allow:
+        - "src/models/theme.py"
+        - "alembic/**"
+      deny:
+        - "web/**"
+    locks:
+      files:
+        - "alembic/versions/"
+      keys:
+        - "db:schema:theme_analyses"
+        - "db:enum:analysisstatus"
+      ttl_minutes: 60
+      reason: "Alembic migration for theme_analyses table"
+    verification: "tier-b"  # CI: alembic upgrade/downgrade test
+
+  - id: wp-frontend-deps
+    name: "Install frontend visualization dependencies"
+    description: "Add react-force-graph-2d and recharts to web/"
+    tasks: ["2.1"]
+    priority: 1
+    scope:
+      write_allow:
+        - "web/package.json"
+        - "web/pnpm-lock.yaml"
+      read_allow:
+        - "web/**"
+      deny:
+        - "src/**"
+        - "alembic/**"
+    locks:
+      files:
+        - "web/package.json"
+      keys:
+        - "frontend:deps"
+      ttl_minutes: 30
+      reason: "NPM dependency installation"
+    verification: "tier-c"  # Static: pnpm install succeeds
+
+  - id: wp-table-view
+    name: "ThemeTableView component"
+    description: "Sortable, filterable table view for theme analysis results"
+    tasks: ["3.1", "3.2"]
+    priority: 2
+    scope:
+      write_allow:
+        - "web/src/components/themes/**"
+      read_allow:
+        - "web/src/**"
+      deny:
+        - "src/**"
+        - "alembic/**"
+    locks:
+      files:
+        - "web/src/components/themes/ThemeTableView.tsx"
+      keys:
+        - "frontend:component:ThemeTableView"
+      ttl_minutes: 90
+      reason: "Table view component implementation"
+    depends_on: []
+    verification: "tier-b"  # CI: component tests
+
+  - id: wp-graph-view
+    name: "ThemeGraphView components (network + timeline)"
+    description: "Force-directed network graph and timeline chart"
+    tasks: ["4.1", "4.2", "4.3", "4.4", "4.5"]
+    priority: 2
+    scope:
+      write_allow:
+        - "web/src/components/themes/**"
+      read_allow:
+        - "web/src/**"
+      deny:
+        - "src/**"
+        - "alembic/**"
+    locks:
+      files:
+        - "web/src/components/themes/ThemeNetworkGraph.tsx"
+        - "web/src/components/themes/ThemeTimelineChart.tsx"
+        - "web/src/components/themes/ThemeGraphView.tsx"
+      keys:
+        - "frontend:component:ThemeNetworkGraph"
+        - "frontend:component:ThemeTimelineChart"
+        - "frontend:component:ThemeGraphView"
+      ttl_minutes: 120
+      reason: "Graph visualization components"
+    depends_on: ["wp-frontend-deps"]
+    verification: "tier-b"  # CI: component tests
+
+  - id: wp-integration
+    name: "Wire views into themes page + E2E"
+    description: "Update themes.tsx with view toggle, wire buttons, add E2E test"
+    tasks: ["5.1", "5.2", "5.3", "6.1"]
+    priority: 3
+    scope:
+      write_allow:
+        - "web/src/routes/themes.tsx"
+        - "web/src/components/themes/index.ts"
+        - "web/tests/e2e/**"
+      read_allow:
+        - "web/src/**"
+      deny:
+        - "src/**"
+        - "alembic/**"
+    locks:
+      files:
+        - "web/src/routes/themes.tsx"
+      keys:
+        - "frontend:route:themes"
+      ttl_minutes: 90
+      reason: "Theme page integration and E2E"
+    depends_on: ["wp-table-view", "wp-graph-view"]
+    verification: "tier-a"  # Full: E2E tests

@@ -122,9 +122,7 @@ class TestCheckAction:
         assert auto_approved is True
         assert risk_level == RiskLevel.MEDIUM
 
-    def test_escalation_override_still_blocks(
-        self, base_config: dict[str, RiskLevel]
-    ) -> None:
+    def test_escalation_override_still_blocks(self, base_config: dict[str, RiskLevel]) -> None:
         """If an override tries to escalate LOW to HIGH, it's ignored — stays LOW."""
         overrides = {"search_content": RiskLevel.HIGH}
         gate = ApprovalGate(base_config=base_config, overrides=overrides)

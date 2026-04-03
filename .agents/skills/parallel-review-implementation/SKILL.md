@@ -21,6 +21,9 @@ Receive a work package diff as read-only input and produce structured findings c
 
 `$ARGUMENTS` - `<change-id> <package-id>` (e.g., "add-user-auth wp-backend")
 
+Optional flags:
+- `--adversarial` — Use adversarial review mode: challenges design decisions instead of standard review
+
 ## Prerequisites
 
 - Work package implementation is complete
@@ -89,6 +92,9 @@ Standard code review criteria:
 - [ ] Error handling is complete (no bare except/catch)
 - [ ] No security vulnerabilities (SQL injection, XSS, command injection)
 - [ ] Performance considerations (N+1 queries, unbounded loops, missing pagination)
+- [ ] Observability: structured logging for key operations, error context in exception handlers, health/readiness endpoints for new services
+- [ ] Compatibility: no unannounced breaking changes to existing APIs, migration scripts are reversible, deprecation notices for changed interfaces
+- [ ] Resilience: timeout configuration for external calls, retry with backoff where appropriate, idempotent operations for retryable paths
 - [ ] Code follows existing project conventions
 
 ### 5. Verification Result Cross-Check
@@ -98,6 +104,17 @@ If work-queue result is available:
 - [ ] `verification.passed` is consistent with step results
 - [ ] Test count is reasonable for the scope of changes
 - [ ] No escalations are unaddressed
+
+### 5.5. Adversarial Mode (Optional)
+
+If `--adversarial` flag was passed, the review prompt should be wrapped with adversarial framing:
+
+```python
+from adversarial_prompt import wrap_adversarial
+prompt = wrap_adversarial(prompt)  # Prepends contrarian persona instructions
+```
+
+This changes the review persona to challenge design decisions rather than just checking correctness. The dispatch mode remains `review` (unchanged) and findings use the standard schema.
 
 ### 6. Produce Findings
 
@@ -130,6 +147,9 @@ Generate findings as JSON conforming to `review-findings.schema.json`:
 - `performance` — Performance concern
 - `style` — Code style or convention issue
 - `correctness` — Bug or logical error
+- `observability` — Missing logging, metrics, or health endpoints
+- `compatibility` — Breaking change to existing API or missing migration rollback
+- `resilience` — Missing retry, timeout, or idempotency handling
 
 #### Dispositions
 - `fix` — Must fix before integration merge

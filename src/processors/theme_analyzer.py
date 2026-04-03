@@ -210,11 +210,19 @@ class ThemeAnalyzer:
             status_filter = [ContentStatus.COMPLETED]
 
         with get_db() as db:
+            from sqlalchemy import or_
+
             contents = (
                 db.query(Content)
                 .filter(
-                    Content.published_date >= start_date,
-                    Content.published_date <= end_date,
+                    or_(
+                        # Match content published in the date range
+                        (Content.published_date >= start_date)
+                        & (Content.published_date <= end_date),
+                        # Also match content ingested in the date range
+                        # (covers backfilled content with older published_dates)
+                        (Content.ingested_at >= start_date) & (Content.ingested_at <= end_date),
+                    ),
                     Content.status.in_(status_filter),
                 )
                 .order_by(Content.published_date.desc())

@@ -17,6 +17,7 @@ class TestMemoryProviderComposition:
     @pytest.fixture
     def make_entry(self):
         """Factory for creating MemoryEntry instances."""
+
         def _make(content: str, score: float = 0.5, id: str = "") -> MemoryEntry:
             return MemoryEntry(
                 id=id or f"mem-{content[:8]}",
@@ -24,17 +25,20 @@ class TestMemoryProviderComposition:
                 memory_type=MemoryType.OBSERVATION,
                 score=score,
             )
+
         return _make
 
     @pytest.fixture
     def mock_vector_strategy(self, make_entry):
         strategy = AsyncMock()
         strategy.health_check = AsyncMock(return_value=True)
-        strategy.recall = AsyncMock(return_value=[
-            make_entry("vector result 1", score=0.9, id="v1"),
-            make_entry("vector result 2", score=0.7, id="v2"),
-            make_entry("shared result", score=0.8, id="shared-1"),
-        ])
+        strategy.recall = AsyncMock(
+            return_value=[
+                make_entry("vector result 1", score=0.9, id="v1"),
+                make_entry("vector result 2", score=0.7, id="v2"),
+                make_entry("shared result", score=0.8, id="shared-1"),
+            ]
+        )
         strategy.store = AsyncMock(return_value="stored-id")
         strategy.forget = AsyncMock(return_value=True)
         return strategy
@@ -43,10 +47,12 @@ class TestMemoryProviderComposition:
     def mock_keyword_strategy(self, make_entry):
         strategy = AsyncMock()
         strategy.health_check = AsyncMock(return_value=True)
-        strategy.recall = AsyncMock(return_value=[
-            make_entry("keyword result 1", score=0.85, id="k1"),
-            make_entry("shared result", score=0.75, id="shared-1"),
-        ])
+        strategy.recall = AsyncMock(
+            return_value=[
+                make_entry("keyword result 1", score=0.85, id="k1"),
+                make_entry("shared result", score=0.75, id="shared-1"),
+            ]
+        )
         strategy.store = AsyncMock(return_value="stored-id")
         strategy.forget = AsyncMock(return_value=True)
         return strategy
@@ -55,10 +61,12 @@ class TestMemoryProviderComposition:
     def mock_graph_strategy(self, make_entry):
         strategy = AsyncMock()
         strategy.health_check = AsyncMock(return_value=True)
-        strategy.recall = AsyncMock(return_value=[
-            make_entry("graph result 1", score=0.95, id="g1"),
-            make_entry("shared result", score=0.7, id="shared-1"),
-        ])
+        strategy.recall = AsyncMock(
+            return_value=[
+                make_entry("graph result 1", score=0.95, id="g1"),
+                make_entry("shared result", score=0.7, id="shared-1"),
+            ]
+        )
         strategy.store = AsyncMock(return_value="stored-id")
         strategy.forget = AsyncMock(return_value=True)
         return strategy
@@ -66,6 +74,7 @@ class TestMemoryProviderComposition:
     @pytest.fixture
     def provider(self, mock_vector_strategy, mock_keyword_strategy, mock_graph_strategy):
         from src.agents.memory.provider import MemoryProvider
+
         return MemoryProvider(
             strategies={
                 "vector": (mock_vector_strategy, 0.4),
@@ -142,9 +151,13 @@ class TestMemoryProviderGracefulDegradation:
     def healthy_strategy(self):
         strategy = AsyncMock()
         strategy.health_check = AsyncMock(return_value=True)
-        strategy.recall = AsyncMock(return_value=[
-            MemoryEntry(id="h1", content="healthy", memory_type=MemoryType.OBSERVATION, score=0.8)
-        ])
+        strategy.recall = AsyncMock(
+            return_value=[
+                MemoryEntry(
+                    id="h1", content="healthy", memory_type=MemoryType.OBSERVATION, score=0.8
+                )
+            ]
+        )
         strategy.store = AsyncMock(return_value="stored-id")
         return strategy
 
@@ -159,6 +172,7 @@ class TestMemoryProviderGracefulDegradation:
     @pytest.mark.asyncio
     async def test_recall_skips_unhealthy_strategy(self, healthy_strategy, unhealthy_strategy):
         from src.agents.memory.provider import MemoryProvider
+
         provider = MemoryProvider(
             strategies={
                 "healthy": (healthy_strategy, 0.5),
@@ -172,6 +186,7 @@ class TestMemoryProviderGracefulDegradation:
     @pytest.mark.asyncio
     async def test_recall_returns_empty_when_all_down(self, unhealthy_strategy):
         from src.agents.memory.provider import MemoryProvider
+
         unhealthy2 = AsyncMock()
         unhealthy2.health_check = AsyncMock(return_value=False)
         unhealthy2.recall = AsyncMock(side_effect=Exception("Down"))
@@ -187,6 +202,7 @@ class TestMemoryProviderGracefulDegradation:
     @pytest.mark.asyncio
     async def test_store_continues_on_partial_failure(self, healthy_strategy, unhealthy_strategy):
         from src.agents.memory.provider import MemoryProvider
+
         provider = MemoryProvider(
             strategies={
                 "healthy": (healthy_strategy, 0.5),
@@ -207,11 +223,16 @@ class TestMemoryProviderWeights:
     @pytest.mark.asyncio
     async def test_single_strategy_provider(self):
         from src.agents.memory.provider import MemoryProvider
+
         strategy = AsyncMock()
         strategy.health_check = AsyncMock(return_value=True)
-        strategy.recall = AsyncMock(return_value=[
-            MemoryEntry(id="s1", content="result", memory_type=MemoryType.OBSERVATION, score=0.9)
-        ])
+        strategy.recall = AsyncMock(
+            return_value=[
+                MemoryEntry(
+                    id="s1", content="result", memory_type=MemoryType.OBSERVATION, score=0.9
+                )
+            ]
+        )
         provider = MemoryProvider(strategies={"only": (strategy, 1.0)})
         results = await provider.recall("test")
         assert len(results) == 1
@@ -220,16 +241,21 @@ class TestMemoryProviderWeights:
     async def test_rrf_min_score_filtering(self):
         """Results below the RRF minimum score threshold should be filtered out."""
         from src.agents.memory.provider import MemoryProvider
+
         strategy = AsyncMock()
         strategy.health_check = AsyncMock(return_value=True)
         # Return many low-score results — some should be filtered by RRF min score
-        strategy.recall = AsyncMock(return_value=[
-            MemoryEntry(
-                id=f"r{i}", content=f"result {i}",
-                memory_type=MemoryType.OBSERVATION, score=0.01
-            )
-            for i in range(50)
-        ])
+        strategy.recall = AsyncMock(
+            return_value=[
+                MemoryEntry(
+                    id=f"r{i}",
+                    content=f"result {i}",
+                    memory_type=MemoryType.OBSERVATION,
+                    score=0.01,
+                )
+                for i in range(50)
+            ]
+        )
         provider = MemoryProvider(strategies={"only": (strategy, 1.0)})
         results = await provider.recall("test", limit=20)
         assert len(results) <= 20
