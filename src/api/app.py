@@ -33,6 +33,7 @@ from src.api.notification_routes import router as notification_router
 from src.api.otel_proxy_routes import router as otel_proxy_router
 from src.api.pipeline_routes import router as pipeline_router
 from src.api.podcast_routes import router as podcast_router
+from src.api.pricing_routes import router as pricing_router
 from src.api.reference_routes import router as reference_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
@@ -182,6 +183,7 @@ app.include_router(settings_router)
 app.include_router(settings_override_router)
 app.include_router(model_settings_router)
 app.include_router(model_registry_router)  # Model catalog + pricing extraction
+app.include_router(pricing_router)  # Infrastructure cost predictions (Neon, Resend, LLM)
 app.include_router(voice_settings_router)
 app.include_router(voice_cleanup_router)
 app.include_router(voice_stream_router)  # WebSocket voice streaming (cloud STT)
