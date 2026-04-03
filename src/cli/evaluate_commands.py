@@ -79,28 +79,67 @@ def create_dataset(
 @app.command("run")
 def run_evaluation(
     dataset_id: Annotated[int, typer.Argument(help="Dataset ID to evaluate")],
+    judge_model: Annotated[
+        str,
+        typer.Option("--judge-model", "-j", help="Model to use as judge"),
+    ] = "claude-sonnet-4-5",
+    num_judges: Annotated[
+        int,
+        typer.Option("--num-judges", "-n", help="Number of judges (1-3)"),
+    ] = 1,
 ) -> None:
-    """Run judge evaluation on a dataset."""
+    """Run judge evaluation on a dataset.
+
+    Requires a database connection and configured LLM provider.
+    """
     import asyncio
 
     from src.evaluation.consensus import ConsensusEngine
     from src.evaluation.criteria import load_evaluation_config
+    from src.evaluation.judge import LLMJudge
     from src.services.evaluation_service import EvaluationService
 
     config = load_evaluation_config()
-    engine = ConsensusEngine(judges=[], config=config)
-    svc = EvaluationService(eval_config=config)
 
-    typer.echo(f"Running evaluation on dataset {dataset_id}...")
+    if num_judges < 1 or num_judges > 3:
+        typer.echo("Error: num-judges must be between 1 and 3", err=True)
+        raise typer.Exit(1)
+
+    try:
+        from src.config.models import ModelConfig
+        from src.services.llm_router import LLMRouter
+        from src.storage.database import SessionLocal
+
+        model_config = ModelConfig()
+        router = LLMRouter(model_config)
+        db = SessionLocal()
+    except Exception as e:
+        typer.echo(f"Error: Could not initialize services: {e}", err=True)
+        typer.echo("Ensure DATABASE_URL is set and LLM provider is configured.")
+        raise typer.Exit(1)
+
+    judges = [
+        LLMJudge(judge_model=judge_model, router=router, eval_config=config)
+        for _ in range(num_judges)
+    ]
+    engine = ConsensusEngine(judges=judges)
+    svc = EvaluationService(db_session=db, eval_config=config)
+
+    typer.echo(f"Running evaluation on dataset {dataset_id} with {num_judges} judge(s)...")
     try:
         results = asyncio.run(svc.run_evaluation(dataset_id, engine))
+        db.commit()
         typer.echo(f"Evaluation complete: {len(results)} samples evaluated.")
     except RuntimeError as e:
         typer.echo(f"Error: {e}", err=True)
+        db.rollback()
         raise typer.Exit(1)
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)
+        db.rollback()
         raise typer.Exit(1)
+    finally:
+        db.close()
 
 
 @app.command("calibrate")

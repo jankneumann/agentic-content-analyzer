@@ -5,7 +5,6 @@ Judges compare two model outputs using step-specific quality criteria
 and produce binary preferences with per-dimension pass/fail critiques.
 """
 
-import hashlib
 import json
 import logging
 import random
