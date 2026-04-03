@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-uninstall
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -771,6 +771,37 @@ mcp-install: mcp-install-claude mcp-install-codex  ## Install MCP server in both
 	@echo "  Tools:     30+ (ingest, summarize, digest, search, ...)"
 	@echo ""
 	@echo "Restart Claude Code or Codex to pick up the new server."
+	@echo ""
+	@echo "For Claude Desktop app, also run: make mcp-install-desktop"
+
+CLAUDE_DESKTOP_CONFIG = $(HOME)/Library/Application Support/Claude/claude_desktop_config.json
+CODEX_DESKTOP_CONFIG = $(HOME)/.codex/config.toml
+PROJECT_DIR = $(shell pwd)
+
+mcp-install-desktop: mcp-install-claude-desktop mcp-install-codex-desktop  ## Install MCP server in Claude and Codex Desktop apps
+
+mcp-install-claude-desktop:  ## Install MCP server in Claude Desktop app
+	@echo "Installing MCP server in Claude Desktop config..."
+	@if [ ! -d "$$(dirname '$(CLAUDE_DESKTOP_CONFIG)')" ]; then \
+		echo "✗ Claude Desktop config directory not found"; \
+		echo "  Expected: $(CLAUDE_DESKTOP_CONFIG)"; \
+		echo "  Is Claude Desktop installed?"; \
+		exit 1; \
+	fi
+	@MCP_DESKTOP='{"mcpServers":{"newsletter-aggregator":{"command":"$(PROJECT_DIR)/.venv/bin/aca-mcp","args":[],"cwd":"$(PROJECT_DIR)"}}}'; \
+	if [ -f '$(CLAUDE_DESKTOP_CONFIG)' ]; then \
+		jq --argjson mcp "$$MCP_DESKTOP" '. * $$mcp' '$(CLAUDE_DESKTOP_CONFIG)' > '$(CLAUDE_DESKTOP_CONFIG).tmp' && \
+		mv '$(CLAUDE_DESKTOP_CONFIG).tmp' '$(CLAUDE_DESKTOP_CONFIG)'; \
+		echo "✓ Merged MCP server into Claude Desktop config"; \
+	else \
+		echo "$$MCP_DESKTOP" | jq . > '$(CLAUDE_DESKTOP_CONFIG)'; \
+		echo "✓ Created Claude Desktop config with MCP server"; \
+	fi
+	@echo ""
+	@echo "  Command: $(PROJECT_DIR)/.venv/bin/aca-mcp"
+	@echo "  CWD:     $(PROJECT_DIR)"
+	@echo ""
+	@echo "Restart Claude Desktop to pick up the new server."
 
 mcp-uninstall:  ## Remove MCP server definition from .claude and .codex
 	@echo "Removing MCP server from settings..."
@@ -786,3 +817,57 @@ mcp-uninstall:  ## Remove MCP server definition from .claude and .codex
 			fi; \
 		fi; \
 	done
+
+mcp-install-codex-desktop:  ## Install MCP server in Codex Desktop app
+	@echo "Installing MCP server in Codex Desktop config..."
+	@if [ ! -f '$(CODEX_DESKTOP_CONFIG)' ]; then \
+		echo "✗ Codex config not found at $(CODEX_DESKTOP_CONFIG)"; \
+		echo "  Is Codex Desktop installed?"; \
+		exit 1; \
+	fi
+	@if grep -q '^\[mcp_servers\.newsletter-aggregator\]' '$(CODEX_DESKTOP_CONFIG)' 2>/dev/null; then \
+		echo "  (newsletter-aggregator already present in Codex config — skipping)"; \
+	else \
+		printf '\n[mcp_servers.newsletter-aggregator]\ncommand = "%s/.venv/bin/aca-mcp"\nargs = []\ncwd = "%s"\n' \
+			"$(PROJECT_DIR)" "$(PROJECT_DIR)" >> '$(CODEX_DESKTOP_CONFIG)'; \
+		echo "✓ Appended MCP server to Codex Desktop config"; \
+	fi
+	@echo ""
+	@echo "  Command: $(PROJECT_DIR)/.venv/bin/aca-mcp"
+	@echo "  CWD:     $(PROJECT_DIR)"
+	@echo ""
+	@echo "Restart Codex Desktop to pick up the new server."
+
+mcp-uninstall-desktop: mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop  ## Remove MCP server from Claude and Codex Desktop apps
+
+mcp-uninstall-claude-desktop:  ## Remove MCP server from Claude Desktop app
+	@echo "Removing MCP server from Claude Desktop config..."
+	@if [ -f '$(CLAUDE_DESKTOP_CONFIG)' ]; then \
+		if jq -e '.mcpServers."newsletter-aggregator"' '$(CLAUDE_DESKTOP_CONFIG)' >/dev/null 2>&1; then \
+			jq 'del(.mcpServers."newsletter-aggregator") | if .mcpServers == {} then del(.mcpServers) else . end' \
+				'$(CLAUDE_DESKTOP_CONFIG)' > '$(CLAUDE_DESKTOP_CONFIG).tmp' && \
+			mv '$(CLAUDE_DESKTOP_CONFIG).tmp' '$(CLAUDE_DESKTOP_CONFIG)'; \
+			echo "✓ Removed from Claude Desktop config"; \
+			echo "  Restart Claude Desktop to apply."; \
+		else \
+			echo "  (No newsletter-aggregator MCP server found in Claude Desktop config)"; \
+		fi; \
+	else \
+		echo "  (Claude Desktop config not found)"; \
+	fi
+
+mcp-uninstall-codex-desktop:  ## Remove MCP server from Codex Desktop app
+	@echo "Removing MCP server from Codex Desktop config..."
+	@if [ -f '$(CODEX_DESKTOP_CONFIG)' ]; then \
+		if grep -q '^\[mcp_servers\.newsletter-aggregator\]' '$(CODEX_DESKTOP_CONFIG)' 2>/dev/null; then \
+			sed '/^\[mcp_servers\.newsletter-aggregator\]/,/^$$\|^\[/{/^\[mcp_servers\.newsletter-aggregator\]/d;/^\[/!d;}' \
+				'$(CODEX_DESKTOP_CONFIG)' > '$(CODEX_DESKTOP_CONFIG).tmp' && \
+			mv '$(CODEX_DESKTOP_CONFIG).tmp' '$(CODEX_DESKTOP_CONFIG)'; \
+			echo "✓ Removed from Codex Desktop config"; \
+			echo "  Restart Codex Desktop to apply."; \
+		else \
+			echo "  (No newsletter-aggregator MCP server found in Codex Desktop config)"; \
+		fi; \
+	else \
+		echo "  (Codex Desktop config not found)"; \
+	fi
