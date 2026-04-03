@@ -5,10 +5,13 @@ Judges compare two model outputs using step-specific quality criteria
 and produce binary preferences with per-dimension pass/fail critiques.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 from src.evaluation.criteria import EvaluationConfig, StepCriteria, get_criteria_for_step
 
@@ -48,6 +51,7 @@ def build_judge_prompt(
     criteria: StepCriteria,
     output_a: str,
     output_b: str,
+    prompt_text: str = "",
 ) -> str:
     """Construct the judge evaluation prompt with criteria and blinded outputs.
 
@@ -56,6 +60,7 @@ def build_judge_prompt(
         criteria: Quality dimensions with descriptions and fail_when
         output_a: First output (blinded)
         output_b: Second output (blinded)
+        prompt_text: Original prompt/input that produced the outputs
 
     Returns:
         Complete judge prompt string
@@ -63,15 +68,21 @@ def build_judge_prompt(
     dimensions_text = ""
     for i, dim in enumerate(criteria.dimensions, 1):
         dimensions_text += (
-            f"{i}. **{dim.name}**: {dim.description}\n"
-            f"   - FAIL when: {dim.fail_when}\n\n"
+            f"{i}. **{dim.name}**: {dim.description}\n   - FAIL when: {dim.fail_when}\n\n"
         )
 
     dim_names = ", ".join(f'"{d.name}"' for d in criteria.dimensions)
 
+    prompt_section = ""
+    if prompt_text:
+        prompt_section = f"""## Original Input
+{prompt_text}
+
+"""
+
     return f"""You are evaluating two outputs for a {step_name} task.
 
-## Quality Dimensions
+{prompt_section}## Quality Dimensions
 For each dimension, assess BOTH outputs and give a binary verdict (pass/fail) with a brief explanation.
 
 {dimensions_text}
@@ -141,18 +152,22 @@ def _parse_judge_response(
             verdict = c.get("verdict", "pass")
             if verdict not in ("pass", "fail"):
                 verdict = "pass"  # Default to pass if malformed
-            critiques.append(DimensionCritique(
-                dimension=dim.name,
-                verdict=verdict,
-                explanation=c.get("explanation", ""),
-            ))
+            critiques.append(
+                DimensionCritique(
+                    dimension=dim.name,
+                    verdict=verdict,
+                    explanation=c.get("explanation", ""),
+                )
+            )
         else:
             # Missing dimension — treat as pass with note
-            critiques.append(DimensionCritique(
-                dimension=dim.name,
-                verdict="pass",
-                explanation="(dimension not evaluated by judge)",
-            ))
+            critiques.append(
+                DimensionCritique(
+                    dimension=dim.name,
+                    verdict="pass",
+                    explanation="(dimension not evaluated by judge)",
+                )
+            )
 
     reasoning = data.get("reasoning", "")
     return preference, critiques, reasoning
@@ -189,7 +204,7 @@ class LLMJudge:
     def __init__(
         self,
         judge_model: str,
-        router,  # LLMRouter instance — not typed to avoid circular import
+        router: "Any",  # LLMRouter instance — not typed to avoid circular import
         eval_config: EvaluationConfig,
         weight: float = 1.0,
     ):
@@ -233,7 +248,7 @@ class LLMJudge:
         criteria = get_criteria_for_step(self.eval_config, step)
 
         # Randomize position (D5a: position bias mitigation)
-        strong_is_a = random.random() < 0.5
+        strong_is_a = random.random() < 0.5  # noqa: S311
         if strong_is_a:
             output_a, output_b = strong_output, weak_output
             position_order = "strong_first"
@@ -241,7 +256,7 @@ class LLMJudge:
             output_a, output_b = weak_output, strong_output
             position_order = "weak_first"
 
-        judge_prompt = build_judge_prompt(step, criteria, output_a, output_b)
+        judge_prompt = build_judge_prompt(step, criteria, output_a, output_b, prompt_text)
         system_prompt = (
             "You are an expert evaluator assessing the quality of AI-generated content. "
             "Be rigorous and specific in your assessment. Always respond with valid JSON only."
@@ -257,18 +272,16 @@ class LLMJudge:
         )
 
         try:
-            ab_preference, critiques, reasoning = _parse_judge_response(
-                response.text, criteria
-            )
+            ab_preference, critiques, reasoning = _parse_judge_response(response.text, criteria)
         except ValueError as e:
             logger.warning(
                 "Judge %s parse failed (attempt 1): %s. Retrying with explicit format reminder.",
-                self.judge_model, e,
+                self.judge_model,
+                e,
             )
             # Retry with more explicit instructions (spec 15c)
             retry_prompt = (
-                judge_prompt
-                + "\n\nIMPORTANT: Your previous response was not valid JSON. "
+                judge_prompt + "\n\nIMPORTANT: Your previous response was not valid JSON. "
                 "Return ONLY a JSON object, no markdown fences, no extra text."
             )
             response = await self.router.generate(
@@ -279,9 +292,7 @@ class LLMJudge:
                 max_tokens=2048,
             )
             # Second attempt — let ValueError propagate
-            ab_preference, critiques, reasoning = _parse_judge_response(
-                response.text, criteria
-            )
+            ab_preference, critiques, reasoning = _parse_judge_response(response.text, criteria)
 
         # Map A/B preference back to strong/weak
         preference = _map_preference(ab_preference, strong_is_a)

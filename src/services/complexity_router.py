@@ -10,7 +10,7 @@ Embedding failure: Falls back to fixed mode and logs warning.
 
 import hashlib
 import logging
-import pickle
+import pickle  # noqa: S403
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -119,7 +119,8 @@ class ComplexityRouter:
         except Exception as e:
             logger.warning(
                 "Embedding failed for step '%s', falling back to strong model: %s",
-                step, e,
+                step,
+                e,
             )
             return RoutingDecisionInfo(
                 step=step,
@@ -140,7 +141,8 @@ class ComplexityRouter:
         except Exception as e:
             logger.warning(
                 "Classifier inference failed for step '%s': %s. Falling back to strong model.",
-                step, e,
+                step,
+                e,
             )
             return RoutingDecisionInfo(
                 step=step,
@@ -201,7 +203,10 @@ class ComplexityRouter:
 
         logger.info(
             "Trained classifier for step '%s': accuracy=%.3f, samples=%d, version=%s",
-            step, accuracy, len(embeddings), self._classifier_versions[step],
+            step,
+            accuracy,
+            len(embeddings),
+            self._classifier_versions[step],
         )
 
         return accuracy
@@ -223,10 +228,13 @@ class ComplexityRouter:
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(save_path, "wb") as f:
-            pickle.dump({
-                "classifier": self._classifiers[step],
-                "version": self._classifier_versions.get(step, "v1"),
-            }, f)
+            pickle.dump(
+                {
+                    "classifier": self._classifiers[step],
+                    "version": self._classifier_versions.get(step, "v1"),
+                },
+                f,
+            )
 
         logger.info("Saved classifier for step '%s' to %s", step, save_path)
         return save_path
@@ -245,14 +253,23 @@ class ComplexityRouter:
         if not load_path.exists():
             return False
 
+        # Validate path is within the allowed models directory
+        try:
+            load_path.resolve().relative_to(_MODELS_DIR.resolve())
+        except ValueError:
+            logger.error("Refusing to load classifier from outside models dir: %s", load_path)
+            return False
+
         with open(load_path, "rb") as f:
-            data = pickle.load(f)
+            data = pickle.load(f)  # noqa: S301
 
         self._classifiers[step] = data["classifier"]
         self._classifier_versions[step] = data.get("version", "unknown")
 
         logger.info(
             "Loaded classifier for step '%s' from %s (version: %s)",
-            step, load_path, self._classifier_versions[step],
+            step,
+            load_path,
+            self._classifier_versions[step],
         )
         return True

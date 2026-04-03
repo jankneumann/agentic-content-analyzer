@@ -31,9 +31,11 @@ def list_datasets(
 ) -> None:
     """List evaluation datasets."""
     from src.services.evaluation_service import EvaluationService
+    from src.storage.database import get_db
 
-    svc = EvaluationService()
-    datasets = svc.get_datasets(step=step)
+    with get_db() as db:
+        svc = EvaluationService(db_session=db)
+        datasets = svc.get_datasets(step=step)
 
     if not datasets:
         typer.echo("No evaluation datasets found.")
@@ -65,14 +67,17 @@ def create_dataset(
 ) -> None:
     """Create a new evaluation dataset."""
     from src.services.evaluation_service import EvaluationService
+    from src.storage.database import get_db
 
-    svc = EvaluationService()
-    ds = svc.create_dataset(
-        step=step,
-        name=name,
-        strong_model=strong_model,
-        weak_model=weak_model,
-    )
+    with get_db() as db:
+        svc = EvaluationService(db_session=db)
+        ds = svc.create_dataset(
+            step=step,
+            name=name,
+            strong_model=strong_model,
+            weak_model=weak_model,
+        )
+        db.commit()
     typer.echo(f"Created dataset: id={ds.id}, step={ds.step}, name={ds.name}")
 
 
@@ -152,14 +157,88 @@ def calibrate(
 ) -> None:
     """Calibrate routing threshold for a step from evaluation data."""
     from src.evaluation.calibrator import ThresholdCalibrator
-
-    calibrator = ThresholdCalibrator()
-    typer.echo(f"Calibrating threshold for step '{step}' (target quality: {target_quality})...")
-    typer.echo("Note: Requires evaluation data in the database. Use 'aca evaluate run' first.")
-    typer.echo(
-        f"Calibrator ready for step '{step}'. "
-        f"Call calibrator.calibrate() with complexity_scores and consensus_preferences."
+    from src.models.evaluation import (
+        EvaluationConsensus,
+        EvaluationSample,
+        RoutingConfig as RoutingConfigRecord,
+        RoutingDecision,
     )
+    from src.storage.database import SessionLocal
+
+    typer.echo(f"Calibrating threshold for step '{step}' (target quality: {target_quality})...")
+
+    try:
+        db = SessionLocal()
+    except Exception as e:
+        typer.echo(f"Error: Could not connect to database: {e}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        # Get complexity scores from routing decisions
+        decisions = db.query(RoutingDecision).filter_by(step=step).all()
+        if not decisions:
+            typer.echo(
+                f"No routing decisions found for step '{step}'. Run the pipeline with dynamic routing first.",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        # Get consensus preferences from evaluation data
+        samples_with_consensus = (
+            db.query(EvaluationSample, EvaluationConsensus)
+            .join(EvaluationConsensus, EvaluationSample.id == EvaluationConsensus.sample_id)
+            .filter(
+                EvaluationSample.dataset_id.in_(db.query(EvaluationSample.dataset_id).distinct())
+            )
+            .all()
+        )
+
+        if not samples_with_consensus:
+            typer.echo(
+                "No evaluation consensus data found. Run 'aca evaluate run' first.", err=True
+            )
+            raise typer.Exit(1)
+
+        # Match decisions to consensus by prompt_hash
+        consensus_by_hash = {
+            s.prompt_hash: c.consensus_preference for s, c in samples_with_consensus
+        }
+        complexity_scores = []
+        preferences = []
+        for d in decisions:
+            if d.prompt_hash in consensus_by_hash:
+                complexity_scores.append(d.complexity_score)
+                preferences.append(consensus_by_hash[d.prompt_hash])
+
+        calibrator = ThresholdCalibrator()
+        result = calibrator.calibrate(
+            step=step,
+            complexity_scores=complexity_scores,
+            consensus_preferences=preferences,
+            target_quality=target_quality,
+        )
+
+        typer.echo(f"\nCalibration result for '{step}':")
+        typer.echo(f"  Optimal threshold:    {result.threshold}")
+        typer.echo(f"  Win-or-tie rate:      {result.win_or_tie_rate:.1%}")
+        typer.echo(f"  Samples used:         {result.total_samples}")
+        typer.echo(f"  Est. cost savings:    {result.estimated_cost_savings_pct:.1%}")
+
+        # Persist threshold to routing_configs
+        record = db.query(RoutingConfigRecord).filter_by(step=step).first()
+        if record:
+            record.threshold = result.threshold
+        else:
+            record = RoutingConfigRecord(step=step, threshold=result.threshold, enabled=True)
+            db.add(record)
+        db.commit()
+        typer.echo(f"\n  Threshold saved to routing_configs for step '{step}'.")
+
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    finally:
+        db.close()
 
 
 @app.command("compare")
@@ -180,13 +259,41 @@ def compare(
 ) -> None:
     """Compare cost savings at a given threshold."""
     from src.evaluation.calibrator import ThresholdCalibrator
+    from src.models.evaluation import RoutingDecision
+    from src.storage.database import SessionLocal
 
-    calibrator = ThresholdCalibrator()
-    typer.echo(f"Cost comparison for step '{step}' at threshold {threshold}:")
-    typer.echo(f"  Strong model cost/call: ${strong_cost:.4f}")
-    typer.echo(f"  Weak model cost/call:   ${weak_cost:.4f}")
-    typer.echo()
-    typer.echo("Provide complexity_scores via the Python API for detailed savings estimates.")
+    try:
+        db = SessionLocal()
+    except Exception as e:
+        typer.echo(f"Error: Could not connect to database: {e}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        decisions = db.query(RoutingDecision).filter_by(step=step).all()
+        if not decisions:
+            typer.echo(f"No routing decisions found for step '{step}'.", err=True)
+            raise typer.Exit(1)
+
+        complexity_scores = [d.complexity_score for d in decisions]
+        calibrator = ThresholdCalibrator()
+        savings = calibrator.estimate_savings(
+            complexity_scores=complexity_scores,
+            threshold=threshold,
+            strong_cost_per_call=strong_cost,
+            weak_cost_per_call=weak_cost,
+        )
+
+        typer.echo(f"Cost comparison for step '{step}' at threshold {threshold}:")
+        typer.echo(f"  Total calls:          {savings['total_calls']}")
+        typer.echo(f"  Routed to weak:       {savings['weak_routed']} ({savings['pct_weak']:.1%})")
+        typer.echo(f"  Routed to strong:     {savings['strong_routed']}")
+        typer.echo(f"  All-strong cost:      ${savings['all_strong_cost']:.4f}")
+        typer.echo(f"  Routed cost:          ${savings['routed_cost']:.4f}")
+        typer.echo(
+            f"  Savings:              ${savings['savings']:.4f} ({savings['savings_pct']:.1%})"
+        )
+    finally:
+        db.close()
 
 
 @app.command("report")
@@ -198,16 +305,18 @@ def report(
 ) -> None:
     """Generate cost savings report from routing decisions."""
     from src.services.evaluation_service import EvaluationService
+    from src.storage.database import get_db
 
-    svc = EvaluationService()
-    reports = svc.generate_report(step=step)
+    with get_db() as db:
+        svc = EvaluationService(db_session=db)
+        reports = svc.generate_report(step=step)
 
     if not reports:
         typer.echo("No routing decisions found. Enable dynamic routing first.")
         raise typer.Exit(0)
 
     for r in reports:
-        typer.echo(f"\n{'='*50}")
+        typer.echo(f"\n{'=' * 50}")
         typer.echo(f"Step: {r.step}")
         typer.echo(f"Total decisions: {r.total_decisions}")
         typer.echo(f"Routed to weak: {r.pct_routed_to_weak:.1%}")
