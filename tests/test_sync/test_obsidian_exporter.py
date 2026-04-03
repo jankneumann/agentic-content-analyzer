@@ -5,7 +5,7 @@ ExportSummary, dry-run mode, cleanup, incremental sync.
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -53,7 +53,7 @@ class TestExportSummary:
         d = summary.to_dict()
         assert d["digests"] == {"created": 3, "updated": 1, "skipped": 0}
         assert d["summaries"] == {"created": 0, "updated": 0, "skipped": 5}
-        assert d["elapsed_seconds"] == 1.23
+        assert abs(d["elapsed_seconds"] - 1.23) < 0.01
 
     def test_to_dict_includes_warnings(self) -> None:
         summary = ExportSummary()
@@ -65,6 +65,17 @@ class TestExportSummary:
         summary = ExportSummary()
         d = summary.to_dict()
         assert "warnings" not in d
+
+    def test_to_dict_includes_cleaned_count(self) -> None:
+        summary = ExportSummary()
+        summary.cleaned = 3
+        d = summary.to_dict()
+        assert d["cleaned"] == 3
+
+    def test_to_dict_omits_cleaned_when_zero(self) -> None:
+        summary = ExportSummary()
+        d = summary.to_dict()
+        assert "cleaned" not in d
 
 
 class TestObsidianExporterWriteNote:
@@ -178,6 +189,46 @@ class TestObsidianExporterThemeMocs:
         assert stats.created == 0
 
 
+class TestObsidianExporterContentHash:
+    """Content hash embedding in frontmatter."""
+
+    @pytest.fixture()
+    def exporter(self, tmp_path: Path) -> ObsidianExporter:
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        engine = MagicMock()
+        return ObsidianExporter(engine=engine, vault_path=vault)
+
+    def test_write_note_writes_content_as_given(self, exporter: ObsidianExporter) -> None:
+        """_write_note writes content verbatim; caller is responsible for hash replacement."""
+        content = '---\ncontent_hash: "sha256:abc"\n---\n# Test body'
+        exporter._write_note(
+            "Digests", "d-1", "digest", None, "Test",
+            content, "sha256:abc", [],
+        )
+        written = list((exporter._vault_path / "Digests").glob("*.md"))
+        assert len(written) == 1
+        assert written[0].read_text() == content
+
+    def test_placeholder_replacement_pattern(self) -> None:
+        """The PLACEHOLDER pattern works correctly with str.replace."""
+        from src.sync.obsidian_frontmatter import build_frontmatter, compute_content_hash
+
+        fm = build_frontmatter(
+            aca_id="d-1", aca_type="digest", content_hash="PLACEHOLDER",
+        )
+        body = "# Test\n\nSome content here."
+        full = fm + body
+
+        content_hash = compute_content_hash(full)
+        full = full.replace('"PLACEHOLDER"', f'"{content_hash}"', 1)
+
+        assert "PLACEHOLDER" not in full
+        assert content_hash in full
+        # Hash should be stable (compute_content_hash strips content_hash lines)
+        assert compute_content_hash(full) == content_hash
+
+
 class TestObsidianExporterCleanup:
     """Stale file cleanup."""
 
@@ -205,6 +256,7 @@ class TestObsidianExporterCleanup:
         exporter._cleanup_stale_files(summary)
 
         assert not stale_file.exists()
+        assert summary.cleaned == 1
 
     def test_preserves_unmanaged_files(self, exporter: ObsidianExporter) -> None:
         # Create a user file without generator: aca

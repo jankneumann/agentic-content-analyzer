@@ -55,6 +55,7 @@ class ExportSummary:
     content_stubs: ContentTypeStats = field(default_factory=ContentTypeStats)
     entities: ContentTypeStats = field(default_factory=ContentTypeStats)
     themes: ContentTypeStats = field(default_factory=ContentTypeStats)
+    cleaned: int = 0
     elapsed_seconds: float = 0.0
     warnings: list[str] = field(default_factory=list)
 
@@ -64,6 +65,8 @@ class ExportSummary:
         for name in ("digests", "summaries", "insights", "content_stubs", "entities", "themes"):
             stats: ContentTypeStats = getattr(self, name)
             result[name] = {"created": stats.created, "updated": stats.updated, "skipped": stats.skipped}
+        if self.cleaned > 0:
+            result["cleaned"] = self.cleaned
         result["elapsed_seconds"] = round(self.elapsed_seconds, 2)
         if self.warnings:
             result["warnings"] = self.warnings
@@ -225,63 +228,60 @@ class ObsidianExporter:
                 stmt = stmt.where(Digest.period_start >= self._options.since)
 
             for digest in session.execute(stmt).scalars().yield_per(_STREAM_BATCH_SIZE):
-                aca_id = f"digest-{digest.id}"
-                tags = digest.theme_tags or []
-                date = digest.period_start
+                try:
+                    aca_id = f"digest-{digest.id}"
+                    tags = digest.theme_tags or []
+                    date = digest.period_start
 
-                # Generate markdown body
-                if digest.markdown_content:
-                    body = digest.markdown_content
-                else:
-                    digest_data = {
-                        "title": digest.title,
-                        "executive_overview": digest.executive_overview,
-                        "strategic_insights": digest.strategic_insights,
-                        "technical_developments": digest.technical_developments,
-                        "emerging_trends": digest.emerging_trends,
-                        "actionable_recommendations": digest.actionable_recommendations,
-                        "sources": digest.sources,
-                        "historical_context": digest.historical_context,
-                    }
-                    body = generate_digest_markdown(digest_data)
+                    # Generate markdown body
+                    if digest.markdown_content:
+                        body = digest.markdown_content
+                    else:
+                        digest_data = {
+                            "title": digest.title,
+                            "executive_overview": digest.executive_overview,
+                            "strategic_insights": digest.strategic_insights,
+                            "technical_developments": digest.technical_developments,
+                            "emerging_trends": digest.emerging_trends,
+                            "actionable_recommendations": digest.actionable_recommendations,
+                            "sources": digest.sources,
+                            "historical_context": digest.historical_context,
+                        }
+                        body = generate_digest_markdown(digest_data)
 
-                # Build related section
-                related = self._build_related_section(digest.source_content_ids or [])
+                    # Build related section
+                    related = self._build_related_section(digest.source_content_ids or [])
 
-                # Build frontmatter
-                fm = build_frontmatter(
-                    aca_id=aca_id,
-                    aca_type="digest",
-                    date=date,
-                    tags=tags,
-                    digest_type=str(digest.digest_type),
-                    period_start=digest.period_start.isoformat() if digest.period_start else "",
-                    period_end=digest.period_end.isoformat() if digest.period_end else "",
-                )
-
-                full_content = fm + body
-                if related:
-                    full_content += "\n" + related
-
-                content_hash = compute_content_hash(full_content)
-                full_content = full_content.replace(
-                    'content_hash: ""',
-                    f'content_hash: "{content_hash}"',
-                )
-                # Re-add hash to frontmatter
-                if "content_hash:" not in full_content:
-                    full_content = full_content.replace(
-                        "---\n" + body[:20],
-                        f'content_hash: "{content_hash}"\n---\n' + body[:20],
+                    # Build frontmatter with placeholder hash
+                    fm = build_frontmatter(
+                        aca_id=aca_id,
+                        aca_type="digest",
+                        date=date,
+                        tags=tags,
+                        content_hash="PLACEHOLDER",
+                        digest_type=str(digest.digest_type),
+                        period_start=digest.period_start.isoformat() if digest.period_start else "",
+                        period_end=digest.period_end.isoformat() if digest.period_end else "",
                     )
 
-                result = self._write_note(folder, aca_id, "digest", date, digest.title, full_content, content_hash, tags)
-                if result == "created":
-                    stats.created += 1
-                elif result == "updated":
-                    stats.updated += 1
-                else:
-                    stats.skipped += 1
+                    full_content = fm + body
+                    if related:
+                        full_content += "\n" + related
+
+                    content_hash = compute_content_hash(full_content)
+                    full_content = full_content.replace(
+                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                    )
+
+                    result = self._write_note(folder, aca_id, "digest", date, digest.title, full_content, content_hash, tags)
+                    if result == "created":
+                        stats.created += 1
+                    elif result == "updated":
+                        stats.updated += 1
+                    else:
+                        stats.skipped += 1
+                except Exception:
+                    logger.warning("Failed to export digest %s", digest.id, exc_info=True)
 
         return stats
 
@@ -304,66 +304,73 @@ class ObsidianExporter:
                 stmt = stmt.where(Summary.created_at >= self._options.since)
 
             for summary in session.execute(stmt).scalars().yield_per(_STREAM_BATCH_SIZE):
-                aca_id = f"summary-{summary.id}"
-                tags = summary.theme_tags or summary.key_themes or []
-                date = summary.created_at
+                try:
+                    aca_id = f"summary-{summary.id}"
+                    tags = summary.theme_tags or summary.key_themes or []
+                    date = summary.created_at
 
-                # Get source content info
-                source_type = ""
-                source_url = ""
-                title = f"Summary {summary.id}"
-                content_id = summary.content_id
+                    # Get source content info
+                    source_type = ""
+                    source_url = ""
+                    title = f"Summary {summary.id}"
+                    content_id = summary.content_id
 
-                if content_id:
-                    content = session.get(Content, content_id)
-                    if content:
-                        source_type = str(content.source_type) if content.source_type else ""
-                        source_url = content.source_url or ""
-                        title = content.title or title
+                    if content_id:
+                        content = session.get(Content, content_id)
+                        if content:
+                            source_type = str(content.source_type) if content.source_type else ""
+                            source_url = content.source_url or ""
+                            title = content.title or title
 
-                # Generate markdown body
-                if summary.markdown_content:
-                    body = summary.markdown_content
-                else:
-                    summary_data = {
-                        "executive_summary": summary.executive_summary,
-                        "key_themes": summary.key_themes,
-                        "strategic_insights": summary.strategic_insights,
-                        "technical_details": summary.technical_details,
-                        "actionable_items": summary.actionable_items,
-                        "notable_quotes": summary.notable_quotes,
-                        "relevant_links": summary.relevant_links,
-                        "relevance_scores": summary.relevance_scores,
-                    }
-                    body = generate_summary_markdown(summary_data)
+                    # Generate markdown body
+                    if summary.markdown_content:
+                        body = summary.markdown_content
+                    else:
+                        summary_data = {
+                            "executive_summary": summary.executive_summary,
+                            "key_themes": summary.key_themes,
+                            "strategic_insights": summary.strategic_insights,
+                            "technical_details": summary.technical_details,
+                            "actionable_items": summary.actionable_items,
+                            "notable_quotes": summary.notable_quotes,
+                            "relevant_links": summary.relevant_links,
+                            "relevance_scores": summary.relevance_scores,
+                        }
+                        body = generate_summary_markdown(summary_data)
 
-                # Build related section from content references
-                related = ""
-                if content_id:
-                    related = self._build_related_section_for_content(content_id, session)
+                    # Build related section from content references
+                    related = ""
+                    if content_id:
+                        related = self._build_related_section_for_content(content_id, session)
 
-                fm = build_frontmatter(
-                    aca_id=aca_id,
-                    aca_type="summary",
-                    date=date,
-                    tags=tags,
-                    source_type=source_type,
-                    source_url=source_url,
-                )
+                    fm = build_frontmatter(
+                        aca_id=aca_id,
+                        aca_type="summary",
+                        date=date,
+                        tags=tags,
+                        content_hash="PLACEHOLDER",
+                        source_type=source_type,
+                        source_url=source_url,
+                    )
 
-                full_content = fm + body
-                if related:
-                    full_content += "\n" + related
+                    full_content = fm + body
+                    if related:
+                        full_content += "\n" + related
 
-                content_hash = compute_content_hash(full_content)
+                    content_hash = compute_content_hash(full_content)
+                    full_content = full_content.replace(
+                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                    )
 
-                result = self._write_note(folder, aca_id, "summary", date, title, full_content, content_hash, tags)
-                if result == "created":
-                    stats.created += 1
-                elif result == "updated":
-                    stats.updated += 1
-                else:
-                    stats.skipped += 1
+                    result = self._write_note(folder, aca_id, "summary", date, title, full_content, content_hash, tags)
+                    if result == "created":
+                        stats.created += 1
+                    elif result == "updated":
+                        stats.updated += 1
+                    else:
+                        stats.skipped += 1
+                except Exception:
+                    logger.warning("Failed to export summary %s", summary.id, exc_info=True)
 
         return stats
 
@@ -384,34 +391,41 @@ class ObsidianExporter:
                 stmt = stmt.where(AgentInsight.created_at >= self._options.since)
 
             for insight in session.execute(stmt).scalars().yield_per(_STREAM_BATCH_SIZE):
-                aca_id = f"insight-{insight.id}"
-                tags = insight.tags or []
-                date = insight.created_at
+                try:
+                    aca_id = f"insight-{insight.id}"
+                    tags = insight.tags or []
+                    date = insight.created_at
 
-                body = f"# {insight.title}\n\n"
-                body += f"**Type**: {insight.insight_type}\n"
-                body += f"**Confidence**: {insight.confidence:.0%}\n\n"
-                body += insight.content
+                    body = f"# {insight.title}\n\n"
+                    body += f"**Type**: {insight.insight_type}\n"
+                    body += f"**Confidence**: {insight.confidence:.0%}\n\n"
+                    body += insight.content or ""
 
-                fm = build_frontmatter(
-                    aca_id=aca_id,
-                    aca_type="insight",
-                    date=date,
-                    tags=tags,
-                    insight_type=str(insight.insight_type),
-                    confidence=insight.confidence,
-                )
+                    fm = build_frontmatter(
+                        aca_id=aca_id,
+                        aca_type="insight",
+                        date=date,
+                        tags=tags,
+                        content_hash="PLACEHOLDER",
+                        insight_type=str(insight.insight_type),
+                        confidence=insight.confidence,
+                    )
 
-                full_content = fm + body
-                content_hash = compute_content_hash(full_content)
+                    full_content = fm + body
+                    content_hash = compute_content_hash(full_content)
+                    full_content = full_content.replace(
+                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                    )
 
-                result = self._write_note(folder, aca_id, "insight", date, insight.title, full_content, content_hash, tags)
-                if result == "created":
-                    stats.created += 1
-                elif result == "updated":
-                    stats.updated += 1
-                else:
-                    stats.skipped += 1
+                    result = self._write_note(folder, aca_id, "insight", date, insight.title, full_content, content_hash, tags)
+                    if result == "created":
+                        stats.created += 1
+                    elif result == "updated":
+                        stats.updated += 1
+                    else:
+                        stats.skipped += 1
+                except Exception:
+                    logger.warning("Failed to export insight %s", insight.id, exc_info=True)
 
         return stats
 
@@ -435,58 +449,65 @@ class ObsidianExporter:
                 stmt = stmt.where(Content.published_date >= self._options.since)
 
             for content in session.execute(stmt).scalars().yield_per(_STREAM_BATCH_SIZE):
-                aca_id = f"content-{content.id}"
-                tags = []
-                date = content.published_date or content.created_at
-                title = content.title or f"Content {content.id}"
+                try:
+                    aca_id = f"content-{content.id}"
+                    tags = []
+                    date = content.published_date or content.created_at
+                    title = content.title or f"Content {content.id}"
 
-                # Build stub body
-                body = f"# {title}\n\n"
-                if content.source_url:
-                    body += f"**Source**: [{content.source_url}]({content.source_url})\n"
-                if content.author:
-                    body += f"**Author**: {content.author}\n"
-                if content.publication:
-                    body += f"**Publication**: {content.publication}\n"
-                body += "\n"
+                    # Build stub body
+                    body = f"# {title}\n\n"
+                    if content.source_url:
+                        body += f"**Source**: [{content.source_url}]({content.source_url})\n"
+                    if content.author:
+                        body += f"**Author**: {content.author}\n"
+                    if content.publication:
+                        body += f"**Publication**: {content.publication}\n"
+                    body += "\n"
 
-                # Find summaries that reference this content (reverse refs)
-                refs = session.execute(
-                    select(ContentReference).where(
-                        ContentReference.target_content_id == content.id,
+                    # Find summaries that reference this content (reverse refs)
+                    refs = session.execute(
+                        select(ContentReference).where(
+                            ContentReference.target_content_id == content.id,
+                        )
+                    ).scalars().all()
+
+                    if refs:
+                        body += "## Referenced By\n\n"
+                        for ref in refs:
+                            src_id = f"content-{ref.source_content_id}"
+                            src_filename = self._id_to_filename.get(src_id, "")
+                            if src_filename:
+                                link_name = Path(src_filename).stem
+                                body += f"- [[{link_name}]]\n"
+
+                    fm = build_frontmatter(
+                        aca_id=aca_id,
+                        aca_type="content_stub",
+                        date=date,
+                        tags=tags,
+                        content_hash="PLACEHOLDER",
+                        source_type=str(content.source_type) if content.source_type else "",
+                        source_url=content.source_url or "",
+                        author=content.author or "",
+                        publication=content.publication or "",
                     )
-                ).scalars().all()
 
-                if refs:
-                    body += "## Referenced By\n\n"
-                    for ref in refs:
-                        src_id = f"content-{ref.source_content_id}"
-                        src_filename = self._id_to_filename.get(src_id, "")
-                        if src_filename:
-                            link_name = Path(src_filename).stem
-                            body += f"- [[{link_name}]]\n"
+                    full_content = fm + body
+                    content_hash = compute_content_hash(full_content)
+                    full_content = full_content.replace(
+                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                    )
 
-                fm = build_frontmatter(
-                    aca_id=aca_id,
-                    aca_type="content_stub",
-                    date=date,
-                    tags=tags,
-                    source_type=str(content.source_type) if content.source_type else "",
-                    source_url=content.source_url or "",
-                    author=content.author or "",
-                    publication=content.publication or "",
-                )
-
-                full_content = fm + body
-                content_hash = compute_content_hash(full_content)
-
-                result = self._write_note(folder, aca_id, "content_stub", date, title, full_content, content_hash, tags)
-                if result == "created":
-                    stats.created += 1
-                elif result == "updated":
-                    stats.updated += 1
-                else:
-                    stats.skipped += 1
+                    result = self._write_note(folder, aca_id, "content_stub", date, title, full_content, content_hash, tags)
+                    if result == "created":
+                        stats.created += 1
+                    elif result == "updated":
+                        stats.updated += 1
+                    else:
+                        stats.skipped += 1
+                except Exception:
+                    logger.warning("Failed to export content stub %s", content.id, exc_info=True)
 
         return stats
 
@@ -500,66 +521,72 @@ class ObsidianExporter:
         limit = self._options.max_entities
 
         with self._neo4j_driver.session() as neo_session:
-            # Query entities with LIMIT
+            # Query entities with parameterized LIMIT
             result = neo_session.run(
                 "MATCH (e:Entity) RETURN e.uuid AS uuid, e.name AS name, "
                 "e.entity_type AS entity_type, e.summary AS summary "
-                f"LIMIT {limit}"
+                "LIMIT $limit",
+                limit=limit,
             )
 
-            entities = list(result)
+            for record in result:
+                try:
+                    uuid = record["uuid"] or ""
+                    name = record["name"] or "Unknown"
+                    entity_type = record["entity_type"] or ""
+                    entity_summary = record["summary"] or ""
+                    aca_id = f"entity-{uuid}"
 
-            for record in entities:
-                uuid = record["uuid"] or ""
-                name = record["name"] or "Unknown"
-                entity_type = record["entity_type"] or ""
-                entity_summary = record["summary"] or ""
-                aca_id = f"entity-{uuid}"
+                    # Query relationships for this entity
+                    rel_result = neo_session.run(
+                        "MATCH (e:Entity {uuid: $uuid})-[r]-(other:Entity) "
+                        "RETURN type(r) AS rel_type, other.name AS other_name "
+                        "LIMIT 100",
+                        uuid=uuid,
+                    )
+                    relationships = list(rel_result)
 
-                # Query relationships for this entity
-                rel_result = neo_session.run(
-                    "MATCH (e:Entity {uuid: $uuid})-[r]-(other:Entity) "
-                    "RETURN type(r) AS rel_type, other.name AS other_name "
-                    "LIMIT 100",
-                    uuid=uuid,
-                )
-                relationships = list(rel_result)
+                    # Build body
+                    body = f"# {name}\n\n"
+                    if entity_type:
+                        body += f"**Type**: {entity_type}\n\n"
 
-                # Build body
-                body = f"# {name}\n\n"
-                if entity_type:
-                    body += f"**Type**: {entity_type}\n\n"
+                    if entity_summary:
+                        body += "## Facts\n\n"
+                        body += f"{entity_summary}\n\n"
 
-                if entity_summary:
-                    body += "## Facts\n\n"
-                    body += f"{entity_summary}\n\n"
+                    if relationships:
+                        body += "## Relationships\n\n"
+                        for rel in relationships:
+                            other = rel["other_name"] or "Unknown"
+                            rel_type = rel["rel_type"] or "RELATED_TO"
+                            body += f"- {rel_type}: [[{other}]]\n"
 
-                if relationships:
-                    body += "## Relationships\n\n"
-                    for rel in relationships:
-                        other = rel["other_name"] or "Unknown"
-                        rel_type = rel["rel_type"] or "RELATED_TO"
-                        body += f"- {rel_type}: [[{other}]]\n"
+                    fm = build_frontmatter(
+                        aca_id=aca_id,
+                        aca_type="entity",
+                        tags=[entity_type] if entity_type else [],
+                        content_hash="PLACEHOLDER",
+                        entity_type=entity_type,
+                    )
 
-                fm = build_frontmatter(
-                    aca_id=aca_id,
-                    aca_type="entity",
-                    tags=[entity_type] if entity_type else [],
-                    entity_type=entity_type,
-                )
+                    full_content = fm + body
+                    content_hash = compute_content_hash(full_content)
+                    full_content = full_content.replace(
+                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                    )
 
-                full_content = fm + body
-                content_hash = compute_content_hash(full_content)
-
-                result_action = self._write_note(
-                    folder, aca_id, "entity", None, name, full_content, content_hash, [],
-                )
-                if result_action == "created":
-                    stats.created += 1
-                elif result_action == "updated":
-                    stats.updated += 1
-                else:
-                    stats.skipped += 1
+                    result_action = self._write_note(
+                        folder, aca_id, "entity", None, name, full_content, content_hash, [],
+                    )
+                    if result_action == "created":
+                        stats.created += 1
+                    elif result_action == "updated":
+                        stats.updated += 1
+                    else:
+                        stats.skipped += 1
+                except Exception:
+                    logger.warning("Failed to export entity %s", record.get("uuid", "?"), exc_info=True)
 
         return stats
 
@@ -593,12 +620,16 @@ class ObsidianExporter:
                 aca_id=aca_id,
                 aca_type="moc",
                 tags=[theme],
+                content_hash="PLACEHOLDER",
                 theme=theme,
                 note_count=len(notes),
             )
 
             full_content = fm + body
             content_hash = compute_content_hash(full_content)
+            full_content = full_content.replace(
+                '"PLACEHOLDER"', f'"{content_hash}"', 1,
+            )
 
             result = self._write_note(folder, aca_id, "moc", None, title, full_content, content_hash, [])
             if result == "created":
@@ -784,8 +815,10 @@ class ObsidianExporter:
 
             if self._options.dry_run:
                 logger.info("Would delete stale: %s", entry.filename)
+                summary.cleaned += 1
                 continue
 
             file_path.unlink()
             self._manifest.remove(entry.aca_id)
+            summary.cleaned += 1
             logger.info("Deleted stale file: %s", entry.filename)
