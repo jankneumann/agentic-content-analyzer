@@ -9,16 +9,16 @@ The system SHALL provide an `aca sync obsidian <vault-path>` command that export
 - **THEN** the directory SHALL be created
 - **AND** digests, summaries, insights, content stubs, entities, and theme MOCs SHALL be written as markdown files
 - **AND** a `.obsidian-sync-manifest.json` file SHALL be created in the vault root
-- **AND** a summary of exported items SHALL be displayed
+- **AND** a summary table SHALL be displayed with columns: content type, created count, updated count, skipped count
 
 #### Scenario: Export with Rich output
 - **WHEN** `aca sync obsidian ./my-vault` is executed without `--json`
-- **THEN** progress SHALL be displayed using Rich progress bars
-- **AND** a Rich table SHALL summarize counts per content type
+- **THEN** a Rich progress bar SHALL update once per exported item
+- **AND** a Rich table SHALL display rows for each content type with columns: Type, Created, Updated, Skipped
 
 #### Scenario: Export with JSON output
 - **WHEN** `aca sync obsidian ./my-vault --json` is executed
-- **THEN** output SHALL be valid JSON with counts per content type
+- **THEN** output SHALL be a JSON object with keys: `digests`, `summaries`, `insights`, `content_stubs`, `entities`, `themes`, each containing `{"created": int, "updated": int, "skipped": int}`
 - **AND** progress messages SHALL be sent to stderr
 
 #### Scenario: Invalid vault path
@@ -26,6 +26,13 @@ The system SHALL provide an `aca sync obsidian <vault-path>` command that export
 - **AND** the path is not writable
 - **THEN** an error message SHALL indicate the path is not writable
 - **AND** exit code SHALL be 1
+
+#### Scenario: Vault path safety validation
+- **WHEN** `aca sync obsidian <vault-path>` is executed
+- **THEN** the system SHALL resolve the path to an absolute path using `Path.resolve()`
+- **AND** the system SHALL reject paths that are symlinks to directories outside the user's home tree
+- **AND** the system SHALL reject paths containing `..` traversal segments after resolution
+- **AND** an error message SHALL indicate the path is unsafe if rejected
 
 ### Requirement: Vault folder structure
 The system SHALL organize exported files into typed subfolders within the vault path.
@@ -64,7 +71,18 @@ Every exported markdown file SHALL include YAML frontmatter with metadata that O
 #### Scenario: Entity frontmatter
 - **WHEN** a knowledge graph entity is exported
 - **THEN** the frontmatter SHALL include: `generator: aca`, `aca_id`, `aca_type: entity`, `entity_type`, `tags`
-- **AND** the body SHALL list related entities as wikilinks and include fact summaries
+- **AND** the body SHALL list related entities as wikilinks under a "## Relationships" heading
+- **AND** the body SHALL include entity facts under a "## Facts" heading
+
+#### Scenario: Content hash format
+- **WHEN** any note is exported
+- **THEN** the `content_hash` frontmatter field SHALL be a SHA-256 hex digest string (64 characters), prefixed with `sha256:`
+- **AND** the hash SHALL be computed from the full file content (frontmatter + body) excluding the `content_hash` field itself
+
+#### Scenario: Tag sanitization in frontmatter
+- **WHEN** a tag contains YAML-unsafe characters (colons, newlines, `---`, leading `#`)
+- **THEN** the tag SHALL be sanitized by removing unsafe characters before inclusion in frontmatter
+- **AND** empty tags after sanitization SHALL be omitted
 
 ### Requirement: Date-prefixed file naming
 The system SHALL use date-prefixed, slugified filenames for all time-stamped content.
@@ -78,29 +96,46 @@ The system SHALL use date-prefixed, slugified filenames for all time-stamped con
 - **THEN** the filename SHALL be `OpenAI.md` (entities use name, not date prefix)
 
 #### Scenario: Filename collision
-- **WHEN** two items produce the same filename
-- **THEN** a numeric suffix SHALL be appended (e.g., `2026-04-03-ai-update-2.md`)
-- **AND** the manifest SHALL track the actual filename used
+- **WHEN** two items produce the same base filename
+- **THEN** a numeric suffix SHALL be appended starting from 2 (e.g., `2026-04-03-ai-update-2.md`, `2026-04-03-ai-update-3.md`)
+- **AND** the manifest SHALL track the actual filename used for each aca_id
+- **AND** on subsequent runs, the manifest SHALL preserve the previously assigned filename to keep wikilinks stable
 
-### Requirement: Wikilinks for cross-references
-The system SHALL convert ContentReference relationships into Obsidian `[[wikilinks]]`.
+### Requirement: Related section with wikilinks
+The system SHALL generate a "## Related" section at the end of each exported note by querying ContentReference relationships and converting them to Obsidian `[[wikilinks]]`.
+
+#### Scenario: Related section generation
+- **GIVEN** a content item has one or more ContentReference entries in the database
+- **WHEN** the item is exported
+- **THEN** a `## Related` heading SHALL appear at the end of the note body
+- **AND** references SHALL be formatted as `- <ReferenceType>: [[<target-filename-without-extension>]]`
+- **AND** reference types SHALL use title case labels: "Cites", "Extends", "Discusses", "Contradicts", "Supplements"
 
 #### Scenario: Internal citation link
 - **GIVEN** a summary S1 has a ContentReference of type CITES pointing to content C2
 - **WHEN** S1 is exported
-- **THEN** a "Related" section SHALL appear at the end of the note
-- **AND** it SHALL contain `- Cites: [[<C2-filename-without-extension>]]`
+- **THEN** the Related section SHALL contain `- Cites: [[<C2-filename-without-extension>]]`
 
 #### Scenario: Multiple reference types
 - **GIVEN** a digest references multiple items with types CITES, EXTENDS, and DISCUSSES
 - **WHEN** the digest is exported
 - **THEN** each reference type SHALL appear as a labeled wikilink in the Related section
 
-#### Scenario: Unresolved reference
-- **GIVEN** a ContentReference has resolution_status UNRESOLVED or EXTERNAL
+#### Scenario: External reference (resolved to external URL)
+- **GIVEN** a ContentReference has resolution_status EXTERNAL with an external_url
 - **WHEN** the referencing note is exported
-- **THEN** external references SHALL use a plain URL link instead of a wikilink
-- **AND** unresolved references SHALL use a wikilink (Obsidian handles forward-links gracefully)
+- **THEN** the reference SHALL use a markdown link `- Cites: [<title>](<external_url>)` instead of a wikilink
+
+#### Scenario: Unresolved reference
+- **GIVEN** a ContentReference has resolution_status UNRESOLVED
+- **WHEN** the referencing note is exported
+- **THEN** the reference SHALL use a wikilink `- Cites: [[<slugified-title>]]`
+- **AND** this creates a forward-link that Obsidian displays as an unresolved reference
+
+#### Scenario: No references exist
+- **GIVEN** a content item has no ContentReference entries
+- **WHEN** the item is exported
+- **THEN** no Related section SHALL be added to the note
 
 ### Requirement: Theme Maps of Content
 The system SHALL generate MOC (Map of Content) files that group notes by theme.
@@ -143,6 +178,19 @@ The system SHALL track exported content in a manifest file and only write new or
 - **THEN** the corresponding managed file (with `generator: aca` frontmatter) SHALL be deleted
 - **AND** the manifest entry SHALL be removed
 
+#### Scenario: Corrupt manifest recovery
+- **GIVEN** a `.obsidian-sync-manifest.json` file exists but contains invalid JSON
+- **WHEN** `aca sync obsidian ./my-vault` is run
+- **THEN** the corrupt manifest SHALL be renamed to `.obsidian-sync-manifest.json.bak`
+- **AND** a new manifest SHALL be created
+- **AND** a full re-export SHALL occur (all items treated as new)
+- **AND** a warning SHALL be displayed indicating the manifest was rebuilt
+
+#### Scenario: Atomic manifest writes
+- **WHEN** the manifest is updated after an export
+- **THEN** the system SHALL write to a temporary file first, then atomically rename to `.obsidian-sync-manifest.json`
+- **AND** an incomplete write SHALL NOT corrupt the existing manifest
+
 #### Scenario: User-modified managed files
 - **GIVEN** a user has edited a file that has `generator: aca` frontmatter
 - **WHEN** `aca sync obsidian ./my-vault` is run
@@ -155,7 +203,9 @@ The system SHALL support CLI flags to filter what gets exported.
 
 #### Scenario: Date filtering with --since
 - **WHEN** `aca sync obsidian ./my-vault --since 2026-03-01` is executed
-- **THEN** only content dated on or after 2026-03-01 SHALL be exported
+- **THEN** only time-stamped content (digests, summaries, insights, content stubs) dated on or after 2026-03-01 SHALL be exported
+- **AND** entities SHALL be unaffected by `--since` (entities have no date dimension)
+- **AND** theme MOCs SHALL be regenerated based on the filtered content set
 
 #### Scenario: Content type exclusion
 - **WHEN** `aca sync obsidian ./my-vault --no-entities --no-themes` is executed
@@ -167,6 +217,25 @@ The system SHALL support CLI flags to filter what gets exported.
 - **THEN** no files SHALL be written or deleted
 - **AND** output SHALL list what WOULD be created, updated, or deleted
 
+### Requirement: Structured logging
+The system SHALL log export operations for debugging and audit purposes.
+
+#### Scenario: Export action logging
+- **WHEN** a file is created, updated, or skipped during export
+- **THEN** a structured log entry SHALL be emitted at DEBUG level with fields: `aca_id`, `action` (created/updated/skipped), `filename`, `content_hash`
+
+#### Scenario: Export summary logging
+- **WHEN** an export completes
+- **THEN** a structured log entry SHALL be emitted at INFO level with total counts per content type and elapsed time
+
+### Requirement: Streaming database queries
+The system SHALL use server-side cursors for database queries to avoid loading entire tables into memory.
+
+#### Scenario: Large dataset export
+- **WHEN** the database contains more than 1000 items of any content type
+- **THEN** the exporter SHALL fetch items in batches of 500 using server-side cursors
+- **AND** memory usage SHALL remain bounded regardless of total item count
+
 ### Requirement: Graceful Neo4j fallback
 The system SHALL handle Neo4j being unavailable without failing the entire export.
 
@@ -174,7 +243,7 @@ The system SHALL handle Neo4j being unavailable without failing the entire expor
 - **GIVEN** Neo4j is not running or not configured
 - **WHEN** `aca sync obsidian ./my-vault` is executed
 - **THEN** digests, summaries, insights, and content stubs SHALL still export
-- **AND** a warning SHALL indicate that entity export was skipped
+- **AND** a warning SHALL be printed to stderr: `WARNING: Neo4j unavailable; entity export skipped`
 - **AND** exit code SHALL be 0
 
 ### Requirement: MCP tool for Obsidian sync

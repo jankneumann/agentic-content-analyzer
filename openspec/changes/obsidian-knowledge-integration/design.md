@@ -93,11 +93,43 @@ src/cli/                     src/sync/
 
 **Rationale**: Users may add their own notes to the vault folders. Automatic deletion could destroy user content. The `generator: aca` frontmatter tag acts as a "this file is managed" marker. Even with `--clean`, only files with this marker AND no longer present upstream are removed.
 
-### D8: MCP tool delegates to the same ObsidianExporter
+### D8: Vault path safety validation
+
+**Decision**: Validate vault_path using `Path.resolve()` and reject symlinks or traversal paths before any I/O.
+
+**Rationale**: The vault_path comes from user input (CLI arg or MCP tool parameter). Without validation, a path like `../../../etc` or a symlink to a sensitive directory could cause the exporter to write files outside the intended location. Resolving the path and checking it's within expected bounds prevents path traversal attacks.
+
+**Implementation**: `validate_vault_path(path) -> Path` in `obsidian_exporter.py` — resolves, checks `is_dir()` or can be created, rejects if resolved path contains `..` segments.
+
+### D9: Atomic manifest writes with corruption recovery
+
+**Decision**: Write manifest to a temp file, then `os.replace()` to the final path. On load, if JSON parsing fails, rename corrupt file to `.bak` and start fresh.
+
+**Rationale**: If the export is interrupted mid-write (crash, Ctrl+C), the manifest could be left in a partial state. Atomic rename ensures the manifest is either fully old or fully new. The `.bak` rename preserves the corrupt file for debugging while allowing recovery.
+
+### D10: Tag sanitization for YAML safety
+
+**Decision**: Sanitize frontmatter tags by stripping YAML-unsafe characters (`:`, `---`, newlines, leading `#`) before writing.
+
+**Rationale**: Tags come from `extract_theme_tags()` which parses user-generated content. A tag containing `:` would break YAML parsing; `---` could be interpreted as a document separator. Stripping these characters is safe because Obsidian tag search is fuzzy anyway.
+
+### D11: Streaming database queries with batched fetches
+
+**Decision**: Use SQLAlchemy `yield_per(500)` (server-side cursor) for all content queries, matching the existing `PGExporter` pattern of 1000-row batches (we use 500 for this feature since we're doing more per-row processing).
+
+**Rationale**: A vault with 10k+ digests/summaries would load all rows into memory without streaming. The PGExporter already demonstrates this pattern successfully.
+
+### D12: MCP tool delegates to the same ObsidianExporter
 
 **Decision**: The MCP tool `sync_obsidian` calls the same `ObsidianExporter.export_all()` that the CLI uses. No separate code path.
 
 **Rationale**: The existing MCP server pattern uses lazy imports and delegates to the same service functions as the CLI (e.g., `ingest_gmail` MCP tool calls `ingest_gmail` from the orchestrator). Following this pattern means the MCP tool is a thin wrapper: parse args → create exporter → call export_all() → serialize result. This ensures CLI and MCP always produce identical output.
+
+### D13: Neo4j entity export uses Cypher with LIMIT
+
+**Decision**: Entity queries use `MATCH (e:Entity) RETURN e LIMIT 10000` with configurable limit rather than unbounded queries.
+
+**Rationale**: Large knowledge graphs could have millions of entities. A configurable limit (default 10000) prevents memory exhaustion while covering typical use cases. Users can increase via `--max-entities` flag if needed.
 
 ## Module Breakdown
 
