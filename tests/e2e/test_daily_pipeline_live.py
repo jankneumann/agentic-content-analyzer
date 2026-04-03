@@ -58,10 +58,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.regression]
 # ─── Test Content ────────────────────────────────────────────
 # Use a well-known, stable URL for deterministic ingestion.
 
-TEST_CONTENT_URL = (
-    "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/"
-    "main/README.md"
-)
+TEST_CONTENT_URL = "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/main/README.md"
 TEST_CONTENT_TITLE = "Anthropic Cookbook README"
 
 
@@ -123,7 +120,9 @@ class TestDailyPipelineLive:
         assert content.get("title"), "Content has no title"
         assert content.get("source_type"), "Content has no source_type"
         assert content.get("status") in (
-            "completed", "parsed", "pending",
+            "completed",
+            "parsed",
+            "pending",
         ), f"Unexpected status: {content.get('status')}"
 
     def test_03_validate_ingested_content(
@@ -180,15 +179,11 @@ class TestDailyPipelineLive:
         if resp.status_code == 404:
             for _ in range(5):
                 time.sleep(5)
-                resp = http_client.get(
-                    f"/api/v1/summaries/by-content/{content_id}"
-                )
+                resp = http_client.get(f"/api/v1/summaries/by-content/{content_id}")
                 if resp.status_code == 200:
                     break
 
-        assert resp.status_code == 200, (
-            f"Summary not found for content {content_id}: {resp.text}"
-        )
+        assert resp.status_code == 200, f"Summary not found for content {content_id}: {resp.text}"
         summary = resp.json()
         _pipeline_state["summary"] = summary
         _pipeline_state["summary_id"] = summary.get("id")
@@ -341,7 +336,10 @@ class TestDailyPipelineLive:
 
         assert detail.get("title"), "Digest has no title"
         assert detail.get("status") in (
-            "COMPLETED", "PENDING_REVIEW", "APPROVED", "GENERATING",
+            "COMPLETED",
+            "PENDING_REVIEW",
+            "APPROVED",
+            "GENERATING",
         ), f"Unexpected digest status: {detail.get('status')}"
 
     def test_12_validate_digest(self, llm_validator: BaseEvaluator):
@@ -408,9 +406,7 @@ class TestDailyPipelineLive:
             json={"digest_id": digest_id, "length": "brief"},
         )
         if resp.status_code != 200:
-            logger.warning(
-                f"Podcast script generation returned {resp.status_code}: {resp.text}"
-            )
+            logger.warning(f"Podcast script generation returned {resp.status_code}: {resp.text}")
             pytest.skip(f"Script generation failed: {resp.text}")
 
         data = resp.json()
@@ -490,9 +486,7 @@ class TestDailyPipelineLive:
 class TestPipelineConsistency:
     """Final validation: cross-stage consistency of all pipeline artifacts."""
 
-    def test_pipeline_artifacts_are_consistent(
-        self, llm_validator: BaseEvaluator
-    ):
+    def test_pipeline_artifacts_are_consistent(self, llm_validator: BaseEvaluator):
         """LLM validates that all stages produced coherent, related artifacts."""
         content = _pipeline_state.get("content", {})
         summary = _pipeline_state.get("summary", {})
@@ -516,7 +510,9 @@ class TestPipelineConsistency:
                 len(digest.get("strategic_insights", []))
                 + len(digest.get("technical_developments", []))
                 + len(digest.get("emerging_trends", []))
-            ) if digest else 0,
+            )
+            if digest
+            else 0,
             "script_title": script.get("title", "N/A"),
             "script_section_count": len(script.get("sections", [])),
         }

@@ -473,7 +473,14 @@ class TestChunkingServiceTreeOrchestration:
         service = ChunkingService()
 
         # Content with enough tokens and heading depth
-        long_content = "# Title\n\n" + ("word " * 50 + "\n\n") + "## Section\n\n" + ("text " * 50 + "\n\n") + "### Subsection\n\n" + ("detail " * 50)
+        long_content = (
+            "# Title\n\n"
+            + ("word " * 50 + "\n\n")
+            + "## Section\n\n"
+            + ("text " * 50 + "\n\n")
+            + "### Subsection\n\n"
+            + ("detail " * 50)
+        )
         mock_content = MagicMock()
         mock_content.markdown_content = long_content
         mock_content.parser_used = None
@@ -552,7 +559,9 @@ class TestChunkingServiceTreeOrchestration:
         service = ChunkingService()
 
         mock_content = MagicMock()
-        mock_content.markdown_content = "# H1\n\nParagraph.\n\n## H2\n\nMore text.\n\n### H3\n\nDeep."
+        mock_content.markdown_content = (
+            "# H1\n\nParagraph.\n\n## H2\n\nMore text.\n\n### H3\n\nDeep."
+        )
         mock_content.parser_used = None
         mock_content.id = 1
         mock_content.source_type = None

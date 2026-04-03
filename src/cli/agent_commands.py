@@ -117,18 +117,20 @@ def task_status(
                 raise typer.Exit(code=1)
 
             if is_json_mode():
-                output_result({
-                    "task_id": str(task.id),
-                    "status": task.status,
-                    "task_type": task.task_type,
-                    "persona": task.persona_name,
-                    "prompt": task.prompt,
-                    "result": task.result,
-                    "error": task.error_message,
-                    "created_at": str(task.created_at) if task.created_at else None,
-                    "started_at": str(task.started_at) if task.started_at else None,
-                    "completed_at": str(task.completed_at) if task.completed_at else None,
-                })
+                output_result(
+                    {
+                        "task_id": str(task.id),
+                        "status": task.status,
+                        "task_type": task.task_type,
+                        "persona": task.persona_name,
+                        "prompt": task.prompt,
+                        "result": task.result,
+                        "error": task.error_message,
+                        "created_at": str(task.created_at) if task.created_at else None,
+                        "started_at": str(task.started_at) if task.started_at else None,
+                        "completed_at": str(task.completed_at) if task.completed_at else None,
+                    }
+                )
                 return
 
             status_color = {
@@ -154,20 +156,22 @@ def task_status(
             tasks, total = svc.list_tasks(limit=10)
 
             if is_json_mode():
-                output_result({
-                    "tasks": [
-                        {
-                            "task_id": str(t.id),
-                            "status": t.status,
-                            "task_type": t.task_type,
-                            "persona": t.persona_name,
-                            "prompt": t.prompt[:100],
-                            "created_at": str(t.created_at) if t.created_at else None,
-                        }
-                        for t in tasks
-                    ],
-                    "total": total,
-                })
+                output_result(
+                    {
+                        "tasks": [
+                            {
+                                "task_id": str(t.id),
+                                "status": t.status,
+                                "task_type": t.task_type,
+                                "persona": t.persona_name,
+                                "prompt": t.prompt[:100],
+                                "created_at": str(t.created_at) if t.created_at else None,
+                            }
+                            for t in tasks
+                        ],
+                        "total": total,
+                    }
+                )
                 return
 
             table = Table(title=f"Recent Tasks ({total} total)")
@@ -224,20 +228,22 @@ def list_insights(
         )
 
     if is_json_mode():
-        output_result({
-            "insights": [
-                {
-                    "id": str(i.id),
-                    "type": i.insight_type,
-                    "title": i.title,
-                    "confidence": i.confidence,
-                    "tags": i.tags,
-                    "created_at": str(i.created_at) if i.created_at else None,
-                }
-                for i in insights
-            ],
-            "total": total,
-        })
+        output_result(
+            {
+                "insights": [
+                    {
+                        "id": str(i.id),
+                        "type": i.insight_type,
+                        "title": i.title,
+                        "confidence": i.confidence,
+                        "tags": i.tags,
+                        "created_at": str(i.created_at) if i.created_at else None,
+                    }
+                    for i in insights
+                ],
+                "total": total,
+            }
+        )
         return
 
     table = Table(title=f"Agent Insights ({total} total)")
@@ -384,12 +390,14 @@ def approve_request(
         raise typer.Exit(code=1)
 
     if is_json_mode():
-        output_result({
-            "request_id": str(req.id),
-            "status": req.status,
-            "action": req.action,
-            "decided_at": str(req.decided_at) if req.decided_at else None,
-        })
+        output_result(
+            {
+                "request_id": str(req.id),
+                "status": req.status,
+                "action": req.action,
+                "decided_at": str(req.decided_at) if req.decided_at else None,
+            }
+        )
         return
 
     console.print(f"[green]Approved:[/green] {req.id}")
@@ -424,13 +432,15 @@ def deny_request(
         raise typer.Exit(code=1)
 
     if is_json_mode():
-        output_result({
-            "request_id": str(req.id),
-            "status": req.status,
-            "action": req.action,
-            "reason": req.decision_reason,
-            "decided_at": str(req.decided_at) if req.decided_at else None,
-        })
+        output_result(
+            {
+                "request_id": str(req.id),
+                "status": req.status,
+                "action": req.action,
+                "reason": req.decision_reason,
+                "decided_at": str(req.decided_at) if req.decided_at else None,
+            }
+        )
         return
 
     console.print(f"[red]Denied:[/red] {req.id}")
