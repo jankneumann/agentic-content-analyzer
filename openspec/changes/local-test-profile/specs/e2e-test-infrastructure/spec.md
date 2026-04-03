@@ -91,18 +91,27 @@ AND the seeded data SHALL include at least 1 summary
 WHEN the test database already contains content items
 THEN the fixture SHALL NOT import additional seed data
 
-### Requirement: Test Neo4j Instance
+### Requirement: Lazy Test Neo4j Instance
 
-#### Scenario: Dedicated Neo4j for E2E
-WHEN the subprocess server fixture starts
+#### Scenario: Neo4j starts on demand
+WHEN a test depends on the `neo4j_test_instance` fixture
 THEN a Neo4j Docker container SHALL be started on the allocated bolt port
 AND the test profile SHALL configure `neo4j_uri` to point to the test instance
 AND the container SHALL use neo4j Community edition
 
-#### Scenario: Neo4j cleanup between sessions
-WHEN the test session ends
-THEN the Neo4j test container SHALL be stopped
-AND all graph data SHALL be removed
+#### Scenario: Neo4j skipped when not requested
+WHEN no test in the session depends on `neo4j_test_instance`
+AND the `--with-neo4j` flag is NOT passed
+THEN no Neo4j container SHALL be started
+
+#### Scenario: Full validation mode includes Neo4j
+WHEN `pytest tests/e2e/ --with-neo4j` is invoked
+THEN the Neo4j container SHALL be started unconditionally
+AND all graph-dependent tests SHALL run
+
+#### Scenario: Neo4j cleanup on session end
+WHEN the test session ends and Neo4j was started
+THEN the Neo4j test container SHALL be stopped and removed
 
 ### Requirement: Docker Compose Test Stack
 

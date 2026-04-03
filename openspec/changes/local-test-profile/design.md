@@ -70,11 +70,18 @@ test functions run
 teardown: kill uvicorn, kill vite, release_ports()
 ```
 
-### D7: Dedicated test Neo4j with hash-based port
+### D7: Lazy Neo4j with hash-based port
 
-The test stack includes a dedicated Neo4j instance using the same hash-based port allocation as other services. This ensures knowledge graph features (theme analysis, agent memory graph strategy) are testable in E2E without contaminating the dev Neo4j instance.
+Neo4j is **on-demand** — the container only starts when a test explicitly requests the `neo4j_test_instance` fixture. Tests that only exercise basic pipeline flows (ingest, summarize, digest) never spin up Neo4j, keeping the default E2E run fast (~5s startup).
 
-The test Neo4j starts as a Docker container (Community edition) with the `clean_neo4j` pattern from integration tests applied at session scope.
+When started, the container uses the same hash-based port scheme as other services (bolt: base+2000, HTTP: base+2001).
+
+**Triggering Neo4j**:
+- Individual test: `def test_theme_graph(neo4j_test_instance, http_client): ...`
+- Full validation: `pytest tests/e2e/ --with-neo4j` (custom pytest option)
+- Docker mode: always included in `docker-compose.test.yml`
+
+This mirrors the existing `@pytest.mark.integration` skip pattern — tests declare dependencies, the infrastructure satisfies them lazily.
 
 ## Docker Compose Test Stack (Validation Mode)
 
