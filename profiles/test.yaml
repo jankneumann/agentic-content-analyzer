@@ -1,0 +1,37 @@
+# Test Profile — Isolated E2E Server
+# ====================================
+# Extends local profile with auth disabled, dedicated test database,
+# and minimal logging. Used by the E2E test fixtures to spin up an
+# isolated backend that doesn't interfere with the dev server.
+#
+# Usage (automatic — handled by tests/e2e/server.py):
+#   PROFILE=test uvicorn src.api.app:app --port 9100
+#
+# Manual usage:
+#   export PROFILE=test
+#   uvicorn src.api.app:app --port 9100
+
+name: test
+extends: local
+description: Isolated E2E test server — no auth, dedicated DB, dynamic ports
+
+providers:
+  database: local
+  neo4j: local
+  storage: local
+  observability: noop
+
+settings:
+  environment: development
+  log_level: WARNING
+
+  database:
+    # Dedicated test database — never contaminates the dev database.
+    # Override with TEST_DATABASE_URL env var for custom setups.
+    database_url: "${TEST_DATABASE_URL:-postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters_e2e}"
+
+  api_keys:
+    # Explicitly empty — disables auth even if .secrets.yaml has values.
+    # Empty string is falsy in Python, so verify_admin_key() allows all requests.
+    admin_api_key: ""
+    app_secret_key: ""

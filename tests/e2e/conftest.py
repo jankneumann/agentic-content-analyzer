@@ -1,7 +1,10 @@
-"""Live E2E test fixtures — real backend + semantic validation.
+"""Live E2E test fixtures — managed server + semantic validation.
 
-Runs the actual pipeline against a live backend and validates artifacts
-using a pluggable evaluator that can use:
+Automatically spins up an isolated backend on a free port with a dedicated
+test database (``newsletters_e2e``), then validates pipeline artifacts using
+a pluggable evaluator.
+
+Evaluator options:
   1. Custom LLM evaluator (default) — calls Claude API directly
   2. Opik evaluator — sends scores to Opik via its API
   3. Langfuse evaluator — sends scores to Langfuse via its API
@@ -10,11 +13,11 @@ The evaluator captures OTel trace IDs from API response headers (X-Trace-Id)
 and associates validation scores with the corresponding traces.
 
 Usage:
-    # Start backend first:
-    make dev-bg
-
-    # Run with custom LLM evaluator (default):
+    # Automatic — server starts/stops automatically:
     ANTHROPIC_API_KEY=sk-ant-... pytest tests/e2e/ -m e2e -v --no-cov
+
+    # Point to a manually started server (skips auto-management):
+    E2E_BASE_URL=http://localhost:8000 pytest tests/e2e/ -m e2e -v --no-cov
 
     # Run with Opik scoring:
     E2E_EVALUATOR=opik OPIK_API_KEY=... pytest tests/e2e/ -m e2e -v --no-cov
@@ -27,7 +30,7 @@ Usage:
     pytest tests/e2e/ -m e2e -v --no-cov
 
 Prerequisites:
-    - Backend running with database migrated
+    - PostgreSQL running locally (Docker Compose)
     - ANTHROPIC_API_KEY set (for LLM-based evaluation)
     - At least one content source configured (or use file/URL ingestion)
 """
@@ -40,13 +43,14 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 import httpx
 import pytest
 
 logger = logging.getLogger(__name__)
 
-E2E_BASE_URL = os.getenv("E2E_BASE_URL", "http://localhost:8000")
+E2E_BASE_URL = os.getenv("E2E_BASE_URL")  # None = auto-manage server
 E2E_ADMIN_KEY = os.getenv("E2E_ADMIN_KEY", os.getenv("ADMIN_API_KEY", ""))
 E2E_TIMEOUT = float(os.getenv("E2E_TIMEOUT", "300"))  # 5 min default
 E2E_EVALUATOR = os.getenv("E2E_EVALUATOR", "custom")  # custom | opik | langfuse
@@ -58,8 +62,28 @@ E2E_EVALUATOR = os.getenv("E2E_EVALUATOR", "custom")  # custom | opik | langfuse
 
 
 @pytest.fixture(scope="session")
-def base_url() -> str:
-    return E2E_BASE_URL
+def managed_server():
+    """Start an isolated E2E backend if no E2E_BASE_URL is set.
+
+    When E2E_BASE_URL is set, the managed server is skipped and the
+    user-provided URL is used directly (backwards-compatible).
+    """
+    if E2E_BASE_URL:
+        # External server — nothing to manage
+        yield None
+        return
+
+    from tests.e2e.server import e2e_server
+
+    with e2e_server() as info:
+        yield info
+
+
+@pytest.fixture(scope="session")
+def base_url(managed_server) -> str:
+    if E2E_BASE_URL:
+        return E2E_BASE_URL
+    return managed_server.base_url
 
 
 @pytest.fixture(scope="session")
@@ -169,7 +193,7 @@ class BaseEvaluator(ABC):
     """Base class for pipeline artifact evaluators."""
 
     # Default criteria per artifact type
-    DEFAULT_CRITERIA = {
+    DEFAULT_CRITERIA: ClassVar[dict[str, list[str]]] = {
         "ingested_content": [
             "Content items have titles and source types",
             "Status is 'completed' or 'parsed'",
@@ -255,13 +279,11 @@ class BaseEvaluator(ABC):
         """Run the LLM evaluation. Subclasses implement this."""
         ...
 
-    def _report_score(self, artifact_type: str, result: ValidationResult) -> None:
+    def _report_score(self, artifact_type: str, result: ValidationResult) -> None:  # noqa: B027
         """Report score to observability backend. Override in subclasses."""
-        pass
 
-    def close(self) -> None:
+    def close(self) -> None:  # noqa: B027
         """Clean up resources."""
-        pass
 
 
 # =============================================================================
