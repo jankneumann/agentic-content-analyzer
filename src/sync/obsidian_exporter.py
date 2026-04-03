@@ -107,7 +107,7 @@ def validate_vault_path(vault_path: str | Path) -> Path:
     if raw.is_symlink():
         target = raw.resolve()
         home = Path.home()
-        if not str(target).startswith(str(home)):
+        if not target.is_relative_to(home):
             raise ValueError(
                 f"Vault path is a symlink pointing outside home directory: "
                 f"{raw} -> {target}"
