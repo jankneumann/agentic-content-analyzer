@@ -641,6 +641,8 @@ def obsidian_cmd(
                 stats = getattr(summary, name)
                 label = name.replace("_", " ").title()
                 typer.echo(f"{label:<20} {stats.created:>8} {stats.updated:>8} {stats.skipped:>8}")
+            if summary.cleaned > 0:
+                typer.echo(f"\nCleaned {summary.cleaned} stale file(s)")
             typer.echo(f"\nCompleted in {summary.elapsed_seconds:.1f}s")
 
             if summary.warnings:
