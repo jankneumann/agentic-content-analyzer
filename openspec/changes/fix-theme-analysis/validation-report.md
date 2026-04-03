@@ -8,23 +8,36 @@
 
 | Phase | Result | Details |
 |-------|--------|---------|
-| Deploy | ○ Skipped | Services not running; no docker-compose up performed |
-| Smoke | ○ Skipped | No live services to test against |
+| Deploy | ✓ Pass | Postgres + Neo4j via main repo docker-compose; API on port 8001 from worktree |
+| Smoke | ✓ Pass | 5/5 endpoint tests pass (health, auth, trigger, status, latest) |
 | Gen-Eval | ○ Skipped | No gen-eval descriptors found |
-| Security | ○ Skipped | No live deployment target |
-| E2E | ○ Skipped | Services not running |
+| Security | ○ Skipped | Security-review orchestrator not invoked |
+| E2E | ○ Skipped | Playwright not run (frontend not started) |
 | Architecture | ○ Skipped | No architecture.graph.json artifacts |
 | Spec Compliance | ✓ Pass | 6/6 scenarios verified against code |
 | Alembic Migration | ✓ Pass | upgrade/downgrade/upgrade all clean; single head b159ceaf9494 |
 | TypeScript | ✓ Pass | Zero type errors (tsc --noEmit) |
-| Ruff Lint | ✓ Pass | No errors in our changed files (1 pre-existing error in src/models/summary.py) |
-| CI/CD | ⚠ Pre-existing failures | All CI jobs fail on main too (infrastructure issue, not code) |
+| Ruff Lint | ✓ Pass | No errors in changed files |
+| CI/CD | ⚠ Pre-existing | All CI jobs fail on main too (infrastructure issue) |
+
+## Live Smoke Test Results
+
+| Test | HTTP | Result |
+|------|------|--------|
+| GET /health | 200 | ✓ Pass |
+| GET /api/v1/themes (no auth) | 200 | ✓ Pass (dev mode bypass — documented) |
+| GET /api/v1/themes (with key) | 200 | ✓ Pass — empty list |
+| POST /api/v1/themes/analyze | 200 | ✓ Pass — analysis_id=1, status=queued |
+| GET /api/v1/themes/analysis/1 | 200 | ✓ Pass — status=completed |
+| GET /api/v1/themes/latest | 200 | ✓ Pass — full result with content_count=3 |
+
+**End-to-end pipeline verified**: trigger → DB insert → background task → LLM call (claude-sonnet-4-5, 2.3s) → DB update → API response. The `theme_analyses` table correctly persists analysis results.
 
 ## Spec Compliance Detail
 
 | Scenario | Status | Evidence |
 |----------|--------|----------|
-| theme-analysis.1: Table creation | ✓ Pass | 19 columns in migration matching ORM; enum created idempotently; upgrade/downgrade verified |
+| theme-analysis.1: Table creation | ✓ Pass | 19 columns matching ORM; enum idempotent; upgrade/downgrade verified; live INSERT/SELECT confirmed |
 | theme-analysis.2: Table rendering | ✓ Pass | 7 sortable columns, category+trend filters, expandable rows, empty state |
 | theme-analysis.3: Network graph | ✓ Pass | Nodes from themes, sized by relevance, colored by category, edges from related_themes, tooltip, click highlight, empty state |
 | theme-analysis.4: Timeline chart | ✓ Pass | Bars span first_seen→last_seen, category colors, trend arrows, sorted by first_seen, empty state, min 1-day span |
@@ -33,6 +46,6 @@
 
 ## Result
 
-**PASS (limited)** — All code-level checks pass. Live service phases skipped (services not running). Recommend `make dev-bg` + manual smoke test of the theme analysis workflow before merge.
+**PASS** — All code-level and live smoke tests pass. The critical bug (missing theme_analyses table) is fixed and verified end-to-end against the running API.
 
 Next step: `/cleanup-feature fix-theme-analysis`
