@@ -6,7 +6,7 @@ evaluation_results, evaluation_consensus, routing_decisions.
 Uses VARCHAR columns (not native PG enums) for all status/type fields.
 Python StrEnum is the source of truth; DB uses plain strings.
 
-Revision ID: b4c5d6e7f8a9
+Revision ID: bc56c4b2e94d
 Revises: f9a8b7c6d5e5
 Create Date: 2026-04-02 14:00:00.000000
 """
@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
-revision: str = "b4c5d6e7f8a9"
+revision: str = "bc56c4b2e94d"
 down_revision: Union[str, None] = "f9a8b7c6d5e5"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

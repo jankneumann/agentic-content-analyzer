@@ -73,7 +73,7 @@ class EvaluationDataset(Base):
     step = Column(String(50), nullable=False)
     name = Column(String(200))
     status = Column(String(20), nullable=False, default=DatasetStatus.PENDING_EVALUATION)
-    sample_count = Column(Integer, nullable=False)
+    sample_count = Column(Integer, nullable=False, default=0)
     strong_model = Column(String(100), nullable=False)
     weak_model = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

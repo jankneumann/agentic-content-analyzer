@@ -96,6 +96,20 @@ class TestReport:
             assert "100" in result.output
 
 
+class TestRunEvaluation:
+    def test_invalid_num_judges(self):
+        result = runner.invoke(app, ["run", "1", "--num-judges", "5"])
+        assert result.exit_code == 1
+        assert "num-judges must be between 1 and 3" in result.output
+
+    def test_run_without_db_fails_gracefully(self):
+        """Run command fails gracefully when services can't be initialized."""
+        with patch("src.storage.database.SessionLocal", side_effect=Exception("No DB")):
+            result = runner.invoke(app, ["run", "1"])
+            assert result.exit_code == 1
+            assert "Error" in result.output
+
+
 class TestCalibrate:
     def test_outputs_info(self):
         result = runner.invoke(app, ["calibrate", "--step", "summarization"])
