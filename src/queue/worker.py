@@ -684,5 +684,5 @@ def _register_agent_handlers() -> None:
             logger.exception("Agent task %s failed: %s", task_id, e)
             with get_db() as db:
                 svc = AgentTaskService(db)
-                svc.update_task_status(task_id, "failed", error=str(e))
+                svc.update_task_status(task_id, "failed", error="Failed due to an internal error")
             raise
