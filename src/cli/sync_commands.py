@@ -513,3 +513,141 @@ def push_cmd(
                 logger.debug("Failed to clean up temp file: %s", tf)
 
     typer.echo(f"\nSync complete! Stages: {', '.join(stages_completed)}")
+
+
+@app.command("obsidian")
+def obsidian_cmd(
+    vault_path: Annotated[
+        Path,
+        typer.Argument(help="Path to the Obsidian vault directory"),
+    ],
+    from_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--from-profile",
+            help="Source profile name (default: active profile/env)",
+        ),
+    ] = None,
+    since: Annotated[
+        str | None,
+        typer.Option(
+            "--since",
+            help="Only export content dated on or after this ISO date (e.g., 2026-03-01)",
+        ),
+    ] = None,
+    no_entities: Annotated[
+        bool,
+        typer.Option("--no-entities", help="Skip Neo4j entity export"),
+    ] = False,
+    no_themes: Annotated[
+        bool,
+        typer.Option("--no-themes", help="Skip theme MOC generation"),
+    ] = False,
+    clean: Annotated[
+        bool,
+        typer.Option("--clean", help="Remove stale managed files no longer in the database"),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Preview export without writing files"),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output results as JSON"),
+    ] = False,
+    max_entities: Annotated[
+        int,
+        typer.Option("--max-entities", help="Maximum entities to export from Neo4j"),
+    ] = 10000,
+) -> None:
+    """Export knowledge base to an Obsidian-compatible markdown vault.
+
+    Creates markdown files with YAML frontmatter, wikilinks, and theme
+    Maps of Content. Uses incremental sync to only write new or changed items.
+    """
+    import json as json_mod
+    from datetime import UTC, datetime
+
+    from src.sync.obsidian_exporter import (
+        ExportOptions,
+        ObsidianExporter,
+        validate_vault_path,
+    )
+
+    # Validate vault path
+    try:
+        resolved_path = validate_vault_path(vault_path)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    # Check writability
+    if resolved_path.exists() and not os.access(resolved_path, os.W_OK):
+        typer.echo(f"Error: Vault path is not writable: {resolved_path}", err=True)
+        raise typer.Exit(1)
+
+    # Parse --since date
+    since_dt = None
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since)
+            if since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=UTC)
+        except ValueError:
+            typer.echo(f"Error: Invalid date format: {since}. Use ISO format (e.g., 2026-03-01)", err=True)
+            raise typer.Exit(1)
+
+    options = ExportOptions(
+        since=since_dt,
+        include_entities=not no_entities,
+        include_themes=not no_themes,
+        clean=clean,
+        dry_run=dry_run,
+        max_entities=max_entities,
+    )
+
+    settings_instance = _resolve_settings(from_profile)
+    engine = _create_pg_engine(settings_instance)
+
+    # Try Neo4j connection (optional)
+    neo4j_driver = None
+    if not no_entities:
+        try:
+            neo4j_driver = _create_neo4j_driver(settings_instance)
+        except Exception as e:
+            print(f"WARNING: Neo4j unavailable; entity export skipped ({e})", file=__import__('sys').stderr)
+            options.include_entities = False
+
+    try:
+        exporter = ObsidianExporter(
+            engine=engine,
+            vault_path=resolved_path,
+            neo4j_driver=neo4j_driver,
+            options=options,
+        )
+
+        if dry_run:
+            typer.echo("[DRY RUN] No files will be written.")
+
+        summary = exporter.export_all()
+
+        if json_output:
+            typer.echo(json_mod.dumps(summary.to_dict(), indent=2))
+        else:
+            typer.echo(f"\nObsidian vault export to: {resolved_path}")
+            typer.echo(f"{'Type':<20} {'Created':>8} {'Updated':>8} {'Skipped':>8}")
+            typer.echo("-" * 48)
+            for name in ("digests", "summaries", "insights", "content_stubs", "entities", "themes"):
+                stats = getattr(summary, name)
+                label = name.replace("_", " ").title()
+                typer.echo(f"{label:<20} {stats.created:>8} {stats.updated:>8} {stats.skipped:>8}")
+            typer.echo(f"\nCompleted in {summary.elapsed_seconds:.1f}s")
+
+            if summary.warnings:
+                for w in summary.warnings:
+                    typer.echo(w, err=True)
+
+    finally:
+        engine.dispose()
+        if neo4j_driver:
+            neo4j_driver.close()

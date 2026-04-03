@@ -1999,6 +1999,90 @@ def _verify_jwt_token(token: str, app_secret_key: str) -> dict | None:
 
 
 # ===========================================================================
+# OBSIDIAN SYNC TOOLS
+# ===========================================================================
+
+
+@mcp.tool()
+def sync_obsidian(
+    vault_path: str,
+    since: str | None = None,
+    include_entities: bool = True,
+    include_themes: bool = True,
+    clean: bool = False,
+    max_entities: int = 10000,
+) -> str:
+    """Export knowledge base to an Obsidian-compatible markdown vault.
+
+    Creates markdown files with YAML frontmatter, wikilinks, and theme
+    Maps of Content. Uses incremental sync to only write new or changed items.
+
+    Args:
+        vault_path: Path to the Obsidian vault directory.
+        since: Only export content after this ISO date (e.g., '2026-03-01').
+        include_entities: Include Neo4j entity export (default: True).
+        include_themes: Include theme MOC generation (default: True).
+        clean: Remove stale managed files no longer in the database.
+        max_entities: Maximum entities to export from Neo4j (default: 10000).
+
+    Returns:
+        JSON with counts per content type (created/updated/skipped).
+    """
+    from src.sync.obsidian_exporter import ExportOptions, ObsidianExporter, validate_vault_path
+
+    try:
+        resolved_path = validate_vault_path(vault_path)
+    except ValueError as e:
+        return _serialize({"error": str(e)})
+
+    since_dt = _parse_date(since)
+
+    options = ExportOptions(
+        since=since_dt,
+        include_entities=include_entities,
+        include_themes=include_themes,
+        clean=clean,
+        max_entities=max_entities,
+    )
+
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+
+    from sqlalchemy import create_engine
+
+    engine = create_engine(settings.get_effective_database_url())
+
+    neo4j_driver = None
+    if include_entities:
+        try:
+            from neo4j import GraphDatabase
+
+            uri = settings.get_effective_neo4j_uri()
+            user = settings.get_effective_neo4j_user()
+            password = settings.get_effective_neo4j_password()
+            neo4j_driver = GraphDatabase.driver(uri, auth=(user, password))
+        except Exception:
+            options.include_entities = False
+
+    try:
+        exporter = ObsidianExporter(
+            engine=engine,
+            vault_path=resolved_path,
+            neo4j_driver=neo4j_driver,
+            options=options,
+        )
+        summary = exporter.export_all()
+        return _serialize(summary.to_dict())
+    except Exception as e:
+        return _serialize({"error": str(e)})
+    finally:
+        engine.dispose()
+        if neo4j_driver:
+            neo4j_driver.close()
+
+
+# ===========================================================================
 # Entry point
 # ===========================================================================
 
