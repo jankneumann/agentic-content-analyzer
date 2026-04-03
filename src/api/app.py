@@ -26,6 +26,7 @@ from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.security_headers import SecurityHeadersMiddleware
 from src.api.middleware.telemetry import TraceIdMiddleware
+from src.api.model_registry_routes import router as model_registry_router
 from src.api.model_settings_routes import router as model_settings_router
 from src.api.notification_preferences_routes import router as notification_preferences_router
 from src.api.notification_routes import router as notification_router
@@ -180,6 +181,7 @@ app.include_router(chat_router)
 app.include_router(settings_router)
 app.include_router(settings_override_router)
 app.include_router(model_settings_router)
+app.include_router(model_registry_router)  # Model catalog + pricing extraction
 app.include_router(voice_settings_router)
 app.include_router(voice_cleanup_router)
 app.include_router(voice_stream_router)  # WebSocket voice streaming (cloud STT)

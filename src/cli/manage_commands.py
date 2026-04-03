@@ -607,3 +607,244 @@ def backfill_tree_index_cmd(
             typer.echo(
                 f"Done: {indexed} indexed, {skipped} skipped out of {len(qualifying)} qualifying."
             )
+
+
+@app.command("update-model-pricing")
+def update_model_pricing_cmd(
+    provider: list[str] | None = typer.Option(
+        None, "--provider", "-p", help="Limit to specific providers (repeatable)"
+    ),
+    dry_run: bool = typer.Option(
+        True, "--dry-run/--apply", help="Preview changes (default) or apply to models.yaml"
+    ),
+    model: str = typer.Option(
+        "claude-haiku-4-5", "--model", "-m", help="LLM model to use for extraction"
+    ),
+) -> None:
+    """Extract model pricing from provider pages and update models.yaml.
+
+    Fetches pricing pages from Anthropic, OpenAI, Google AI, and AWS Bedrock,
+    uses an LLM to extract structured pricing data, and diffs it against the
+    current settings/models.yaml.
+
+    By default runs in --dry-run mode (preview only). Pass --apply to write.
+
+    Examples:
+        aca manage update-model-pricing                    # Preview all providers
+        aca manage update-model-pricing -p anthropic       # Preview Anthropic only
+        aca manage update-model-pricing --apply             # Apply changes
+    """
+    import asyncio
+
+    from src.services.model_pricing_extractor import ModelPricingExtractor
+
+    extractor = ModelPricingExtractor(extraction_model=model)
+    report = asyncio.run(extractor.run(providers=provider, dry_run=dry_run))
+
+    if is_json_mode():
+        output_result({
+            "providers_fetched": report.providers_fetched,
+            "providers_failed": report.providers_failed,
+            "diffs": [
+                {
+                    "key": d.provider_key,
+                    "field": d.field,
+                    "current": d.current_value,
+                    "extracted": d.extracted_value,
+                }
+                for d in report.diffs
+            ],
+            "new_models": [
+                {
+                    "model_id": m.model_id,
+                    "provider_model_id": m.provider_model_id,
+                    "cost_input": m.cost_per_mtok_input,
+                    "cost_output": m.cost_per_mtok_output,
+                    "notes": m.notes,
+                }
+                for m in report.new_models
+            ],
+            "errors": report.extraction_errors,
+            "applied": report.applied,
+        })
+        return
+
+    # Human-readable output
+    typer.echo()
+    mode = typer.style("DRY RUN", fg=typer.colors.YELLOW) if dry_run else typer.style(
+        "APPLY", fg=typer.colors.GREEN
+    )
+    typer.echo(f"Model Pricing Extraction — {mode}")
+    typer.echo("=" * 60)
+
+    if report.providers_fetched:
+        typer.echo(f"\nProviders fetched: {', '.join(report.providers_fetched)}")
+    if report.providers_failed:
+        typer.echo(
+            typer.style(
+                f"Providers failed: {', '.join(report.providers_failed)}",
+                fg=typer.colors.RED,
+            )
+        )
+
+    if report.diffs:
+        typer.echo(f"\n--- Pricing changes detected ({len(report.diffs)}) ---")
+        for d in report.diffs:
+            typer.echo(
+                f"  {d.provider_key}.{d.field}: "
+                f"{typer.style(str(d.current_value), fg=typer.colors.RED)} → "
+                f"{typer.style(str(d.extracted_value), fg=typer.colors.GREEN)}"
+            )
+    else:
+        typer.echo(typer.style("\nNo pricing changes detected.", fg=typer.colors.GREEN))
+
+    if report.new_models:
+        typer.echo(f"\n--- New models found ({len(report.new_models)}) ---")
+        for m in report.new_models:
+            typer.echo(
+                f"  {m.model_id}: ${m.cost_per_mtok_input:.2f}/${m.cost_per_mtok_output:.2f} "
+                f"per Mtok — {m.notes}"
+            )
+
+    if report.extraction_errors:
+        typer.echo(f"\n--- Errors ({len(report.extraction_errors)}) ---")
+        for e in report.extraction_errors:
+            typer.echo(typer.style(f"  {e}", fg=typer.colors.RED))
+
+    if report.applied:
+        typer.echo(
+            typer.style("\n✓ Changes applied to settings/models.yaml", fg=typer.colors.GREEN)
+        )
+    elif report.has_changes and dry_run:
+        typer.echo("\nRun with --apply to write changes to settings/models.yaml")
+
+
+@app.command("list-models")
+def list_models_cmd(
+    family: str | None = typer.Option(
+        None, "--family", "-f", help="Filter by model family (claude, gemini, gpt)"
+    ),
+) -> None:
+    """List all models in the registry with their capabilities.
+
+    Shows model ID, family, name, capability flags, and available providers.
+
+    Examples:
+        aca manage list-models                # All models
+        aca manage list-models --family claude # Claude models only
+        aca manage list-models --json          # JSON output
+    """
+    from src.services.model_registry_service import ModelRegistryService
+
+    service = ModelRegistryService()
+    models = service.list_models(family=family)
+
+    if is_json_mode():
+        output_result([m.model_dump() for m in models])
+        return
+
+    if not models:
+        typer.echo("No models found.")
+        return
+
+    # Table output
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(title=f"Model Registry ({len(models)} models)")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Family", style="magenta")
+    table.add_column("Name")
+    table.add_column("Vision", justify="center")
+    table.add_column("Video", justify="center")
+    table.add_column("Audio", justify="center")
+    table.add_column("Providers")
+    table.add_column("$/MTok (in/out)", justify="right")
+
+    for m in models:
+        cost_str = ""
+        if m.cost_per_mtok_input is not None:
+            cost_str = f"${m.cost_per_mtok_input:.2f}/${m.cost_per_mtok_output:.2f}"
+
+        table.add_row(
+            m.id,
+            m.family,
+            m.name,
+            "Y" if m.supports_vision else "",
+            "Y" if m.supports_video else "",
+            "Y" if m.supports_audio else "",
+            ", ".join(m.providers),
+            cost_str,
+        )
+
+    Console().print(table)
+
+
+@app.command("model-info")
+def model_info_cmd(
+    model_id: str = typer.Argument(help="Model ID (e.g., claude-sonnet-4-5)"),
+) -> None:
+    """Show detailed model information with per-provider pricing.
+
+    Examples:
+        aca manage model-info claude-sonnet-4-5
+        aca manage model-info gemini-2.5-flash --json
+    """
+    from src.services.model_registry_service import ModelRegistryService
+
+    service = ModelRegistryService()
+    detail = service.get_model(model_id)
+
+    if not detail:
+        typer.echo(typer.style(f"Model not found: {model_id}", fg=typer.colors.RED), err=True)
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result(detail.model_dump())
+        return
+
+    # Header
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    console.print(f"\n[bold cyan]{detail.name}[/bold cyan] ({detail.id})")
+    console.print(f"  Family: {detail.family}")
+    caps = []
+    if detail.supports_vision:
+        caps.append("vision")
+    if detail.supports_video:
+        caps.append("video")
+    if detail.supports_audio:
+        caps.append("audio")
+    console.print(f"  Capabilities: {', '.join(caps) if caps else 'text only'}")
+    if detail.default_version:
+        console.print(f"  Default version: {detail.default_version}")
+
+    # Pricing table
+    if detail.provider_pricing:
+        console.print()
+        table = Table(title="Provider Pricing")
+        table.add_column("Provider", style="cyan")
+        table.add_column("API Model ID", style="dim")
+        table.add_column("Input $/MTok", justify="right", style="green")
+        table.add_column("Output $/MTok", justify="right", style="green")
+        table.add_column("Context", justify="right")
+        table.add_column("Max Output", justify="right")
+        table.add_column("Tier")
+
+        for p in detail.provider_pricing:
+            table.add_row(
+                p.provider,
+                p.provider_model_id,
+                f"${p.cost_per_mtok_input:.2f}",
+                f"${p.cost_per_mtok_output:.2f}",
+                f"{p.context_window:,}",
+                f"{p.max_output_tokens:,}",
+                p.tier,
+            )
+
+        console.print(table)
+    else:
+        console.print("\n  No provider pricing configured.")
