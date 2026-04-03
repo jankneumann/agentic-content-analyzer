@@ -60,9 +60,10 @@
 - [ ] 3.6 Add `export_insights()` method to ObsidianExporter
   **Dependencies**: 3.5
 
-- [ ] 3.7 Write tests for content stub export — minimal body, backlinks to summaries, source URL
+- [ ] 3.7 Write tests for content stub export — minimal body, reverse-query summaries that reference this content for backlinks, source URL
   **Spec scenarios**: obsidian-sync: Content stub frontmatter
   **Design decisions**: D5 (stubs as minimal linked notes)
+  **Note**: Must query ContentReference where target_content_id = this content's id to find summaries that cite it
   **Dependencies**: 3.2
 
 - [ ] 3.8 Add `export_content_stubs()` method to ObsidianExporter

@@ -246,6 +246,12 @@ The system SHALL handle Neo4j being unavailable without failing the entire expor
 - **AND** a warning SHALL be printed to stderr: `WARNING: Neo4j unavailable; entity export skipped`
 - **AND** exit code SHALL be 0
 
+#### Scenario: Neo4j available
+- **GIVEN** Neo4j is running and configured
+- **WHEN** `aca sync obsidian ./my-vault` is executed
+- **THEN** entities SHALL be exported to the Entities/ folder
+- **AND** entity wikilinks SHALL appear in notes that reference those entities
+
 ### Requirement: MCP tool for Obsidian sync
 The system SHALL expose an `sync_obsidian` MCP tool that allows agents and MCP clients to trigger vault exports programmatically.
 
@@ -263,9 +269,3 @@ The system SHALL expose an `sync_obsidian` MCP tool that allows agents and MCP c
 - **WHEN** the `sync_obsidian` tool is called with an invalid vault path
 - **THEN** a descriptive error message SHALL be returned as a JSON string
 - **AND** the MCP server SHALL NOT crash
-
-#### Scenario: Neo4j available
-- **GIVEN** Neo4j is running and configured
-- **WHEN** `aca sync obsidian ./my-vault` is executed
-- **THEN** entities SHALL be exported to the Entities/ folder
-- **AND** entity wikilinks SHALL appear in related notes
