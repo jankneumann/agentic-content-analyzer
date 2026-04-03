@@ -50,7 +50,11 @@ function formatTimestamp(timestamp: string): string {
  * Memoized to prevent unnecessary re-renders of history messages
  * when parent renders (e.g., during streaming of new messages).
  */
-export const ChatMessage = memo(function ChatMessage({ message, isStreaming, className }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({
+  message,
+  isStreaming,
+  className,
+}: ChatMessageProps) {
   const isUser = message.role === "user"
   const isAssistant = message.role === "assistant"
 
@@ -66,7 +70,9 @@ export const ChatMessage = memo(function ChatMessage({ message, isStreaming, cla
       <div
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-muted-foreground"
         )}
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
@@ -87,7 +93,7 @@ export const ChatMessage = memo(function ChatMessage({ message, isStreaming, cla
           )}
         >
           {/* Content - could add markdown rendering here */}
-          <div className="whitespace-pre-wrap text-sm">
+          <div className="text-sm whitespace-pre-wrap">
             {message.content}
             {isStreaming && (
               <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-current" />
@@ -98,7 +104,7 @@ export const ChatMessage = memo(function ChatMessage({ message, isStreaming, cla
         {/* Metadata row */}
         <div
           className={cn(
-            "flex items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+            "text-muted-foreground flex items-center gap-2 text-xs opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
             isUser && "flex-row-reverse"
           )}
         >
@@ -112,7 +118,7 @@ export const ChatMessage = memo(function ChatMessage({ message, isStreaming, cla
           {isAssistant && message.metadata && (
             <>
               {message.metadata.model && (
-                <span className="rounded bg-muted/50 px-1.5 py-0.5">
+                <span className="bg-muted/50 rounded px-1.5 py-0.5">
                   {message.metadata.model}
                 </span>
               )}
@@ -153,7 +159,10 @@ interface StreamingMessageProps {
   className?: string
 }
 
-export function StreamingMessage({ content, className }: StreamingMessageProps) {
+export function StreamingMessage({
+  content,
+  className,
+}: StreamingMessageProps) {
   return (
     <ChatMessage
       message={{
@@ -176,21 +185,22 @@ export function TypingIndicator({ className }: { className?: string }) {
     <div
       className={cn("flex gap-3 px-4 py-3", className)}
       role="status"
+      aria-live="polite"
       aria-label="Assistant is thinking"
     >
       <div
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+        className="bg-muted text-muted-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
         aria-hidden="true"
       >
         <Bot className="h-4 w-4" />
       </div>
       <div
-        className="flex items-center gap-1 rounded-2xl bg-muted px-4 py-2"
+        className="bg-muted flex items-center gap-1 rounded-2xl px-4 py-2"
         aria-hidden="true"
       >
-        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+        <span className="bg-muted-foreground h-2 w-2 animate-bounce rounded-full [animation-delay:0ms]" />
+        <span className="bg-muted-foreground h-2 w-2 animate-bounce rounded-full [animation-delay:150ms]" />
+        <span className="bg-muted-foreground h-2 w-2 animate-bounce rounded-full [animation-delay:300ms]" />
       </div>
       <span className="sr-only">Assistant is thinking...</span>
     </div>
