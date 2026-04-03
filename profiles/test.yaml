@@ -35,3 +35,6 @@ settings:
     # Empty string is falsy in Python, so verify_admin_key() allows all requests.
     admin_api_key: ""
     app_secret_key: ""
+    # Override required key from base.yaml — server doesn't call LLM APIs.
+    # Tests that need LLM evaluation set ANTHROPIC_API_KEY via env var.
+    anthropic_api_key: "${ANTHROPIC_API_KEY:-}"

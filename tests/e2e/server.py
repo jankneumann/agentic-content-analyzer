@@ -193,11 +193,27 @@ def _run_migrations(db_url: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _wait_for_health(base_url: str, timeout: float = _HEALTH_TIMEOUT) -> None:
-    """Poll GET /health until 200 or timeout."""
+def _wait_for_health(
+    base_url: str, proc: subprocess.Popen, timeout: float = _HEALTH_TIMEOUT
+) -> None:
+    """Poll GET /health until 200 or timeout.
+
+    Checks ``proc.poll()`` each iteration so that a crashed server
+    produces an immediate error with stderr context, rather than
+    silently waiting for the full timeout.
+    """
     deadline = time.monotonic() + timeout
     last_error: str = ""
     while time.monotonic() < deadline:
+        # Fast-fail if the subprocess already exited (import error, bad config, etc.)
+        exit_code = proc.poll()
+        if exit_code is not None:
+            stderr = _drain_stderr(proc)
+            raise RuntimeError(
+                f"E2E server exited during startup (code {exit_code}).\n"
+                f"stderr:\n{stderr or '(empty)'}"
+            )
+
         try:
             resp = httpx.get(f"{base_url}/health", timeout=2.0)
             if resp.status_code == 200:
@@ -209,10 +225,32 @@ def _wait_for_health(base_url: str, timeout: float = _HEALTH_TIMEOUT) -> None:
         except httpx.TimeoutException:
             last_error = "timeout"
         time.sleep(_HEALTH_INTERVAL)
+
+    # Timed out — grab stderr for diagnostics
+    stderr = _drain_stderr(proc)
     raise RuntimeError(
         f"E2E server at {base_url} did not become healthy within {timeout}s "
-        f"(last error: {last_error})"
+        f"(last error: {last_error}).\n"
+        f"stderr:\n{stderr or '(empty)'}"
     )
+
+
+def _drain_stderr(proc: subprocess.Popen) -> str:
+    """Read all available stderr from the subprocess (non-blocking).
+
+    Returns the decoded text, truncated to 4 KB for log readability.
+    """
+    if proc.stderr is None:
+        return ""
+    try:
+        data = proc.stderr.read()
+        if isinstance(data, bytes):
+            text = data.decode("utf-8", errors="replace")
+        else:
+            text = data
+        return text[:4096]
+    except Exception:
+        return "(could not read stderr)"
 
 
 def _start_uvicorn(port: int, db_url: str) -> subprocess.Popen:
@@ -255,18 +293,30 @@ def _start_uvicorn(port: int, db_url: str) -> subprocess.Popen:
 
 
 def _stop_server(proc: subprocess.Popen) -> None:
-    """Gracefully stop the uvicorn subprocess."""
+    """Gracefully stop the uvicorn subprocess.
+
+    Uses ``communicate()`` instead of bare ``wait()`` to drain
+    stdout/stderr pipe buffers and avoid deadlocks.
+    """
     if proc.poll() is not None:
-        return  # already exited
+        # Already exited — still drain pipes to avoid ResourceWarning
+        stderr = _drain_stderr(proc)
+        if stderr:
+            logger.warning("E2E server had stderr output:\n%s", stderr)
+        return
 
     logger.info("Stopping E2E server (pid=%d)", proc.pid)
     proc.send_signal(signal.SIGTERM)
     try:
-        proc.wait(timeout=_SHUTDOWN_TIMEOUT)
+        _, stderr_bytes = proc.communicate(timeout=_SHUTDOWN_TIMEOUT)
+        if stderr_bytes:
+            stderr = stderr_bytes.decode("utf-8", errors="replace")[:4096]
+            if stderr.strip():
+                logger.info("E2E server stderr:\n%s", stderr)
     except subprocess.TimeoutExpired:
         logger.warning("Server did not stop gracefully, sending SIGKILL")
         proc.kill()
-        proc.wait(timeout=2)
+        proc.communicate(timeout=2)  # drain after kill
 
 
 # ---------------------------------------------------------------------------
@@ -300,8 +350,8 @@ def e2e_server(preferred_port: int = _FALLBACK_PORT) -> Generator[ServerInfo, No
     # 3. Start server
     proc = _start_uvicorn(port, db_url)
     try:
-        # 4. Wait for health
-        _wait_for_health(base_url)
+        # 4. Wait for health (passes proc to detect early crashes)
+        _wait_for_health(base_url, proc)
 
         yield ServerInfo(
             base_url=base_url,
