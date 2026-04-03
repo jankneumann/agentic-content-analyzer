@@ -79,8 +79,10 @@ class EvaluationService:
                 strong_model=dataset.strong_model,
                 weak_model=dataset.weak_model,
             )
+        from src.models.evaluation import DatasetStatus
+
         return DatasetInfo(
-            id=0, step=step, name=name, status="pending_evaluation",
+            id=0, step=step, name=name, status=DatasetStatus.PENDING_EVALUATION,
             sample_count=sample_count, strong_model=strong_model, weak_model=weak_model,
         )
 
@@ -136,6 +138,7 @@ class EvaluationService:
             EvaluationDataset,
             EvaluationResult,
             EvaluationSample,
+            JudgeType,
         )
 
         if not self.db:
@@ -166,7 +169,7 @@ class EvaluationService:
                     eval_result = EvaluationResult(
                         sample_id=sample.id,
                         judge_model=jr.judge_model,
-                        judge_type="llm",
+                        judge_type=JudgeType.LLM,
                         preference=jr.preference,
                         critiques=jr.critiques_as_dict(),
                         reasoning=jr.reasoning,

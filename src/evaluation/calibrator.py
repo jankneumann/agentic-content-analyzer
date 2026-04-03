@@ -52,6 +52,8 @@ class ThresholdCalibrator:
         Raises:
             ValueError: If insufficient evaluation data
         """
+        from src.models.evaluation import Preference
+
         n = len(complexity_scores)
         if n < MIN_SAMPLES:
             raise ValueError(
@@ -81,7 +83,10 @@ class ThresholdCalibrator:
                 continue
 
             # Win-or-tie rate: % of weak-routed samples where weak_wins or tie
-            wot_count = sum(1 for _, p in weak_samples if p in ("weak_wins", "tie"))
+            wot_count = sum(
+                1 for _, p in weak_samples
+                if p in (Preference.WEAK_WINS, Preference.TIE)
+            )
             wot_rate = wot_count / len(weak_samples)
 
             if wot_rate >= target_quality:
