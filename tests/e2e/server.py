@@ -226,12 +226,12 @@ def _wait_for_health(
             last_error = "timeout"
         time.sleep(_HEALTH_INTERVAL)
 
-    # Timed out — grab stderr for diagnostics
-    stderr = _drain_stderr(proc)
+    # Timed out — process is still running, so we can't read stderr
+    # (proc.stderr.read() would block waiting for EOF that never comes).
+    # The caller's finally block will call _stop_server() to clean up.
     raise RuntimeError(
         f"E2E server at {base_url} did not become healthy within {timeout}s "
-        f"(last error: {last_error}).\n"
-        f"stderr:\n{stderr or '(empty)'}"
+        f"(last error: {last_error}). Check server logs for details."
     )
 
 
