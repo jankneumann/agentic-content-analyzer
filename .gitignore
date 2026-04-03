@@ -268,13 +268,9 @@ web/.vite/
 *.p12
 *.pfx
 
-# Security review — raw scanner output (large, regenerable)
-docs/security-review/dependency-check-report.json
-docs/security-review/aggregate.json
-docs/security-review/security-review-report.json
-docs/security-review/zap.yaml
-# Keep: security-review-report.md (human-readable audit trail)
-# Keep: gate.json (pass/fail decision record)
+# Security review — track .md reports, ignore raw scanner data
+docs/security-review/*.json
+docs/security-review/*.yaml
 
 # Validation artifacts (ephemeral, per-session)
 artifacts/
