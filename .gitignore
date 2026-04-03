@@ -268,6 +268,17 @@ web/.vite/
 *.p12
 *.pfx
 
+# Security review — raw scanner output (large, regenerable)
+docs/security-review/dependency-check-report.json
+docs/security-review/aggregate.json
+docs/security-review/security-review-report.json
+docs/security-review/zap.yaml
+# Keep: security-review-report.md (human-readable audit trail)
+# Keep: gate.json (pass/fail decision record)
+
+# Validation artifacts (ephemeral, per-session)
+artifacts/
+
 # Tauri
 web/src-tauri/target/
 web/src-tauri/gen/

@@ -2,8 +2,9 @@
 
 ## Run Context
 
-- Commit SHA: 349c0128a645ddd3d304a7711b779d2e46b0157f
-- Timestamp: 2026-03-31T23:24:15.511972+00:00
+- Change ID: `agentic-analysis-agent`
+- Commit SHA: 266b3252eafba7d3711de07ae671b9625dbc6b63
+- Timestamp: 2026-04-02T16:43:00.235625+00:00
 - Profile: `mixed`
 - Confidence: `high`
 
@@ -17,8 +18,8 @@
 
 | Scanner | Status | Notes |
 |---|---|---|
-| dependency-check | error | native dependency-check failed (exit 13); docker fallback failed (exit 13) |
-| zap | unavailable | DAST profile requires --zap-target for ZAP execution |
+| dependency-check | error | native dependency-check failed (exit 14); docker fallback failed (exit 13) |
+| zap | error | zap baseline scan failed via docker (exit 3) |
 
 ## Severity Summary
 
