@@ -23,6 +23,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import relationship
@@ -69,7 +70,7 @@ class AgentTask(Base):
 
     __tablename__ = "agent_tasks"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default="gen_random_uuid()")
+    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     task_type = Column(String, nullable=False)  # research, analysis, synthesis, ingestion
     source = Column(String, nullable=False, default=AgentTaskSource.USER)
     prompt = Column(Text, nullable=False)

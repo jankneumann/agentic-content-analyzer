@@ -7,7 +7,7 @@ including trends, connections, anomalies, predictions, and summaries.
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import relationship
 
@@ -29,7 +29,7 @@ class AgentInsight(Base):
 
     __tablename__ = "agent_insights"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default="gen_random_uuid()")
+    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     task_id = Column(PGUUID(as_uuid=True), ForeignKey("agent_tasks.id"), nullable=True)
     insight_type = Column(String, nullable=False)
     title = Column(String, nullable=False)

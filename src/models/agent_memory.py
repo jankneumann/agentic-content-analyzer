@@ -7,7 +7,7 @@ vector (pgvector), keyword (FTS), and graph (Graphiti) retrieval strategies.
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 
 from src.models.base import Base
@@ -34,7 +34,7 @@ class AgentMemory(Base):
 
     __tablename__ = "agent_memories"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default="gen_random_uuid()")
+    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     memory_type = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     # Note: embedding column is raw SQL only (pgvector), not ORM-mapped
