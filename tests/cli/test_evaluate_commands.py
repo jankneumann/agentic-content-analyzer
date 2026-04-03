@@ -7,7 +7,7 @@ Tests cover:
 - calibrate command output
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -111,7 +111,18 @@ class TestRunEvaluation:
 
 
 class TestCalibrate:
-    def test_outputs_info(self):
-        result = runner.invoke(app, ["calibrate", "--step", "summarization"])
-        assert result.exit_code == 0
-        assert "summarization" in result.output
+    def test_without_db_fails_gracefully(self):
+        """Calibrate command fails gracefully when DB is unavailable."""
+        with patch("src.storage.database.SessionLocal", side_effect=Exception("No DB")):
+            result = runner.invoke(app, ["calibrate", "--step", "summarization"])
+            assert result.exit_code == 1
+            assert "Error" in result.output
+
+    def test_no_routing_decisions(self):
+        """Calibrate command exits when no routing decisions exist."""
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter_by.return_value.all.return_value = []
+        with patch("src.storage.database.SessionLocal", return_value=mock_db):
+            result = runner.invoke(app, ["calibrate", "--step", "summarization"])
+            assert result.exit_code == 1
+            assert "No routing decisions" in result.output

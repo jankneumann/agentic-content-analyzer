@@ -7,7 +7,7 @@ risk actions. Supports the full approval lifecycle: pending → approved/denied/
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import relationship
 
@@ -40,7 +40,7 @@ class ApprovalRequest(Base):
 
     __tablename__ = "approval_requests"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default="gen_random_uuid()")
+    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     task_id = Column(PGUUID(as_uuid=True), ForeignKey("agent_tasks.id"), nullable=False)
     action = Column(String, nullable=False)
     risk_level = Column(String, nullable=False)

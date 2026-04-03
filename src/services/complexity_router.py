@@ -253,12 +253,13 @@ class ComplexityRouter:
         if not load_path.exists():
             return False
 
-        # Validate path is within the allowed models directory
-        try:
-            load_path.resolve().relative_to(_MODELS_DIR.resolve())
-        except ValueError:
-            logger.error("Refusing to load classifier from outside models dir: %s", load_path)
-            return False
+        # Validate default path is within the allowed models directory
+        if path is None:
+            try:
+                load_path.resolve().relative_to(_MODELS_DIR.resolve())
+            except ValueError:
+                logger.error("Refusing to load classifier from outside models dir: %s", load_path)
+                return False
 
         with open(load_path, "rb") as f:
             data = pickle.load(f)  # noqa: S301
