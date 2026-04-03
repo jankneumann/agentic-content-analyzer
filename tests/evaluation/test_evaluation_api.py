@@ -11,7 +11,8 @@ Note: Uses a standalone FastAPI app to avoid the heavyweight conftest
       that imports the full application (requires asyncpg, etc.).
 """
 
-from unittest.mock import patch
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -21,6 +22,13 @@ from src.api.evaluation_routes import router
 
 # Patch at source since routes use lazy imports
 _SVC_PATH = "src.services.evaluation_service.EvaluationService"
+_GET_DB_PATH = "src.api.evaluation_routes.get_db"
+
+
+@contextmanager
+def _mock_db():
+    """Yield a mock DB session for route tests."""
+    yield MagicMock()
 
 
 @pytest.fixture
@@ -31,7 +39,8 @@ def client():
     clean_router = router
     clean_router.dependencies = []
     test_app.include_router(clean_router)
-    return TestClient(test_app)
+    with patch(_GET_DB_PATH, _mock_db):
+        yield TestClient(test_app)
 
 
 class TestListDatasets:
@@ -55,9 +64,13 @@ class TestCreateDataset:
         from src.services.evaluation_service import DatasetInfo
 
         ds = DatasetInfo(
-            id=1, step="summarization", name="test",
-            status="pending_evaluation", sample_count=0,
-            strong_model="claude-sonnet-4-5", weak_model="claude-haiku-4-5",
+            id=1,
+            step="summarization",
+            name="test",
+            status="pending_evaluation",
+            sample_count=0,
+            strong_model="claude-sonnet-4-5",
+            weak_model="claude-haiku-4-5",
         )
         with patch(_SVC_PATH) as mock_svc_cls:
             mock_svc_cls.return_value.create_dataset.return_value = ds
@@ -112,3 +125,19 @@ class TestRoutingConfig:
             json={"threshold": 1.5},
         )
         assert response.status_code == 400
+
+    def test_update_routing_config_persists(self, client):
+        """Verify PUT creates/updates a DB record."""
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter_by.return_value.first.return_value = None
+
+        with patch(_GET_DB_PATH) as mock_get_db:
+            mock_get_db.return_value.__enter__ = lambda s: mock_db
+            mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+            response = client.put(
+                "/api/v1/evaluation/routing-config/summarization",
+                json={"enabled": True, "threshold": 0.7},
+            )
+        assert response.status_code == 200
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()

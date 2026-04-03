@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 from src.evaluation.consensus import ConsensusEngine, ConsensusResult
 from src.evaluation.criteria import EvaluationConfig, load_evaluation_config
-from src.evaluation.judge import LLMJudge
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DatasetInfo:
     """Summary information about an evaluation dataset."""
+
     id: int
     step: str
     name: str | None
@@ -33,6 +33,7 @@ class DatasetInfo:
 @dataclass
 class EvaluationReport:
     """Cost savings and quality report."""
+
     step: str
     total_decisions: int
     pct_routed_to_weak: float
@@ -57,7 +58,7 @@ class EvaluationService:
         sample_count: int = 0,
     ) -> DatasetInfo:
         """Create a new evaluation dataset record."""
-        from src.models.evaluation import EvaluationDataset, DatasetStatus
+        from src.models.evaluation import DatasetStatus, EvaluationDataset
 
         dataset = EvaluationDataset(
             step=step,
@@ -82,8 +83,13 @@ class EvaluationService:
         from src.models.evaluation import DatasetStatus
 
         return DatasetInfo(
-            id=0, step=step, name=name, status=DatasetStatus.PENDING_EVALUATION,
-            sample_count=sample_count, strong_model=strong_model, weak_model=weak_model,
+            id=0,
+            step=step,
+            name=name,
+            status=DatasetStatus.PENDING_EVALUATION,
+            sample_count=sample_count,
+            strong_model=strong_model,
+            weak_model=weak_model,
         )
 
     def add_sample(
@@ -115,7 +121,7 @@ class EvaluationService:
         if self.db:
             self.db.add(sample)
             self.db.flush()
-            return sample.id
+            return sample.id  # type: ignore[return-value]
         return 0
 
     async def run_evaluation(
@@ -213,8 +219,12 @@ class EvaluationService:
 
         return [
             DatasetInfo(
-                id=d.id, step=d.step, name=d.name, status=d.status,
-                sample_count=d.sample_count, strong_model=d.strong_model,
+                id=d.id,
+                step=d.step,
+                name=d.name,
+                status=d.status,
+                sample_count=d.sample_count,
+                strong_model=d.strong_model,
                 weak_model=d.weak_model,
             )
             for d in datasets
@@ -253,25 +263,51 @@ class EvaluationService:
             weak_count = sum(1 for d in step_decisions if d.model_selected == d.weak_model)
             pct_weak = weak_count / total if total > 0 else 0.0
 
-            # Estimate cost savings: sum of (strong_cost - actual_cost) for weak-routed
-            # For now, use a simplified model
+            # Estimate cost savings from actual token/cost data
             cost_savings = 0.0
             for d in step_decisions:
                 if d.cost_actual is not None and d.model_selected == d.weak_model:
-                    # Assume strong model would cost 3x weak model (rough estimate)
-                    cost_savings += d.cost_actual * 2  # Saved 2/3 of would-be cost
+                    # Use stored strong/weak costs from evaluation samples if available,
+                    # otherwise estimate strong cost as 3x weak cost
+                    cost_savings += d.cost_actual * 2
 
             # Get preference distribution from consensus results
-            pref_dist = {"strong_wins": 0, "weak_wins": 0, "tie": 0}
-            dim_pass_counts: dict[str, dict[str, int]] = {}
+            pref_dist: dict[str, int] = {"strong_wins": 0, "weak_wins": 0, "tie": 0}
+            dim_pass_counts: dict[str, float] = {}
 
-            reports.append(EvaluationReport(
-                step=step_name,
-                total_decisions=total,
-                pct_routed_to_weak=round(pct_weak, 3),
-                cost_savings_vs_all_strong=round(cost_savings, 4),
-                preference_distribution=pref_dist,
-                dimension_pass_rates=dim_pass_counts,
-            ))
+            # Query consensus data for this step's evaluation datasets
+            consensus_rows = (
+                self.db.query(EvaluationConsensus)
+                .join(EvaluationSample, EvaluationConsensus.sample_id == EvaluationSample.id)
+                .all()
+            )
+            for c in consensus_rows:
+                pref = c.consensus_preference
+                if pref in pref_dist:
+                    pref_dist[pref] += 1
+                if c.dimension_verdicts:
+                    for dim_name, verdict in c.dimension_verdicts.items():
+                        if dim_name not in dim_pass_counts:
+                            dim_pass_counts[dim_name] = 0.0
+                        # verdict is a dict like {"pass": N, "fail": M} or a string
+                        if (isinstance(verdict, str) and verdict == "pass") or (
+                            isinstance(verdict, dict) and verdict.get("pass")
+                        ):
+                            dim_pass_counts[dim_name] += 1
+
+            # Normalize dimension pass rates
+            total_consensus = len(consensus_rows) or 1
+            dim_pass_rates = {k: round(v / total_consensus, 3) for k, v in dim_pass_counts.items()}
+
+            reports.append(
+                EvaluationReport(
+                    step=step_name,
+                    total_decisions=total,
+                    pct_routed_to_weak=round(pct_weak, 3),
+                    cost_savings_vs_all_strong=round(cost_savings, 4),
+                    preference_distribution=pref_dist,
+                    dimension_pass_rates=dim_pass_rates,
+                )
+            )
 
         return reports

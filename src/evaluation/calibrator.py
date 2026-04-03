@@ -16,6 +16,7 @@ MIN_SAMPLES = 30
 @dataclass
 class CalibrationResult:
     """Result of threshold calibration."""
+
     step: str
     threshold: float
     win_or_tie_rate: float
@@ -56,24 +57,25 @@ class ThresholdCalibrator:
 
         n = len(complexity_scores)
         if n < MIN_SAMPLES:
-            raise ValueError(
-                f"Insufficient evaluation data ({n}/{MIN_SAMPLES} minimum)"
-            )
+            raise ValueError(f"Insufficient evaluation data ({n}/{MIN_SAMPLES} minimum)")
 
         if len(complexity_scores) != len(consensus_preferences):
             raise ValueError("complexity_scores and consensus_preferences must have same length")
 
         # Sort by complexity score
-        paired = sorted(zip(complexity_scores, consensus_preferences), key=lambda x: x[0])
+        paired = sorted(
+            zip(complexity_scores, consensus_preferences, strict=True), key=lambda x: x[0]
+        )
 
         # Try different thresholds and find where win-or-tie rate >= target
-        best_threshold = 1.0  # Default: route everything to strong
+        # Default 0.0 = route everything to strong (safe fallback since
+        # ComplexityRouter routes scores < threshold to weak model)
+        best_threshold = 0.0
         best_savings = 0.0
         best_wot_rate = 0.0
 
         # Test thresholds at each complexity score value
         candidate_thresholds = sorted(set(s for s, _ in paired))
-        candidate_thresholds.append(1.01)  # Include "route everything to strong"
 
         for threshold in candidate_thresholds:
             # Samples below threshold would go to weak model
@@ -84,8 +86,7 @@ class ThresholdCalibrator:
 
             # Win-or-tie rate: % of weak-routed samples where weak_wins or tie
             wot_count = sum(
-                1 for _, p in weak_samples
-                if p in (Preference.WEAK_WINS, Preference.TIE)
+                1 for _, p in weak_samples if p in (Preference.WEAK_WINS, Preference.TIE)
             )
             wot_rate = wot_count / len(weak_samples)
 

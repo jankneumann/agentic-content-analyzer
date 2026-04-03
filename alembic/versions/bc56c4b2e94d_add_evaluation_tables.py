@@ -20,7 +20,7 @@ from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
 revision: str = "bc56c4b2e94d"
-down_revision: Union[str, None] = "f9a8b7c6d5e5"
+down_revision: Union[str, None] = "b159ceaf9494"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -144,8 +144,24 @@ def upgrade() -> None:
             ["step", "created_at"],
         )
 
+    # Add indexes for FK columns used in joins
+    if "evaluation_results" in existing_tables or True:
+        op.create_index(
+            "idx_evaluation_results_sample",
+            "evaluation_results",
+            ["sample_id"],
+        )
+    if "evaluation_samples" in existing_tables or True:
+        op.create_index(
+            "idx_evaluation_samples_dataset",
+            "evaluation_samples",
+            ["dataset_id"],
+        )
+
 
 def downgrade() -> None:
+    op.drop_index("idx_evaluation_samples_dataset", table_name="evaluation_samples")
+    op.drop_index("idx_evaluation_results_sample", table_name="evaluation_results")
     op.drop_table("routing_decisions")
     op.drop_table("evaluation_consensus")
     op.drop_table("evaluation_results")
