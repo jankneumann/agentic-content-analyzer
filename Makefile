@@ -103,11 +103,11 @@ test-teardown:  ## Stop test infrastructure
 test-clean:  ## Stop and remove test infrastructure (WARNING: deletes ALL test databases)
 	docker compose down neo4j-test -v
 	@echo "Dropping all test databases (newsletters_test*)..."
-	@docker exec newsletter-postgres psql -U newsletter_user -d postgres -tAc \
+	@docker compose exec -T postgres psql -U newsletter_user -d postgres -tAc \
 		"SELECT datname FROM pg_database WHERE datname LIKE 'newsletters_test%'" 2>/dev/null | \
 		while read -r db; do \
 			if [ -n "$$db" ]; then \
-				docker exec newsletter-postgres psql -U newsletter_user -d postgres -c "DROP DATABASE \"$$db\"" 2>/dev/null && \
+				docker compose exec -T postgres psql -U newsletter_user -d postgres -c "DROP DATABASE \"$$db\"" 2>/dev/null && \
 					echo "  Dropped: $$db" || echo "  Failed to drop: $$db"; \
 			fi; \
 		done
@@ -142,7 +142,7 @@ db-reset:  ## Reset database (WARNING: deletes all data)
 
 # Docker shortcuts
 postgres:  ## Connect to PostgreSQL
-	docker exec -it newsletter-postgres psql -U newsletter_user -d newsletters
+	docker compose exec postgres psql -U newsletter_user -d newsletters
 
 neo4j:  ## Open Neo4j browser (http://localhost:7474)
 	@echo "Opening Neo4j Browser at http://localhost:7474"
@@ -173,23 +173,17 @@ dev:  ## Start both frontend and backend for development (requires tmux or run i
 	uvicorn src.api.app:app --reload --reload-dir src --host 0.0.0.0 --port 8000 --proxy-headers
 
 ensure-services:  ## Ensure PostgreSQL and Neo4j are running (starts them if needed)
-	@pg_running=true; neo4j_running=true; \
-	if ! docker inspect --format='{{.State.Status}}' newsletter-postgres 2>/dev/null | grep -q running; then \
-		pg_running=false; \
-	fi; \
-	if ! docker inspect --format='{{.State.Status}}' newsletter-neo4j 2>/dev/null | grep -q running; then \
-		neo4j_running=false; \
-	fi; \
-	if [ "$$pg_running" = false ] || [ "$$neo4j_running" = false ]; then \
+	@pg_running=$$(docker compose ps postgres --format '{{.State}}' 2>/dev/null | grep -c running); \
+	neo4j_running=$$(docker compose ps neo4j --format '{{.State}}' 2>/dev/null | grep -c running); \
+	if [ "$$pg_running" = "0" ] || [ "$$neo4j_running" = "0" ]; then \
 		echo "Starting Docker services (postgres, neo4j)..."; \
 		docker compose up -d postgres neo4j; \
 		echo "Waiting for services to be healthy..."; \
 		timeout=60; elapsed=0; \
 		while [ $$elapsed -lt $$timeout ]; do \
-			pg_ok=true; neo4j_ok=true; \
-			if ! docker inspect --format='{{.State.Health.Status}}' newsletter-postgres 2>/dev/null | grep -q healthy; then pg_ok=false; fi; \
-			if ! docker inspect --format='{{.State.Health.Status}}' newsletter-neo4j 2>/dev/null | grep -q healthy; then neo4j_ok=false; fi; \
-			if [ "$$pg_ok" = true ] && [ "$$neo4j_ok" = true ]; then break; fi; \
+			pg_ok=$$(docker compose ps postgres --format '{{.Health}}' 2>/dev/null | grep -c healthy); \
+			neo4j_ok=$$(docker compose ps neo4j --format '{{.Health}}' 2>/dev/null | grep -c healthy); \
+			if [ "$$pg_ok" = "1" ] && [ "$$neo4j_ok" = "1" ]; then break; fi; \
 			sleep 2; elapsed=$$((elapsed + 2)); \
 		done; \
 		if [ $$elapsed -ge $$timeout ]; then \
