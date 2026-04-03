@@ -10,12 +10,12 @@
 - [ ] 1.2 Create `profiles/test.yaml` — extends local, no auth, dedicated DB, noop observability
   **Dependencies**: 1.1
 
-- [ ] 1.3 Write tests for port allocator — hash-based allocation, coordinator integration, main repo default
+- [ ] 1.3 Write tests for port allocator — hash-based allocation, coordinator integration, main repo default, service offsets (API, frontend, Neo4j bolt, Neo4j HTTP)
   **Spec scenarios**: Port Allocation (all 3 scenarios)
   **Design decisions**: D1 (hash-based over random)
   **Dependencies**: None
 
-- [ ] 1.4 Create `tests/e2e/port_allocator.py` — coordinator + hash fallback port allocation
+- [ ] 1.4 Create `tests/e2e/port_allocator.py` — coordinator + hash fallback with service offset table (API +0, frontend +1000, Neo4j bolt +2000, Neo4j HTTP +2001)
   **Dependencies**: 1.3
 
 ## Phase 2: Server Lifecycle Fixture
@@ -25,7 +25,9 @@
   **Design decisions**: D2 (Alembic), D5 (session-scoped)
   **Dependencies**: 1.2, 1.4
 
-- [ ] 2.2 Create `tests/e2e/server_fixture.py` — session-scoped fixture managing uvicorn + vite subprocesses
+- [ ] 2.2 Create `tests/e2e/server_fixture.py` — session-scoped fixture managing uvicorn + vite subprocesses + Neo4j Docker container
+  **Spec scenarios**: Test Neo4j Instance (both scenarios)
+  **Design decisions**: D7 (dedicated test Neo4j)
   **Dependencies**: 2.1
 
 - [ ] 2.3 Create seed data fixture file `tests/e2e/fixtures/seed_data.sql`

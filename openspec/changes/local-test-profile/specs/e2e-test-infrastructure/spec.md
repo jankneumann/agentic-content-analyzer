@@ -67,14 +67,17 @@ AND the fixture SHALL use a derived port for vite (api_port + 1000)
 #### Scenario: Hash-based fallback ports
 WHEN the coordinator is NOT available
 AND the test is running in a git worktree
-THEN the API port SHALL be `hash(worktree_name) % 1000 + 9000`
-AND the frontend port SHALL be API port + 1000
+THEN the base port SHALL be `hash(worktree_name) % 1000 + 9000`
+AND the API port SHALL be base port + 0
+AND the frontend port SHALL be base port + 1000
+AND the Neo4j bolt port SHALL be base port + 2000
+AND the Neo4j HTTP port SHALL be base port + 2001
 
 #### Scenario: Default ports for main repo
 WHEN the coordinator is NOT available
 AND the test is running in the main repository (not a worktree)
-THEN the API port SHALL be 9100
-AND the frontend port SHALL be 10100
+THEN the base port SHALL be 9100
+AND ports SHALL follow the same offset scheme as worktree allocation
 
 ### Requirement: Test Data Seeding
 
@@ -87,6 +90,19 @@ AND the seeded data SHALL include at least 1 summary
 #### Scenario: Skip seeding on populated database
 WHEN the test database already contains content items
 THEN the fixture SHALL NOT import additional seed data
+
+### Requirement: Test Neo4j Instance
+
+#### Scenario: Dedicated Neo4j for E2E
+WHEN the subprocess server fixture starts
+THEN a Neo4j Docker container SHALL be started on the allocated bolt port
+AND the test profile SHALL configure `neo4j_uri` to point to the test instance
+AND the container SHALL use neo4j Community edition
+
+#### Scenario: Neo4j cleanup between sessions
+WHEN the test session ends
+THEN the Neo4j test container SHALL be stopped
+AND all graph data SHALL be removed
 
 ### Requirement: Docker Compose Test Stack
 

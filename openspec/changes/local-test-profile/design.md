@@ -6,6 +6,15 @@
 
 Ports are derived deterministically from the git worktree name: `hash(name) % 1000 + 9000`. This ensures the same worktree always gets the same port (debuggable, bookmarkable) while avoiding collisions across worktrees. When the coordinator MCP is available, its `allocate_ports` takes precedence for guaranteed conflict-free allocation.
 
+All services use the same base offset: API, frontend, Neo4j bolt, and Neo4j HTTP all derive from `hash(worktree_name) % 1000 + 9000` with fixed offsets per service type.
+
+| Service | Offset from base | Main repo default |
+|---------|-----------------|-------------------|
+| API (uvicorn) | +0 | 9100 |
+| Frontend (vite) | +1000 | 10100 |
+| Neo4j bolt | +2000 | 11100 |
+| Neo4j HTTP | +2001 | 11101 |
+
 **Rejected**: Random ephemeral ports (port 0) — changes every run, breaks bookmarks/curl history, harder to debug.
 
 ### D2: Alembic migrations over ORM metadata.create_all()
@@ -61,6 +70,12 @@ test functions run
 teardown: kill uvicorn, kill vite, release_ports()
 ```
 
+### D7: Dedicated test Neo4j with hash-based port
+
+The test stack includes a dedicated Neo4j instance using the same hash-based port allocation as other services. This ensures knowledge graph features (theme analysis, agent memory graph strategy) are testable in E2E without contaminating the dev Neo4j instance.
+
+The test Neo4j starts as a Docker container (Community edition) with the `clean_neo4j` pattern from integration tests applied at session scope.
+
 ## Docker Compose Test Stack (Validation Mode)
 
 ```yaml
@@ -74,17 +89,40 @@ services:
       POSTGRES_DB: newsletters_e2e
     ports:
       - "${TEST_DB_PORT:-54320}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsletter_user -d newsletters_e2e"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  test-neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/newsletter_password
+    ports:
+      - "${TEST_NEO4J_BOLT_PORT:-11100}:7687"
+      - "${TEST_NEO4J_HTTP_PORT:-11101}:7474"
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "newsletter_password", "RETURN 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
 
   test-api:
     build: .
     environment:
       PROFILE: test
       DATABASE_URL: postgresql://newsletter_user:newsletter_password@test-postgres/newsletters_e2e
+      NEO4J_URI: bolt://test-neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: newsletter_password
       PORT: "8000"
     ports:
       - "${TEST_API_PORT:-9100}:8000"
     depends_on:
       test-postgres:
+        condition: service_healthy
+      test-neo4j:
         condition: service_healthy
 
   test-frontend:
