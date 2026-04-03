@@ -6,7 +6,15 @@
  */
 
 import { useState } from "react"
-import { Bell, CheckCheck, FileText, Mic, BarChart3, Zap, XCircle } from "lucide-react"
+import {
+  Bell,
+  CheckCheck,
+  FileText,
+  Mic,
+  BarChart3,
+  Zap,
+  XCircle,
+} from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { formatDistanceToNow } from "date-fns"
 
@@ -84,26 +92,28 @@ function NotificationItem({
     <button
       onClick={handleClick}
       className={cn(
-        "flex items-start gap-3 w-full p-3 text-left hover:bg-accent/50 transition-colors",
+        "hover:bg-accent/50 flex w-full items-start gap-3 p-3 text-left transition-colors",
         !event.read && "bg-accent/20"
       )}
     >
-      <Icon className={cn("h-4 w-4 mt-0.5 shrink-0", color)} />
-      <div className="flex-1 min-w-0">
-        <p className={cn("text-sm leading-tight", !event.read && "font-medium")}>
+      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", color)} />
+      <div className="min-w-0 flex-1">
+        <p
+          className={cn("text-sm leading-tight", !event.read && "font-medium")}
+        >
           {event.title}
         </p>
         {event.summary && (
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+          <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
             {event.summary}
           </p>
         )}
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-muted-foreground mt-1 text-xs">
           {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
         </p>
       </div>
       {!event.read && (
-        <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
+        <div className="bg-primary mt-1.5 h-2 w-2 shrink-0 rounded-full" />
       )}
     </button>
   )
@@ -147,16 +157,22 @@ export function NotificationBell() {
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label={
+                unreadCount > 0
+                  ? `Notifications (${unreadCount} unread)`
+                  : "Notifications"
+              }
+            >
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                <span className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
-              <span className="sr-only">
-                Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ""}
-              </span>
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
@@ -165,18 +181,18 @@ export function NotificationBell() {
         </TooltipContent>
       </Tooltip>
 
-      <DropdownMenuContent align="end" className="w-80 md:w-96 p-0">
+      <DropdownMenuContent align="end" className="w-80 p-0 md:w-96">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="font-semibold text-sm">Notifications</h3>
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h3 className="text-sm font-semibold">Notifications</h3>
           {unreadCount > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto py-1 px-2 text-xs"
+              className="h-auto px-2 py-1 text-xs"
               onClick={handleMarkAllRead}
             >
-              <CheckCheck className="h-3 w-3 mr-1" />
+              <CheckCheck className="mr-1 h-3 w-3" />
               Mark all read
             </Button>
           )}
@@ -185,8 +201,8 @@ export function NotificationBell() {
         {/* Event list */}
         <ScrollArea className="max-h-[400px]">
           {events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <Bell className="h-8 w-8 mb-2 opacity-50" />
+            <div className="text-muted-foreground flex flex-col items-center justify-center py-8">
+              <Bell className="mb-2 h-8 w-8 opacity-50" />
               <p className="text-sm">No notifications yet</p>
             </div>
           ) : (
