@@ -48,50 +48,74 @@ class GraphDBProvider(Protocol):
 
 **How to apply:** `GraphitiClient.create()` calls `provider.create_graphiti_driver()` and passes it to `Graphiti(graph_driver=...)`. Raw-query callers use `provider.execute_query()`. CLI sync commands use `provider.export_graph()` / `provider.import_graph()`.
 
-### D2: Settings Structure — graphdb_provider with Sub-Variants
+### D2: Settings Structure — Orthogonal Provider + Mode
+
+Two independent axes: **what backend** and **how it's deployed**.
 
 ```python
 GraphDBProviderType = Literal["neo4j", "falkordb"]
+GraphDBModeType = Literal["local", "cloud", "embedded"]
 
 # Settings fields
-graphdb_provider: GraphDBProviderType = "neo4j"  # Top-level backend selection
+graphdb_provider: GraphDBProviderType = "neo4j"  # Backend selection
+graphdb_mode: GraphDBModeType = "local"          # Deployment mode
 
-# Neo4j sub-variants (existing, unchanged)
-neo4j_provider: Neo4jSubProviderType = "local"  # "local" | "auradb"
+# Neo4j connection (used when graphdb_provider=neo4j)
+neo4j_uri: str = "bolt://localhost:7687"         # local mode
+neo4j_user: str = "neo4j"
+neo4j_password: str = "newsletter_password"
+neo4j_cloud_uri: str | None = None               # cloud mode (AuraDB: neo4j+s://...)
+neo4j_cloud_user: str = "neo4j"
+neo4j_cloud_password: str | None = None
 
-# FalkorDB sub-variants (new)
-falkordb_provider: FalkorDBSubProviderType = "local"  # "local" | "lite"
-falkordb_host: str = "localhost"
+# FalkorDB connection (used when graphdb_provider=falkordb)
+falkordb_host: str = "localhost"                  # local mode
 falkordb_port: int = 6379
 falkordb_username: str | None = None
 falkordb_password: str | None = None
 falkordb_database: str = "newsletter_graph"
-
-# FalkorDB Lite specific
-falkordb_lite_data_dir: str | None = None  # File-based storage path
+falkordb_cloud_host: str | None = None            # cloud mode (Railway etc.)
+falkordb_cloud_port: int = 6379
+falkordb_cloud_password: str | None = None
+falkordb_lite_data_dir: str | None = None         # embedded mode
 ```
 
-**Why:** Two-level provider selection mirrors the existing `neo4j_provider: "local" | "auradb"` pattern. The top-level `graphdb_provider` selects the backend (Neo4j vs FalkorDB), then sub-provider selects deployment mode.
+Valid combinations:
 
-**Profile flattening precedence** (addresses review finding on two-level mapping):
-1. `providers.graphdb` → `graphdb_provider` (new top-level, applied FIRST)
-2. `providers.neo4j` → `neo4j_provider` (existing, applied AFTER — still works as sub-provider)
-3. `settings.graphdb.*` → `falkordb_*` fields (new section)
-4. `settings.neo4j.*` → existing `neo4j_*` fields (unchanged)
+| Provider | Mode | Connection |
+|----------|------|------------|
+| `neo4j` | `local` | Docker Neo4j via `neo4j_uri` |
+| `neo4j` | `cloud` | AuraDB via `neo4j_cloud_uri` |
+| `neo4j` | `embedded` | **Invalid** — rejected by validator |
+| `falkordb` | `local` | Docker FalkorDB via `falkordb_host:falkordb_port` |
+| `falkordb` | `cloud` | Hosted FalkorDB via `falkordb_cloud_host:falkordb_cloud_port` |
+| `falkordb` | `embedded` | FalkorDB Lite via `falkordb_lite_data_dir` |
 
-When `graphdb_provider=falkordb`, the `neo4j_*` settings are ignored at runtime (factory only reads falkordb_* fields). When `graphdb_provider=neo4j` (default), the `falkordb_*` settings are ignored. No cross-contamination — the factory branches on `graphdb_provider` before reading any sub-provider fields.
+**Why:** Orthogonal decomposition separates two independent concerns (backend vs deployment) that the old `neo4j_provider: local | auradb` conflated. Adding future backends (Kuzu, Neptune) only requires extending `GraphDBProviderType`, not inventing new sub-provider types.
 
-**Validation rule:** If `graphdb_provider=falkordb` and `falkordb_provider=local`, require `falkordb_host` to be non-empty. Mirror the existing `validate_neo4j_provider_config()` pattern.
+**Profile flattening:** Single-level mapping — `providers.graphdb` → `graphdb_provider`, `settings.graphdb.*` → all `graphdb_mode`, `neo4j_*`, `falkordb_*` fields. The old `providers.neo4j` mapping is removed and replaced by `providers.graphdb` + `settings.graphdb.graphdb_mode`.
 
-**How to apply:** Add `providers.graphdb` mapping to `_flatten_profile_to_settings()` in `settings.py` (line ~95). Add `settings.graphdb` section handling alongside existing `settings.neo4j` (line ~80). Factory uses `graphdb_provider` to construct the right `GraphDBProvider` implementation.
+**Migration from existing configs:** `neo4j_provider: local` becomes `graphdb_provider: neo4j, graphdb_mode: local`. `neo4j_provider: auradb` becomes `graphdb_provider: neo4j, graphdb_mode: cloud`. The old `neo4j_provider` field is kept as a deprecated alias — if set and `graphdb_provider` is not explicitly set, map `local` → `local`, `auradb` → `cloud`.
 
-### D3: Backward Compatibility — neo4j_provider Preserved as Sub-Provider
+**Validation rules:**
+- `neo4j` + `embedded` → error with clear message
+- `neo4j` + `cloud` → require `neo4j_cloud_uri` and `neo4j_cloud_password`
+- `falkordb` + `cloud` → require `falkordb_cloud_host` and `falkordb_cloud_password`
+- `falkordb` + `embedded` → require `falkordb_lite_data_dir` or use temp directory
 
-The existing `neo4j_provider` setting continues to work. If `graphdb_provider` is not set (defaults to `"neo4j"`), behavior is identical to today. The `get_effective_neo4j_*()` methods remain but are now called internally by `Neo4jGraphDBProvider`.
+**How to apply:** Replace `providers.neo4j` mapping with `providers.graphdb` in `_flatten_profile_to_settings()`. Replace `settings.neo4j` section with `settings.graphdb`. Factory reads `graphdb_provider` + `graphdb_mode` to construct the right provider with the right connection params.
 
-**Why:** Zero-disruption upgrade path. Existing profiles, .env files, and documentation continue to work.
+### D3: Backward Compatibility — Deprecated neo4j_provider Alias
 
-**How to apply:** `neo4j_provider` becomes a sub-provider under `graphdb_provider: "neo4j"`. Migration is purely additive — no renaming, no removal.
+The existing `neo4j_provider` setting is kept as a deprecated alias. If `graphdb_provider` is not explicitly set but `neo4j_provider` is, the system maps:
+- `neo4j_provider: local` → `graphdb_provider: neo4j, graphdb_mode: local`
+- `neo4j_provider: auradb` → `graphdb_provider: neo4j, graphdb_mode: cloud`
+
+Similarly, the existing `neo4j_auradb_*` fields are aliased to `neo4j_cloud_*`. The `get_effective_neo4j_*()` methods are replaced by the provider factory — `Neo4jGraphDBProvider` reads the appropriate fields based on `graphdb_mode`.
+
+**Why:** Zero-disruption upgrade path. Existing profiles and .env files continue to work. A deprecation warning is logged when old field names are used.
+
+**How to apply:** Add a `@model_validator` that detects old field names and maps them to new ones with a deprecation log. Remove the old `neo4j_provider` field after one release cycle.
 
 ### D4: FalkorDB Lite for Test Fixtures
 
@@ -253,8 +277,7 @@ Pin FalkorDB to a tested version (e.g., `falkordb/falkordb:v4.4.1`) rather than 
 ┌─────────────────────────────────────────────────┐
 │                   Settings                       │
 │  graphdb_provider: "neo4j" | "falkordb"         │
-│  neo4j_provider: "local" | "auradb"             │
-│  falkordb_provider: "local" | "lite"            │
+│  graphdb_mode: "local" | "cloud" | "embedded"   │
 └──────────────────────┬──────────────────────────┘
                        │
               ┌────────▼────────┐
