@@ -363,23 +363,49 @@ The official Obsidian CLI (1.12+) and `obsidian-headless` npm package enable thr
 | **Mode 1: CLI-Driven** | `obsidian create/append/property:set` | Local with Obsidian 1.12+ | Phase 2 |
 | **Mode 3: Headless Sync** | File export + `obsidian-headless sync` | Server (Railway) | Phase 3 |
 
-### Folder Structure (TopicCategory → Folders)
+### Vault Structure: Category → Topic → Source → Extracts
+
+A three-tier navigation model where topics are folders (not files), and source publications are subfolders containing summary extracts that link down to full summaries and content stubs.
 
 ```
 vault/
-├── _index.md                    # Master index
-├── _by_category.md              # Category index
-├── ML-AI/                       # Top-level category
-│   ├── rag-architecture.md      # Topic file
-│   └── LLMs/                    # Subcategory
-│       ├── fine-tuning.md
-│       └── prompt-engineering.md
-├── DevOps-Infra/
-│   └── kubernetes-ai-workloads.md
-└── ...
+├── _index.md                                  # Master index
+├── _by_category.md                            # Category index
+├── summaries/                                 # Flat summary reference layer
+│   ├── 2026-03-15-rag-evolution.md            # Full summary → [[content/slug]]
+│   └── 2026-02-20-rag-patterns.md
+├── content/                                   # Content stubs with original URLs
+│   ├── 2026-03-15-rag-evolution.md            # Title, date, source URL
+│   └── 2026-02-20-rag-patterns.md
+├── ML-AI/                                     # Category
+│   ├── RAG-Architecture/                      # Topic (folder)
+│   │   ├── _overview.md                       # LLM-compiled article
+│   │   ├── The-Batch/                         # Source publication
+│   │   │   └── 2026-03-15-rag-evolution.md    # Extract → [[summaries/slug]]
+│   │   ├── Simon-Willison/
+│   │   │   └── 2026-02-20-rag-patterns.md
+│   │   └── ArXiv/
+│   │       └── 2026-01-10-dense-retrieval.md
+│   └── LLMs/                                  # Subcategory
+│       └── Fine-Tuning/                       # Topic (folder)
+│           ├── _overview.md
+│           └── Latent-Space/
+│               └── 2026-03-01-lora-at-scale.md
+└── DevOps-Infra/
+    └── Kubernetes-AI-Workloads/
+        ├── _overview.md
+        └── InfoQ/
+            └── 2026-03-20-k8s-gpu.md
 ```
 
-### Topic File Format
+**Link chain:** Topic `_overview.md` → Source extracts → `[[summaries/slug]]` → `[[content/slug]]` → original URL
+
+Three browsing patterns:
+1. **Topic-first**: Open `_overview.md` → drill into source evidence
+2. **Source-first**: Browse `Topic/The-Batch/` → see all evidence from one publication
+3. **Graph view**: Wikilinks create a navigable knowledge graph in Obsidian
+
+### Topic `_overview.md` Format
 
 ```markdown
 ---
@@ -391,6 +417,7 @@ status: active
 relevance_score: 0.87
 mention_count: 15
 article_version: 3
+sources: [The-Batch, Simon-Willison, ArXiv]
 first_evidence_at: 2025-11-15T00:00:00Z
 last_evidence_at: 2026-04-01T00:00:00Z
 last_compiled_at: 2026-04-04T12:00:00Z
@@ -400,11 +427,32 @@ tags: [retrieval-augmented-generation, vector-databases, embedding]
 # RAG Architecture
 
 ## Overview
-[LLM-compiled article content...]
+[LLM-compiled article synthesizing all source evidence...]
+
+## Key Developments
+- 2026-03: Agentic RAG patterns ([[The-Batch/2026-03-15-rag-evolution]])
+- 2026-02: Production RAG ([[Simon-Willison/2026-02-20-rag-patterns]])
 
 ## Related Topics
-- [[Fine-tuning]] — complementary approach
-- [[Vector Databases]] — key infrastructure
+- [[../../ML-AI/Fine-Tuning/_overview|Fine-Tuning]] — complementary approach
+- [[../../ML-AI/Vector-Databases/_overview|Vector Databases]] — key infrastructure
+```
+
+### Source Extract Format
+
+```markdown
+---
+summary_slug: 2026-03-15-rag-evolution
+source: The Batch
+published: 2026-03-15
+content_id: 1234
+---
+
+## Key Points
+- RAG is evolving toward agentic patterns where retrieval is tool-based
+- Hybrid approaches combining RAG + fine-tuning show best results
+
+Full summary: [[summaries/2026-03-15-rag-evolution]]
 ```
 
 ### Bidirectional Sync (Mode 3)
