@@ -1,0 +1,107 @@
+# Infrastructure Pricing Configuration
+#
+# Pricing data for external services used by the newsletter aggregator.
+# Used by InfrastructurePricingService to estimate monthly costs.
+#
+# Sources:
+#   Neon:   https://neon.com/pricing (post-Databricks acquisition, 2026)
+#   Resend: https://resend.com/pricing (2026)
+#
+# Last updated: 2026-04-03
+
+neon:
+  # Neon Serverless Postgres pricing tiers
+  # Compute is measured in CU-hours (Compute Unit hours)
+  # Storage is measured in GB-months
+  plans:
+    free:
+      monthly_price: 0.00
+      included_compute_hours: 100      # Per month (doubled post-acquisition)
+      included_storage_gb: 0.5         # Per project
+      max_projects: 10
+      max_storage_gb: 5                # Across all projects
+      max_compute_cu: 2                # Auto-scaling ceiling
+      pitr_hours: 6                    # Point-in-time recovery window
+      branches: unlimited
+      scale_to_zero: true
+      idle_timeout_minutes: 5
+
+    launch:
+      monthly_price: 5.00              # Minimum spend
+      cost_per_compute_hour: 0.14      # Per CU-hour (25% reduction post-acquisition)
+      cost_per_storage_gb: 0.30        # Per GB-month (first 50 GB)
+      cost_per_storage_gb_over_50: 0.15  # Per GB-month (beyond 50 GB)
+      cost_per_pitr_gb: 0.20           # History/PITR storage per GB-month
+      cost_per_snapshot_gb: 0.09       # Snapshot storage per GB-month (from May 2026)
+      max_compute_cu: 4                # Auto-scaling ceiling
+      pitr_days: 7
+      branches: unlimited
+      scale_to_zero: true
+
+    scale:
+      monthly_price: 5.00              # Minimum spend (same as Launch)
+      cost_per_compute_hour: 0.14      # Same as Launch
+      cost_per_storage_gb: 0.30        # Per GB-month (first 50 GB)
+      cost_per_storage_gb_over_50: 0.15
+      cost_per_pitr_gb: 0.20
+      cost_per_snapshot_gb: 0.09
+      max_compute_cu: 8                # Higher auto-scaling ceiling
+      pitr_days: 30
+      branches: unlimited
+      scale_to_zero: true
+
+  # Default usage assumptions for cost estimation
+  defaults:
+    plan: launch
+    avg_compute_hours_per_day: 2       # ~60 hours/month for a light app
+    storage_gb: 5                      # Typical small-medium DB
+    pitr_gb: 2                         # History storage
+    snapshot_gb: 0                     # Snapshot storage (optional)
+
+resend:
+  # Resend transactional email pricing tiers
+  plans:
+    free:
+      monthly_price: 0.00
+      emails_per_month: 3000
+      daily_limit: 100
+      domains: 1
+      pay_as_you_go: false
+
+    pro:
+      monthly_price: 20.00
+      emails_per_month: 50000
+      daily_limit: null                # No daily limit
+      domains: unlimited
+      pay_as_you_go: true
+      overage_per_1000_emails: 0.44    # ~$0.00044/email ($22 / 50k emails rate)
+
+    scale:
+      monthly_price: 90.00
+      emails_per_month: 100000
+      daily_limit: null
+      domains: unlimited
+      pay_as_you_go: true
+      overage_per_1000_emails: 0.90    # ~$0.0009/email
+
+    enterprise:
+      monthly_price: null              # Custom pricing
+      emails_per_month: null
+      daily_limit: null
+      domains: unlimited
+      pay_as_you_go: true
+
+  # Marketing email add-on
+  marketing:
+    pro:
+      monthly_price: 40.00
+      contacts: 5000
+      sends: unlimited
+
+  # Overage safety cap: 5x monthly quota
+  overage_cap_multiplier: 5
+
+  # Default usage assumptions for cost estimation
+  defaults:
+    plan: free
+    emails_per_month: 500              # Typical: daily + weekly digests to a few subscribers
