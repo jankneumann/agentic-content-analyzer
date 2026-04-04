@@ -69,6 +69,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
     section_mappings = [
         "database",
         "neo4j",
+        "graphdb",
         "storage",
         "observability",
         "api_keys",
@@ -90,6 +91,8 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
     providers = profile_data.get("providers", {})
     if "database" in providers:
         result["database_provider"] = providers["database"]
+    if "graphdb" in providers:
+        result["graphdb_provider"] = providers["graphdb"]
     if "neo4j" in providers:
         result["neo4j_provider"] = providers["neo4j"]
     if "storage" in providers:
@@ -181,8 +184,12 @@ def resolve_profile_settings(profile_name: str) -> Settings:
 DatabaseProviderType = Literal["local", "supabase", "neon", "railway"]
 PoolerModeType = Literal["transaction", "session"]
 
-# Type alias for Neo4j provider
+# Type alias for Neo4j provider (deprecated — use GraphDBProviderType + GraphDBModeType)
 Neo4jProviderType = Literal["local", "auradb"]
+
+# Graph database provider and deployment mode (orthogonal axes)
+GraphDBProviderType = Literal["neo4j", "falkordb"]
+GraphDBModeType = Literal["local", "cloud", "embedded"]
 
 # Type alias for observability provider
 ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel", "langfuse"]
@@ -408,25 +415,44 @@ class Settings(BaseSettings):
     minio_root_user: str | None = None  # MinIO root user (auto-injected by Railway)
     minio_root_password: str | None = None  # MinIO root password (auto-injected)
 
-    # Neo4j / Graphiti Provider Configuration
-    # Explicit provider selection - matches database provider pattern
-    neo4j_provider: Neo4jProviderType = "local"
+    # Graph Database Provider Configuration
+    # Orthogonal axes: provider (what backend) x mode (how deployed)
+    graphdb_provider: GraphDBProviderType = "neo4j"
+    graphdb_mode: GraphDBModeType = "local"
 
-    # Legacy settings (for backward compatibility - used as fallbacks)
+    # Neo4j local connection (graphdb_provider=neo4j, graphdb_mode=local)
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "newsletter_password"
 
-    # Local Neo4j Configuration (Docker or local installation)
-    neo4j_local_uri: str | None = None  # Override: bolt://localhost:7687
-    neo4j_local_user: str | None = None  # Override: neo4j
-    neo4j_local_password: str | None = None  # Override for local password
+    # Neo4j cloud connection (graphdb_provider=neo4j, graphdb_mode=cloud)
+    neo4j_cloud_uri: str | None = None  # e.g. neo4j+s://xxx.databases.neo4j.io
+    neo4j_cloud_user: str = "neo4j"
+    neo4j_cloud_password: str | None = None
 
-    # Neo4j AuraDB Configuration (cloud hosted)
-    # Connection string format: neo4j+s://xxxxxxxx.databases.neo4j.io
-    neo4j_auradb_uri: str | None = None  # Required for auradb provider
-    neo4j_auradb_user: str = "neo4j"  # Usually "neo4j" for AuraDB
-    neo4j_auradb_password: str | None = None  # Required for auradb provider
+    # FalkorDB local connection (graphdb_provider=falkordb, graphdb_mode=local)
+    falkordb_host: str = "localhost"
+    falkordb_port: int = 6379
+    falkordb_username: str | None = None
+    falkordb_password: str | None = None
+    falkordb_database: str = "newsletter_graph"
+
+    # FalkorDB cloud connection (graphdb_provider=falkordb, graphdb_mode=cloud)
+    falkordb_cloud_host: str | None = None
+    falkordb_cloud_port: int = 6379
+    falkordb_cloud_password: str | None = None
+
+    # FalkorDB embedded/Lite (graphdb_provider=falkordb, graphdb_mode=embedded)
+    falkordb_lite_data_dir: str | None = None
+
+    # Deprecated aliases (mapped to new fields in validator)
+    neo4j_provider: Neo4jProviderType = "local"
+    neo4j_local_uri: str | None = None
+    neo4j_local_user: str | None = None
+    neo4j_local_password: str | None = None
+    neo4j_auradb_uri: str | None = None
+    neo4j_auradb_user: str = "neo4j"
+    neo4j_auradb_password: str | None = None
 
     # Graphiti concurrency limit for LLM API calls
     semaphore_limit: int = 1
@@ -1202,47 +1228,81 @@ class Settings(BaseSettings):
         # URL is already direct
         return neon_url
 
-    def get_effective_neo4j_uri(self) -> str:
-        """Get the effective Neo4j URI based on provider configuration.
+    def _apply_deprecated_neo4j_aliases(self) -> None:
+        """Map deprecated neo4j_provider to graphdb_provider + graphdb_mode.
 
-        Provider-specific URIs take precedence over legacy settings:
-        - Local: NEO4J_LOCAL_URI > NEO4J_URI > default
-        - AuraDB: NEO4J_AURADB_URI (required)
-
-        Returns:
-            The Neo4j connection URI to use
+        Called during initialization to handle backward compatibility.
+        Only applies if graphdb_provider was not explicitly set.
         """
-        match self.neo4j_provider:
-            case "auradb":
-                # AuraDB URI is required (validated in model_validator)
-                return self.neo4j_auradb_uri or ""
-            case _:  # "local"
-                return self.neo4j_local_uri or self.neo4j_uri
+        # If neo4j_provider was explicitly changed from default but graphdb_provider wasn't
+        if self.neo4j_provider != "local" and self.graphdb_provider == "neo4j" and self.graphdb_mode == "local":
+            if self.neo4j_provider == "auradb":
+                object.__setattr__(self, "graphdb_mode", "cloud")
+                # Map auradb fields to cloud fields
+                if self.neo4j_auradb_uri and not self.neo4j_cloud_uri:
+                    object.__setattr__(self, "neo4j_cloud_uri", self.neo4j_auradb_uri)
+                if self.neo4j_auradb_password and not self.neo4j_cloud_password:
+                    object.__setattr__(self, "neo4j_cloud_password", self.neo4j_auradb_password)
+                if self.neo4j_auradb_user != "neo4j":
+                    object.__setattr__(self, "neo4j_cloud_user", self.neo4j_auradb_user)
+                logger.warning(
+                    "Deprecated: neo4j_provider='auradb' mapped to "
+                    "graphdb_provider='neo4j', graphdb_mode='cloud'. "
+                    "Update your config to use the new fields."
+                )
+
+        # Map deprecated neo4j_local_* to neo4j_* fields
+        if self.neo4j_local_uri and not self.neo4j_uri.startswith("bolt://"):
+            object.__setattr__(self, "neo4j_uri", self.neo4j_local_uri)
+        if self.neo4j_local_user:
+            object.__setattr__(self, "neo4j_user", self.neo4j_local_user)
+        if self.neo4j_local_password:
+            object.__setattr__(self, "neo4j_password", self.neo4j_local_password)
+
+    def validate_graphdb_config(self) -> None:
+        """Validate graphdb_provider + graphdb_mode combination."""
+        provider = self.graphdb_provider
+        mode = self.graphdb_mode
+
+        # Invalid combination
+        if provider == "neo4j" and mode == "embedded":
+            raise ValueError(
+                "Invalid configuration: graphdb_provider='neo4j' with graphdb_mode='embedded'. "
+                "Neo4j does not support embedded mode. Use graphdb_provider='falkordb' for embedded."
+            )
+
+        # Required fields for cloud modes
+        if provider == "neo4j" and mode == "cloud":
+            if not self.neo4j_cloud_uri:
+                raise ValueError(
+                    "Neo4j cloud mode requires NEO4J_CLOUD_URI "
+                    "(e.g., neo4j+s://xxx.databases.neo4j.io)"
+                )
+            if not self.neo4j_cloud_password:
+                raise ValueError("Neo4j cloud mode requires NEO4J_CLOUD_PASSWORD")
+
+        if provider == "falkordb" and mode == "cloud":
+            if not self.falkordb_cloud_host:
+                raise ValueError("FalkorDB cloud mode requires FALKORDB_CLOUD_HOST")
+
+    # Keep deprecated methods for any remaining callers
+    def get_effective_neo4j_uri(self) -> str:
+        """Deprecated: use graph provider factory instead."""
+        if self.graphdb_mode == "cloud":
+            return self.neo4j_cloud_uri or ""
+        return self.neo4j_uri
 
     def get_effective_neo4j_user(self) -> str:
-        """Get the effective Neo4j username based on provider configuration.
-
-        Returns:
-            The Neo4j username to use
-        """
-        match self.neo4j_provider:
-            case "auradb":
-                return self.neo4j_auradb_user
-            case _:  # "local"
-                return self.neo4j_local_user or self.neo4j_user
+        """Deprecated: use graph provider factory instead."""
+        if self.graphdb_mode == "cloud":
+            return self.neo4j_cloud_user
+        return self.neo4j_user
 
     def get_effective_neo4j_password(self) -> str:
-        """Get the effective Neo4j password based on provider configuration.
-
-        Returns:
-            The Neo4j password to use
-        """
-        match self.neo4j_provider:
-            case "auradb":
-                # AuraDB password is required (validated in model_validator)
-                return self.neo4j_auradb_password or ""
-            case _:  # "local"
-                return self.neo4j_local_password or self.neo4j_password
+        """Deprecated: use graph provider factory instead."""
+        if self.graphdb_mode == "cloud":
+            return self.neo4j_cloud_password or ""
+        return self.neo4j_password
 
     def get_youtube_api_key(self) -> str | None:
         """
