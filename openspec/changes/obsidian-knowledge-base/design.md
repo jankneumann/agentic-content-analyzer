@@ -126,5 +126,20 @@ kb_router = APIRouter(
 | Merge similarity | 0.90 | `KB_MERGE_SIMILARITY_THRESHOLD` |
 | Coverage minimum | 3 topics/category | `KB_MIN_TOPICS_PER_CATEGORY` |
 
+**Article quality scoring**: The health check evaluates articles on evidence count (number of source items), recency (age of most recent evidence), and completeness (article length relative to evidence volume). Quality scores are informational — they guide recompilation priority, not automatic changes.
+
 **Alternatives considered**:
 - Hardcoded thresholds: Rejected — different deployments may have different content volumes and freshness expectations.
+
+## D10: Compilation Concurrency Control
+
+**Decision**: Use a database-level advisory lock (`pg_advisory_lock`) to prevent concurrent compilations. The lock is acquired at the start of compilation and released on completion (success or failure).
+
+**Stale lock recovery**: If a compilation holds the lock for >30 minutes (configurable via `KB_COMPILE_LOCK_TIMEOUT_MINUTES`), the lock is considered stale. The next compilation attempt acquires a new lock.
+
+**Implementation**: Advisory lock key derived from a fixed integer (e.g., `hashint('kb_compile')`). `pg_try_advisory_lock` returns false if already held — no blocking, immediate rejection.
+
+**Alternatives considered**:
+- Application-level lock (in-memory flag): Rejected — doesn't work across multiple API processes/workers.
+- File-based lock: Rejected — not available in containerized/serverless environments.
+- Queue-based (enqueue and process serially): Rejected — overkill for a single-operation lock.

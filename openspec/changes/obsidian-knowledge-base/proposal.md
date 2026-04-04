@@ -42,12 +42,12 @@ Additionally, the Obsidian vault exporter (just merged via PR #371) currently ex
 ### New Specs
 - **knowledge-base** — new capability spec for KB compilation, topics, indices, health
 
-### Modified Specs
-- **theme-analysis** — Topic compilation consumes ThemeAnalysis output; add requirement for theme-to-topic linkage
-- **cli-interface** — add `aca kb` command group
-- **pipeline** — add optional KB compile step after theme analysis
-- **document-search** — Topics are searchable via existing hybrid search
-- **database-sync** — Obsidian export extended with Topic articles
+### Existing Specs Consumed (Read-Only)
+- **theme-analysis** — Topic compilation consumes ThemeAnalysis output (no spec changes needed)
+- **document-search** — Topics reuse existing hybrid search infrastructure (no spec changes needed)
+
+### Note on Spec Scope
+CLI commands, API endpoints, MCP tools, pipeline integration, and Obsidian export are all covered within the new knowledge-base spec. No modifications to existing specs are required.
 
 ### Modified Code
 - `src/sync/obsidian_exporter.py` — extend with Topic export

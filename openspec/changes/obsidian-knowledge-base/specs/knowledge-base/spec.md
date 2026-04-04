@@ -8,7 +8,9 @@ Knowledge base compilation, topic management, indices, Q&A, and health checks.
 
 The system SHALL provide persistent Topic and TopicNote SQLAlchemy models with Alembic migration.
 
-A Topic SHALL have: slug (unique), name, category (ThemeCategory enum), status (TopicStatus enum: draft/active/stale/archived/merged), summary, article_md, article_version, trend (ThemeTrend enum), relevance_score, novelty_score, mention_count, source_content_ids (JSON), source_summary_ids (JSON), source_theme_ids (JSON), related_topic_ids (JSON), parent_topic_id (FK self-ref), merged_into_id (FK self-ref), last_compiled_at, last_evidence_at, compilation_model, compilation_token_usage, created_at, updated_at.
+A Topic SHALL have: slug (unique), name, category (ThemeCategory enum — single category per topic), status (TopicStatus enum: draft/active/stale/archived/merged), summary, article_md, article_version, trend (ThemeTrend enum), relevance_score, novelty_score, mention_count, embedding (vector, for semantic matching), source_content_ids (JSON), source_summary_ids (JSON), source_theme_ids (JSON), related_topic_ids (JSON), parent_topic_id (FK self-ref), merged_into_id (FK self-ref), last_compiled_at, last_evidence_at, compilation_model, compilation_token_usage, created_at, updated_at.
+
+Archived topics SHALL NOT appear in indices and SHALL NOT be recompiled. Archived topics MAY be unarchived by setting status back to active via PATCH endpoint.
 
 A TopicNote SHALL have: topic_id (FK), note_type (observation/question/correction/insight), content, author, filed_back (boolean), created_at.
 
@@ -66,11 +68,30 @@ AND the theme embedding has cosine similarity > 0.85 with an existing topic
 THEN the service SHALL match the theme to the existing topic
 AND add the new evidence to the existing topic's source IDs
 
+#### Scenario: Semantic matching with embedding failure
+
+WHEN embedding generation fails for a theme during matching
+THEN the service SHALL fall back to exact name match only
+AND log a warning with the theme name and error details
+AND NOT fail the compilation
+
+#### Scenario: First compilation (no prior state)
+
+WHEN compilation is invoked and no topics exist yet (last_compiled_at is NULL for all)
+THEN the service SHALL gather ALL ThemeAnalysis results
+AND create new draft topics for each distinct theme
+AND set last_compiled_at on each created topic
+
 #### Scenario: Topic merge detection
 
 WHEN two topics have cosine similarity > 0.90 between their compiled articles
 THEN the service SHALL flag them as merge candidates
 AND NOT automatically merge (merge requires explicit action)
+
+#### Scenario: Merge detection with empty articles
+
+WHEN a topic has an empty or NULL article_md
+THEN the topic SHALL be excluded from merge candidate detection
 
 #### Scenario: Compilation with no new evidence
 
@@ -85,6 +106,29 @@ THEN the service SHALL log the error with topic slug and error details
 AND skip the failed topic
 AND continue compiling remaining topics
 AND report the failure in the compilation summary
+
+### Requirement: Compilation Concurrency
+
+The system SHALL prevent concurrent compilation runs to avoid data corruption.
+
+#### Scenario: Concurrent compilation prevention
+
+WHEN a compilation is already in progress
+AND another compilation is triggered (via CLI, API, or MCP)
+THEN the second compilation SHALL be rejected with a clear error message
+AND the error SHALL indicate that a compilation is already running
+
+#### Scenario: Compilation lock release
+
+WHEN a compilation completes (success or failure)
+THEN the compilation lock SHALL be released
+AND subsequent compilations SHALL be allowed
+
+#### Scenario: Stale lock recovery
+
+WHEN a compilation lock has been held for more than 30 minutes (configurable)
+THEN the lock SHALL be considered stale and automatically released
+AND the next compilation attempt SHALL succeed
 
 ### Requirement: Topic Relationship Management
 
@@ -132,6 +176,24 @@ AND each entry SHALL include: name, category, trend, 1-line summary, last_compil
 WHEN the category index is generated
 THEN topics SHALL be grouped by ThemeCategory
 AND within each category, topics SHALL be sorted by relevance_score descending
+
+#### Scenario: Trend index content
+
+WHEN the trend index is generated
+THEN topics SHALL be grouped by ThemeTrend (emerging, growing, established, declining)
+AND within each trend group, topics SHALL be sorted by mention_count descending
+
+#### Scenario: Recency index content
+
+WHEN the recency index is generated
+THEN the 50 most recently compiled topics SHALL be listed
+AND entries SHALL be sorted by last_compiled_at descending
+
+#### Scenario: Empty KB index
+
+WHEN indices are generated and no active topics exist
+THEN each index SHALL contain a header and an empty-state message
+AND NOT fail or produce an error
 
 #### Scenario: Index retrieval
 
@@ -226,8 +288,15 @@ AND return 201
 #### Scenario: Compile endpoint
 
 WHEN POST `/api/v1/kb/compile` is called
-THEN the system SHALL trigger incremental compilation
-AND return 202 with a compilation summary after completion
+AND no compilation is currently in progress
+THEN the system SHALL run synchronous incremental compilation
+AND return 200 with a compilation summary (topics compiled, skipped, failed)
+
+#### Scenario: Compile endpoint while compilation in progress
+
+WHEN POST `/api/v1/kb/compile` is called
+AND a compilation is already running
+THEN the system SHALL return 409 Conflict with an error message
 
 #### Scenario: Index endpoint
 
@@ -294,8 +363,20 @@ AND set filed_back=false (to be incorporated in next compilation)
 #### Scenario: No relevant topics
 
 WHEN a question has no matching topics in the KB
-THEN the system SHALL respond with a message indicating no relevant KB content
-AND suggest searching raw content instead
+THEN the system SHALL return 200 with an empty answer and a message indicating no relevant KB content
+AND the response SHALL suggest searching raw content instead
+
+#### Scenario: Q&A LLM failure
+
+WHEN the LLM call fails during answer synthesis
+THEN the system SHALL return 502 with an error message
+AND NOT file any TopicNote
+
+#### Scenario: Q&A with many relevant topics
+
+WHEN a question matches more than 10 topics
+THEN the system SHALL use the top 10 topics by relevance_score
+AND note in the answer that additional topics were omitted
 
 ### Requirement: KB Health Checks
 
@@ -339,7 +420,7 @@ WHEN the Obsidian exporter runs and topics exist in the database
 THEN each active topic SHALL be exported as `<Category>/<Topic>/_overview.md`
 AND the file SHALL contain YAML frontmatter with topic metadata
 AND the file SHALL contain the compiled article markdown
-AND related topics SHALL be linked via wikilinks
+AND related topics SHALL be linked via Obsidian wikilinks using relative paths: `[[../../Category/Topic/_overview|Display Name]]`
 
 #### Scenario: Source extract export
 
