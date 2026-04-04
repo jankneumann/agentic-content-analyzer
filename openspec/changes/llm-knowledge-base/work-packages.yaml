@@ -1,0 +1,289 @@
+# Work Packages: LLM Knowledge Base
+# Tier: local-parallel
+# Generated: 2026-04-04
+
+packages:
+  - id: wp-contracts
+    name: Generate and validate contracts
+    description: Database schema SQL, OpenAPI spec, Pydantic models
+    priority: 1
+    tasks: []
+    scope:
+      write_allow:
+        - "openspec/changes/llm-knowledge-base/contracts/**"
+      read_allow:
+        - "openspec/changes/llm-knowledge-base/**"
+        - "src/models/**"
+      deny: []
+    locks:
+      files:
+        - "openspec/changes/llm-knowledge-base/contracts/db/schema.sql"
+        - "openspec/changes/llm-knowledge-base/contracts/openapi/v1.yaml"
+      keys:
+        - "db:schema:topics"
+        - "db:schema:topic_notes"
+        - "api:GET /v1/kb/topics"
+        - "api:POST /v1/kb/topics"
+        - "api:GET /v1/kb/topics/{slug}"
+      ttl_minutes: 60
+      reason: Contract generation and validation
+    dependencies: []
+    verification: Tier C
+
+  - id: wp-data-model
+    name: Data model and migration
+    description: Topic + TopicNote SQLAlchemy models, Alembic migration, settings YAML
+    priority: 2
+    tasks:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+      - "1.4"
+      - "1.5"
+      - "1.6"
+    scope:
+      write_allow:
+        - "src/models/topic.py"
+        - "src/models/topic_note.py"
+        - "src/models/__init__.py"
+        - "alembic/versions/**"
+        - "settings/knowledge_base.yaml"
+        - "settings/prompts.yaml"
+        - "tests/test_models/test_topic.py"
+      read_allow:
+        - "src/models/**"
+        - "src/config/**"
+        - "openspec/changes/llm-knowledge-base/contracts/**"
+        - "settings/**"
+      deny:
+        - "src/api/**"
+        - "src/cli/**"
+        - "src/agents/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/models/topic.py"
+        - "src/models/topic_note.py"
+        - "src/models/__init__.py"
+      keys:
+        - "db:schema:topics"
+        - "db:schema:topic_notes"
+        - "db:enum:topicstatus"
+      ttl_minutes: 120
+      reason: Data model implementation
+    dependencies:
+      - wp-contracts
+    verification: Tier A
+
+  - id: wp-services
+    name: KB compilation, indexing, and health services
+    description: KBCompiler, KBIndexGenerator, KBHealthCheck services
+    priority: 3
+    tasks:
+      - "2.1"
+      - "2.2"
+      - "2.3"
+      - "2.4"
+      - "3.1"
+      - "3.2"
+    scope:
+      write_allow:
+        - "src/services/kb_compiler.py"
+        - "src/services/kb_index_generator.py"
+        - "src/services/kb_health.py"
+        - "tests/test_services/test_kb_compiler.py"
+        - "tests/test_services/test_kb_index_generator.py"
+        - "tests/test_services/test_kb_health.py"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+        - "openspec/changes/llm-knowledge-base/**"
+      deny:
+        - "src/api/**"
+        - "src/cli/**"
+        - "src/agents/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/services/kb_compiler.py"
+        - "src/services/kb_index_generator.py"
+        - "src/services/kb_health.py"
+      keys:
+        - "service:kb_compiler"
+        - "service:kb_index_generator"
+        - "service:kb_health"
+      ttl_minutes: 120
+      reason: Core KB service implementation
+    dependencies:
+      - wp-data-model
+    verification: Tier A
+
+  - id: wp-cli
+    name: CLI commands
+    description: aca kb command group with compile, list, show, index, query, lint
+    priority: 4
+    tasks:
+      - "4.1"
+      - "4.2"
+      - "4.3"
+    scope:
+      write_allow:
+        - "src/cli/kb_commands.py"
+        - "src/cli/app.py"
+        - "src/cli/adapters.py"
+        - "tests/test_cli/test_kb_commands.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/llm-knowledge-base/**"
+      deny:
+        - "src/api/**"
+        - "src/agents/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/kb_commands.py"
+        - "src/cli/app.py"
+      keys:
+        - "cli:aca kb"
+      ttl_minutes: 90
+      reason: CLI command implementation
+    dependencies:
+      - wp-services
+    verification: Tier B
+
+  - id: wp-api
+    name: API endpoints
+    description: FastAPI routes for KB CRUD, compilation, index, health, Q&A
+    priority: 4
+    tasks:
+      - "5.1"
+      - "5.2"
+      - "5.3"
+    scope:
+      write_allow:
+        - "src/api/kb_routes.py"
+        - "src/api/app.py"
+        - "tests/api/test_kb_routes.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/llm-knowledge-base/contracts/**"
+      deny:
+        - "src/cli/**"
+        - "src/agents/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/api/kb_routes.py"
+        - "src/api/app.py"
+      keys:
+        - "api:GET /v1/kb/topics"
+        - "api:POST /v1/kb/topics"
+        - "api:GET /v1/kb/topics/{slug}"
+        - "api:POST /v1/kb/compile"
+        - "api:GET /v1/kb/index"
+        - "api:GET /v1/kb/health"
+        - "api:POST /v1/kb/query"
+      ttl_minutes: 90
+      reason: API endpoint implementation
+    dependencies:
+      - wp-services
+    verification: Tier A
+
+  - id: wp-agent
+    name: MCP tools and KB specialist agent
+    description: 6 MCP tools, KnowledgeBase specialist, KB tools on Research specialist
+    priority: 5
+    tasks:
+      - "6.1"
+      - "6.2"
+      - "6.3"
+      - "6.4"
+      - "6.5"
+    scope:
+      write_allow:
+        - "src/mcp_server.py"
+        - "src/agents/specialists/knowledge_base.py"
+        - "src/agents/specialists/research.py"
+        - "tests/test_agents/test_knowledge_base_specialist.py"
+        - "tests/test_mcp/test_kb_tools.py"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+      deny:
+        - "src/api/**"
+        - "src/cli/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/mcp_server.py"
+        - "src/agents/specialists/knowledge_base.py"
+        - "src/agents/specialists/research.py"
+      keys:
+        - "mcp:search_knowledge_base"
+        - "mcp:get_topic"
+        - "mcp:update_topic"
+        - "mcp:add_topic_note"
+        - "mcp:get_kb_index"
+        - "mcp:compile_knowledge_base"
+        - "agent:knowledge_base_specialist"
+      ttl_minutes: 90
+      reason: MCP and agent implementation
+    dependencies:
+      - wp-services
+    verification: Tier A
+
+  - id: wp-pipeline
+    name: Pipeline integration
+    description: KB compile step in daily pipeline, --skip-kb flag, graph abstraction compliance
+    priority: 6
+    tasks:
+      - "7.1"
+      - "7.2"
+      - "8.1"
+      - "8.2"
+    scope:
+      write_allow:
+        - "src/cli/pipeline_commands.py"
+        - "tests/test_cli/test_pipeline_kb.py"
+        - "tests/test_services/test_kb_graph_compliance.py"
+      read_allow:
+        - "src/**"
+      deny:
+        - "src/api/**"
+        - "src/agents/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/pipeline_commands.py"
+      keys:
+        - "cli:aca pipeline daily"
+        - "pipeline:kb_compile_step"
+      ttl_minutes: 60
+      reason: Pipeline integration
+    dependencies:
+      - wp-services
+      - wp-cli
+    verification: Tier B
+
+  - id: wp-integration
+    name: Integration testing and validation
+    description: Full test suite, cross-package validation, spec compliance
+    priority: 7
+    tasks: []
+    scope:
+      write_allow:
+        - "tests/**"
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      files: []
+      keys: []
+      ttl_minutes: 60
+      reason: Integration testing
+    dependencies:
+      - wp-cli
+      - wp-api
+      - wp-agent
+      - wp-pipeline
+    verification: Tier A

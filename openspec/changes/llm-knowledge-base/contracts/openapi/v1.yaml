@@ -1,0 +1,501 @@
+openapi: 3.1.0
+info:
+  title: Knowledge Base API
+  version: 1.0.0
+  description: API for managing the LLM-compiled knowledge base
+
+paths:
+  /api/v1/kb/topics:
+    get:
+      operationId: listTopics
+      summary: List topics with optional filters
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [ml_ai, devops_infra, data_engineering, business_strategy, tools_products, research_academia, security, other]
+          example: ml_ai
+        - name: trend
+          in: query
+          schema:
+            type: string
+            enum: [emerging, growing, established, declining, one_off]
+          example: emerging
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, stale, archived, merged]
+            default: active
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of topics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TopicSummary"
+              example:
+                - slug: rag-architecture
+                  name: RAG Architecture
+                  category: ml_ai
+                  trend: growing
+                  status: active
+                  mention_count: 15
+                  relevance_score: 0.87
+                  last_compiled_at: "2026-04-04T12:00:00Z"
+    post:
+      operationId: createTopic
+      summary: Create a topic manually
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopicCreate"
+            example:
+              name: Custom Topic
+              category: ml_ai
+      responses:
+        "201":
+          description: Topic created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicDetail"
+
+  /api/v1/kb/topics/{slug}:
+    get:
+      operationId: getTopic
+      summary: Get topic detail including article
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          example: rag-architecture
+      responses:
+        "200":
+          description: Full topic record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicDetail"
+        "404":
+          description: Topic not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "Topic 'nonexistent-slug' not found"
+    patch:
+      operationId: updateTopic
+      summary: Update topic fields
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopicUpdate"
+      responses:
+        "200":
+          description: Updated topic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicDetail"
+    delete:
+      operationId: archiveTopic
+      summary: Archive a topic (soft delete)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Topic archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicDetail"
+
+  /api/v1/kb/topics/{slug}/notes:
+    get:
+      operationId: listTopicNotes
+      summary: List notes for a topic
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TopicNoteResponse"
+    post:
+      operationId: addTopicNote
+      summary: Add a note to a topic
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopicNoteCreate"
+            example:
+              content: "New evidence suggests RAG is evolving towards agentic patterns"
+              note_type: observation
+      responses:
+        "201":
+          description: Note created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicNoteResponse"
+
+  /api/v1/kb/compile:
+    post:
+      operationId: compileKB
+      summary: Trigger KB compilation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full:
+                  type: boolean
+                  default: false
+                  description: Full recompile (all topics)
+                topic_slug:
+                  type: string
+                  description: Compile a specific topic only
+            example:
+              full: false
+      responses:
+        "200":
+          description: Compilation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompilationResult"
+              example:
+                topics_created: 3
+                topics_updated: 12
+                topics_total: 45
+                indices_regenerated: 4
+                processing_time_seconds: 42.5
+
+  /api/v1/kb/index:
+    get:
+      operationId: getKBIndex
+      summary: Get KB master index
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [_index, _by_category, _by_trend, _relationship_map, _coverage_gaps]
+            default: _index
+      responses:
+        "200":
+          description: Index content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndexResponse"
+
+  /api/v1/kb/health:
+    get:
+      operationId: getKBHealth
+      summary: Run KB health check
+      parameters:
+        - name: fix
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Auto-fix issues
+      responses:
+        "200":
+          description: Health report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+
+  /api/v1/kb/query:
+    post:
+      operationId: queryKB
+      summary: Ask the KB a question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+                file_back:
+                  type: boolean
+                  default: false
+                  description: File the answer back as TopicNotes
+            example:
+              question: "What are the trade-offs between RAG and fine-tuning?"
+              file_back: true
+      responses:
+        "200":
+          description: Q&A answer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer:
+                    type: string
+                    description: Markdown-formatted answer
+                  topics_referenced:
+                    type: array
+                    items:
+                      type: string
+                    description: Slugs of topics used to answer
+                  notes_created:
+                    type: integer
+                    description: Number of TopicNotes created (if file_back=true)
+
+components:
+  schemas:
+    TopicSummary:
+      type: object
+      required: [slug, name, category, status]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        trend:
+          type: string
+        status:
+          type: string
+        mention_count:
+          type: integer
+        relevance_score:
+          type: number
+        last_compiled_at:
+          type: string
+          format: date-time
+
+    TopicDetail:
+      allOf:
+        - $ref: "#/components/schemas/TopicSummary"
+        - type: object
+          properties:
+            summary:
+              type: string
+            article_md:
+              type: string
+            article_version:
+              type: integer
+            strategic_relevance:
+              type: number
+            tactical_relevance:
+              type: number
+            novelty_score:
+              type: number
+            cross_functional_impact:
+              type: number
+            source_content_ids:
+              type: array
+              items:
+                type: integer
+            related_topic_ids:
+              type: array
+              items:
+                type: integer
+            key_points:
+              type: array
+              items:
+                type: string
+            parent_topic_id:
+              type: integer
+              nullable: true
+            first_evidence_at:
+              type: string
+              format: date-time
+            last_evidence_at:
+              type: string
+              format: date-time
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    TopicCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+          default: other
+        summary:
+          type: string
+
+    TopicUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        parent_topic_id:
+          type: integer
+          nullable: true
+
+    TopicNoteCreate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        note_type:
+          type: string
+          enum: [observation, question, correction, insight]
+          default: observation
+
+    TopicNoteResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        topic_id:
+          type: integer
+        note_type:
+          type: string
+        content:
+          type: string
+        author:
+          type: string
+        filed_back:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CompilationResult:
+      type: object
+      properties:
+        topics_created:
+          type: integer
+        topics_updated:
+          type: integer
+        topics_total:
+          type: integer
+        indices_regenerated:
+          type: integer
+        processing_time_seconds:
+          type: number
+
+    IndexResponse:
+      type: object
+      properties:
+        slug:
+          type: string
+        content:
+          type: string
+          description: Markdown index content
+        updated_at:
+          type: string
+          format: date-time
+
+    HealthReport:
+      type: object
+      properties:
+        stale_topics:
+          type: array
+          items:
+            type: object
+            properties:
+              slug:
+                type: string
+              days_since_evidence:
+                type: integer
+              fixed:
+                type: boolean
+        merge_candidates:
+          type: array
+          items:
+            type: object
+            properties:
+              topic_a:
+                type: string
+              topic_b:
+                type: string
+              similarity:
+                type: number
+              fixed:
+                type: boolean
+        coverage_gaps:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              topic_count:
+                type: integer
+        total_findings:
+          type: integer
+        findings_fixed:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
