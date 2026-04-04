@@ -74,7 +74,7 @@ test-regression-all:  ## Run all regression tests (Python + Playwright)
 	$(MAKE) test-regression
 	$(MAKE) test-regression-e2e
 
-test-e2e-live:  ## Run live E2E pipeline tests (requires running backend + LLM keys)
+test-e2e-live:  ## Run live E2E pipeline tests (auto-starts isolated server, needs LLM keys)
 	pytest tests/e2e/ -v -m e2e --no-cov
 
 test-hoverfly:  ## Run Hoverfly integration tests (requires: make hoverfly-up)

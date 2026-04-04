@@ -23,6 +23,18 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Guard: table may already exist from c1d2e3f4a5b6 (earlier migration).
+    # On fresh DBs both migrations run; on existing DBs only this one runs.
+    conn = op.get_bind()
+    table_exists = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_name = 'theme_analyses'"
+        )
+    ).scalar()
+    if table_exists:
+        return
+
     # Create the enum type via raw SQL (idempotent — IF NOT EXISTS)
     op.execute(
         "DO $$ BEGIN "
