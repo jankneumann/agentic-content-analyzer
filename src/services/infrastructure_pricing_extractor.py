@@ -57,17 +57,6 @@ EXTRACTION_MODEL = "claude-haiku-4-5"
 # Data types
 # ---------------------------------------------------------------------------
 @dataclass
-class ExtractedServicePricing:
-    """Pricing data extracted for a single infrastructure service."""
-
-    service: str  # "neon" or "resend"
-    plans: dict[str, dict[str, Any]]  # plan_name -> plan fields
-    defaults: dict[str, Any] | None = None  # default usage assumptions
-    extra: dict[str, Any] | None = None  # service-specific extras
-    notes: str = ""
-
-
-@dataclass
 class InfraPricingDiff:
     """A single field-level diff between current and extracted pricing."""
 

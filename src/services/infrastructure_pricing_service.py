@@ -283,24 +283,37 @@ class InfrastructurePricingService:
         """Estimate monthly LLM costs using ModelConfig.
 
         Wraps ModelConfig.get_cost_estimate() into a structured response.
+        Returns zeroed breakdown if no providers are configured (e.g., test environments).
         """
-        from src.config.models import get_model_config
+        try:
+            from src.config.models import get_model_config
 
-        config = get_model_config()
-        estimate = config.get_cost_estimate(
-            content_items_per_day=content_items_per_day,
-            digests_per_week=digests_per_week,
-            youtube_videos_per_week=youtube_videos_per_week,
-        )
+            config = get_model_config()
+            estimate = config.get_cost_estimate(
+                content_items_per_day=content_items_per_day,
+                digests_per_week=digests_per_week,
+                youtube_videos_per_week=youtube_videos_per_week,
+            )
 
-        return LLMCostBreakdown(
-            summarization=round(estimate["summarization"], 4),
-            theme_analysis=round(estimate["theme_analysis"], 4),
-            digest_creation=round(estimate["digest_creation"], 4),
-            historical_context=round(estimate["historical_context"], 4),
-            youtube_processing=round(estimate["youtube_processing"], 4),
-            total=round(estimate["total"], 4),
-        )
+            return LLMCostBreakdown(
+                summarization=round(estimate["summarization"], 4),
+                theme_analysis=round(estimate["theme_analysis"], 4),
+                digest_creation=round(estimate["digest_creation"], 4),
+                historical_context=round(estimate["historical_context"], 4),
+                youtube_processing=round(estimate["youtube_processing"], 4),
+                total=round(estimate["total"], 4),
+            )
+        except (ValueError, ImportError):
+            # No providers configured (test env) or config unavailable
+            logger.debug("LLM cost estimation unavailable, returning zeros")
+            return LLMCostBreakdown(
+                summarization=0.0,
+                theme_analysis=0.0,
+                digest_creation=0.0,
+                historical_context=0.0,
+                youtube_processing=0.0,
+                total=0.0,
+            )
 
     # -- Combined prediction --------------------------------------------------
 

@@ -12,7 +12,7 @@ pricing extraction workflow).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from src.api.dependencies import verify_admin_key
@@ -30,9 +30,12 @@ router = APIRouter(
     dependencies=[Depends(verify_admin_key)],
 )
 
+# Module-level service instance (avoids re-reading YAML per request)
+_service = InfrastructurePricingService()
+
 
 def _get_service() -> InfrastructurePricingService:
-    return InfrastructurePricingService()
+    return _service
 
 
 # ---------------------------------------------------------------------------
@@ -66,18 +69,21 @@ async def predict_monthly_costs(
     and the model configuration in settings/models.yaml.
     """
     service = _get_service()
-    return service.predict_monthly_costs(
-        neon_plan=neon_plan,
-        neon_compute_hours_per_day=neon_compute_hours_per_day,
-        neon_storage_gb=neon_storage_gb,
-        neon_pitr_gb=neon_pitr_gb,
-        neon_snapshot_gb=neon_snapshot_gb,
-        resend_plan=resend_plan,
-        emails_per_month=emails_per_month,
-        content_items_per_day=content_items_per_day,
-        digests_per_week=digests_per_week,
-        youtube_videos_per_week=youtube_videos_per_week,
-    )
+    try:
+        return service.predict_monthly_costs(
+            neon_plan=neon_plan,
+            neon_compute_hours_per_day=neon_compute_hours_per_day,
+            neon_storage_gb=neon_storage_gb,
+            neon_pitr_gb=neon_pitr_gb,
+            neon_snapshot_gb=neon_snapshot_gb,
+            resend_plan=resend_plan,
+            emails_per_month=emails_per_month,
+            content_items_per_day=content_items_per_day,
+            digests_per_week=digests_per_week,
+            youtube_videos_per_week=youtube_videos_per_week,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -99,13 +105,16 @@ async def estimate_neon_cost(
 ) -> NeonCostBreakdown:
     """Estimate monthly Neon Postgres costs for the given usage profile."""
     service = _get_service()
-    return service.estimate_neon_cost(
-        plan=plan,
-        compute_hours_per_day=compute_hours_per_day,
-        storage_gb=storage_gb,
-        pitr_gb=pitr_gb,
-        snapshot_gb=snapshot_gb,
-    )
+    try:
+        return service.estimate_neon_cost(
+            plan=plan,
+            compute_hours_per_day=compute_hours_per_day,
+            storage_gb=storage_gb,
+            pitr_gb=pitr_gb,
+            snapshot_gb=snapshot_gb,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get(
@@ -119,10 +128,13 @@ async def estimate_resend_cost(
 ) -> ResendCostBreakdown:
     """Estimate monthly Resend email delivery costs for the given volume."""
     service = _get_service()
-    return service.estimate_resend_cost(
-        plan=plan,
-        emails_per_month=emails_per_month,
-    )
+    try:
+        return service.estimate_resend_cost(
+            plan=plan,
+            emails_per_month=emails_per_month,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
