@@ -209,26 +209,67 @@ aca pipeline daily:
 
 **Decision**: The Obsidian export maps TopicCategory hierarchy directly to the folder structure. Each topic is a `.md` file with YAML frontmatter placed in its category's folder. Wikilinks connect related topics. Indices are exported as root-level `_index.md` files.
 
-**Vault structure**:
+**Vault structure** — Three-tier navigation: Category → Topic → Source → Extracts
+
 ```
 vault/
-├── _index.md                          # Master index
-├── _by_category.md                    # Category index
-├── _by_trend.md                       # Trend index
-├── _relationship_map.md               # Topic adjacency map
-├── ML-AI/                             # Top-level category folder
-│   ├── rag-architecture.md            # Topic file
-│   ├── LLMs/                          # Subcategory folder
-│   │   ├── fine-tuning.md
-│   │   └── prompt-engineering.md
-│   └── Agents/                        # Subcategory folder
-│       └── tool-use-patterns.md
+├── _index.md                                  # Master index
+├── _by_category.md                            # Category index
+├── _by_trend.md                               # Trend index
+├── _relationship_map.md                       # Topic adjacency map
+├── summaries/                                 # Flat summary reference layer
+│   ├── 2026-03-15-rag-evolution.md            # Full summary (linked from extracts)
+│   └── 2026-02-20-rag-patterns.md
+├── content/                                   # Content stubs with original URLs
+│   ├── 2026-03-15-rag-evolution.md            # Stub → original content URL
+│   └── 2026-02-20-rag-patterns.md
+├── ML-AI/                                     # Top-level category folder
+│   ├── RAG-Architecture/                      # Topic folder (not a single .md)
+│   │   ├── _overview.md                       # LLM-compiled topic article
+│   │   ├── The-Batch/                         # Source publication subfolder
+│   │   │   └── 2026-03-15-rag-evolution.md    # Summary extract + [[link]]
+│   │   ├── Simon-Willison/                    # Source blog subfolder
+│   │   │   └── 2026-02-20-rag-patterns.md
+│   │   └── ArXiv/                             # Source subfolder
+│   │       └── 2026-01-10-dense-retrieval.md
+│   └── LLMs/                                  # Subcategory folder
+│       └── Fine-Tuning/                       # Topic folder
+│           ├── _overview.md
+│           ├── Latent-Space/
+│           │   └── 2026-03-01-lora-at-scale.md
+│           └── The-Batch/
+│               └── 2026-02-28-ft-vs-rag.md
 ├── DevOps-Infra/
-│   └── kubernetes-ai-workloads.md
+│   └── Kubernetes-AI-Workloads/
+│       ├── _overview.md
+│       └── InfoQ/
+│           └── 2026-03-20-k8s-gpu.md
 └── ...
 ```
 
-**Topic file format**:
+**Three file types in the vault:**
+
+| File | Location | Content |
+|------|----------|---------|
+| `_overview.md` | `Category/Topic/` | LLM-compiled topic article with YAML frontmatter, wikilinks to related topics |
+| Source extract | `Category/Topic/Source/` | Key points from one summary + `[[summaries/slug]]` wikilink |
+| Summary file | `summaries/` | Full summary markdown + `[[content/slug]]` wikilink |
+| Content stub | `content/` | Title, date, source URL, publication — links to original content |
+
+**Link chain:** Topic `_overview.md` → Source extract → `[[summaries/slug]]` → `[[content/slug]]` → original URL
+
+This enables three browsing patterns in Obsidian:
+1. **Topic-first**: Open `ML-AI/RAG-Architecture/_overview.md` → see compiled knowledge → drill into source evidence
+2. **Source-first**: Browse `ML-AI/RAG-Architecture/The-Batch/` → see all evidence from one publication
+3. **Graph view**: Wikilinks between topics, summaries, and content create a navigable knowledge graph
+
+**Rationale**:
+- Category hierarchy as folders gives Obsidian users natural navigation via the file explorer
+- YAML frontmatter enables Obsidian Dataview queries (`TABLE relevance_score FROM "ML-AI"`)
+- Wikilinks (`[[Topic Name]]`) power Obsidian's graph view for relationship visualization
+- This is significantly richer than flat folder + frontmatter — the hierarchy IS the knowledge structure
+
+**Topic `_overview.md` format**:
 ```markdown
 ---
 slug: rag-architecture
@@ -239,31 +280,43 @@ status: active
 relevance_score: 0.87
 mention_count: 15
 article_version: 3
+sources: [The-Batch, Simon-Willison, ArXiv]
 first_evidence_at: 2025-11-15T00:00:00Z
 last_evidence_at: 2026-04-01T00:00:00Z
 last_compiled_at: 2026-04-04T12:00:00Z
-tags:
-  - retrieval-augmented-generation
-  - vector-databases
-  - embedding
+tags: [retrieval-augmented-generation, vector-databases, embedding]
 ---
 
 # RAG Architecture
 
 ## Overview
-[LLM-compiled article content...]
+[LLM-compiled article content synthesizing all source evidence...]
+
+## Key Developments
+- 2026-03: Evolution toward agentic RAG patterns ([[The-Batch/2026-03-15-rag-evolution]])
+- 2026-02: Practical patterns for production RAG ([[Simon-Willison/2026-02-20-rag-patterns]])
+- 2026-01: Dense retrieval advances ([[ArXiv/2026-01-10-dense-retrieval]])
 
 ## Related Topics
-- [[Fine-tuning]] — complementary approach
-- [[Vector Databases]] — key infrastructure
-- [[Embedding Models]] — foundation technology
+- [[../../ML-AI/Fine-Tuning/_overview|Fine-Tuning]] — complementary approach
+- [[../../ML-AI/Vector-Databases/_overview|Vector Databases]] — key infrastructure
 ```
 
-**Rationale**:
-- Category hierarchy as folders gives Obsidian users natural navigation via the file explorer
-- YAML frontmatter enables Obsidian Dataview queries (`TABLE relevance_score FROM "ML-AI"`)
-- Wikilinks (`[[Topic Name]]`) power Obsidian's graph view for relationship visualization
-- This is significantly richer than flat folder + frontmatter — the hierarchy IS the knowledge structure
+**Source extract format** (`Category/Topic/Source/date-slug.md`):
+```markdown
+---
+summary_slug: 2026-03-15-rag-evolution
+source: The Batch
+published: 2026-03-15
+content_id: 1234
+---
+
+## Key Points
+- RAG is evolving toward agentic patterns where retrieval is tool-based
+- Hybrid approaches combining RAG + fine-tuning show best results
+
+Full summary: [[summaries/2026-03-15-rag-evolution]]
+```
 
 **Three integration modes** (all share the same frontmatter format and folder structure):
 

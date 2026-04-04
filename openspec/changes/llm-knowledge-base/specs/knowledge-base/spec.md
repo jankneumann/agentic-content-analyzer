@@ -324,29 +324,44 @@ Uses the official Obsidian CLI (`obsidian create`, `obsidian append`, `obsidian 
 
 Combines file export with `obsidian-headless` (official npm package) for server deployments. Writes to a local directory, then `obsidian-headless sync --continuous` syncs to Obsidian Sync cloud. User's desktop/mobile Obsidian pulls from Sync. Enables bidirectional sync: `obsidian read` detects user edits, `aca kb import --from-obsidian` syncs them back to the database.
 
-#### Scenario: Export generates category-based folder structure
+#### Scenario: Export generates three-tier folder structure (Category → Topic → Source)
 
 - **WHEN** `aca kb export --format obsidian --output ./vault` is run
-- **THEN** the output directory SHALL contain folders matching the TopicCategory hierarchy
-- **AND** top-level categories SHALL be root folders (e.g., `ML-AI/`, `DevOps-Infra/`)
-- **AND** subcategories SHALL be nested folders (e.g., `ML-AI/LLMs/Fine-tuning/`)
-- **AND** each topic's `.md` file SHALL be placed in its category's folder
+- **THEN** the output directory SHALL contain top-level folders matching the TopicCategory hierarchy (e.g., `ML-AI/`, `DevOps-Infra/`)
+- **AND** each topic SHALL be a subfolder within its category (e.g., `ML-AI/RAG-Architecture/`)
+- **AND** each topic folder SHALL contain an `_overview.md` file with the LLM-compiled article
+- **AND** within each topic folder, source publications SHALL be subfolders (e.g., `ML-AI/RAG-Architecture/The-Batch/`)
+- **AND** each source subfolder SHALL contain summary extract files linking to the full summaries
 
-#### Scenario: Topic file includes YAML frontmatter
+#### Scenario: Topic _overview.md includes YAML frontmatter
 
 - **WHEN** a topic is exported
-- **THEN** the `.md` file SHALL begin with YAML frontmatter containing:
-  - `slug`, `name`, `category_path` (e.g., "ML/AI > LLMs"), `trend`, `status`
+- **THEN** the `_overview.md` file SHALL begin with YAML frontmatter containing:
+  - `slug`, `name`, `category_path` (e.g., "ML/AI"), `trend`, `status`
   - `relevance_score`, `mention_count`, `article_version`
+  - `sources` (list of source publication names contributing to this topic)
   - `first_evidence_at`, `last_evidence_at`, `last_compiled_at`
   - `tags` (derived from key_points and category)
 - **AND** the frontmatter SHALL be followed by the `article_md` content
 
-#### Scenario: Related topics rendered as wikilinks
+#### Scenario: Source extract files link to summaries
+
+- **WHEN** a topic has evidence from a source publication
+- **THEN** a summary extract file SHALL be created at `Category/Topic/Source/date-slug.md`
+- **AND** the extract SHALL contain key points from the summary
+- **AND** the extract SHALL include a wikilink `[[summaries/slug]]` to the full summary
+
+#### Scenario: Summaries and content stubs in flat reference directories
+
+- **WHEN** the export runs
+- **THEN** a `summaries/` directory SHALL contain one `.md` file per summary with full summary markdown and a `[[content/slug]]` wikilink
+- **AND** a `content/` directory SHALL contain stub `.md` files with title, date, publication, and the original source URL
+
+#### Scenario: Related topics rendered as wikilinks between _overview files
 
 - **WHEN** a topic has `related_topic_ids`
-- **THEN** the exported article SHALL contain `[[Related Topic Name]]` wikilinks
-- **AND** these wikilinks SHALL be resolvable within the vault (matching filenames)
+- **THEN** the `_overview.md` SHALL contain wikilinks to related topics' `_overview.md` files
+- **AND** these wikilinks SHALL use relative paths resolvable within the vault
 
 #### Scenario: Index files exported to vault root
 
@@ -358,13 +373,14 @@ Combines file export with `obsidian-headless` (official npm package) for server 
 
 - **WHEN** `GET /api/v1/kb/export/obsidian` is called
 - **THEN** the response SHALL be a ZIP archive with `Content-Type: application/zip`
-- **AND** the ZIP SHALL contain the complete vault directory structure
+- **AND** the ZIP SHALL contain the complete vault directory structure including `summaries/` and `content/` directories
 
 #### Scenario: Incremental export only includes changed topics
 
 - **WHEN** `aca kb export --format obsidian --output ./vault --since 2026-04-01` is run
-- **THEN** only topics with `updated_at` after the specified date SHALL be written
-- **AND** existing unchanged files in the output directory SHALL NOT be overwritten
+- **THEN** only topics with `updated_at` after the specified date SHALL have their folders regenerated
+- **AND** existing unchanged topic folders SHALL NOT be overwritten
+- **AND** the `summaries/` and `content/` directories SHALL only receive new/changed files
 
 #### Scenario: CLI-driven export writes to live vault (Mode 1, deferred)
 
