@@ -6,7 +6,8 @@ It serves as the coordination boundary between work packages.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
 GraphDBProviderType = Literal["neo4j", "falkordb"]
@@ -14,49 +15,51 @@ Neo4jSubProviderType = Literal["local", "auradb"]
 FalkorDBSubProviderType = Literal["local", "lite"]
 
 
+@dataclass
 class NodeRecord:
     """Backend-agnostic node representation for export/import."""
 
     label: str
     uuid: str
-    properties: dict[str, Any]
+    properties: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
 class RelationshipRecord:
     """Backend-agnostic relationship representation for export/import."""
 
     rel_type: str
     source_uuid: str
     target_uuid: str
-    properties: dict[str, Any]
+    properties: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
 class ExportManifest:
     """Metadata about a graph export operation."""
 
     backend: GraphDBProviderType
     exported_at: str  # ISO-8601
-    node_counts: dict[str, int]  # label -> count
-    relationship_counts: dict[str, int]  # type -> count
+    node_counts: dict[str, int] = field(default_factory=dict)  # label -> count
+    relationship_counts: dict[str, int] = field(default_factory=dict)  # type -> count
 
 
-@runtime_checkable
-class GraphExporter(Protocol):
-    """Protocol for exporting graph data from any backend."""
+@dataclass
+class ImportStats:
+    """Statistics from a graph import operation."""
 
-    async def export_nodes(self, label: str) -> AsyncIterator[NodeRecord]: ...
-    async def export_relationships(self, rel_type: str) -> AsyncIterator[RelationshipRecord]: ...
-    async def count_nodes(self, label: str) -> int: ...
-    async def count_relationships(self, rel_type: str) -> int: ...
+    nodes_inserted: int = 0
+    nodes_updated: int = 0
+    nodes_skipped: int = 0
+    nodes_failed: int = 0
+    rels_inserted: int = 0
+    rels_updated: int = 0
+    rels_skipped: int = 0
+    rels_failed: int = 0
 
 
-@runtime_checkable
-class GraphImporter(Protocol):
-    """Protocol for importing graph data to any backend."""
-
-    async def import_node(self, record: NodeRecord) -> str: ...
-    async def import_relationship(self, record: RelationshipRecord) -> str: ...
-    async def delete_all(self) -> tuple[int, int]: ...
+class GraphBackendUnavailableError(Exception):
+    """Raised when the graph backend is unreachable during client creation."""
 
 
 @runtime_checkable
@@ -66,8 +69,8 @@ class GraphDBProvider(Protocol):
     Implementations provide:
     1. A graphiti-core GraphDriver for the Graphiti() constructor
     2. Raw query execution for reference_graph_sync and export/import
-    3. Lifecycle management
-    4. Export/import factory methods
+    3. Lifecycle management (sync and async close)
+    4. File-level export/import matching CLI sync workflow
     """
 
     def create_graphiti_driver(self) -> Any:
@@ -90,18 +93,22 @@ class GraphDBProvider(Protocol):
         """Execute a write openCypher query within a transaction."""
         ...
 
-    async def close(self) -> None:
-        """Close all connections and release resources."""
+    def close(self) -> None:
+        """Sync close — for CLI and non-async callers."""
+        ...
+
+    async def aclose(self) -> None:
+        """Async close — for async callers."""
         ...
 
     async def health_check(self) -> bool:
         """Check backend connectivity. Returns False on failure (no exceptions)."""
         ...
 
-    def create_exporter(self) -> GraphExporter:
-        """Create an exporter for this backend."""
+    def export_graph(self, output_path: Path) -> ExportManifest:
+        """Export all graph data to JSONL file at output_path."""
         ...
 
-    def create_importer(self, mode: str = "merge") -> GraphImporter:
-        """Create an importer for this backend. Mode: 'merge' or 'clean'."""
+    def import_graph(self, input_path: Path, mode: str = "merge") -> ImportStats:
+        """Import graph data from JSONL file. Mode: 'merge' or 'clean'."""
         ...
