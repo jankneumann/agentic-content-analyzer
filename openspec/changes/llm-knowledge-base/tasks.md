@@ -2,25 +2,28 @@
 
 ## Phase 1: Data Model & Configuration
 
-- [ ] 1.1 Write tests for Topic and TopicNote models — CRUD, lifecycle transitions, slug generation, self-referential relationships
-  **Spec scenarios**: knowledge-base.1 (topic created from theme), knowledge-base.1 (lifecycle transitions), knowledge-base.1 (hierarchy)
+- [ ] 1.1 Write tests for TopicCategory, Topic, and TopicNote models — CRUD, lifecycle transitions, slug generation, category hierarchy, self-referential relationships
+  **Spec scenarios**: knowledge-base.1 (topic created from theme), knowledge-base.1 (lifecycle transitions), knowledge-base.1 (hierarchy), knowledge-base.2 (category hierarchy), knowledge-base.2 (category seeding)
   **Contracts**: contracts/db/schema.sql
-  **Design decisions**: D2 (full superset of ThemeData)
+  **Design decisions**: D2 (full superset + dedicated category table)
   **Dependencies**: None
 
-- [ ] 1.2 Create Topic SQLAlchemy model (`src/models/topic.py`) — full superset of ThemeData with TopicStatus enum, slug generation, all indexes
+- [ ] 1.2 Create TopicCategory SQLAlchemy model (`src/models/topic_category.py`) — hierarchical taxonomy with parent_id self-referential FK, slug, name, icon, color, display_order
   **Dependencies**: 1.1
 
-- [ ] 1.3 Create TopicNote SQLAlchemy model (`src/models/topic_note.py`) — foreign key to Topic, note_type, author, filed_back
+- [ ] 1.3 Create Topic SQLAlchemy model (`src/models/topic.py`) — full superset of ThemeData with TopicStatus enum, category_id FK to TopicCategory, slug generation, all indexes
+  **Dependencies**: 1.1, 1.2
+
+- [ ] 1.4 Create TopicNote SQLAlchemy model (`src/models/topic_note.py`) — foreign key to Topic, note_type, author, filed_back
   **Dependencies**: 1.1
 
-- [ ] 1.4 Create Alembic migration for topics and topic_notes tables — include TopicStatus enum creation, all indexes, self-referential FKs
-  **Dependencies**: 1.2, 1.3
+- [ ] 1.5 Create Alembic migration for topic_categories, topics, and topic_notes tables — include TopicStatus enum, seed 8 default categories, all indexes, self-referential FKs
+  **Dependencies**: 1.2, 1.3, 1.4
 
-- [ ] 1.5 Export new models from `src/models/__init__.py` — Topic, TopicNote, TopicStatus
-  **Dependencies**: 1.2, 1.3
+- [ ] 1.6 Export new models from `src/models/__init__.py` — TopicCategory, Topic, TopicNote, TopicStatus
+  **Dependencies**: 1.2, 1.3, 1.4
 
-- [ ] 1.6 Create `settings/knowledge_base.yaml` — compilation config (thresholds, limits, index types) and add KB prompt templates to `settings/prompts.yaml`
+- [ ] 1.7 Create `settings/knowledge_base.yaml` — compilation config (thresholds, limits, index types) and add KB prompt templates to `settings/prompts.yaml`
   **Design decisions**: D7 (compilation in pipeline)
   **Dependencies**: None
 
@@ -116,11 +119,28 @@
 - [ ] 8.2 Review and validate all KB services use GraphitiClient abstraction — audit imports, remove any direct graph DB access
   **Dependencies**: 8.1
 
+## Phase 9: Obsidian Export
+
+- [ ] 9.1 Write tests for Obsidian export service — folder structure from category hierarchy, YAML frontmatter, wikilinks, index files, ZIP generation, incremental export
+  **Spec scenarios**: knowledge-base.12 (category folder structure), knowledge-base.12 (YAML frontmatter), knowledge-base.12 (wikilinks), knowledge-base.12 (index files), knowledge-base.12 (ZIP via API), knowledge-base.12 (incremental export)
+  **Design decisions**: D8 (category hierarchy as folder structure)
+  **Dependencies**: 1.2, 1.3, 2.4
+
+- [ ] 9.2 Create Obsidian export service (`src/services/kb_obsidian_export.py`) — generate vault directory with category-based folders, topic .md files with frontmatter, wikilinks, and index files
+  **Dependencies**: 9.1
+
+- [ ] 9.3 Add `aca kb export` CLI command and `GET /api/v1/kb/export/obsidian` API endpoint
+  **Dependencies**: 9.2, 4.2, 5.2
+
+- [ ] 9.4 Add category CRUD API endpoints (`/api/v1/kb/categories`) — list tree, create subcategory
+  **Spec scenarios**: knowledge-base.2 (subcategory created via API), knowledge-base.2 (category listing)
+  **Dependencies**: 1.2, 5.2
+
 ## Summary
 
 | Phase | Tasks | Focus |
 |-------|-------|-------|
-| 1 | 1.1 - 1.6 | Data model, migration, settings |
+| 1 | 1.1 - 1.7 | Data model, migration, settings |
 | 2 | 2.1 - 2.4 | Compilation + index generation |
 | 3 | 3.1 - 3.2 | Health checks + linting |
 | 4 | 4.1 - 4.3 | CLI commands |
@@ -128,3 +148,4 @@
 | 6 | 6.1 - 6.5 | MCP tools + agent |
 | 7 | 7.1 - 7.2 | Pipeline integration |
 | 8 | 8.1 - 8.2 | Graph abstraction compliance |
+| 9 | 9.1 - 9.4 | Obsidian export + category CRUD |

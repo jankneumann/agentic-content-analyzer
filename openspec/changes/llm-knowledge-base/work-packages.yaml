@@ -265,6 +265,40 @@ packages:
       - wp-cli
     verification: Tier B
 
+  - id: wp-obsidian
+    name: Obsidian export and category CRUD
+    description: Obsidian vault export service, category CRUD API, CLI export command
+    priority: 6
+    tasks:
+      - "9.1"
+      - "9.2"
+      - "9.3"
+      - "9.4"
+    scope:
+      write_allow:
+        - "src/services/kb_obsidian_export.py"
+        - "tests/test_services/test_kb_obsidian_export.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/llm-knowledge-base/**"
+      deny:
+        - "src/agents/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/services/kb_obsidian_export.py"
+      keys:
+        - "api:GET /v1/kb/export/obsidian"
+        - "api:GET /v1/kb/categories"
+        - "api:POST /v1/kb/categories"
+        - "service:kb_obsidian_export"
+      ttl_minutes: 90
+      reason: Obsidian export and category API implementation
+    dependencies:
+      - wp-data-model
+      - wp-services
+    verification: Tier A
+
   - id: wp-integration
     name: Integration testing and validation
     description: Full test suite, cross-package validation, spec compliance
@@ -286,4 +320,5 @@ packages:
       - wp-api
       - wp-agent
       - wp-pipeline
+      - wp-obsidian
     verification: Tier A

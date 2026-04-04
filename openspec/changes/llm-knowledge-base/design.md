@@ -66,22 +66,29 @@
 
 **Alternative rejected**: Flat markdown files (Approach 2). While simpler for personal use, it disconnects from the existing infrastructure and doesn't scale. Bidirectional sync (Approach 3) was rejected due to conflict resolution complexity.
 
-### D2: Topic Model as Full Superset of ThemeData
+### D2: Topic Model as Full Superset of ThemeData with Dedicated Category Table
 
-**Decision**: The `Topic` SQLAlchemy model includes ALL fields from the `ThemeData` Pydantic model as individual database columns, not as a JSONB blob.
+**Decision**: The `Topic` SQLAlchemy model includes ALL fields from the `ThemeData` Pydantic model as individual database columns. Categories use a dedicated `TopicCategory` table (not the fixed `ThemeCategory` enum) enabling hierarchical, extensible taxonomy without migrations.
 
 **Rationale**: Direct column storage enables:
-- SQL-level filtering: `WHERE category = 'ml_ai' AND trend = 'emerging' AND relevance_score > 0.7`
+- SQL-level filtering: `WHERE category_id = 5 AND trend = 'emerging' AND relevance_score > 0.7`
 - Database indexes on frequently queried fields
 - No JSON path queries or post-fetch filtering
 - Clear schema evolution via Alembic migrations
+
+**TopicCategory table** replaces the fixed `ThemeCategory` enum for topic categorization:
+- `id`, `slug`, `name`, `description`, `parent_id` (self-referential FK), `icon`, `color`, `display_order`
+- Seeded with 8 existing ThemeCategory values as top-level categories
+- Hierarchical: `ML/AI → LLMs → Fine-tuning` via parent_id chain
+- Maps directly to Obsidian folder structure
+- New categories added via API/CLI — no `ALTER TYPE` migration needed
 
 **Fields promoted from ThemeData**:
 | ThemeData field | Topic column | Type |
 |----------------|-------------|------|
 | name | name | String(500) |
 | description | summary | Text |
-| category | category | Enum(ThemeCategory) |
+| category | category_id | FK → TopicCategory |
 | trend | trend | Enum(ThemeTrend) |
 | relevance_score | relevance_score | Float |
 | strategic_relevance | strategic_relevance | Float |
@@ -198,18 +205,99 @@ aca pipeline daily:
   5. Create digest         (existing — can now reference Topic articles)
 ```
 
+### D8: Obsidian Export — Category Hierarchy as Folder Structure
+
+**Decision**: The Obsidian export maps TopicCategory hierarchy directly to the folder structure. Each topic is a `.md` file with YAML frontmatter placed in its category's folder. Wikilinks connect related topics. Indices are exported as root-level `_index.md` files.
+
+**Vault structure**:
+```
+vault/
+├── _index.md                          # Master index
+├── _by_category.md                    # Category index
+├── _by_trend.md                       # Trend index
+├── _relationship_map.md               # Topic adjacency map
+├── ML-AI/                             # Top-level category folder
+│   ├── rag-architecture.md            # Topic file
+│   ├── LLMs/                          # Subcategory folder
+│   │   ├── fine-tuning.md
+│   │   └── prompt-engineering.md
+│   └── Agents/                        # Subcategory folder
+│       └── tool-use-patterns.md
+├── DevOps-Infra/
+│   └── kubernetes-ai-workloads.md
+└── ...
+```
+
+**Topic file format**:
+```markdown
+---
+slug: rag-architecture
+name: RAG Architecture
+category_path: ML/AI
+trend: growing
+status: active
+relevance_score: 0.87
+mention_count: 15
+article_version: 3
+first_evidence_at: 2025-11-15T00:00:00Z
+last_evidence_at: 2026-04-01T00:00:00Z
+last_compiled_at: 2026-04-04T12:00:00Z
+tags:
+  - retrieval-augmented-generation
+  - vector-databases
+  - embedding
+---
+
+# RAG Architecture
+
+## Overview
+[LLM-compiled article content...]
+
+## Related Topics
+- [[Fine-tuning]] — complementary approach
+- [[Vector Databases]] — key infrastructure
+- [[Embedding Models]] — foundation technology
+```
+
+**Rationale**:
+- Category hierarchy as folders gives Obsidian users natural navigation via the file explorer
+- YAML frontmatter enables Obsidian Dataview queries (`TABLE relevance_score FROM "ML-AI"`)
+- Wikilinks (`[[Topic Name]]`) power Obsidian's graph view for relationship visualization
+- This is significantly richer than flat folder + frontmatter — the hierarchy IS the knowledge structure
+
+**Alternative rejected**: Flat structure with frontmatter-only categorization. While simpler, it loses the visual organization that makes Obsidian useful for knowledge navigation. The category hierarchy is the core UX differentiator.
+
 ## Data Model
 
 ### Entity-Relationship Diagram
 
 ```
 ┌─────────────────────────────────┐
+│         TopicCategory           │
+├─────────────────────────────────┤
+│ id (PK)                        │
+│ slug (unique, indexed)         │
+│ name                           │
+│ description (Text, nullable)   │
+│ parent_id (FK → self, nullable)│
+│ icon (String, nullable)        │
+│ color (String, nullable)       │
+│ display_order (Integer, def 0) │
+│ created_at (DateTime)          │
+├─────────────────────────────────┤
+│ INDEXES:                       │
+│  uq_topic_categories_slug      │
+│  ix_topic_categories_parent    │
+└──────────┬──────────────────────┘
+           │ 1:N
+           ▼
+┌─────────────────────────────────┐
 │             Topic               │
 ├─────────────────────────────────┤
 │ id (PK)                        │
 │ slug (unique, indexed)         │
 │ name                           │
-│ category (ThemeCategory enum)  │
+│ category_id (FK → TopicCategory)│
 │ status (TopicStatus enum)      │
 │ summary (Text)                 │
 │ article_md (Text)              │

@@ -4,7 +4,7 @@
 
 ### Requirement: Topic as first-class persistent entity
 
-The system SHALL store topics as persistent SQLAlchemy records in a `topics` PostgreSQL table. Each topic SHALL have a unique `slug`, a display `name`, a `category` (reusing `ThemeCategory` enum), a lifecycle `status` (TopicStatus enum), and LLM-compiled article content. The Topic model SHALL be a full superset of the existing `ThemeData` Pydantic model fields, promoted to individual database columns for direct queryability.
+The system SHALL store topics as persistent SQLAlchemy records in a `topics` PostgreSQL table. Each topic SHALL have a unique `slug`, a display `name`, a `category_id` (foreign key to `TopicCategory`), a lifecycle `status` (TopicStatus enum), and LLM-compiled article content. The Topic model SHALL be a full superset of the existing `ThemeData` Pydantic model fields, promoted to individual database columns for direct queryability.
 
 #### Scenario: Topic created from theme analysis
 
@@ -34,6 +34,41 @@ The system SHALL store topics as persistent SQLAlchemy records in a `topics` Pos
 - **WHEN** the KB compiler detects a hierarchical relationship (e.g., "RAG" is a subtopic of "LLM Architectures")
 - **THEN** the child topic SHALL have `parent_topic_id` set to the parent topic's ID
 - **AND** the parent topic article SHALL reference its child topics
+
+### Requirement: Hierarchical TopicCategory taxonomy
+
+The system SHALL store topic categories in a dedicated `topic_categories` table, replacing the fixed `ThemeCategory` enum for topic categorization. Each category SHALL have a unique `slug`, a display `name`, an optional `parent_id` (self-referential FK for hierarchy), and optional `description`, `icon`, `color`, and `display_order` fields. The table SHALL be seeded with the 8 existing ThemeCategory values as top-level categories. New categories SHALL be addable via API/CLI without database migrations.
+
+#### Scenario: Default categories seeded from ThemeCategory enum
+
+- **WHEN** the Alembic migration runs
+- **THEN** the `topic_categories` table SHALL be seeded with 8 top-level records matching existing `ThemeCategory` values: ml_ai, devops_infra, data_engineering, business_strategy, tools_products, research_academia, security, other
+- **AND** each seeded record SHALL have `parent_id=NULL` (top-level)
+
+#### Scenario: Subcategory created via API
+
+- **WHEN** `POST /api/v1/kb/categories` is called with `{"name": "LLMs", "parent_slug": "ml-ai"}`
+- **THEN** a `TopicCategory` record SHALL be created with `parent_id` set to the `ml-ai` category's ID
+- **AND** the response SHALL include the full category path (e.g., "ML/AI > LLMs")
+
+#### Scenario: Category hierarchy maps to Obsidian folders
+
+- **WHEN** the Obsidian export runs
+- **THEN** each TopicCategory SHALL map to a directory in the vault
+- **AND** subcategories SHALL be nested directories (e.g., `ML-AI/LLMs/Fine-tuning/`)
+- **AND** topics SHALL be placed in their category's directory
+
+#### Scenario: Topic references category by FK
+
+- **WHEN** a Topic is created
+- **THEN** its `category_id` SHALL be a foreign key to `topic_categories.id`
+- **AND** the category SHALL be loadable via SQLAlchemy relationship
+
+#### Scenario: Category listing via API
+
+- **WHEN** `GET /api/v1/kb/categories` is called
+- **THEN** the response SHALL be a tree-structured JSON with nested children
+- **AND** each node SHALL include `slug`, `name`, `parent_slug`, `topic_count`, and `children`
 
 ### Requirement: TopicNote annotations on topics
 
@@ -272,6 +307,52 @@ The MCP server SHALL expose tools for LLM agents to interact with the knowledge 
 - **WHEN** an LLM agent calls `compile_knowledge_base(topic_slug="rag-architecture")`
 - **THEN** the KB compiler SHALL run for the specified topic
 - **AND** the tool SHALL return compilation statistics
+
+### Requirement: Obsidian vault export
+
+The system SHALL export the knowledge base as an Obsidian-compatible vault. The export SHALL generate a directory structure with one `.md` file per topic, organized by the TopicCategory hierarchy. Each topic file SHALL include YAML frontmatter and article body with wikilinks. Index files SHALL be included.
+
+#### Scenario: Export generates category-based folder structure
+
+- **WHEN** `aca kb export --format obsidian --output ./vault` is run
+- **THEN** the output directory SHALL contain folders matching the TopicCategory hierarchy
+- **AND** top-level categories SHALL be root folders (e.g., `ML-AI/`, `DevOps-Infra/`)
+- **AND** subcategories SHALL be nested folders (e.g., `ML-AI/LLMs/Fine-tuning/`)
+- **AND** each topic's `.md` file SHALL be placed in its category's folder
+
+#### Scenario: Topic file includes YAML frontmatter
+
+- **WHEN** a topic is exported
+- **THEN** the `.md` file SHALL begin with YAML frontmatter containing:
+  - `slug`, `name`, `category_path` (e.g., "ML/AI > LLMs"), `trend`, `status`
+  - `relevance_score`, `mention_count`, `article_version`
+  - `first_evidence_at`, `last_evidence_at`, `last_compiled_at`
+  - `tags` (derived from key_points and category)
+- **AND** the frontmatter SHALL be followed by the `article_md` content
+
+#### Scenario: Related topics rendered as wikilinks
+
+- **WHEN** a topic has `related_topic_ids`
+- **THEN** the exported article SHALL contain `[[Related Topic Name]]` wikilinks
+- **AND** these wikilinks SHALL be resolvable within the vault (matching filenames)
+
+#### Scenario: Index files exported to vault root
+
+- **WHEN** the export runs
+- **THEN** the vault root SHALL contain `_index.md`, `_by_category.md`, `_by_trend.md`, and `_relationship_map.md`
+- **AND** these SHALL contain the cached index markdown from the corresponding Topic records
+
+#### Scenario: Export available via API as ZIP
+
+- **WHEN** `GET /api/v1/kb/export/obsidian` is called
+- **THEN** the response SHALL be a ZIP archive with `Content-Type: application/zip`
+- **AND** the ZIP SHALL contain the complete vault directory structure
+
+#### Scenario: Incremental export only includes changed topics
+
+- **WHEN** `aca kb export --format obsidian --output ./vault --since 2026-04-01` is run
+- **THEN** only topics with `updated_at` after the specified date SHALL be written
+- **AND** existing unchanged files in the output directory SHALL NOT be overwritten
 
 ### Requirement: Graph backend abstraction for topic relationships
 

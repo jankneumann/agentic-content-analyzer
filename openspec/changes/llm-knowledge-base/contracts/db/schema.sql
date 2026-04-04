@@ -7,12 +7,40 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- TopicCategory table (hierarchical taxonomy)
+CREATE TABLE IF NOT EXISTS topic_categories (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(200) NOT NULL,
+    name VARCHAR(500) NOT NULL,
+    description TEXT,
+    parent_id INTEGER REFERENCES topic_categories(id) ON DELETE SET NULL,
+    icon VARCHAR(50),
+    color VARCHAR(20),
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_topic_categories_slug UNIQUE (slug)
+);
+
+CREATE INDEX IF NOT EXISTS ix_topic_categories_parent ON topic_categories (parent_id);
+
+-- Seed default categories from ThemeCategory enum
+INSERT INTO topic_categories (slug, name, description, display_order) VALUES
+    ('ml-ai', 'ML/AI', 'LLMs, agents, RAG, fine-tuning', 1),
+    ('devops-infra', 'DevOps & Infrastructure', 'Cloud, containers, orchestration', 2),
+    ('data-engineering', 'Data Engineering', 'Pipelines, lakes, processing', 3),
+    ('business-strategy', 'Business Strategy', 'Adoption, ROI, governance', 4),
+    ('tools-products', 'Tools & Products', 'New releases, updates', 5),
+    ('research-academia', 'Research & Academia', 'Papers, breakthroughs', 6),
+    ('security', 'Security', 'Security, privacy, compliance', 7),
+    ('other', 'Other', 'Miscellaneous', 8)
+ON CONFLICT (slug) DO NOTHING;
+
 -- Topics table
 CREATE TABLE IF NOT EXISTS topics (
     id SERIAL PRIMARY KEY,
     slug VARCHAR(200) NOT NULL,
     name VARCHAR(500) NOT NULL,
-    category analysisstatus_themecategory NOT NULL DEFAULT 'other',
+    category_id INTEGER NOT NULL REFERENCES topic_categories(id) ON DELETE RESTRICT,
     status topicstatus NOT NULL DEFAULT 'draft',
 
     -- LLM-compiled article content
@@ -57,12 +85,12 @@ CREATE TABLE IF NOT EXISTS topics (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS ix_topics_slug ON topics (slug);
-CREATE INDEX IF NOT EXISTS ix_topics_category ON topics (category);
+CREATE INDEX IF NOT EXISTS ix_topics_category_id ON topics (category_id);
 CREATE INDEX IF NOT EXISTS ix_topics_status ON topics (status);
 CREATE INDEX IF NOT EXISTS ix_topics_trend ON topics (trend);
 CREATE INDEX IF NOT EXISTS ix_topics_relevance ON topics (relevance_score DESC);
 CREATE INDEX IF NOT EXISTS ix_topics_last_compiled ON topics (last_compiled_at);
-CREATE INDEX IF NOT EXISTS ix_topics_category_trend ON topics (category, trend);
+CREATE INDEX IF NOT EXISTS ix_topics_category_trend ON topics (category_id, trend);
 CREATE INDEX IF NOT EXISTS ix_topics_parent ON topics (parent_topic_id);
 
 -- TopicNotes table

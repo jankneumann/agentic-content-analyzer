@@ -27,9 +27,11 @@ Inspired by [Andrei Karpathy's approach](https://x.com/karpathy/status/190819023
 
 ### New Components
 
-1. **Topic Model** (`src/models/topic.py`) — Persistent SQLAlchemy entity promoting `ThemeData` to a first-class DB record. Full superset of ThemeData fields: name, slug, category, trend, relevance/novelty/strategic/tactical scores, related topics, parent-child hierarchy, and LLM-compiled article markdown. Lifecycle: DRAFT → ACTIVE → STALE → ARCHIVED (or MERGED).
+1. **Topic Model** (`src/models/topic.py`) — Persistent SQLAlchemy entity promoting `ThemeData` to a first-class DB record. Full superset of ThemeData fields: name, slug, category (FK → TopicCategory), trend, relevance/novelty/strategic/tactical scores, related topics, parent-child hierarchy, and LLM-compiled article markdown. Lifecycle: DRAFT → ACTIVE → STALE → ARCHIVED (or MERGED).
 
-2. **TopicNote Model** (`src/models/topic_note.py`) — Annotations on topics from users, agents, or the system. Supports filing Q&A answers, corrections, and observations back into the KB. Each note tracks whether it has been incorporated into the topic article.
+2. **TopicCategory Model** (`src/models/topic_category.py`) — Dedicated taxonomy table replacing the fixed `ThemeCategory` enum for topic categorization. Hierarchical: each category has an optional `parent_id` (self-referential FK) enabling tree structures like `ML/AI → LLMs → Fine-tuning`. Fields: id, slug, name, description, parent_id, icon, color, display_order. Seeded with the 8 existing ThemeCategory values as top-level categories. New categories can be added via API/CLI without migrations. Maps directly to Obsidian folder structure.
+
+3. **TopicNote Model** (`src/models/topic_note.py`) — Annotations on topics from users, agents, or the system. Supports filing Q&A answers, corrections, and observations back into the KB. Each note tracks whether it has been incorporated into the topic article.
 
 3. **KB Compilation Service** (`src/services/kb_compiler.py`) — Incremental compiler that:
    - Gathers new evidence (recent ThemeAnalysis results, new content, agent insights)
@@ -60,6 +62,15 @@ Inspired by [Andrei Karpathy's approach](https://x.com/karpathy/status/190819023
 8. **API Endpoints** (`src/api/kb_routes.py`) — RESTful CRUD for topics, notes, compilation triggers, index retrieval, health checks, and Q&A
 
 9. **MCP Tools** — `search_knowledge_base`, `get_topic`, `update_topic`, `add_topic_note`, `get_kb_index`, `compile_knowledge_base`
+
+10. **Obsidian Export Service** (`src/services/kb_obsidian_export.py`) — Generates an Obsidian-compatible vault from the knowledge base:
+    - **Folder structure**: TopicCategory hierarchy maps directly to folders (e.g., `ML-AI/LLMs/Fine-tuning/`)
+    - **Topic files**: One `.md` file per topic with YAML frontmatter (slug, category path, trend, scores, dates) and article body
+    - **Wikilinks**: `related_topic_ids` rendered as `[[Topic Name]]` wikilinks for Obsidian graph view
+    - **Index files**: Cached indices exported as `_index.md` files in the vault root
+    - **Images**: Referenced via relative paths (future: download to vault)
+    - **CLI**: `aca kb export --format obsidian --output ./vault`
+    - **API**: `GET /api/v1/kb/export/obsidian` returns a ZIP archive
 
 ### Modified Components
 
@@ -143,11 +154,13 @@ Key refinements from discovery:
 ## Scope
 
 ### In Scope
-- Topic + TopicNote SQLAlchemy models + Alembic migration
+- Topic + TopicCategory + TopicNote SQLAlchemy models + Alembic migration
+- TopicCategory hierarchical taxonomy (replaces fixed ThemeCategory enum for topics)
 - KB compilation service (incremental)
 - KB index generator (cached markdown indices)
 - KB Q&A agent (new specialist + tools on Research specialist)
 - KB health check / linting service
+- Obsidian export specification and implementation (folder structure, frontmatter, wikilinks)
 - CLI commands (`aca kb`)
 - API endpoints (`/api/v1/kb/`)
 - MCP tools (6 tools)
@@ -155,7 +168,7 @@ Key refinements from discovery:
 - Settings YAML + prompt templates
 
 ### Out of Scope (deferred)
-- Obsidian vault export/import (Phase 3)
+- Obsidian import / sync-back from edited vault files (future)
 - Voice mode integration / audio briefs (Phase 3)
 - Interactive HTML output generation (Phase 3)
 - Synthetic data generation / fine-tuning from KB (future)

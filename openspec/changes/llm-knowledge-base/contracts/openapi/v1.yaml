@@ -258,6 +258,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthReport"
 
+  /api/v1/kb/categories:
+    get:
+      operationId: listCategories
+      summary: List categories as tree
+      responses:
+        "200":
+          description: Category tree
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryNode"
+              example:
+                - slug: ml-ai
+                  name: ML/AI
+                  topic_count: 15
+                  children:
+                    - slug: llms
+                      name: LLMs
+                      topic_count: 8
+                      children: []
+    post:
+      operationId: createCategory
+      summary: Create a category (optionally nested)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryCreate"
+            example:
+              name: LLMs
+              parent_slug: ml-ai
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryNode"
+
+  /api/v1/kb/export/obsidian:
+    get:
+      operationId: exportObsidianVault
+      summary: Export KB as Obsidian vault (ZIP)
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Only include topics updated after this date (incremental export)
+      responses:
+        "200":
+          description: Obsidian vault as ZIP archive
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+
   /api/v1/kb/query:
     post:
       operationId: queryKB
@@ -493,6 +555,43 @@ components:
           type: integer
         findings_fixed:
           type: integer
+
+    CategoryNode:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        parent_slug:
+          type: string
+          nullable: true
+        topic_count:
+          type: integer
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryNode"
+
+    CategoryCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        parent_slug:
+          type: string
+          nullable: true
+          description: Slug of parent category (null for top-level)
+        description:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
 
     Error:
       type: object
