@@ -52,7 +52,7 @@ class TestProductionSecurityWarnings:
             _make_settings(
                 environment="production",
                 admin_api_key="my-key",
-                allowed_origins="http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost",
+                allowed_origins="http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost,tauri://localhost",
             )
 
         assert any(
@@ -91,7 +91,7 @@ class TestCORSDefaults:
         s = _make_settings(
             environment="production",
             admin_api_key="key",
-            allowed_origins="http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost",
+            allowed_origins="http://localhost:5173,http://localhost:3000,capacitor://localhost,http://localhost,tauri://localhost",
         )
         assert s.get_allowed_origins_list() == []
 
@@ -144,7 +144,7 @@ class TestCORSDefaults:
         s = _make_settings(
             environment="production",
             admin_api_key="key",
-            allowed_origins="http://localhost:5173, http://localhost:3000, capacitor://localhost, http://localhost",
+            allowed_origins="http://localhost:5173, http://localhost:3000, capacitor://localhost, http://localhost, tauri://localhost",
         )
         assert s.get_allowed_origins_list() == []
 
@@ -153,7 +153,7 @@ class TestCORSDefaults:
         s = _make_settings(
             environment="production",
             admin_api_key="key",
-            allowed_origins="http://localhost:3000,http://localhost:5173,http://localhost,capacitor://localhost",
+            allowed_origins="http://localhost:3000,http://localhost:5173,http://localhost,capacitor://localhost,tauri://localhost",
         )
         assert s.get_allowed_origins_list() == []
 

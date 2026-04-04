@@ -42,7 +42,7 @@ def test_update_prompt_auth(client):
     # 1. Test missing header
     response = client.put(url, json=payload)
     assert response.status_code == 401
-    assert response.json()["detail"] == "Missing authentication header X-Admin-Key"
+    assert response.json()["detail"] == "Please log in or provide X-Admin-Key header."
 
     # 2. Test invalid key
     response = client.put(url, json=payload, headers={"X-Admin-Key": "wrong-key"})

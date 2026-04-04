@@ -19,6 +19,7 @@ def test_search_routes_protected_in_production(mock_get_settings):
     settings.is_development = False
     settings.is_production = True
     settings.admin_api_key = "secret-key"
+    settings.app_secret_key = "app-secret-key"
 
     mock_get_settings.return_value = settings
 
@@ -39,6 +40,7 @@ def test_search_routes_accessible_with_key(mock_get_settings):
     settings.is_development = False
     settings.is_production = True
     settings.admin_api_key = "secret-key"
+    settings.app_secret_key = "app-secret-key"
 
     mock_get_settings.return_value = settings
 

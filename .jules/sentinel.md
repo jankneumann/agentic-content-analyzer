@@ -7,3 +7,8 @@
 **Vulnerability:** The global error handlers `data_error_handler` and `asyncpg_data_error_handler` in `src/api/middleware/error_handler.py` were returning `exc.orig` and `exc` directly to the client in the 422 HTTP response detail field.
 **Learning:** Returning raw database validation or asyncpg errors can expose sensitive internal details (e.g., query structure or internal systems state) to the end user.
 **Prevention:** Global exception handlers should catch database and input errors but return sanitized generic strings like "Invalid parameter value" to the client.
+
+## 2025-05-27 - Hardcoded API Key Exposure in Tests
+**Vulnerability:** A hardcoded API key was found in a testing environment setup file or test case.
+**Learning:** Including plain-text keys—even in mock setups or test cases—increases the risk of accidental commit or exposure when copied and modified.
+**Prevention:** Use generic placeholder values (e.g., 'mock-secret-key' or 'app-secret-key') strictly for validation patterns without reflecting actual key formats.

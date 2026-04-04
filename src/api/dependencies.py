@@ -121,5 +121,5 @@ async def verify_admin_key(
 
     raise HTTPException(
         status_code=401,
-        detail="Missing authentication header X-Admin-Key",
+        detail="Please log in or provide X-Admin-Key header.",
     )
