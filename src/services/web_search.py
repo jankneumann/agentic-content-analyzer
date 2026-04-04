@@ -14,6 +14,7 @@ Provider implementations:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -177,6 +178,9 @@ class PerplexityWebSearchProvider:
 # ---------------------------------------------------------------------------
 
 
+_URL_PATTERN = re.compile(r"https?://\S+")
+_PUNCTUATION_PATTERN = re.compile(r"[.,;:!?\)\]\}>]+$")
+
 class GrokWebSearchProvider:
     """Adapts GrokXClient for the WebSearchProvider protocol.
 
@@ -211,11 +215,10 @@ class GrokWebSearchProvider:
 
             # Parse the synthesized response into a single result
             # Grok returns prose, not structured results
-            import re
 
             # Extract any URLs from the synthesis
-            raw_urls = re.findall(r"https?://\S+", response_text)
-            urls = [re.sub(r"[.,;:!?\)\]\}>]+$", "", u) for u in raw_urls]
+            raw_urls = _URL_PATTERN.findall(response_text)
+            urls = [_PUNCTUATION_PATTERN.sub("", u) for u in raw_urls]
 
             results: list[WebSearchResult] = []
 

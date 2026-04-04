@@ -51,6 +51,10 @@ _OLD_ID_RE = re.compile(r"([a-z-]+/\d{7})(v\d+)?$")
 _DOI_ARXIV_RE = re.compile(r"10\.48550/arXiv\.(\d{4}\.\d{4,5})")
 _URL_RE = re.compile(r"arxiv\.org/(?:abs|pdf)/([a-z-]+/\d{7}|\d{4}\.\d{4,5})")
 
+_VERSION_STRIP_RE = re.compile(r"v\d+$")
+_WHITESPACE_RE = re.compile(r"\s+")
+_EXTRACT_VERSION_RE = re.compile(r"v(\d+)")
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -109,7 +113,7 @@ def normalize_arxiv_id(identifier: str) -> str:
     if m:
         raw = m.group(1)
         # Strip version suffix
-        raw = re.sub(r"v\d+$", "", raw)
+        raw = _VERSION_STRIP_RE.sub("", raw)
         return raw
 
     # New-style ID
@@ -131,7 +135,7 @@ def normalize_arxiv_id(identifier: str) -> str:
 
 def extract_version(identifier: str) -> int:
     """Extract version number from an arXiv ID string. Returns 1 if absent."""
-    m = re.search(r"v(\d+)", identifier)
+    m = _EXTRACT_VERSION_RE.search(identifier)
     return int(m.group(1)) if m else 1
 
 
@@ -261,10 +265,10 @@ class ArxivClient:
             primary_cat = categories[0]
 
         # Title: collapse whitespace
-        title = re.sub(r"\s+", " ", entry.get("title", "").strip())
+        title = _WHITESPACE_RE.sub(" ", entry.get("title", "").strip())
 
         # Abstract: collapse whitespace
-        abstract = re.sub(r"\s+", " ", entry.get("summary", "").strip())
+        abstract = _WHITESPACE_RE.sub(" ", entry.get("summary", "").strip())
 
         return ArxivPaper(
             arxiv_id=base_id,

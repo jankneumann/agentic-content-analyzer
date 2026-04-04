@@ -26,10 +26,12 @@ from src.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+_WHITESPACE_PATTERN = re.compile(r"\s+")
+
 
 def _normalize_text(text: str) -> str:
     """Normalize text before embedding: collapse whitespace, strip."""
-    text = re.sub(r"\s+", " ", text).strip()
+    text = _WHITESPACE_PATTERN.sub(" ", text).strip()
     return text
 
 

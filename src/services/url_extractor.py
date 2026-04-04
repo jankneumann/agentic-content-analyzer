@@ -35,6 +35,10 @@ USER_AGENT = (
     "+https://github.com/jankneumann/agentic-newsletter-aggregator)"
 )
 
+import re
+_SCRIPT_STYLE_PATTERN = re.compile(r"<(script|style)[^>]*>.*?</\1>", flags=re.DOTALL | re.IGNORECASE)
+_HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+_WHITESPACE_PATTERN = re.compile(r"\s+")
 
 class URLExtractor:
     """Service for extracting content from URLs.
@@ -286,15 +290,12 @@ class URLExtractor:
         Returns:
             Plain text content
         """
-        import re
 
         # Remove script and style elements
-        text = re.sub(
-            r"<(script|style)[^>]*>.*?</\1>", "", html_content, flags=re.DOTALL | re.IGNORECASE
-        )
+        text = _SCRIPT_STYLE_PATTERN.sub("", html_content)
 
         # Remove HTML tags
-        text = re.sub(r"<[^>]+>", " ", text)
+        text = _HTML_TAG_PATTERN.sub(" ", text)
 
         # Decode HTML entities
         import html
@@ -302,7 +303,7 @@ class URLExtractor:
         text = html.unescape(text)
 
         # Normalize whitespace
-        text = re.sub(r"\s+", " ", text).strip()
+        text = _WHITESPACE_PATTERN.sub(" ", text).strip()
 
         return text
 
