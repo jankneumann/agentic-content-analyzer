@@ -1,0 +1,127 @@
+{
+  "review_type": "plan",
+  "target": "llm-knowledge-base",
+  "reviewer_vendor": "claude-opus-4-6",
+  "findings": [
+    {
+      "id": 1,
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "schema.sql references undefined enum types: 'analysisstatus_themecategory' for category column (should reference existing 'themecategory' enum) and 'themeTrend' for trend column (no CREATE TYPE block). Schema will fail to compile in isolation.",
+      "resolution": "Add DO $$ BEGIN CREATE TYPE ... EXCEPTION WHEN duplicate_object blocks for themecategory and themetrend enums, or document that these are created by existing migrations and this schema is additive only.",
+      "disposition": "fix"
+    },
+    {
+      "id": 2,
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "No slug collision handling specified. If two themes produce the same slug (e.g., 'RAG Architecture' and 'rag-architecture'), the UNIQUE constraint will throw an unhandled error. No retry-with-suffix or deduplication strategy defined.",
+      "resolution": "Add a requirement: 'WHEN slug generation produces a duplicate, the system SHALL append a numeric suffix (-2, -3) to ensure uniqueness.'",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Index records stored as regular Topic records (slug prefix '_') will appear in normal topic listings unless explicitly filtered. GET /api/v1/kb/topics without a filter returns index records mixed with real topics. No filtering logic is specified in spec, design, or OpenAPI contract.",
+      "resolution": "Add a WHERE clause excluding '_' prefixed slugs from default topic list queries, or add an 'is_index' boolean column. Update spec scenario for list topics to state 'index records SHALL NOT appear in default listings.'",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "OpenAPI TopicDetail schema is missing 'merged_into_id' field which is defined in spec.md (Requirement 1, lifecycle transitions) and schema.sql. Clients cannot see merge targets.",
+      "resolution": "Add 'merged_into_id' (integer, nullable) to TopicDetail schema in v1.yaml.",
+      "disposition": "fix"
+    },
+    {
+      "id": 5,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "TopicStatus lifecycle has 5 states (DRAFT, ACTIVE, STALE, ARCHIVED, MERGED) but no valid transition rules specified. Can a MERGED topic transition back to ACTIVE? Can ARCHIVED unarchive? No state machine diagram or transition requirements.",
+      "resolution": "Add a requirement specifying valid transitions: DRAFT→ACTIVE, ACTIVE→STALE, ACTIVE→ARCHIVED, ACTIVE→MERGED, STALE→ACTIVE (on new evidence), STALE→ARCHIVED. MERGED and ARCHIVED are terminal unless explicitly reversed.",
+      "disposition": "fix"
+    },
+    {
+      "id": 6,
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "No error handling or rollback strategy for compilation failures. If LLM fails mid-article or GraphitiClient fails during relationship sync, the system has no specified behavior. CompilationResult in OpenAPI lacks error fields.",
+      "resolution": "Add error handling requirement: compilation SHALL be atomic per-topic (topic either fully updates or rolls back). Add 'errors' array to CompilationResult schema showing failed topics with reasons.",
+      "disposition": "fix"
+    },
+    {
+      "id": 7,
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "OpenAPI GET /topics lacks sort_by parameter but spec says 'default sort SHALL be by relevance_score descending'. No way for API consumers to sort by name, date, or mention_count.",
+      "resolution": "Add 'sort_by' query parameter with options: relevance_score (default), name, mention_count, last_compiled_at, created_at. Add 'sort_order' parameter (asc/desc).",
+      "disposition": "fix"
+    },
+    {
+      "id": 8,
+      "type": "security",
+      "criticality": "medium",
+      "description": "No authentication/authorization specified for KB endpoints. Existing API uses X-Admin-Key header. Spec and OpenAPI don't mention auth requirements for any KB endpoint. Write operations (POST, PATCH, DELETE) especially need protection.",
+      "resolution": "Add requirement: all KB write endpoints SHALL require X-Admin-Key authentication. Read endpoints (GET) SHALL follow the same auth policy as existing content/digest endpoints.",
+      "disposition": "fix"
+    },
+    {
+      "id": 9,
+      "type": "performance",
+      "criticality": "medium",
+      "description": "Concurrent compilation runs can race on index records (_index, _by_category). Two parallel compiles both trying to upsert slug='_index' will hit UNIQUE constraint. No UPSERT or locking strategy specified.",
+      "resolution": "Use INSERT ... ON CONFLICT (slug) DO UPDATE for index records. Add advisory lock or single-writer pattern for compilation.",
+      "disposition": "fix"
+    },
+    {
+      "id": 10,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Parent-child topic hierarchy has no depth limit. Chains of A→B→C→...→Z are possible. Merge chains (A merged_into B, B merged_into C) also have no cycle detection.",
+      "resolution": "Add constraint: parent_topic_id chains SHALL NOT exceed depth 5. merged_into_id SHALL NOT create chains (merged topic must point to a non-merged topic).",
+      "disposition": "fix"
+    },
+    {
+      "id": 11,
+      "type": "observability",
+      "criticality": "medium",
+      "description": "No logging, monitoring, or alerting requirements specified for any KB service. Compilation is a critical pipeline step that adds 30-60s — failures need visibility.",
+      "resolution": "Add requirement: KB compilation SHALL emit structured log events for start/complete/error. Add compilation_errors count to health endpoint. Consider notification event emission on compilation failure.",
+      "disposition": "fix"
+    },
+    {
+      "id": 12,
+      "type": "contract_mismatch",
+      "criticality": "low",
+      "description": "OpenAPI lists 7 endpoint groups but proposal says '6 MCP tools' while spec lists 6 MCP tools including 'update_topic'. The MCP tool count is consistent but the spec's update_topic tool and the API's PATCH endpoint have different semantics — MCP updates 'a section' while API updates 'topic fields'.",
+      "resolution": "Clarify MCP update_topic: does it update article_md sections (content-level) or topic fields (metadata-level)? Align with PATCH endpoint semantics.",
+      "disposition": "accept"
+    },
+    {
+      "id": 13,
+      "type": "performance",
+      "criticality": "low",
+      "description": "schema.sql missing composite index on (status, last_compiled_at) needed for stale topic detection query in health checks. Also missing (created_at DESC) for recency queries.",
+      "resolution": "Add indexes: ix_topics_status_compiled (status, last_compiled_at) and ix_topics_created_at (created_at DESC).",
+      "disposition": "fix"
+    },
+    {
+      "id": 14,
+      "type": "compatibility",
+      "criticality": "low",
+      "description": "No backward compatibility strategy if ThemeData Pydantic model gains new fields in the future. Topic model as 'full superset' means any ThemeData change requires an Alembic migration.",
+      "resolution": "Document this as a known maintenance cost in design.md D2 trade-offs. Consider a JSONB 'extra_fields' column for future-proofing.",
+      "disposition": "accept"
+    },
+    {
+      "id": 15,
+      "type": "correctness",
+      "criticality": "low",
+      "description": "Work package wp-integration depends on wp-cli, wp-api, wp-agent, wp-pipeline but NOT wp-contracts. Integration tests may need contract schemas for API validation.",
+      "resolution": "Add wp-contracts as a dependency of wp-integration.",
+      "disposition": "fix"
+    }
+  ]
+}
