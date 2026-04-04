@@ -1,131 +1,137 @@
 """Graphiti knowledge graph client for entity extraction and temporal tracking."""
 # mypy: disable-error-code="no-any-return,no-untyped-def"
 
+from __future__ import annotations
+
 import asyncio
 import os
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
 from graphiti_core.llm_client.anthropic_client import AnthropicClient, LLMConfig
 from graphiti_core.nodes import EpisodeType
-from neo4j import GraphDatabase
 
 from src.config import settings
 from src.models.content import Content
 from src.models.summary import Summary
+from src.storage.graph_provider import (
+    GraphBackendUnavailableError,
+    GraphDBProvider,
+    get_graph_provider,
+)
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    pass
 
 logger = get_logger(__name__)
 
 
 class GraphitiClient:
-    """Client for managing content knowledge graph with Graphiti."""
+    """Client for managing content knowledge graph with Graphiti.
+
+    Use the async factory method `create()` to construct instances:
+
+        client = await GraphitiClient.create()
+        # or with explicit provider:
+        client = await GraphitiClient.create(provider=my_provider)
+    """
 
     def __init__(
         self,
-        neo4j_uri: str = "",
-        neo4j_user: str = "",
-        neo4j_password: str = "",
+        provider: GraphDBProvider,
+        graphiti: Graphiti,
+    ) -> None:
+        """Private constructor. Use GraphitiClient.create() instead."""
+        self.provider = provider
+        self.graphiti = graphiti
+
+    @classmethod
+    async def create(
+        cls,
+        provider: GraphDBProvider | None = None,
         anthropic_api_key: str = "",
         openai_api_key: str = "",
-    ) -> None:
-        """
-        Initialize Graphiti client.
-
-        Uses Claude (Anthropic) for entity extraction and OpenAI for embeddings.
+    ) -> GraphitiClient:
+        """Async factory — constructs Graphiti with provider and runs index setup.
 
         Args:
-            neo4j_uri: Neo4j connection URI (default: from settings based on provider)
-            neo4j_user: Neo4j username (default: from settings based on provider)
-            neo4j_password: Neo4j password (default: from settings based on provider)
+            provider: Graph database provider (default: from settings via get_graph_provider())
             anthropic_api_key: Anthropic API key for LLM (default: from settings)
             openai_api_key: OpenAI API key for embeddings (default: from settings)
-        """
-        # Use provider-aware settings methods for Neo4j configuration
-        self.neo4j_uri = neo4j_uri or settings.get_effective_neo4j_uri()
-        effective_user = neo4j_user or settings.get_effective_neo4j_user()
-        effective_password = neo4j_password or settings.get_effective_neo4j_password()
-        self.anthropic_api_key = anthropic_api_key or settings.anthropic_api_key
-        self.openai_api_key = openai_api_key or settings.openai_api_key
 
-        # Initialize Neo4j driver
-        self.driver = GraphDatabase.driver(
-            self.neo4j_uri, auth=(effective_user, effective_password)
-        )
+        Returns:
+            Initialized GraphitiClient ready for use.
+
+        Raises:
+            GraphBackendUnavailableError: If the graph backend is unreachable.
+        """
+        provider = provider or get_graph_provider()
+
+        # Verify backend is reachable
+        if not await provider.health_check():
+            raise GraphBackendUnavailableError(
+                "Graph backend is not reachable. Check your graphdb_provider configuration."
+            )
+
+        anthropic_key = anthropic_api_key or settings.anthropic_api_key
+        openai_key = openai_api_key or settings.openai_api_key
+
+        # Create graphiti-core driver from provider
+        graph_driver = provider.create_graphiti_driver()
 
         # Initialize LLM client with Claude
         llm_client = AnthropicClient(
-            config=LLMConfig(api_key=self.anthropic_api_key, model="claude-haiku-4-5-20251001")
+            config=LLMConfig(api_key=anthropic_key, model="claude-haiku-4-5-20251001")
         )
 
         # Initialize embedder with OpenAI
-        embedder = OpenAIEmbedder(
-            config=OpenAIEmbedderConfig(
-                api_key=self.openai_api_key,
-            )
-        )
+        embedder = OpenAIEmbedder(config=OpenAIEmbedderConfig(api_key=openai_key))
 
         # Initialize cross-encoder (reranker) with OpenAI
         cross_encoder = OpenAIRerankerClient(
-            config=LLMConfig(
-                api_key=self.openai_api_key,
-                model="gpt-4o-mini",  # Use a smaller model for reranking
-            )
+            config=LLMConfig(api_key=openai_key, model="gpt-4o-mini")
         )
 
-        # Initialize Graphiti with custom clients
-        # Concurrency is controlled by SEMAPHORE_LIMIT environment variable
-        self.graphiti = Graphiti(
-            self.neo4j_uri,
-            effective_user,
-            effective_password,
+        # Initialize Graphiti with driver
+        graphiti = Graphiti(
+            graph_driver=graph_driver,
             llm_client=llm_client,
             embedder=embedder,
             cross_encoder=cross_encoder,
         )
 
+        # Build indices and constraints (idempotent, ~50ms)
+        await graphiti.build_indices_and_constraints()
+
         logger.info(
-            f"Initialized Graphiti client connected to {self.neo4j_uri} "
-            f"(LLM: claude-haiku-4-5, Embedder: text-embedding-3-small, "
-            f"SEMAPHORE_LIMIT: {os.environ.get('SEMAPHORE_LIMIT', 'default')})"
+            "Initialized Graphiti client "
+            "(LLM: claude-haiku-4-5, Embedder: text-embedding-3-small, "
+            "SEMAPHORE_LIMIT: %s)",
+            os.environ.get("SEMAPHORE_LIMIT", "default"),
         )
 
+        return cls(provider=provider, graphiti=graphiti)
+
     def close(self) -> None:
-        """Close Neo4j connection."""
-        if self.driver:
-            self.driver.close()
-            logger.info("Closed Graphiti client connection")
+        """Close graph provider connection (sync)."""
+        self.provider.close()
+        logger.info("Closed Graphiti client connection")
 
     async def add_content_summary(
         self,
         content: Content,
         summary: Summary,
     ) -> str:
-        """
-        Add a content summary to the knowledge graph.
-
-        Extracts entities, relationships, and concepts from the summary
-        and stores them as a timestamped episode in Graphiti.
-
-        Args:
-            content: Content object
-            summary: Summary object
-
-        Returns:
-            Episode ID in Graphiti
-        """
+        """Add a content summary to the knowledge graph as an episode."""
         logger.info(f"Adding content to knowledge graph: {content.title}")
 
-        # Create structured episode content with section headers
         episode_content = self._create_content_episode(content, summary)
-
-        # Use content published date as episode timestamp
         reference_time = content.published_date or datetime.now()
 
-        # Add episode to Graphiti
         source_type = content.source_type.value if content.source_type else "unknown"
         episode_id = await self.graphiti.add_episode(
             name=f"{content.publication or content.author}: {content.title}",
@@ -136,7 +142,6 @@ class GraphitiClient:
         )
 
         logger.info(f"Added episode {episode_id} for content {content.id} ({content.title})")
-
         return str(episode_id)
 
     def _create_content_episode(self, content: Content, summary: Summary) -> str:
@@ -180,16 +185,7 @@ class GraphitiClient:
         query: str,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """
-        Search for entities and relationships related to a query.
-
-        Args:
-            query: Search query (concept, topic, or theme)
-            limit: Maximum number of results
-
-        Returns:
-            List of relevant entities and relationships
-        """
+        """Search for entities and relationships related to a query."""
         logger.info(f"Searching knowledge graph for: {query}")
 
         results = await self.graphiti.search(
@@ -206,42 +202,21 @@ class GraphitiClient:
         start_date: datetime,
         end_date: datetime,
     ) -> list[dict[str, Any]]:
-        """
-        Get temporal context for concepts within a date range.
-
-        Useful for analyzing how concepts evolved over time across
-        multiple content items.
-
-        Args:
-            concepts: List of concepts to track
-            start_date: Start of time range
-            end_date: End of time range
-
-        Returns:
-            List of temporal entities and relationships
-        """
+        """Get temporal context for concepts within a date range."""
         logger.info(
             f"Getting temporal context for {len(concepts)} concepts from {start_date} to {end_date}"
         )
 
-        # Search for each concept and filter by time
         all_results = []
-
-        # Create tasks for all search queries
         search_tasks = [self.graphiti.search(query=concept, num_results=50) for concept in concepts]
-
-        # Execute all searches concurrently
         search_results_list = await asyncio.gather(*search_tasks)
 
-        # Process results
         for results in search_results_list:
-            # Filter by time range
             filtered = [
                 r
                 for r in results
                 if start_date <= r.get("reference_time", datetime.now()) <= end_date
             ]
-
             all_results.extend(filtered)
 
         logger.info(f"Found {len(all_results)} temporal entities")
@@ -252,42 +227,30 @@ class GraphitiClient:
         start_date: datetime,
         end_date: datetime,
     ) -> list[dict[str, Any]]:
-        """
-        Get all content episodes within a date range from Graphiti.
-
-        Args:
-            start_date: Start of date range
-            end_date: End of date range
-
-        Returns:
-            List of content episodes with their content
-        """
+        """Get all content episodes within a date range from the graph."""
         logger.info(f"Fetching content from {start_date} to {end_date}")
 
-        # Use Neo4j directly to query episodes in time range
-        with self.driver.session() as session:
-            result = session.run(
-                """
-                MATCH (e:Episode)
-                WHERE e.valid_at >= $start_date AND e.valid_at <= $end_date
-                RETURN e.uuid as episode_id, e.name as title, e.content as content,
-                       e.valid_at as timestamp, e.source_description as source
-                ORDER BY e.valid_at DESC
-                """,
-                start_date=start_date,
-                end_date=end_date,
-            )
+        records = await self.provider.execute_query(
+            """
+            MATCH (e:Episode)
+            WHERE e.valid_at >= $start_date AND e.valid_at <= $end_date
+            RETURN e.uuid as episode_id, e.name as title, e.content as content,
+                   e.valid_at as timestamp, e.source_description as source
+            ORDER BY e.valid_at DESC
+            """,
+            {"start_date": start_date, "end_date": end_date},
+        )
 
-            episodes = [
-                {
-                    "episode_id": record["episode_id"],
-                    "title": record["title"],
-                    "content": record["content"],
-                    "timestamp": record["timestamp"],
-                    "source": record["source"],
-                }
-                for record in result
-            ]
+        episodes = [
+            {
+                "episode_id": r["episode_id"],
+                "title": r["title"],
+                "content": r["content"],
+                "timestamp": r["timestamp"],
+                "source": r["source"],
+            }
+            for r in records
+        ]
 
         logger.info(f"Found {len(episodes)} content episodes")
         return episodes
@@ -307,26 +270,12 @@ class GraphitiClient:
         end_date: datetime,
         query: str = "AI and technology themes, trends, and topics",
     ) -> list[dict[str, Any]]:
-        """
-        Extract common themes from content items in a date range.
-
-        Uses Graphiti's semantic search to find related concepts and entities
-        across multiple content episodes.
-
-        Args:
-            start_date: Start of date range
-            end_date: End of date range
-            query: Search query for theme extraction
-
-        Returns:
-            List of related entities, facts, and themes
-        """
+        """Extract common themes from content items in a date range."""
         logger.info(f"Extracting themes from content between {start_date} and {end_date}")
 
-        # Search for broad AI/tech themes
         results = await self.graphiti.search(
             query=query,
-            num_results=100,  # Get many results for comprehensive analysis
+            num_results=100,
         )
 
         logger.info(f"Found {len(results)} potential theme elements")
@@ -336,24 +285,11 @@ class GraphitiClient:
         self,
         result: Any,
     ) -> str | None:
-        """
-        Write a completed theme analysis to the knowledge graph as a Graphiti episode.
-
-        The episode contains a structured markdown summary of the themes, their
-        categories, trends, and key points so that Graphiti can auto-extract
-        theme entities and relationships for temporal evolution queries.
-
-        Args:
-            result: A ThemeAnalysisResult object (typed as Any to avoid circular imports)
-
-        Returns:
-            Episode ID if successful, None if no themes to write
-        """
+        """Write a completed theme analysis to the knowledge graph as an episode."""
         if not result.themes:
             logger.info("No themes to write to knowledge graph")
             return None
 
-        # Build structured markdown episode body
         lines = [
             f"# Theme Analysis — {result.analysis_date.strftime('%Y-%m-%d')}",
             "",
@@ -424,19 +360,7 @@ class GraphitiClient:
         entity_names: list[str],
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """
-        Get facts about specific entities from the knowledge graph.
-
-        Useful for understanding what the content says about specific
-        topics, companies, or concepts.
-
-        Args:
-            entity_names: List of entity names to query
-            limit: Maximum facts per entity
-
-        Returns:
-            List of facts about the entities
-        """
+        """Get facts about specific entities from the knowledge graph."""
         logger.info(f"Fetching facts for {len(entity_names)} entities")
 
         all_facts = []
@@ -456,17 +380,7 @@ class GraphitiClient:
         before_date: datetime,
         lookback_days: int = 90,
     ) -> list[dict[str, Any]]:
-        """
-        Get historical mentions of a theme before a given date.
-
-        Args:
-            theme_name: Theme to search for
-            before_date: Only return mentions before this date
-            lookback_days: How far back to look (default: 90 days)
-
-        Returns:
-            List of historical mentions with context
-        """
+        """Get historical mentions of a theme before a given date."""
         logger.info(
             f"Fetching historical mentions of '{theme_name}' "
             f"(before {before_date}, lookback: {lookback_days} days)"
@@ -474,35 +388,25 @@ class GraphitiClient:
 
         start_date = before_date - timedelta(days=lookback_days)
 
-        # Use Neo4j to query episodes mentioning the theme
-        with self.driver.session() as session:
-            result = session.run(
-                """
-                MATCH (e:Episode)
-                WHERE e.valid_at >= $start_date
-                  AND e.valid_at < $before_date
-                  AND (toLower(e.name) CONTAINS toLower($theme_name)
-                       OR toLower(e.content) CONTAINS toLower($theme_name))
-                RETURN e.uuid as episode_id, e.name as title, e.content as content,
-                       e.valid_at as timestamp, e.source_description as source
-                ORDER BY e.valid_at DESC
-                LIMIT 20
-                """,
-                theme_name=theme_name,
-                start_date=start_date,
-                before_date=before_date,
-            )
-
-            mentions = [
-                {
-                    "episode_id": record["episode_id"],
-                    "title": record["title"],
-                    "content": record["content"],
-                    "timestamp": record["timestamp"],
-                    "source": record["source"],
-                }
-                for record in result
-            ]
+        # Use provider to query episodes mentioning the theme
+        mentions = await self.provider.execute_query(
+            """
+            MATCH (e:Episode)
+            WHERE e.valid_at >= $start_date
+              AND e.valid_at < $before_date
+              AND (toLower(e.name) CONTAINS toLower($theme_name)
+                   OR toLower(e.content) CONTAINS toLower($theme_name))
+            RETURN e.uuid as episode_id, e.name as title, e.content as content,
+                   e.valid_at as timestamp, e.source_description as source
+            ORDER BY e.valid_at DESC
+            LIMIT 20
+            """,
+            {
+                "theme_name": theme_name,
+                "start_date": start_date,
+                "before_date": before_date,
+            },
+        )
 
         # Also use Graphiti semantic search for related content
         semantic_results = await self.graphiti.search(
@@ -521,7 +425,6 @@ class GraphitiClient:
             f"Found {len(mentions)} direct mentions and {len(filtered_semantic)} semantic matches"
         )
 
-        # Combine results (prioritize direct mentions)
         return mentions + filtered_semantic
 
     async def get_theme_evolution_timeline(
@@ -529,43 +432,21 @@ class GraphitiClient:
         theme_name: str,
         end_date: datetime,
     ) -> list[dict[str, Any]]:
-        """
-        Get complete timeline of a theme's evolution.
-
-        Args:
-            theme_name: Theme to track
-            end_date: End of timeline
-
-        Returns:
-            Chronological list of theme mentions with metadata
-        """
+        """Get complete timeline of a theme's evolution."""
         logger.info(f"Building evolution timeline for '{theme_name}'")
 
-        with self.driver.session() as session:
-            result = session.run(
-                """
-                MATCH (e:Episode)
-                WHERE e.valid_at <= $end_date
-                  AND (toLower(e.name) CONTAINS toLower($theme_name)
-                       OR toLower(e.content) CONTAINS toLower($theme_name))
-                RETURN e.uuid as episode_id, e.name as title, e.content as content,
-                       e.valid_at as timestamp, e.source_description as source
-                ORDER BY e.valid_at ASC
-                """,
-                theme_name=theme_name,
-                end_date=end_date,
-            )
-
-            timeline = [
-                {
-                    "episode_id": record["episode_id"],
-                    "title": record["title"],
-                    "content": record["content"],
-                    "timestamp": record["timestamp"],
-                    "source": record["source"],
-                }
-                for record in result
-            ]
+        timeline = await self.provider.execute_query(
+            """
+            MATCH (e:Episode)
+            WHERE e.valid_at <= $end_date
+              AND (toLower(e.name) CONTAINS toLower($theme_name)
+                   OR toLower(e.content) CONTAINS toLower($theme_name))
+            RETURN e.uuid as episode_id, e.name as title, e.content as content,
+                   e.valid_at as timestamp, e.source_description as source
+            ORDER BY e.valid_at ASC
+            """,
+            {"theme_name": theme_name, "end_date": end_date},
+        )
 
         logger.info(f"Found {len(timeline)} mentions in timeline")
         return timeline
@@ -575,18 +456,7 @@ class GraphitiClient:
         before_date: datetime,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """
-        Get previous theme analyses from database.
-
-        Useful for tracking how themes have been identified over time.
-
-        Args:
-            before_date: Get analyses before this date
-            limit: Maximum number of analyses to return
-
-        Returns:
-            List of previous theme analyses
-        """
+        """Get previous theme analyses from database (PostgreSQL, not graph)."""
         from src.models.theme import ThemeAnalysis
         from src.storage.database import get_db
 
