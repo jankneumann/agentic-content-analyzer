@@ -4,11 +4,16 @@ Infrastructure Cost Prediction API Routes
 Endpoints for estimating monthly costs across Neon (database),
 Resend (email), and LLM services.  All parameters are optional
 and fall back to sensible defaults from settings/pricing.yaml.
+
+Includes pricing extraction endpoints that scrape Neon/Resend pricing
+pages and diff against the current pricing.yaml (mirroring the model
+pricing extraction workflow).
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 
 from src.api.dependencies import verify_admin_key
 from src.services.infrastructure_pricing_service import (
@@ -163,3 +168,101 @@ async def compare_resend_plans(
     """
     service = _get_service()
     return service.compare_resend_plans(emails_per_month=emails_per_month)
+
+
+# ---------------------------------------------------------------------------
+# Pricing extraction (refresh from live pages)
+# ---------------------------------------------------------------------------
+
+
+class PricingRefreshRequest(BaseModel):
+    """Request body for triggering a pricing refresh."""
+
+    services: list[str] | None = None  # ["neon", "resend"] or None for all
+    dry_run: bool = True
+
+
+class InfraPricingDiffItem(BaseModel):
+    """A single field-level change detected during refresh."""
+
+    service: str
+    plan: str
+    field: str
+    current_value: object
+    extracted_value: object
+
+
+class InfraPricingRefreshReport(BaseModel):
+    """Result of an infrastructure pricing refresh."""
+
+    services_fetched: list[str] = []
+    services_failed: list[str] = []
+    diffs: list[InfraPricingDiffItem] = []
+    new_plans: list[dict] = []
+    errors: list[str] = []
+    applied: bool = False
+    timestamp: str | None = None
+
+    @property
+    def has_changes(self) -> bool:
+        return bool(self.diffs) or bool(self.new_plans)
+
+
+# Module-level state for last refresh (mirrors model pricing pattern)
+_last_infra_refresh: InfraPricingRefreshReport | None = None
+
+
+@router.post(
+    "/refresh",
+    response_model=InfraPricingRefreshReport,
+    summary="Refresh Neon/Resend pricing from live pages",
+)
+async def refresh_pricing(request: PricingRefreshRequest) -> InfraPricingRefreshReport:
+    """Fetch latest pricing from Neon and Resend pages, extract via LLM, and diff.
+
+    Uses the same fetch + LLM extraction pattern as the model pricing extractor.
+    Tries agent-friendly .md URLs first, then falls back to HTML pages.
+
+    By default runs in dry_run mode (preview only). Set dry_run=false to apply
+    changes to settings/pricing.yaml.
+    """
+    global _last_infra_refresh
+
+    from src.services.infrastructure_pricing_extractor import InfrastructurePricingExtractor
+
+    extractor = InfrastructurePricingExtractor()
+    report = await extractor.run(services=request.services, dry_run=request.dry_run)
+
+    result = InfraPricingRefreshReport(
+        services_fetched=report.services_fetched,
+        services_failed=report.services_failed,
+        diffs=[
+            InfraPricingDiffItem(
+                service=d.service,
+                plan=d.plan,
+                field=d.field,
+                current_value=d.current_value,
+                extracted_value=d.extracted_value,
+            )
+            for d in report.diffs
+        ],
+        new_plans=report.new_plans,
+        errors=report.extraction_errors,
+        applied=report.applied,
+        timestamp=report.timestamp,
+    )
+
+    _last_infra_refresh = result
+    return result
+
+
+@router.get(
+    "/refresh/status",
+    response_model=InfraPricingRefreshReport | None,
+    summary="Get last pricing refresh status",
+)
+async def get_refresh_status() -> InfraPricingRefreshReport | dict:
+    """Get the result of the last infrastructure pricing refresh, if any."""
+    if not _last_infra_refresh:
+        return {"message": "No infrastructure pricing refresh has been executed yet"}
+    return _last_infra_refresh
