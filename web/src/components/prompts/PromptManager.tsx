@@ -82,14 +82,14 @@ export function PromptManager() {
         p.name.toLowerCase().includes(term) ||
         p.category.toLowerCase().includes(term)
     )
-  }, [data?.prompts, search])
+  }, [data, search])
 
   // Group filtered prompts by category
-  const grouped = useMemo(() => groupByCategory(filteredPrompts), [filteredPrompts])
-  const categories = useMemo(
-    () => Object.keys(grouped).sort(),
-    [grouped]
+  const grouped = useMemo(
+    () => groupByCategory(filteredPrompts),
+    [filteredPrompts]
   )
+  const categories = useMemo(() => Object.keys(grouped).sort(), [grouped])
 
   // Count overrides
   const overrideCount = useMemo(
@@ -125,11 +125,16 @@ export function PromptManager() {
     return (
       <div className="flex h-48 items-center justify-center rounded-lg border border-dashed">
         <div className="text-center">
-          <AlertCircle className="mx-auto h-10 w-10 text-destructive/50" />
-          <p className="mt-2 text-sm text-muted-foreground">
+          <AlertCircle className="text-destructive/50 mx-auto h-10 w-10" />
+          <p className="text-muted-foreground mt-2 text-sm">
             Failed to load prompts: {error?.message}
           </p>
-          <Button className="mt-3" size="sm" variant="outline" onClick={() => refetch()}>
+          <Button
+            className="mt-3"
+            size="sm"
+            variant="outline"
+            onClick={() => refetch()}
+          >
             <RefreshCw className="mr-2 h-3.5 w-3.5" />
             Retry
           </Button>
@@ -143,8 +148,8 @@ export function PromptManager() {
     return (
       <div className="flex h-48 items-center justify-center rounded-lg border border-dashed">
         <div className="text-center">
-          <FileText className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-2 text-sm text-muted-foreground">
+          <FileText className="text-muted-foreground/50 mx-auto h-10 w-10" />
+          <p className="text-muted-foreground mt-2 text-sm">
             No prompts configured
           </p>
         </div>
@@ -157,13 +162,13 @@ export function PromptManager() {
       {/* Search and summary bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search prompts..."
             aria-label="Search prompts"
-            className="h-8 pl-8 pr-8 text-sm"
+            className="h-8 pr-8 pl-8 text-sm"
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 setSearch("")
@@ -174,15 +179,18 @@ export function PromptManager() {
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2"
               aria-label="Clear search"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-          <span>{filteredPrompts.length} {filteredPrompts.length === 1 ? "prompt" : "prompts"}</span>
+        <div className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs">
+          <span>
+            {filteredPrompts.length}{" "}
+            {filteredPrompts.length === 1 ? "prompt" : "prompts"}
+          </span>
           {overrideCount > 0 && (
             <Badge variant="secondary" className="text-[10px]">
               {overrideCount} override{overrideCount !== 1 ? "s" : ""}
@@ -207,45 +215,49 @@ export function PromptManager() {
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 rounded-md border bg-card px-3 py-2.5 text-left hover:bg-accent/50 transition-colors"
+                  className="bg-card hover:bg-accent/50 focus-visible:ring-ring flex w-full items-center gap-2 rounded-md border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
                 >
                   <ChevronRight
-                    className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                    className={`text-muted-foreground h-4 w-4 shrink-0 transition-transform ${
                       isOpen ? "rotate-90" : ""
                     }`}
                   />
                   <span className="text-sm font-medium">
                     {formatCategory(category)}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-muted-foreground text-xs">
                     ({prompts.length})
                   </span>
                   {categoryOverrides > 0 && (
-                    <Badge variant="default" className="ml-auto text-[10px] px-1.5 py-0">
-                      {categoryOverrides} override{categoryOverrides !== 1 ? "s" : ""}
+                    <Badge
+                      variant="default"
+                      className="ml-auto px-1.5 py-0 text-[10px]"
+                    >
+                      {categoryOverrides} override
+                      {categoryOverrides !== 1 ? "s" : ""}
                     </Badge>
                   )}
                 </button>
               </CollapsibleTrigger>
 
               <CollapsibleContent>
-                <div className="ml-6 mt-1 space-y-1">
+                <div className="mt-1 ml-6 space-y-1">
                   {prompts.map((prompt) => (
                     <button
                       key={prompt.key}
                       type="button"
                       onClick={() => setSelectedPrompt(prompt)}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-accent/50 transition-colors group"
+                      className="hover:bg-accent/50 group focus-visible:ring-ring flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
                     >
-                      <div className="flex-1 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">
+                          <span className="truncate text-sm font-medium">
                             {formatName(prompt.name)}
                           </span>
                           {prompt.has_override && (
                             <Badge
                               variant="default"
-                              className="text-[10px] px-1.5 py-0 shrink-0"
+                              className="shrink-0 px-1.5 py-0 text-[10px]"
                             >
                               Override
                             </Badge>
@@ -253,17 +265,17 @@ export function PromptManager() {
                           {prompt.version != null && (
                             <Badge
                               variant="outline"
-                              className="text-[10px] px-1.5 py-0 shrink-0"
+                              className="shrink-0 px-1.5 py-0 text-[10px]"
                             >
                               v{prompt.version}
                             </Badge>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground font-mono truncate">
+                        <p className="text-muted-foreground truncate font-mono text-xs">
                           {prompt.key}
                         </p>
                       </div>
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      <Pencil className="text-muted-foreground h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
                     </button>
                   ))}
                 </div>
@@ -276,7 +288,7 @@ export function PromptManager() {
       {/* No results from search */}
       {filteredPrompts.length === 0 && search && (
         <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             No prompts matching &ldquo;{search}&rdquo;
           </p>
         </div>

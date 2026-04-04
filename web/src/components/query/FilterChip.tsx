@@ -17,12 +17,12 @@ interface FilterChipProps {
 export function FilterChip({ label, value, onRemove }: FilterChipProps) {
   return (
     <Badge variant="secondary" className="flex items-center gap-1 pr-1">
-      <span className="text-xs text-muted-foreground">{label}:</span>
+      <span className="text-muted-foreground text-xs">{label}:</span>
       <span className="text-xs font-medium">{value}</span>
       <button
         type="button"
         onClick={onRemove}
-        className="ml-0.5 rounded-sm p-0.5 hover:bg-muted"
+        className="hover:bg-muted focus-visible:ring-ring ml-0.5 rounded-sm p-0.5 focus-visible:ring-2 focus-visible:outline-none"
         aria-label={`Remove ${label} filter`}
       >
         <X className="h-3 w-3" />

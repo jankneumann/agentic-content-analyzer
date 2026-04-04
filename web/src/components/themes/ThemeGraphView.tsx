@@ -39,11 +39,13 @@ export function ThemeGraphView({
   return (
     <div className="space-y-4">
       {/* Tab buttons */}
-      <div className="flex gap-1 rounded-lg bg-muted p-1 w-fit">
+      <div role="tablist" className="bg-muted flex w-fit gap-1 rounded-lg p-1">
         <button
+          role="tab"
+          aria-selected={activeTab === "network"}
           onClick={() => handleTabChange("network")}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "focus-visible:ring-ring rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
             activeTab === "network"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
@@ -52,9 +54,11 @@ export function ThemeGraphView({
           Network
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === "timeline"}
           onClick={() => handleTabChange("timeline")}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "focus-visible:ring-ring rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
             activeTab === "timeline"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
