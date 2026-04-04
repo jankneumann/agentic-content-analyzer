@@ -51,9 +51,9 @@ dependencies = [
     # Email Delivery
     "sendgrid>=6.11.0",
 
-    # Neo4j and Graphiti Knowledge Graph
+    # Graph Database and Graphiti Knowledge Graph
     "neo4j>=5.16.0",
-    "graphiti-core[anthropic,google-genai]>=0.5.0",  # Temporal knowledge graph with LLM providers
+    "graphiti-core[falkordb,anthropic,google-genai]>=0.28.0",  # Temporal knowledge graph with pluggable backends
 
     # Utilities
     # Authentication

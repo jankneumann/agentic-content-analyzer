@@ -1,4 +1,4 @@
-"""One-way sync: PostgreSQL → Neo4j citation edges."""
+"""One-way sync: PostgreSQL → graph database citation edges."""
 
 from __future__ import annotations
 
@@ -8,25 +8,28 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from src.storage.graph_provider import GraphDBProvider
+
 from src.models.content_reference import ContentReference, ResolutionStatus
 
 logger = logging.getLogger(__name__)
 
 
 class ReferenceGraphSync:
-    """Sync resolved references to Neo4j as CITES edges.
+    """Sync resolved references to graph database as CITES edges.
 
-    Reuses the existing GraphitiClient.driver for raw Cypher queries.
+    Uses GraphDBProvider for backend-agnostic raw Cypher queries.
     All operations are fire-and-forget: errors are logged, never raised.
     """
 
-    def __init__(self, driver=None):  # type: ignore[no-untyped-def]
-        """Initialize with a Neo4j driver instance.
+    def __init__(self, provider: GraphDBProvider | None = None) -> None:
+        """Initialize with a graph database provider.
 
         Args:
-            driver: neo4j async driver instance (from GraphitiClient.driver)
+            provider: Graph database provider for executing Cypher queries.
+                      If None, all sync operations are silently skipped.
         """
-        self.driver = driver
+        self.provider = provider
 
     async def sync_reference(self, ref: ContentReference) -> None:
         """Create/update CITES edge when reference is resolved."""
@@ -34,8 +37,8 @@ class ReferenceGraphSync:
             return
         if not ref.target_content_id:
             return
-        if not self.driver:
-            logger.debug("Neo4j driver not available, skipping citation sync")
+        if not self.provider:
+            logger.debug("Graph provider not available, skipping citation sync")
             return
 
         try:
@@ -64,8 +67,8 @@ class ReferenceGraphSync:
             )
 
     async def sync_resolved_for_content(self, content_id: int, db: Session | None = None) -> int:
-        """Sync all resolved refs for a content item to Neo4j."""
-        if not self.driver:
+        """Sync all resolved refs for a content item to graph database."""
+        if not self.provider:
             return 0
         if not db:
             return 0
@@ -94,18 +97,18 @@ class ReferenceGraphSync:
             return 0
 
     async def _find_episode_uuid(self, content_id: int) -> str | None:
-        """Find Episode UUID in Neo4j matching a content_id."""
+        """Find Episode UUID in graph matching a content_id."""
         try:
-            query = """
-            MATCH (e:Episode)
-            WHERE e.source_id = $content_id OR e.content_id = $content_id
-            RETURN e.uuid AS uuid
-            LIMIT 1
-            """
-            async with self.driver.session() as session:
-                result = await session.run(query, content_id=str(content_id))
-                record = await result.single()
-                return record["uuid"] if record else None
+            records = await self.provider.execute_query(  # type: ignore[union-attr]
+                """
+                MATCH (e:Episode)
+                WHERE e.source_id = $content_id OR e.content_id = $content_id
+                RETURN e.uuid AS uuid
+                LIMIT 1
+                """,
+                {"content_id": str(content_id)},
+            )
+            return records[0]["uuid"] if records else None
         except Exception:
             logger.warning("Failed to find episode for content_id %s", content_id)
             return None
@@ -117,20 +120,20 @@ class ReferenceGraphSync:
         reference_type: str,
         confidence: float,
     ) -> None:
-        """MERGE citation edge in Neo4j."""
-        query = """
-        MATCH (s:Episode {uuid: $source_uuid})
-        MATCH (t:Episode {uuid: $target_uuid})
-        MERGE (s)-[r:CITES]->(t)
-        SET r.reference_type = $reference_type,
-            r.confidence = $confidence,
-            r.synced_at = datetime()
-        """
-        async with self.driver.session() as session:
-            await session.run(
-                query,
-                source_uuid=source_uuid,
-                target_uuid=target_uuid,
-                reference_type=reference_type,
-                confidence=confidence,
-            )
+        """MERGE citation edge in graph database."""
+        await self.provider.execute_write(  # type: ignore[union-attr]
+            """
+            MATCH (s:Episode {uuid: $source_uuid})
+            MATCH (t:Episode {uuid: $target_uuid})
+            MERGE (s)-[r:CITES]->(t)
+            SET r.reference_type = $reference_type,
+                r.confidence = $confidence,
+                r.synced_at = datetime()
+            """,
+            {
+                "source_uuid": source_uuid,
+                "target_uuid": target_uuid,
+                "reference_type": reference_type,
+                "confidence": confidence,
+            },
+        )
