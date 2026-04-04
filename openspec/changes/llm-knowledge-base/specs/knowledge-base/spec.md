@@ -308,9 +308,21 @@ The MCP server SHALL expose tools for LLM agents to interact with the knowledge 
 - **THEN** the KB compiler SHALL run for the specified topic
 - **AND** the tool SHALL return compilation statistics
 
-### Requirement: Obsidian vault export
+### Requirement: Obsidian vault export with three integration modes
 
-The system SHALL export the knowledge base as an Obsidian-compatible vault. The export SHALL generate a directory structure with one `.md` file per topic, organized by the TopicCategory hierarchy. Each topic file SHALL include YAML frontmatter and article body with wikilinks. Index files SHALL be included.
+The system SHALL export the knowledge base as an Obsidian-compatible vault. Three integration modes SHALL be specified; Mode 2 (file export) SHALL be implemented in this change. The export SHALL generate a directory structure with one `.md` file per topic, organized by the TopicCategory hierarchy. Each topic file SHALL include YAML frontmatter and article body with wikilinks. Index files SHALL be included. All modes SHALL use identical frontmatter format and folder structure to ensure forward compatibility.
+
+#### Mode 2: File Export (implemented in this change)
+
+Writes `.md` files directly to a specified output directory. The user opens this directory as an Obsidian vault.
+
+#### Mode 1: CLI-Driven Export (specified, deferred)
+
+Uses the official Obsidian CLI (`obsidian create`, `obsidian append`, `obsidian property:set`) to write directly to a live vault. Obsidian indexes immediately — no app restart needed. Requires Obsidian 1.12+ with CLI enabled.
+
+#### Mode 3: Headless Sync (specified, deferred)
+
+Combines file export with `obsidian-headless` (official npm package) for server deployments. Writes to a local directory, then `obsidian-headless sync --continuous` syncs to Obsidian Sync cloud. User's desktop/mobile Obsidian pulls from Sync. Enables bidirectional sync: `obsidian read` detects user edits, `aca kb import --from-obsidian` syncs them back to the database.
 
 #### Scenario: Export generates category-based folder structure
 
@@ -353,6 +365,35 @@ The system SHALL export the knowledge base as an Obsidian-compatible vault. The 
 - **WHEN** `aca kb export --format obsidian --output ./vault --since 2026-04-01` is run
 - **THEN** only topics with `updated_at` after the specified date SHALL be written
 - **AND** existing unchanged files in the output directory SHALL NOT be overwritten
+
+#### Scenario: CLI-driven export writes to live vault (Mode 1, deferred)
+
+- **WHEN** `aca kb export --format obsidian --use-cli` is run with Obsidian 1.12+ CLI enabled
+- **THEN** the system SHALL use `obsidian create name="{name}" content="{content}" vault="{vault}" silent` for new topics
+- **AND** `obsidian property:set name="{key}" value="{value}" file="{name}"` for frontmatter updates
+- **AND** Obsidian SHALL index the new notes immediately without app restart
+
+#### Scenario: Headless sync for server deployment (Mode 3, deferred)
+
+- **WHEN** the system runs on a server (e.g., Railway) with `obsidian-headless` installed
+- **THEN** file export SHALL write to a configured vault directory
+- **AND** `obsidian-headless sync --continuous` SHALL sync the vault to Obsidian Sync cloud
+- **AND** user's desktop/mobile Obsidian SHALL receive updates via Obsidian Sync
+
+#### Scenario: Bidirectional sync via Obsidian read (Mode 3, deferred)
+
+- **WHEN** `aca kb import --from-obsidian <vault-path>` is run
+- **THEN** the system SHALL read `.md` files from the vault directory
+- **AND** parse YAML frontmatter to identify the topic by slug
+- **AND** compare `article_md` content with the database version
+- **AND** if the file has been modified, update the Topic record with the new content
+- **AND** set the article's `author` metadata to indicate user-edited content
+
+#### Scenario: Frontmatter format compatible across all modes
+
+- **WHEN** any export mode generates a topic file
+- **THEN** the YAML frontmatter SHALL include: `slug`, `name`, `category_path`, `trend`, `status`, `relevance_score`, `mention_count`, `article_version`, `first_evidence_at`, `last_evidence_at`, `last_compiled_at`, and `tags`
+- **AND** this format SHALL be identical across Modes 1, 2, and 3
 
 ### Requirement: Graph backend abstraction for topic relationships
 

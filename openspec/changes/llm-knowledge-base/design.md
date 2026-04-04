@@ -265,6 +265,18 @@ tags:
 - Wikilinks (`[[Topic Name]]`) power Obsidian's graph view for relationship visualization
 - This is significantly richer than flat folder + frontmatter — the hierarchy IS the knowledge structure
 
+**Three integration modes** (all share the same frontmatter format and folder structure):
+
+| Mode | Transport | When to Use | Implemented |
+|------|-----------|-------------|-------------|
+| **Mode 2: File Export** | Write `.md` files to directory | Local use, no Obsidian CLI | This change |
+| **Mode 1: CLI-Driven** | `obsidian create/append/property:set` | Local with Obsidian 1.12+ | Deferred |
+| **Mode 3: Headless Sync** | File export + `obsidian-headless sync` | Server deployment (Railway) | Deferred |
+
+**Bidirectional sync** (Mode 3, deferred): The official Obsidian CLI's `obsidian read` command enables detecting user edits in the vault. Combined with `obsidian-headless` for server-side sync, this creates a full round-trip: DB → export → Obsidian Sync → user edits → `obsidian read` → `aca kb import` → DB. The frontmatter `slug` field is the reconciliation key.
+
+**CLI compatibility**: The frontmatter format is designed to be CLI-compatible from day one. The `obsidian property:set` command can update individual frontmatter fields without touching the article body — enabling selective sync of metadata (trend, scores) without rewriting content.
+
 **Alternative rejected**: Flat structure with frontmatter-only categorization. While simpler, it loses the visual organization that makes Obsidian useful for knowledge navigation. The category hierarchy is the core UX differentiator.
 
 ## Data Model
