@@ -295,10 +295,14 @@ aca kb query "question" --file-back     # Ask and file answer as TopicNote
 aca kb lint                             # Run health checks
 aca kb lint --fix                       # Auto-fix issues (merge dupes, update stale)
 
-# Export
-aca kb export --format obsidian --output ./vault
+# Export (three modes)
+aca kb export --format obsidian --output ./vault          # Mode 2: File export
+aca kb export --format obsidian --use-cli                 # Mode 1: Obsidian CLI (1.12+)
 aca kb export --format html --topic "RAG"
 aca kb export --format audio-brief --topic "RAG" --depth 2
+
+# Import (bidirectional sync from Obsidian edits)
+aca kb import --from-obsidian ./vault                     # Sync user edits back to DB
 ```
 
 ### API Endpoints (`/api/v1/kb/`)
@@ -348,6 +352,76 @@ def get_kb_index(category: str | None = None) -> str:
 def compile_knowledge_base(topic_slug: str | None = None) -> str:
     """Trigger KB compilation (incremental or for a specific topic)."""
 ```
+
+## Obsidian Integration — Three Modes
+
+The official Obsidian CLI (1.12+) and `obsidian-headless` npm package enable three integration modes, all sharing the same frontmatter format and folder structure:
+
+| Mode | Transport | Use Case | Status |
+|------|-----------|----------|--------|
+| **Mode 2: File Export** | Write `.md` files to directory | Local use, any setup | Phase 1 |
+| **Mode 1: CLI-Driven** | `obsidian create/append/property:set` | Local with Obsidian 1.12+ | Phase 2 |
+| **Mode 3: Headless Sync** | File export + `obsidian-headless sync` | Server (Railway) | Phase 3 |
+
+### Folder Structure (TopicCategory → Folders)
+
+```
+vault/
+├── _index.md                    # Master index
+├── _by_category.md              # Category index
+├── ML-AI/                       # Top-level category
+│   ├── rag-architecture.md      # Topic file
+│   └── LLMs/                    # Subcategory
+│       ├── fine-tuning.md
+│       └── prompt-engineering.md
+├── DevOps-Infra/
+│   └── kubernetes-ai-workloads.md
+└── ...
+```
+
+### Topic File Format
+
+```markdown
+---
+slug: rag-architecture
+name: RAG Architecture
+category_path: ML/AI
+trend: growing
+status: active
+relevance_score: 0.87
+mention_count: 15
+article_version: 3
+first_evidence_at: 2025-11-15T00:00:00Z
+last_evidence_at: 2026-04-01T00:00:00Z
+last_compiled_at: 2026-04-04T12:00:00Z
+tags: [retrieval-augmented-generation, vector-databases, embedding]
+---
+
+# RAG Architecture
+
+## Overview
+[LLM-compiled article content...]
+
+## Related Topics
+- [[Fine-tuning]] — complementary approach
+- [[Vector Databases]] — key infrastructure
+```
+
+### Bidirectional Sync (Mode 3)
+
+```
+DB → export → vault files → obsidian-headless sync → Obsidian Sync cloud
+                                                            ↓
+User edits in Obsidian desktop/mobile ← Obsidian Sync pull
+                                                            ↓
+obsidian read → detect changes → aca kb import → update DB → next compile incorporates edits
+```
+
+Key Obsidian CLI commands for bidirectional sync:
+- `obsidian read file="RAG Architecture"` — detect user edits
+- `obsidian property:set name="trend" value="growing"` — update frontmatter selectively
+- `obsidian search query="transformer" vault="KB"` — search the vault
+- `obsidian backlinks file="RAG Architecture"` — discover relationship graph
 
 ## Relationship to Existing Tree Index
 
