@@ -40,17 +40,23 @@ This phase upgrades graphiti-core and introduces the provider abstraction with N
   **Design decisions**: D5 (async factory), D9 (graceful degradation)
   **Dependencies**: 1.2, 1.4
 
-- [ ] 1.6 Add graphdb_provider and falkordb_* settings fields + profile flattening
+- [ ] 1.6 Add graphdb_provider/graphdb_mode settings + profile flattening + deprecated aliases
   Modify `src/config/settings.py` and `src/config/profiles.py`:
   - Add `GraphDBProviderType = Literal["neo4j", "falkordb"]`
-  - Add `FalkorDBSubProviderType = Literal["local", "lite"]`
-  - Add `graphdb_provider`, `falkordb_provider`, `falkordb_host`, `falkordb_port`, `falkordb_username`, `falkordb_password`, `falkordb_database`, `falkordb_lite_data_dir` fields
-  - Add `validate_falkordb_provider_config()` validator
-  - Add `providers.graphdb` mapping to `_flatten_profile_to_settings()` (applied FIRST)
-  - Add `settings.graphdb` section handling alongside existing `settings.neo4j`
-  - Write dedicated tests for two-level flattening precedence (graphdb_provider + neo4j_provider)
-  **Spec scenarios**: graph-provider.7 (settings, profile support, validation, profile flattening precedence)
-  **Design decisions**: D2 (settings structure, flattening precedence)
+  - Add `GraphDBModeType = Literal["local", "cloud", "embedded"]`
+  - Add `graphdb_provider`, `graphdb_mode` fields
+  - Add `falkordb_host`, `falkordb_port`, `falkordb_username`, `falkordb_password`, `falkordb_database` fields
+  - Add `falkordb_cloud_host`, `falkordb_cloud_port`, `falkordb_cloud_password` fields
+  - Add `falkordb_lite_data_dir` field
+  - Rename `neo4j_auradb_*` → `neo4j_cloud_*` (keep old names as deprecated aliases)
+  - Add `validate_graphdb_config()` validator: reject `neo4j`+`embedded`, require cloud fields for cloud mode
+  - Add deprecated `neo4j_provider` alias mapping (`local` → `local`, `auradb` → `cloud`)
+  - Replace `providers.neo4j` with `providers.graphdb` in `_flatten_profile_to_settings()`
+  - Replace `settings.neo4j` section with `settings.graphdb`
+  - Remove `get_effective_neo4j_*()` methods (replaced by provider factory)
+  - Write tests for: valid combinations, invalid combos, deprecated alias mapping, profile flattening
+  **Spec scenarios**: graph-provider.7 (settings, mode, profile support, validation, profile flattening), graph-provider.2 (deprecated alias)
+  **Design decisions**: D2 (orthogonal provider+mode), D3 (deprecated aliases)
   **Dependencies**: 1.1
 
 - [ ] 1.7 Update ReferenceGraphSync to use provider
@@ -132,11 +138,13 @@ This phase adds FalkorDB as a second backend option.
   **Spec scenarios**: graph-provider.5 (citation creation on both backends, episode lookup on both)
   **Dependencies**: 2.2, 2.4, 1.7
 
-- [ ] 2.7 Update profile YAML files for FalkorDB support
+- [ ] 2.7 Update profile YAML files for new graphdb provider model
   Modify `profiles/base.yaml`, `profiles/local.yaml`, and add `profiles/local-falkordb.yaml`:
-  - Add `providers.graphdb` section with interpolation
-  - Add `settings.graphdb.*` section with FalkorDB defaults
-  - Create a convenience profile for FalkorDB local dev
+  - Replace `providers.neo4j` with `providers.graphdb` in all profiles
+  - Replace `settings.neo4j` section with `settings.graphdb` (including `graphdb_mode`)
+  - Map existing AuraDB profiles to `graphdb_mode: cloud`
+  - Create `profiles/local-falkordb.yaml` convenience profile (`graphdb_provider: falkordb, graphdb_mode: local`)
+  - Create `profiles/test-falkordb.yaml` for test fixtures (`graphdb_mode: embedded`)
   **Spec scenarios**: graph-provider.7 (profile support)
   **Dependencies**: 1.6
 

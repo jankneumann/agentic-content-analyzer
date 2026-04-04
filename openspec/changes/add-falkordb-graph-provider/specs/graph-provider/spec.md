@@ -45,7 +45,7 @@ THEN the provider SHALL close all connections and release resources asynchronous
 
 #### Scenario: Provider startup logging
 WHEN a provider is constructed
-THEN it SHALL log at INFO level the backend type, connection target, and sub-provider variant.
+THEN it SHALL log at INFO level the backend type, deployment mode, and connection target.
 
 #### Scenario: Provider slow query logging
 WHEN a query takes longer than 5 seconds to execute
@@ -57,23 +57,33 @@ THEN the provider SHALL log at WARN level with the query text (truncated to 200 
 
 The system SHALL provide a `Neo4jGraphDBProvider` that wraps Neo4j connectivity for both Graphiti and raw Cypher operations.
 
-#### Scenario: Neo4j local provider
-WHEN `graphdb_provider` is `"neo4j"` AND `neo4j_provider` is `"local"`
-THEN the provider SHALL connect using `neo4j_local_uri` (or fallback `neo4j_uri`)
-AND use `neo4j_local_user` / `neo4j_local_password` credentials
+#### Scenario: Neo4j local mode
+WHEN `graphdb_provider` is `"neo4j"` AND `graphdb_mode` is `"local"`
+THEN the provider SHALL connect using `neo4j_uri`
+AND use `neo4j_user` / `neo4j_password` credentials
 AND construct a `Neo4jDriver` from `graphiti_core.driver.neo4j_driver`.
 
-#### Scenario: Neo4j AuraDB provider
-WHEN `graphdb_provider` is `"neo4j"` AND `neo4j_provider` is `"auradb"`
-THEN the provider SHALL connect using `neo4j_auradb_uri`
-AND use `neo4j_auradb_user` / `neo4j_auradb_password` credentials
-AND validate that required AuraDB fields are configured.
+#### Scenario: Neo4j cloud mode
+WHEN `graphdb_provider` is `"neo4j"` AND `graphdb_mode` is `"cloud"`
+THEN the provider SHALL connect using `neo4j_cloud_uri`
+AND use `neo4j_cloud_user` / `neo4j_cloud_password` credentials
+AND validate that required cloud fields are configured.
+
+#### Scenario: Neo4j embedded mode rejected
+WHEN `graphdb_provider` is `"neo4j"` AND `graphdb_mode` is `"embedded"`
+THEN the validator SHALL reject this combination with a clear error message
+AND the system SHALL not start.
 
 #### Scenario: Backward compatibility with existing settings
 WHEN `graphdb_provider` is not explicitly set
-THEN it SHALL default to `"neo4j"`
-AND the system SHALL behave identically to the pre-abstraction implementation
-AND existing `neo4j_*` settings, profiles, and .env files SHALL continue to work.
+THEN it SHALL default to `"neo4j"` with `graphdb_mode` defaulting to `"local"`
+AND the system SHALL behave identically to the pre-abstraction implementation.
+
+#### Scenario: Deprecated neo4j_provider alias
+WHEN `neo4j_provider` is set but `graphdb_provider` is not
+THEN the system SHALL map `neo4j_provider: local` to `graphdb_provider: neo4j, graphdb_mode: local`
+AND map `neo4j_provider: auradb` to `graphdb_provider: neo4j, graphdb_mode: cloud`
+AND log a deprecation warning.
 
 ---
 
@@ -81,16 +91,21 @@ AND existing `neo4j_*` settings, profiles, and .env files SHALL continue to work
 
 The system SHALL provide a `FalkorDBGraphDBProvider` that wraps FalkorDB connectivity.
 
-#### Scenario: FalkorDB Docker provider
-WHEN `graphdb_provider` is `"falkordb"` AND `falkordb_provider` is `"local"`
+#### Scenario: FalkorDB local mode
+WHEN `graphdb_provider` is `"falkordb"` AND `graphdb_mode` is `"local"`
 THEN the provider SHALL connect to FalkorDB using `falkordb_host` and `falkordb_port`
 AND use `falkordb_username` / `falkordb_password` if configured
 AND construct a `FalkorDriver` from `graphiti_core.driver.falkordb_driver`.
 
-#### Scenario: FalkorDB Lite provider
-WHEN `graphdb_provider` is `"falkordb"` AND `falkordb_provider` is `"lite"`
+#### Scenario: FalkorDB cloud mode
+WHEN `graphdb_provider` is `"falkordb"` AND `graphdb_mode` is `"cloud"`
+THEN the provider SHALL connect using `falkordb_cloud_host` and `falkordb_cloud_port`
+AND use `falkordb_cloud_password` for authentication.
+
+#### Scenario: FalkorDB embedded mode
+WHEN `graphdb_provider` is `"falkordb"` AND `graphdb_mode` is `"embedded"`
 THEN the provider SHALL start or connect to an embedded FalkorDB Lite instance
-AND use `falkordb_lite_data_dir` for file-based storage
+AND use `falkordb_lite_data_dir` for file-based storage (or temp directory if unset)
 AND the instance SHALL require no external Docker or server process.
 
 #### Scenario: FalkorDB raw Cypher compatibility
@@ -190,25 +205,30 @@ The system SHALL provide `graphdb_provider` and `falkordb_*` settings fields tha
 #### Scenario: graphdb_provider setting
 WHEN `graphdb_provider` is set to `"falkordb"`
 THEN the system SHALL use FalkorDB for all graph operations
-AND `falkordb_*` settings SHALL be used for connection configuration.
+AND the connection fields read SHALL depend on `graphdb_mode`.
+
+#### Scenario: graphdb_mode setting
+WHEN `graphdb_mode` is set
+THEN the factory SHALL use the mode-specific connection fields for the configured provider
+AND invalid provider+mode combinations (e.g., neo4j+embedded) SHALL be rejected at validation time.
 
 #### Scenario: Profile support
 WHEN a profile YAML includes `providers.graphdb: falkordb`
 THEN the profile system SHALL set `graphdb_provider` to `"falkordb"`
-AND `settings.graphdb.*` section SHALL configure FalkorDB-specific fields.
+AND `settings.graphdb.*` section SHALL configure `graphdb_mode` and connection fields.
 
 #### Scenario: Validation
-WHEN `graphdb_provider` is `"falkordb"` AND `falkordb_provider` is `"local"`
+WHEN `graphdb_provider` is `"falkordb"` AND `graphdb_mode` is `"local"`
 AND `falkordb_host` is not reachable
 THEN the health check SHALL return False
 AND the system SHALL log a clear error message identifying the misconfiguration.
 
-#### Scenario: Profile flattening precedence
-WHEN a profile defines both `providers.graphdb` and `providers.neo4j`
-THEN `providers.graphdb` SHALL set `graphdb_provider` (top-level backend selection)
-AND `providers.neo4j` SHALL set `neo4j_provider` (sub-provider within Neo4j)
-AND when `graphdb_provider=falkordb`, the `neo4j_*` settings SHALL be ignored at runtime
-AND when `graphdb_provider=neo4j`, the `falkordb_*` settings SHALL be ignored at runtime.
+#### Scenario: Profile flattening
+WHEN a profile defines `providers.graphdb` and `settings.graphdb.*`
+THEN `providers.graphdb` SHALL set `graphdb_provider`
+AND `settings.graphdb.graphdb_mode` SHALL set the deployment mode
+AND all fields under `settings.graphdb.*` SHALL be flattened to top-level Settings fields
+AND the factory SHALL only read fields relevant to the configured provider+mode combination.
 
 ---
 

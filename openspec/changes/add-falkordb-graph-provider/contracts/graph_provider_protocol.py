@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
 GraphDBProviderType = Literal["neo4j", "falkordb"]
-Neo4jSubProviderType = Literal["local", "auradb"]
-FalkorDBSubProviderType = Literal["local", "lite"]
+GraphDBModeType = Literal["local", "cloud", "embedded"]
 
 
 @dataclass
