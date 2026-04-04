@@ -34,11 +34,14 @@ packages:
       - "1.3"
       - "1.4"
       - "1.6"
+      - "1.9"
     scope:
       write_allow:
         - "src/storage/graph_provider.py"
         - "src/config/settings.py"
         - "src/config/profiles.py"
+        - "src/services/connection_checker.py"
+        - "src/cli/manage_commands.py"
         - "pyproject.toml"
         - "uv.lock"
         - "tests/unit/test_graph_provider.py"
@@ -49,6 +52,7 @@ packages:
         - "profiles/**"
       deny:
         - "src/storage/graphiti_client.py"
+        - "src/storage/falkordb_provider.py"
         - "web/**"
     locks:
       files:
@@ -67,12 +71,12 @@ packages:
     verification: "tier-a"
 
   - id: wp-graphiti-client
-    title: Refactor GraphitiClient to use provider
+    title: Refactor GraphitiClient to async factory + provider
     priority: 3
     tasks:
       - "1.2"
       - "1.5"
-      - "1.9"
+      - "1.10"
     scope:
       write_allow:
         - "src/storage/graphiti_client.py"
@@ -83,6 +87,7 @@ packages:
         - "openspec/changes/add-falkordb-graph-provider/**"
       deny:
         - "src/storage/graph_provider.py"
+        - "src/storage/falkordb_provider.py"
         - "src/config/settings.py"
         - "web/**"
     locks:
@@ -91,7 +96,7 @@ packages:
       keys:
         - "module:src.storage.graphiti_client"
       ttl_minutes: 120
-      reason: "GraphitiClient provider integration"
+      reason: "GraphitiClient async factory and provider integration"
     dependencies:
       - wp-provider-core
     verification: "tier-a"
@@ -134,13 +139,15 @@ packages:
       - "2.4"
       - "2.5"
       - "2.6"
+      - "2.7"
     scope:
       write_allow:
-        - "src/storage/graph_provider.py"
+        - "src/storage/falkordb_provider.py"
         - "docker-compose.yml"
         - "tests/helpers/falkordb_lite.py"
         - "tests/integration/fixtures/falkordb.py"
         - "tests/integration/test_falkordb*.py"
+        - "tests/integration/test_reference_sync_falkordb*.py"
         - "profiles/*.yaml"
         - "Makefile"
       read_allow:
@@ -149,21 +156,23 @@ packages:
         - "tests/**"
       deny:
         - "src/storage/graphiti_client.py"
-        - "src/services/reference_graph_sync.py"
+        - "src/storage/graph_provider.py"
         - "web/**"
     locks:
       files:
+        - "src/storage/falkordb_provider.py"
         - "docker-compose.yml"
         - "tests/helpers/falkordb_lite.py"
       keys:
+        - "module:src.storage.falkordb_provider"
         - "infra:docker-compose:falkordb"
         - "module:tests.helpers.falkordb_lite"
-        - "settings:falkordb_*"
       ttl_minutes: 120
       reason: "FalkorDB provider and infrastructure"
     dependencies:
       - wp-provider-core
       - wp-graphiti-client
+      - wp-reference-sync
     verification: "tier-a"
 
   - id: wp-export-import
@@ -176,15 +185,12 @@ packages:
       - "3.4"
       - "3.5"
       - "3.6"
-      - "3.7"
-      - "3.8"
     scope:
       write_allow:
-        - "src/storage/graph_export.py"
         - "src/sync/neo4j_exporter.py"
         - "src/sync/neo4j_importer.py"
-        - "src/sync/falkordb_exporter.py"
-        - "src/sync/falkordb_importer.py"
+        - "src/sync/models.py"
+        - "src/sync/pg_importer.py"
         - "src/cli/sync_commands.py"
         - "tests/unit/test_graph_export*.py"
         - "tests/integration/test_graph_roundtrip*.py"
@@ -195,18 +201,21 @@ packages:
       deny:
         - "src/storage/graphiti_client.py"
         - "src/storage/graph_provider.py"
+        - "src/storage/falkordb_provider.py"
         - "web/**"
     locks:
       files:
         - "src/sync/neo4j_exporter.py"
         - "src/sync/neo4j_importer.py"
+        - "src/sync/models.py"
         - "src/cli/sync_commands.py"
       keys:
         - "module:src.sync.neo4j_exporter"
         - "module:src.sync.neo4j_importer"
+        - "module:src.sync.models"
         - "module:src.cli.sync_commands"
       ttl_minutes: 120
-      reason: "Export/import protocol and implementations"
+      reason: "Export/import file-level abstraction and implementations"
     dependencies:
       - wp-provider-core
       - wp-falkordb-provider

@@ -34,10 +34,22 @@ THEN the provider SHALL verify connectivity to the graph backend
 AND return True if the backend is reachable and responsive
 AND return False otherwise without raising exceptions.
 
-#### Scenario: Provider cleanup
-WHEN a caller invokes `provider.close()`
+#### Scenario: Provider sync cleanup
+WHEN a caller invokes `provider.close()` (synchronous)
 THEN the provider SHALL close all connections and release resources
 AND subsequent operations SHALL raise an appropriate error.
+
+#### Scenario: Provider async cleanup
+WHEN a caller invokes `await provider.aclose()` (asynchronous)
+THEN the provider SHALL close all connections and release resources asynchronously.
+
+#### Scenario: Provider startup logging
+WHEN a provider is constructed
+THEN it SHALL log at INFO level the backend type, connection target, and sub-provider variant.
+
+#### Scenario: Provider slow query logging
+WHEN a query takes longer than 5 seconds to execute
+THEN the provider SHALL log at WARN level with the query text (truncated to 200 chars) and elapsed time.
 
 ---
 
@@ -98,20 +110,33 @@ AND temporal ordering and comparison operations SHALL produce correct results.
 
 The `GraphitiClient` SHALL use `GraphDBProvider` instead of direct Neo4j driver construction.
 
-#### Scenario: Default provider construction
-WHEN `GraphitiClient()` is constructed without arguments
+#### Scenario: Async factory construction
+WHEN `await GraphitiClient.create()` is called without arguments
 THEN it SHALL obtain a provider via `get_graph_provider()`
-AND pass `provider.create_graphiti_driver()` to `Graphiti(graph_driver=...)`.
+AND pass `provider.create_graphiti_driver()` to `Graphiti(graph_driver=...)`
+AND call `await graphiti.build_indices_and_constraints()` before returning.
 
 #### Scenario: Explicit provider injection
-WHEN `GraphitiClient(provider=some_provider)` is constructed with a provider
+WHEN `await GraphitiClient.create(provider=some_provider)` is called with a provider
 THEN it SHALL use that provider instead of the default
 AND this SHALL be the primary testing seam for graph backend switching.
+
+#### Scenario: Graceful degradation when graph backend unavailable
+WHEN `GraphitiClient.create()` is called AND the graph backend is unreachable
+THEN it SHALL raise `GraphBackendUnavailableError`
+AND callers in processors (theme_analyzer, historical_context) SHALL catch this error
+AND log a warning and return empty results
+AND core pipeline operations (ingest, summarize, digest) SHALL continue without graph enrichment.
 
 #### Scenario: All existing GraphitiClient methods work on both backends
 WHEN any existing method (add_content_summary, search_related_concepts, get_temporal_context, etc.) is called
 THEN it SHALL produce correct results on both Neo4j and FalkorDB backends
 AND the method signatures SHALL not change.
+
+#### Scenario: Sync close facade
+WHEN `client.close()` is called synchronously
+THEN it SHALL close the provider and release resources
+AND existing sync callers (CLI adapters) SHALL continue to work without modification.
 
 ---
 
@@ -133,17 +158,18 @@ AND return the UUID if found, None otherwise.
 
 ### Requirement: Graph Export/Import Abstraction
 
-The system SHALL provide `GraphExporter` and `GraphImporter` protocols that work across backends.
+The system SHALL provide file-level export/import operations on `GraphDBProvider` that work across backends.
 
-#### Scenario: Export nodes from any backend
-WHEN `exporter.export_nodes(label)` is called
-THEN it SHALL return all nodes with the given label as `NodeRecord` instances
-AND the JSONL serialization format SHALL be identical regardless of backend.
+#### Scenario: Export graph to file
+WHEN `provider.export_graph(output_path)` is called
+THEN it SHALL write all nodes and relationships to a JSONL file at the given path
+AND the JSONL format SHALL use `graph_node`, `graph_relationship`, `graph_manifest` record types
+AND return an `ExportManifest` with counts and metadata.
 
-#### Scenario: Import nodes to any backend
-WHEN `importer.import_node(record)` is called
-THEN it SHALL create or update the node using idempotent MERGE by UUID
-AND return the UUID of the affected node.
+#### Scenario: Import graph from file
+WHEN `provider.import_graph(input_path, mode="merge")` is called
+THEN it SHALL read JSONL records and create or update nodes/relationships using idempotent MERGE by UUID
+AND return `ImportStats` with inserted/skipped/updated/failed counts.
 
 #### Scenario: Cross-backend portability
 WHEN data is exported from Neo4j and imported to FalkorDB (or vice versa)
@@ -151,7 +177,7 @@ THEN the import SHALL succeed
 AND all nodes, relationships, and properties SHALL be preserved.
 
 #### Scenario: Clean mode import
-WHEN import is run with `mode="clean"`
+WHEN `provider.import_graph(input_path, mode="clean")` is called
 THEN all existing nodes and relationships SHALL be deleted before import
 AND the deletion SHALL work on both backends.
 
@@ -177,6 +203,13 @@ AND `falkordb_host` is not reachable
 THEN the health check SHALL return False
 AND the system SHALL log a clear error message identifying the misconfiguration.
 
+#### Scenario: Profile flattening precedence
+WHEN a profile defines both `providers.graphdb` and `providers.neo4j`
+THEN `providers.graphdb` SHALL set `graphdb_provider` (top-level backend selection)
+AND `providers.neo4j` SHALL set `neo4j_provider` (sub-provider within Neo4j)
+AND when `graphdb_provider=falkordb`, the `neo4j_*` settings SHALL be ignored at runtime
+AND when `graphdb_provider=neo4j`, the `falkordb_*` settings SHALL be ignored at runtime.
+
 ---
 
 ### Requirement: Infrastructure
@@ -192,8 +225,17 @@ AND it SHALL be in the same Docker network as other services.
 #### Scenario: FalkorDB Lite test fixture
 WHEN graph-related tests run
 THEN a session-scoped FalkorDB Lite instance SHALL start automatically
-AND each test function SHALL get a clean graph state
+AND each test function SHALL get a clean graph state via FLUSHALL
 AND the instance SHALL shut down after the test session.
+
+#### Scenario: FalkorDB Lite orphan cleanup
+WHEN the test process crashes or is killed
+THEN the FalkorDB Lite subprocess SHALL be cleaned up via atexit handler
+AND a PID file SHALL be written to detect and kill orphaned processes on next startup.
+
+#### Scenario: Docker image pinning
+WHEN the FalkorDB Docker service is defined in docker-compose.yml
+THEN the image SHALL be pinned to a specific tested version (not `latest`).
 
 ---
 
@@ -222,7 +264,11 @@ AND output SHALL be identical regardless of backend.
 The sync CLI commands SHALL use the graph provider abstraction for export/import operations.
 
 #### Scenario: Export/import with provider
-WHEN `aca sync export --neo4j-only` or `aca sync import --neo4j-only` is run
+WHEN `aca sync export --graph-only` or `aca sync import --graph-only` is run
 THEN the command SHALL use the graph provider abstraction
-AND the `--neo4j-only` flag name SHALL be preserved for backward compatibility
 AND the operation SHALL work on whichever backend is configured.
+
+#### Scenario: Legacy flag alias
+WHEN `--neo4j-only` is used as a CLI flag
+THEN it SHALL be accepted as an alias for `--graph-only`
+AND a deprecation warning SHALL be logged when used with a non-Neo4j backend.
