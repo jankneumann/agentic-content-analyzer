@@ -83,7 +83,7 @@ async def predict_monthly_costs(
             youtube_videos_per_week=youtube_videos_per_week,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail="Invalid pricing parameters provided") from e
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ async def estimate_neon_cost(
             snapshot_gb=snapshot_gb,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail="Invalid pricing parameters provided") from e
 
 
 @router.get(
@@ -134,7 +134,7 @@ async def estimate_resend_cost(
             emails_per_month=emails_per_month,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail="Invalid pricing parameters provided") from e
 
 
 # ---------------------------------------------------------------------------
