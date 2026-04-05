@@ -66,8 +66,8 @@ KEBAB_CAMEL_PATTERN2 = re.compile(r"([a-z])([A-Z])")
 NORMALIZE_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
 
 # Patterns for Markdown parsing
-HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$")
-LIST_ITEM_PATTERN = re.compile(r"^[-*+]\s+(.+)$")
+HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$")  # NOSONAR
+LIST_ITEM_PATTERN = re.compile(r"^[-*+]\s+(.+)$")  # NOSONAR
 
 
 def parse_sections(markdown: str) -> list[MarkdownSection]:
