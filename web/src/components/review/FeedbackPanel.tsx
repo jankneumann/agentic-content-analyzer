@@ -221,7 +221,7 @@ export function FeedbackPanel({
                     className={cn(
                       "gap-1.5",
                       (!hasContent || isGenerating) &&
-                        "cursor-not-allowed opacity-50"
+                        "cursor-not-allowed opacity-50 hover:bg-primary hover:text-primary-foreground"
                     )}
                   >
                     {isGenerating ? (

@@ -521,12 +521,18 @@ export function RevisionChatPanel({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={handleSubmit}
+                      onClick={(e) => {
+                        if (!canSubmit) {
+                          e.preventDefault()
+                          return
+                        }
+                        handleSubmit(e)
+                      }}
                       aria-disabled={!canSubmit}
                       className={cn(
                         "h-7 w-7 p-0",
                         !canSubmit &&
-                          "hover:text-foreground cursor-not-allowed opacity-50 hover:bg-transparent"
+                          "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-foreground"
                       )}
                       aria-label="Send message"
                     >
@@ -597,12 +603,18 @@ export function RevisionChatPanel({
                 <TooltipTrigger asChild>
                   <Button
                     size="sm"
-                    onClick={handleGeneratePreview}
+                    onClick={(e) => {
+                      if (!canGenerate) {
+                        e.preventDefault()
+                        return
+                      }
+                      handleGeneratePreview(e)
+                    }}
                     aria-disabled={!canGenerate}
                     className={cn(
                       "gap-1.5",
                       !canGenerate &&
-                        "hover:bg-primary hover:text-primary-foreground cursor-not-allowed opacity-50"
+                        "cursor-not-allowed opacity-50 hover:bg-primary hover:text-primary-foreground"
                     )}
                   >
                     {isGenerating ? (

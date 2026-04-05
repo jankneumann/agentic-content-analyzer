@@ -313,13 +313,19 @@ export function ChatInput({
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
-                  onClick={handleSubmit}
+                  onClick={(e) => {
+                    if (!canSubmit) {
+                      e.preventDefault()
+                      return
+                    }
+                    handleSubmit(e)
+                  }}
                   aria-disabled={!canSubmit}
                   aria-label="Send message"
                   className={cn(
                     "h-9 w-9 shrink-0",
                     !canSubmit &&
-                      "hover:bg-primary hover:text-primary-foreground cursor-not-allowed opacity-50"
+                      "cursor-not-allowed opacity-50 hover:bg-primary hover:text-primary-foreground"
                   )}
                 >
                   {isLoading ? (
