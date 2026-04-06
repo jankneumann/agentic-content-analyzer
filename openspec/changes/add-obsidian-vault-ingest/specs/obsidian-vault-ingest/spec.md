@@ -30,6 +30,11 @@ The system SHALL parse standardized clip metadata from frontmatter.
 - **WHEN** ingestion runs
 - **THEN** ingestion SHALL proceed with sensible defaults
 
+#### Scenario: Missing required metadata
+- **GIVEN** frontmatter is missing `source_url` or `captured_at`
+- **WHEN** ingestion runs
+- **THEN** the note SHALL be marked failed with `missing_required_metadata`
+
 ### Requirement: Sync-Safe File Handling
 
 The system SHALL avoid reading partially synced files.
@@ -39,6 +44,11 @@ The system SHALL avoid reading partially synced files.
 - **WHEN** polling occurs
 - **THEN** the system SHALL defer ingestion until file stability is confirmed
 
+#### Scenario: Temporary or lock file
+- **GIVEN** a filename matches configured temp/lock patterns
+- **WHEN** polling occurs
+- **THEN** the system SHALL skip ingestion for that file
+
 ### Requirement: Markdown Normalization
 
 The system SHALL normalize Obsidian-specific markdown into ingest-compatible markdown.
@@ -47,6 +57,11 @@ The system SHALL normalize Obsidian-specific markdown into ingest-compatible mar
 - **GIVEN** a note containing wikilinks, embeds, or callouts
 - **WHEN** normalization runs
 - **THEN** output markdown SHALL be produced for the standard parsing pipeline
+
+#### Scenario: Unsupported construct fallback
+- **GIVEN** a note includes unsupported Obsidian syntax
+- **WHEN** normalization runs
+- **THEN** ingestion SHALL preserve readable fallback text instead of failing
 
 ### Requirement: Duplicate URL Behavior
 
@@ -58,6 +73,11 @@ The system SHALL deduplicate clips by canonical URL while preserving user contex
 - **THEN** the system SHALL avoid duplicate primary content records
 - **AND** preserve per-note metadata/annotations according to policy
 
+#### Scenario: Canonicalization failure
+- **GIVEN** URL canonicalization fails for a note
+- **WHEN** ingestion runs
+- **THEN** file-hash deduplication SHALL be used as fallback
+
 ### Requirement: Failure Recording and Replay
 
 The system SHALL provide recoverable failure handling.
@@ -67,3 +87,31 @@ The system SHALL provide recoverable failure handling.
 - **WHEN** ingestion fails
 - **THEN** the failure reason SHALL be recorded
 - **AND** the note SHALL be eligible for reprocessing after correction
+
+#### Scenario: Retry after note correction
+- **GIVEN** a previously failed note has changed
+- **WHEN** polling detects a new hash/mtime
+- **THEN** the system SHALL re-attempt ingestion automatically
+
+### Requirement: Source Config Compatibility
+
+The system SHALL safely stage configuration before `obsidian_ingest` runtime support is available.
+
+#### Scenario: Template-only config in repository
+- **GIVEN** `sources.d/obsidian-ingest.yaml.example` exists
+- **WHEN** source configs are loaded
+- **THEN** loader behavior SHALL remain unchanged because only `*.yaml` files are loaded
+
+#### Scenario: Unsupported active source type
+- **GIVEN** `sources.d/obsidian-ingest.yaml` is activated before `obsidian_ingest` type support exists
+- **WHEN** source configs are loaded
+- **THEN** validation SHALL fail explicitly and block startup until fixed
+
+### Requirement: Path Safety
+
+The system SHALL restrict vault access to allowed roots and reject traversal.
+
+#### Scenario: Resolved path escapes allowed root
+- **GIVEN** configured ingest path resolves outside an allowed vault root
+- **WHEN** source config is validated
+- **THEN** configuration SHALL be rejected with a clear error
