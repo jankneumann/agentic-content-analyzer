@@ -46,3 +46,9 @@
 - [ ] 8.1 Setup guide for Obsidian Sync/iCloud/Dropbox variants
 - [ ] 8.2 Security and privacy considerations
 - [ ] 8.3 Troubleshooting guide for sync delays and malformed clips
+
+## 9. Schema + Config Templates
+
+- [ ] 9.1 Add migration for `obsidian_ingest_state` table and indexes
+- [ ] 9.2 Add `sources.d/obsidian-ingest.yaml` support once `obsidian_ingest` type is implemented
+- [ ] 9.3 Promote `sources.d/obsidian-ingest.yaml.example` to active `.yaml` only after validation and runtime wiring are complete

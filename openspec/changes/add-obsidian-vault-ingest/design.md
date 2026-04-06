@@ -238,3 +238,65 @@ Structured logs include:
 2. Should note annotations become first-class linked entities in the data model?
 3. What is the desired retention policy for failed note-state records?
 4. Which sync providers should be officially supported in docs for v1?
+
+## 10. Schema (Initial Proposal)
+
+### 10.1 SQL Schema: `obsidian_ingest_state`
+
+```sql
+CREATE TABLE IF NOT EXISTS obsidian_ingest_state (
+  id BIGSERIAL PRIMARY KEY,
+  note_path TEXT NOT NULL UNIQUE,
+  file_hash TEXT,
+  canonical_url TEXT,
+  canonical_url_hash TEXT,
+  last_seen_mtime TIMESTAMPTZ,
+  last_seen_size BIGINT,
+  status TEXT NOT NULL CHECK (status IN ('queued', 'ingested', 'failed', 'deferred')),
+  content_id BIGINT,
+  error_code TEXT,
+  error_message TEXT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_obsidian_ingest_state_status
+  ON obsidian_ingest_state (status);
+
+CREATE INDEX IF NOT EXISTS idx_obsidian_ingest_state_canonical_url_hash
+  ON obsidian_ingest_state (canonical_url_hash);
+```
+
+Notes:
+
+- `note_path` is the idempotency anchor for file-level tracking.
+- `canonical_url_hash` supports quick duplicate lookups.
+- `content_id` links to existing ACA content when ingestion succeeds.
+
+### 10.2 Source Config Schema (Planned)
+
+Long-term, once a runtime source type exists, `sources.d/obsidian-ingest.yaml` should support:
+
+```yaml
+defaults:
+  type: obsidian_ingest
+  enabled: false
+  poll_interval_seconds: 30
+  file_settle_ms: 3000
+  move_processed_to: ""
+
+sources:
+  - name: "Obsidian Web Clipper Vault"
+    vault_path: "/absolute/path/to/vault"
+    ingest_folder: "Inbox/WebClipper"
+    allowed_roots: []
+    temp_file_patterns: ["*.tmp", "*.part", "*.swp", "*.crdownload", "*.icloud"]
+```
+
+Until that source type is implemented in `src/config/sources.py`, we should keep this config as an `.example` file to avoid loader validation errors.
+
+## 11. Configuration File Decision
+
+Yes — we should add a template now at `sources.d/obsidian-ingest.yaml.example` so teams can align on expected parameters early.
+
+We should **not** add `sources.d/obsidian-ingest.yaml` as an active file yet, because current source validation does not include `obsidian_ingest` and loading `*.yaml` would fail if enabled with unsupported type.
