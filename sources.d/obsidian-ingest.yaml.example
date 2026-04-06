@@ -1,0 +1,32 @@
+# Obsidian vault ingest source (template)
+#
+# IMPORTANT:
+# - Keep this as `.yaml.example` until runtime support for `type: obsidian_ingest`
+#   is added in src/config/sources.py and ingestion pipeline wiring is implemented.
+# - Do not rename to `.yaml` yet in production environments.
+
+version: 1
+
+defaults:
+  type: obsidian_ingest
+  enabled: false
+  poll_interval_seconds: 30
+  file_settle_ms: 3000
+  move_processed_to: ""
+  dedupe_strategy: canonical_url_then_file_hash
+
+sources:
+  - name: "Obsidian Web Clipper Vault"
+    # Absolute path on the host running ingestion
+    vault_path: "/absolute/path/to/ObsidianVault"
+    # Relative folder inside the vault where Web Clipper notes land
+    ingest_folder: "Inbox/WebClipper"
+    # Optional safety allow-list for resolved vault roots
+    allowed_roots: []
+    # Optional override for temporary/lock patterns
+    temp_file_patterns:
+      - "*.tmp"
+      - "*.part"
+      - "*.swp"
+      - "*.crdownload"
+      - "*.icloud"
