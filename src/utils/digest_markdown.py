@@ -303,6 +303,7 @@ def parse_markdown_digest(markdown: str) -> dict[str, Any]:
     Returns:
         Dictionary with extracted digest fields
     """
+    # Import locally to avoid circular imports during module initialization
     from src.utils.markdown import get_section_by_name, parse_sections
 
     sections = parse_sections(markdown)
