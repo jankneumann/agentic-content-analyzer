@@ -7,7 +7,7 @@ and source_content_ids using the markdown utilities from Phase 3.
 import re
 from typing import TYPE_CHECKING, Any
 
-from src.utils.markdown import extract_theme_tags
+from src.utils.markdown import extract_theme_tags, get_section_by_name, parse_sections
 
 # Pre-compile regular expressions for performance
 LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -303,8 +303,6 @@ def parse_markdown_digest(markdown: str) -> dict[str, Any]:
     Returns:
         Dictionary with extracted digest fields
     """
-    from src.utils.markdown import get_section_by_name, parse_sections
-
     sections = parse_sections(markdown)
     result: dict[str, Any] = {}
 
