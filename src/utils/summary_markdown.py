@@ -4,9 +4,13 @@ Generates markdown_content from summary JSON fields and extracts theme_tags
 using the markdown utilities from Phase 3.
 """
 
+import re
 from typing import Any
 
 from src.utils.markdown import extract_relevance_scores, extract_theme_tags
+
+# Pre-compile regular expressions for performance
+LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 
 def generate_summary_markdown(summary_data: dict[str, Any]) -> str:
@@ -218,12 +222,9 @@ def parse_markdown_summary(markdown: str) -> dict[str, Any]:
 
     # Relevant Links (parse markdown links)
     if section := get_section_by_name(sections, "Relevant Links"):
-        import re
-
         links = []
-        link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
         for item in section.items:
-            if match := link_pattern.search(item):
+            if match := LINK_PATTERN.search(item):
                 links.append({"title": match.group(1), "url": match.group(2)})
         result["relevant_links"] = links
 

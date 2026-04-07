@@ -4,9 +4,14 @@ Generates markdown_content from digest JSON fields and extracts theme_tags
 and source_content_ids using the markdown utilities from Phase 3.
 """
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from src.utils.markdown import extract_theme_tags
+
+# Pre-compile regular expressions for performance
+LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+THEME_PATTERN = re.compile(r"#([a-zA-Z][a-zA-Z0-9_-]*)")
 
 if TYPE_CHECKING:
     from src.models.digest import DigestSection
@@ -333,12 +338,9 @@ def parse_markdown_digest(markdown: str) -> dict[str, Any]:
 
     # Sources
     if section := get_section_by_name(sections, "Sources"):
-        import re
-
         sources = []
-        link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
         for item in section.items:
-            if match := link_pattern.search(item):
+            if match := LINK_PATTERN.search(item):
                 sources.append({"title": match.group(1), "url": match.group(2)})
             else:
                 sources.append({"title": item})
@@ -366,10 +368,7 @@ def _parse_digest_subsections(section: Any) -> list[dict[str, Any]]:
         }
 
         # Extract themes from hashtags in content
-        import re
-
-        theme_pattern = re.compile(r"#([a-zA-Z][a-zA-Z0-9_-]*)")
-        themes = theme_pattern.findall(subsection.content)
+        themes = THEME_PATTERN.findall(subsection.content)
         if themes:
             item["themes"] = [t.replace("-", " ").replace("_", " ") for t in themes]
 
