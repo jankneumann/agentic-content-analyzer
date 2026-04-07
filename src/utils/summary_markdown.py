@@ -186,7 +186,6 @@ def parse_markdown_summary(markdown: str) -> dict[str, Any]:
     Returns:
         Dictionary with extracted summary fields
     """
-    # Import locally to avoid circular imports during module initialization
     from src.utils.markdown import get_section_by_name, parse_sections
 
     sections = parse_sections(markdown)
