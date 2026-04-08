@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 
 def _normalize_text(text: str) -> str:
     """Normalize text before embedding: collapse whitespace, strip."""
-    text = re.sub(r"\s+", " ", text).strip()
+    # Optimized: string split/join is faster than regex for whitespace collapse
+    text = " ".join(text.split())
     return text
 
 

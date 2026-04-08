@@ -260,11 +260,11 @@ class ArxivClient:
         if not primary_cat and categories:
             primary_cat = categories[0]
 
-        # Title: collapse whitespace
-        title = re.sub(r"\s+", " ", entry.get("title", "").strip())
+        # Title: collapse whitespace (Optimized: string split/join is faster than regex)
+        title = " ".join(entry.get("title", "").split())
 
-        # Abstract: collapse whitespace
-        abstract = re.sub(r"\s+", " ", entry.get("summary", "").strip())
+        # Abstract: collapse whitespace (Optimized: string split/join is faster than regex)
+        abstract = " ".join(entry.get("summary", "").split())
 
         return ArxivPaper(
             arxiv_id=base_id,

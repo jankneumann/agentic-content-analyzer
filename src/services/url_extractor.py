@@ -302,7 +302,8 @@ class URLExtractor:
         text = html.unescape(text)
 
         # Normalize whitespace
-        text = re.sub(r"\s+", " ", text).strip()
+        # Optimized: string split/join is faster than regex for whitespace collapse
+        text = " ".join(text.split())
 
         return text
 
