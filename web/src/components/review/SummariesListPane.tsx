@@ -309,6 +309,7 @@ const CollapsibleSubSection = React.memo(function CollapsibleSubSection({
   children,
 }: CollapsibleSubSectionProps) {
   const [isOpen, setIsOpen] = React.useState(defaultOpen)
+  const contentId = React.useId()
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -316,6 +317,7 @@ const CollapsibleSubSection = React.memo(function CollapsibleSubSection({
         <button
           type="button"
           aria-expanded={isOpen}
+          aria-controls={contentId}
           className="hover:text-foreground/80 focus-visible:ring-ring flex w-full items-center gap-1.5 rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none"
         >
           {isOpen ? (
@@ -334,7 +336,7 @@ const CollapsibleSubSection = React.memo(function CollapsibleSubSection({
           )}
         </button>
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent id={contentId}>
         <div className="mt-2 ml-4">{children}</div>
       </CollapsibleContent>
     </Collapsible>

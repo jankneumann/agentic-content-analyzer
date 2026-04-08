@@ -198,6 +198,8 @@ export function PromptManager() {
           const categoryOverrides = prompts.filter((p) => p.has_override).length
           const isOpen = openCategories.has(category)
 
+          const contentId = `category-content-${category}`
+
           return (
             <Collapsible
               key={category}
@@ -207,7 +209,9 @@ export function PromptManager() {
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 rounded-md border bg-card px-3 py-2.5 text-left hover:bg-accent/50 transition-colors"
+                  aria-expanded={isOpen}
+                  aria-controls={contentId}
+                  className="flex w-full items-center gap-2 rounded-md border bg-card px-3 py-2.5 text-left hover:bg-accent/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded-sm"
                 >
                   <ChevronRight
                     className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
@@ -228,7 +232,7 @@ export function PromptManager() {
                 </button>
               </CollapsibleTrigger>
 
-              <CollapsibleContent>
+              <CollapsibleContent id={contentId}>
                 <div className="ml-6 mt-1 space-y-1">
                   {prompts.map((prompt) => (
                     <button

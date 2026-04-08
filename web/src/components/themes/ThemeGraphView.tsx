@@ -42,8 +42,10 @@ export function ThemeGraphView({
       <div className="flex gap-1 rounded-lg bg-muted p-1 w-fit">
         <button
           onClick={() => handleTabChange("network")}
+          role="tab"
+          aria-selected={activeTab === "network"}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             activeTab === "network"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
@@ -53,8 +55,10 @@ export function ThemeGraphView({
         </button>
         <button
           onClick={() => handleTabChange("timeline")}
+          role="tab"
+          aria-selected={activeTab === "timeline"}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             activeTab === "timeline"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
