@@ -302,7 +302,7 @@ class URLExtractor:
         text = html.unescape(text)
 
         # Normalize whitespace
-        text = " ".join(text.split())
+        text = re.sub(r"\s+", " ", text).strip()
 
         return text
 

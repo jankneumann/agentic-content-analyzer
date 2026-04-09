@@ -224,7 +224,7 @@ async def fetch_pricing_page(url: str) -> str:
     )
     text = re.sub(r"<[^>]+>", " ", text)
     text = html.unescape(text)
-    text = " ".join(text.split())
+    text = re.sub(r"\s+", " ", text).strip()
     return text
 
 
