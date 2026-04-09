@@ -96,6 +96,8 @@ class ModelStep(StrEnum):
     CONTENT_FILTERING = "content_filtering"  # Content relevance classification
     TREE_SUMMARIZATION = "tree_summarization"  # Tree index node summarization
     TREE_SEARCH = "tree_search"  # Tree search retrieval
+    KB_COMPILATION = "kb_compilation"  # Knowledge base topic article compilation
+    KB_INDEX = "kb_index"  # Knowledge base index summarization
 
 
 class RoutingMode(StrEnum):
@@ -320,6 +322,8 @@ class ModelConfig:
         voice_cleanup: str | None = None,
         image_suggestion: str | None = None,
         cloud_stt: str | None = None,
+        kb_compilation: str | None = None,
+        kb_index: str | None = None,
         # Provider configurations (in priority order for failover)
         providers: list[ProviderConfig] | None = None,
     ):
@@ -366,6 +370,10 @@ class ModelConfig:
             or DEFAULT_MODELS.get("image_suggestion", DEFAULT_MODELS["summarization"]),
             ModelStep.CLOUD_STT: cloud_stt
             or DEFAULT_MODELS.get("cloud_stt", DEFAULT_MODELS["youtube_processing"]),
+            ModelStep.KB_COMPILATION: kb_compilation
+            or DEFAULT_MODELS.get("kb_compilation", DEFAULT_MODELS["theme_analysis"]),
+            ModelStep.KB_INDEX: kb_index
+            or DEFAULT_MODELS.get("kb_index", DEFAULT_MODELS["summarization"]),
         }
 
         # Validate all models exist
@@ -393,8 +401,9 @@ class ModelConfig:
         # Load from YAML (lowest precedence)
         try:
             from src.config.config_registry import get_config_registry
+
             registry = get_config_registry()
-            yaml_data = registry.get("models", {})
+            yaml_data = registry.get_raw("models")
         except Exception:
             # Fallback: direct file read
             try:

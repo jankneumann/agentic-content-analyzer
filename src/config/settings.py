@@ -732,6 +732,16 @@ class Settings(BaseSettings):
     hoverfly_proxy_url: str = "http://localhost:8500"  # Hoverfly webserver URL
     hoverfly_admin_url: str = "http://localhost:8888"  # Hoverfly admin API URL
 
+    # Knowledge Base Configuration
+    # Topic compilation, health checks, and pipeline integration.
+    kb_pipeline_enabled: bool = False  # Optional: run KB compile in `aca pipeline daily`
+    kb_stale_threshold_days: int = 30  # Topics with no new evidence beyond this are stale
+    kb_merge_similarity_threshold: float = 0.90  # Cosine similarity above this flags merge
+    kb_match_similarity_threshold: float = 0.85  # Cosine similarity above this matches topics
+    kb_min_topics_per_category: int = 3  # Minimum active topics per category (coverage gap)
+    kb_compile_lock_timeout_minutes: int = 30  # Stale lock recovery threshold
+    kb_qa_max_topics: int = 10  # Cap on relevant topics per Q&A query
+
     @model_validator(mode="after")
     def validate_search_config(self) -> Settings:
         """Validate search configuration cross-field constraints."""
