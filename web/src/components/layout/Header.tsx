@@ -148,9 +148,8 @@ function ThemeToggle() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+        <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={label}>
           {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          <span className="sr-only">{label}</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
@@ -180,9 +179,9 @@ export function Header({ onMenuClick, className }: HeaderProps) {
               size="icon"
               className="md:hidden"
               onClick={onMenuClick}
+              aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
-              <span className="sr-only">Open menu</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>Open menu</TooltipContent>

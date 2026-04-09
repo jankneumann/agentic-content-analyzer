@@ -90,9 +90,9 @@ export function DeprecationBanner({
             size="icon"
             className="h-6 w-6 shrink-0 text-amber-600 hover:bg-amber-100 hover:text-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/50 dark:hover:text-amber-200"
             onClick={() => setIsDismissed(true)}
+            aria-label="Dismiss"
           >
             <X className="h-4 w-4" />
-            <span className="sr-only">Dismiss</span>
           </Button>
         )}
       </div>
