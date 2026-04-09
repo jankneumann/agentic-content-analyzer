@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from functools import lru_cache
 from typing import Protocol, runtime_checkable
 
@@ -29,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def _normalize_text(text: str) -> str:
     """Normalize text before embedding: collapse whitespace, strip."""
-    text = re.sub(r"\s+", " ", text).strip()
+    text = " ".join(text.split())
     return text
 
 
