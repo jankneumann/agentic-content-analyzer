@@ -177,6 +177,15 @@ class TestCreateTopic:
         resp = client.post("/api/v1/kb/topics", json={"name": "No Category"})
         assert resp.status_code == 422
 
+    def test_create_rejects_invalid_category(self, client):
+        """Finding #6: bogus category returns 422, not 201."""
+        resp = client.post(
+            "/api/v1/kb/topics",
+            json={"name": "Bad Category", "category": "not_a_real_cat"},
+        )
+        assert resp.status_code == 422
+        assert "Invalid category" in resp.text
+
 
 class TestUpdateTopic:
     def test_update_summary_and_trend(self, client, db_session):
@@ -227,6 +236,24 @@ class TestUpdateTopic:
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "active"
+
+    def test_update_rejects_invalid_category(self, client, db_session):
+        """Finding #6: category on PATCH is validated against enum."""
+        _make_topic(db_session, slug="cat", name="Cat")
+        resp = client.patch(
+            "/api/v1/kb/topics/cat",
+            json={"category": "not_valid"},
+        )
+        assert resp.status_code == 422
+
+    def test_update_rejects_out_of_range_relevance(self, client, db_session):
+        """Finding #5: relevance_score is bounded 0..1."""
+        _make_topic(db_session, slug="rng", name="Range")
+        resp = client.patch(
+            "/api/v1/kb/topics/rng",
+            json={"relevance_score": 42.0},
+        )
+        assert resp.status_code == 422
 
 
 class TestArchiveTopic:
@@ -281,6 +308,16 @@ class TestTopicNotes:
             json={"content": "body"},
         )
         assert resp.status_code == 404
+
+    def test_create_note_rejects_invalid_type(self, client, db_session):
+        """Finding #7: invalid note_type returns 422, not 500."""
+        _make_topic(db_session, slug="nt", name="NoteType")
+        resp = client.post(
+            "/api/v1/kb/topics/nt/notes",
+            json={"content": "body", "note_type": "rant"},
+        )
+        assert resp.status_code == 422
+        assert "Invalid note_type" in resp.text
 
     def test_create_and_list_note_roundtrip(self, client, db_session):
         _make_topic(db_session, slug="rt", name="RoundTrip")

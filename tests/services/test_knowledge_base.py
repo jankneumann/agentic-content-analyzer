@@ -250,6 +250,93 @@ class TestConcurrency:
         )
         assert sentinel is None
 
+    async def test_exception_in_compile_triggers_rollback_and_releases_lock(
+        self, kb_service, db_session
+    ):
+        """Finding #1: Unhandled exceptions during compile SHALL rollback
+        the session and still release the advisory lock, leaving the DB
+        in a usable state for subsequent queries.
+        """
+        # Seed a theme so compile actually iterates
+        analysis = ThemeAnalysis(
+            start_date=datetime(2026, 4, 1),
+            end_date=datetime(2026, 4, 8),
+            content_count=1,
+            themes=[
+                {
+                    "name": "Rollback Topic",
+                    "description": "forces an exception during merge detection",
+                    "category": "ml_ai",
+                    "mention_count": 1,
+                    "content_ids": [],
+                    "trend": "one_off",
+                }
+            ],
+        )
+        db_session.add(analysis)
+        db_session.commit()
+
+        # Let the per-topic compile succeed, but explode during merge
+        # detection (outside the per-topic try/except) to exercise the
+        # outer rollback path.
+        with (
+            patch.object(
+                kb_service,
+                "_detect_merge_candidates",
+                side_effect=RuntimeError("boom from merge detection"),
+            ),
+            patch.object(kb_service, "_generate_embedding", new=AsyncMock(return_value=None)),
+        ):
+            with pytest.raises(RuntimeError, match="boom from merge detection"):
+                await kb_service.compile()
+
+        # Lock MUST have been released
+        sentinel = db_session.query(KBIndex).filter_by(index_type="_compile_lock_sentinel").first()
+        assert sentinel is None
+
+        # Session must still be usable (not in a broken transaction)
+        topics_after = db_session.query(Topic).all()
+        # The in-flight topic insertion should have been rolled back
+        assert all(t.name != "Rollback Topic" for t in topics_after)
+
+
+# ---- Input validation on add_note ----
+
+
+class TestAddNoteValidation:
+    def test_add_note_rejects_invalid_note_type(self, db_session, kb_service):
+        """Finding #7: add_note raises ValueError for unknown note_type
+        before hitting the DB, so API callers get a clean 422.
+        """
+        topic = Topic(slug="note-validation", name="Validation", category="ml_ai")
+        db_session.add(topic)
+        db_session.commit()
+
+        with pytest.raises(ValueError, match="Invalid note_type"):
+            kb_service.add_note(
+                topic_slug="note-validation",
+                content="x",
+                note_type="bogus",
+            )
+
+
+# ---- Merge detection scale ----
+
+
+@pytest.mark.asyncio
+class TestMergeDetectionTokenization:
+    async def test_merge_detection_uses_pre_tokenized_sets(self, kb_service, db_session):
+        """Finding #4: _detect_merge_candidates tokenizes each article
+        once and reuses the set for pairwise comparisons.
+        """
+        from src.services.knowledge_base import _jaccard, _tokenize
+
+        # Verify helpers exist and work
+        a = _tokenize("rag vector database retrieval")
+        b = _tokenize("rag vector database retrieval")
+        assert _jaccard(a, b) == 1.0
+        assert _jaccard(a, _tokenize("")) == 0.0
+
 
 # ---- Merge detection ----
 

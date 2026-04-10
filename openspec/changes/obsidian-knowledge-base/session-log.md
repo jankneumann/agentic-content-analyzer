@@ -30,3 +30,39 @@
 
 ### Context
 Implemented all 9 phases of the obsidian-knowledge-base proposal in a single PR: Topic/TopicNote/KBIndex models with Alembic migration, full `KnowledgeBaseService` (compilation, advisory lock concurrency, two-phase matching, relationship detection, index generation), `KBQAService` for Q&A with file-back, `KBHealthService` for stale/merge/coverage linting, six new MCP tools, ten KB REST endpoints at `/api/v1/kb/*`, six `aca kb` CLI commands, optional `kb_pipeline_enabled` integration in `aca pipeline daily`, and Obsidian exporter extension with 3-tier `Category/Topic/_overview.md` vault structure. Total: 7 new files, 11 modified files, 98 passing tests across models/services/CLI/API/Obsidian. `openspec validate obsidian-knowledge-base --strict` passes.
+
+---
+
+## Phase: Implementation Iteration 1 (2026-04-09)
+
+**Agent**: claude-opus-4-6 (1M context) | **Session**: iterate-on-implementation
+
+### Decisions
+
+1. Rollback on compile exceptions. The original `_run_compile` used a plain try or finally block which released the lock but never rolled back the session. If merge detection or index generation raised mid-compile, subsequent queries on the same session would fail with a broken-transaction error. Added an explicit except branch that rolls back before re-raising, while the finally clause still releases the lock.
+2. Savepoint for sentinel lock writes. `_write_sentinel_lock` originally called `self.db.rollback()` on insert failure, which would blow away the outer compile transaction. Wrapped the sentinel INSERT in `self.db.begin_nested()` so only the savepoint is rolled back on contention.
+3. Pre-tokenize articles once for merge detection. The pairwise loop in `_detect_merge_candidates` was calling `re.findall` twice per pair. Factored `_tokenize` and `_jaccard` helpers and build the token set per topic once. Keeps the quadratic complexity acceptable up to roughly 1000 topics but eliminates the redundant tokenization constant factor.
+4. Per-topic LLM timeout. Previously an LLM call could hang indefinitely, holding the advisory lock until stale-recovery kicked in after 30 minutes. Added `asyncio.wait_for` around `llm_router.generate` with a budget of `kb_compile_lock_timeout_minutes` seconds divided by three (minimum 60 seconds). A single stuck topic now fails gracefully and the compile continues.
+5. Validate enums at the API boundary, not just at DB commit. `TopicCreate.category`, `TopicUpdate.category`, and `TopicNoteCreate.note_type` now use Pydantic field validators that check against the ThemeCategory and TopicNoteType enums. Returns 422 with a list of valid values instead of an opaque 500 from a SQLAlchemy commit-time error. Same validation mirrored in `KnowledgeBaseService.add_note()` for MCP callers that bypass Pydantic.
+6. Structured compile logging with run_id. Added a 12-character hex UUID run_id and `kb_compile.start` and `kb_compile.finish` log lines with mode, topics_found, topics_compiled, topics_failed, and elapsed_seconds fields. Operators can now correlate a compile run across log entries.
+
+### Alternatives Considered
+
+- Rate limiting on the compile endpoint in this iteration: deferred. Touches broader rate limiter patterns that would bloat this iteration. Flagged as follow-up.
+- Replacing Jaccard merge detection with vector cosine: rejected. Out of iteration scope and would require a separate embedding call per topic pair. Jaccard is a fast deterministic proxy that biases towards precision.
+- LSH or MinHash for merge detection: rejected. Over-engineered for current scale. Pre-tokenization suffices; documented the quadratic complexity limit in the method docstring.
+- Rich Markdown rendering in the `aca kb show` command: rejected as a low-criticality UX nit below threshold.
+
+### Trade-offs
+
+- Accepted explicit rollback-then-reraise over a try or except or finally that swallows exceptions. Callers get the original exception preserved with the rollback happening first. Slightly more verbose but honest.
+- Accepted enum-based category validation over free-form strings. A new category would require both an enum update and a new category index entry; blocking arbitrary strings is the right trade-off.
+
+### Open Questions
+
+- [ ] Follow-up: rate limit the compile endpoint using the existing rate limiter pattern. Not blocking this PR but should land before any deployment that exposes the API beyond a single internal user.
+- [ ] Follow-up: monitor the per-topic LLM timeout in production. If legitimate topics routinely take more than one third of the compile lock timeout, raise the overall lock timeout rather than carving a dedicated per-topic setting.
+
+### Context
+
+Reviewed the initial implementation (4 commits on branch) and surfaced 14 findings across correctness, security, performance, observability, resilience, and test coverage. Addressed 10 findings at or above the medium threshold in this iteration (2 high-criticality bugs, 6 medium-criticality, 2 tests). Deferred 4 low-criticality or out-of-scope findings. Added 7 new tests covering the rollback path, the category and relevance_score and note_type validation, and the tokenization helpers. Test count: 98 to 105, all green.

@@ -18,9 +18,11 @@ graph backend failures are logged and ignored.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -35,7 +37,7 @@ from src.models.theme import (
     ThemeCategory,
     ThemeTrend,
 )
-from src.models.topic import KBIndex, Topic, TopicNote, TopicStatus
+from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
 from src.services.llm_router import LLMRouter
 from src.services.prompt_service import PromptService
 
@@ -168,11 +170,20 @@ class KnowledgeBaseService:
         target_slug: str | None = None,
     ) -> CompileSummary:
         summary = CompileSummary(started_at=datetime.now(UTC))
+        run_id = uuid.uuid4().hex[:12]
 
         if not self._acquire_lock():
             summary.error = "Another KB compilation is already in progress."
             summary.finished_at = datetime.now(UTC)
             raise KBCompileLockError(summary.error)
+
+        logger.info(
+            "kb_compile.start run_id=%s mode=%s target=%s",
+            run_id,
+            mode,
+            target_slug or "-",
+        )
+        start = datetime.now(UTC)
 
         try:
             # 1. Gather evidence
@@ -180,9 +191,13 @@ class KnowledgeBaseService:
             summary.topics_found = len(evidence)
 
             if not evidence:
-                logger.info("KB compile: no new evidence found")
+                logger.info(
+                    "kb_compile.finish run_id=%s status=empty topics_found=0",
+                    run_id,
+                )
                 self._regenerate_indices()
                 summary.finished_at = datetime.now(UTC)
+                self.db.commit()
                 return summary
 
             # 2. Compile each topic candidate
@@ -197,7 +212,11 @@ class KnowledgeBaseService:
                     else:
                         summary.topics_compiled += 1
                 except Exception as exc:
-                    logger.exception("KB compile: failed to compile topic")
+                    logger.exception(
+                        "kb_compile.topic_failed run_id=%s name=%s",
+                        run_id,
+                        theme_payload.get("name", "<unknown>"),
+                    )
                     summary.per_topic.append(
                         TopicCompileResult(
                             slug=theme_payload.get("name", "<unknown>"),
@@ -217,6 +236,30 @@ class KnowledgeBaseService:
             self._regenerate_indices()
 
             self.db.commit()
+            elapsed = (datetime.now(UTC) - start).total_seconds()
+            logger.info(
+                "kb_compile.finish run_id=%s status=ok topics_found=%d "
+                "compiled=%d skipped=%d failed=%d elapsed_seconds=%.2f",
+                run_id,
+                summary.topics_found,
+                summary.topics_compiled,
+                summary.topics_skipped,
+                summary.topics_failed,
+                elapsed,
+            )
+        except Exception:
+            # Roll back any partially-written state so subsequent queries
+            # against this session (e.g., index regeneration) don't fail
+            # on a broken transaction. Lock release still happens in finally.
+            logger.exception("kb_compile.aborted run_id=%s", run_id)
+            try:
+                self.db.rollback()
+            except Exception:
+                logger.debug(
+                    "kb_compile: rollback failed during abort",
+                    exc_info=True,
+                )
+            raise
         finally:
             self._release_lock()
             summary.finished_at = datetime.now(UTC)
@@ -277,16 +320,26 @@ class KnowledgeBaseService:
         return True
 
     def _write_sentinel_lock(self) -> None:
+        """Write the lock sentinel row inside a savepoint.
+
+        Using ``begin_nested()`` isolates the sentinel write: if the INSERT
+        fails (e.g., a race inserted another sentinel), only the savepoint
+        is rolled back, not the outer compile transaction.
+        """
         sentinel = KBIndex(
             index_type="_compile_lock_sentinel",
             content="locked",
             generated_at=datetime.now(UTC).replace(tzinfo=None),
         )
         try:
-            self.db.add(sentinel)
-            self.db.flush()
+            with self.db.begin_nested():
+                self.db.add(sentinel)
+                self.db.flush()
         except Exception:
-            self.db.rollback()
+            logger.debug(
+                "kb_compile: sentinel write skipped (concurrent insert?)",
+                exc_info=True,
+            )
 
     def _release_lock(self) -> None:
         try:
@@ -575,13 +628,29 @@ class KnowledgeBaseService:
             system_prompt = "You are a knowledge base curator compiling topic articles."
 
         model = self.model_config.get_model_for_step(ModelStep.KB_COMPILATION)
-        response = await self.llm_router.generate(
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=2048,
-            temperature=0.3,
+        # Defensive per-topic timeout so a stuck upstream can't hold the
+        # advisory lock for hours. Budget is proportional to the compile
+        # lock timeout: a single topic shouldn't take more than 1/3 of it.
+        per_topic_timeout_seconds = max(
+            int(self.settings.kb_compile_lock_timeout_minutes * 60 / 3),
+            60,
         )
+        try:
+            response = await asyncio.wait_for(
+                self.llm_router.generate(
+                    model=model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=2048,
+                    temperature=0.3,
+                ),
+                timeout=per_topic_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"KB article compilation timed out after "
+                f"{per_topic_timeout_seconds}s for topic '{topic.slug}'"
+            ) from exc
         token_usage = (response.input_tokens or 0) + (response.output_tokens or 0)
         return response.text.strip(), token_usage or None
 
@@ -605,7 +674,13 @@ class KnowledgeBaseService:
     # ------------------------------------------------------------------ #
 
     def _detect_merge_candidates(self) -> list[tuple[str, str]]:
-        """Find topic pairs with article cosine similarity above threshold."""
+        """Find topic pairs with article token-Jaccard similarity above threshold.
+
+        Implementation notes:
+        - Token sets are computed ONCE per topic (was: re-tokenized per pair).
+        - Complexity is still O(N²) in the number of candidates — OK up to
+          ~1000 topics; beyond that, switch to locality-sensitive hashing.
+        """
         topics = (
             self.db.query(Topic)
             .filter(
@@ -616,16 +691,22 @@ class KnowledgeBaseService:
             .all()
         )
 
-        # Skip topics with empty articles per spec
+        # Pre-tokenize once per topic (major speedup for N > ~50)
+        token_sets: list[tuple[str, set[str]]] = []
+        for topic in topics:
+            tokens = _tokenize(topic.article_md)
+            if tokens:
+                token_sets.append((topic.slug, tokens))
+
         candidates: list[tuple[str, str]] = []
         threshold = self.settings.kb_merge_similarity_threshold
-        for i in range(len(topics)):
-            for j in range(i + 1, len(topics)):
-                a = topics[i]
-                b = topics[j]
-                score = _article_similarity(a.article_md, b.article_md)
+        for i in range(len(token_sets)):
+            slug_a, tokens_a = token_sets[i]
+            for j in range(i + 1, len(token_sets)):
+                slug_b, tokens_b = token_sets[j]
+                score = _jaccard(tokens_a, tokens_b)
                 if score >= threshold:
-                    candidates.append((a.slug, b.slug))
+                    candidates.append((slug_a, slug_b))
         return candidates
 
     def _update_simple_relationships(self) -> None:
@@ -778,9 +859,17 @@ class KnowledgeBaseService:
         if topic is None:
             raise ValueError(f"Topic not found: {topic_slug}")
 
+        # Validate note_type against the enum so callers get a clean 422/ValueError
+        # instead of an opaque SQLAlchemy IntegrityError at commit time.
+        try:
+            validated_type = TopicNoteType(note_type)
+        except ValueError as exc:
+            valid = [t.value for t in TopicNoteType]
+            raise ValueError(f"Invalid note_type '{note_type}'. Must be one of: {valid}") from exc
+
         note = TopicNote(
             topic_id=topic.id,
-            note_type=note_type,
+            note_type=validated_type,
             content=content,
             author=author,
         )
@@ -814,22 +903,31 @@ def _parse_pgvector_text(text_value: str | None) -> list[float]:
     return out
 
 
+def _tokenize(text_value: str | None) -> set[str]:
+    """Tokenize text into a lowercase word set (used for Jaccard similarity)."""
+    if not text_value:
+        return set()
+    return set(re.findall(r"\w+", text_value.lower()))
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    """Jaccard similarity over pre-tokenized word sets."""
+    if not a or not b:
+        return 0.0
+    intersection = len(a & b)
+    union = len(a | b)
+    return intersection / union if union else 0.0
+
+
 def _article_similarity(a: str | None, b: str | None) -> float:
     """Cheap article similarity using token Jaccard.
 
     Used for merge candidate detection without LLM cost. Spec says
     "cosine similarity > 0.90 between articles" — Jaccard is a fast
-    proxy that biases towards precision.
+    proxy that biases towards precision. Prefer :func:`_jaccard` with
+    pre-tokenized sets for batch operations.
     """
-    if not a or not b:
-        return 0.0
-    a_tokens = set(re.findall(r"\w+", a.lower()))
-    b_tokens = set(re.findall(r"\w+", b.lower()))
-    if not a_tokens or not b_tokens:
-        return 0.0
-    intersection = len(a_tokens & b_tokens)
-    union = len(a_tokens | b_tokens)
-    return intersection / union if union else 0.0
+    return _jaccard(_tokenize(a), _tokenize(b))
 
 
 def _coerce_aware(value: datetime | None) -> datetime:

@@ -12,10 +12,11 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.api.dependencies import verify_admin_key
-from src.models.topic import KBIndex, Topic, TopicNote, TopicStatus
+from src.models.theme import ThemeCategory
+from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
 from src.services.kb_qa import KBQAService
 from src.services.knowledge_base import (
     KBCompileLockError,
@@ -78,6 +79,24 @@ class TopicSummary(BaseModel):
     last_compiled_at: datetime | None = None
 
 
+def _validate_category(value: str) -> str:
+    """Validate a category against the ThemeCategory enum."""
+    try:
+        return ThemeCategory(value).value
+    except ValueError as exc:
+        valid = [c.value for c in ThemeCategory]
+        raise ValueError(f"Invalid category '{value}'. Must be one of: {valid}") from exc
+
+
+def _validate_note_type(value: str) -> str:
+    """Validate a note_type against the TopicNoteType enum."""
+    try:
+        return TopicNoteType(value).value
+    except ValueError as exc:
+        valid = [t.value for t in TopicNoteType]
+        raise ValueError(f"Invalid note_type '{value}'. Must be one of: {valid}") from exc
+
+
 class TopicCreate(BaseModel):
     """Body for POST /topics."""
 
@@ -85,6 +104,11 @@ class TopicCreate(BaseModel):
     category: str = Field(..., min_length=1, max_length=50)
     summary: str | None = None
     trend: str | None = None
+
+    @field_validator("category")
+    @classmethod
+    def _check_category(cls, v: str) -> str:
+        return _validate_category(v)
 
 
 class TopicUpdate(BaseModel):
@@ -95,8 +119,16 @@ class TopicUpdate(BaseModel):
     summary: str | None = None
     status: str | None = None
     trend: str | None = None
-    relevance_score: float | None = None
+    # Spec bounds: relevance score 0..1
+    relevance_score: float | None = Field(default=None, ge=0.0, le=1.0)
     article_md: str | None = None
+
+    @field_validator("category")
+    @classmethod
+    def _check_category(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return _validate_category(v)
 
 
 class TopicNoteResponse(BaseModel):
@@ -117,6 +149,11 @@ class TopicNoteCreate(BaseModel):
     content: str = Field(..., min_length=1)
     note_type: str = Field(default="observation")
     author: str | None = None
+
+    @field_validator("note_type")
+    @classmethod
+    def _check_note_type(cls, v: str) -> str:
+        return _validate_note_type(v)
 
 
 class CompileResponse(BaseModel):

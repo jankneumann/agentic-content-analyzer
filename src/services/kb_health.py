@@ -118,7 +118,15 @@ class KBHealthService:
         return pairs
 
     def _find_coverage_gaps(self, topics: list[Topic]) -> list[str]:
-        """Return categories with fewer than `kb_min_topics_per_category` topics."""
+        """Return categories with fewer than ``kb_min_topics_per_category`` topics.
+
+        The count is seeded with every ``ThemeCategory`` enum value so
+        genuinely empty categories surface as gaps. It also tolerates
+        legacy topics whose ``category`` does not match the current enum
+        (e.g., from migrations or manual inserts): such values contribute
+        to their own bucket and won't be reported as a gap unless they
+        are under the minimum.
+        """
         minimum = int(self.settings.kb_min_topics_per_category or 3)
         counts: dict[str, int] = {}
         for cat in ThemeCategory:
@@ -126,7 +134,8 @@ class KBHealthService:
         for topic in topics:
             if topic.status != TopicStatus.ACTIVE:
                 continue
-            counts[topic.category] = counts.get(topic.category, 0) + 1
+            key = topic.category or "uncategorized"
+            counts[key] = counts.get(key, 0) + 1
         gaps = [cat for cat, count in counts.items() if count < minimum]
         return sorted(gaps)
 
