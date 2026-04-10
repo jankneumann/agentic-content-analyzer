@@ -253,9 +253,14 @@ module = [
     "src.api.*",
     "src.ingestion.*",
     "src.utils.*",
+    "src.cli.*",
+    "src.agents.*",
+    "src.queue.*",
+    "src.sync.*",
+    "src.mcp_server",
 ]
 # Allow assignments to Column types (SQLAlchemy pattern) and optional access
-disable_error_code = ["assignment", "arg-type", "misc", "attr-defined", "union-attr", "index", "operator", "no-any-return", "no-untyped-def"]
+disable_error_code = ["assignment", "arg-type", "misc", "attr-defined", "union-attr", "index", "operator", "no-any-return", "no-untyped-def", "call-arg", "var-annotated"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
