@@ -37,7 +37,9 @@
 ## Coverage Summary
 
 - **Requirements traced**: 14
-- **Tests mapped**: TBD (Phase 2 GREEN)
-- **Evidence collected**: 0/14
+- **Tests mapped**: 105 tests across models (11) + service (26) + Q&A/health (14) + API (34) + CLI (6) + pipeline (3) + Obsidian export (9) + module helpers (2)
+- **Evidence collected**: 14/14 (all requirements have at least one covering test; per-commit SHAs: `6045171`, `675d06a`, `e56fb39`, `ab3cfa4`, plus iteration 1 fixes)
 - **Gaps**: 0
-- **Deferred**: Voice mode integration, Obsidian Mode 1/3, bidirectional sync (per proposal Non-Goals)
+- **Deferred**:
+  - Voice mode integration, Obsidian Mode 1/3, bidirectional sync (per proposal Non-Goals)
+  - Rate limiting on `POST /api/v1/kb/compile` (flagged in iteration 1 as follow-up — advisory lock already prevents concurrent compiles, but does not cap overall cost)
