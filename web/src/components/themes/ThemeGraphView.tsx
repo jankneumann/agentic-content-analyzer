@@ -39,11 +39,17 @@ export function ThemeGraphView({
   return (
     <div className="space-y-4">
       {/* Tab buttons */}
-      <div className="flex gap-1 rounded-lg bg-muted p-1 w-fit">
+      <div
+        role="tablist"
+        aria-label="Theme view options"
+        className="flex gap-1 rounded-lg bg-muted p-1 w-fit"
+      >
         <button
+          role="tab"
+          aria-selected={activeTab === "network"}
           onClick={() => handleTabChange("network")}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             activeTab === "network"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
@@ -52,9 +58,11 @@ export function ThemeGraphView({
           Network
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === "timeline"}
           onClick={() => handleTabChange("timeline")}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             activeTab === "timeline"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
@@ -65,11 +73,13 @@ export function ThemeGraphView({
       </div>
 
       {/* Tab content */}
-      {activeTab === "network" ? (
-        <ThemeNetworkGraph themes={themes} />
-      ) : (
-        <ThemeTimelineChart themes={themes} />
-      )}
+      <div role="tabpanel" aria-label={`${activeTab} view`}>
+        {activeTab === "network" ? (
+          <ThemeNetworkGraph themes={themes} />
+        ) : (
+          <ThemeTimelineChart themes={themes} />
+        )}
+      </div>
     </div>
   )
 }
