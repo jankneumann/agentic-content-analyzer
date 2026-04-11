@@ -433,6 +433,14 @@ from tests.integration.fixtures.opik import (  # noqa: E402, F401
 
 # Import Supabase fixtures to make them available to all integration tests
 # These fixtures are defined in tests/integration/fixtures/supabase.py
+# Import FalkorDB Lite fixtures
+from tests.integration.fixtures.falkordb import (  # noqa: E402, F401
+    falkordb_graph,
+    falkordb_lite,
+    falkordb_provider,
+    requires_falkordb,
+)
+
 from tests.integration.fixtures.supabase import (  # noqa: E402, F401
     requires_supabase,
     supabase_available,

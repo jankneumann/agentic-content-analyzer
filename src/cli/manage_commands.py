@@ -152,14 +152,19 @@ def verify_setup() -> None:
     except Exception as e:
         results.append({"service": "Database", "status": "fail", "error": str(e)})
 
-    # --- Neo4j check ---
+    # --- Graph DB check ---
     try:
+        import asyncio
+
+        from src.storage.graph_provider import GraphBackendUnavailableError
         from src.storage.graphiti_client import GraphitiClient
 
-        GraphitiClient()
-        results.append({"service": "Neo4j", "status": "pass"})
+        asyncio.run(GraphitiClient.create())
+        results.append({"service": "Graph DB", "status": "pass"})
+    except GraphBackendUnavailableError as e:
+        results.append({"service": "Graph DB", "status": "fail", "error": str(e)})
     except Exception as e:
-        results.append({"service": "Neo4j", "status": "fail", "error": str(e)})
+        results.append({"service": "Graph DB", "status": "fail", "error": str(e)})
 
     # --- LLM API check ---
     try:
@@ -642,37 +647,41 @@ def update_model_pricing_cmd(
     report = asyncio.run(extractor.run(providers=provider, dry_run=dry_run))
 
     if is_json_mode():
-        output_result({
-            "providers_fetched": report.providers_fetched,
-            "providers_failed": report.providers_failed,
-            "diffs": [
-                {
-                    "key": d.provider_key,
-                    "field": d.field,
-                    "current": d.current_value,
-                    "extracted": d.extracted_value,
-                }
-                for d in report.diffs
-            ],
-            "new_models": [
-                {
-                    "model_id": m.model_id,
-                    "provider_model_id": m.provider_model_id,
-                    "cost_input": m.cost_per_mtok_input,
-                    "cost_output": m.cost_per_mtok_output,
-                    "notes": m.notes,
-                }
-                for m in report.new_models
-            ],
-            "errors": report.extraction_errors,
-            "applied": report.applied,
-        })
+        output_result(
+            {
+                "providers_fetched": report.providers_fetched,
+                "providers_failed": report.providers_failed,
+                "diffs": [
+                    {
+                        "key": d.provider_key,
+                        "field": d.field,
+                        "current": d.current_value,
+                        "extracted": d.extracted_value,
+                    }
+                    for d in report.diffs
+                ],
+                "new_models": [
+                    {
+                        "model_id": m.model_id,
+                        "provider_model_id": m.provider_model_id,
+                        "cost_input": m.cost_per_mtok_input,
+                        "cost_output": m.cost_per_mtok_output,
+                        "notes": m.notes,
+                    }
+                    for m in report.new_models
+                ],
+                "errors": report.extraction_errors,
+                "applied": report.applied,
+            }
+        )
         return
 
     # Human-readable output
     typer.echo()
-    mode = typer.style("DRY RUN", fg=typer.colors.YELLOW) if dry_run else typer.style(
-        "APPLY", fg=typer.colors.GREEN
+    mode = (
+        typer.style("DRY RUN", fg=typer.colors.YELLOW)
+        if dry_run
+        else typer.style("APPLY", fg=typer.colors.GREEN)
     )
     typer.echo(f"Model Pricing Extraction — {mode}")
     typer.echo("=" * 60)

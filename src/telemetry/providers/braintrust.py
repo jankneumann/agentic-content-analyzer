@@ -89,7 +89,7 @@ class BraintrustProvider:
         except ImportError:
             logger.error(
                 "Braintrust package not installed. "
-                "Install with: pip install 'agentic-newsletter-aggregator[braintrust]'"
+                "Install with: pip install 'agentic-content-analyzer[braintrust]'"
             )
             self._setup_complete = True
         except Exception as e:

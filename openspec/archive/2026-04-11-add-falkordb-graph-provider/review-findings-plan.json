@@ -1,0 +1,95 @@
+{
+  "review_type": "plan",
+  "target": "add-falkordb-graph-provider",
+  "reviewer_vendor": "claude-opus-4-6",
+  "findings": [
+    {
+      "id": 1,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "GraphitiClient.__init__ is synchronous, but graphiti-core 0.28 requires calling build_indices_and_constraints() after initialization, which is an async method. The design (D5) shows the constructor calling this, but Python __init__ cannot be async. Need an async factory method or lazy initialization pattern.",
+      "resolution": "Add an async classmethod `GraphitiClient.create(provider)` that calls `await graphiti.build_indices_and_constraints()` after construction. Alternatively, call it lazily on first async operation. Update tasks 1.2 and 1.5 to account for this.",
+      "disposition": "fix"
+    },
+    {
+      "id": 2,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Profile flattening in settings.py (lines 90-98) maps providers['neo4j'] -> neo4j_provider. The design adds providers.graphdb -> graphdb_provider as a NEW top-level provider. But neo4j_provider becomes a sub-provider under graphdb_provider. The flattening logic must handle both: providers.graphdb sets graphdb_provider, AND providers.neo4j continues to set neo4j_provider (as a sub-provider). This dual-level mapping is novel — no existing provider follows this pattern.",
+      "resolution": "Task 1.6 should explicitly document the flattening order: providers.graphdb first (sets graphdb_provider), then providers.neo4j (sets neo4j_provider as sub-provider). Add a test specifically for this two-level flattening. Consider whether profiles/base.yaml needs a default providers.graphdb entry.",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "No requirement specifies behavior when the graph backend is unavailable during pipeline runs. Currently reference_graph_sync is fire-and-forget, but GraphitiClient operations in theme_analyzer, historical_context, and graph_commands will fail hard. The spec should define graceful degradation — the ingestion pipeline should not fail because the knowledge graph is down.",
+      "resolution": "Add a scenario to the GraphitiClient Provider Integration requirement: 'WHEN the graph backend is unavailable THEN operations that enrich content (theme analysis, historical context) SHALL log warnings and return empty results AND core pipeline operations (ingest, summarize, digest) SHALL continue without graph enrichment.'",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "observability",
+      "criticality": "medium",
+      "description": "No logging or monitoring requirements for the provider abstraction. The system should log which graph backend is active at startup, connection lifecycle events, and query latency. This is critical for debugging backend-specific issues in production.",
+      "resolution": "Add an observability scenario to the GraphDB Provider Protocol requirement: 'WHEN a provider is constructed THEN it SHALL log the backend type, connection target, and sub-provider variant at INFO level. WHEN a query takes longer than 5 seconds THEN it SHALL log at WARN level with the query and elapsed time.'",
+      "disposition": "fix"
+    },
+    {
+      "id": 5,
+      "type": "compatibility",
+      "criticality": "medium",
+      "description": "The CLI flag --neo4j-only is preserved for backward compatibility per the spec, but it's semantically misleading when graphdb_provider=falkordb. The export/import will actually operate on FalkorDB, not Neo4j. This could confuse users and scripts that parse CLI help text.",
+      "resolution": "Add a --graph-only alias alongside --neo4j-only (both accepted). Deprecation warning when --neo4j-only is used with a non-Neo4j backend. Update task 3.7 to include this alias.",
+      "disposition": "fix"
+    },
+    {
+      "id": 6,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "No requirement covers what happens when switching backends on an existing deployment with data in Neo4j. The session log notes this as an open question ('Data migration tooling from Neo4j to FalkorDB — manual process, documented') but the spec has no scenario for it. Users need at minimum a documented procedure.",
+      "resolution": "Add a scenario under Settings and Configuration: 'WHEN graphdb_provider is changed from neo4j to falkordb on an existing deployment THEN the system SHALL start with an empty knowledge graph AND documentation SHALL describe the export/import procedure for migrating data.' Task 4.6 should include this documentation.",
+      "disposition": "accept"
+    },
+    {
+      "id": 7,
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "Work package wp-falkordb-provider has write_allow for src/storage/graph_provider.py, which was created by wp-provider-core. While the DAG dependency prevents parallel execution, the write scope overlap means wp-falkordb-provider modifies a file 'owned' by wp-provider-core. This violates the non-overlapping write scope principle for parallel packages — even though these aren't parallel, it sets a bad precedent for the lock system.",
+      "resolution": "Split graph_provider.py into two files: src/storage/graph_provider.py (protocol + factory + Neo4j impl) and src/storage/falkordb_provider.py (FalkorDB impl). wp-falkordb-provider only writes to the new file. Update the factory in graph_provider.py to lazily import from falkordb_provider.py.",
+      "disposition": "fix"
+    },
+    {
+      "id": 8,
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "FalkorDB Lite runs as a subprocess. The design (D4) specifies start/stop/reset methods but no timeout, resource limits, or orphan cleanup. If the test process crashes, the FalkorDB Lite subprocess could be orphaned. The Hoverfly fixture pattern in the codebase handles this via Docker health checks, but Lite has no Docker.",
+      "resolution": "Task 2.4 should specify: (1) atexit handler to kill subprocess on unexpected exit, (2) PID file in temp directory for orphan detection, (3) startup timeout (default 10s) with clear error if Lite fails to start. Reference the coordinator's embedded process pattern for the cleanup strategy.",
+      "disposition": "fix"
+    },
+    {
+      "id": 9,
+      "type": "performance",
+      "criticality": "low",
+      "description": "The design states 'All 14 raw Cypher queries use basic openCypher patterns' and assumes FalkorDB compatibility. However, the graphiti_client.py queries use datetime() (Neo4j built-in) and toLower() which may have different semantics in FalkorDB. The design mentions ISO-8601 mitigation but this means modifying queries, not just routing them.",
+      "resolution": "Task 2.2 should include a subtask to audit all 14 queries against FalkorDB's Cypher documentation. Create a compatibility test that runs each query on both backends with identical test data and compares results.",
+      "disposition": "accept"
+    },
+    {
+      "id": 10,
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "The spec requires FalkorDB Lite test fixture to provide 'clean graph state' per test function, but doesn't specify the mechanism. FalkorDB's FLUSHALL equivalent or graph deletion via Cypher have different performance characteristics. For large test suites, this matters.",
+      "resolution": "Clarify in task 2.4 whether cleanup uses FLUSHALL (fast, Redis-level) or MATCH (n) DETACH DELETE n (Cypher, portable). FLUSHALL is preferred for speed in Lite mode since we own the instance.",
+      "disposition": "accept"
+    },
+    {
+      "id": 11,
+      "type": "style",
+      "criticality": "low",
+      "description": "Contract file contracts/graph_provider_protocol.py defines NodeRecord, RelationshipRecord, and ExportManifest as plain classes without dataclass or Pydantic decorators. The codebase uses Pydantic BaseModel for data models (content, summary, etc.) and dataclasses for lighter structs.",
+      "resolution": "Make NodeRecord, RelationshipRecord, ExportManifest into dataclasses (or Pydantic models if validation needed). Contracts should specify which pattern to use so implementations are consistent.",
+      "disposition": "accept"
+    }
+  ]
+}

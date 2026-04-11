@@ -143,18 +143,27 @@ async def run_theme_analysis(
 
         logger.info(f"Theme analysis {analysis_id} completed: {result.total_themes} themes found")
 
-        # Neo4j episode writeback (fail-safe)
+        # Graph DB episode writeback (fail-safe)
         try:
+            from src.storage.graph_provider import GraphBackendUnavailableError
             from src.storage.graphiti_client import GraphitiClient
 
-            client = GraphitiClient()
             try:
-                await client.add_theme_analysis_episode(result)
-                logger.info(f"Theme analysis {analysis_id} written to Neo4j")
-            finally:
-                client.close()
+                client = await GraphitiClient.create()
+            except GraphBackendUnavailableError:
+                logger.warning(
+                    f"Graph backend unavailable, skipping writeback for analysis {analysis_id}"
+                )
+                client = None
+
+            if client is not None:
+                try:
+                    await client.add_theme_analysis_episode(result)
+                    logger.info(f"Theme analysis {analysis_id} written to graph DB")
+                finally:
+                    client.close()
         except Exception as e:
-            logger.warning(f"Neo4j writeback failed for analysis {analysis_id}: {e}")
+            logger.warning(f"Graph DB writeback failed for analysis {analysis_id}: {e}")
 
     except Exception as e:
         logger.error(f"Theme analysis {analysis_id} failed: {e}", exc_info=True)
