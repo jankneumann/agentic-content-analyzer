@@ -74,6 +74,31 @@ Phase 3 (tests) depends on all implementation. Max parallel width: 3.
   **Files**: `tests/config/test_huggingface_papers_sources.py` (created)
   **Dependencies**: 1.2
 
+## Phase 4: Interface Integration *(parallel with Phase 3)*
+
+- [ ] 4.1 Add MCP tool for agent invocation
+  **Spec scenarios**: hf-papers.14
+  **Design decisions**: D5
+  **Files**: `src/mcp_server.py` (modified)
+  **Dependencies**: 2.4
+
+- [ ] 4.2 Add queue worker dispatch entry for HTTP API path
+  **Spec scenarios**: hf-papers.15
+  **Design decisions**: D5
+  **Files**: `src/queue/worker.py` (modified)
+  **Dependencies**: 2.4
+
+- [ ] 4.3 Update API docstring to document huggingface_papers source
+  **Spec scenarios**: hf-papers.15
+  **Files**: `src/api/content_routes.py` (modified)
+  **Dependencies**: none
+
+- [ ] 4.4 Add frontend ingest UI support
+  **Spec scenarios**: hf-papers.16, hf-papers.17
+  **Design decisions**: D5
+  **Files**: `web/src/types/content.ts` (modified), `web/src/routes/ingest.tsx` (modified)
+  **Dependencies**: none
+
 ## Task Summary
 
 | Phase | Tasks | Focus | Parallel Stream |
@@ -81,11 +106,17 @@ Phase 3 (tests) depends on all implementation. Max parallel width: 3.
 | 1. Core | 3 | Enum, config, migration | Stream A (parallel) |
 | 2. Pipeline | 5 | Client, service, CLI | Stream A (sequential) |
 | 3. Testing | 3 | Unit, service, config | Stream B (after Phase 2) |
+| 4. Integration | 4 | MCP, queue, API, frontend | Stream C (parallel with Phase 3) |
 
 ## Dependency Graph (Critical Path)
 
 ```
 1.1 ─┐
 1.2 ─┼──▶ 2.1 ──▶ 2.2 ──▶ 2.4 ──▶ 2.5 ──▶ 3.1, 3.2
-1.3 ─┘    2.3 ───────────────────────────────▶ 3.3
+1.3 ─┘    2.3 ──────────────┼───────────────▶ 3.3
+                             │
+                             ├──▶ 4.1 (MCP tool)
+                             └──▶ 4.2 (queue worker)
+                     4.3 (API docs — independent)
+                     4.4 (frontend — independent)
 ```

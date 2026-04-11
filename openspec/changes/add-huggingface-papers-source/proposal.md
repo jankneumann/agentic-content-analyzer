@@ -1,7 +1,7 @@
 # Change: Add HuggingFace Papers Ingestion Source
 
 **Change ID**: `add-huggingface-papers-source`
-**Status**: Implemented
+**Status**: In Progress
 **Created**: 2026-04-11
 
 ## Why
@@ -40,6 +40,11 @@ By adding HuggingFace Papers:
 2. **`src/config/sources.py`** — Add `HuggingFacePapersSource` model, discriminated union, getter method
 3. **`src/ingestion/orchestrator.py`** — Add `ingest_huggingface_papers()` orchestrator function
 4. **`src/cli/ingest_commands.py`** — Add `aca ingest huggingface-papers` CLI command
+5. **`src/mcp_server.py`** — Add `ingest_huggingface_papers()` MCP tool for agent invocation
+6. **`src/queue/worker.py`** — Add `huggingface_papers` entry to `source_map` for HTTP API dispatch
+7. **`src/api/content_routes.py`** — Document `huggingface_papers` as supported source in API docstring
+8. **`web/src/types/content.ts`** — Add `"huggingface_papers"` to `ContentSource` TypeScript type
+9. **`web/src/routes/ingest.tsx`** — Add HuggingFace Papers to `SOURCE_CONFIGS` array for ingest UI
 
 ## Approaches Considered
 

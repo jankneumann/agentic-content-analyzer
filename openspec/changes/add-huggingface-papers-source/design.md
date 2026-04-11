@@ -4,33 +4,45 @@
 
 ## Architecture Overview
 
+Three invocation paths all converge on the orchestrator:
+
 ```
-sources.d/huggingface_papers.yaml
-         │
-         ▼
-┌─────────────────────────┐
-│   SourcesConfig         │──▶ HuggingFacePapersSource (Pydantic)
-│   (discriminated union) │
-└─────────────────────────┘
-         │
-         ▼
-┌─────────────────────────┐    ┌──────────────────────────┐
-│   Orchestrator          │───▶│ HFPapersIngestionService │
-│   ingest_hf_papers()    │    └──────────────────────────┘
-└─────────────────────────┘              │
-         │                               ▼
-         │               ┌──────────────────────────┐
-         │               │   HFPapersClient          │
-         │               │   1. fetch listing page    │
-         │               │   2. discover paper links  │
-         │               │   3. extract paper content  │
-         │               └──────────────────────────┘
-         │                               │
-         ▼                               ▼
-┌─────────────────────────┐    ┌──────────────────────────┐
-│   CLI Command           │    │   Content DB (3-level     │
-│   aca ingest hf-papers  │    │   dedup + arXiv cross-ref)│
-└─────────────────────────┘    └──────────────────────────┘
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  CLI Command     │  │  HTTP API        │  │  MCP Tool        │
+│  aca ingest      │  │  POST /ingest    │  │  ingest_hf_      │
+│  huggingface-    │  │  source=hf_      │  │  papers()        │
+│  papers          │  │  papers          │  │                  │
+└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+         │                     │                      │
+         │              ┌──────┴──────┐               │
+         │              │ Queue Worker│               │
+         │              │ source_map  │               │
+         │              └──────┬──────┘               │
+         │                     │                      │
+         ▼                     ▼                      ▼
+    ┌──────────────────────────────────────────────────────┐
+    │              Orchestrator                             │
+    │              ingest_huggingface_papers()              │
+    └───────────────────────┬──────────────────────────────┘
+                            │
+         sources.d/         ▼
+         hf_papers.yaml ──▶ HFPapersContentIngestionService
+                            │
+                            ▼
+                   HFPapersClient
+                   1. fetch listing page
+                   2. discover paper links
+                   3. extract paper content
+                            │
+                            ▼
+                   Content DB (3-level dedup
+                   + arXiv cross-ref)
+                            │
+         ┌──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+    Frontend            Search Index      Pipeline
+    ingest.tsx          (BM25+vector)     (summarize
+    SOURCE_CONFIGS                        → digest)
 ```
 
 ## Key Design Decisions
@@ -55,15 +67,23 @@ sources.d/huggingface_papers.yaml
 **Rationale**: Different versions of the same paper should be treated as the same work. The listing page may link to any version.
 **Trade-off**: Loses version-specific tracking; acceptable since we want the latest content.
 
+### D5: Three Invocation Paths
+**Decision**: Wire all three invocation paths (CLI, HTTP API, MCP tool) to the same orchestrator function.
+**Rationale**: Every other ingestion source exposes these three interfaces. Omitting any breaks the expectation that sources are interchangeable.
+**Trade-off**: More wiring code, but follows the established pattern exactly.
+
 ## Module Structure
 
 ```
 src/ingestion/huggingface_papers.py    # Client + Service (single module)
 sources.d/huggingface_papers.yaml      # Default source configuration
 alembic/versions/b2c3d4e5f6a7_...py   # PG enum migration
+src/mcp_server.py                      # + ingest_huggingface_papers() tool
+src/queue/worker.py                    # + source_map entry
+src/api/content_routes.py              # + docstring update
+web/src/types/content.ts               # + TS type
+web/src/routes/ingest.tsx              # + SOURCE_CONFIGS entry
 ```
-
-No new directories created — follows the flat ingestion module convention.
 
 ## Integration with Existing Sources
 

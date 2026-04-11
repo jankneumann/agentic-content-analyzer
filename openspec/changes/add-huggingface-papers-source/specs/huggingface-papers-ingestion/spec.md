@@ -91,3 +91,32 @@
 **Given** a user runs `aca ingest huggingface-papers --max 50 --force --days 3`
 **When** the command executes in direct mode
 **Then** `max_papers=50`, `force_reprocess=True`, and `after_date` is 3 days ago
+
+### MCP Tool
+
+#### hf-papers.14 — MCP tool invokes ingestion
+**Given** an agent calls the `ingest_huggingface_papers` MCP tool
+**When** it provides `max_papers=30` and `days=1`
+**Then** the orchestrator `ingest_huggingface_papers()` is called with matching parameters
+**And** the result is serialized as JSON with `items_ingested` and `source` fields
+
+### HTTP API & Queue Worker
+
+#### hf-papers.15 — HTTP API dispatches via queue worker
+**Given** a client sends `POST /api/v1/contents/ingest` with `source=huggingface_papers`
+**When** the queue worker processes the job
+**Then** the `source_map` entry routes to `ingest_huggingface_papers`
+**And** `max_results` and `force_reprocess` parameters are forwarded correctly
+
+### Frontend
+
+#### hf-papers.16 — Ingest page shows HuggingFace Papers source
+**Given** a user navigates to the ingest page in the web UI
+**When** the source list renders
+**Then** "HuggingFace Papers" appears as a selectable source
+**And** it displays a description mentioning daily papers from huggingface.co/papers
+
+#### hf-papers.17 — Frontend TypeScript type includes huggingface_papers
+**Given** the `ContentSource` TypeScript type in `web/src/types/content.ts`
+**When** a developer uses `"huggingface_papers"` as a content source value
+**Then** it is a valid member of the `ContentSource` union type
