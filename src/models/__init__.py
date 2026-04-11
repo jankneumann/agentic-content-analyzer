@@ -4,6 +4,10 @@ The Content model provides unified handling for all source types (Gmail, RSS,
 YouTube, file uploads) with markdown-first storage optimized for LLM consumption.
 """
 
+from src.models.agent_insight import AgentInsight, InsightType
+from src.models.agent_memory import AgentMemory, MemoryType
+from src.models.agent_task import AgentTask, AgentTaskSource, AgentTaskStatus
+from src.models.approval_request import ApprovalRequest, ApprovalStatus, RiskLevel
 from src.models.audio_digest import (
     AudioDigest,
     AudioDigestCreate,
@@ -25,6 +29,18 @@ from src.models.content_reference import (
 )
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
+from src.models.evaluation import (
+    DatasetStatus,
+    EvaluationConsensus,
+    EvaluationDataset,
+    EvaluationResult,
+    EvaluationSample,
+    JudgeType,
+    Preference,
+    RoutingConfig,
+    RoutingDecision,
+    RoutingMode,
+)
 from src.models.image import Image, ImageSource
 from src.models.notification import DeviceRegistration, NotificationEvent, NotificationEventType
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
@@ -39,25 +55,10 @@ from src.models.search import (
     SearchScores,
     SearchType,
 )
-from src.models.agent_insight import AgentInsight, InsightType
-from src.models.agent_memory import AgentMemory, MemoryType
-from src.models.agent_task import AgentTask, AgentTaskSource, AgentTaskStatus
-from src.models.approval_request import ApprovalRequest, ApprovalStatus, RiskLevel
-from src.models.evaluation import (
-    DatasetStatus,
-    EvaluationConsensus,
-    EvaluationDataset,
-    EvaluationResult,
-    EvaluationSample,
-    JudgeType,
-    Preference,
-    RoutingConfig,
-    RoutingDecision,
-    RoutingMode,
-)
 from src.models.settings import PromptOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
+from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
 from src.models.youtube import (
     TimestampedQuote,
     TranscriptSegment,
@@ -121,6 +122,12 @@ __all__ = [
     "PodcastLength",
     # Theme
     "ThemeAnalysis",
+    # Knowledge Base
+    "Topic",
+    "TopicNote",
+    "TopicStatus",
+    "TopicNoteType",
+    "KBIndex",
     # Chat
     "Conversation",
     "ChatMessage",

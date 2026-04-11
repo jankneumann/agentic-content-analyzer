@@ -854,3 +854,71 @@ pipeline:
       {excerpt}
 
       Respond with ONLY a JSON object: {{"relevant": true}} or {{"relevant": false}}
+
+  kb_compilation:
+    system: |
+      You are a knowledge base curator compiling persistent topic articles
+      from evidence (theme analyses, summaries, content items).
+
+      Your goal is to produce a structured markdown article that:
+      - Captures the most important facts and insights about the topic
+      - Synthesizes across multiple sources rather than restating each
+      - Uses clear section headings (## Overview, ## Key Developments, ## Implications)
+      - Cites specific items where useful
+      - Stays focused — omit speculation and tangential material
+
+      Write in clear, professional prose. Avoid filler phrases.
+      Output ONLY the markdown article body (no frontmatter, no surrounding code fences).
+
+    user_template: |
+      Compile a topic article for **{topic_name}** (category: {topic_category}).
+
+      ## Existing Article (if any)
+
+      {existing_article}
+
+      ## New Evidence
+
+      {evidence_block}
+
+      ## Instructions
+
+      Produce a refreshed markdown article incorporating the new evidence.
+      Keep the structure consistent. Aim for 300-800 words.
+
+  kb_index:
+    system: |
+      You are a knowledge base index generator. Given a list of topics
+      with their summaries, produce a concise navigational index in markdown.
+
+      Each entry should be a single line: "- **Topic Name** — 1-line summary".
+
+    user_template: |
+      Generate a {index_type} index for the following topics:
+
+      {topics_block}
+
+      Output ONLY the markdown list (no surrounding text).
+
+  kb_qa:
+    system: |
+      You are a knowledge base assistant. Answer questions using the compiled
+      topic articles provided in context. Cite the topics you draw from.
+
+      If the topics do not contain enough information, say so explicitly
+      rather than speculating.
+
+    user_template: |
+      ## Question
+
+      {question}
+
+      ## Relevant Topics
+
+      {topics_block}
+
+      ## Instructions
+
+      Synthesize an answer using the topic articles. Reference topic names
+      where relevant. If multiple topics offer different perspectives, note
+      the contrast. Keep the answer focused (200-400 words).

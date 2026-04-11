@@ -85,6 +85,11 @@ concurrency:
   group: ios-build-${{ github.ref }}
   cancel-in-progress: true
 
+# Minimal default permissions — the build reads the repo and writes artifacts.
+# Secrets (Apple creds, App Store Connect API) are injected via env, not GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: macos-latest

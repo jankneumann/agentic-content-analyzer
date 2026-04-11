@@ -1,0 +1,34 @@
+# Railway + FalkorDB Production Profile
+# ======================================
+# Uses ParadeDB (or Railway PostgreSQL) for structured data,
+# FalkorDB Docker service on Railway for knowledge graph,
+# and Railway MinIO for object storage.
+#
+# Railway services needed:
+#   1. App service (this repo)
+#   2. FalkorDB service (falkordb/falkordb:v4.4.1 Docker image)
+#   3. MinIO service (optional, for file storage)
+#
+# Environment variables to set on Railway:
+#   - DATABASE_URL or RAILWAY_DATABASE_URL
+#   - FALKORDB_HOST (internal Railway hostname of FalkorDB service)
+#   - FALKORDB_PORT (default: 6379)
+#   - FALKORDB_PASSWORD (if auth enabled)
+#   - ANTHROPIC_API_KEY, OPENAI_API_KEY
+#   - ADMIN_API_KEY, APP_SECRET_KEY
+
+name: railway-falkordb
+extends: railway
+description: Railway deployment with FalkorDB instead of Neo4j AuraDB
+
+providers:
+  graphdb: falkordb
+  neo4j: local  # overridden by graphdb: falkordb
+
+settings:
+  graphdb:
+    graphdb_mode: cloud
+    falkordb_cloud_host: ${FALKORDB_HOST}
+    falkordb_cloud_port: ${FALKORDB_PORT:-6379}
+    falkordb_cloud_password: ${FALKORDB_PASSWORD:-}
+    falkordb_database: ${FALKORDB_DATABASE:-newsletter_graph}

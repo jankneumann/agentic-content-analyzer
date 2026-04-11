@@ -26,7 +26,9 @@ DEFAULT_PROFILES_DIR = "profiles"
 
 # Type aliases matching existing Settings provider types
 DatabaseProviderType = Literal["local", "supabase", "neon", "railway"]
-Neo4jProviderType = Literal["local", "auradb"]
+Neo4jProviderType = Literal["local", "auradb"]  # Deprecated — use GraphDBProviderType
+GraphDBProviderType = Literal["neo4j", "falkordb"]
+GraphDBModeType = Literal["local", "cloud", "embedded"]
 StorageProviderType = Literal["local", "s3", "supabase", "railway"]
 ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel", "langfuse"]
 
@@ -123,7 +125,8 @@ class ProviderChoices(BaseModel):
     """Provider selections for each infrastructure category."""
 
     database: DatabaseProviderType = "local"
-    neo4j: Neo4jProviderType = "local"
+    graphdb: GraphDBProviderType = "neo4j"
+    neo4j: Neo4jProviderType = "local"  # Deprecated — use graphdb + settings.graphdb.graphdb_mode
     storage: StorageProviderType = "local"
     observability: ObservabilityProviderType = "noop"
 

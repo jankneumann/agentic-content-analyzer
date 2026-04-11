@@ -32,7 +32,7 @@ ALLOWED_CONTENT_TYPES = ("text/html", "application/xhtml+xml")
 # User agent for web requests
 USER_AGENT = (
     "Mozilla/5.0 (compatible; NewsletterAggregator/1.0; "
-    "+https://github.com/jankneumann/agentic-newsletter-aggregator)"
+    "+https://github.com/jankneumann/agentic-content-analyzer)"
 )
 
 

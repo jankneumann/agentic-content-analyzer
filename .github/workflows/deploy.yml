@@ -8,6 +8,11 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
+# Minimal default permissions — deploy jobs don't need write access to the repo.
+# Secrets like RAILWAY_TOKEN are injected separately via environment secrets.
+permissions:
+  contents: read
+
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest

@@ -6,7 +6,7 @@
 - **Package Management**: uv
 - **Databases**:
   - PostgreSQL + SQLAlchemy (structured data: contents, summaries, digests)
-  - Graphiti + Neo4j (knowledge graph: concepts, themes, temporal relationships)
+  - Graphiti + Neo4j or FalkorDB (knowledge graph: concepts, themes, temporal relationships)
 - **Storage**:
   - **Database Providers**: Local PostgreSQL, Supabase (cloud), Neon (serverless/branching)
   - **Image Storage**: Local filesystem, AWS S3, Supabase Storage (S3-compatible)
@@ -52,7 +52,7 @@ src/
     content_service.py    # Content CRUD and deduplication
   storage/          # Data persistence
     database.py     # PostgreSQL
-    graphiti_client.py  # Graphiti MCP integration
+    graphiti_client.py  # Graphiti MCP integration (Neo4j/FalkorDB via GraphDBProvider)
   processors/       # Core processing
     summarizer.py
     theme_analyzer.py
@@ -86,6 +86,8 @@ src/
 6. **Delivery**: Email/web with daily/weekly schedules
 
 ### Knowledge Graph (Graphiti) Usage
+
+The knowledge graph supports pluggable backends via `GraphDBProvider`. The default backend is Neo4j (local Docker or AuraDB cloud), with FalkorDB available as a lightweight alternative. FalkorDB is Redis-protocol-compatible and supports local Docker, cloud (Railway), and embedded (FalkorDB Lite) modes. The backend is selected via `GRAPHDB_PROVIDER` and `GRAPHDB_MODE` settings, with all graph operations abstracted behind the provider interface.
 
 - **Entity Extraction**: Technical concepts, companies, products, people, methodologies
 - **Relationship Tracking**: How topics relate, co-occurrence patterns
@@ -293,7 +295,7 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 ### Stage 3: Knowledge Graph Population
 **Input**: Content summaries
 **Output**: Entities and relationships in Graphiti
-**Technology**: Graphiti MCP, Neo4j
+**Technology**: Graphiti MCP, Neo4j or FalkorDB (via `GraphDBProvider`)
 **Purpose**: Enable temporal analysis and historical context
 
 ### Stage 4: Theme Analysis
@@ -439,7 +441,7 @@ aca jobs cleanup --older-than 30d
 - **Database**: PostgreSQL with indexes on frequently queried fields (status, dates)
 - **Job Queue**: PGQueuer with transactional guarantees and configurable concurrency
 - **Async Processing**: PostgreSQL-based queue replaces Redis for job management
-- **Knowledge Graph**: Neo4j optimized for temporal queries
+- **Knowledge Graph**: Neo4j or FalkorDB optimized for temporal queries (pluggable via `GraphDBProvider`)
 - **Caching**: Redis for frequently accessed data
 - **Provider Failover**: Automatic fallback across multiple LLM providers
 - **Cost Control**: Configurable model selection per pipeline step
