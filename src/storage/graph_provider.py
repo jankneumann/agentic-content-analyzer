@@ -1,0 +1,283 @@
+"""Graph database provider abstraction.
+
+Provides a pluggable interface for graph backends (Neo4j, FalkorDB).
+The factory reads graphdb_provider + graphdb_mode from Settings to construct
+the appropriate provider implementation.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class GraphBackendUnavailableError(Exception):
+    """Raised when the graph backend is unreachable during client creation."""
+
+
+@runtime_checkable
+class GraphDBProvider(Protocol):
+    """Protocol for graph database providers.
+
+    Implementations provide:
+    1. A graphiti-core GraphDriver for the Graphiti() constructor
+    2. Raw query execution for reference_graph_sync and export/import
+    3. Lifecycle management (sync and async close)
+    4. File-level export/import matching CLI sync workflow
+    """
+
+    def create_graphiti_driver(self) -> Any:
+        """Construct a graphiti-core GraphDriver instance."""
+        ...
+
+    async def execute_query(
+        self, query: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Execute a read-only openCypher query and return results as dicts."""
+        ...
+
+    async def execute_write(
+        self, query: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Execute a write openCypher query within a transaction."""
+        ...
+
+    def close(self) -> None:
+        """Sync close for CLI and non-async callers."""
+        ...
+
+    async def aclose(self) -> None:
+        """Async close for async callers."""
+        ...
+
+    async def health_check(self) -> bool:
+        """Check backend connectivity. Returns False on failure (no exceptions)."""
+        ...
+
+    def export_graph(self, output_path: Path, force: bool = False) -> dict[str, int]:
+        """Export graph data to a JSONL file.
+
+        Args:
+            output_path: Destination file path for the JSONL export.
+            force: If True, overwrite existing output file.
+
+        Returns:
+            Dict with keys 'nodes' and 'relationships' mapping to counts.
+        """
+        ...
+
+    def import_graph(
+        self, input_path: Path, mode: str = "merge", dry_run: bool = False
+    ) -> dict[str, int]:
+        """Import graph data from a JSONL file.
+
+        Args:
+            input_path: Path to the JSONL export file.
+            mode: Import mode — 'merge' or 'clean'.
+            dry_run: If True, parse and validate without writing.
+
+        Returns:
+            Dict with import statistics.
+        """
+        ...
+
+
+class Neo4jGraphDBProvider:
+    """Neo4j implementation of GraphDBProvider.
+
+    Supports local (Docker) and cloud (AuraDB) deployment modes.
+    """
+
+    def __init__(
+        self,
+        uri: str,
+        user: str,
+        password: str,
+        database: str = "neo4j",
+    ) -> None:
+        from neo4j import GraphDatabase
+
+        self._uri = uri
+        self._user = user
+        self._password = password
+        self._database = database
+        self._driver = GraphDatabase.driver(uri, auth=(user, password))
+        self._closed = False
+
+        logger.info(
+            "Initialized Neo4j graph provider: uri=%s, database=%s",
+            uri,
+            database,
+        )
+
+    def create_graphiti_driver(self) -> Any:
+        """Create a Neo4jDriver for graphiti-core."""
+        from graphiti_core.driver.neo4j_driver import Neo4jDriver
+
+        return Neo4jDriver(
+            uri=self._uri,
+            user=self._user,
+            password=self._password,
+            database=self._database,
+        )
+
+    async def execute_query(
+        self, query: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Execute a read query via Neo4j driver session (offloaded to thread)."""
+        start = time.monotonic()
+        try:
+            return await asyncio.to_thread(self._run_query, query, params or {})
+        finally:
+            elapsed = time.monotonic() - start
+            if elapsed > 5.0:
+                logger.warning("Slow graph query (%.1fs): %s", elapsed, query[:200])
+
+    def _run_query(self, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """Sync query execution — called from thread pool."""
+        with self._driver.session(database=self._database) as session:
+            result = session.run(query, parameters=params)
+            return [dict(record) for record in result]
+
+    async def execute_write(
+        self, query: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Execute a write query via Neo4j driver session (offloaded to thread)."""
+        start = time.monotonic()
+        try:
+            return await asyncio.to_thread(self._run_write, query, params or {})
+        finally:
+            elapsed = time.monotonic() - start
+            if elapsed > 5.0:
+                logger.warning("Slow graph write (%.1fs): %s", elapsed, query[:200])
+
+    def _run_write(self, query: str, params: dict[str, Any]) -> dict[str, Any]:
+        """Sync write execution — called from thread pool."""
+        with self._driver.session(database=self._database) as session:
+            result = session.run(query, parameters=params)
+            summary = result.consume()
+            return {
+                "nodes_created": summary.counters.nodes_created,
+                "relationships_created": summary.counters.relationships_created,
+                "properties_set": summary.counters.properties_set,
+            }
+
+    def close(self) -> None:
+        """Close Neo4j driver (sync)."""
+        if not self._closed:
+            self._driver.close()
+            self._closed = True
+            logger.debug("Closed Neo4j graph provider")
+
+    async def aclose(self) -> None:
+        """Close Neo4j driver (async wrapper)."""
+        self.close()
+
+    async def health_check(self) -> bool:
+        """Verify Neo4j connectivity."""
+        try:
+            with self._driver.session(database=self._database) as session:
+                session.run("RETURN 1 AS n").consume()
+            return True
+        except Exception:
+            logger.warning("Neo4j health check failed", exc_info=True)
+            return False
+
+    def export_graph(self, output_path: Path, force: bool = False) -> dict[str, int]:
+        """Export Neo4j graph data to JSONL file."""
+        from src.sync.neo4j_exporter import Neo4jExporter
+
+        exporter = Neo4jExporter(self._driver)
+        return exporter.export(output_path, force=force)
+
+    def import_graph(
+        self, input_path: Path, mode: str = "merge", dry_run: bool = False
+    ) -> dict[str, int]:
+        """Import graph data from JSONL file into Neo4j."""
+        from src.sync.neo4j_importer import Neo4jImporter
+
+        importer = Neo4jImporter(self._driver, mode=mode)
+        return importer.import_file(input_path, dry_run=dry_run)
+
+
+def get_graph_provider() -> GraphDBProvider:
+    """Factory: construct the graph provider from Settings.
+
+    Reads graphdb_provider and graphdb_mode to determine backend and connection.
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+
+    provider_type = getattr(settings, "graphdb_provider", "neo4j")
+    mode = getattr(settings, "graphdb_mode", "local")
+
+    if provider_type == "neo4j":
+        return _create_neo4j_provider(settings, mode)
+    elif provider_type == "falkordb":
+        return _create_falkordb_provider(settings, mode)
+    else:
+        raise ValueError(f"Unknown graphdb_provider: {provider_type}")
+
+
+def _create_neo4j_provider(settings: Any, mode: str) -> Neo4jGraphDBProvider:
+    """Create Neo4j provider based on deployment mode."""
+    if mode == "embedded":
+        raise ValueError("Neo4j does not support embedded mode. Use falkordb instead.")
+
+    if mode == "cloud":
+        uri = getattr(settings, "neo4j_cloud_uri", None)
+        user = getattr(settings, "neo4j_cloud_user", "neo4j")
+        password = getattr(settings, "neo4j_cloud_password", None)
+        if not uri or not password:
+            raise ValueError("Neo4j cloud mode requires neo4j_cloud_uri and neo4j_cloud_password")
+    else:
+        # local mode — use existing neo4j_uri fields
+        uri = settings.neo4j_uri
+        user = settings.neo4j_user
+        password = settings.neo4j_password
+
+    return Neo4jGraphDBProvider(uri=uri, user=user, password=password)
+
+
+def _create_falkordb_provider(settings: Any, mode: str) -> GraphDBProvider:
+    """Create FalkorDB provider based on deployment mode.
+
+    Lazily imports from falkordb_provider to keep this module clean.
+    """
+    from src.storage.falkordb_provider import FalkorDBGraphDBProvider
+
+    if mode == "cloud":
+        host = getattr(settings, "falkordb_cloud_host", None)
+        port = getattr(settings, "falkordb_cloud_port", 6379)
+        password = getattr(settings, "falkordb_cloud_password", None)
+        if not host:
+            raise ValueError("FalkorDB cloud mode requires falkordb_cloud_host")
+        return FalkorDBGraphDBProvider(
+            host=host,
+            port=port,
+            password=password,
+            database=getattr(settings, "falkordb_database", "newsletter_graph"),
+            mode="cloud",
+        )
+    elif mode == "embedded":
+        raise NotImplementedError(
+            "FalkorDB embedded (Lite) mode is not yet implemented. "
+            "Use graphdb_mode='local' with Docker FalkorDB, or wait for Phase 2."
+        )
+    else:
+        # local mode — Docker FalkorDB
+        return FalkorDBGraphDBProvider(
+            host=getattr(settings, "falkordb_host", "localhost"),
+            port=getattr(settings, "falkordb_port", 6379),
+            username=getattr(settings, "falkordb_username", None),
+            password=getattr(settings, "falkordb_password", None),
+            database=getattr(settings, "falkordb_database", "newsletter_graph"),
+            mode="local",
+        )

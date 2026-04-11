@@ -22,6 +22,7 @@ from src.api.files_routes import router as files_router
 from src.api.health_routes import router as health_router
 from src.api.image_generation_routes import router as image_generation_router
 from src.api.job_routes import router as job_router
+from src.api.kb_routes import router as kb_router
 from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.security_headers import SecurityHeadersMiddleware
@@ -206,6 +207,7 @@ app.include_router(reference_router)  # Content reference tracking
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 app.include_router(agent_router)  # Agentic analysis (tasks, insights, approvals)
 app.include_router(evaluation_router)  # LLM router evaluation and calibration
+app.include_router(kb_router)  # Knowledge base compilation, topics, notes, Q&A
 
 
 @app.get("/api/v1/system/config", tags=["system"])

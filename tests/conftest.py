@@ -132,10 +132,6 @@ def test_engine():
     from src.models.base import Base
     from src.models.content import Content  # noqa: F401
     from src.models.digest import Digest  # noqa: F401
-    from src.models.podcast import Podcast, PodcastScriptRecord  # noqa: F401
-    from src.models.settings import PromptOverride  # noqa: F401
-    from src.models.summary import Summary  # noqa: F401
-    from src.models.theme import ThemeAnalysis  # noqa: F401
     from src.models.evaluation import (  # noqa: F401
         EvaluationConsensus,
         EvaluationDataset,
@@ -144,6 +140,11 @@ def test_engine():
         RoutingConfig,
         RoutingDecision,
     )
+    from src.models.podcast import Podcast, PodcastScriptRecord  # noqa: F401
+    from src.models.settings import PromptOverride  # noqa: F401
+    from src.models.summary import Summary  # noqa: F401
+    from src.models.theme import ThemeAnalysis  # noqa: F401
+    from src.models.topic import KBIndex, Topic, TopicNote  # noqa: F401
 
     engine = create_test_engine(TEST_DATABASE_URL)
 

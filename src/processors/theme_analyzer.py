@@ -18,6 +18,7 @@ from src.processors.historical_context import HistoricalContextAnalyzer
 from src.services.llm_router import LLMRouter
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
+from src.storage.graph_provider import GraphBackendUnavailableError
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger
 
@@ -75,6 +76,7 @@ class ThemeAnalyzer:
                 )
 
         self.graphiti_client: GraphitiClient | None = None
+        self._graphiti_unavailable: bool = False
 
         # Track usage for cost calculation
         self.provider_used: Provider | None = None
@@ -83,6 +85,19 @@ class ThemeAnalyzer:
         self.model_version: str | None = None
 
         logger.info(f"Initialized ThemeAnalyzer with {self.framework} ({self.model})")
+
+    async def _get_client(self) -> GraphitiClient | None:
+        """Lazy-initialize the GraphitiClient, returning None if unavailable."""
+        if self._graphiti_unavailable:
+            return None
+        if self.graphiti_client is None:
+            try:
+                self.graphiti_client = await GraphitiClient.create()
+            except GraphBackendUnavailableError:
+                logger.warning("Graph backend unavailable, skipping graph enrichment")
+                self._graphiti_unavailable = True
+                return None
+        return self.graphiti_client
 
     async def analyze_themes(
         self,
@@ -102,8 +117,8 @@ class ThemeAnalyzer:
         start_time = time.time()
         logger.info(f"Starting theme analysis from {request.start_date} to {request.end_date}")
 
-        # Initialize Graphiti client
-        self.graphiti_client = GraphitiClient()
+        # Initialize Graphiti client (lazy, may be None if backend unavailable)
+        client = await self._get_client()
 
         try:
             # 1. Fetch content from database for the date range (unified Content model)
@@ -129,10 +144,14 @@ class ThemeAnalyzer:
             summaries = await self._fetch_summaries(content_ids)
 
             # 3. Query Graphiti for themes and entities
-            graphiti_themes = await self.graphiti_client.extract_themes_from_range(
-                start_date=request.start_date,
-                end_date=request.end_date,
-            )
+            graphiti_themes: list[dict] = []
+            if client:
+                graphiti_themes = await client.extract_themes_from_range(
+                    start_date=request.start_date,
+                    end_date=request.end_date,
+                )
+            else:
+                logger.info("Skipping graph theme extraction (backend unavailable)")
 
             # 4. Use LLM to analyze and extract structured themes
             themes = await self._extract_themes_with_llm(

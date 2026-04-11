@@ -18,6 +18,7 @@ See design doc: openspec/changes/agentic-analysis-agent/design.md (D1).
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -29,6 +30,12 @@ from src.agents.persona.models import PersonaConfig
 from src.agents.registry import SpecialistRegistry
 from src.agents.specialists.base import SpecialistResult, SpecialistTask
 from src.models.agent_task import AgentTaskStatus
+from src.telemetry.agent_metrics import (
+    record_agent_task,
+    record_approval_check,
+    record_memory_operation,
+    record_specialist_invocation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +133,7 @@ class Conductor:
         cost_total = 0.0
         tokens_total = 0
         partial_results: list[SpecialistResult] = []
+        task_start = time.monotonic()
 
         try:
             # 1. Load persona
@@ -154,6 +162,11 @@ class Conductor:
                 # Check approval gate
                 action_name = f"delegate.{specialist_name}"
                 auto_approved, risk_level = self.approval_gate.check_action(action_name)
+                record_approval_check(
+                    action=action_name,
+                    risk_level=risk_level.value,
+                    approved=auto_approved,
+                )
                 if not auto_approved:
                     logger.info(
                         "Conductor: task %s blocked on approval for %s (risk=%s)",
@@ -217,6 +230,16 @@ class Conductor:
             await self._store_insights(task_id, insights)
 
             status = AgentTaskStatus.COMPLETED
+            duration_ms = (time.monotonic() - task_start) * 1000
+            record_agent_task(
+                task_type=task_type,
+                status=status,
+                persona=persona,
+                source=source,
+                duration_ms=duration_ms,
+                tokens=tokens_total,
+                cost=cost_total,
+            )
             return ConductorResult(
                 task_id=task_id,
                 status=status,
@@ -229,6 +252,16 @@ class Conductor:
 
         except Exception as e:
             logger.exception("Conductor: task %s failed: %s", task_id, e)
+            duration_ms = (time.monotonic() - task_start) * 1000
+            record_agent_task(
+                task_type=task_type,
+                status=AgentTaskStatus.FAILED,
+                persona=persona,
+                source=source,
+                duration_ms=duration_ms,
+                tokens=tokens_total,
+                cost=cost_total,
+            )
             # Return partial results on failure
             partial_synthesis: dict[str, Any] = {}
             if partial_results:
@@ -259,9 +292,11 @@ class Conductor:
         """
         try:
             entries = await self.memory_provider.recall(prompt, limit=10)
+            record_memory_operation(operation="recall", success=True)
             return [{"id": e.id, "content": e.content, "score": e.score} for e in entries]
         except Exception as e:
             logger.warning("Conductor: memory query failed: %s", e)
+            record_memory_operation(operation="recall", success=False)
             return []
 
     async def _plan_task(
@@ -368,10 +403,17 @@ class Conductor:
         Returns the successful result or the last failed result.
         """
         last_result: SpecialistResult | None = None
+        delegation_start = time.monotonic()
         for attempt in range(MAX_RETRIES + 1):
             try:
                 result = await self._delegate_to_specialist(specialist_name, task, persona_config)
                 if result.success:
+                    record_specialist_invocation(
+                        specialist=specialist_name,
+                        success=True,
+                        duration_ms=(time.monotonic() - delegation_start) * 1000,
+                        retries=attempt,
+                    )
                     return result
                 last_result = result
                 logger.warning(
@@ -405,6 +447,12 @@ class Conductor:
                 await asyncio.sleep(backoff_seconds)
 
         # All retries exhausted — return last result
+        record_specialist_invocation(
+            specialist=specialist_name,
+            success=False,
+            duration_ms=(time.monotonic() - delegation_start) * 1000,
+            retries=MAX_RETRIES,
+        )
         assert last_result is not None
         return last_result
 
@@ -497,12 +545,14 @@ class Conductor:
                     tags=[insight.get("type", "summary")],
                 )
                 await self.memory_provider.store(entry)
+                record_memory_operation(operation="store", success=True)
             except Exception as e:
                 logger.warning(
                     "Conductor: failed to store insight for task %s: %s",
                     task_id,
                     e,
                 )
+                record_memory_operation(operation="store", success=False)
 
     def _select_specialist(self, task_type: str) -> str:
         """Map a task type to a specialist name.
