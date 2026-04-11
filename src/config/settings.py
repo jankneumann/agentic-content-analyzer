@@ -1228,17 +1228,27 @@ class Settings(BaseSettings):
         # URL is already direct
         return neon_url
 
-    def _apply_deprecated_neo4j_aliases(self) -> None:
-        """Map deprecated neo4j_provider to graphdb_provider + graphdb_mode.
+    @model_validator(mode="after")
+    def _validate_and_migrate_graphdb(self) -> Settings:
+        """Wire up deprecated alias mapping and graphdb config validation.
 
-        Called during initialization to handle backward compatibility.
-        Only applies if graphdb_provider was not explicitly set.
+        Runs after all fields are set. Order matters:
+        1. Map deprecated neo4j_provider/neo4j_auradb_* → new fields
+        2. Validate the resulting provider+mode combination
         """
-        # If neo4j_provider was explicitly changed from default but graphdb_provider wasn't
-        if self.neo4j_provider != "local" and self.graphdb_provider == "neo4j" and self.graphdb_mode == "local":
+        self._apply_deprecated_neo4j_aliases()
+        self._validate_graphdb_config()
+        return self
+
+    def _apply_deprecated_neo4j_aliases(self) -> None:
+        """Map deprecated neo4j_provider to graphdb_provider + graphdb_mode."""
+        # Use model_fields_set to detect explicit assignment vs defaults
+        explicitly_set = self.model_fields_set
+
+        # Map neo4j_provider: auradb → graphdb_mode: cloud
+        if "neo4j_provider" in explicitly_set and "graphdb_provider" not in explicitly_set:
             if self.neo4j_provider == "auradb":
                 object.__setattr__(self, "graphdb_mode", "cloud")
-                # Map auradb fields to cloud fields
                 if self.neo4j_auradb_uri and not self.neo4j_cloud_uri:
                     object.__setattr__(self, "neo4j_cloud_uri", self.neo4j_auradb_uri)
                 if self.neo4j_auradb_password and not self.neo4j_cloud_password:
@@ -1251,27 +1261,32 @@ class Settings(BaseSettings):
                     "Update your config to use the new fields."
                 )
 
-        # Map deprecated neo4j_local_* to neo4j_* fields
-        if self.neo4j_local_uri and not self.neo4j_uri.startswith("bolt://"):
+        # Map deprecated neo4j_local_* → neo4j_* (always, if set)
+        if self.neo4j_local_uri:
             object.__setattr__(self, "neo4j_uri", self.neo4j_local_uri)
+            logger.warning("Deprecated: neo4j_local_uri mapped to neo4j_uri")
         if self.neo4j_local_user:
             object.__setattr__(self, "neo4j_user", self.neo4j_local_user)
         if self.neo4j_local_password:
             object.__setattr__(self, "neo4j_password", self.neo4j_local_password)
 
-    def validate_graphdb_config(self) -> None:
+        # Map neo4j_auradb_* even when graphdb_provider is explicitly set
+        if self.neo4j_auradb_uri and not self.neo4j_cloud_uri:
+            object.__setattr__(self, "neo4j_cloud_uri", self.neo4j_auradb_uri)
+        if self.neo4j_auradb_password and not self.neo4j_cloud_password:
+            object.__setattr__(self, "neo4j_cloud_password", self.neo4j_auradb_password)
+
+    def _validate_graphdb_config(self) -> None:
         """Validate graphdb_provider + graphdb_mode combination."""
         provider = self.graphdb_provider
         mode = self.graphdb_mode
 
-        # Invalid combination
         if provider == "neo4j" and mode == "embedded":
             raise ValueError(
                 "Invalid configuration: graphdb_provider='neo4j' with graphdb_mode='embedded'. "
                 "Neo4j does not support embedded mode. Use graphdb_provider='falkordb' for embedded."
             )
 
-        # Required fields for cloud modes
         if provider == "neo4j" and mode == "cloud":
             if not self.neo4j_cloud_uri:
                 raise ValueError(
@@ -1284,24 +1299,6 @@ class Settings(BaseSettings):
         if provider == "falkordb" and mode == "cloud":
             if not self.falkordb_cloud_host:
                 raise ValueError("FalkorDB cloud mode requires FALKORDB_CLOUD_HOST")
-
-    # Keep deprecated methods for any remaining callers
-    def get_effective_neo4j_uri(self) -> str:
-        """Deprecated: use graph provider factory instead."""
-        if self.graphdb_mode == "cloud":
-            return self.neo4j_cloud_uri or ""
-        return self.neo4j_uri
-
-    def get_effective_neo4j_user(self) -> str:
-        """Deprecated: use graph provider factory instead."""
-        if self.graphdb_mode == "cloud":
-            return self.neo4j_cloud_user
-        return self.neo4j_user
-
-    def get_effective_neo4j_password(self) -> str:
-        """Deprecated: use graph provider factory instead."""
-        if self.graphdb_mode == "cloud":
-            return self.neo4j_cloud_password or ""
         return self.neo4j_password
 
     def get_youtube_api_key(self) -> str | None:
@@ -1565,7 +1562,7 @@ def get_settings() -> Settings:
         f"Database provider: {s.database_provider} | "
         f"URL: {s._mask_url(s.get_effective_database_url())}"
     )
-    logger.info(f"Neo4j provider: {s.neo4j_provider} | URI: {s.get_effective_neo4j_uri()}")
+    logger.info(f"Graph DB provider: {s.graphdb_provider} | mode: {s.graphdb_mode}")
     logger.info(f"Observability provider: {s.observability_provider}")
     return s
 

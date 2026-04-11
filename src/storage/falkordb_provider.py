@@ -5,6 +5,7 @@ Supports local (Docker), cloud (hosted), and embedded (FalkorDB Lite) modes.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -18,6 +19,8 @@ class FalkorDBGraphDBProvider:
 
     Uses graphiti-core's FalkorDriver for Graphiti integration and
     the falkordb Python client for raw Cypher queries.
+
+    Connection is lazy — deferred to first use to support graceful degradation.
     """
 
     def __init__(
@@ -27,32 +30,18 @@ class FalkorDBGraphDBProvider:
         username: str | None = None,
         password: str | None = None,
         database: str = "newsletter_graph",
-        lite_data_dir: str | None = None,
+        mode: str = "local",
     ) -> None:
         self._host = host
         self._port = port
         self._username = username
         self._password = password
         self._database = database
-        self._lite_data_dir = lite_data_dir
+        self._mode = mode
         self._closed = False
+        self._client: Any = None
+        self._graph: Any = None
 
-        # Connect to FalkorDB
-        import falkordb
-
-        self._client = falkordb.FalkorDB(
-            host=host,
-            port=port,
-            username=username,
-            password=password,
-        )
-        self._graph = self._client.select_graph(database)
-
-        mode = (
-            "embedded"
-            if lite_data_dir
-            else ("cloud" if port != 6379 or host != "localhost" else "local")
-        )
         logger.info(
             "Initialized FalkorDB graph provider: host=%s, port=%d, database=%s, mode=%s",
             host,
@@ -60,6 +49,20 @@ class FalkorDBGraphDBProvider:
             database,
             mode,
         )
+
+    def _ensure_connected(self) -> Any:
+        """Lazy connection — connect on first use."""
+        if self._graph is None:
+            import falkordb
+
+            self._client = falkordb.FalkorDB(
+                host=self._host,
+                port=self._port,
+                username=self._username,
+                password=self._password,
+            )
+            self._graph = self._client.select_graph(self._database)
+        return self._graph
 
     def create_graphiti_driver(self) -> Any:
         """Create a FalkorDriver for graphiti-core."""
@@ -76,63 +79,67 @@ class FalkorDBGraphDBProvider:
     async def execute_query(
         self, query: str, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        """Execute a read query via FalkorDB graph."""
+        """Execute a read query via FalkorDB graph (offloaded to thread)."""
         start = time.monotonic()
         try:
-            result = self._graph.query(query, params=params or {})
-            # FalkorDB returns result sets differently from Neo4j
-            # Convert to list of dicts matching the Neo4j format
-            records = []
-            if result.result_set:
-                headers = result.header
-                for row in result.result_set:
-                    record = {}
-                    for i, header in enumerate(headers):
-                        # header is (type, name) tuple
-                        col_name = header[1] if isinstance(header, (list, tuple)) else header
-                        record[col_name] = row[i]
-                    records.append(record)
-            return records
+            return await asyncio.to_thread(self._run_query, query, params or {})
         finally:
             elapsed = time.monotonic() - start
             if elapsed > 5.0:
-                logger.warning(
-                    "Slow FalkorDB query (%.1fs): %s",
-                    elapsed,
-                    query[:200],
-                )
+                logger.warning("Slow FalkorDB query (%.1fs): %s", elapsed, query[:200])
+
+    def _run_query(self, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """Sync query execution — called from thread pool."""
+        graph = self._ensure_connected()
+        result = graph.query(query, params=params)
+        records = []
+        if result.result_set:
+            headers = result.header
+            for row in result.result_set:
+                record = {}
+                for i, header in enumerate(headers):
+                    col_name = header[1] if isinstance(header, (list, tuple)) else header
+                    record[col_name] = row[i]
+                records.append(record)
+        return records
 
     async def execute_write(
         self, query: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Execute a write query via FalkorDB graph."""
+        """Execute a write query via FalkorDB graph (offloaded to thread)."""
         start = time.monotonic()
         try:
-            result = self._graph.query(query, params=params or {})
-            stats = result.statistics if hasattr(result, "statistics") else {}
-            return {
-                "nodes_created": stats.get("Nodes created", 0) if isinstance(stats, dict) else 0,
-                "relationships_created": stats.get("Relationships created", 0)
-                if isinstance(stats, dict)
-                else 0,
-                "properties_set": stats.get("Properties set", 0) if isinstance(stats, dict) else 0,
-            }
+            return await asyncio.to_thread(self._run_write, query, params or {})
         finally:
             elapsed = time.monotonic() - start
             if elapsed > 5.0:
-                logger.warning(
-                    "Slow FalkorDB write (%.1fs): %s",
-                    elapsed,
-                    query[:200],
-                )
+                logger.warning("Slow FalkorDB write (%.1fs): %s", elapsed, query[:200])
+
+    def _run_write(self, query: str, params: dict[str, Any]) -> dict[str, Any]:
+        """Sync write execution — called from thread pool."""
+        graph = self._ensure_connected()
+        result = graph.query(query, params=params)
+        # FalkorDB QueryResult exposes statistics as properties
+        return {
+            "nodes_created": getattr(result, "nodes_created", 0),
+            "relationships_created": getattr(result, "relationships_created", 0),
+            "properties_set": getattr(result, "properties_set", 0),
+        }
 
     def close(self) -> None:
         """Close FalkorDB connection (sync)."""
         if not self._closed:
-            try:
-                self._client.connection.close()
-            except Exception:
-                pass
+            if self._client is not None:
+                try:
+                    self._client.close()
+                except AttributeError:
+                    # Fallback for different falkordb client versions
+                    try:
+                        self._client.connection.close()
+                    except Exception as e:
+                        logger.debug("FalkorDB close fallback: %s", e)
+                except Exception as e:
+                    logger.debug("FalkorDB close error: %s", e)
             self._closed = True
             logger.debug("Closed FalkorDB graph provider")
 
@@ -143,7 +150,9 @@ class FalkorDBGraphDBProvider:
     async def health_check(self) -> bool:
         """Verify FalkorDB connectivity."""
         try:
-            self._client.connection.ping()
+            graph = self._ensure_connected()
+            # Simple query to verify the graph is responsive
+            graph.query("RETURN 1 AS n")
             return True
         except Exception:
             logger.warning("FalkorDB health check failed", exc_info=True)
