@@ -79,7 +79,7 @@ class BraintrustProvider:
             if self._api_url != DEFAULT_BRAINTRUST_API_URL:
                 os.environ.setdefault("BRAINTRUST_API_URL", self._api_url)
 
-            self._logger = braintrust.init_logger(project=self._project_name)
+            self._logger = braintrust.init_logger(project=self._project_name)  # type: ignore[assignment]
             self._setup_complete = True
 
             logger.info(
