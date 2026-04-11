@@ -24,8 +24,34 @@
 - Accepted keeping redundant local-langfuse.yaml over removing it, because users may have PROFILE=local-langfuse in existing scripts
 
 ### Open Questions
-- [ ] Should make dev auto-start the Langfuse stack, or keep it as a separate make langfuse-up step?
-- [ ] Should CI/CD automation be added for GHCR image publish, or keep it manual for now?
+- [x] Should make dev auto-start the Langfuse stack, or keep it as a separate make langfuse-up step? **Resolved in iteration 1**: Keep separate — D5 rationale.
+- [ ] Should CI/CD automation be added for GHCR image publish, or keep it manual for now? **Deferred**: Manual for now, documented as follow-up.
 
 ### Context
 Planning session to close two infrastructure parity gaps: (1) vanilla Railway PostgreSQL lacking ParadeDB extensions available in local dev, and (2) observability defaulting to noop/braintrust instead of the team's actual platform (Langfuse). Both changes are configuration-level — all code infrastructure is already implemented. The plan uses a config-first approach to get observability in place before the database infrastructure change.
+
+---
+
+## Phase: Plan Iteration 1 (2026-04-11)
+
+**Agent**: claude-opus-4-6 | **Session**: iterate-on-plan
+
+### Decisions
+1. **Add missing profile coverage** — Added tasks for `supabase-cloud.yaml` (1.8) and `railway-neon-staging.yaml` (1.7) to ensure all braintrust profiles are updated
+2. **Keep `make dev` unchanged (D5)** — Do NOT make `langfuse-up` a prerequisite of `make dev`. Graceful fallback handles the case where Langfuse isn't running. Add comments only.
+3. **Data migration is operator responsibility** — Explicit non-goal. Task 2.2 documents `pg_dump`/`pg_restore` procedure but does not automate it.
+4. **Task 2.1/2.2 merged and clarified** — Combined into single manual operator task (2.1). Eliminated circular test/build dependency.
+5. **Resilience strategy documented (D5)** — Formalized graceful degradation behavior in design.md with explicit table of failure modes, log levels, and behaviors.
+
+### Alternatives Considered
+- Auto-start Langfuse from `make dev`: rejected because it breaks existing workflows for users who don't want Langfuse overhead
+- Automate GHCR image publish via GitHub Actions: deferred — manual one-time step is sufficient for initial deployment
+
+### Trade-offs
+- Accepted behavior change for `PROFILE=local` users (now includes Langfuse tracing) over keeping `noop` default, because observability-by-default is the stated goal. Documented escape hatch: `OBSERVABILITY_PROVIDER=noop`.
+
+### Open Questions
+- [ ] GitHub Actions automation for GHCR image rebuild (deferred to follow-up)
+
+### Context
+Three parallel review agents analyzed completeness/clarity, feasibility/parallelizability, and testability/assumptions. Found 2 critical (missing profiles, spec gap), 7 high, and 7 medium findings. All addressed: expanded spec from 9 to 17 scenarios, added failure-path and edge-case scenarios, added D5 resilience design decision, clarified task scopes, added missing profile tasks, fixed lock key coverage.

@@ -40,6 +40,8 @@ Both gaps are configuration-level — the code infrastructure is already in plac
 | `railway.yaml` | `railway` (unchanged) | `braintrust` -> `langfuse` (cloud) |
 | `railway-neon.yaml` | `neon` (unchanged) | `braintrust` -> `langfuse` (cloud) |
 | `staging.yaml` | `neon` (unchanged) | `braintrust` -> `langfuse` (cloud) |
+| `railway-neon-staging.yaml` | `neon` (unchanged) | `braintrust` -> `langfuse` (cloud) |
+| `supabase-cloud.yaml` | `supabase` (unchanged) | `braintrust` -> `langfuse` (cloud) |
 
 ## What Doesn't Change
 
@@ -47,8 +49,9 @@ Both gaps are configuration-level — the code infrastructure is already in plac
 - **Langfuse provider code**: `src/telemetry/providers/langfuse.py` is unchanged — already fully implemented
 - **Braintrust provider**: Kept as available option, not removed or deprecated
 - **Search strategy code**: `src/services/search_strategy.py` auto-detection already handles ParadeDB
-- **Neon/Supabase profiles**: `ci-neon.yaml`, `local-supabase.yaml` are unaffected
+- **Explicitly-overridden profiles**: `ci-neon.yaml` (`noop`), `local-opik.yaml` (`opik`), `local-openbao.yaml`, `local-supabase.yaml`, `test.yaml` — these set observability explicitly and are unaffected by base.yaml default change
 - **Application code**: No Python code changes required — this is entirely profile/config/deployment work
+- **Database data migration**: Migrating data from existing vanilla Railway PG to ParadeDB is an operator responsibility, not automated by this proposal. Task 2.2 documents the `pg_dump`/`pg_restore` procedure.
 
 ## Approaches Considered
 
