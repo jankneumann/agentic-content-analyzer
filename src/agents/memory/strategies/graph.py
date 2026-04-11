@@ -1,7 +1,11 @@
-"""Graph-based memory strategy using a Graphiti-like client.
+"""Graph-based memory strategy using a Graphiti-compatible client.
 
 Stores memories as episodes in a knowledge graph and retrieves them
 via semantic search over graph entities and relationships.
+
+Works with any graph backend (Neo4j, FalkorDB) via the GraphitiClient
+abstraction — the client is constructed externally using the appropriate
+GraphDBProvider and passed in as a dependency.
 """
 
 import logging
@@ -24,6 +28,10 @@ class GraphStrategy(MemoryStrategy):
         - search(query, num_results, filters) -> list[dict]
         - delete_episode(episode_id) -> bool
         - status() -> dict  (or similar connectivity check)
+
+    The client is backend-agnostic — it should be created via
+    ``await GraphitiClient.create()`` which uses the configured
+    GraphDBProvider (Neo4j or FalkorDB) internally.
     """
 
     def __init__(self, graph_client: Any) -> None:

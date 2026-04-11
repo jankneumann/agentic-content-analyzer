@@ -26,6 +26,13 @@ In Railway dashboard:
 2. Select "Docker Image"
 3. Enter: `ghcr.io/jankneumann/newsletter-postgres:17-railway`
 
+> **Note on package visibility:** The pre-built image lives under `jankneumann`'s
+> GitHub packages. If the GHCR package is private, `docker pull` will fail with
+> `unauthorized`. Either:
+> - Ask the repo owner to mark the package public
+>   (GitHub → Packages → `newsletter-postgres` → Package settings → Change visibility), or
+> - Fall back to **Option 2: Build Locally** (below).
+
 ### Option 2: Build Locally
 
 ```bash

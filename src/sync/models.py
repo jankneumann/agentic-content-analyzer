@@ -1,6 +1,6 @@
 """Pydantic models for database sync operations.
 
-Defines the JSONL record types for PostgreSQL and Neo4j export/import,
+Defines the JSONL record types for PostgreSQL and graph export/import,
 plus tracking models for import state and statistics.
 """
 
@@ -23,16 +23,22 @@ class SyncManifest(BaseModel):
     version: int = 1
 
 
-class Neo4jManifest(BaseModel):
-    """Manifest record — first line of a Neo4j JSONL export file."""
+class GraphManifest(BaseModel):
+    """Manifest record — first line of a graph JSONL export file."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    record_type: str = Field(default="neo4j_manifest", alias="_type")
+    record_type: str = Field(default="graph_manifest", alias="_type")
     exported_at: datetime
+    node_labels: list[str] = Field(default_factory=list)
     nodes: dict[str, int]  # {label: count}
+    relationship_types: list[str] = Field(default_factory=list)
     relationships: dict[str, int]  # {type: count}
     version: int = 1
+
+
+# Backward-compatible alias
+Neo4jManifest = GraphManifest
 
 
 class SyncRecord(BaseModel):
@@ -45,27 +51,35 @@ class SyncRecord(BaseModel):
     data: dict  # Column name -> value mapping
 
 
-class Neo4jNodeRecord(BaseModel):
-    """A Neo4j node record in JSONL export."""
+class GraphNodeRecord(BaseModel):
+    """A graph node record in JSONL export."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    record_type: str = Field(default="neo4j_node", alias="_type")
+    record_type: str = Field(default="graph_node", alias="_type")
     label: str
     uuid: str
     properties: dict
 
 
-class Neo4jRelationshipRecord(BaseModel):
-    """A Neo4j relationship record in JSONL export."""
+# Backward-compatible alias
+Neo4jNodeRecord = GraphNodeRecord
+
+
+class GraphRelationshipRecord(BaseModel):
+    """A graph relationship record in JSONL export."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    record_type: str = Field(default="neo4j_relationship", alias="_type")
+    record_type: str = Field(default="graph_relationship", alias="_type")
     type: str
     source_uuid: str
     target_uuid: str
     properties: dict
+
+
+# Backward-compatible alias
+Neo4jRelationshipRecord = GraphRelationshipRecord
 
 
 class ImportStats(BaseModel):
