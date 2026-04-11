@@ -1,0 +1,12 @@
+defaults:
+  type: huggingface_papers
+  enabled: true
+  max_entries: 30
+  request_delay: 1.0
+  content_filter_strategy: none
+
+sources:
+  - name: "HuggingFace Daily Papers"
+    url: "https://huggingface.co/papers"
+    tags: [ai, papers, huggingface, research]
+    max_entries: 30

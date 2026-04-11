@@ -9,8 +9,7 @@ Each function:
 - Accepts the same parameters the service expects
 - Returns int (number of items ingested) or a result dataclass
 
-Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv
-Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
 
 """
 
@@ -623,6 +622,40 @@ def ingest_arxiv_paper(
         return 1 if result.ingested else 0
     finally:
         service.close()
+
+
+def ingest_huggingface_papers(
+    *,
+    max_papers: int = 30,
+    after_date: datetime | None = None,
+    force_reprocess: bool = False,
+    on_result: Callable[[IngestionResult], None] | None = None,
+) -> int:
+    """Ingest daily papers from HuggingFace Papers.
+
+    Fetches the daily papers listing page, discovers paper links, extracts
+    content (title, authors, abstract), and persists with deduplication.
+
+    Args:
+        max_papers: Maximum papers to ingest per source.
+        after_date: Only fetch papers after this date.
+        force_reprocess: Force reprocess existing content.
+        on_result: Optional callback for rich result reporting.
+
+    Returns:
+        Number of items ingested.
+    """
+    from src.ingestion.huggingface_papers import HuggingFacePapersContentIngestionService
+
+    service = HuggingFacePapersContentIngestionService()
+    result = service.ingest_content(
+        max_papers=max_papers,
+        after_date=after_date,
+        force_reprocess=force_reprocess,
+    )
+    if on_result:
+        on_result(result)
+    return result.items_ingested
 
 
 def ingest_url(
