@@ -66,7 +66,7 @@ def build_frontmatter(
     """
     lines = ["---"]
     lines.append("generator: aca")
-    lines.append(f"aca_id: \"{aca_id}\"")
+    lines.append(f'aca_id: "{aca_id}"')
     lines.append(f"aca_type: {aca_type}")
 
     if date is not None:
@@ -83,19 +83,19 @@ def build_frontmatter(
             lines.append(f"tags: [{tag_list}]")
 
     if content_hash:
-        lines.append(f"content_hash: \"{content_hash}\"")
+        lines.append(f'content_hash: "{content_hash}"')
 
     for key, value in extra.items():
         if value is not None:
             if isinstance(value, list):
-                formatted = ", ".join(f"\"{v}\"" if isinstance(v, str) else str(v) for v in value)
+                formatted = ", ".join(f'"{v}"' if isinstance(v, str) else str(v) for v in value)
                 lines.append(f"{key}: [{formatted}]")
             elif isinstance(value, bool):
                 lines.append(f"{key}: {'true' if value else 'false'}")
             elif isinstance(value, (int, float)):
                 lines.append(f"{key}: {value}")
             else:
-                lines.append(f"{key}: \"{value}\"")
+                lines.append(f'{key}: "{value}"')
 
     lines.append("---")
     return "\n".join(lines) + "\n"
