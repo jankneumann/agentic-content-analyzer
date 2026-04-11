@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -545,6 +545,34 @@ test-crawl4ai:  ## Run Crawl4AI integration tests (requires: make crawl4ai-up)
 		echo "✗ Crawl4AI is not running! Start with: make crawl4ai-up"; \
 		exit 1; \
 	fi
+
+# =============================================================================
+# FalkorDB Graph Database
+# =============================================================================
+
+falkordb-up:  ## Start FalkorDB graph database
+	@echo "Starting FalkorDB..."
+	@docker compose up -d falkordb
+	@echo "Waiting for FalkorDB to be ready..."
+	@timeout=30; \
+	elapsed=0; \
+	while ! docker compose exec -T falkordb redis-cli ping 2>/dev/null | grep -q PONG; do \
+		if [ $$elapsed -ge $$timeout ]; then \
+			echo "✗ Timeout waiting for FalkorDB"; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+		elapsed=$$((elapsed + 1)); \
+		printf "."; \
+	done
+	@echo ""
+	@echo "✓ FalkorDB is ready!"
+	@echo "  Redis protocol:  localhost:$${FALKORDB_PORT:-6379}"
+
+falkordb-down:  ## Stop FalkorDB graph database
+	@echo "Stopping FalkorDB..."
+	@docker compose stop falkordb
+	@echo "✓ FalkorDB stopped"
 
 # =============================================================================
 # Tauri Desktop App

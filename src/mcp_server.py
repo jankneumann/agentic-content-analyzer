@@ -1965,9 +1965,7 @@ def refresh_model_pricing(
 
     service = ModelRegistryService()
     provider_list = [p.strip() for p in providers.split(",")] if providers else None
-    report = asyncio.run(
-        service.refresh_pricing(providers=provider_list, dry_run=dry_run)
-    )
+    report = asyncio.run(service.refresh_pricing(providers=provider_list, dry_run=dry_run))
     return _serialize(report.model_dump())
 
 
@@ -2159,6 +2157,248 @@ def sync_obsidian(
         engine.dispose()
         if neo4j_driver:
             neo4j_driver.close()
+
+
+# ===========================================================================
+# KNOWLEDGE BASE TOOLS
+# ===========================================================================
+
+
+@mcp.tool()
+def search_knowledge_base(query: str, limit: int = 10) -> str:
+    """Search compiled KB topics by name and summary.
+
+    Args:
+        query: Keyword or phrase to match against topic names and summaries.
+        limit: Maximum topics to return (default: 10).
+
+    Returns:
+        JSON list of matching topics with slug, name, category, and score.
+    """
+    from sqlalchemy import or_
+
+    from src.models.topic import Topic, TopicStatus
+    from src.storage.database import get_db
+
+    like = f"%{query}%"
+    with get_db() as db:
+        rows = (
+            db.query(Topic)
+            .filter(
+                Topic.status.notin_([TopicStatus.ARCHIVED, TopicStatus.MERGED]),
+                or_(
+                    Topic.name.ilike(like),
+                    Topic.summary.ilike(like),
+                    Topic.article_md.ilike(like),
+                ),
+            )
+            .order_by(Topic.relevance_score.desc())
+            .limit(limit)
+            .all()
+        )
+        return _serialize(
+            [
+                {
+                    "slug": t.slug,
+                    "name": t.name,
+                    "category": t.category,
+                    "trend": t.trend,
+                    "status": str(t.status) if t.status is not None else None,
+                    "summary": t.summary,
+                    "relevance_score": float(t.relevance_score or 0.0),
+                    "mention_count": int(t.mention_count or 0),
+                }
+                for t in rows
+            ]
+        )
+
+
+@mcp.tool()
+def get_topic(slug: str) -> str:
+    """Get full topic details including the compiled article.
+
+    Args:
+        slug: The topic slug.
+
+    Returns:
+        JSON with topic metadata and the compiled article markdown.
+    """
+    from src.models.topic import Topic
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        topic = db.query(Topic).filter_by(slug=slug).first()
+        if topic is None:
+            return _serialize({"error": f"Topic not found: {slug}"})
+        return _serialize(
+            {
+                "id": topic.id,
+                "slug": topic.slug,
+                "name": topic.name,
+                "category": topic.category,
+                "status": str(topic.status) if topic.status is not None else None,
+                "summary": topic.summary,
+                "article_md": topic.article_md,
+                "article_version": topic.article_version,
+                "trend": topic.trend,
+                "relevance_score": float(topic.relevance_score or 0.0),
+                "mention_count": int(topic.mention_count or 0),
+                "source_content_ids": list(topic.source_content_ids or []),
+                "related_topic_ids": list(topic.related_topic_ids or []),
+                "last_compiled_at": str(topic.last_compiled_at) if topic.last_compiled_at else None,
+            }
+        )
+
+
+@mcp.tool()
+def update_topic(
+    slug: str,
+    summary: str | None = None,
+    article_md: str | None = None,
+) -> str:
+    """Update a topic's summary and/or article markdown.
+
+    Updating ``article_md`` increments the topic's ``article_version``.
+
+    Args:
+        slug: The topic slug.
+        summary: Optional new 1-2 sentence summary.
+        article_md: Optional new full article markdown.
+
+    Returns:
+        JSON with the updated topic or an error.
+    """
+    from src.models.topic import Topic
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        topic = db.query(Topic).filter_by(slug=slug).first()
+        if topic is None:
+            return _serialize({"error": f"Topic not found: {slug}"})
+        if summary is not None:
+            topic.summary = summary
+        if article_md is not None:
+            topic.article_md = article_md
+            topic.article_version = (topic.article_version or 0) + 1
+        db.commit()
+        db.refresh(topic)
+        return _serialize(
+            {
+                "slug": topic.slug,
+                "name": topic.name,
+                "article_version": topic.article_version,
+                "summary": topic.summary,
+                "article_md": topic.article_md,
+            }
+        )
+
+
+@mcp.tool()
+def add_topic_note(
+    slug: str,
+    content: str,
+    note_type: str = "observation",
+    author: str = "agent",
+) -> str:
+    """Attach a note to a topic.
+
+    Args:
+        slug: The topic slug.
+        content: Note body.
+        note_type: 'observation' (default), 'question', 'correction', or 'insight'.
+        author: Who created the note (default: 'agent').
+
+    Returns:
+        JSON with the created note.
+    """
+    from src.services.knowledge_base import KnowledgeBaseService
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        service = KnowledgeBaseService(db)
+        try:
+            note = service.add_note(
+                topic_slug=slug,
+                content=content,
+                note_type=note_type,
+                author=author,
+            )
+        except ValueError as exc:
+            return _serialize({"error": str(exc)})
+        return _serialize(
+            {
+                "id": note.id,
+                "topic_id": note.topic_id,
+                "note_type": str(note.note_type) if note.note_type is not None else None,
+                "content": note.content,
+                "author": note.author,
+                "created_at": str(note.created_at) if note.created_at else None,
+            }
+        )
+
+
+@mcp.tool()
+def get_kb_index(index_type: str = "master") -> str:
+    """Return a cached KB index as markdown.
+
+    Args:
+        index_type: 'master' (default), 'recency', 'category_<name>', or 'trend_<name>'.
+
+    Returns:
+        JSON with ``index_type``, ``content``, and ``generated_at``.
+    """
+    from src.models.topic import KBIndex
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        row = db.query(KBIndex).filter_by(index_type=index_type).first()
+        if row is None:
+            return _serialize(
+                {
+                    "index_type": index_type,
+                    "content": "",
+                    "generated_at": None,
+                }
+            )
+        return _serialize(
+            {
+                "index_type": row.index_type,
+                "content": row.content,
+                "generated_at": str(row.generated_at) if row.generated_at else None,
+            }
+        )
+
+
+@mcp.tool()
+def compile_knowledge_base() -> str:
+    """Run an incremental KB compilation.
+
+    Returns:
+        JSON with the compile summary (topics found/compiled/skipped/failed).
+    """
+    import asyncio
+
+    from src.services.knowledge_base import (
+        KBCompileLockError,
+        KnowledgeBaseService,
+    )
+    from src.storage.database import get_db
+
+    async def _run() -> dict:
+        with get_db() as db:
+            service = KnowledgeBaseService(db)
+            try:
+                summary = await service.compile()
+            except KBCompileLockError as exc:
+                return {"error": str(exc)}
+            return summary.to_dict()
+
+    try:
+        result = asyncio.run(_run())
+    except RuntimeError as exc:
+        # Called from an already-running loop (e.g., SSE transport)
+        return _serialize({"error": f"KB compile requires a fresh loop: {exc}"})
+    return _serialize(result)
 
 
 # ===========================================================================
