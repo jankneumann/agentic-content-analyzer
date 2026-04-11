@@ -20,6 +20,7 @@ _EVALUATION_YAML = _SETTINGS_DIR / "evaluation.yaml"
 @dataclass
 class QualityDimension:
     """A single quality dimension for evaluation."""
+
     name: str
     description: str
     fail_when: str
@@ -28,6 +29,7 @@ class QualityDimension:
 @dataclass
 class StepCriteria:
     """Quality criteria for a specific pipeline step."""
+
     step: str
     dimensions: list[QualityDimension] = field(default_factory=list)
 
@@ -38,6 +40,7 @@ class StepCriteria:
 @dataclass
 class JudgeConfig:
     """Configuration for a single judge model."""
+
     model: str
     weight: float = 1.0
 
@@ -45,6 +48,7 @@ class JudgeConfig:
 @dataclass
 class EvaluationConfig:
     """Top-level evaluation configuration."""
+
     judges: list[JudgeConfig] = field(default_factory=list)
     human_review_weight: float = 2.0
     criteria: dict[str, StepCriteria] = field(default_factory=dict)
@@ -75,15 +79,31 @@ def load_evaluation_config(config_path: Path | None = None) -> EvaluationConfig:
     if not path.exists():
         logger.warning("Evaluation config not found at %s, using defaults", path)
         return EvaluationConfig(
-            criteria={"_default": StepCriteria(
-                step="_default",
-                dimensions=[
-                    QualityDimension("accuracy", "Key facts are faithfully represented", "Misrepresents facts or hallucinates"),
-                    QualityDimension("completeness", "All important points are captured", "Omits major themes or findings"),
-                    QualityDimension("conciseness", "No unnecessary repetition", "Contains redundant content"),
-                    QualityDimension("clarity", "Clear, accessible language", "Uses ambiguous or convoluted phrasing"),
-                ],
-            )}
+            criteria={
+                "_default": StepCriteria(
+                    step="_default",
+                    dimensions=[
+                        QualityDimension(
+                            "accuracy",
+                            "Key facts are faithfully represented",
+                            "Misrepresents facts or hallucinates",
+                        ),
+                        QualityDimension(
+                            "completeness",
+                            "All important points are captured",
+                            "Omits major themes or findings",
+                        ),
+                        QualityDimension(
+                            "conciseness", "No unnecessary repetition", "Contains redundant content"
+                        ),
+                        QualityDimension(
+                            "clarity",
+                            "Clear, accessible language",
+                            "Uses ambiguous or convoluted phrasing",
+                        ),
+                    ],
+                )
+            }
         )
 
     with open(path) as f:
