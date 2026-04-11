@@ -48,13 +48,18 @@ Usage:
     )
 """
 
+from __future__ import annotations
+
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from src.config.models import ModelConfig, ModelFamily, Provider
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.config.models import ModelStep
 
 logger = get_logger(__name__)
 
@@ -209,7 +214,7 @@ class LLMRouter:
         provider: Provider | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
-        step: "ModelStep | None" = None,
+        step: ModelStep | None = None,
     ) -> LLMResponse:
         """Generate a simple text response (no tools).
 
@@ -260,8 +265,10 @@ class LLMRouter:
                 model = routing_decision.model_selected
                 logger.info(
                     "Dynamic routing for step=%s: score=%.3f, threshold=%.3f, selected=%s",
-                    step.value, routing_decision.complexity_score,
-                    routing_decision.threshold, model,
+                    step.value,
+                    routing_decision.complexity_score,
+                    routing_decision.threshold,
+                    model,
                 )
 
         resolved_provider = self.resolve_provider(model, provider)

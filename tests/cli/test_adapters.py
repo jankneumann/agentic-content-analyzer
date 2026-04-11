@@ -65,11 +65,11 @@ class TestListPendingReviewsSync:
 
 
 class TestSearchGraphSync:
-    @patch("src.storage.graphiti_client.GraphitiClient")
-    def test_searches_graph(self, mock_cls):
+    @patch("src.storage.graphiti_client.GraphitiClient.create", new_callable=AsyncMock)
+    def test_searches_graph(self, mock_create):
         mock_client = MagicMock()
         mock_client.search_related_concepts = AsyncMock(return_value=["result1"])
-        mock_cls.return_value = mock_client
+        mock_create.return_value = mock_client
 
         result = search_graph_sync("test query", limit=5)
         assert result == ["result1"]
