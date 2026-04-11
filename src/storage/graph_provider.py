@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from src.utils.logging import get_logger
@@ -57,6 +58,33 @@ class GraphDBProvider(Protocol):
 
     async def health_check(self) -> bool:
         """Check backend connectivity. Returns False on failure (no exceptions)."""
+        ...
+
+    def export_graph(self, output_path: Path, force: bool = False) -> dict[str, int]:
+        """Export graph data to a JSONL file.
+
+        Args:
+            output_path: Destination file path for the JSONL export.
+            force: If True, overwrite existing output file.
+
+        Returns:
+            Dict with keys 'nodes' and 'relationships' mapping to counts.
+        """
+        ...
+
+    def import_graph(
+        self, input_path: Path, mode: str = "merge", dry_run: bool = False
+    ) -> dict[str, int]:
+        """Import graph data from a JSONL file.
+
+        Args:
+            input_path: Path to the JSONL export file.
+            mode: Import mode — 'merge' or 'clean'.
+            dry_run: If True, parse and validate without writing.
+
+        Returns:
+            Dict with import statistics.
+        """
         ...
 
 
@@ -160,6 +188,22 @@ class Neo4jGraphDBProvider:
         except Exception:
             logger.warning("Neo4j health check failed", exc_info=True)
             return False
+
+    def export_graph(self, output_path: Path, force: bool = False) -> dict[str, int]:
+        """Export Neo4j graph data to JSONL file."""
+        from src.sync.neo4j_exporter import Neo4jExporter
+
+        exporter = Neo4jExporter(self._driver)
+        return exporter.export(output_path, force=force)
+
+    def import_graph(
+        self, input_path: Path, mode: str = "merge", dry_run: bool = False
+    ) -> dict[str, int]:
+        """Import graph data from JSONL file into Neo4j."""
+        from src.sync.neo4j_importer import Neo4jImporter
+
+        importer = Neo4jImporter(self._driver, mode=mode)
+        return importer.import_file(input_path, dry_run=dry_run)
 
 
 def get_graph_provider() -> GraphDBProvider:

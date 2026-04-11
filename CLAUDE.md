@@ -92,6 +92,8 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full command reference in
 ```bash
 DATABASE_URL=postgresql://localhost/newsletters
 NEO4J_URL=bolt://localhost:7687
+GRAPHDB_PROVIDER=neo4j|falkordb
+GRAPHDB_MODE=local|cloud|embedded
 ANTHROPIC_API_KEY=sk-ant-...
 ADMIN_API_KEY=your-admin-key
 ENVIRONMENT=development
@@ -100,7 +102,7 @@ ENVIRONMENT=development
 **Providers** — each has multiple backends, configured via `*_PROVIDER` env vars:
 - **Database**: `local` | `supabase` | `neon` | `railway` — see [docs/SETUP.md](docs/SETUP.md)
 - **Storage**: `local` | `s3` | `supabase` | `railway` — see [docs/SETUP.md](docs/SETUP.md)
-- **Neo4j**: `local` | `auradb` — see [docs/SETUP.md](docs/SETUP.md)
+- **Graph DB**: `neo4j` | `falkordb` — modes: `local` | `cloud` | `embedded` — see [docs/SETUP.md](docs/SETUP.md)
 - **Observability**: `noop` | `opik` | `braintrust` | `langfuse` | `otel` — see [docs/SETUP.md](docs/SETUP.md)
 
 **Models** — configurable per pipeline step:
@@ -134,6 +136,7 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 | pgvector not in ORM | `DocumentChunk.embedding` is raw SQL only; `embedding_provider`/`embedding_model` ARE mapped |
 | Mock patch lazy imports | Patch at SOURCE module (`src.X.Y`), not consumer — lazy `from X import Y` creates local vars |
 | `content_references` dual uniqueness | Refs with `external_id` use `uq_content_reference` constraint; URL-only refs use partial index `uq_content_reference_url` — `store_references()` handles both paths |
+| `neo4j_provider` deprecated | Use `graphdb_provider` + `graphdb_mode` instead — old field auto-mapped with deprecation warning |
 
 ## Quick Links by Task
 
