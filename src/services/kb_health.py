@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from src.config.settings import get_settings
 from src.models.theme import ThemeCategory
 from src.models.topic import Topic, TopicStatus
-from src.services.knowledge_base import _article_similarity
+from src.services.knowledge_base import _jaccard, _tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -104,17 +104,26 @@ class KBHealthService:
         return sorted(stale_slugs)
 
     def _find_merge_candidates(self, topics: list[Topic]) -> list[tuple[str, str]]:
-        """Return (slug_a, slug_b) pairs with article similarity above threshold."""
+        """Return (slug_a, slug_b) pairs with article similarity above threshold.
+
+        Uses pre-tokenized word sets (same as KnowledgeBaseService) so
+        each article is tokenized once regardless of how many pairs it
+        participates in.
+        """
         threshold = float(self.settings.kb_merge_similarity_threshold or 0.90)
-        usable = [t for t in topics if t.article_md and t.article_md.strip()]
+        token_sets: list[tuple[str, set[str]]] = []
+        for t in topics:
+            tokens = _tokenize(t.article_md)
+            if tokens:
+                token_sets.append((t.slug, tokens))
+
         pairs: list[tuple[str, str]] = []
-        for i in range(len(usable)):
-            for j in range(i + 1, len(usable)):
-                a = usable[i]
-                b = usable[j]
-                score = _article_similarity(a.article_md, b.article_md)
-                if score >= threshold:
-                    pairs.append((a.slug, b.slug))
+        for i in range(len(token_sets)):
+            slug_a, tokens_a = token_sets[i]
+            for j in range(i + 1, len(token_sets)):
+                slug_b, tokens_b = token_sets[j]
+                if _jaccard(tokens_a, tokens_b) >= threshold:
+                    pairs.append((slug_a, slug_b))
         return pairs
 
     def _find_coverage_gaps(self, topics: list[Topic]) -> list[str]:

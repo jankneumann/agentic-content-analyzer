@@ -13,7 +13,9 @@ into their preferred error response.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 from sqlalchemy import or_
@@ -118,12 +120,29 @@ class KBQAService:
             )
 
         model = self.model_config.get_model_for_step(ModelStep.KB_INDEX)
-        response = await self.llm_router.generate(
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=1200,
-            temperature=0.3,
+        qa_timeout = 120  # seconds — reasonable for a single Q&A synthesis
+        t0 = time.monotonic()
+        try:
+            response = await asyncio.wait_for(
+                self.llm_router.generate(
+                    model=model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=1200,
+                    temperature=0.3,
+                ),
+                timeout=qa_timeout,
+            )
+        except TimeoutError as exc:
+            raise RuntimeError(f"KB Q&A LLM call timed out after {qa_timeout}s") from exc
+        elapsed = time.monotonic() - t0
+
+        logger.info(
+            "kb_qa.query topics_matched=%d topics_selected=%d truncated=%s elapsed_seconds=%.2f",
+            len(matched),
+            len(selected),
+            truncated,
+            elapsed,
         )
 
         answer_text = (response.text or "").strip()
@@ -164,16 +183,24 @@ class KBQAService:
             conditions.append(Topic.article_md.ilike(like))
 
         query = self.db.query(Topic).filter(
-            Topic.status != TopicStatus.ARCHIVED,
+            Topic.status.notin_([TopicStatus.ARCHIVED, TopicStatus.MERGED]),
             or_(*conditions),
         )
         return query.order_by(Topic.relevance_score.desc()).limit(50).all()
 
     def _build_topics_block(self, topics: list[Topic]) -> str:
-        """Render the topics block injected into the Q&A prompt."""
+        """Render the topics block injected into the Q&A prompt.
+
+        Each article is truncated to ~300 words to keep the total prompt
+        within LLM context budget (~10 topics * 300 words = ~4000 tokens).
+        """
+        max_words_per_article = 300
         parts: list[str] = []
         for topic in topics:
             article = (topic.article_md or topic.summary or "").strip()
+            words = article.split()
+            if len(words) > max_words_per_article:
+                article = " ".join(words[:max_words_per_article]) + " [...]"
             parts.append(
                 f"### {topic.name} (slug: {topic.slug})\n"
                 f"Category: {topic.category}\n"
