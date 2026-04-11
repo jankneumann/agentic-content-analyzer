@@ -85,6 +85,32 @@ class TestListTopics:
         assert "live" in slugs
         assert "dead" not in slugs
 
+    def test_list_filters_merged_by_default(self, client, db_session):
+        """I2-1: MERGED topics excluded from default list alongside ARCHIVED."""
+        _make_topic(db_session, slug="active-t", name="Active")
+        _make_topic(
+            db_session,
+            slug="merged-t",
+            name="Merged",
+            status=TopicStatus.MERGED,
+        )
+        resp = client.get("/api/v1/kb/topics")
+        slugs = [row["slug"] for row in resp.json()]
+        assert "active-t" in slugs
+        assert "merged-t" not in slugs
+
+    def test_list_merged_visible_with_explicit_status(self, client, db_session):
+        """I2-1: MERGED topics visible when explicitly requested."""
+        _make_topic(
+            db_session,
+            slug="merged-v",
+            name="MergedVisible",
+            status=TopicStatus.MERGED,
+        )
+        resp = client.get("/api/v1/kb/topics?status=merged")
+        slugs = [row["slug"] for row in resp.json()]
+        assert "merged-v" in slugs
+
     def test_list_filter_by_category(self, client, db_session):
         _make_topic(db_session, slug="ml", name="ML Topic", category="ml_ai")
         _make_topic(

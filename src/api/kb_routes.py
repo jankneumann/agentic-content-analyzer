@@ -284,7 +284,11 @@ async def list_topics(
         if status:
             query = query.filter(Topic.status == status)
         else:
-            query = query.filter(Topic.status != TopicStatus.ARCHIVED)
+            # Exclude both ARCHIVED and MERGED from the default view.
+            # MERGED topics are folded into another topic and shouldn't
+            # appear alongside active results. Users can still query them
+            # explicitly via ?status=merged.
+            query = query.filter(Topic.status.notin_([TopicStatus.ARCHIVED, TopicStatus.MERGED]))
 
         rows = (
             query.order_by(Topic.relevance_score.desc(), Topic.id.asc())

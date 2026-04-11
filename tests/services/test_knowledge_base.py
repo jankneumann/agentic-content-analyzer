@@ -160,7 +160,7 @@ class TestCompilationFlow:
         summary = await kb_service.compile()
         assert summary.topics_compiled == 1
 
-        refreshed = db_session.query(Topic).get(existing_id)
+        refreshed = db_session.get(Topic, existing_id)
         assert refreshed is not None
         # Article was recompiled — version should have advanced
         assert refreshed.article_version == 2

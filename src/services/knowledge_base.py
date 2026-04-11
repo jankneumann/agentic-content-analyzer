@@ -498,7 +498,7 @@ class KnowledgeBaseService:
                 best_id = row[0]
 
         if best_id is not None and best_score >= threshold:
-            return self.db.query(Topic).get(best_id), embedding
+            return self.db.get(Topic, best_id), embedding
 
         return None, embedding
 
