@@ -36,8 +36,11 @@ jobs:
       - name: Run pip-audit
         run: |
           uv pip install pip-audit --system
-          pip-audit --desc on --format json --output pip-audit-results.json || true
-          pip-audit --desc on
+          # CVE-2026-1839: transformers Trainer._load_rng_state() RCE — we only use
+          # sentence-transformers for inference (embedding generation), never training.
+          # The Trainer class is never instantiated; transformers is a transitive dep.
+          pip-audit --desc on --ignore-vuln CVE-2026-1839 --format json --output pip-audit-results.json || true
+          pip-audit --desc on --ignore-vuln CVE-2026-1839
         continue-on-error: false
 
   dependency-audit-node:

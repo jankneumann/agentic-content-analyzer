@@ -1,0 +1,104 @@
+{
+  "review_type": "implementation",
+  "target": "whole-branch",
+  "reviewer_vendor": "claude-opus-4-6",
+  "review_date": "2026-04-10",
+  "commit": "8f15fb2",
+  "findings": [
+    {
+      "id": 1,
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "KBQAService._search_topics and MCP search_knowledge_base filter only != ARCHIVED, not NOT IN (ARCHIVED, MERGED). After iteration 2 fixed the API list endpoint to exclude MERGED topics, these two search paths are now inconsistent — Q&A could surface merged topics in answers, and MCP could return merged topics in search results.",
+      "resolution": "Change both Topic.status != TopicStatus.ARCHIVED to Topic.status.notin_([TopicStatus.ARCHIVED, TopicStatus.MERGED]) in src/services/kb_qa.py:167 and src/mcp_server.py:2188.",
+      "disposition": "fix",
+      "package_id": "whole-branch",
+      "files": ["src/services/kb_qa.py", "src/mcp_server.py"]
+    },
+    {
+      "id": 2,
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "KBQAService.query() has no timeout on the LLM call (llm_router.generate). If the upstream LLM hangs, the Q&A query hangs indefinitely. The compile service was fixed in iteration 1 with asyncio.wait_for, but the Q&A service was not.",
+      "resolution": "Wrap the llm_router.generate call in kb_qa.py with asyncio.wait_for(timeout=120) or a configurable timeout setting.",
+      "disposition": "fix",
+      "package_id": "whole-branch",
+      "files": ["src/services/kb_qa.py"]
+    },
+    {
+      "id": 3,
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "KBQAService._build_topics_block reads full article_md for up to 10 topics and injects them ALL into the LLM prompt. If articles average 500 words each, 10 articles = 5000 words = ~6500 tokens — approaching or exceeding the LLM max_tokens budget (1200 output tokens). No per-article truncation to keep total prompt size bounded.",
+      "resolution": "Truncate each article to the first ~300 words in _build_topics_block. Add a comment documenting the budget rationale.",
+      "disposition": "fix",
+      "package_id": "whole-branch",
+      "files": ["src/services/kb_qa.py"]
+    },
+    {
+      "id": 4,
+      "type": "performance",
+      "criticality": "medium",
+      "description": "ObsidianExporter.export_topics iterates source_content_ids and calls session.get(Content, cid) individually for each content ID. For a topic with N source content items, this is N individual SELECT queries (N+1 pattern). At scale (100+ source items per topic * 50+ topics), this degrades export performance significantly.",
+      "resolution": "Batch-load all content IDs for a topic using Content.id.in_(content_ids) in a single query, then index the results by ID for O(1) lookup per extract.",
+      "disposition": "fix",
+      "package_id": "whole-branch",
+      "files": ["src/sync/obsidian_exporter.py"]
+    },
+    {
+      "id": 5,
+      "type": "observability",
+      "criticality": "low",
+      "description": "KBQAService.query() has no structured logging — no record of how many topics matched, which were selected, or LLM call duration. The compile service has run_id + structured logging (added in iteration 1), but Q&A is silent.",
+      "resolution": "Add logger.info with question length, topics_matched count, topics_selected count, and elapsed_seconds after the LLM call.",
+      "disposition": "accept",
+      "package_id": "whole-branch",
+      "files": ["src/services/kb_qa.py"]
+    },
+    {
+      "id": 6,
+      "type": "performance",
+      "criticality": "low",
+      "description": "KBHealthService._find_merge_candidates uses _article_similarity (which re-tokenizes each article per pair) instead of the pre-tokenized _tokenize + _jaccard pattern added in iteration 1 for the compile service's merge detection.",
+      "resolution": "Refactor _find_merge_candidates to import and use _tokenize/_jaccard from knowledge_base.py. Low priority since health checks are infrequent manual operations.",
+      "disposition": "accept",
+      "package_id": "whole-branch",
+      "files": ["src/services/kb_health.py"]
+    },
+    {
+      "id": 7,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "ObsidianExporter._render_topic_body opens a second Session(self._engine) to look up related topics by ID. This is correct but means related-topic lookups use a separate transaction from the outer export loop. Uncommitted changes in the outer session are invisible.",
+      "resolution": "Pass the existing session as a parameter or accept the minor inconsistency. Low impact since the export phase is read-only against stable data.",
+      "disposition": "accept",
+      "package_id": "whole-branch",
+      "files": ["src/sync/obsidian_exporter.py"]
+    },
+    {
+      "id": 8,
+      "type": "compatibility",
+      "criticality": "low",
+      "description": "pyproject.toml mypy override was extended to cover src.cli.*, src.agents.*, src.queue.*, src.sync.*, src.mcp_server. This is a broader change than needed for KB alone — it loosens typing for all code in those modules. Justified by pre-existing errors in those modules, but worth noting.",
+      "resolution": "Acceptable as-is. The loosened policy is consistent with existing src.services.*/src.api.* overrides. Revert only if CI mypy is stricter.",
+      "disposition": "accept",
+      "package_id": "whole-branch",
+      "files": ["pyproject.toml"]
+    }
+  ],
+  "summary": {
+    "total_findings": 8,
+    "by_criticality": {
+      "critical": 0,
+      "high": 0,
+      "medium": 4,
+      "low": 4
+    },
+    "by_disposition": {
+      "fix": 4,
+      "accept": 4,
+      "escalate": 0,
+      "regenerate": 0
+    }
+  }
+}

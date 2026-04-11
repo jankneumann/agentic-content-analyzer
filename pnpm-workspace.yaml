@@ -2,3 +2,12 @@
 # This enables monorepo support for the frontend alongside the Python backend
 packages:
   - "web"
+
+# Force secure versions of transitive dependencies that upstream chains
+# haven't bumped yet. Keep this list small and delete entries as soon as
+# the upstream transitive dep crosses the fixed version naturally.
+overrides:
+  # serialize-javascript <7.0.3 allowed RCE via RegExp.flags (GHSA-76p7-773f-r4q5)
+  # and <7.0.5 had CPU-exhaustion DoS. Pulled in via:
+  #   vite-plugin-pwa > workbox-build > @rollup/plugin-terser > serialize-javascript
+  serialize-javascript: ">=7.0.5"
