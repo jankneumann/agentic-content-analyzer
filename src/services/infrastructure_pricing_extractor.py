@@ -310,14 +310,14 @@ class InfrastructurePricingExtractor:
         try:
             data = json.loads(text)
         except json.JSONDecodeError as e:
-            raise ValueError(f"LLM returned invalid JSON for {service_key}: {e}\n{text[:500]}") from e
+            raise ValueError(
+                f"LLM returned invalid JSON for {service_key}: {e}\n{text[:500]}"
+            ) from e
 
         if not isinstance(data, dict):
             raise ValueError(f"Expected JSON object for {service_key}, got {type(data).__name__}")
 
-        logger.info(
-            f"Extracted {service_key} pricing: {len(data.get('plans', {}))} plans"
-        )
+        logger.info(f"Extracted {service_key} pricing: {len(data.get('plans', {}))} plans")
         return data
 
     def _diff_service(
@@ -333,11 +333,13 @@ class InfrastructurePricingExtractor:
 
         for plan_name, ext_plan in extracted_plans.items():
             if plan_name not in current_plans:
-                report.new_plans.append({
-                    "service": service_key,
-                    "plan": plan_name,
-                    "data": ext_plan,
-                })
+                report.new_plans.append(
+                    {
+                        "service": service_key,
+                        "plan": plan_name,
+                        "data": ext_plan,
+                    }
+                )
                 continue
 
             cur_plan = current_plans[plan_name]
