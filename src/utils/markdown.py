@@ -65,6 +65,10 @@ KEBAB_CAMEL_PATTERN1 = re.compile(r"[-_]")
 KEBAB_CAMEL_PATTERN2 = re.compile(r"([a-z])([A-Z])")
 NORMALIZE_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
 
+# Patterns for parsing sections
+HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$")
+LIST_ITEM_PATTERN = re.compile(r"^[-*+]\s+(.+)$")
+
 
 def parse_sections(markdown: str) -> list[MarkdownSection]:
     """Parse markdown content into structured sections.
@@ -104,7 +108,7 @@ def parse_sections(markdown: str) -> list[MarkdownSection]:
         line = lines[i]
 
         # Check for heading
-        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+        heading_match = HEADING_PATTERN.match(line)
         if heading_match:
             level = len(heading_match.group(1))
             heading = heading_match.group(2).strip()
@@ -132,7 +136,7 @@ def parse_sections(markdown: str) -> list[MarkdownSection]:
             current = section_stack[-1]
 
             # Check for list item
-            list_match = re.match(r"^[-*+]\s+(.+)$", line)
+            list_match = LIST_ITEM_PATTERN.match(line)
             if list_match:
                 current.items.append(list_match.group(1).strip())
             elif line.strip():
