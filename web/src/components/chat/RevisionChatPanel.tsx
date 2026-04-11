@@ -350,9 +350,9 @@ export function RevisionChatPanel({
                   size="sm"
                   onClick={handleFetchDebugContext}
                   className="h-7 w-7 p-0"
+                  aria-label="View LLM context"
                 >
                   <Bug className="text-muted-foreground h-4 w-4" />
-                  <span className="sr-only">View LLM context</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>View LLM context</TooltipContent>

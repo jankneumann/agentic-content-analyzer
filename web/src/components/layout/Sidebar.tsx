@@ -82,9 +82,9 @@ function NavItemComponent({
               ),
             }}
             className={baseClasses}
+            aria-label={item.title}
           >
             <Icon className="h-5 w-5" />
-            <span className="sr-only">{item.title}</span>
           </Link>
         </TooltipTrigger>
         <TooltipContent side="right" className="flex items-center gap-4">

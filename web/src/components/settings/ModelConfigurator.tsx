@@ -179,9 +179,9 @@ function StepRow({
                   className="h-8 w-8 p-0 shrink-0"
                   onClick={() => resetModel.mutate(step.step)}
                   disabled={resetModel.isPending}
+                  aria-label="Reset to default"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  <span className="sr-only">Reset to default</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -201,7 +201,7 @@ export function ModelConfigurator() {
   // Group available models by family
   const modelsByFamily = useMemo(
     () => (data?.available_models ? groupByFamily(data.available_models) : {}),
-    [data?.available_models]
+    [data]
   )
   const families = useMemo(
     () => Object.keys(modelsByFamily).sort(),
