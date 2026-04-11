@@ -2185,7 +2185,7 @@ def search_knowledge_base(query: str, limit: int = 10) -> str:
         rows = (
             db.query(Topic)
             .filter(
-                Topic.status != TopicStatus.ARCHIVED,
+                Topic.status.notin_([TopicStatus.ARCHIVED, TopicStatus.MERGED]),
                 or_(
                     Topic.name.ilike(like),
                     Topic.summary.ilike(like),

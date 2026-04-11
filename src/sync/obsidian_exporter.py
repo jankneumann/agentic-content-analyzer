@@ -775,7 +775,7 @@ class ObsidianExporter:
                     topic_dir = _safe_segment(topic.slug)
                     rel_path = f"{category_dir}/{topic_dir}/_overview.md"
 
-                    body = self._render_topic_body(topic)
+                    body = self._render_topic_body(topic, session)
                     fm = build_frontmatter(
                         aca_id=aca_id,
                         aca_type="topic",
@@ -808,22 +808,32 @@ class ObsidianExporter:
                     else:
                         stats.skipped += 1
 
-                    # Source extracts (one per content_id)
-                    for cid in topic.source_content_ids or []:
-                        try:
-                            content = session.get(Content, cid)
-                            if content is None:
-                                continue
-                            self._export_topic_source_extract(
-                                topic, content, category_dir, topic_dir
-                            )
-                        except Exception:
-                            logger.warning(
-                                "Topic source extract failed: topic=%s content=%s",
-                                topic.slug,
-                                cid,
-                                exc_info=True,
-                            )
+                    # Source extracts — batch-load to avoid N+1
+                    content_ids = list(topic.source_content_ids or [])
+                    if content_ids:
+                        from sqlalchemy import select as sa_select
+
+                        content_rows = (
+                            session.execute(sa_select(Content).where(Content.id.in_(content_ids)))
+                            .scalars()
+                            .all()
+                        )
+                        content_by_id = {c.id: c for c in content_rows}
+                        for cid in content_ids:
+                            try:
+                                content_item = content_by_id.get(cid)
+                                if content_item is None:
+                                    continue
+                                self._export_topic_source_extract(
+                                    topic, content_item, category_dir, topic_dir
+                                )
+                            except Exception:
+                                logger.warning(
+                                    "Topic source extract failed: topic=%s content=%s",
+                                    topic.slug,
+                                    cid,
+                                    exc_info=True,
+                                )
 
                 except Exception:
                     logger.warning("Failed to export topic %s", topic.slug, exc_info=True)
@@ -833,8 +843,14 @@ class ObsidianExporter:
 
         return stats
 
-    def _render_topic_body(self, topic: Any) -> str:
-        """Render the markdown body of a topic _overview.md file."""
+    def _render_topic_body(self, topic: Any, session: Any = None) -> str:
+        """Render the markdown body of a topic _overview.md file.
+
+        Args:
+            topic: The Topic ORM instance.
+            session: SQLAlchemy session for looking up related topics.
+                     Falls back to opening a new session if not provided.
+        """
         lines = [f"# {topic.name}", ""]
 
         if topic.summary:
@@ -851,20 +867,24 @@ class ObsidianExporter:
         if topic.related_topic_ids:
             lines.append("## Related Topics")
             lines.append("")
-            from sqlalchemy.orm import Session
-
             from src.models.topic import Topic as TopicModel
 
-            with Session(self._engine) as session:
+            def _lookup(sess: Any) -> None:
                 related = (
-                    session.query(TopicModel)
-                    .filter(TopicModel.id.in_(topic.related_topic_ids))
-                    .all()
+                    sess.query(TopicModel).filter(TopicModel.id.in_(topic.related_topic_ids)).all()
                 )
                 for r in related:
                     cat_dir = _safe_segment(r.category or "uncategorized")
                     slug_dir = _safe_segment(r.slug)
                     lines.append(f"- [[../../{cat_dir}/{slug_dir}/_overview|{r.name}]]")
+
+            if session is not None:
+                _lookup(session)
+            else:
+                from sqlalchemy.orm import Session as SASession
+
+                with SASession(self._engine) as fallback_session:
+                    _lookup(fallback_session)
             lines.append("")
 
         return "\n".join(lines) + "\n"
