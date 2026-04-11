@@ -27,7 +27,7 @@ pip install uv
 
 2. **Clone and setup**:
 ```bash
-cd agentic-newsletter-aggregator
+cd agentic-content-analyzer
 
 # Create virtual environment with uv
 uv venv
