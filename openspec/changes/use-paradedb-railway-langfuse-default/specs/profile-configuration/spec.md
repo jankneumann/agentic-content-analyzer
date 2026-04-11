@@ -47,7 +47,7 @@ This modifies the existing requirement to reflect the change from `noop`/`braint
 
 #### Scenario: Railway profile documents ParadeDB GHCR image
 - **GIVEN** `profiles/railway.yaml` template
-- **THEN** YAML comments SHALL document that Railway database uses the ParadeDB GHCR image (`ghcr.io/jankneumann/newsletter-postgres:17-railway`)
+- **THEN** YAML comments SHALL document that Railway database uses the ParadeDB GHCR image (`ghcr.io/jankneumann/aca-postgres:17-railway`)
 - **AND** YAML comments SHALL list the pre-installed extensions: pgvector, pg_search, pgmq, pg_cron
 
 #### Scenario: Graceful degradation when Langfuse credentials are missing

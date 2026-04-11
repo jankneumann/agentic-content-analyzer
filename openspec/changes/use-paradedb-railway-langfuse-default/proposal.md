@@ -17,7 +17,7 @@ Both gaps are configuration-level — the code infrastructure is already in plac
 ## What Changes
 
 ### ParadeDB on Railway
-- Publish the existing custom ParadeDB image (`railway/postgres/Dockerfile`) to GHCR as `ghcr.io/jankneumann/newsletter-postgres:17-railway`
+- Publish the existing custom ParadeDB image (`railway/postgres/Dockerfile`) to GHCR as `ghcr.io/jankneumann/aca-postgres:17-railway`
 - Update `profiles/railway.yaml` to reference the GHCR image for Railway database deployment
 - Ensure `railway_pg_search_enabled: true` is set (already the default) so BM25 auto-detection uses ParadeDB strategy
 - Document the GHCR publish workflow and Railway deployment steps

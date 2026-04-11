@@ -16,7 +16,7 @@
 
 ### D2: GHCR Pre-Built Image for Railway ParadeDB
 
-**Decision**: Publish the existing `railway/postgres/Dockerfile` as a pre-built image to GitHub Container Registry (`ghcr.io/jankneumann/newsletter-postgres:17-railway`). Railway references this image directly.
+**Decision**: Publish the existing `railway/postgres/Dockerfile` as a pre-built image to GitHub Container Registry (`ghcr.io/jankneumann/aca-postgres:17-railway`). Railway references this image directly.
 
 **Rationale**: Pre-built images deploy faster (no build step on Railway), avoid build timeouts on Hobby plan, and ensure deterministic deployments. The Dockerfile already exists and is tested locally.
 
@@ -117,14 +117,14 @@
 echo $GHCR_PAT | docker login ghcr.io -u jankneumann --password-stdin
 
 # 2. Build the image
-docker build -t ghcr.io/jankneumann/newsletter-postgres:17-railway ./railway/postgres/
+docker build -t ghcr.io/jankneumann/aca-postgres:17-railway ./railway/postgres/
 
 # 3. Push to GHCR
-docker push ghcr.io/jankneumann/newsletter-postgres:17-railway
+docker push ghcr.io/jankneumann/aca-postgres:17-railway
 
 # 4. Verify
-docker pull ghcr.io/jankneumann/newsletter-postgres:17-railway
-docker run --rm ghcr.io/jankneumann/newsletter-postgres:17-railway postgres --version
+docker pull ghcr.io/jankneumann/aca-postgres:17-railway
+docker run --rm ghcr.io/jankneumann/aca-postgres:17-railway postgres --version
 ```
 
 Future: Automate via GitHub Actions when `railway/postgres/Dockerfile` changes.

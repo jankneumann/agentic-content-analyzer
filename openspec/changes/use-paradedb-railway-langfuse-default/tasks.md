@@ -127,9 +127,9 @@
   **Files**: `railway/postgres/Dockerfile`
   **Details**:
   - Build from existing `railway/postgres/Dockerfile`
-  - Tag as `ghcr.io/jankneumann/newsletter-postgres:17-railway`
+  - Tag as `ghcr.io/jankneumann/aca-postgres:17-railway`
   - Push to GHCR (requires PAT with `write:packages` scope)
-  - Verify image is pullable: `docker pull ghcr.io/jankneumann/newsletter-postgres:17-railway`
+  - Verify image is pullable: `docker pull ghcr.io/jankneumann/aca-postgres:17-railway`
   - **This is a manual step** — operator executes on their machine
 
 - [ ] 2.3 Update Railway deployment documentation
