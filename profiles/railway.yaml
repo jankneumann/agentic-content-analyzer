@@ -8,11 +8,17 @@
 #   - MINIO_ROOT_USER, MINIO_ROOT_PASSWORD (if MinIO service added)
 #   - PORT (for the web service)
 #
+# Database: ParadeDB GHCR image (ghcr.io/jankneumann/aca-postgres:17-railway)
+#   Pre-installed extensions: pgvector, pg_search, pgmq, pg_cron
+#   See railway/postgres/README.md for deployment instructions
+#
 # Required secrets in .secrets.yaml or environment:
 #   - NEO4J_AURADB_URI
 #   - NEO4J_AURADB_PASSWORD
-#   - BRAINTRUST_API_KEY (for observability)
+#   - LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY (for observability)
 #   - ANTHROPIC_API_KEY
+#
+# Override to Braintrust: set OBSERVABILITY_PROVIDER=braintrust and BRAINTRUST_API_KEY
 #
 # Usage:
 #   Set PROFILE=railway in Railway service variables
@@ -25,7 +31,7 @@ providers:
   database: railway
   neo4j: auradb
   storage: railway
-  observability: braintrust
+  observability: langfuse
 
 settings:
   environment: production
@@ -63,14 +69,12 @@ settings:
     railway_minio_bucket: "${RAILWAY_MINIO_BUCKET:-newsletter-files}"
 
   observability:
-    # Braintrust for LLM observability
-    braintrust_api_key: "${BRAINTRUST_API_KEY}"
-    braintrust_project_name: "AI Content Analyzer"
+    # Langfuse Cloud for LLM observability
+    langfuse_public_key: "${LANGFUSE_PUBLIC_KEY}"
+    langfuse_secret_key: "${LANGFUSE_SECRET_KEY}"
 
-    # Enable OTel infrastructure tracing
     otel_enabled: true
     otel_service_name: newsletter-aggregator
-    otel_exporter_otlp_endpoint: "https://api.braintrust.dev/otel/v1/traces"
 
   api_keys:
     anthropic_api_key: "${ANTHROPIC_API_KEY}"

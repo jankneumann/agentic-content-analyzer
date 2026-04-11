@@ -23,7 +23,7 @@ providers:
   database: local      # local, supabase, neon, railway
   neo4j: local         # local, auradb
   storage: local       # local, s3, supabase, railway
-  observability: noop  # noop, opik, braintrust, otel, langfuse
+  observability: langfuse  # noop, opik, braintrust, otel, langfuse
 
 # =============================================================================
 # Settings
@@ -68,7 +68,7 @@ settings:
   # Observability Settings
   # ---------------------------------------------------------------------------
   observability:
-    otel_enabled: false
+    otel_enabled: true
     otel_service_name: newsletter-aggregator
 
   # ---------------------------------------------------------------------------
