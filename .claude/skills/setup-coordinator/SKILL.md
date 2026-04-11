@@ -172,7 +172,7 @@ make gemini-wrapper-install  # Symlinks gemini-coord to ~/.local/bin/
 | Codex CLI | `~/.codex/hooks.json` | SessionStart, Stop, SessionEnd |
 | Gemini CLI | `gemini-coord` wrapper | register → run → report → deregister |
 
-Hook scripts use absolute paths to the coordinator's `scripts/` directory, so they resolve correctly regardless of the current working directory.
+Hook scripts and `gemini-coord` use absolute paths to the coordinator's `scripts/` directory, so they resolve correctly regardless of the current working directory. They also source `agent-coordinator/.env.cloud` for `COORDINATION_API_URL` and `COORDINATION_API_KEY` — unlike MCP servers (which get env vars baked in at registration), hooks and wrappers run as standalone shell processes and need these values at runtime.
 
 For Gemini, use `gemini-coord` instead of bare `gemini` to get coordinator integration:
 ```bash
