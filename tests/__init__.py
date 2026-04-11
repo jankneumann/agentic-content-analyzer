@@ -1,1 +1,1 @@
-"""Test suite for agentic-newsletter-aggregator."""
+"""Test suite for agentic-content-analyzer."""

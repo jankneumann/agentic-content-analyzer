@@ -1,4 +1,4 @@
-title = "agentic-newsletter-aggregator gitleaks config"
+title = "agentic-content-analyzer gitleaks config"
 
 # =============================================================================
 # Allowlist Maintenance Guide
@@ -48,6 +48,13 @@ title = "agentic-newsletter-aggregator gitleaks config"
     # Test suite — test files use fake keys like "test-key", "test-admin-key",
     # "test-key-for-ci" as fixture values. These are not real credentials.
     '''tests/''',
+
+    # Agent skill test fixtures — the session-log sanitizer has test files
+    # (e.g. test_sanitize_session_log.py) that intentionally contain fake
+    # secret patterns like "sk-ant-api03-abcdef…", "ghp_1234567890abcdef…",
+    # and "AKIAIOSFODNN7EXAMPLE" to verify the sanitizer strips them.
+    # These live under .claude/, .codex/, .gemini/, and .agents/ skill dirs.
+    '''\.(claude|codex|gemini|agents)/skills/.*/scripts/test_.*\.py''',
 
     # CI workflow files — use hardcoded placeholder values for CI runs:
     #   ANTHROPIC_API_KEY: test-key-for-ci

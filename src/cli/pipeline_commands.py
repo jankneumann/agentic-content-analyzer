@@ -509,6 +509,48 @@ def _run_digest_stage(
         }
 
 
+def _maybe_run_kb_compile_stage() -> dict:
+    """Optional KB compilation step.
+
+    Runs ``KnowledgeBaseService.compile()`` if ``settings.kb_pipeline_enabled``
+    is True. Otherwise returns ``{"status": "skipped"}`` and does NOT raise.
+    Failures are reported but do not abort the pipeline.
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    if not getattr(settings, "kb_pipeline_enabled", False):
+        return {"status": "skipped", "reason": "kb_pipeline_enabled=false"}
+
+    typer.echo("\nStage 2.5/3: KB Compilation (optional)")
+
+    try:
+        from src.services.knowledge_base import (
+            KBCompileLockError,
+            KnowledgeBaseService,
+        )
+        from src.storage.database import get_db
+
+        async def _run() -> dict:
+            with get_db() as db:
+                service = KnowledgeBaseService(db)
+                summary = await service.compile()
+                return summary.to_dict()
+
+        result = asyncio.run(_run())
+        typer.echo(
+            f"  KB compile: found={result['topics_found']} "
+            f"compiled={result['topics_compiled']} failed={result['topics_failed']}"
+        )
+        return {"status": "completed", **result}
+    except KBCompileLockError as exc:
+        typer.echo(f"  KB compile skipped: {exc}")
+        return {"status": "skipped", "reason": str(exc)}
+    except Exception as exc:
+        typer.echo(f"  KB compile failed (non-fatal): {exc}")
+        return {"status": "failed", "error": str(exc)}
+
+
 @app.command("daily")
 def daily(
     date: Annotated[
@@ -612,6 +654,9 @@ def daily(
         if is_json_mode():
             output_result(pipeline_result, success=False)
         raise typer.Exit(1)
+
+    # Stage 2.5: Optional KB Compilation (gated by settings.kb_pipeline_enabled)
+    pipeline_result["stages"]["kb_compile"] = _maybe_run_kb_compile_stage()
 
     # Stage 3: Digest Creation
     typer.echo("\nStage 3/3: Digest Creation")

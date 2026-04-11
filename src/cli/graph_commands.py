@@ -44,6 +44,7 @@ def extract_entities(
         from src.models.content import Content
         from src.models.summary import Summary
         from src.storage.database import get_db
+        from src.storage.graph_provider import GraphBackendUnavailableError
         from src.storage.graphiti_client import GraphitiClient
 
         # Load content and its summary from database
@@ -70,11 +71,15 @@ def extract_entities(
             content_title = content.title
 
             # Extract entities via GraphitiClient
-            client = GraphitiClient()
-            try:
-                run_async(client.add_content_summary(content, summary))
-            finally:
-                client.close()
+
+            async def _extract() -> None:
+                client = await GraphitiClient.create()
+                try:
+                    await client.add_content_summary(content, summary)
+                finally:
+                    client.close()
+
+            run_async(_extract())
 
         if is_json_mode():
             output_result(
@@ -88,6 +93,9 @@ def extract_entities(
         else:
             console.print(f"[green]Successfully extracted entities from:[/green] {content_title}")
 
+    except GraphBackendUnavailableError as e:
+        console.print(f"[red]Error:[/red] Graph backend is unavailable: {e}")
+        raise typer.Exit(1)
     except ConnectionError as e:
         console.print(f"[red]Error:[/red] Graph database is unavailable: {e}")
         raise typer.Exit(1)
