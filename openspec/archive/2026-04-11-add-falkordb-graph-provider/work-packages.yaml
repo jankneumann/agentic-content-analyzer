@@ -1,0 +1,259 @@
+---
+feature_id: add-falkordb-graph-provider
+tier: coordinated
+packages:
+
+  - id: wp-contracts
+    title: Generate and validate contracts
+    priority: 1
+    tasks: []  # Contract files already created during planning
+    scope:
+      write_allow:
+        - "openspec/changes/add-falkordb-graph-provider/contracts/**"
+      read_allow:
+        - "openspec/changes/add-falkordb-graph-provider/**"
+        - "src/storage/graphiti_client.py"
+        - "src/config/settings.py"
+      deny: []
+    locks:
+      files:
+        - "openspec/changes/add-falkordb-graph-provider/contracts/"
+      keys:
+        - "contract:graph-provider-protocol"
+        - "contract:settings-fields"
+      ttl_minutes: 60
+      reason: "Contract generation for graph provider abstraction"
+    dependencies: []
+    verification: "tier-c"
+
+  - id: wp-provider-core
+    title: GraphDBProvider protocol, Neo4j implementation, settings
+    priority: 2
+    tasks:
+      - "1.1"
+      - "1.3"
+      - "1.4"
+      - "1.6"
+      - "1.9"
+    scope:
+      write_allow:
+        - "src/storage/graph_provider.py"
+        - "src/config/settings.py"
+        - "src/config/profiles.py"
+        - "src/services/connection_checker.py"
+        - "src/cli/manage_commands.py"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "tests/unit/test_graph_provider.py"
+        - "tests/unit/test_settings_graph*.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-falkordb-graph-provider/**"
+        - "profiles/**"
+      deny:
+        - "src/storage/graphiti_client.py"
+        - "src/storage/falkordb_provider.py"
+        - "web/**"
+    locks:
+      files:
+        - "src/storage/graph_provider.py"
+        - "src/config/settings.py"
+        - "pyproject.toml"
+      keys:
+        - "module:src.storage.graph_provider"
+        - "settings:graphdb_provider"
+        - "settings:falkordb_*"
+        - "dep:graphiti-core"
+      ttl_minutes: 120
+      reason: "Core provider protocol and Neo4j implementation"
+    dependencies:
+      - wp-contracts
+    verification: "tier-a"
+
+  - id: wp-graphiti-client
+    title: Refactor GraphitiClient to async factory + provider
+    priority: 3
+    tasks:
+      - "1.2"
+      - "1.5"
+      - "1.10"
+    scope:
+      write_allow:
+        - "src/storage/graphiti_client.py"
+        - "tests/unit/test_graphiti_client*.py"
+        - "tests/cli/test_graph*.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-falkordb-graph-provider/**"
+      deny:
+        - "src/storage/graph_provider.py"
+        - "src/storage/falkordb_provider.py"
+        - "src/config/settings.py"
+        - "web/**"
+    locks:
+      files:
+        - "src/storage/graphiti_client.py"
+      keys:
+        - "module:src.storage.graphiti_client"
+      ttl_minutes: 120
+      reason: "GraphitiClient async factory and provider integration"
+    dependencies:
+      - wp-provider-core
+    verification: "tier-a"
+
+  - id: wp-reference-sync
+    title: Migrate ReferenceGraphSync to provider
+    priority: 3
+    tasks:
+      - "1.7"
+      - "1.8"
+    scope:
+      write_allow:
+        - "src/services/reference_graph_sync.py"
+        - "tests/unit/test_reference_graph_sync*.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-falkordb-graph-provider/**"
+      deny:
+        - "src/storage/graph_provider.py"
+        - "src/storage/graphiti_client.py"
+        - "web/**"
+    locks:
+      files:
+        - "src/services/reference_graph_sync.py"
+      keys:
+        - "module:src.services.reference_graph_sync"
+      ttl_minutes: 90
+      reason: "Reference sync provider migration"
+    dependencies:
+      - wp-provider-core
+    verification: "tier-b"
+
+  - id: wp-falkordb-provider
+    title: FalkorDB provider implementation + infrastructure
+    priority: 4
+    tasks:
+      - "2.1"
+      - "2.2"
+      - "2.3"
+      - "2.4"
+      - "2.5"
+      - "2.6"
+      - "2.7"
+    scope:
+      write_allow:
+        - "src/storage/falkordb_provider.py"
+        - "docker-compose.yml"
+        - "tests/helpers/falkordb_lite.py"
+        - "tests/integration/fixtures/falkordb.py"
+        - "tests/integration/test_falkordb*.py"
+        - "tests/integration/test_reference_sync_falkordb*.py"
+        - "profiles/*.yaml"
+        - "Makefile"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-falkordb-graph-provider/**"
+        - "tests/**"
+      deny:
+        - "src/storage/graphiti_client.py"
+        - "src/storage/graph_provider.py"
+        - "web/**"
+    locks:
+      files:
+        - "src/storage/falkordb_provider.py"
+        - "docker-compose.yml"
+        - "tests/helpers/falkordb_lite.py"
+      keys:
+        - "module:src.storage.falkordb_provider"
+        - "infra:docker-compose:falkordb"
+        - "module:tests.helpers.falkordb_lite"
+      ttl_minutes: 120
+      reason: "FalkorDB provider and infrastructure"
+    dependencies:
+      - wp-provider-core
+      - wp-graphiti-client
+      - wp-reference-sync
+    verification: "tier-a"
+
+  - id: wp-export-import
+    title: Export/import abstraction for both backends
+    priority: 5
+    tasks:
+      - "3.1"
+      - "3.2"
+      - "3.3"
+      - "3.4"
+      - "3.5"
+      - "3.6"
+    scope:
+      write_allow:
+        - "src/sync/neo4j_exporter.py"
+        - "src/sync/neo4j_importer.py"
+        - "src/sync/models.py"
+        - "src/sync/pg_importer.py"
+        - "src/cli/sync_commands.py"
+        - "tests/unit/test_graph_export*.py"
+        - "tests/integration/test_graph_roundtrip*.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-falkordb-graph-provider/**"
+        - "tests/**"
+      deny:
+        - "src/storage/graphiti_client.py"
+        - "src/storage/graph_provider.py"
+        - "src/storage/falkordb_provider.py"
+        - "web/**"
+    locks:
+      files:
+        - "src/sync/neo4j_exporter.py"
+        - "src/sync/neo4j_importer.py"
+        - "src/sync/models.py"
+        - "src/cli/sync_commands.py"
+      keys:
+        - "module:src.sync.neo4j_exporter"
+        - "module:src.sync.neo4j_importer"
+        - "module:src.sync.models"
+        - "module:src.cli.sync_commands"
+      ttl_minutes: 120
+      reason: "Export/import file-level abstraction and implementations"
+    dependencies:
+      - wp-provider-core
+      - wp-falkordb-provider
+    verification: "tier-a"
+
+  - id: wp-integration
+    title: CLI updates, processor updates, docs, E2E validation
+    priority: 6
+    tasks:
+      - "4.1"
+      - "4.2"
+      - "4.3"
+      - "4.4"
+      - "4.5"
+      - "4.6"
+      - "4.7"
+    scope:
+      write_allow:
+        - "src/cli/graph_commands.py"
+        - "src/cli/adapters.py"
+        - "src/processors/theme_analyzer.py"
+        - "src/processors/historical_context.py"
+        - "src/agents/memory/strategies/graph.py"
+        - "Makefile"
+        - "docs/**"
+        - "CLAUDE.md"
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      files: []
+      keys:
+        - "integration:full-test-suite"
+      ttl_minutes: 180
+      reason: "Integration, docs, and E2E validation"
+    dependencies:
+      - wp-graphiti-client
+      - wp-reference-sync
+      - wp-falkordb-provider
+      - wp-export-import
+    verification: "tier-a"

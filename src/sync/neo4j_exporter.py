@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.sync.models import Neo4jManifest, Neo4jNodeRecord, Neo4jRelationshipRecord
+from src.sync.models import GraphManifest, GraphNodeRecord, GraphRelationshipRecord
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +85,11 @@ class Neo4jExporter:
         )
 
         # Build manifest
-        manifest = Neo4jManifest(
+        manifest = GraphManifest(
             exported_at=datetime.now(UTC),
+            node_labels=EXPORT_NODE_LABELS,
             nodes=node_counts,
+            relationship_types=EXPORT_RELATIONSHIP_TYPES,
             relationships=rel_counts,
         )
 
@@ -166,7 +168,7 @@ class Neo4jExporter:
                     )
                     continue
 
-                node_record = Neo4jNodeRecord(
+                node_record = GraphNodeRecord(
                     label=label,
                     uuid=str(uuid_val),
                     properties=_serialize_properties(properties),
@@ -197,7 +199,7 @@ class Neo4jExporter:
                 rel = record["r"]
                 properties = _filter_properties(dict(rel))
 
-                rel_record = Neo4jRelationshipRecord(
+                rel_record = GraphRelationshipRecord(
                     type=rel_type,
                     source_uuid=str(source_uuid),
                     target_uuid=str(target_uuid),

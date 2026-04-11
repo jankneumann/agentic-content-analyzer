@@ -21,7 +21,8 @@ description: Local development with OpenBao secrets management
 # Providers - same as local, but secrets come from OpenBao
 providers:
   database: local
-  neo4j: local
+  graphdb: neo4j       # top-level graph backend
+  neo4j: local         # kept for backward compat
   storage: local
   observability: noop
 
