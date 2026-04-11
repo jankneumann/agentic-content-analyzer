@@ -158,6 +158,9 @@ web:  ## Start the frontend dev server (Vite)
 	cd web && npm run dev
 
 dev:  ## Start both frontend and backend for development (requires tmux or run in separate terminals)
+	@echo "Note: Langfuse is the default observability provider. Start it first: make langfuse-up"
+	@echo "      If not running, traces are silently dropped (no impact on functionality)."
+	@echo ""
 	@echo "Starting development servers..."
 	@echo ""
 	@echo "Option 1: Run in separate terminals"
@@ -450,7 +453,7 @@ dev-staging:  ## Start dev servers with staging profile (remote backends + Brain
 	@echo "Verify connectivity:"
 	@echo "  make verify-staging"
 
-dev-langfuse:  ## Start dev servers with Langfuse tracing (requires: make langfuse-up)
+dev-langfuse:  ## Start dev servers with Langfuse tracing (equivalent to 'make dev' — Langfuse is now default)
 	@echo "Checking if Langfuse is running..."
 	@if ! curl -sf http://localhost:3100/api/public/health >/dev/null 2>&1; then \
 		echo ""; \
