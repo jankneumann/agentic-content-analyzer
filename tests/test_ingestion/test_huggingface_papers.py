@@ -290,6 +290,78 @@ class TestExtractAbstract:
         assert abstract is None
 
 
+# --- Published Date Extraction Tests ---
+
+
+class TestExtractPublishedDate:
+    """Tests for published date extraction."""
+
+    def test_time_datetime_element(self):
+        """Extracts date from <time datetime> element."""
+        from bs4 import BeautifulSoup
+
+        html = '<html><body><time datetime="2026-01-15T08:30:00Z">Jan 15</time></body></html>'
+        soup = BeautifulSoup(html, "html.parser")
+        dt = HuggingFacePapersClient._extract_published_date(soup, "2601.12345")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 1
+        assert dt.day == 15
+
+    def test_citation_date_meta(self):
+        """Extracts date from citation_date meta tag."""
+        from bs4 import BeautifulSoup
+
+        html = '<html><head><meta name="citation_date" content="2026-03-20"></head></html>'
+        soup = BeautifulSoup(html, "html.parser")
+        dt = HuggingFacePapersClient._extract_published_date(soup, "2603.12345")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 3
+
+    def test_og_published_time(self):
+        """Extracts date from OG article:published_time."""
+        from bs4 import BeautifulSoup
+
+        html = '<html><head><meta property="article:published_time" content="2026-04-10T12:00:00Z"></head></html>'
+        soup = BeautifulSoup(html, "html.parser")
+        dt = HuggingFacePapersClient._extract_published_date(soup, "2604.12345")
+        assert dt is not None
+        assert dt.month == 4
+
+    def test_arxiv_id_fallback(self):
+        """Falls back to arXiv ID prefix when no HTML date found."""
+        from bs4 import BeautifulSoup
+
+        html = "<html><body></body></html>"
+        soup = BeautifulSoup(html, "html.parser")
+        dt = HuggingFacePapersClient._extract_published_date(soup, "2401.12345")
+        assert dt is not None
+        assert dt.year == 2024
+        assert dt.month == 1
+        assert dt.day == 1
+
+    def test_returns_none_for_invalid_arxiv_id(self):
+        """Returns None when arXiv ID has invalid month."""
+        from bs4 import BeautifulSoup
+
+        html = "<html><body></body></html>"
+        soup = BeautifulSoup(html, "html.parser")
+        dt = HuggingFacePapersClient._extract_published_date(soup, "2413.12345")
+        assert dt is None
+
+    def test_time_element_takes_priority(self):
+        """HTML time element takes priority over arXiv ID fallback."""
+        from bs4 import BeautifulSoup
+
+        html = '<html><body><time datetime="2026-06-15">June 15</time></body></html>'
+        soup = BeautifulSoup(html, "html.parser")
+        dt = HuggingFacePapersClient._extract_published_date(soup, "2401.12345")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 6  # HTML date wins, not arXiv ID's January
+
+
 # --- Content Extraction Tests ---
 
 

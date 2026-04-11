@@ -38,6 +38,31 @@ _PAPER_PATH_RE = re.compile(r"/papers/(\d{4}\.\d{4,5}(?:v\d+)?)")
 # Base URL for resolving relative links
 _HF_BASE_URL = "https://huggingface.co"
 
+# Date formats encountered on HuggingFace and academic pages
+_DATE_FORMATS = [
+    "%Y-%m-%dT%H:%M:%S%z",
+    "%Y-%m-%dT%H:%M:%SZ",
+    "%Y-%m-%dT%H:%M:%S.%f%z",
+    "%Y-%m-%dT%H:%M:%S.%fZ",
+    "%Y-%m-%d",
+    "%Y/%m/%d",
+    "%B %d, %Y",
+    "%b %d, %Y",
+]
+
+
+def _parse_date(date_str: str) -> datetime | None:
+    """Parse a date string in various formats."""
+    for fmt in _DATE_FORMATS:
+        try:
+            dt = datetime.strptime(date_str.strip(), fmt)  # noqa: DTZ007
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return dt
+        except ValueError:
+            continue
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Result dataclasses
@@ -249,6 +274,9 @@ class HuggingFacePapersClient:
         if upvotes is not None:
             metadata["upvotes"] = upvotes
 
+        # Extract published date (HTML metadata → arXiv ID fallback → None)
+        published_date = self._extract_published_date(soup, paper.arxiv_id)
+
         content_hash = generate_markdown_hash(markdown_content)
 
         return ContentData(
@@ -258,7 +286,7 @@ class HuggingFacePapersClient:
             title=title,
             author=author,
             publication="HuggingFace Papers",
-            published_date=datetime.now(UTC),
+            published_date=published_date,
             markdown_content=markdown_content,
             links_json=links,
             metadata_json=metadata,
@@ -383,6 +411,55 @@ class HuggingFacePapersClient:
             text = el.get_text(strip=True)
             if text.isdigit():
                 return int(text)
+        return None
+
+    @staticmethod
+    def _extract_published_date(
+        soup: BeautifulSoup, arxiv_id: str
+    ) -> datetime | None:
+        """Extract publication date from page metadata or arXiv ID.
+
+        Tries in order:
+        1. <time datetime> element
+        2. citation_date / citation_publication_date meta tags
+        3. article:published_time Open Graph meta
+        4. arXiv ID prefix (YYMM → year-month, day=1)
+        5. None (ingested_at will be set automatically by the DB)
+        """
+        # Strategy 1: <time datetime> element
+        time_el = soup.find("time", attrs={"datetime": True})
+        if time_el and time_el.get("datetime"):
+            dt = _parse_date(str(time_el["datetime"]))
+            if dt:
+                return dt
+
+        # Strategy 2: citation_date meta tags (common on academic pages)
+        for name in ("citation_date", "citation_publication_date", "DC.date"):
+            meta = soup.find("meta", attrs={"name": name})
+            if meta and meta.get("content"):
+                dt = _parse_date(str(meta["content"]))
+                if dt:
+                    return dt
+
+        # Strategy 3: Open Graph article:published_time
+        og_time = soup.find("meta", property="article:published_time")
+        if og_time and og_time.get("content"):
+            dt = _parse_date(str(og_time["content"]))
+            if dt:
+                return dt
+
+        # Strategy 4: Derive approximate date from arXiv ID prefix
+        # Format: YYMM.NNNNN → year=20YY, month=MM
+        match = re.match(r"(\d{2})(\d{2})\.", arxiv_id)
+        if match:
+            try:
+                year = 2000 + int(match.group(1))
+                month = int(match.group(2))
+                if 1 <= month <= 12:
+                    return datetime(year, month, 1, tzinfo=UTC)
+            except (ValueError, OverflowError):
+                pass
+
         return None
 
 
