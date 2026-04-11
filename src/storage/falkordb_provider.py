@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -175,7 +176,7 @@ class FalkorDBGraphDBProvider:
         Raises:
             FileExistsError: If output_path exists and force is False.
         """
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from src.sync.models import GraphManifest, GraphNodeRecord, GraphRelationshipRecord
 
@@ -208,9 +209,7 @@ class FalkorDBGraphDBProvider:
                         for k, v in props.items()
                         if "embedding" not in k.lower() and "vector" not in k.lower()
                     }
-                    nodes.append(
-                        GraphNodeRecord(label=label, uuid=uuid, properties=filtered)
-                    )
+                    nodes.append(GraphNodeRecord(label=label, uuid=uuid, properties=filtered))
             node_counts[label] = len(nodes)
             all_nodes.extend(nodes)
 
@@ -238,7 +237,7 @@ class FalkorDBGraphDBProvider:
             all_rels.extend(rels)
 
         manifest = GraphManifest(
-            exported_at=datetime.now(timezone.utc).isoformat(),
+            exported_at=datetime.now(UTC).isoformat(),
             node_labels=node_labels,
             relationship_types=rel_types,
             nodes=node_counts,
@@ -300,9 +299,7 @@ class FalkorDBGraphDBProvider:
                         params: dict[str, Any] = {"uuid": uuid, **props}
                         query = f"MERGE (n:{label} {{uuid: $uuid}})"
                         if set_parts:
-                            query += (
-                                f" ON CREATE SET {set_parts} ON MATCH SET {set_parts}"
-                            )
+                            query += f" ON CREATE SET {set_parts} ON MATCH SET {set_parts}"
                         graph.query(query, params=params)
                     nodes_imported += 1
 
