@@ -1,0 +1,58 @@
+# Work Packages: use-paradedb-railway-langfuse-default
+# Tier: coordinated (single wp-main package — config-only change)
+
+packages:
+  - id: wp-main
+    name: "ParadeDB Railway + Langfuse Default — full scope"
+    description: |
+      Switch all profiles to Langfuse observability (self-hosted for local,
+      cloud for Railway/staging) and document ParadeDB GHCR image deployment
+      for Railway. Config-first approach: Langfuse defaults first (Phase 1),
+      then ParadeDB GHCR documentation (Phase 2), then validation (Phase 3).
+    tasks:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+      - "1.4"
+      - "1.5"
+      - "1.6"
+      - "1.7"
+      - "1.8"
+      - "1.9"
+      - "2.1"
+      - "2.2"
+      - "2.3"
+      - "2.4"
+      - "3.1"
+      - "3.2"
+      - "3.3"
+    priority: 1
+    dependencies: []
+    scope:
+      write_allow:
+        - "profiles/**"
+        - "docs/**"
+        - "Makefile"
+        - "CLAUDE.md"
+        - "railway/postgres/README.md"
+        - "tests/test_config/**"
+        - "tests/integration/test_railway_paradedb.py"
+      read_allow:
+        - "**"
+    verification: tier_b
+    locks:
+      files:
+        - "profiles/base.yaml"
+        - "profiles/local.yaml"
+        - "profiles/railway.yaml"
+        - "profiles/railway-neon.yaml"
+        - "profiles/staging.yaml"
+      keys:
+        - "config:profiles:base"
+        - "config:profiles:local"
+        - "config:profiles:railway"
+        - "config:profiles:railway-neon"
+        - "config:profiles:staging"
+        - "config:observability:default-provider"
+      ttl_minutes: 120
+      reason: "Profile observability defaults and Railway ParadeDB documentation"
