@@ -86,7 +86,7 @@ app.add_typer(evaluate_app, name="evaluate")
 def _version_callback(value: bool) -> None:
     if value:
         try:
-            version = importlib.metadata.version("agentic-newsletter-aggregator")
+            version = importlib.metadata.version("agentic-content-analyzer")
         except importlib.metadata.PackageNotFoundError:
             version = "0.1.0-dev"
         typer.echo(f"aca {version}")

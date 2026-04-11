@@ -13,7 +13,7 @@
 ```bash
 # Clone repository
 git clone <repository-url>
-cd agentic-newsletter-aggregator
+cd agentic-content-analyzer
 
 # Create virtual environment
 uv init

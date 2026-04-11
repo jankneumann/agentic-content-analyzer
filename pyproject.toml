@@ -1,5 +1,5 @@
 [project]
-name = "agentic-newsletter-aggregator"
+name = "agentic-content-analyzer"
 version = "0.1.0"
 description = "AI-powered newsletter aggregation and summarization system"
 authors = [
