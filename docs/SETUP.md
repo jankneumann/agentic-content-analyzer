@@ -1095,8 +1095,8 @@ The newsletter aggregator supports pluggable observability via a provider factor
 2. **Infrastructure Telemetry**: Auto-instruments FastAPI, SQLAlchemy, and httpx via OpenTelemetry
 
 ```bash
-# Provider selection (default: noop — zero overhead)
-OBSERVABILITY_PROVIDER=noop          # noop, opik, braintrust, or otel
+# Provider selection (default: langfuse)
+OBSERVABILITY_PROVIDER=langfuse      # langfuse, noop, opik, braintrust, or otel
 
 # OpenTelemetry infrastructure (auto-instrumentation)
 OTEL_ENABLED=false                   # Enable OTel auto-instrumentation
@@ -1115,7 +1115,12 @@ OPIK_API_KEY=                        # Comet Cloud API key
 OPIK_WORKSPACE=                      # Comet Cloud workspace
 OPIK_PROJECT_NAME=newsletter-aggregator
 
-# Braintrust (cloud)
+# Langfuse (default — self-hosted or cloud)
+LANGFUSE_PUBLIC_KEY=                 # From Langfuse Settings > API Keys
+LANGFUSE_SECRET_KEY=                 # From Langfuse Settings > API Keys
+LANGFUSE_BASE_URL=https://cloud.langfuse.com  # Or http://localhost:3100 for self-hosted
+
+# Braintrust (cloud — available via OBSERVABILITY_PROVIDER=braintrust override)
 BRAINTRUST_API_KEY=                  # Required when using braintrust provider
 BRAINTRUST_PROJECT_NAME=newsletter-aggregator
 BRAINTRUST_API_URL=https://api.braintrust.dev
@@ -1127,7 +1132,20 @@ HEALTH_CHECK_TIMEOUT_SECONDS=5       # Timeout for readiness probe checks
 **Provider quick-start examples**:
 
 ```bash
-# Braintrust (cloud — recommended for evaluations and scoring)
+# Langfuse Cloud (default for Railway/production)
+OBSERVABILITY_PROVIDER=langfuse
+LANGFUSE_PUBLIC_KEY=pk-lf-xxx
+LANGFUSE_SECRET_KEY=sk-lf-xxx
+OTEL_ENABLED=true
+
+# Langfuse self-hosted (default for local dev)
+OBSERVABILITY_PROVIDER=langfuse
+LANGFUSE_PUBLIC_KEY=pk-lf-xxx        # From localhost:3100 Settings > API Keys
+LANGFUSE_SECRET_KEY=sk-lf-xxx
+LANGFUSE_BASE_URL=http://localhost:3100
+OTEL_ENABLED=true
+
+# Braintrust (cloud — available as override)
 OBSERVABILITY_PROVIDER=braintrust
 BRAINTRUST_API_KEY=sk-xxx
 OTEL_ENABLED=true
