@@ -51,7 +51,9 @@ def _get_service() -> InfrastructurePricingService:
 async def predict_monthly_costs(
     # Neon
     neon_plan: str | None = Query(None, description="Neon plan: free, launch, or scale"),
-    neon_compute_hours_per_day: float | None = Query(None, description="Average daily Neon compute hours"),
+    neon_compute_hours_per_day: float | None = Query(
+        None, description="Average daily Neon compute hours"
+    ),
     neon_storage_gb: float | None = Query(None, description="Neon storage in GB"),
     neon_pitr_gb: float | None = Query(None, description="Neon PITR history storage in GB"),
     neon_snapshot_gb: float | None = Query(None, description="Neon snapshot storage in GB"),

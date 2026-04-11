@@ -145,20 +145,23 @@ class ConsensusEngine:
             except Exception as e:
                 logger.error(
                     "Judge %s failed for step '%s': %s",
-                    judge.judge_model, step, e,
+                    judge.judge_model,
+                    step,
+                    e,
                 )
                 failed.append(judge.judge_model)
 
         if not results:
             raise RuntimeError(
-                f"All {len(self.judges)} judges failed for step '{step}'. "
-                f"Failed judges: {failed}"
+                f"All {len(self.judges)} judges failed for step '{step}'. Failed judges: {failed}"
             )
 
         if failed:
             logger.warning(
                 "%d/%d judges failed, computing consensus from %d results",
-                len(failed), len(self.judges), len(results),
+                len(failed),
+                len(self.judges),
+                len(results),
             )
 
         preference, agreement_rate = _compute_majority_preference(results)
