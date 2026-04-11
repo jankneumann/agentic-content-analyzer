@@ -149,9 +149,7 @@ IMPORTANT RULES:
 """
 
 
-def _build_user_prompt(
-    provider_name: str, markdown: str, current_entries: dict[str, Any]
-) -> str:
+def _build_user_prompt(provider_name: str, markdown: str, current_entries: dict[str, Any]) -> str:
     """Build the user prompt for pricing extraction."""
     current_json = json.dumps(current_entries, indent=2) if current_entries else "{}"
     # Truncate markdown to avoid blowing context (keep first ~80k chars)
@@ -192,8 +190,7 @@ async def fetch_pricing_page(url: str) -> str:
 
         content_type = response.headers.get("content-type", "")
         if not any(
-            ct in content_type
-            for ct in ("text/html", "application/xhtml+xml", "text/plain")
+            ct in content_type for ct in ("text/html", "application/xhtml+xml", "text/plain")
         ):
             raise ValueError(f"Unexpected content type: {content_type}")
 
@@ -265,7 +262,7 @@ class ModelPricingExtractor:
         target_providers = providers or list(self.pricing_sources.keys())
 
         # Load current registry for comparison
-        registry_models, registry_configs, _ = load_model_registry()
+        _, registry_configs, _ = load_model_registry()
 
         for provider_key in target_providers:
             urls = self.pricing_sources.get(provider_key)
@@ -322,7 +319,6 @@ class ModelPricingExtractor:
     ) -> dict[str, Any]:
         """Get current registry entries for a provider as a plain dict."""
         entries = {}
-        prefix = f"{provider_key}."
         for key, config in registry_configs.items():
             # registry_configs keys are (model_id, Provider) tuples
             model_id, provider = key
@@ -418,7 +414,11 @@ class ModelPricingExtractor:
                 # Compare each pricing field
                 comparisons = [
                     ("cost_per_mtok_input", current.cost_per_mtok_input, ext.cost_per_mtok_input),
-                    ("cost_per_mtok_output", current.cost_per_mtok_output, ext.cost_per_mtok_output),
+                    (
+                        "cost_per_mtok_output",
+                        current.cost_per_mtok_output,
+                        ext.cost_per_mtok_output,
+                    ),
                     ("context_window", current.context_window, ext.context_window),
                     ("max_output_tokens", current.max_output_tokens, ext.max_output_tokens),
                 ]
@@ -482,9 +482,7 @@ class ModelPricingExtractor:
             pattern = rf"^(    {re.escape(field_name)}:\s*)(.+?)(\s*#.*)?$"
             match = re.search(pattern, section_block, re.MULTILINE)
             if not match:
-                logger.warning(
-                    f"Could not find field {field_name} in section {section_key}"
-                )
+                logger.warning(f"Could not find field {field_name} in section {section_key}")
                 continue
 
             # Format the new value
