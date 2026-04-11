@@ -40,6 +40,8 @@ class GraphitiClient:
         client = await GraphitiClient.create(provider=my_provider)
     """
 
+    _indices_built: bool = False  # Class-level flag — skip DDL on repeat creates
+
     def __init__(
         self,
         provider: GraphDBProvider,
@@ -104,8 +106,10 @@ class GraphitiClient:
             cross_encoder=cross_encoder,
         )
 
-        # Build indices and constraints (idempotent, ~50ms)
-        await graphiti.build_indices_and_constraints()
+        # Build indices and constraints (idempotent, ~50ms) — skip if already done
+        if not cls._indices_built:
+            await graphiti.build_indices_and_constraints()
+            cls._indices_built = True
 
         logger.info(
             "Initialized Graphiti client "

@@ -7,13 +7,11 @@ the appropriate provider implementation.
 
 from __future__ import annotations
 
+import asyncio
 import time
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from src.utils.logging import get_logger
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
@@ -104,44 +102,43 @@ class Neo4jGraphDBProvider:
     async def execute_query(
         self, query: str, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        """Execute a read query via Neo4j driver session."""
+        """Execute a read query via Neo4j driver session (offloaded to thread)."""
         start = time.monotonic()
         try:
-            with self._driver.session(database=self._database) as session:
-                result = session.run(query, parameters=params or {})
-                records = [dict(record) for record in result]
-            return records
+            return await asyncio.to_thread(self._run_query, query, params or {})
         finally:
             elapsed = time.monotonic() - start
             if elapsed > 5.0:
-                logger.warning(
-                    "Slow graph query (%.1fs): %s",
-                    elapsed,
-                    query[:200],
-                )
+                logger.warning("Slow graph query (%.1fs): %s", elapsed, query[:200])
+
+    def _run_query(self, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """Sync query execution — called from thread pool."""
+        with self._driver.session(database=self._database) as session:
+            result = session.run(query, parameters=params)
+            return [dict(record) for record in result]
 
     async def execute_write(
         self, query: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Execute a write query via Neo4j driver session."""
+        """Execute a write query via Neo4j driver session (offloaded to thread)."""
         start = time.monotonic()
         try:
-            with self._driver.session(database=self._database) as session:
-                result = session.run(query, parameters=params or {})
-                summary = result.consume()
-                return {
-                    "nodes_created": summary.counters.nodes_created,
-                    "relationships_created": summary.counters.relationships_created,
-                    "properties_set": summary.counters.properties_set,
-                }
+            return await asyncio.to_thread(self._run_write, query, params or {})
         finally:
             elapsed = time.monotonic() - start
             if elapsed > 5.0:
-                logger.warning(
-                    "Slow graph write (%.1fs): %s",
-                    elapsed,
-                    query[:200],
-                )
+                logger.warning("Slow graph write (%.1fs): %s", elapsed, query[:200])
+
+    def _run_write(self, query: str, params: dict[str, Any]) -> dict[str, Any]:
+        """Sync write execution — called from thread pool."""
+        with self._driver.session(database=self._database) as session:
+            result = session.run(query, parameters=params)
+            summary = result.consume()
+            return {
+                "nodes_created": summary.counters.nodes_created,
+                "relationships_created": summary.counters.relationships_created,
+                "properties_set": summary.counters.properties_set,
+            }
 
     def close(self) -> None:
         """Close Neo4j driver (sync)."""
@@ -223,14 +220,12 @@ def _create_falkordb_provider(settings: Any, mode: str) -> GraphDBProvider:
             port=port,
             password=password,
             database=getattr(settings, "falkordb_database", "newsletter_graph"),
+            mode="cloud",
         )
     elif mode == "embedded":
-        data_dir = getattr(settings, "falkordb_lite_data_dir", None)
-        return FalkorDBGraphDBProvider(
-            host="localhost",
-            port=0,  # will be assigned by Lite
-            database=getattr(settings, "falkordb_database", "newsletter_graph"),
-            lite_data_dir=data_dir,
+        raise NotImplementedError(
+            "FalkorDB embedded (Lite) mode is not yet implemented. "
+            "Use graphdb_mode='local' with Docker FalkorDB, or wait for Phase 2."
         )
     else:
         # local mode — Docker FalkorDB
@@ -240,4 +235,5 @@ def _create_falkordb_provider(settings: Any, mode: str) -> GraphDBProvider:
             username=getattr(settings, "falkordb_username", None),
             password=getattr(settings, "falkordb_password", None),
             database=getattr(settings, "falkordb_database", "newsletter_graph"),
+            mode="local",
         )
