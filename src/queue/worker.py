@@ -422,6 +422,7 @@ def _register_content_handlers() -> None:
 
         from src.ingestion.orchestrator import (
             ingest_gmail,
+            ingest_huggingface_papers,
             ingest_perplexity_search,
             ingest_podcast,
             ingest_rss,
@@ -518,6 +519,10 @@ def _register_content_handlers() -> None:
                     **({"tags": payload["tags"]} if "tags" in payload else {}),
                     **({"notes": payload["notes"]} if "notes" in payload else {}),
                 },
+            ),
+            "huggingface_papers": (
+                ingest_huggingface_papers,
+                {**({"max_papers": max_results} if max_results is not None else {})},
             ),
         }
 
