@@ -159,7 +159,7 @@ cd agent-coordinator
 make hooks-setup
 
 # Or individually:
-make claude-hooks-setup      # Writes ~/.claude/hooks.json (SessionStart, Stop, SessionEnd)
+make claude-hooks-setup      # Merges hooks into ~/.claude/settings.json (SessionStart, Stop, SessionEnd)
 make codex-hooks-setup       # Writes ~/.codex/hooks.json (SessionStart, Stop, SessionEnd)
 make gemini-wrapper-install  # Symlinks gemini-coord to ~/.local/bin/
 ```
@@ -168,7 +168,7 @@ make gemini-wrapper-install  # Symlinks gemini-coord to ~/.local/bin/
 
 | Agent | Mechanism | Events |
 |-------|-----------|--------|
-| Claude Code | `~/.claude/hooks.json` | SessionStart, Stop, SubagentStop, SessionEnd |
+| Claude Code | `~/.claude/settings.json` → `hooks` key | SessionStart, Stop, SubagentStop, SessionEnd |
 | Codex CLI | `~/.codex/hooks.json` | SessionStart, Stop, SessionEnd |
 | Gemini CLI | `gemini-coord` wrapper | register → run → report → deregister |
 
