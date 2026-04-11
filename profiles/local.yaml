@@ -15,7 +15,8 @@ description: Local development with Docker Compose services
 # Providers - all local
 providers:
   database: local
-  neo4j: local
+  graphdb: neo4j       # top-level graph backend
+  neo4j: local         # kept for backward compat
   storage: local
   observability: noop
 
@@ -26,6 +27,9 @@ settings:
   database:
     # Local PostgreSQL from Docker Compose
     database_url: "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
+
+  graphdb:
+    graphdb_mode: local
 
   neo4j:
     # Local Neo4j from Docker Compose

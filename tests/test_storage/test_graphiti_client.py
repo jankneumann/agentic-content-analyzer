@@ -21,6 +21,8 @@ def mock_graphiti_dependencies(monkeypatch):
         "graphiti_core",
         "graphiti_core.cross_encoder",
         "graphiti_core.cross_encoder.openai_reranker_client",
+        "graphiti_core.driver",
+        "graphiti_core.driver.neo4j_driver",
         "graphiti_core.embedder",
         "graphiti_core.embedder.openai",
         "graphiti_core.llm_client",
@@ -41,14 +43,21 @@ def mock_database(monkeypatch):
     return mock_db_module
 
 
+def _make_mock_provider():
+    """Create a mock provider that satisfies the GraphDBProvider protocol."""
+    provider = MagicMock()
+    provider.create_graphiti_driver.return_value = MagicMock()
+    provider.execute_query = AsyncMock(return_value=[])
+    provider.execute_write = AsyncMock(return_value={})
+    provider.health_check = AsyncMock(return_value=True)
+    provider.close = MagicMock()
+    return provider
+
+
 @pytest.fixture
-def mock_neo4j_driver():
-    """Create mock Neo4j driver."""
-    driver = MagicMock()
-    session = MagicMock()
-    driver.session.return_value.__enter__.return_value = session
-    driver.session.return_value.__exit__.return_value = None
-    return driver
+def mock_provider():
+    """Create mock graph provider."""
+    return _make_mock_provider()
 
 
 @pytest.fixture
@@ -88,54 +97,29 @@ def sample_summary():
     )
 
 
-def test_graphiti_client_initialization(mock_neo4j_driver, mock_graphiti, mock_database):
+def test_graphiti_client_initialization(mock_provider, mock_graphiti, mock_database):
     """Test GraphitiClient initialization."""
     from src.storage.graphiti_client import GraphitiClient
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
-
-            client = GraphitiClient(
-                neo4j_uri="bolt://localhost:7687",
-                neo4j_user="neo4j",
-                neo4j_password="password",
-                anthropic_api_key="test-anthropic-key",
-                openai_api_key="test-openai-key",
-            )
-
-            # Verify driver was created
-            mock_graphdb.driver.assert_called_once_with(
-                "bolt://localhost:7687", auth=("neo4j", "password")
-            )
-
-            # Verify Graphiti was initialized
-            mock_graphiti_class.assert_called_once()
-
-            assert client.neo4j_uri == "bolt://localhost:7687"
-            assert client.driver == mock_neo4j_driver
-            assert client.graphiti == mock_graphiti
+    assert client.provider == mock_provider
+    assert client.graphiti == mock_graphiti
 
 
-def test_close_connection(mock_neo4j_driver, mock_graphiti, mock_database):
+def test_close_connection(mock_provider, mock_graphiti, mock_database):
     """Test closing GraphitiClient connection."""
     from src.storage.graphiti_client import GraphitiClient
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    client.close()
 
-        with patch("src.storage.graphiti_client.Graphiti"):
-            client = GraphitiClient()
-            client.close()
-
-            # Verify driver close was called
-            mock_neo4j_driver.close.assert_called_once()
+    # Verify provider close was called
+    mock_provider.close.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_search_related_concepts(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_search_related_concepts(mock_provider, mock_graphiti, mock_database):
     """Test searching for related concepts."""
     from src.storage.graphiti_client import GraphitiClient
 
@@ -146,28 +130,22 @@ async def test_search_related_concepts(mock_neo4j_driver, mock_graphiti, mock_da
     ]
     mock_graphiti.search = AsyncMock(return_value=mock_results)
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    results = await client.search_related_concepts("RAG", limit=10)
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
+    # Verify search was called
+    mock_graphiti.search.assert_called_once_with(
+        query="RAG",
+        num_results=10,
+    )
 
-            client = GraphitiClient()
-            results = await client.search_related_concepts("RAG", limit=10)
-
-            # Verify search was called
-            mock_graphiti.search.assert_called_once_with(
-                query="RAG",
-                num_results=10,
-            )
-
-            # Verify results
-            assert len(results) == 2
-            assert results[0]["entity"] == "RAG"
+    # Verify results
+    assert len(results) == 2
+    assert results[0]["entity"] == "RAG"
 
 
 @pytest.mark.asyncio
-async def test_get_temporal_context(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_get_temporal_context(mock_provider, mock_graphiti, mock_database):
     """Test getting temporal context for concepts."""
     from src.storage.graphiti_client import GraphitiClient
 
@@ -192,33 +170,27 @@ async def test_get_temporal_context(mock_neo4j_driver, mock_graphiti, mock_datab
 
     mock_graphiti.search = AsyncMock(side_effect=mock_search_side_effect)
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    results = await client.get_temporal_context(
+        concepts=["RAG", "LLM"],
+        start_date=start_date,
+        end_date=end_date,
+    )
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
-
-            client = GraphitiClient()
-            results = await client.get_temporal_context(
-                concepts=["RAG", "LLM"],
-                start_date=start_date,
-                end_date=end_date,
-            )
-
-            # Should filter out results outside date range
-            assert len(results) == 2  # One RAG, one LLM (old RAG filtered out)
-            assert all(start_date <= r["reference_time"] <= end_date for r in results)
+    # Should filter out results outside date range
+    assert len(results) == 2  # One RAG, one LLM (old RAG filtered out)
+    assert all(start_date <= r["reference_time"] <= end_date for r in results)
 
 
 @pytest.mark.asyncio
-async def test_get_newsletters_in_range(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_get_newsletters_in_range(mock_provider, mock_graphiti, mock_database):
     """Test getting newsletters in date range."""
     from src.storage.graphiti_client import GraphitiClient
 
     start_date = datetime(2025, 1, 1)
     end_date = datetime(2025, 1, 31)
 
-    # Mock Neo4j query results
+    # Mock provider query results
     mock_records = [
         {
             "episode_id": "ep-1",
@@ -236,37 +208,26 @@ async def test_get_newsletters_in_range(mock_neo4j_driver, mock_graphiti, mock_d
         },
     ]
 
-    mock_session = MagicMock()
-    mock_result = MagicMock()
-    mock_result.__iter__.return_value = iter(mock_records)
-    mock_session.run.return_value = mock_result
+    mock_provider.execute_query = AsyncMock(return_value=mock_records)
 
-    mock_neo4j_driver.session.return_value.__enter__.return_value = mock_session
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    episodes = await client.get_newsletters_in_range(start_date, end_date)
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    # Verify provider query was called
+    mock_provider.execute_query.assert_called_once()
+    call_args = mock_provider.execute_query.call_args
+    assert "MATCH (e:Episode)" in call_args[0][0]
+    assert call_args[0][1]["start_date"] == start_date
+    assert call_args[0][1]["end_date"] == end_date
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
-
-            client = GraphitiClient()
-            episodes = await client.get_newsletters_in_range(start_date, end_date)
-
-            # Verify Neo4j query was called
-            mock_session.run.assert_called_once()
-            call_args = mock_session.run.call_args
-            assert "MATCH (e:Episode)" in call_args[0][0]
-            assert call_args.kwargs["start_date"] == start_date
-            assert call_args.kwargs["end_date"] == end_date
-
-            # Verify results
-            assert len(episodes) == 2
-            assert episodes[0]["episode_id"] == "ep-1"
-            assert episodes[1]["episode_id"] == "ep-2"
+    # Verify results
+    assert len(episodes) == 2
+    assert episodes[0]["episode_id"] == "ep-1"
+    assert episodes[1]["episode_id"] == "ep-2"
 
 
 @pytest.mark.asyncio
-async def test_extract_themes_from_range(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_extract_themes_from_range(mock_provider, mock_graphiti, mock_database):
     """Test extracting themes from date range."""
     from src.storage.graphiti_client import GraphitiClient
 
@@ -279,26 +240,20 @@ async def test_extract_themes_from_range(mock_neo4j_driver, mock_graphiti, mock_
     ]
     mock_graphiti.search = AsyncMock(return_value=mock_results)
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    themes = await client.extract_themes_from_range(start_date, end_date)
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
+    # Verify search was called with broad query
+    mock_graphiti.search.assert_called_once_with(
+        query="AI and technology themes, trends, and topics",
+        num_results=100,
+    )
 
-            client = GraphitiClient()
-            themes = await client.extract_themes_from_range(start_date, end_date)
-
-            # Verify search was called with broad query
-            mock_graphiti.search.assert_called_once_with(
-                query="AI and technology themes, trends, and topics",
-                num_results=100,
-            )
-
-            assert len(themes) == 2
+    assert len(themes) == 2
 
 
 @pytest.mark.asyncio
-async def test_get_entity_facts(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_get_entity_facts(mock_provider, mock_graphiti, mock_database):
     """Test getting facts about entities."""
     from src.storage.graphiti_client import GraphitiClient
 
@@ -314,29 +269,23 @@ async def test_get_entity_facts(mock_neo4j_driver, mock_graphiti, mock_database)
 
     mock_graphiti.search = AsyncMock(side_effect=mock_search_side_effect)
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    facts = await client.get_entity_facts(["RAG", "LLM"], limit=50)
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
-
-            client = GraphitiClient()
-            facts = await client.get_entity_facts(["RAG", "LLM"], limit=50)
-
-            # Should have facts from both entities
-            assert len(facts) == 2
-            assert mock_graphiti.search.call_count == 2
+    # Should have facts from both entities
+    assert len(facts) == 2
+    assert mock_graphiti.search.call_count == 2
 
 
 @pytest.mark.asyncio
-async def test_get_historical_theme_mentions(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_get_historical_theme_mentions(mock_provider, mock_graphiti, mock_database):
     """Test getting historical theme mentions."""
     from src.storage.graphiti_client import GraphitiClient
 
     before_date = datetime(2025, 1, 31)
     theme_name = "AI Agents"
 
-    # Mock Neo4j query results (direct mentions)
+    # Mock provider query results (direct mentions)
     mock_records = [
         {
             "episode_id": "ep-1",
@@ -347,12 +296,7 @@ async def test_get_historical_theme_mentions(mock_neo4j_driver, mock_graphiti, m
         },
     ]
 
-    mock_session = MagicMock()
-    mock_result = MagicMock()
-    mock_result.__iter__.return_value = iter(mock_records)
-    mock_session.run.return_value = mock_result
-
-    mock_neo4j_driver.session.return_value.__enter__.return_value = mock_session
+    mock_provider.execute_query = AsyncMock(return_value=mock_records)
 
     # Mock Graphiti search results (semantic matches)
     mock_semantic = [
@@ -367,29 +311,23 @@ async def test_get_historical_theme_mentions(mock_neo4j_driver, mock_graphiti, m
     ]
     mock_graphiti.search = AsyncMock(return_value=mock_semantic)
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    mentions = await client.get_historical_theme_mentions(
+        theme_name, before_date, lookback_days=90
+    )
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
+    # Verify provider query
+    mock_provider.execute_query.assert_called_once()
+    call_args = mock_provider.execute_query.call_args
+    assert call_args[0][1]["theme_name"] == theme_name
+    assert call_args[0][1]["before_date"] == before_date
 
-            client = GraphitiClient()
-            mentions = await client.get_historical_theme_mentions(
-                theme_name, before_date, lookback_days=90
-            )
-
-            # Verify Neo4j query
-            mock_session.run.assert_called_once()
-            call_args = mock_session.run.call_args
-            assert call_args.kwargs["theme_name"] == theme_name
-            assert call_args.kwargs["before_date"] == before_date
-
-            # Should have direct mention + filtered semantic match
-            assert len(mentions) >= 2
+    # Should have direct mention + filtered semantic match
+    assert len(mentions) >= 2
 
 
 @pytest.mark.asyncio
-async def test_get_theme_evolution_timeline(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_get_theme_evolution_timeline(mock_provider, mock_graphiti, mock_database):
     """Test getting theme evolution timeline."""
     from src.storage.graphiti_client import GraphitiClient
 
@@ -413,33 +351,22 @@ async def test_get_theme_evolution_timeline(mock_neo4j_driver, mock_graphiti, mo
         },
     ]
 
-    mock_session = MagicMock()
-    mock_result = MagicMock()
-    mock_result.__iter__.return_value = iter(mock_records)
-    mock_session.run.return_value = mock_result
+    mock_provider.execute_query = AsyncMock(return_value=mock_records)
 
-    mock_neo4j_driver.session.return_value.__enter__.return_value = mock_session
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    timeline = await client.get_theme_evolution_timeline(theme_name, end_date)
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    # Verify query
+    mock_provider.execute_query.assert_called_once()
+    call_args = mock_provider.execute_query.call_args
+    assert "ORDER BY e.valid_at ASC" in call_args[0][0]  # Chronological
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
-
-            client = GraphitiClient()
-            timeline = await client.get_theme_evolution_timeline(theme_name, end_date)
-
-            # Verify query
-            mock_session.run.assert_called_once()
-            call_args = mock_session.run.call_args
-            assert "ORDER BY e.valid_at ASC" in call_args[0][0]  # Chronological
-
-            # Verify results
-            assert len(timeline) == 2
-            assert timeline[0]["timestamp"] < timeline[1]["timestamp"]  # Chronological
+    # Verify results
+    assert len(timeline) == 2
+    assert timeline[0]["timestamp"] < timeline[1]["timestamp"]  # Chronological
 
 
-def test_get_previous_analyses(mock_neo4j_driver, mock_graphiti, mock_database):
+def test_get_previous_analyses(mock_provider, mock_graphiti, mock_database):
     """Test getting previous theme analyses."""
     from src.storage.graphiti_client import GraphitiClient
 
@@ -454,45 +381,59 @@ def test_get_previous_analyses(mock_neo4j_driver, mock_graphiti, mock_database):
     mock_analysis.themes = [{"name": "AI Agents", "score": 0.9}]
     mock_analysis.total_themes = 1
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    # Setup the mocked get_db
+    mock_db = MagicMock()
+    mock_query = MagicMock()
+    mock_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+        mock_analysis
+    ]
+    mock_db.query.return_value = mock_query
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
+    mock_database.get_db.return_value.__enter__.return_value = mock_db
 
-            # Setup the mocked get_db
-            mock_db = MagicMock()
-            mock_query = MagicMock()
-            mock_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-                mock_analysis
-            ]
-            mock_db.query.return_value = mock_query
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    analyses = client.get_previous_analyses(before_date, limit=10)
 
-            mock_database.get_db.return_value.__enter__.return_value = mock_db
-
-            client = GraphitiClient()
-            analyses = client.get_previous_analyses(before_date, limit=10)
-
-            # Verify query
-            assert len(analyses) == 1
-            assert analyses[0]["id"] == 1
-            assert analyses[0]["total_themes"] == 1
+    # Verify query
+    assert len(analyses) == 1
+    assert analyses[0]["id"] == 1
+    assert analyses[0]["total_themes"] == 1
 
 
 @pytest.mark.asyncio
-async def test_async_context_manager(mock_neo4j_driver, mock_graphiti, mock_database):
+async def test_async_context_manager(mock_provider, mock_graphiti, mock_database):
     """Test using GraphitiClient as async context manager."""
     from src.storage.graphiti_client import GraphitiClient
 
-    with patch("src.storage.graphiti_client.GraphDatabase") as mock_graphdb:
-        mock_graphdb.driver.return_value = mock_neo4j_driver
+    async with GraphitiClient(provider=mock_provider, graphiti=mock_graphiti) as client:
+        # Verify client is usable
+        assert client.graphiti == mock_graphiti
 
-        with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class:
-            mock_graphiti_class.return_value = mock_graphiti
+    # Verify close was called on exit
+    mock_provider.close.assert_called_once()
 
-            async with GraphitiClient() as client:
-                # Verify client is usable
-                assert client.graphiti == mock_graphiti
 
-            # Verify close was called on exit
-            mock_neo4j_driver.close.assert_called_once()
+@pytest.mark.asyncio
+async def test_create_factory(mock_provider, mock_graphiti, mock_database):
+    """Test the async factory method."""
+    from src.storage.graphiti_client import GraphitiClient
+
+    with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class, \
+         patch("src.storage.graphiti_client.AnthropicClient"), \
+         patch("src.storage.graphiti_client.OpenAIEmbedder"), \
+         patch("src.storage.graphiti_client.OpenAIRerankerClient"), \
+         patch("src.storage.graphiti_client.settings") as mock_settings:
+
+        mock_graphiti_instance = AsyncMock()
+        mock_graphiti_instance.build_indices_and_constraints = AsyncMock()
+        mock_graphiti_class.return_value = mock_graphiti_instance
+
+        mock_settings.anthropic_api_key = "test-key"
+        mock_settings.openai_api_key = "test-key"
+
+        client = await GraphitiClient.create(provider=mock_provider)
+
+        assert client.provider == mock_provider
+        assert client.graphiti == mock_graphiti_instance
+        mock_provider.health_check.assert_awaited_once()
+        mock_graphiti_instance.build_indices_and_constraints.assert_awaited_once()

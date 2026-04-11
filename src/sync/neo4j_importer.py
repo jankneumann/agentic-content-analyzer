@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from src.sync.models import Neo4jManifest, Neo4jNodeRecord, Neo4jRelationshipRecord
+from src.sync.models import GraphManifest, GraphNodeRecord, GraphRelationshipRecord
 
 logger = logging.getLogger(__name__)
 
@@ -111,15 +111,16 @@ class Neo4jImporter:
     def _parse_jsonl(
         self,
         path: Path,
-    ) -> tuple[Neo4jManifest | None, list[Neo4jNodeRecord], list[Neo4jRelationshipRecord]]:
-        """Parse JSONL file for Neo4j records.
+    ) -> tuple[GraphManifest | None, list[GraphNodeRecord], list[GraphRelationshipRecord]]:
+        """Parse JSONL file for graph records.
 
         Skips PostgreSQL records (manifest, row) and extracts
-        neo4j_manifest, neo4j_node, and neo4j_relationship records.
+        graph_manifest/neo4j_manifest, graph_node/neo4j_node,
+        and graph_relationship/neo4j_relationship records.
         """
-        manifest: Neo4jManifest | None = None
-        nodes: list[Neo4jNodeRecord] = []
-        relationships: list[Neo4jRelationshipRecord] = []
+        manifest: GraphManifest | None = None
+        nodes: list[GraphNodeRecord] = []
+        relationships: list[GraphRelationshipRecord] = []
 
         with open(path, encoding="utf-8") as f:
             for line_num, line in enumerate(f, start=1):
@@ -136,12 +137,12 @@ class Neo4jImporter:
 
                 record_type = data.get("_type")
 
-                if record_type == "neo4j_manifest":
-                    manifest = Neo4jManifest.model_validate(data)
-                elif record_type == "neo4j_node":
-                    nodes.append(Neo4jNodeRecord.model_validate(data))
-                elif record_type == "neo4j_relationship":
-                    relationships.append(Neo4jRelationshipRecord.model_validate(data))
+                if record_type in ("graph_manifest", "neo4j_manifest"):
+                    manifest = GraphManifest.model_validate(data)
+                elif record_type in ("graph_node", "neo4j_node"):
+                    nodes.append(GraphNodeRecord.model_validate(data))
+                elif record_type in ("graph_relationship", "neo4j_relationship"):
+                    relationships.append(GraphRelationshipRecord.model_validate(data))
                 # Skip PG records silently
 
         return manifest, nodes, relationships
@@ -164,7 +165,7 @@ class Neo4jImporter:
                 node_count,
             )
 
-    def _import_node(self, node: Neo4jNodeRecord) -> None:
+    def _import_node(self, node: GraphNodeRecord) -> None:
         """Import a single node using MERGE on UUID."""
         try:
             with self._driver.session() as session:
@@ -192,7 +193,7 @@ class Neo4jImporter:
             )
             self._stats["errors"] += 1
 
-    def _import_relationship(self, rel: Neo4jRelationshipRecord) -> None:
+    def _import_relationship(self, rel: GraphRelationshipRecord) -> None:
         """Import a single relationship using MERGE."""
         try:
             with self._driver.session() as session:

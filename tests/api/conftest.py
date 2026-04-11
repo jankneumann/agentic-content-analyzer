@@ -48,6 +48,11 @@ from src.models.settings_override import (
     SettingsOverride,  # noqa: F401 - registers with Base.metadata
 )
 from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
+from src.models.topic import (  # noqa: F401 - registers with Base.metadata
+    KBIndex,
+    Topic,
+    TopicNote,
+)
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
@@ -219,6 +224,7 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         "src.api.notification_preferences_routes.get_db",
         "src.api.reference_routes.get_db",
         "src.api.theme_routes.get_db",
+        "src.api.kb_routes.get_db",
         "src.services.script_review_service.get_db",
         "src.services.content_query.get_db",
         "src.processors.theme_analyzer.get_db",
