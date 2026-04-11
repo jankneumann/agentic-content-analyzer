@@ -212,20 +212,38 @@ def finalize_review_sync(
 
 def search_graph_sync(query: str, limit: int = 10) -> Any:
     """Search knowledge graph synchronously."""
-    from src.storage.graphiti_client import GraphitiClient
 
-    client = GraphitiClient()
-    return run_async(client.search_related_concepts(query, limit=limit))
+    async def _search() -> Any:
+        from src.storage.graph_provider import GraphBackendUnavailableError
+        from src.storage.graphiti_client import GraphitiClient
+
+        try:
+            client = await GraphitiClient.create()
+        except GraphBackendUnavailableError:
+            logger.warning("Graph backend unavailable, returning empty results")
+            return []
+        return await client.search_related_concepts(query, limit=limit)
+
+    return run_async(_search())
 
 
 def extract_themes_from_graph_sync(
     start_date: Any, end_date: Any, query: str = "AI and technology themes"
 ) -> Any:
     """Extract themes from knowledge graph synchronously."""
-    from src.storage.graphiti_client import GraphitiClient
 
-    client = GraphitiClient()
-    return run_async(client.extract_themes_from_range(start_date, end_date, query=query))
+    async def _extract() -> Any:
+        from src.storage.graph_provider import GraphBackendUnavailableError
+        from src.storage.graphiti_client import GraphitiClient
+
+        try:
+            client = await GraphitiClient.create()
+        except GraphBackendUnavailableError:
+            logger.warning("Graph backend unavailable, returning empty results")
+            return []
+        return await client.extract_themes_from_range(start_date, end_date, query=query)
+
+    return run_async(_extract())
 
 
 # --- File Ingestion ---
