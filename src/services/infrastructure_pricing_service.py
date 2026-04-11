@@ -162,7 +162,11 @@ class InfrastructurePricingService:
         """
         defaults = self._neon["defaults"]
         plan = plan or defaults["plan"]
-        compute_hours_per_day = compute_hours_per_day if compute_hours_per_day is not None else defaults["avg_compute_hours_per_day"]
+        compute_hours_per_day = (
+            compute_hours_per_day
+            if compute_hours_per_day is not None
+            else defaults["avg_compute_hours_per_day"]
+        )
         storage_gb = storage_gb if storage_gb is not None else defaults["storage_gb"]
         pitr_gb = pitr_gb if pitr_gb is not None else defaults["pitr_gb"]
         snapshot_gb = snapshot_gb if snapshot_gb is not None else defaults["snapshot_gb"]
@@ -183,7 +187,9 @@ class InfrastructurePricingService:
                 pitr_cost=0.0,
                 snapshot_cost=0.0,
                 total=0.0,
-                compute_hours_per_month=min(monthly_compute_hours, plan_config["included_compute_hours"]),
+                compute_hours_per_month=min(
+                    monthly_compute_hours, plan_config["included_compute_hours"]
+                ),
                 storage_gb=min(storage_gb, plan_config["max_storage_gb"]),
                 pitr_gb=0.0,
                 snapshot_gb=0.0,
@@ -244,7 +250,9 @@ class InfrastructurePricingService:
         """
         defaults = self._resend["defaults"]
         plan = plan or defaults["plan"]
-        emails_per_month = emails_per_month if emails_per_month is not None else defaults["emails_per_month"]
+        emails_per_month = (
+            emails_per_month if emails_per_month is not None else defaults["emails_per_month"]
+        )
 
         plan_config = self._resend["plans"].get(plan)
         if not plan_config:
@@ -395,7 +403,11 @@ class InfrastructurePricingService:
 
         # Recommend free if usage fits, otherwise cheapest paid
         defaults = self._neon["defaults"]
-        ch = compute_hours_per_day if compute_hours_per_day is not None else defaults["avg_compute_hours_per_day"]
+        ch = (
+            compute_hours_per_day
+            if compute_hours_per_day is not None
+            else defaults["avg_compute_hours_per_day"]
+        )
         sg = storage_gb if storage_gb is not None else defaults["storage_gb"]
         free_plan = self._neon["plans"]["free"]
 
@@ -404,7 +416,9 @@ class InfrastructurePricingService:
             reason = "Usage fits within free tier limits"
         else:
             recommended = cheapest_paid
-            reason = f"Usage exceeds free tier; {cheapest_paid} is the most cost-effective paid plan"
+            reason = (
+                f"Usage exceeds free tier; {cheapest_paid} is the most cost-effective paid plan"
+            )
 
         return PlanComparison(
             service="neon",
