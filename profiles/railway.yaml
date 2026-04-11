@@ -23,7 +23,8 @@ description: Railway.app production deployment
 
 providers:
   database: railway
-  neo4j: auradb
+  graphdb: neo4j       # top-level graph backend
+  neo4j: auradb        # kept for backward compat
   storage: railway
   observability: braintrust
 
@@ -47,6 +48,9 @@ settings:
     railway_max_overflow: 2
     railway_pool_recycle: 300
     railway_pool_timeout: 30
+
+  graphdb:
+    graphdb_mode: cloud
 
   neo4j:
     # Neo4j AuraDB (free tier available)

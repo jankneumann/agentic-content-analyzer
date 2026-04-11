@@ -862,7 +862,7 @@ RAILWAY_MAX_OVERFLOW=1
 - **Supabase**: Managed PostgreSQL with connection pooling (see above)
 - **Managed PostgreSQL**: Alternative databases (AWS RDS, Google Cloud SQL, etc.)
 - **Managed Redis**: Task queue (Redis Cloud, AWS ElastiCache)
-- **Neo4j Aura**: Managed knowledge graph (or self-hosted Neo4j)
+- **Neo4j Aura**: Managed knowledge graph (or self-hosted Neo4j, or FalkorDB as alternative backend)
 
 ### Configuration Strategy
 
@@ -897,6 +897,10 @@ REDIS_URL=redis://localhost:6379
 NEO4J_URL=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
+
+# Graph Database Provider (default: neo4j)
+GRAPHDB_PROVIDER=neo4j               # neo4j or falkordb
+GRAPHDB_MODE=local                    # local, cloud, or embedded
 
 # Agent Framework APIs (minimum: ANTHROPIC_API_KEY)
 ANTHROPIC_API_KEY=sk-ant-...  # Required for Claude SDK
@@ -1238,6 +1242,51 @@ When enabled, the frontend:
 **Health endpoints**:
 - `GET /health` — Liveness probe (always 200 if process alive)
 - `GET /ready` — Readiness probe (200 if database OK, 503 otherwise)
+
+### Graph Database (Neo4j or FalkorDB)
+
+The knowledge graph supports pluggable backends via the `GRAPHDB_PROVIDER` setting:
+
+| Provider | Mode | Description |
+|----------|------|-------------|
+| `neo4j` | `local` | Docker Neo4j (default) |
+| `neo4j` | `cloud` | Neo4j AuraDB |
+| `falkordb` | `local` | Docker FalkorDB |
+| `falkordb` | `cloud` | Hosted FalkorDB (Railway) |
+| `falkordb` | `embedded` | FalkorDB Lite (testing only) |
+
+Configuration:
+
+```bash
+# Switch to FalkorDB locally
+export PROFILE=local-falkordb
+
+# Or set environment variables directly
+export GRAPHDB_PROVIDER=falkordb
+export GRAPHDB_MODE=local
+export FALKORDB_HOST=localhost
+export FALKORDB_PORT=6379
+```
+
+**FalkorDB variables** (when `GRAPHDB_PROVIDER=falkordb`):
+
+```bash
+# Local Docker FalkorDB
+FALKORDB_HOST=localhost                # FalkorDB host (default: localhost)
+FALKORDB_PORT=6379                     # FalkorDB port (default: 6379)
+FALKORDB_DATABASE=newsletter_graph     # Graph name (default: newsletter_graph)
+
+# Cloud/Railway FalkorDB (GRAPHDB_MODE=cloud)
+FALKORDB_CLOUD_HOST=falkordb.railway.internal  # Internal Railway hostname
+FALKORDB_CLOUD_PORT=6379               # Cloud port (default: 6379)
+FALKORDB_CLOUD_PASSWORD=              # Auth password (if enabled)
+```
+
+**Available profiles**:
+- `local-falkordb` — Local development with Docker FalkorDB
+- `railway-falkordb` — Railway deployment with FalkorDB instead of Neo4j AuraDB
+
+> **Note**: The legacy `neo4j_provider` setting is deprecated. Use `graphdb_provider` + `graphdb_mode` instead. The old field is auto-mapped with a deprecation warning.
 
 ### Optional Variables
 
