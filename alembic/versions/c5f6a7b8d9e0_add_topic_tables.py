@@ -37,25 +37,22 @@ def upgrade() -> None:
     # but ensure it for safety.
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-    # 1. Create PG enum types
-    topic_status_enum = sa.Enum(
-        "draft",
-        "active",
-        "stale",
-        "archived",
-        "merged",
-        name="topicstatus",
-    )
-    topic_status_enum.create(conn, checkfirst=True)
-
-    topic_note_type_enum = sa.Enum(
-        "observation",
-        "question",
-        "correction",
-        "insight",
-        name="topicnotetype",
-    )
-    topic_note_type_enum.create(conn, checkfirst=True)
+    # 1. Create PG enum types (use DO block for idempotent creation —
+    #    checkfirst=True can race with ORM metadata auto-creation)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE topicstatus AS ENUM ('draft', 'active', 'stale', 'archived', 'merged');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE topicnotetype AS ENUM ('observation', 'question', 'correction', 'insight');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     # 2. Create topics table
     if "topics" not in inspector.get_table_names():
