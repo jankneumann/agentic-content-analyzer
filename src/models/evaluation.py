@@ -8,7 +8,8 @@ Tables:
 - evaluation_consensus: Consensus results per sample
 - routing_decisions: Runtime routing choices
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
@@ -21,7 +22,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -63,7 +63,11 @@ class RoutingConfig(Base):
     enabled = Column(Boolean, default=False)
     classifier_version = Column(String(50))
     calibrated_at = Column(DateTime(timezone=True))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
 
 class EvaluationDataset(Base):
@@ -76,16 +80,20 @@ class EvaluationDataset(Base):
     sample_count = Column(Integer, nullable=False, default=0)
     strong_model = Column(String(100), nullable=False)
     weak_model = Column(String(100), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    samples = relationship("EvaluationSample", back_populates="dataset", cascade="all, delete-orphan")
+    samples = relationship(
+        "EvaluationSample", back_populates="dataset", cascade="all, delete-orphan"
+    )
 
 
 class EvaluationSample(Base):
     __tablename__ = "evaluation_samples"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dataset_id = Column(Integer, ForeignKey("evaluation_datasets.id", ondelete="CASCADE"), nullable=False)
+    dataset_id = Column(
+        Integer, ForeignKey("evaluation_datasets.id", ondelete="CASCADE"), nullable=False
+    )
     prompt_text = Column(Text, nullable=False)
     prompt_hash = Column(String(64), nullable=False)
     strong_output = Column(Text)
@@ -94,18 +102,24 @@ class EvaluationSample(Base):
     weak_tokens = Column(Integer)
     strong_cost = Column(Float)
     weak_cost = Column(Float)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     dataset = relationship("EvaluationDataset", back_populates="samples")
-    results = relationship("EvaluationResult", back_populates="sample", cascade="all, delete-orphan")
-    consensus = relationship("EvaluationConsensus", back_populates="sample", uselist=False, cascade="all, delete-orphan")
+    results = relationship(
+        "EvaluationResult", back_populates="sample", cascade="all, delete-orphan"
+    )
+    consensus = relationship(
+        "EvaluationConsensus", back_populates="sample", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class EvaluationResult(Base):
     __tablename__ = "evaluation_results"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    sample_id = Column(Integer, ForeignKey("evaluation_samples.id", ondelete="CASCADE"), nullable=False)
+    sample_id = Column(
+        Integer, ForeignKey("evaluation_samples.id", ondelete="CASCADE"), nullable=False
+    )
     judge_model = Column(String(100), nullable=False)
     judge_type = Column(String(10), nullable=False)
     preference = Column(String(20), nullable=False)
@@ -113,7 +127,7 @@ class EvaluationResult(Base):
     reasoning = Column(Text)
     position_order = Column(String(20))  # 'strong_first' or 'weak_first'
     weight = Column(Float, default=1.0)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     sample = relationship("EvaluationSample", back_populates="results")
 
@@ -122,11 +136,16 @@ class EvaluationConsensus(Base):
     __tablename__ = "evaluation_consensus"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    sample_id = Column(Integer, ForeignKey("evaluation_samples.id", ondelete="CASCADE"), nullable=False, unique=True)
+    sample_id = Column(
+        Integer,
+        ForeignKey("evaluation_samples.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
     consensus_preference = Column(String(20), nullable=False)
     agreement_rate = Column(Float)
     dimension_verdicts = Column(JSONB)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     sample = relationship("EvaluationSample", back_populates="consensus")
 
@@ -145,8 +164,6 @@ class RoutingDecision(Base):
     cost_actual = Column(Float)
     tokens_input = Column(Integer)
     tokens_output = Column(Integer)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    __table_args__ = (
-        Index("idx_routing_decisions_step_created", "step", "created_at"),
-    )
+    __table_args__ = (Index("idx_routing_decisions_step_created", "step", "created_at"),)

@@ -1299,7 +1299,6 @@ class Settings(BaseSettings):
         if provider == "falkordb" and mode == "cloud":
             if not self.falkordb_cloud_host:
                 raise ValueError("FalkorDB cloud mode requires FALKORDB_CLOUD_HOST")
-        return self.neo4j_password
 
     def get_youtube_api_key(self) -> str | None:
         """
