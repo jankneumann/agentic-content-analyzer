@@ -1,0 +1,25 @@
+# FalkorDB Local Development Profile
+# ===================================
+# Uses Docker FalkorDB instead of Neo4j for the knowledge graph.
+# All other services remain local (PostgreSQL, local storage).
+#
+# Prerequisites:
+#   docker compose -f docker-compose.yml -f docker-compose.falkordb.yml up -d
+#
+# Usage:
+#   export PROFILE=local-falkordb
+#   python -m src.api.app
+
+name: local-falkordb
+extends: local
+description: Local development with FalkorDB instead of Neo4j for the knowledge graph
+
+providers:
+  graphdb: falkordb
+
+settings:
+  graphdb:
+    graphdb_mode: local
+    falkordb_host: ${FALKORDB_HOST:-localhost}
+    falkordb_port: ${FALKORDB_PORT:-6379}
+    falkordb_database: ${FALKORDB_DATABASE:-newsletter_graph}

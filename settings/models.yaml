@@ -359,6 +359,8 @@ default_models:
   image_suggestion: claude-haiku-4-5  # Fast, cheap for image suggestion analysis
   cloud_stt: gemini-2.5-flash  # Native audio + built-in cleanup in one API call
   content_filtering: gemini-2.5-flash-lite  # Fast, cheap for relevance classification
+  kb_compilation: claude-sonnet-4-5  # Capable model for topic article synthesis from multiple sources
+  kb_index: claude-haiku-4-5  # Fast, cheap for index summary generation
 
 # Routing Configuration
 # Per-step routing mode: 'fixed' uses default_models above; 'dynamic' routes by complexity

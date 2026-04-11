@@ -1,0 +1,79 @@
+{
+  "review_type": "plan",
+  "target": "add-falkordb-graph-provider",
+  "reviewer_vendor": "gpt-5-codex",
+  "findings": [
+    {
+      "id": 1,
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "The export/import contract does not match the existing sync workflow. `GraphExporter`/`GraphImporter` are defined as async record-level primitives (`export_nodes`, `import_node`, etc.), but `src/cli/sync_commands.py` and the current Neo4j sync implementation are synchronous and file-oriented (`export(path)`, `import_file(path)`). The plan also introduces generic `src/sync/graph_exporter.py` and `src/sync/graph_importer.py`, which implies a second abstraction layer that is not reflected in the contract or tasks.",
+      "resolution": "Define one canonical abstraction boundary for graph sync. Either make the contract file-level and sync-friendly for CLI usage, or explicitly specify low-level async provider interfaces plus the synchronous wrapper classes the CLI will call.",
+      "disposition": "regenerate"
+    },
+    {
+      "id": 2,
+      "type": "compatibility",
+      "criticality": "high",
+      "description": "The plan changes graph export/import models to backend-agnostic `NodeRecord`/`RelationshipRecord`, but the existing JSONL format and mixed PG+graph import flow are keyed on `_type` values `neo4j_manifest`, `neo4j_node`, and `neo4j_relationship` in `src/sync/models.py`, and `src/sync/pg_importer.py` explicitly skips those record types. Those files are not included in the file-change summary or tasks, so the plan currently breaks its own 'identical JSONL format' claim.",
+      "resolution": "Specify whether legacy `neo4j_*` record types remain as compatibility aliases or whether the format will move to `graph_*` types, and add all affected files/tests (`src/sync/models.py`, `src/sync/pg_importer.py`, CLI messages/filenames) to the plan.",
+      "disposition": "fix"
+    },
+    {
+      "id": 3,
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Task 2.5 requires integration tests proving that 'all GraphitiClient methods' produce identical results on FalkorDB, but the current `GraphitiClient` always constructs Anthropic/OpenAI-backed Graphiti components and methods like `add_content_summary()` depend on live LLM/embedder behavior. The plan adds provider injection for the graph backend, but it does not add any deterministic seam for Graphiti's external dependencies, so this test requirement is not realistically executable or stable.",
+      "resolution": "Either narrow backend integration testing to provider construction and raw-query behavior, or explicitly add a deterministic test seam for Graphiti/LLM/embedder dependencies and mark live-provider tests separately.",
+      "disposition": "fix"
+    },
+    {
+      "id": 4,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "The proposed configuration shape introduces `providers.graphdb` and `settings.graphdb.*` while preserving existing `providers.neo4j`, `neo4j_provider`, and `settings.neo4j.*`. In the current codebase, profile flattening and validation are one-level and make `providers.*` authoritative after `settings.*`. The plan does not define precedence or validation rules for contradictory inherited values, so profiles can resolve to ambiguous combinations such as `providers.graphdb=falkordb` with inherited Neo4j provider settings still present.",
+      "resolution": "Define a canonical profile schema and explicit precedence rules for `graphdb` versus Neo4j sub-provider settings, then update `ProviderChoices`, `ProfileSettings`, provider requirement tables, flattening, and validation logic to enforce that model.",
+      "disposition": "fix"
+    },
+    {
+      "id": 5,
+      "type": "compatibility",
+      "criticality": "medium",
+      "description": "The lifecycle and constructor migration is underspecified. The contract makes `GraphDBProvider.close()` async, but the current `GraphitiClient.close()` is synchronous, `__aexit__` calls it synchronously, and multiple call sites simply invoke `client.close()`. The plan also removes explicit `neo4j_uri`/`neo4j_user`/`neo4j_password` constructor kwargs even though current tests and callers still rely on that shape. Without a compatibility bridge, the refactor risks leaked resources and unnecessary breakage.",
+      "resolution": "Preserve a synchronous `GraphitiClient.close()` facade and either keep deprecated credential kwargs or add an explicit migration task for every affected caller/test before removing them.",
+      "disposition": "fix"
+    },
+    {
+      "id": 6,
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "The proposal claims a backend-transparent graph abstraction for all graph access and graph-touching CLI flows, but the task list does not cover several current Neo4j-specific consumers such as `src/services/connection_checker.py`, `src/cli/manage_commands.py`, and the Neo4j-only integration harness. Leaving those paths untouched means FalkorDB mode will still report/check 'Neo4j' and some status/test flows will continue to exercise the wrong backend.",
+      "resolution": "Either narrow the stated scope to exclude health/status/test harness flows, or add explicit tasks for connection checks, management commands, and backend-aware integration fixtures.",
+      "disposition": "fix"
+    },
+    {
+      "id": 7,
+      "type": "performance",
+      "criticality": "medium",
+      "description": "Task 1.5 requires calling `build_indices_and_constraints()` after `GraphitiClient` initialization, but `GraphitiClient` is instantiated in request, CLI, and processor paths rather than once at startup. Running index/constraint bootstrap on every construction will add avoidable latency and may create contention or repeated DDL attempts under concurrency.",
+      "resolution": "Move index/constraint creation to an explicit one-time bootstrap path or guard it behind a clear idempotent initialization mechanism instead of calling it on every client construction.",
+      "disposition": "fix"
+    },
+    {
+      "id": 8,
+      "type": "security",
+      "criticality": "medium",
+      "description": "The FalkorDB infrastructure plan does not match the settings contract. Task 2.3 uses `falkordb/falkordb:latest` and only specifies port/volume/healthcheck, while the new settings/spec add `falkordb_username` and `falkordb_password`, and the rest of the repo pins service images instead of using `latest`. This leaves authentication behavior undefined and makes the local backend non-reproducible.",
+      "resolution": "Pin a tested FalkorDB image version and explicitly define the auth model for Docker and Lite modes, or remove unsupported auth fields from the contract until the infrastructure story is concrete.",
+      "disposition": "fix"
+    },
+    {
+      "id": 9,
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "The `ReferenceGraphSync` cross-backend requirement is scheduled inconsistently. Task 1.8 and `wp-reference-sync` claim coverage for citation creation on both backends, but they run before the FalkorDB provider and FalkorDB Lite fixture exist, and there is no later task that re-validates `ReferenceGraphSync` against a real Falkor backend. That makes the 'both backends' requirement easy to mark complete with only Neo4j or mocks.",
+      "resolution": "Move real FalkorDB `ReferenceGraphSync` validation into Phase 2, or add a dedicated post-Falkor integration task that exercises citation lookup and `CITES` edge writes against the Falkor backend.",
+      "disposition": "fix"
+    }
+  ]
+}

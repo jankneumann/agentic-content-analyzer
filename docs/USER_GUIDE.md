@@ -111,7 +111,7 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 2. **Clone and set up the Python environment**:
 
 ```bash
-cd agentic-newsletter-aggregator
+cd agentic-content-analyzer
 uv venv
 source .venv/bin/activate    # macOS/Linux
 uv sync --all-extras         # Install all dependencies

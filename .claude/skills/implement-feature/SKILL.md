@@ -85,12 +85,38 @@ fi
 
 eval "$(python3 "<skill-base-dir>/../worktree/scripts/worktree.py" setup "<change-id>" ${AGENT_FLAG})"
 cd "$WORKTREE_PATH"
+
+# Two distinct branches matter here:
+#
+#   WORKTREE_BRANCH — this worktree's branch, which for parallel work-package
+#                     agents is <parent>--<agent-id>. Used for commits inside
+#                     this worktree and for local branch verification.
+#   FEATURE_BRANCH  — the PARENT feature branch that agent branches merge into
+#                     and that gets pushed as the PR head. In the single-agent
+#                     case it equals WORKTREE_BRANCH. In the parallel case it
+#                     is the operator/default branch without the agent suffix.
+#
+# The parent branch is what plan-feature pushed and what the PR is opened
+# against. Resolve it explicitly so the final push/PR target is stable.
+eval "$(python3 "<skill-base-dir>/../worktree/scripts/worktree.py" resolve-branch "<change-id>" --parent)"
+FEATURE_BRANCH="$BRANCH"
 ```
+
+**Operator branch override**: If `OPENSPEC_BRANCH_OVERRIDE` was set at plan time, it MUST be set at implement time too — otherwise plan-feature and implement-feature will disagree on the branch and commits will diverge. The safest pattern is for the operator to set the env var for the entire session.
+
+**Parallel disambiguation**: When `AGENT_ID` is set (parallel work-package agents), each agent gets `<FEATURE_BRANCH>--<agent-id>` as its `WORKTREE_BRANCH` so parallel agents don't clobber each other. The `wp-integration` package (or `merge_worktrees.py`) merges those sub-branches back into `$FEATURE_BRANCH` before the final push.
 
 ### 3. Verify Feature Branch [all tiers]
 
 ```bash
-git branch --show-current  # Should show openspec/<change-id>
+CURRENT_BRANCH="$(git branch --show-current)"
+# In single-agent mode, WORKTREE_BRANCH == FEATURE_BRANCH.
+# In parallel mode, WORKTREE_BRANCH is <FEATURE_BRANCH>--<agent-id>.
+if [[ "$CURRENT_BRANCH" != "$WORKTREE_BRANCH" ]]; then
+  echo "ERROR: worktree is on '$CURRENT_BRANCH' but expected '$WORKTREE_BRANCH'" >&2
+  echo "Hint: if OPENSPEC_BRANCH_OVERRIDE is set, ensure it matches what plan-feature used" >&2
+  exit 1
+fi
 ```
 
 ### 3a. Generate Change Context & Test Plan (Phase 1 -- TDD RED) [all tiers]
@@ -98,9 +124,13 @@ git branch --show-current  # Should show openspec/<change-id>
 Before implementing, create the traceability skeleton and write failing tests:
 
 1. Read spec delta files from `openspec/changes/<change-id>/specs/`. For each SHALL/MUST clause, create a row in the Requirement Traceability Matrix.
-2. For each row, populate the **Contract Ref** column: map the requirement to the contract file it validates (e.g., `contracts/openapi/v1.yaml#/paths/~1users`, `contracts/events/coordinator.schema.json`). Use `---` if no contract applies.
+2. For each row, populate the **Contract Ref** column:
+   - If `contracts/` exists and contains machine-readable artifacts (not just `README.md`): map the requirement to the contract file it validates (e.g., `contracts/openapi/v1.yaml#/paths/~1users`, `contracts/events/coordinator.schema.json`). Use `---` if no contract applies to this specific requirement.
+   - If `contracts/` exists but contains only `README.md` (no applicable interfaces): use `---` for all contract refs.
+   - If `contracts/` does not exist (legacy change predating universal artifacts): log a warning that contract-based validation was skipped. Use `---` for all contract refs.
+   - If a contract file exists but cannot be parsed (invalid YAML/JSON): log an error identifying the malformed file, skip validation for that contract sub-type, and use `---` for affected contract refs. Do not block implementation on parse failures.
 3. For each row, populate the **Design Decision** column: link to the decision from `design.md` (e.g., `D3`) that this requirement validates. Use `---` if none applies. If `design.md` exists, also populate the Design Decision Trace section.
-4. Write failing tests (RED) for each row in the matrix. Tests MUST assert against contract schemas and design decisions where referenced — not just internal behavior.
+4. Write failing tests (RED) for each row in the matrix. Tests MUST assert against contract schemas and design decisions where referenced — not just internal behavior. For partial contracts (e.g., OpenAPI exists but no DB schema), validate only against the sub-types present.
 
 Use template from `openspec/schemas/feature-workflow/templates/change-context.md`. Write to `openspec/changes/<change-id>/change-context.md`.
 
@@ -382,7 +412,8 @@ EOF
 ### 9. Push and Create PR [all tiers]
 
 ```bash
-git push -u origin openspec/<change-id>
+# Push to the resolved feature branch (honors OPENSPEC_BRANCH_OVERRIDE)
+git push -u origin "$FEATURE_BRANCH"
 gh pr create --title "feat(<scope>): <title>" --body "..."
 ```
 
@@ -403,7 +434,7 @@ When dispatching work packages, each agent receives only the context it needs:
 
 ## Output
 
-- Feature branch: `openspec/<change-id>`
+- Feature branch: `$FEATURE_BRANCH` (default `openspec/<change-id>`, or whatever `OPENSPEC_BRANCH_OVERRIDE` resolved to)
 - All tests passing
 - PR created and awaiting review
 
