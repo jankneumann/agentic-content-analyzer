@@ -53,6 +53,7 @@ class ThemeAnalysis(Base):
         Enum(
             AnalysisStatus,
             name="analysisstatus",
+            create_type=False,
             create_constraint=True,
             values_callable=lambda x: [e.value for e in x],
         ),
