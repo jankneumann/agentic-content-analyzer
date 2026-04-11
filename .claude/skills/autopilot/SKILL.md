@@ -25,7 +25,9 @@ Optional flags:
 ## Prerequisites
 
 - OpenSpec CLI installed (v1.0+)
-- At least 2 vendor CLIs available (claude, codex, gemini) for multi-vendor convergence
+- For multi-vendor convergence: at least 1 additional vendor CLI besides
+  yourself (e.g., if you are Claude, at least one of codex or gemini must be
+  available). You (the executing agent) always count as one vendor.
 - Coordinator recommended (degrades to linear workflow without it)
 
 ## Coordinator Capability Check
@@ -40,16 +42,17 @@ The script reads `COORDINATION_API_URL` from the environment (falls back to
 `localhost:8081` if unset). Ensure this variable is configured in your profile
 or secrets before running autopilot.
 
-### Multi-vendor mode (coordinator available + 2+ vendors)
+### Multi-vendor mode (coordinator available + 1 or more additional vendor CLIs)
 
 Follow the full convergence loop workflow in Steps 0–9 below.
 
-### Single-vendor fallback (coordinator unavailable OR only 1 vendor)
+### Single-vendor fallback (coordinator unavailable OR no additional vendors)
 
 **IMPORTANT — this is the MANDATORY fallback, not an optional shortcut.**
-When the coordinator is unavailable or fewer than 2 vendor CLIs are detected,
-you MUST still invoke the lifecycle skills sequentially. Do NOT skip them and
-implement manually. The fallback sequence is:
+When the coordinator is unavailable or no additional vendor CLIs are detected
+(i.e., you are the only agent), you MUST still invoke the lifecycle skills
+sequentially. Do NOT skip them and implement manually. The fallback sequence
+is:
 
 1. `/plan-feature <description>` — create OpenSpec proposal artifacts
 2. `/iterate-on-plan <change-id>` — single-vendor plan review (replaces `/parallel-review-plan` convergence loop)
