@@ -23,7 +23,8 @@ description: CI job profile — Neon branch created per PR
 
 providers:
   database: neon
-  neo4j: local
+  graphdb: neo4j       # top-level graph backend
+  neo4j: local         # kept for backward compat
   storage: local
   observability: noop
 
@@ -36,6 +37,9 @@ settings:
     neon_database_url: "${NEON_DATABASE_URL}"
     neon_api_key: "${NEON_API_KEY:-}"
     neon_project_id: "${NEON_PROJECT_ID:-}"
+
+  graphdb:
+    graphdb_mode: local
 
   neo4j:
     neo4j_uri: "bolt://localhost:7687"
