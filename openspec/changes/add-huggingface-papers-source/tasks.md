@@ -5,7 +5,8 @@
 ## Parallelizability Notes
 
 Tasks 1.1–1.3 can run in parallel (no file overlap). Phase 2 depends on Phase 1.
-Phase 3 (tests) depends on all implementation. Max parallel width: 3.
+Phase 3 (tests) and Phase 4 (integration) can run in parallel after Phase 2.
+Max parallel width: 4 (tasks 4.1–4.4 are independent of each other and of Phase 3).
 
 ---
 
