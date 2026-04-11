@@ -33,9 +33,12 @@ Optional flags:
 At skill start, run the coordinator detection script:
 
 ```bash
-COORDINATION_API_URL="${COORDINATION_API_URL:-https://coord.rotkohl.ai}" \
 python3 "<skill-base-dir>/../coordination-bridge/scripts/check_coordinator.py" --json
 ```
+
+The script reads `COORDINATION_API_URL` from the environment (falls back to
+`localhost:8081` if unset). Ensure this variable is configured in your profile
+or secrets before running autopilot.
 
 ### Multi-vendor mode (coordinator available + 2+ vendors)
 
