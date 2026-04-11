@@ -88,9 +88,36 @@ services:
     profiles:
       - crawl4ai  # Only start with --profile crawl4ai or when explicitly specified
 
+  falkordb:
+    image: falkordb/falkordb:v4.4.1
+    # No container_name — same reason as postgres above
+    ports:
+      - "${FALKORDB_PORT:-6379}:6379"
+    volumes:
+      - falkordb_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  falkordb-test:
+    image: falkordb/falkordb:v4.4.1
+    # No container_name — same reason as postgres above
+    ports:
+      - "${FALKORDB_TEST_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - test  # Only start with --profile test or when explicitly specified
+
 volumes:
   postgres_data:
   neo4j_data:
   neo4j_logs:
   neo4j_test_data:
   neo4j_test_logs:
+  falkordb_data:

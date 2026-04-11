@@ -36,6 +36,20 @@ logger = logging.getLogger(__name__)
 _STREAM_BATCH_SIZE = 500
 
 
+def _safe_segment(value: str) -> str:
+    """Sanitize a single path segment for the vault.
+
+    Strips separators and traversal characters; falls back to ``unknown``
+    if nothing safe remains.
+    """
+    if not value:
+        return "unknown"
+    cleaned = value.strip()
+    for ch in ("/", "\\", "..", "\n", "\r", "\0"):
+        cleaned = cleaned.replace(ch, "")
+    return cleaned or "unknown"
+
+
 @dataclass
 class ContentTypeStats:
     """Export statistics for a single content type."""
@@ -55,6 +69,7 @@ class ExportSummary:
     content_stubs: ContentTypeStats = field(default_factory=ContentTypeStats)
     entities: ContentTypeStats = field(default_factory=ContentTypeStats)
     themes: ContentTypeStats = field(default_factory=ContentTypeStats)
+    topics: ContentTypeStats = field(default_factory=ContentTypeStats)
     cleaned: int = 0
     elapsed_seconds: float = 0.0
     warnings: list[str] = field(default_factory=list)
@@ -62,9 +77,21 @@ class ExportSummary:
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
         result: dict[str, Any] = {}
-        for name in ("digests", "summaries", "insights", "content_stubs", "entities", "themes"):
+        for name in (
+            "digests",
+            "summaries",
+            "insights",
+            "content_stubs",
+            "entities",
+            "themes",
+            "topics",
+        ):
             stats: ContentTypeStats = getattr(self, name)
-            result[name] = {"created": stats.created, "updated": stats.updated, "skipped": stats.skipped}
+            result[name] = {
+                "created": stats.created,
+                "updated": stats.updated,
+                "skipped": stats.skipped,
+            }
         if self.cleaned > 0:
             result["cleaned"] = self.cleaned
         result["elapsed_seconds"] = round(self.elapsed_seconds, 2)
@@ -80,6 +107,7 @@ class ExportOptions:
     since: datetime | None = None
     include_entities: bool = True
     include_themes: bool = True
+    include_topics: bool = True
     clean: bool = False
     dry_run: bool = False
     max_entities: int = 10000
@@ -109,16 +137,13 @@ def validate_vault_path(vault_path: str | Path) -> Path:
         home = Path.home()
         if not target.is_relative_to(home):
             raise ValueError(
-                f"Vault path is a symlink pointing outside home directory: "
-                f"{raw} -> {target}"
+                f"Vault path is a symlink pointing outside home directory: {raw} -> {target}"
             )
 
     # Check the original string for traversal (before resolution flattens it)
     original = str(vault_path)
     if ".." in original.split("/") or ".." in original.split("\\"):
-        raise ValueError(
-            f"Vault path contains directory traversal segments: {vault_path}"
-        )
+        raise ValueError(f"Vault path contains directory traversal segments: {vault_path}")
 
     return path
 
@@ -186,6 +211,17 @@ class ObsidianExporter:
         else:
             logger.debug("Theme MOC generation skipped (--no-themes)")
 
+        # Phase 3.5: Export KB topics (3-tier vault structure)
+        if self._options.include_topics:
+            try:
+                summary.topics = self.export_topics()
+            except Exception as exc:
+                msg = f"WARNING: Topic export failed ({exc})"
+                logger.warning(msg, exc_info=True)
+                summary.warnings.append(msg)
+        else:
+            logger.debug("Topic export skipped (--no-topics)")
+
         # Phase 4: Handle cleanup if requested
         if self._options.clean:
             self._cleanup_stale_files(summary)
@@ -215,14 +251,20 @@ class ObsidianExporter:
         folder = "Digests"
 
         with Session(self._engine) as session:
-            stmt = select(Digest).where(
-                Digest.status.in_([
-                    DigestStatus.COMPLETED,
-                    DigestStatus.APPROVED,
-                    DigestStatus.DELIVERED,
-                    DigestStatus.PENDING_REVIEW,
-                ])
-            ).order_by(Digest.period_start.desc())
+            stmt = (
+                select(Digest)
+                .where(
+                    Digest.status.in_(
+                        [
+                            DigestStatus.COMPLETED,
+                            DigestStatus.APPROVED,
+                            DigestStatus.DELIVERED,
+                            DigestStatus.PENDING_REVIEW,
+                        ]
+                    )
+                )
+                .order_by(Digest.period_start.desc())
+            )
 
             if self._options.since:
                 stmt = stmt.where(Digest.period_start >= self._options.since)
@@ -270,10 +312,21 @@ class ObsidianExporter:
 
                     content_hash = compute_content_hash(full_content)
                     full_content = full_content.replace(
-                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                        '"PLACEHOLDER"',
+                        f'"{content_hash}"',
+                        1,
                     )
 
-                    result = self._write_note(folder, aca_id, "digest", date, digest.title, full_content, content_hash, tags)
+                    result = self._write_note(
+                        folder,
+                        aca_id,
+                        "digest",
+                        date,
+                        digest.title,
+                        full_content,
+                        content_hash,
+                        tags,
+                    )
                     if result == "created":
                         stats.created += 1
                     elif result == "updated":
@@ -359,10 +412,14 @@ class ObsidianExporter:
 
                     content_hash = compute_content_hash(full_content)
                     full_content = full_content.replace(
-                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                        '"PLACEHOLDER"',
+                        f'"{content_hash}"',
+                        1,
                     )
 
-                    result = self._write_note(folder, aca_id, "summary", date, title, full_content, content_hash, tags)
+                    result = self._write_note(
+                        folder, aca_id, "summary", date, title, full_content, content_hash, tags
+                    )
                     if result == "created":
                         stats.created += 1
                     elif result == "updated":
@@ -414,10 +471,21 @@ class ObsidianExporter:
                     full_content = fm + body
                     content_hash = compute_content_hash(full_content)
                     full_content = full_content.replace(
-                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                        '"PLACEHOLDER"',
+                        f'"{content_hash}"',
+                        1,
                     )
 
-                    result = self._write_note(folder, aca_id, "insight", date, insight.title, full_content, content_hash, tags)
+                    result = self._write_note(
+                        folder,
+                        aca_id,
+                        "insight",
+                        date,
+                        insight.title,
+                        full_content,
+                        content_hash,
+                        tags,
+                    )
                     if result == "created":
                         stats.created += 1
                     elif result == "updated":
@@ -441,9 +509,13 @@ class ObsidianExporter:
         folder = "Content"
 
         with Session(self._engine) as session:
-            stmt = select(Content).where(
-                Content.status == ContentStatus.COMPLETED,
-            ).order_by(Content.published_date.desc().nullslast())
+            stmt = (
+                select(Content)
+                .where(
+                    Content.status == ContentStatus.COMPLETED,
+                )
+                .order_by(Content.published_date.desc().nullslast())
+            )
 
             if self._options.since:
                 stmt = stmt.where(Content.published_date >= self._options.since)
@@ -466,11 +538,15 @@ class ObsidianExporter:
                     body += "\n"
 
                     # Find summaries that reference this content (reverse refs)
-                    refs = session.execute(
-                        select(ContentReference).where(
-                            ContentReference.target_content_id == content.id,
+                    refs = (
+                        session.execute(
+                            select(ContentReference).where(
+                                ContentReference.target_content_id == content.id,
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
 
                     if refs:
                         body += "## Referenced By\n\n"
@@ -496,10 +572,21 @@ class ObsidianExporter:
                     full_content = fm + body
                     content_hash = compute_content_hash(full_content)
                     full_content = full_content.replace(
-                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                        '"PLACEHOLDER"',
+                        f'"{content_hash}"',
+                        1,
                     )
 
-                    result = self._write_note(folder, aca_id, "content_stub", date, title, full_content, content_hash, tags)
+                    result = self._write_note(
+                        folder,
+                        aca_id,
+                        "content_stub",
+                        date,
+                        title,
+                        full_content,
+                        content_hash,
+                        tags,
+                    )
                     if result == "created":
                         stats.created += 1
                     elif result == "updated":
@@ -573,11 +660,20 @@ class ObsidianExporter:
                     full_content = fm + body
                     content_hash = compute_content_hash(full_content)
                     full_content = full_content.replace(
-                        '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                        '"PLACEHOLDER"',
+                        f'"{content_hash}"',
+                        1,
                     )
 
                     result_action = self._write_note(
-                        folder, aca_id, "entity", None, name, full_content, content_hash, [],
+                        folder,
+                        aca_id,
+                        "entity",
+                        None,
+                        name,
+                        full_content,
+                        content_hash,
+                        [],
                     )
                     if result_action == "created":
                         stats.created += 1
@@ -586,7 +682,9 @@ class ObsidianExporter:
                     else:
                         stats.skipped += 1
                 except Exception:
-                    logger.warning("Failed to export entity %s", record.get("uuid", "?"), exc_info=True)
+                    logger.warning(
+                        "Failed to export entity %s", record.get("uuid", "?"), exc_info=True
+                    )
 
         return stats
 
@@ -628,10 +726,14 @@ class ObsidianExporter:
             full_content = fm + body
             content_hash = compute_content_hash(full_content)
             full_content = full_content.replace(
-                '"PLACEHOLDER"', f'"{content_hash}"', 1,
+                '"PLACEHOLDER"',
+                f'"{content_hash}"',
+                1,
             )
 
-            result = self._write_note(folder, aca_id, "moc", None, title, full_content, content_hash, [])
+            result = self._write_note(
+                folder, aca_id, "moc", None, title, full_content, content_hash, []
+            )
             if result == "created":
                 stats.created += 1
             elif result == "updated":
@@ -640,6 +742,271 @@ class ObsidianExporter:
                 stats.skipped += 1
 
         return stats
+
+    def export_topics(self) -> ContentTypeStats:
+        """Export KB topics in the 3-tier ``Category/Topic/_overview.md`` structure.
+
+        Each active topic produces:
+        - ``<Category>/<Topic>/_overview.md`` — frontmatter + compiled article
+        - ``<Category>/<Topic>/<Source>/<date>-<slug>.md`` — source extract stubs
+
+        Topics are tracked in the manifest by ``aca_id = topic-<slug>`` so
+        re-exports respect ``article_version`` for incremental sync.
+        """
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from src.models.content import Content
+        from src.models.topic import Topic, TopicStatus
+
+        stats = ContentTypeStats()
+
+        with Session(self._engine) as session:
+            stmt = (
+                select(Topic)
+                .where(Topic.status == TopicStatus.ACTIVE)
+                .order_by(Topic.relevance_score.desc().nullslast())
+            )
+
+            for topic in session.execute(stmt).scalars().yield_per(_STREAM_BATCH_SIZE):
+                try:
+                    aca_id = f"topic-{topic.slug}"
+                    category_dir = _safe_segment(topic.category or "uncategorized")
+                    topic_dir = _safe_segment(topic.slug)
+                    rel_path = f"{category_dir}/{topic_dir}/_overview.md"
+
+                    body = self._render_topic_body(topic, session)
+                    fm = build_frontmatter(
+                        aca_id=aca_id,
+                        aca_type="topic",
+                        date=topic.last_compiled_at,
+                        tags=[topic.category] if topic.category else [],
+                        content_hash="PLACEHOLDER",
+                        slug=topic.slug,
+                        category=topic.category or "",
+                        trend=topic.trend or "",
+                        article_version=int(topic.article_version or 1),
+                        relevance_score=float(topic.relevance_score or 0.0),
+                        mention_count=int(topic.mention_count or 0),
+                    )
+                    full_content = fm + body
+
+                    content_hash = compute_content_hash(full_content)
+                    full_content = full_content.replace(
+                        '"PLACEHOLDER"',
+                        f'"{content_hash}"',
+                        1,
+                    )
+
+                    action = self._write_topic_file(
+                        rel_path, aca_id, "topic", content_hash, full_content
+                    )
+                    if action == "created":
+                        stats.created += 1
+                    elif action == "updated":
+                        stats.updated += 1
+                    else:
+                        stats.skipped += 1
+
+                    # Source extracts — batch-load to avoid N+1
+                    content_ids = list(topic.source_content_ids or [])
+                    if content_ids:
+                        from sqlalchemy import select as sa_select
+
+                        content_rows = (
+                            session.execute(sa_select(Content).where(Content.id.in_(content_ids)))
+                            .scalars()
+                            .all()
+                        )
+                        content_by_id = {c.id: c for c in content_rows}
+                        for cid in content_ids:
+                            try:
+                                content_item = content_by_id.get(cid)
+                                if content_item is None:
+                                    continue
+                                self._export_topic_source_extract(
+                                    topic, content_item, category_dir, topic_dir
+                                )
+                            except Exception:
+                                logger.warning(
+                                    "Topic source extract failed: topic=%s content=%s",
+                                    topic.slug,
+                                    cid,
+                                    exc_info=True,
+                                )
+
+                except Exception:
+                    logger.warning("Failed to export topic %s", topic.slug, exc_info=True)
+
+            # Generate category index files at each category folder
+            self._generate_topic_category_indices(session)
+
+        return stats
+
+    def _render_topic_body(self, topic: Any, session: Any = None) -> str:
+        """Render the markdown body of a topic _overview.md file.
+
+        Args:
+            topic: The Topic ORM instance.
+            session: SQLAlchemy session for looking up related topics.
+                     Falls back to opening a new session if not provided.
+        """
+        lines = [f"# {topic.name}", ""]
+
+        if topic.summary:
+            lines.append(topic.summary.strip())
+            lines.append("")
+
+        if topic.article_md:
+            lines.append(topic.article_md.strip())
+            lines.append("")
+        else:
+            lines.append("_(no compiled article yet)_")
+            lines.append("")
+
+        if topic.related_topic_ids:
+            lines.append("## Related Topics")
+            lines.append("")
+            from src.models.topic import Topic as TopicModel
+
+            def _lookup(sess: Any) -> None:
+                related = (
+                    sess.query(TopicModel).filter(TopicModel.id.in_(topic.related_topic_ids)).all()
+                )
+                for r in related:
+                    cat_dir = _safe_segment(r.category or "uncategorized")
+                    slug_dir = _safe_segment(r.slug)
+                    lines.append(f"- [[../../{cat_dir}/{slug_dir}/_overview|{r.name}]]")
+
+            if session is not None:
+                _lookup(session)
+            else:
+                from sqlalchemy.orm import Session as SASession
+
+                with SASession(self._engine) as fallback_session:
+                    _lookup(fallback_session)
+            lines.append("")
+
+        return "\n".join(lines) + "\n"
+
+    def _export_topic_source_extract(
+        self,
+        topic: Any,
+        content: Any,
+        category_dir: str,
+        topic_dir: str,
+    ) -> None:
+        """Write a source extract stub linking the topic to a source content."""
+        source_label = _safe_segment(str(content.source_type) if content.source_type else "Source")
+        date_prefix = (
+            content.published_date.strftime("%Y-%m-%d") if content.published_date else "undated"
+        )
+        slug = slugify_filename(
+            content.title or f"content-{content.id}",
+            content.published_date,
+            "content_stub",
+        )
+        rel_path = f"{category_dir}/{topic_dir}/{source_label}/{date_prefix}-{slug}"
+
+        body = (
+            f"# {content.title or f'Content {content.id}'}\n\n"
+            f"**Topic**: [[../_overview|{topic.name}]]\n"
+            f"**Source**: {content.source_url or ''}\n\n"
+            f"See [[../../../../Summaries/summary-{content.id}]] for the full summary.\n"
+        )
+
+        aca_id = f"topic-{topic.slug}-source-{content.id}"
+        fm = build_frontmatter(
+            aca_id=aca_id,
+            aca_type="topic_source",
+            date=content.published_date,
+            tags=[],
+            content_hash="PLACEHOLDER",
+            topic_slug=topic.slug,
+            content_id=int(content.id),
+        )
+        full_content = fm + body
+        content_hash = compute_content_hash(full_content)
+        full_content = full_content.replace(
+            '"PLACEHOLDER"',
+            f'"{content_hash}"',
+            1,
+        )
+
+        self._write_topic_file(rel_path, aca_id, "topic_source", content_hash, full_content)
+
+    def _generate_topic_category_indices(self, session: Any) -> None:
+        """Write a per-category ``_index.md`` listing topics in that category."""
+        from src.models.topic import Topic as TopicModel, TopicStatus
+
+        topics = session.query(TopicModel).filter(TopicModel.status == TopicStatus.ACTIVE).all()
+        by_category: dict[str, list[Any]] = {}
+        for t in topics:
+            by_category.setdefault(t.category or "uncategorized", []).append(t)
+
+        for category, items in by_category.items():
+            category_dir = _safe_segment(category)
+            rel_path = f"{category_dir}/_index.md"
+            lines = [f"# {category}", ""]
+            for t in sorted(items, key=lambda x: x.relevance_score or 0.0, reverse=True):
+                slug_dir = _safe_segment(t.slug)
+                lines.append(f"- [[{slug_dir}/_overview|{t.name}]]")
+            body = "\n".join(lines) + "\n"
+
+            aca_id = f"topic-category-index-{category}"
+            fm = build_frontmatter(
+                aca_id=aca_id,
+                aca_type="topic_category_index",
+                tags=[],
+                content_hash="PLACEHOLDER",
+                category=category,
+            )
+            full_content = fm + body
+            content_hash = compute_content_hash(full_content)
+            full_content = full_content.replace(
+                '"PLACEHOLDER"',
+                f'"{content_hash}"',
+                1,
+            )
+
+            self._write_topic_file(
+                rel_path, aca_id, "topic_category_index", content_hash, full_content
+            )
+
+    def _write_topic_file(
+        self,
+        rel_path: str,
+        aca_id: str,
+        aca_type: str,
+        content_hash: str,
+        content: str,
+    ) -> str:
+        """Write a topic file to the vault.
+
+        Unlike ``_write_note()``, this preserves the caller-supplied path
+        (needed for the 3-tier ``Category/Topic/_overview.md`` structure)
+        and uses the manifest only for change detection.
+        """
+        # Track for wikilinks
+        self._id_to_filename[aca_id] = rel_path
+
+        if not self._manifest.needs_update(aca_id, content_hash):
+            self._manifest.mark_current(aca_id)
+            return "skipped"
+
+        is_new = aca_id not in self._manifest.entries
+        action = "created" if is_new else "updated"
+
+        if self._options.dry_run:
+            self._manifest.mark_current(aca_id)
+            return action
+
+        file_path = self._vault_path / rel_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+
+        self._manifest.record(aca_id, rel_path, aca_type, content_hash)
+        return action
 
     # --- Helpers ---
 
@@ -670,11 +1037,15 @@ class ObsidianExporter:
         from src.models.content import Content
         from src.models.content_reference import ContentReference
 
-        refs = session.execute(
-            select(ContentReference).where(
-                ContentReference.source_content_id == content_id,
+        refs = (
+            session.execute(
+                select(ContentReference).where(
+                    ContentReference.source_content_id == content_id,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         if not refs:
             return ""
