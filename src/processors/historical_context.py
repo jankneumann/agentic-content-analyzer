@@ -10,6 +10,7 @@ from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.theme import HistoricalMention, ThemeData, ThemeEvolution
 from src.services.prompt_service import PromptService
+from src.storage.graph_provider import GraphBackendUnavailableError
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger
 
@@ -48,6 +49,7 @@ class HistoricalContextAnalyzer:
         self.prompt_service = prompt_service or PromptService()
 
         self.graphiti_client: GraphitiClient | None = None
+        self._graphiti_unavailable: bool = False
 
         # Track usage for cost calculation
         self.provider_used: Provider | None = None
@@ -55,6 +57,19 @@ class HistoricalContextAnalyzer:
         self.output_tokens: int = 0
 
         logger.info(f"Initialized HistoricalContextAnalyzer with {self.model}")
+
+    async def _get_client(self) -> GraphitiClient | None:
+        """Lazy-initialize the GraphitiClient, returning None if unavailable."""
+        if self._graphiti_unavailable:
+            return None
+        if self.graphiti_client is None:
+            try:
+                self.graphiti_client = await GraphitiClient.create()
+            except GraphBackendUnavailableError:
+                logger.warning("Graph backend unavailable, skipping historical context")
+                self._graphiti_unavailable = True
+                return None
+        return self.graphiti_client
 
     async def enrich_themes_with_history(
         self,
@@ -75,7 +90,10 @@ class HistoricalContextAnalyzer:
         """
         logger.info(f"Enriching {len(themes)} themes with historical context")
 
-        self.graphiti_client = GraphitiClient()
+        client = await self._get_client()
+        if client is None:
+            logger.info("Skipping historical enrichment (graph backend unavailable)")
+            return themes
 
         try:
             # Prepare tasks for concurrent execution
@@ -122,8 +140,20 @@ class HistoricalContextAnalyzer:
         lookback_days: int,
     ) -> ThemeEvolution:
         """Analyze how a theme has evolved over time."""
+        client = await self._get_client()
+        if client is None:
+            return ThemeEvolution(
+                theme_name=theme_name,
+                first_mention=current_date,
+                total_mentions=0,
+                mention_frequency="new",
+                evolution_summary="Graph backend unavailable; no historical data.",
+                previous_discussions=[],
+                recent_mentions=[],
+            )
+
         # Get historical mentions
-        historical_mentions = await self.graphiti_client.get_historical_theme_mentions(
+        historical_mentions = await client.get_historical_theme_mentions(
             theme_name=theme_name,
             before_date=current_date,
             lookback_days=lookback_days,
@@ -142,7 +172,7 @@ class HistoricalContextAnalyzer:
             )
 
         # Build timeline
-        timeline = await self.graphiti_client.get_theme_evolution_timeline(
+        timeline = await client.get_theme_evolution_timeline(
             theme_name=theme_name,
             end_date=current_date,
         )

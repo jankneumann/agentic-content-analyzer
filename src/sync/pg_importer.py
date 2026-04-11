@@ -184,8 +184,15 @@ class PGImporter:
                         continue
                     records.setdefault(table, []).append(row_data)
 
-                elif record_type in ("neo4j_manifest", "neo4j_node", "neo4j_relationship"):
-                    # Skip Neo4j records in PG importer
+                elif record_type in (
+                    "graph_manifest",
+                    "graph_node",
+                    "graph_relationship",
+                    "neo4j_manifest",
+                    "neo4j_node",
+                    "neo4j_relationship",
+                ):
+                    # Skip graph records in PG importer
                     continue
 
                 else:
