@@ -4,8 +4,7 @@ Loads ingestion source definitions from YAML config files in sources.d/
 directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
-Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar, arxiv
-Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar, arxiv, huggingface_papers
 
 """
 
@@ -174,6 +173,12 @@ class ArxivSource(SourceBase):
     max_pdf_pages: int = 80
 
 
+class HuggingFacePapersSource(SourceBase):
+    type: Literal["huggingface_papers"] = "huggingface_papers"
+    url: str = "https://huggingface.co/papers"
+    request_delay: float = 1.0
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -186,7 +191,8 @@ Source = Annotated[
     | WebSearchSource
     | BlogSource
     | ScholarSource
-    | ArxivSource,
+    | ArxivSource
+    | HuggingFacePapersSource,
     Field(discriminator="type"),
 ]
 
@@ -245,6 +251,10 @@ class SourcesConfig(BaseModel):
     def get_arxiv_sources(self) -> list[ArxivSource]:
         """Get all enabled arXiv sources."""
         return [s for s in self.sources if isinstance(s, ArxivSource) and s.enabled]
+
+    def get_huggingface_papers_sources(self) -> list[HuggingFacePapersSource]:
+        """Get all enabled HuggingFace Papers sources."""
+        return [s for s in self.sources if isinstance(s, HuggingFacePapersSource) and s.enabled]
 
 
 # --- Source File Model (per-file schema) ---

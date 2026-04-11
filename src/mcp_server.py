@@ -332,6 +332,42 @@ def ingest_arxiv(
 
 
 @mcp.tool()
+def ingest_huggingface_papers(
+    max_papers: int = 30,
+    days: int | None = None,
+    force_reprocess: bool = False,
+) -> str:
+    """Ingest daily papers from HuggingFace Papers (https://huggingface.co/papers).
+
+    Fetches the community-curated daily papers listing, extracts paper
+    metadata (title, authors, abstract) and arXiv links. Cross-deduplicates
+    with existing arXiv source records.
+
+    Args:
+        max_papers: Maximum papers to ingest (default 30).
+        days: Only ingest papers from the last N days (client-side filter).
+        force_reprocess: Force re-ingest existing papers.
+
+    Returns:
+        JSON with items_ingested count and source name.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from src.ingestion.orchestrator import ingest_huggingface_papers as _ingest
+
+    after_date = None
+    if days is not None:
+        after_date = datetime.now(UTC) - timedelta(days=days)
+
+    count = _ingest(
+        max_papers=max_papers,
+        after_date=after_date,
+        force_reprocess=force_reprocess,
+    )
+    return _serialize({"items_ingested": count, "source": "huggingface_papers"})
+
+
+@mcp.tool()
 def ingest_arxiv_paper(
     identifier: str,
     no_pdf: bool = False,

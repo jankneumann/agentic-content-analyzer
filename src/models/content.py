@@ -15,6 +15,7 @@ Content Sources:
 - BLOG: Blog posts scraped from index pages
 - SCHOLAR: Academic papers via Semantic Scholar
 - ARXIV: arXiv preprints with full PDF text extraction
+- HUGGINGFACE_PAPERS: Daily papers from HuggingFace Papers
 - MANUAL: Manually created content via API
 """
 
@@ -66,6 +67,7 @@ class ContentSource(StrEnum):
     BLOG = "blog"  # Blog posts scraped from index pages
     SCHOLAR = "scholar"  # Academic papers via Semantic Scholar
     ARXIV = "arxiv"  # arXiv preprints with full PDF text
+    HUGGINGFACE_PAPERS = "huggingface_papers"  # Daily papers from HuggingFace
     OTHER = "other"
 
 

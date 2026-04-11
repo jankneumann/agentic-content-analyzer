@@ -160,6 +160,15 @@ const SOURCE_CONFIGS: SourceConfig[] = [
     maxResultsMax: 100,
     supportsIngest: true,
   },
+  {
+    key: "huggingface_papers",
+    label: "HuggingFace Papers",
+    description: "Fetch community-curated daily papers from HuggingFace (huggingface.co/papers). Includes abstracts and arXiv links.",
+    icon: <Download className="h-5 w-5" />,
+    maxResultsLabel: "Maximum papers",
+    maxResultsMax: 100,
+    supportsIngest: true,
+  },
 ]
 
 /**
