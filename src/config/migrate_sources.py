@@ -278,7 +278,7 @@ def deduplicate_sources(
 
 def _dump_yaml(data: dict[str, Any]) -> str:
     """Serialize a dict to YAML with consistent formatting."""
-    return yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    return str(yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True))
 
 
 def _strip_type_from_entries(

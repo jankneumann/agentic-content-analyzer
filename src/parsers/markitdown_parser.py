@@ -107,7 +107,7 @@ class MarkItDownParser(DocumentParser):
         detected_format = format_hint or self._detect_format(source)
 
         try:
-            result = self.md.convert(source)
+            result = self.md.convert(source)  # type: ignore[arg-type]
             markdown_content = result.text_content or ""
 
             # Extract links from the markdown content
