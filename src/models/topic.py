@@ -83,6 +83,7 @@ class Topic(Base):  # type: ignore[valid-type, misc]
         Enum(
             TopicStatus,
             name="topicstatus",
+            create_type=False,
             create_constraint=True,
             values_callable=lambda x: [e.value for e in x],
         ),
@@ -183,6 +184,7 @@ class TopicNote(Base):  # type: ignore[valid-type, misc]
         Enum(
             TopicNoteType,
             name="topicnotetype",
+            create_type=False,
             create_constraint=True,
             values_callable=lambda x: [e.value for e in x],
         ),
