@@ -52,6 +52,16 @@ def _get_graph_provider():  # type: ignore[no-untyped-def]
     return get_graph_provider()
 
 
+def _create_neo4j_driver(settings_instance):  # type: ignore[no-untyped-def]
+    """Create a Neo4j driver from a Settings instance."""
+    from neo4j import GraphDatabase
+
+    uri = settings_instance.get_effective_neo4j_uri()
+    user = settings_instance.get_effective_neo4j_user()
+    password = settings_instance.get_effective_neo4j_password()
+    return GraphDatabase.driver(uri, auth=(user, password))
+
+
 def _create_storage_providers(settings_instance, buckets=None):  # type: ignore[no-untyped-def]
     """Create storage provider dict from a Settings instance."""
     from src.services.file_storage import get_storage_for_settings
@@ -111,8 +121,7 @@ def export_cmd(
         provider_type = getattr(settings, "graphdb_provider", "neo4j")
         if provider_type != "neo4j":
             logger.warning(
-                "--neo4j-only is deprecated and graph provider is '%s'. "
-                "Use --graph-only instead.",
+                "--neo4j-only is deprecated and graph provider is '%s'. Use --graph-only instead.",
                 provider_type,
             )
 
@@ -222,8 +231,7 @@ def import_cmd(
         provider_type = getattr(settings, "graphdb_provider", "neo4j")
         if provider_type != "neo4j":
             logger.warning(
-                "--neo4j-only is deprecated and graph provider is '%s'. "
-                "Use --graph-only instead.",
+                "--neo4j-only is deprecated and graph provider is '%s'. Use --graph-only instead.",
                 provider_type,
             )
 
@@ -381,8 +389,7 @@ def push_cmd(
         provider_type = getattr(settings, "graphdb_provider", "neo4j")
         if provider_type != "neo4j":
             logger.warning(
-                "--neo4j-only is deprecated and graph provider is '%s'. "
-                "Use --graph-only instead.",
+                "--neo4j-only is deprecated and graph provider is '%s'. Use --graph-only instead.",
                 provider_type,
             )
 
@@ -536,7 +543,9 @@ def push_cmd(
             if do_graph:
                 try:
                     target_provider.import_graph(  # type: ignore[possibly-undefined]
-                        graph_path, mode=mode, dry_run=dry_run  # type: ignore[possibly-undefined]
+                        graph_path,
+                        mode=mode,
+                        dry_run=dry_run,  # type: ignore[possibly-undefined]
                     )
                     stages_completed.append("graph_import")
                 finally:
@@ -637,7 +646,9 @@ def obsidian_cmd(
             if since_dt.tzinfo is None:
                 since_dt = since_dt.replace(tzinfo=UTC)
         except ValueError:
-            typer.echo(f"Error: Invalid date format: {since}. Use ISO format (e.g., 2026-03-01)", err=True)
+            typer.echo(
+                f"Error: Invalid date format: {since}. Use ISO format (e.g., 2026-03-01)", err=True
+            )
             raise typer.Exit(1)
 
     options = ExportOptions(
@@ -658,7 +669,10 @@ def obsidian_cmd(
         try:
             neo4j_driver = _create_neo4j_driver(settings_instance)
         except Exception as e:
-            print(f"WARNING: Neo4j unavailable; entity export skipped ({e})", file=__import__('sys').stderr)
+            print(
+                f"WARNING: Neo4j unavailable; entity export skipped ({e})",
+                file=__import__("sys").stderr,
+            )
             options.include_entities = False
 
     try:

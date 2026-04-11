@@ -63,7 +63,7 @@ def extract_links(html: str, base_url: str | None = None) -> list[str]:
         links = []
 
         for anchor in soup.find_all("a", href=True):
-            href = anchor["href"]
+            href = str(anchor["href"])
 
             # Skip mailto, javascript, and anchor links
             if href.startswith(("mailto:", "javascript:", "#")):
@@ -78,8 +78,8 @@ def extract_links(html: str, base_url: str | None = None) -> list[str]:
                 links.append(href)
 
         # Remove duplicates while preserving order
-        seen = set()
-        unique_links = []
+        seen: set[str] = set()
+        unique_links: list[str] = []
         for link in links:
             if link not in seen:
                 seen.add(link)

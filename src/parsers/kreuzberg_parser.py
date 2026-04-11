@@ -160,7 +160,12 @@ class KreuzbergParser(DocumentParser):
         Returns:
             DocumentContent with markdown, tables, and metadata
         """
-        from kreuzberg import ExtractionConfig, OutputFormat, extract_bytes, extract_file
+        from kreuzberg import (  # type: ignore[attr-defined]
+            ExtractionConfig,
+            OutputFormat,
+            extract_bytes,
+            extract_file,
+        )
 
         start_time = time.time()
         warnings: list[str] = []

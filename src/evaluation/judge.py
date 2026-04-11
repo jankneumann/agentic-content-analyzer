@@ -204,7 +204,7 @@ class LLMJudge:
     def __init__(
         self,
         judge_model: str,
-        router: "Any",  # LLMRouter instance — not typed to avoid circular import
+        router: Any,  # LLMRouter instance — not typed to avoid circular import
         eval_config: EvaluationConfig,
         weight: float = 1.0,
     ):

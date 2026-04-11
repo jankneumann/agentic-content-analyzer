@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 class GmailDeliveryService:
     """Service for delivering digests via Gmail."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Gmail delivery service."""
         self.gmail_client = GmailClient()
         logger.info("Gmail delivery service initialized")
@@ -40,13 +40,13 @@ class GmailDeliveryService:
         try:
             # Format digest as HTML
             formatter = DigestFormatter()
-            html_content = formatter.to_html(digest)
+            html_content = formatter.to_html(digest)  # type: ignore[arg-type]
 
             # Create email message
             message = MIMEMultipart("alternative")
             message["To"] = recipient_email
             message["From"] = "me"  # Gmail API uses 'me' for authenticated user
-            message["Subject"] = subject or digest.title
+            message["Subject"] = subject or digest.title or ""
 
             # Attach HTML content
             html_part = MIMEText(html_content, "html")
@@ -57,7 +57,7 @@ class GmailDeliveryService:
 
             # Send via Gmail API
             sent_message = (
-                self.gmail_client.service.users()
+                self.gmail_client.service.users()  # type: ignore[attr-defined]
                 .messages()
                 .send(userId="me", body={"raw": raw_message})
                 .execute()
