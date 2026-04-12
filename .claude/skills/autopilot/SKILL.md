@@ -25,9 +25,7 @@ Optional flags:
 ## Prerequisites
 
 - OpenSpec CLI installed (v1.0+)
-- For multi-vendor convergence: at least 1 additional vendor CLI besides
-  yourself (e.g., if you are Claude, at least one of codex or gemini must be
-  available). You (the executing agent) always count as one vendor.
+- At least 2 vendor CLIs available (claude, codex, gemini) for multi-vendor convergence
 - Coordinator recommended (degrades to linear workflow without it)
 
 ## Coordinator Capability Check
@@ -38,33 +36,12 @@ At skill start, run the coordinator detection script:
 python3 "<skill-base-dir>/../coordination-bridge/scripts/check_coordinator.py" --json
 ```
 
-The script reads `COORDINATION_API_URL` from the environment (falls back to
-`localhost:8081` if unset). Ensure this variable is configured in your profile
-or secrets before running autopilot.
-
-### Multi-vendor mode (coordinator available + 1 or more additional vendor CLIs)
-
-Follow the full convergence loop workflow in Steps 0–9 below.
-
-### Single-vendor fallback (coordinator unavailable OR no additional vendors)
-
-**IMPORTANT — this is the MANDATORY fallback, not an optional shortcut.**
-When the coordinator is unavailable or no additional vendor CLIs are detected
-(i.e., you are the only agent), you MUST still invoke the lifecycle skills
-sequentially. Do NOT skip them and implement manually. The fallback sequence
-is:
-
-1. `/plan-feature <description>` — create OpenSpec proposal artifacts
-2. `/iterate-on-plan <change-id>` — single-vendor plan review (replaces `/parallel-review-plan` convergence loop)
-3. `/implement-feature <change-id>` — implement the approved proposal
-4. `/iterate-on-implementation <change-id>` — single-vendor implementation review (replaces IMPL_REVIEW convergence loop)
-5. `/validate-feature <change-id>` — run validation checks
-6. Create PR with evidence trail (SUBMIT_PR phase below)
-
-Each skill MUST be invoked via the `Skill` tool — do not replace skill
-invocations with manual ad-hoc work. The skills produce structured artifacts
-(OpenSpec proposals, review findings, validation reports) that form the
-evidence trail for the PR.
+If coordinator is unavailable, emit a warning and fall back to sequential skill invocation:
+1. `/plan-feature` (if description provided)
+2. `/parallel-review-plan` (single pass, no convergence loop)
+3. `/implement-feature`
+4. `/validate-feature`
+5. Create PR manually
 
 ## Steps
 
@@ -112,10 +89,6 @@ If argument was an existing change-id:
 
 ### 3. PLAN_REVIEW Phase (Convergence Loop)
 
-> **Single-vendor fallback**: When running without multi-vendor convergence,
-> invoke `/iterate-on-plan <change-id>` instead of the convergence loop below.
-> This performs the same review-fix-commit cycle using a single vendor.
-
 Invoke the convergence loop with `fix_mode="inline"`:
 
 ```python
@@ -147,10 +120,6 @@ Invoke implementation using existing skills:
 Record `package_authors` from the implementation results (which vendor implemented each package).
 
 ### 5. IMPL_REVIEW Phase (Convergence Loop)
-
-> **Single-vendor fallback**: When running without multi-vendor convergence,
-> invoke `/iterate-on-implementation <change-id>` instead of the convergence
-> loop below.
 
 Invoke the convergence loop with `fix_mode="targeted"`:
 
