@@ -224,7 +224,7 @@ class ChatService:
         input_tokens = 0
         output_tokens = 0
 
-        stream = await client.chat.completions.create(
+        stream = await client.chat.completions.create(  # type: ignore[call-overload]
             model=provider_model_id,
             messages=formatted_messages,
             stream=True,

@@ -18,7 +18,7 @@ import typer
 
 app = typer.Typer(
     name="sync",
-    help="Sync data between environments (PostgreSQL, Neo4j, file storage)",
+    help="Sync data between environments (PostgreSQL, graph DB, file storage)",
     no_args_is_help=True,
 )
 
@@ -43,6 +43,13 @@ def _create_pg_engine(settings_instance):  # type: ignore[no-untyped-def]
 
     url = settings_instance.get_effective_database_url()
     return create_engine(url)
+
+
+def _get_graph_provider():  # type: ignore[no-untyped-def]
+    """Get graph provider from settings."""
+    from src.storage.graph_provider import get_graph_provider
+
+    return get_graph_provider()
 
 
 def _create_neo4j_driver(settings_instance):  # type: ignore[no-untyped-def]
@@ -91,27 +98,44 @@ def export_cmd(
         bool,
         typer.Option("--pg-only", help="Export PostgreSQL data only"),
     ] = False,
+    graph_only: Annotated[
+        bool,
+        typer.Option("--graph-only/--no-graph-only", help="Export only graph data"),
+    ] = False,
     neo4j_only: Annotated[
         bool,
-        typer.Option("--neo4j-only", help="Export Neo4j data only"),
+        typer.Option("--neo4j-only", hidden=True, help="Deprecated: use --graph-only"),
     ] = False,
 ) -> None:
     """Export database data to a JSONL file.
 
-    Exports PostgreSQL tables and/or Neo4j knowledge graph data
+    Exports PostgreSQL tables and/or knowledge graph data
     to a JSONL file for later import into another environment.
     """
+    # Combine --graph-only and deprecated --neo4j-only
+    export_graph = graph_only or neo4j_only
+    if neo4j_only:
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        provider_type = getattr(settings, "graphdb_provider", "neo4j")
+        if provider_type != "neo4j":
+            logger.warning(
+                "--neo4j-only is deprecated and graph provider is '%s'. Use --graph-only instead.",
+                provider_type,
+            )
+
     settings_instance = _resolve_settings(from_profile)
     table_list = [t.strip() for t in tables.split(",")] if tables else None
 
-    export_pg = not neo4j_only
-    export_neo4j = not pg_only
+    do_export_pg = not export_graph
+    do_export_graph = not pg_only
 
-    if pg_only and neo4j_only:
-        typer.echo("Error: Cannot specify both --pg-only and --neo4j-only.", err=True)
+    if pg_only and export_graph:
+        typer.echo("Error: Cannot specify both --pg-only and --graph-only.", err=True)
         raise typer.Exit(1)
 
-    if export_pg:
+    if do_export_pg:
         from src.sync.pg_exporter import PGExporter
 
         engine = _create_pg_engine(settings_instance)
@@ -125,25 +149,22 @@ def export_cmd(
         finally:
             engine.dispose()
 
-    if export_neo4j:
-        neo4j_path = output_path.with_suffix(".neo4j.jsonl")
+    if do_export_graph:
+        graph_path = output_path.with_suffix(".graph.jsonl")
         try:
-            driver = _create_neo4j_driver(settings_instance)
+            provider = _get_graph_provider()
         except Exception as e:
-            typer.echo(f"Neo4j connection failed (skipping): {e}", err=True)
+            typer.echo(f"Graph connection failed (skipping): {e}", err=True)
             return
 
         try:
-            from src.sync.neo4j_exporter import Neo4jExporter
-
-            neo4j_exporter = Neo4jExporter(driver)
-            result = neo4j_exporter.export(neo4j_path, force=force)
+            result = provider.export_graph(graph_path, force=force)
             typer.echo(
-                f"Neo4j export: {result.get('nodes', 0)} nodes, "
+                f"Graph export: {result.get('nodes', 0)} nodes, "
                 f"{result.get('relationships', 0)} relationships"
             )
         finally:
-            driver.close()
+            provider.close()
 
 
 @app.command("import")
@@ -185,9 +206,13 @@ def import_cmd(
         bool,
         typer.Option("--pg-only", help="Import PostgreSQL data only"),
     ] = False,
+    graph_only: Annotated[
+        bool,
+        typer.Option("--graph-only/--no-graph-only", help="Import only graph data"),
+    ] = False,
     neo4j_only: Annotated[
         bool,
-        typer.Option("--neo4j-only", help="Import Neo4j data only"),
+        typer.Option("--neo4j-only", hidden=True, help="Deprecated: use --graph-only"),
     ] = False,
 ) -> None:
     """Import data from a JSONL file into the target database.
@@ -197,6 +222,19 @@ def import_cmd(
     - replace: Update existing rows, insert new ones
     - clean: Truncate all tables first, then insert (destructive!)
     """
+    # Combine --graph-only and deprecated --neo4j-only
+    import_graph_flag = graph_only or neo4j_only
+    if neo4j_only:
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        provider_type = getattr(settings, "graphdb_provider", "neo4j")
+        if provider_type != "neo4j":
+            logger.warning(
+                "--neo4j-only is deprecated and graph provider is '%s'. Use --graph-only instead.",
+                provider_type,
+            )
+
     if not input_path.exists():
         typer.echo(f"Error: File not found: {input_path}", err=True)
         raise typer.Exit(1)
@@ -218,14 +256,14 @@ def import_cmd(
     settings_instance = _resolve_settings(to_profile)
     table_list = [t.strip() for t in tables.split(",")] if tables else None
 
-    import_pg = not neo4j_only
-    import_neo4j = not pg_only
+    do_import_pg = not import_graph_flag
+    do_import_graph = not pg_only
 
-    if pg_only and neo4j_only:
-        typer.echo("Error: Cannot specify both --pg-only and --neo4j-only.", err=True)
+    if pg_only and import_graph_flag:
+        typer.echo("Error: Cannot specify both --pg-only and --graph-only.", err=True)
         raise typer.Exit(1)
 
-    if import_pg:
+    if do_import_pg:
         from src.sync.pg_importer import PGImporter
 
         engine = _create_pg_engine(settings_instance)
@@ -249,30 +287,29 @@ def import_cmd(
         finally:
             engine.dispose()
 
-    if import_neo4j:
-        # Look for Neo4j JSONL file
-        neo4j_path = input_path.with_suffix(".neo4j.jsonl")
-        if not neo4j_path.exists():
-            # Also check if the main file contains Neo4j records
-            neo4j_path = input_path
+    if do_import_graph:
+        # Look for graph JSONL file (new naming), fall back to legacy neo4j naming
+        graph_path = input_path.with_suffix(".graph.jsonl")
+        if not graph_path.exists():
+            graph_path = input_path.with_suffix(".neo4j.jsonl")
+        if not graph_path.exists():
+            # Also check if the main file contains graph records
+            graph_path = input_path
 
         try:
-            driver = _create_neo4j_driver(settings_instance)
+            provider = _get_graph_provider()
         except Exception as e:
-            typer.echo(f"Neo4j connection failed (skipping): {e}", err=True)
+            typer.echo(f"Graph connection failed (skipping): {e}", err=True)
             return
 
         try:
-            from src.sync.neo4j_importer import Neo4jImporter
+            graph_stats = provider.import_graph(graph_path, mode=mode, dry_run=dry_run)
 
-            neo4j_importer = Neo4jImporter(driver, mode=mode)
-            neo4j_stats = neo4j_importer.import_file(neo4j_path, dry_run=dry_run)
-
-            typer.echo("Neo4j import results:")
-            for key, value in neo4j_stats.items():
+            typer.echo("Graph import results:")
+            for key, value in graph_stats.items():
                 typer.echo(f"  {key}: {value}")
         finally:
-            driver.close()
+            provider.close()
 
 
 @app.command("push")
@@ -311,9 +348,13 @@ def push_cmd(
         bool,
         typer.Option("--pg-only", help="Sync PostgreSQL data only"),
     ] = False,
+    graph_only: Annotated[
+        bool,
+        typer.Option("--graph-only/--no-graph-only", help="Sync only graph data"),
+    ] = False,
     neo4j_only: Annotated[
         bool,
-        typer.Option("--neo4j-only", help="Sync Neo4j data only"),
+        typer.Option("--neo4j-only", hidden=True, help="Deprecated: use --graph-only"),
     ] = False,
     files_only: Annotated[
         bool,
@@ -332,13 +373,26 @@ def push_cmd(
 ) -> None:
     """Push data from one profile to another.
 
-    Orchestrates a full sync: PG export → file discovery → file sync
-    → PG import → Neo4j export → Neo4j import. Both --from-profile
+    Orchestrates a full sync: PG export -> file discovery -> file sync
+    -> PG import -> graph export -> graph import. Both --from-profile
     and --to-profile are required.
 
     Re-running is safe: file sync skips existing files, merge mode
     skips existing database records.
     """
+    # Combine --graph-only and deprecated --neo4j-only
+    graph_only_flag = graph_only or neo4j_only
+    if neo4j_only:
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        provider_type = getattr(settings, "graphdb_provider", "neo4j")
+        if provider_type != "neo4j":
+            logger.warning(
+                "--neo4j-only is deprecated and graph provider is '%s'. Use --graph-only instead.",
+                provider_type,
+            )
+
     if from_profile == to_profile:
         typer.echo("Error: Source and target profiles must be different.", err=True)
         raise typer.Exit(1)
@@ -369,14 +423,14 @@ def push_cmd(
     bucket_list = [b.strip() for b in buckets.split(",")] if buckets else None
 
     # Determine which stages to run
-    do_pg = not neo4j_only and not files_only
-    do_files = not pg_only and not neo4j_only
-    do_neo4j = not pg_only and not files_only
+    do_pg = not graph_only_flag and not files_only
+    do_files = not pg_only and not graph_only_flag
+    do_graph = not pg_only and not files_only
 
-    only_flags = [pg_only, neo4j_only, files_only]
+    only_flags = [pg_only, graph_only_flag, files_only]
     if sum(only_flags) > 1:
         typer.echo(
-            "Error: Cannot specify more than one of --pg-only, --neo4j-only, --files-only.",
+            "Error: Cannot specify more than one of --pg-only, --graph-only, --files-only.",
             err=True,
         )
         raise typer.Exit(1)
@@ -453,51 +507,49 @@ def push_cmd(
 
             # Temp file tracked in temp_files list for cleanup in finally block
 
-        # Stage 5: Neo4j Export
-        if do_neo4j:
-            typer.echo(f"\n[Neo4j Export] Exporting Neo4j from '{from_profile}'...")
+        # Stage 5: Graph Export
+        if do_graph:
+            typer.echo(f"\n[Graph Export] Exporting graph from '{from_profile}'...")
             try:
-                source_driver = _create_neo4j_driver(source_settings)
+                source_provider = _get_graph_provider()
             except Exception as e:
-                typer.echo(f"  Neo4j connection failed (skipping): {e}", err=True)
-                do_neo4j = False
+                typer.echo(f"  Graph connection failed (skipping): {e}", err=True)
+                do_graph = False
 
-            if do_neo4j:
+            if do_graph:
                 try:
-                    from src.sync.neo4j_exporter import Neo4jExporter
-
-                    fd, tmp = tempfile.mkstemp(suffix=".neo4j.jsonl", prefix="sync_")
+                    fd, tmp = tempfile.mkstemp(suffix=".graph.jsonl", prefix="sync_")
                     os.close(fd)
-                    neo4j_path = Path(tmp)
-                    temp_files.append(neo4j_path)
-                    neo4j_exporter = Neo4jExporter(source_driver)  # type: ignore[possibly-undefined]
-                    result = neo4j_exporter.export(neo4j_path, force=True)
+                    graph_path = Path(tmp)
+                    temp_files.append(graph_path)
+                    result = source_provider.export_graph(graph_path, force=True)  # type: ignore[possibly-undefined]
                     typer.echo(
                         f"  Exported {result.get('nodes', 0)} nodes, "
                         f"{result.get('relationships', 0)} relationships"
                     )
-                    stages_completed.append("neo4j_export")
+                    stages_completed.append("graph_export")
                 finally:
-                    source_driver.close()  # type: ignore[possibly-undefined]
+                    source_provider.close()  # type: ignore[possibly-undefined]
 
-        # Stage 6: Neo4j Import
-        if do_neo4j:
-            typer.echo(f"\n[Neo4j Import] Importing Neo4j into '{to_profile}'...")
+        # Stage 6: Graph Import
+        if do_graph:
+            typer.echo(f"\n[Graph Import] Importing graph into '{to_profile}'...")
             try:
-                target_driver = _create_neo4j_driver(target_settings)
+                target_provider = _get_graph_provider()
             except Exception as e:
-                typer.echo(f"  Neo4j connection failed (skipping): {e}", err=True)
-                do_neo4j = False
+                typer.echo(f"  Graph connection failed (skipping): {e}", err=True)
+                do_graph = False
 
-            if do_neo4j:
+            if do_graph:
                 try:
-                    from src.sync.neo4j_importer import Neo4jImporter
-
-                    neo4j_importer = Neo4jImporter(target_driver, mode=mode)  # type: ignore[possibly-undefined]
-                    neo4j_importer.import_file(neo4j_path, dry_run=dry_run)  # type: ignore[possibly-undefined]
-                    stages_completed.append("neo4j_import")
+                    target_provider.import_graph(  # type: ignore[possibly-undefined]
+                        graph_path,
+                        mode=mode,
+                        dry_run=dry_run,  # type: ignore[possibly-undefined]
+                    )
+                    stages_completed.append("graph_import")
                 finally:
-                    target_driver.close()  # type: ignore[possibly-undefined]
+                    target_provider.close()  # type: ignore[possibly-undefined]
 
                 # Temp file tracked in temp_files list for cleanup in finally block
 
@@ -594,7 +646,9 @@ def obsidian_cmd(
             if since_dt.tzinfo is None:
                 since_dt = since_dt.replace(tzinfo=UTC)
         except ValueError:
-            typer.echo(f"Error: Invalid date format: {since}. Use ISO format (e.g., 2026-03-01)", err=True)
+            typer.echo(
+                f"Error: Invalid date format: {since}. Use ISO format (e.g., 2026-03-01)", err=True
+            )
             raise typer.Exit(1)
 
     options = ExportOptions(
@@ -615,7 +669,10 @@ def obsidian_cmd(
         try:
             neo4j_driver = _create_neo4j_driver(settings_instance)
         except Exception as e:
-            print(f"WARNING: Neo4j unavailable; entity export skipped ({e})", file=__import__('sys').stderr)
+            print(
+                f"WARNING: Neo4j unavailable; entity export skipped ({e})",
+                file=__import__("sys").stderr,
+            )
             options.include_entities = False
 
     try:

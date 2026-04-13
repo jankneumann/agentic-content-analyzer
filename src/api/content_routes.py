@@ -257,6 +257,14 @@ async def trigger_content_ingestion(
     - rss: Fetch articles from configured RSS feeds
     - youtube: Fetch transcripts from configured YouTube playlists
     - podcast: Fetch transcripts from configured podcast feeds
+    - substack: Fetch posts from Substack subscriptions
+    - xsearch: Search X/Twitter via Grok API
+    - perplexity: Search web via Perplexity Sonar API
+    - blog: Scrape blog posts from configured index pages
+    - scholar: Fetch academic papers from Semantic Scholar
+    - arxiv: Fetch papers from arXiv with PDF extraction
+    - huggingface_papers: Fetch daily papers from HuggingFace Papers
+    - url: Ingest a single URL
     """
     # Enqueue job to pgqueuer_jobs table (persistent, survives restarts)
     job_id = await _enqueue_ingestion_job(request)

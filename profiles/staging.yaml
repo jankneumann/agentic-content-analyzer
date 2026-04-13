@@ -17,7 +17,8 @@ description: Staging deployment for CI/CD with production-like providers
 
 providers:
   database: railway
-  neo4j: auradb
+  graphdb: neo4j       # top-level graph backend
+  neo4j: auradb        # kept for backward compat
   storage: railway
   observability: langfuse
 
@@ -37,6 +38,9 @@ settings:
     railway_max_overflow: 2
     railway_pool_recycle: 300
     railway_pool_timeout: 30
+
+  graphdb:
+    graphdb_mode: cloud
 
   neo4j:
     neo4j_auradb_uri: "${STAGING_NEO4J_AURADB_URI:-${NEO4J_AURADB_URI}}"

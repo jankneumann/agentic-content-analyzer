@@ -12,3 +12,8 @@
 **Vulnerability:** A hardcoded API key was found in a testing environment setup file or test case.
 **Learning:** Including plain-text keys—even in mock setups or test cases—increases the risk of accidental commit or exposure when copied and modified.
 **Prevention:** Use generic placeholder values (e.g., 'mock-secret-key' or 'app-secret-key') strictly for validation patterns without reflecting actual key formats.
+
+## 2025-05-27 - Information Leakage via Exception Details in Pricing Routes
+**Vulnerability:** The pricing API endpoints (`predict_monthly_costs`, `estimate_neon_cost`, `estimate_resend_cost`) in `src/api/pricing_routes.py` caught `ValueError` exceptions and returned their string representation (`str(e)`) directly to clients in a `400` response `detail` field.
+**Learning:** Returning exception details from library calls or internally generated value errors can leak internal configuration structures or other unexpected details.
+**Prevention:** Catch standard exceptions but map them to generic user-facing validation error messages like "Invalid parameters provided" rather than echoing the raw string representation directly in the API response.

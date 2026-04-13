@@ -22,7 +22,8 @@ description: Supabase Cloud with Neo4j AuraDB
 
 providers:
   database: supabase
-  neo4j: auradb
+  graphdb: neo4j       # top-level graph backend
+  neo4j: auradb        # kept for backward compat
   storage: supabase
   observability: langfuse
 
@@ -37,6 +38,9 @@ settings:
     supabase_region: "${SUPABASE_REGION:-us-east-1}"
     supabase_pooler_mode: transaction
     supabase_az: "0"
+
+  graphdb:
+    graphdb_mode: cloud
 
   neo4j:
     # Neo4j AuraDB (free tier available)

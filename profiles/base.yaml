@@ -21,7 +21,8 @@ description: Base configuration with local development defaults
 
 providers:
   database: local      # local, supabase, neon, railway
-  neo4j: local         # local, auradb
+  graphdb: neo4j       # neo4j, falkordb — top-level graph backend
+  neo4j: local         # local, auradb (kept for backward compat)
   storage: local       # local, s3, supabase, railway
   observability: langfuse  # noop, opik, braintrust, otel, langfuse
 
@@ -46,7 +47,13 @@ settings:
     database_url: "postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters"
 
   # ---------------------------------------------------------------------------
-  # Neo4j / Knowledge Graph Settings
+  # Graph Database Settings
+  # ---------------------------------------------------------------------------
+  graphdb:
+    graphdb_mode: local    # local or cloud
+
+  # ---------------------------------------------------------------------------
+  # Neo4j / Knowledge Graph Settings (kept for backward compat)
   # ---------------------------------------------------------------------------
   neo4j:
     # Default local Neo4j (Docker Compose)

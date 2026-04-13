@@ -48,7 +48,8 @@ description: Railway compute + Neon database with branching for agent workflows
 
 providers:
   database: neon
-  neo4j: auradb
+  graphdb: neo4j       # top-level graph backend
+  neo4j: auradb        # kept for backward compat
   storage: railway
   observability: langfuse
 
@@ -75,6 +76,12 @@ settings:
     neon_api_key: "${NEON_API_KEY:-}"
     neon_project_id: "${NEON_PROJECT_ID:-}"
     neon_default_branch: "${NEON_DEFAULT_BRANCH:-main}"
+
+  # ---------------------------------------------------------------------------
+  # Graph Database Settings
+  # ---------------------------------------------------------------------------
+  graphdb:
+    graphdb_mode: cloud
 
   # ---------------------------------------------------------------------------
   # Neo4j: AuraDB (cloud knowledge graph)

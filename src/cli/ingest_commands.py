@@ -1357,3 +1357,68 @@ def arxiv_paper(
         _ingest_via_api("arxiv-paper", params, "arXiv paper ingestion")
     except httpx.ConnectError:
         _arxiv_paper_direct(identifier, no_pdf, force_reprocess)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest huggingface-papers
+# ---------------------------------------------------------------------------
+
+
+def _huggingface_papers_direct(
+    max_papers: int, after_date: datetime | None, force: bool
+) -> None:
+    """Direct HuggingFace Papers ingestion."""
+    from rich.console import Console
+
+    console = Console()
+    try:
+        from src.ingestion.orchestrator import ingest_huggingface_papers
+
+        count = ingest_huggingface_papers(
+            max_papers=max_papers,
+            after_date=after_date,
+            force_reprocess=force,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "huggingface_papers"}, success=False)
+        else:
+            console.print(f"[red]HuggingFace Papers ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        output_result({"source": "huggingface_papers", "ingested": count})
+    else:
+        console.print(
+            f"[green]HuggingFace Papers ingestion complete.[/green] {count} paper(s) ingested."
+        )
+
+
+@app.command("huggingface-papers")
+def huggingface_papers(
+    max: Annotated[
+        int,
+        typer.Option("--max", "-m", help="Maximum papers to ingest."),
+    ] = 30,
+    days: Annotated[
+        int | None,
+        typer.Option("--days", "-d", help="Only fetch papers from the last N days."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force reprocess existing content."),
+    ] = False,
+) -> None:
+    """Ingest daily papers from HuggingFace Papers (https://huggingface.co/papers)."""
+    after_date = _days_to_after_date(days)
+
+    if is_direct_mode():
+        return _huggingface_papers_direct(max, after_date, force)
+
+    try:
+        params: dict[str, Any] = {"max_results": max, "force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        _ingest_via_api("huggingface_papers", params, "HuggingFace Papers ingestion")
+    except httpx.ConnectError:
+        _huggingface_papers_direct(max, after_date, force)

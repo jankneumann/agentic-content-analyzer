@@ -24,7 +24,8 @@ description: Staging deployment — Railway compute + Neon database branching
 
 providers:
   database: neon
-  neo4j: auradb
+  graphdb: neo4j       # top-level graph backend
+  neo4j: auradb        # kept for backward compat
   storage: railway
   observability: langfuse
 
@@ -42,6 +43,9 @@ settings:
     neon_api_key: "${NEON_API_KEY:-}"
     neon_project_id: "${NEON_PROJECT_ID:-}"
     neon_default_branch: "${NEON_DEFAULT_BRANCH:-main}"
+
+  graphdb:
+    graphdb_mode: cloud
 
   neo4j:
     neo4j_auradb_uri: "${NEO4J_AURADB_URI}"

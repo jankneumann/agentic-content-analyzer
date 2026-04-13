@@ -612,9 +612,9 @@ function EnginePreferenceList({
               className="h-6 w-6 p-0"
               disabled={disabled || index === 0}
               onClick={() => moveUp(index)}
+              aria-label="Move up"
             >
               <ChevronUp className="h-3.5 w-3.5" />
-              <span className="sr-only">Move up</span>
             </Button>
             <Button
               variant="ghost"
@@ -622,9 +622,9 @@ function EnginePreferenceList({
               className="h-6 w-6 p-0"
               disabled={disabled || index === engines.length - 1}
               onClick={() => moveDown(index)}
+              aria-label="Move down"
             >
               <ChevronDown className="h-3.5 w-3.5" />
-              <span className="sr-only">Move down</span>
             </Button>
           </div>
         </div>

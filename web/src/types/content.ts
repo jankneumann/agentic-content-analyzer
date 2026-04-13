@@ -35,6 +35,7 @@ export type ContentSource =
   | "blog"
   | "scholar"
   | "arxiv"
+  | "huggingface_papers"
   | "other"
 
 /**

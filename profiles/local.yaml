@@ -22,8 +22,8 @@ description: Local development with Docker Compose services
 # Providers - all local
 providers:
   database: local
-  graphdb: neo4j
-  neo4j: local
+  graphdb: neo4j       # top-level graph backend
+  neo4j: local         # kept for backward compat
   storage: local
   observability: langfuse
 
