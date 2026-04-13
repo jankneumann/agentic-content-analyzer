@@ -121,7 +121,7 @@ class TestProfileTemplatesValidation:
         assert profile.providers.database == "local"
         assert profile.providers.neo4j == "local"
         assert profile.providers.storage == "local"
-        assert profile.providers.observability == "noop"
+        assert profile.providers.observability == "langfuse"
 
     def test_local_profile_valid_structure(self, profiles_dir: Path) -> None:
         """Test that local profile has valid structure after inheritance."""
@@ -141,7 +141,7 @@ class TestProfileTemplatesValidation:
         assert profile.providers.database == "railway"
         assert profile.providers.neo4j == "auradb"
         assert profile.providers.storage == "railway"
-        assert profile.providers.observability == "braintrust"
+        assert profile.providers.observability == "langfuse"
 
     def test_supabase_cloud_profile_valid_structure(self, profiles_dir: Path) -> None:
         """Test that supabase-cloud profile has valid structure."""
@@ -164,7 +164,7 @@ class TestProfileTemplatesValidation:
         assert profile.providers.storage == "supabase"
         # Should inherit neo4j and observability from local/base
         assert profile.providers.neo4j == "local"
-        assert profile.providers.observability == "noop"
+        assert profile.providers.observability == "langfuse"
 
 
 class TestProfileTemplatesHaveRequiredFields:

@@ -24,7 +24,7 @@ providers:
   graphdb: neo4j       # neo4j, falkordb — top-level graph backend
   neo4j: local         # local, auradb (kept for backward compat)
   storage: local       # local, s3, supabase, railway
-  observability: noop  # noop, opik, braintrust, otel, langfuse
+  observability: langfuse  # noop, opik, braintrust, otel, langfuse
 
 # =============================================================================
 # Settings
@@ -75,7 +75,7 @@ settings:
   # Observability Settings
   # ---------------------------------------------------------------------------
   observability:
-    otel_enabled: false
+    otel_enabled: true
     otel_service_name: newsletter-aggregator
 
   # ---------------------------------------------------------------------------
