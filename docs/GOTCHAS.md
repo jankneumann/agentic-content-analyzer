@@ -42,6 +42,9 @@ Things that will bite you if ignored. Organized by area.
 | Railway volumes not persistent by default | Attach a volume in Railway dashboard; without it, data lost on redeploy |
 | Railway Hobby plan connection limits | Use `pool_size=3`, `max_overflow=2`; exceeding causes connection errors |
 | Braintrust extra in Dockerfile | Must add `--extra braintrust` to `uv sync` in Dockerfile; without it `import braintrust` fails silently |
+| ParadeDB `listen_addresses` on Railway | Set `POSTGRES_LISTEN_ADDRESSES=*` on the ParadeDB service. Without it, PG listens only on `localhost` inside the container. Public TCP proxy works (proxies from within container), but private network traffic via `.railway.internal` arrives on the external interface and is **refused**. |
+| ParadeDB SSL on Railway private network | Append `?sslmode=disable` to `DATABASE_URL` when using `.railway.internal` hostnames. Railway's private network does not terminate TLS — the DB driver's default SSL handshake **hangs until timeout**. |
+| ParadeDB volume mount path | Mount persistent volume at `/var/lib/postgresql/data`. Without a volume, all data is lost on every container restart or redeploy. |
 
 ## Python & Pydantic
 
@@ -131,6 +134,7 @@ Things that will bite you if ignored. Organized by area.
 | iOS status bar hides header | Apply `pt-[var(--safe-area-top)]` to AppShell root and fixed overlays |
 | Fixed grid-cols-N in dialogs | Use responsive breakpoints: `grid-cols-2 md:grid-cols-4` |
 | Tailwind v4 typography plugin overrides | Plugin styles are unlayered; custom `.prose` overrides must be OUTSIDE `@layer` blocks to win cascade |
+| Vite "Cannot find module" after dep upgrade | pnpm upgraded Vite (e.g., 7.3.0 → 7.3.2) but stale hard links or `.vite` cache reference old paths; fix with `pnpm install --force` + restart dev server (`make dev-stop && make dev-bg`) |
 
 ## Observability & Telemetry
 
