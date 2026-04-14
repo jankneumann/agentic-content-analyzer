@@ -44,7 +44,7 @@ Things that will bite you if ignored. Organized by area.
 | Braintrust extra in Dockerfile | Must add `--extra braintrust` to `uv sync` in Dockerfile; without it `import braintrust` fails silently |
 | ParadeDB `listen_addresses` on Railway | Set `POSTGRES_LISTEN_ADDRESSES=*` on the ParadeDB service. Without it, PG listens only on `localhost` inside the container. Public TCP proxy works (proxies from within container), but private network traffic via `.railway.internal` arrives on the external interface and is **refused**. |
 | ParadeDB SSL on Railway private network | Append `?sslmode=disable` to `DATABASE_URL` when using `.railway.internal` hostnames. Railway's private network does not terminate TLS — the DB driver's default SSL handshake **hangs until timeout**. |
-| ParadeDB volume mount path | Mount persistent volume at `/var/lib/postgresql/data`. Without a volume, all data is lost on every container restart or redeploy. |
+| ParadeDB volume mount path | Mount persistent volume at `/var/lib/postgresql/data` and set `PGDATA=/var/lib/postgresql/data/pgdata`. Railway creates `lost+found` at the mount root (ext4 filesystem) — PG refuses to init into a non-empty directory. The `PGDATA` subdirectory avoids this. |
 
 ## Python & Pydantic
 
