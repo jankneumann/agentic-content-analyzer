@@ -9,7 +9,7 @@ Langfuse Python SDK v4 (released March 2026) is built on OpenTelemetry internall
 - **Replace raw OTel with native Langfuse SDK** in `src/telemetry/providers/langfuse.py`: use `langfuse.Langfuse()` / `langfuse.get_client()` instead of `OTLPSpanExporter` with manual Basic Auth
 - **Add `langfuse>=4.3.0` as a core dependency** in `pyproject.toml` (not an optional extra — it's the default provider)
 - **Add `opentelemetry-instrumentation-anthropic`** for automatic Claude call tracing via `AnthropicInstrumentor`
-- **Add `@observe()` decorators** to key pipeline functions: `DigestCreator`, `ThemeAnalyzer`, and orchestrator entry points
+- **Add `@observe()` decorators** to all pipeline functions: `Summarizer`, `DigestCreator`, `ThemeAnalyzer`, `PodcastScriptGenerator`, and orchestrator entry points
 - **Use `propagate_attributes()`** in pipeline runners for session/user context flow
 - **Configure smart span filtering** via `should_export_span` to prevent noisy infrastructure spans from flooding Langfuse while keeping LLM-relevant spans
 - **Update Settings** with new Langfuse v4 config fields: `langfuse_sample_rate`, `langfuse_debug`, `langfuse_environment`
@@ -32,8 +32,10 @@ _None — this change enhances existing observability, it doesn't introduce a ne
 - **`src/telemetry/providers/base.py`**: Protocol unchanged — `trace_llm_call()`, `start_span()`, `flush()`, `shutdown()` signatures stay the same
 - **`src/telemetry/__init__.py`**: No changes expected (lazy singleton pattern works with new provider)
 - **`src/services/llm_router.py`**: `_trace_llm_call()` continues working via Protocol; `AnthropicInstrumentor` may make explicit tracing redundant for Anthropic calls but we keep it for provider-agnosticism
+- **`src/processors/summarizer.py`**: Add `@observe()` decorator (complements existing `_summarization_span` helper)
 - **`src/processors/digest_creator.py`**: Add `@observe()` decorator
 - **`src/processors/theme_analyzer.py`**: Add `@observe()` decorator
+- **`src/processors/podcast_script_generator.py`**: Add `@observe()` decorator
 - **`src/ingestion/orchestrator.py`**: Add `@observe()` to orchestrator entry points
 - **`src/pipeline/runner.py`**: Add `propagate_attributes()` for session context
 - **`pyproject.toml`**: Add `langfuse>=4.3.0` to core dependencies, add `opentelemetry-instrumentation-anthropic`
