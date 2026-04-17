@@ -39,13 +39,14 @@ _Depends on: groups 2 and 3. Files: `src/telemetry/providers/factory.py` only._
 
 _Independent of groups 3-4 (decorators work regardless of provider). Can be parallelized with group 3. Files: `src/processors/`, `src/ingestion/orchestrator.py`, `src/pipeline/runner.py`._
 
-- [ ] 5.1 Add `@observe()` to `Summarizer.summarize_content()`, `summarize_contents()`, and `summarize_pending_contents()` in `src/processors/summarizer.py`. Note: this file already has a `_summarization_span()` OTel helper — `@observe()` complements it at the method level (the helper traces individual items within the loop)
+- [ ] 5.1 Add `@observe()` to `ContentSummarizer.summarize_content()`, `summarize_contents()`, and `summarize_pending_contents()` in `src/processors/summarizer.py`. Remove the now-redundant `_summarization_span()` context manager and `_get_tracer()` helper — `@observe()` replaces them. Use `langfuse.update_current_observation(metadata=...)` for per-item attributes (`content_id`, `title`) that `_summarization_span` previously set.
 - [ ] 5.2 Add `@observe()` to `DigestCreator.create_digest()` in `src/processors/digest_creator.py`
 - [ ] 5.3 Add `@observe()` to `ThemeAnalyzer.analyze()` in `src/processors/theme_analyzer.py`
 - [ ] 5.4 Add `@observe()` to `PodcastScriptGenerator.generate_script()` in `src/processors/podcast_script_generator.py`
 - [ ] 5.5 Add `@observe()` to orchestrator entry points in `src/ingestion/orchestrator.py` (`ingest_gmail`, `ingest_rss`, `ingest_youtube_playlist`, `ingest_youtube_rss`, `ingest_podcast`, `ingest_substack`)
-- [ ] 5.6 Add `@observe()` to `_run_ingestion()` and other pipeline stages in `src/pipeline/runner.py`
-- [ ] 5.7 Add `propagate_attributes()` in the pipeline runner's top-level entry point to flow `session_id` and `tags` to all child observations
+- [ ] 5.6 Replace raw OTel spans in `src/cli/pipeline_commands.py`: remove `_get_tracer()`, replace `_pipeline_stage_span()` span creation with `@observe()`, and replace `_ingest_source()` per-source spans with `@observe()`. Keep the `record_pipeline_stage_*()` metrics calls (OTel metrics are a separate concern from Langfuse tracing).
+- [ ] 5.7 Add `@observe()` to `_run_ingestion()` and other pipeline stages in `src/pipeline/runner.py`
+- [ ] 5.8 Add `propagate_attributes()` in the pipeline runner's top-level entry point to flow `session_id` and `tags` to all child observations
 
 ## 6. Tests
 
