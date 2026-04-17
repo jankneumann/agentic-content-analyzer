@@ -40,3 +40,29 @@
 
 ### Context
 User feedback: "langfuse observability should cover all pipeline steps including summarizer and script/podcast generator". Added tasks 5.1 (Summarizer methods), 5.4 (PodcastScriptGenerator.generate_script), renumbered 5.3-5.7. Updated proposal and spec to reflect full pipeline coverage.
+
+---
+
+## Phase: Plan Iteration 3 (2026-04-17)
+
+**Agent**: claude-opus-4-6 | **Session**: N/A
+
+### Decisions
+1. **Unify raw OTel spans with @observe()** — searched codebase for all `get_tracer()`/`start_as_current_span()` usage outside the telemetry module. Found 3 categories: pipeline tracing (unify), agent metrics (leave), infrastructure trace-ID extraction (leave).
+2. **Remove `_summarization_span` and `_get_tracer`** from summarizer.py — `@observe()` replaces both, with `update_current_observation(metadata=...)` for custom per-item attributes.
+3. **Replace pipeline_commands.py spans but keep metrics** — `_pipeline_stage_span` mixes OTel spans with metrics counters. Replace span creation with `@observe()`, keep `record_pipeline_stage_*()` metric calls.
+4. **Leave agent_metrics.py trace helpers** — 4 context managers defined but never called from outside the module. Dead code, separate cleanup scope.
+5. **Leave error_handler/auth_routes/telemetry.py** — these read global OTel context for HTTP response correlation, not LLM tracing.
+
+### Alternatives Considered
+- Unify agent_metrics traces too: rejected — out of scope (dead code, would expand proposal to cover conductor/specialist functions)
+- Keep _summarization_span alongside @observe(): rejected — creates disconnected parallel trace trees on different TracerProviders
+
+### Trade-offs
+- Removing `_summarization_span` means per-item attributes need explicit `update_current_observation()` calls instead of automatic span attributes — slightly more verbose but properly nested in Langfuse
+
+### Open Questions
+- None new
+
+### Context
+Codebase audit found raw OTel tracing in 3 additional locations beyond summarizer.py. Added task 5.6 to clean up pipeline_commands.py spans. Updated proposal Impact and spec with removal scenarios. Total task count now 8 in group 5.

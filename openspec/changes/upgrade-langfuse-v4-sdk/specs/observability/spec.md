@@ -128,6 +128,13 @@ The system SHALL use `@observe()` decorators on all pipeline functions to create
 - **AND** the exception SHALL propagate to the caller unchanged
 - **AND** the Langfuse SDK SHALL NOT swallow or modify the exception
 
+#### Scenario: Legacy raw OTel span helpers removed
+- **GIVEN** `@observe()` decorators are applied to pipeline functions
+- **WHEN** the codebase is updated
+- **THEN** `_summarization_span()` and `_get_tracer()` in `src/processors/summarizer.py` SHALL be removed
+- **AND** `_get_tracer()` and raw OTel span creation in `_pipeline_stage_span()` and `_ingest_source()` in `src/cli/pipeline_commands.py` SHALL be replaced with `@observe()`
+- **AND** OTel metrics calls (`record_pipeline_stage_*`) SHALL be preserved (metrics are orthogonal to Langfuse tracing)
+
 ### Requirement: Pipeline Context Propagation
 
 The system SHALL use `propagate_attributes()` to flow session and user context to all observations within a pipeline run.

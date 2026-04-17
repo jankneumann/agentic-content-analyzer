@@ -32,11 +32,12 @@ _None — this change enhances existing observability, it doesn't introduce a ne
 - **`src/telemetry/providers/base.py`**: Protocol unchanged — `trace_llm_call()`, `start_span()`, `flush()`, `shutdown()` signatures stay the same
 - **`src/telemetry/__init__.py`**: No changes expected (lazy singleton pattern works with new provider)
 - **`src/services/llm_router.py`**: `_trace_llm_call()` continues working via Protocol; `AnthropicInstrumentor` may make explicit tracing redundant for Anthropic calls but we keep it for provider-agnosticism
-- **`src/processors/summarizer.py`**: Add `@observe()` decorator (complements existing `_summarization_span` helper)
+- **`src/processors/summarizer.py`**: Add `@observe()` decorator, remove redundant `_summarization_span()` and `_get_tracer()` raw OTel helpers
 - **`src/processors/digest_creator.py`**: Add `@observe()` decorator
 - **`src/processors/theme_analyzer.py`**: Add `@observe()` decorator
 - **`src/processors/podcast_script_generator.py`**: Add `@observe()` decorator
 - **`src/ingestion/orchestrator.py`**: Add `@observe()` to orchestrator entry points
+- **`src/cli/pipeline_commands.py`**: Replace `_pipeline_stage_span()` and `_ingest_source()` raw OTel spans with `@observe()`; keep OTel metrics calls (`record_pipeline_stage_*`)
 - **`src/pipeline/runner.py`**: Add `propagate_attributes()` for session context
 - **`pyproject.toml`**: Add `langfuse>=4.3.0` to core dependencies, add `opentelemetry-instrumentation-anthropic`
 - **`src/config/settings.py`**: New settings fields for Langfuse v4
