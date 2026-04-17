@@ -19,3 +19,24 @@
 
 ### Context
 9 findings identified across consistency, completeness, parallelizability, and testability. 7 at medium+ criticality fixed: proposal/task consistency for @observe() scope, missing failure scenarios in specs, metadata sanitization task, duplicate span task, explicit dependency notes in tasks, markdown fix.
+
+---
+
+## Phase: Plan Iteration 2 (2026-04-17)
+
+**Agent**: claude-opus-4-6 | **Session**: N/A
+
+### Decisions
+1. **Expand tasks to cover all pipeline steps** — user corrected that reducing proposal scope was wrong; the correct fix is to add tasks for Summarizer and PodcastScriptGenerator to match the full proposal intent.
+
+### Alternatives Considered
+- Reduce proposal scope to match existing tasks: rejected by user — observability should cover ALL pipeline steps
+
+### Trade-offs
+- More tasks in group 5 (7 instead of 5) but all touch separate files — parallelizability unaffected
+
+### Open Questions
+- [ ] Summarizer already has `_summarization_span()` OTel helper — should `@observe()` replace it or complement it? (Decision: complement — helper traces per-item within loops, `@observe()` traces the method)
+
+### Context
+User feedback: "langfuse observability should cover all pipeline steps including summarizer and script/podcast generator". Added tasks 5.1 (Summarizer methods), 5.4 (PodcastScriptGenerator.generate_script), renumbered 5.3-5.7. Updated proposal and spec to reflect full pipeline coverage.

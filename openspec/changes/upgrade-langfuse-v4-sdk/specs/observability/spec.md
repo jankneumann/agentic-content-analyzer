@@ -100,7 +100,7 @@ The system SHALL support automatic tracing of Anthropic Claude API calls via `op
 
 ### Requirement: Pipeline Function Observability Decorators
 
-The system SHALL use `@observe()` decorators on key pipeline functions to create hierarchical trace trees showing the full execution flow from ingestion through digest creation.
+The system SHALL use `@observe()` decorators on all pipeline functions to create hierarchical trace trees showing the full execution flow from ingestion through summarization, theme analysis, digest creation, and podcast script generation.
 
 #### Scenario: Decorated pipeline function creates trace span
 - **GIVEN** `OBSERVABILITY_PROVIDER=langfuse`
