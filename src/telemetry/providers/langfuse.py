@@ -173,11 +173,27 @@ class LangfuseProvider:
         max_tokens: int | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Record an LLM call as a Langfuse generation observation."""
+        """Record an LLM call as a Langfuse generation observation.
+
+        When AnthropicInstrumentor is active, it already creates generation
+        observations for Anthropic calls. To avoid duplicates, this method
+        skips creating a new observation if the current span was created by
+        the instrumentor (detected via the instrumentation scope name).
+        For non-Anthropic providers (Gemini, OpenAI), this always creates
+        a new generation observation.
+        """
         if self._client is None:
             return
 
         try:
+            # Skip if AnthropicInstrumentor already traced this call
+            if self._instrumentor_active and provider == "anthropic":
+                if self._has_active_instrumentor_span():
+                    logger.debug(
+                        "Skipping trace_llm_call — AnthropicInstrumentor already traced this call"
+                    )
+                    return
+
             # Build generation kwargs
             gen_kwargs: dict[str, Any] = {
                 "name": "llm.completion",
@@ -206,6 +222,24 @@ class LangfuseProvider:
         except Exception as e:
             # Never let telemetry failures break LLM calls
             logger.debug(f"Langfuse trace_llm_call failed: {e}")
+
+    @staticmethod
+    def _has_active_instrumentor_span() -> bool:
+        """Check if the current OTel span was created by AnthropicInstrumentor."""
+        try:
+            from opentelemetry import trace
+
+            span = trace.get_current_span()
+            ctx = span.get_span_context()
+            if ctx and ctx.is_valid:
+                # AnthropicInstrumentor spans have instrumentation scope
+                # starting with "opentelemetry.instrumentation.anthropic"
+                scope = getattr(span, "instrumentation_scope", None)
+                if scope and hasattr(scope, "name"):
+                    return "anthropic" in scope.name.lower()
+        except Exception:
+            pass
+        return False
 
     @contextmanager
     def start_span(

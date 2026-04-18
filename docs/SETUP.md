@@ -1119,10 +1119,13 @@ OPIK_API_KEY=                        # Comet Cloud API key
 OPIK_WORKSPACE=                      # Comet Cloud workspace
 OPIK_PROJECT_NAME=newsletter-aggregator
 
-# Langfuse (default — self-hosted or cloud)
+# Langfuse (default — native SDK v4, self-hosted or cloud)
 LANGFUSE_PUBLIC_KEY=                 # From Langfuse Settings > API Keys
 LANGFUSE_SECRET_KEY=                 # From Langfuse Settings > API Keys
-LANGFUSE_BASE_URL=https://cloud.langfuse.com  # Or http://localhost:3100 for self-hosted
+LANGFUSE_BASE_URL=https://us.cloud.langfuse.com  # US region (or https://cloud.langfuse.com for EU, http://localhost:3100 for self-hosted)
+LANGFUSE_SAMPLE_RATE=1.0            # Trace sampling rate (0.0-1.0, default: all)
+LANGFUSE_DEBUG=false                 # Enable Langfuse SDK debug logging
+LANGFUSE_ENVIRONMENT=                # Environment tag (production, staging, development)
 
 # Braintrust (cloud — available via OBSERVABILITY_PROVIDER=braintrust override)
 BRAINTRUST_API_KEY=                  # Required when using braintrust provider
@@ -1136,13 +1139,19 @@ HEALTH_CHECK_TIMEOUT_SECONDS=5       # Timeout for readiness probe checks
 **Provider quick-start examples**:
 
 ```bash
-# Langfuse Cloud (default for Railway/production)
+# Langfuse Cloud US (default for Railway/production)
+# Uses native Langfuse SDK v4 — generation-typed observations,
+# automatic cost tracking, @observe() decorators on pipeline functions
 OBSERVABILITY_PROVIDER=langfuse
 LANGFUSE_PUBLIC_KEY=pk-lf-xxx
 LANGFUSE_SECRET_KEY=sk-lf-xxx
 OTEL_ENABLED=true
+# Optional: LANGFUSE_ENVIRONMENT=production
 
-# Langfuse self-hosted (default for local dev)
+# Langfuse Cloud EU
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+
+# Langfuse self-hosted (for local dev without cloud)
 OBSERVABILITY_PROVIDER=langfuse
 LANGFUSE_PUBLIC_KEY=pk-lf-xxx        # From localhost:3100 Settings > API Keys
 LANGFUSE_SECRET_KEY=sk-lf-xxx
