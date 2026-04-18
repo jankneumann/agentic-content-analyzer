@@ -685,6 +685,9 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None  # Langfuse public key (pk-lf-...)
     langfuse_secret_key: str | None = None  # Langfuse secret key (sk-lf-...)
     langfuse_base_url: str = "https://cloud.langfuse.com"  # Base URL (override for self-hosted)
+    langfuse_sample_rate: float = 1.0  # Trace sampling rate (0.0-1.0, default: all)
+    langfuse_debug: bool = False  # Enable Langfuse SDK debug logging
+    langfuse_environment: str | None = None  # Environment tag (production, staging, etc.)
 
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key
@@ -810,6 +813,20 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    @field_validator("langfuse_sample_rate")
+    @classmethod
+    def validate_langfuse_sample_rate(cls, v: float) -> float:
+        """Clamp langfuse_sample_rate to valid range 0.0-1.0."""
+        if v < 0.0 or v > 1.0:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                f"LANGFUSE_SAMPLE_RATE={v} is outside valid range 0.0-1.0, "
+                f"clamping to {max(0.0, min(1.0, v))}"
+            )
+            return max(0.0, min(1.0, v))
+        return v
 
     @field_validator("otel_logs_export_level")
     @classmethod

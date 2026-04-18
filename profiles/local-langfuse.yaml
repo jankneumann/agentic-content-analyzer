@@ -38,3 +38,5 @@ settings:
     otel_enabled: true
     otel_service_name: newsletter-aggregator
     langfuse_base_url: "http://localhost:3100"
+    langfuse_debug: false
+    langfuse_environment: "${LANGFUSE_ENVIRONMENT:-development}"

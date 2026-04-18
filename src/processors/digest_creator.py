@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from anthropic import Anthropic
+from langfuse import observe
 
 if TYPE_CHECKING:
     from src.models.query import ContentQuery
@@ -82,6 +83,7 @@ class DigestCreator:
 
         logger.info(f"Initialized DigestCreator with {self.model}")
 
+    @observe()
     async def create_digest(
         self,
         request: DigestRequest,

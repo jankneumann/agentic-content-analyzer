@@ -1,78 +1,51 @@
-"""Unit tests for the Langfuse observability provider.
+"""Unit tests for the Langfuse observability provider (SDK v4).
 
 Tests the LangfuseProvider class in isolation (no Langfuse backend required).
-Uses mocked OTel SDK components to verify behavior.
+Uses mocked Langfuse SDK to verify behavior.
 """
 
 from __future__ import annotations
 
-import base64
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from src.telemetry.providers.langfuse import (
-    GEN_AI_COMPLETION,
-    GEN_AI_PROMPT,
-    GEN_AI_REQUEST_MAX_TOKENS,
-    GEN_AI_REQUEST_MODEL,
-    GEN_AI_SYSTEM,
-    GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
-    LANGFUSE_CLOUD_BASE_URL,
-    LangfuseProvider,
-)
+from src.telemetry.providers.langfuse import LangfuseProvider, _sanitize_metadata
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Metadata Sanitization
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_tracer() -> tuple[MagicMock, MagicMock]:
-    """Create a mock tracer + span pair wired for context-manager usage."""
-    mock_span = MagicMock()
-    mock_tracer = MagicMock()
-    mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(return_value=mock_span)
-    mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(return_value=False)
-    return mock_tracer, mock_span
+class TestSanitizeMetadata:
+    """Tests for _sanitize_metadata helper."""
 
+    def test_none_returns_empty_dict(self):
+        assert _sanitize_metadata(None) == {}
 
-def _set_attributes_dict(mock_span: MagicMock) -> dict[str, object]:
-    """Extract all set_attribute calls into a dict."""
-    return {call[0][0]: call[0][1] for call in mock_span.set_attribute.call_args_list}
+    def test_empty_dict_returns_empty_dict(self):
+        assert _sanitize_metadata({}) == {}
 
+    def test_string_values_pass_through(self):
+        result = _sanitize_metadata({"key": "value"})
+        assert result == {"key": "value"}
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+    def test_non_string_values_coerced(self):
+        result = _sanitize_metadata({"count": 42, "flag": True, "rate": 0.5})
+        assert result == {"count": "42", "flag": "True", "rate": "0.5"}
 
+    def test_long_values_truncated_to_200(self):
+        long_value = "x" * 300
+        result = _sanitize_metadata({"key": long_value})
+        assert len(result["key"]) == 200
+        assert result["key"].endswith("...")
 
-class TestSemanticConventionConstants:
-    """Tests for gen_ai.* constant values."""
+    def test_exactly_200_not_truncated(self):
+        value = "x" * 200
+        result = _sanitize_metadata({"key": value})
+        assert result["key"] == value
 
-    def test_gen_ai_system(self):
-        assert GEN_AI_SYSTEM == "gen_ai.system"
-
-    def test_gen_ai_request_model(self):
-        assert GEN_AI_REQUEST_MODEL == "gen_ai.request.model"
-
-    def test_gen_ai_request_max_tokens(self):
-        assert GEN_AI_REQUEST_MAX_TOKENS == "gen_ai.request.max_tokens"
-
-    def test_gen_ai_usage_input_tokens(self):
-        assert GEN_AI_USAGE_INPUT_TOKENS == "gen_ai.usage.input_tokens"
-
-    def test_gen_ai_usage_output_tokens(self):
-        assert GEN_AI_USAGE_OUTPUT_TOKENS == "gen_ai.usage.output_tokens"
-
-    def test_gen_ai_prompt(self):
-        assert GEN_AI_PROMPT == "gen_ai.prompt"
-
-    def test_gen_ai_completion(self):
-        assert GEN_AI_COMPLETION == "gen_ai.completion"
-
-    def test_cloud_base_url(self):
-        assert LANGFUSE_CLOUD_BASE_URL == "https://cloud.langfuse.com"
+    def test_non_string_keys_coerced(self):
+        result = _sanitize_metadata({42: "value"})
+        assert result == {"42": "value"}
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +64,9 @@ class TestLangfuseProviderInit:
         assert provider._base_url == "https://cloud.langfuse.com"
         assert provider._service_name == "newsletter-aggregator"
         assert provider._log_prompts is False
+        assert provider._sample_rate == 1.0
+        assert provider._debug is False
+        assert provider._environment is None
         assert provider._setup_complete is False
 
     def test_custom_initialization(self):
@@ -100,82 +76,22 @@ class TestLangfuseProviderInit:
             base_url="http://localhost:3100",
             service_name="test-service",
             log_prompts=True,
+            sample_rate=0.5,
+            debug=True,
+            environment="staging",
         )
         assert provider._public_key == "pk-lf-test"
         assert provider._secret_key == "sk-lf-test"
         assert provider._base_url == "http://localhost:3100"
         assert provider._service_name == "test-service"
         assert provider._log_prompts is True
+        assert provider._sample_rate == 0.5
+        assert provider._debug is True
+        assert provider._environment == "staging"
 
     def test_name_property(self):
         provider = LangfuseProvider()
         assert provider.name == "langfuse"
-
-
-# ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
-
-
-class TestBuildAuthHeader:
-    """Tests for _build_auth_header() method."""
-
-    def test_both_keys_present(self):
-        provider = LangfuseProvider(public_key="pk-lf-abc", secret_key="sk-lf-xyz")
-        headers = provider._build_auth_header()
-        expected = base64.b64encode(b"pk-lf-abc:sk-lf-xyz").decode()
-        assert headers == {"Authorization": f"Basic {expected}"}
-
-    def test_no_keys(self):
-        provider = LangfuseProvider()
-        assert provider._build_auth_header() == {}
-
-    def test_only_public_key(self):
-        provider = LangfuseProvider(public_key="pk-lf-abc")
-        assert provider._build_auth_header() == {}
-
-    def test_only_secret_key(self):
-        provider = LangfuseProvider(secret_key="sk-lf-xyz")
-        assert provider._build_auth_header() == {}
-
-    def test_empty_string_keys(self):
-        provider = LangfuseProvider(public_key="", secret_key="")
-        assert provider._build_auth_header() == {}
-
-    def test_special_characters_in_keys(self):
-        provider = LangfuseProvider(public_key="pk-lf-abc+123/=", secret_key="sk-lf-xyz!@#")
-        headers = provider._build_auth_header()
-        expected = base64.b64encode(b"pk-lf-abc+123/=:sk-lf-xyz!@#").decode()
-        assert headers == {"Authorization": f"Basic {expected}"}
-
-
-# ---------------------------------------------------------------------------
-# Endpoint
-# ---------------------------------------------------------------------------
-
-
-class TestGetEndpoint:
-    """Tests for _get_endpoint() method."""
-
-    def test_default_cloud_endpoint(self):
-        provider = LangfuseProvider()
-        assert provider._get_endpoint() == "https://cloud.langfuse.com/api/public/otel"
-
-    def test_self_hosted_endpoint(self):
-        provider = LangfuseProvider(base_url="http://localhost:3100")
-        assert provider._get_endpoint() == "http://localhost:3100/api/public/otel"
-
-    def test_trailing_slash_stripped(self):
-        provider = LangfuseProvider(base_url="http://localhost:3100/")
-        assert provider._get_endpoint() == "http://localhost:3100/api/public/otel"
-
-    def test_us_cloud_endpoint(self):
-        provider = LangfuseProvider(base_url="https://us.cloud.langfuse.com")
-        assert provider._get_endpoint() == "https://us.cloud.langfuse.com/api/public/otel"
-
-    def test_eu_cloud_endpoint(self):
-        provider = LangfuseProvider(base_url="https://eu.cloud.langfuse.com")
-        assert provider._get_endpoint() == "https://eu.cloud.langfuse.com/api/public/otel"
 
 
 # ---------------------------------------------------------------------------
@@ -186,89 +102,101 @@ class TestGetEndpoint:
 class TestSetup:
     """Tests for setup() method."""
 
-    @staticmethod
-    def _run_setup_with_mocked_otel(provider: LangfuseProvider):
-        """Run setup() with mocked OTel imports.
+    def test_setup_creates_langfuse_client(self):
+        mock_langfuse_cls = MagicMock()
+        mock_client = MagicMock()
+        mock_langfuse_cls.return_value = mock_client
 
-        Returns tuple: (mock_resource, mock_tp_cls, mock_exporter_cls, mock_bsp)
-        """
-        mock_resource = MagicMock()
-        mock_tp_cls = MagicMock()
-        mock_exporter_cls = MagicMock()
-        mock_bsp = MagicMock()
-
-        with (
-            patch("opentelemetry.sdk.resources.Resource", mock_resource),
-            patch("opentelemetry.sdk.trace.TracerProvider", mock_tp_cls),
-            patch(
-                "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter",
-                mock_exporter_cls,
-            ),
-            patch("opentelemetry.sdk.trace.export.BatchSpanProcessor", mock_bsp),
-        ):
-            provider.setup()
-
-        return mock_resource, mock_tp_cls, mock_exporter_cls, mock_bsp
-
-    def test_setup_with_full_auth(self):
-        """Verify setup initializes OTel with auth headers."""
         provider = LangfuseProvider(
             public_key="pk-lf-test",
             secret_key="sk-lf-test",
             base_url="http://localhost:3100",
+            sample_rate=0.8,
+            debug=True,
+            environment="staging",
         )
-        self._run_setup_with_mocked_otel(provider)
+
+        with patch.dict("sys.modules", {"langfuse": MagicMock(Langfuse=mock_langfuse_cls)}):
+            with patch.object(provider, "_setup_anthropic_instrumentor"):
+                provider.setup()
 
         assert provider._setup_complete is True
-        assert provider._tracer_provider is not None
-
-    def test_setup_does_not_set_global_tracer_provider(self):
-        """Verify setup uses local TracerProvider, not the global one.
-
-        This prevents overwriting infrastructure OTel (otel_setup.py).
-        """
-        provider = LangfuseProvider(
+        assert provider._client is mock_client
+        mock_langfuse_cls.assert_called_once_with(
+            host="http://localhost:3100",
+            sample_rate=0.8,
+            debug=True,
             public_key="pk-lf-test",
             secret_key="sk-lf-test",
-            base_url="http://localhost:3100",
+            environment="staging",
         )
-        mock_tp_cls = MagicMock()
-        mock_tp_instance = mock_tp_cls.return_value
-
-        with (
-            patch("opentelemetry.sdk.resources.Resource"),
-            patch("opentelemetry.sdk.trace.TracerProvider", mock_tp_cls),
-            patch("opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"),
-            patch("opentelemetry.sdk.trace.export.BatchSpanProcessor"),
-        ):
-            provider.setup()
-
-        # Tracer obtained from local provider, not global trace.get_tracer()
-        mock_tp_instance.get_tracer.assert_called_once()
 
     def test_setup_without_keys_warns_but_succeeds(self):
-        """Verify setup works without keys (self-hosted)."""
+        mock_langfuse_cls = MagicMock()
+
         provider = LangfuseProvider(base_url="http://localhost:3100")
-        self._run_setup_with_mocked_otel(provider)
+
+        with patch.dict("sys.modules", {"langfuse": MagicMock(Langfuse=mock_langfuse_cls)}):
+            with patch.object(provider, "_setup_anthropic_instrumentor"):
+                provider.setup()
+
         assert provider._setup_complete is True
+        # Keys not passed when None
+        call_kwargs = mock_langfuse_cls.call_args.kwargs
+        assert "public_key" not in call_kwargs
+        assert "secret_key" not in call_kwargs
 
     def test_setup_is_idempotent(self):
-        """Verify calling setup() multiple times doesn't re-initialize."""
         provider = LangfuseProvider()
         provider._setup_complete = True
         provider.setup()
-        assert provider._tracer_provider is None
+        assert provider._client is None  # Not re-initialized
 
-    def test_setup_endpoint_includes_v1_traces(self):
-        """Verify the exporter gets endpoint with /v1/traces suffix."""
-        provider = LangfuseProvider(
-            public_key="pk", secret_key="sk", base_url="http://localhost:3100"
-        )
-        _, _, mock_exporter_cls, _ = self._run_setup_with_mocked_otel(provider)
-        call_kwargs = mock_exporter_cls.call_args
-        endpoint = call_kwargs.kwargs.get("endpoint") or call_kwargs[1].get("endpoint")
-        assert endpoint.endswith("/v1/traces")
-        assert "/api/public/otel/" in endpoint
+    def test_setup_handles_import_error(self):
+        provider = LangfuseProvider()
+
+        with patch("builtins.__import__", side_effect=ImportError("No langfuse")):
+            provider.setup()
+
+        assert provider._setup_complete is True
+        assert provider._client is None
+
+
+# ---------------------------------------------------------------------------
+# AnthropicInstrumentor
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicInstrumentor:
+    """Tests for _setup_anthropic_instrumentor()."""
+
+    def test_instrumentor_activated_when_available(self):
+        mock_instrumentor_cls = MagicMock()
+        provider = LangfuseProvider()
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "opentelemetry.instrumentation.anthropic": MagicMock(
+                    AnthropicInstrumentor=mock_instrumentor_cls
+                )
+            },
+        ):
+            provider._setup_anthropic_instrumentor()
+
+        assert provider._instrumentor_active is True
+        mock_instrumentor_cls.return_value.instrument.assert_called_once()
+
+    def test_instrumentor_handles_import_error(self):
+        provider = LangfuseProvider()
+
+        with patch(
+            "builtins.__import__",
+            side_effect=ImportError("No anthropic instrumentor"),
+        ):
+            provider._setup_anthropic_instrumentor()
+
+        assert provider._instrumentor_active is False
 
 
 # ---------------------------------------------------------------------------
@@ -279,10 +207,18 @@ class TestSetup:
 class TestTraceLlmCall:
     """Tests for trace_llm_call() method."""
 
-    def test_trace_sets_gen_ai_attributes(self):
-        mock_tracer, mock_span = _make_mock_tracer()
+    def test_trace_creates_generation_observation(self):
+        mock_client = MagicMock()
+        mock_obs = MagicMock()
+        mock_client.start_as_current_observation.return_value.__enter__ = MagicMock(
+            return_value=mock_obs
+        )
+        mock_client.start_as_current_observation.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
+
         provider = LangfuseProvider()
-        provider._tracer = mock_tracer
+        provider._client = mock_client
 
         provider.trace_llm_call(
             model="claude-sonnet-4-5",
@@ -296,115 +232,64 @@ class TestTraceLlmCall:
             max_tokens=1024,
         )
 
-        attrs = _set_attributes_dict(mock_span)
-        assert attrs[GEN_AI_SYSTEM] == "anthropic"
-        assert attrs[GEN_AI_REQUEST_MODEL] == "claude-sonnet-4-5"
-        assert attrs[GEN_AI_USAGE_INPUT_TOKENS] == 10
-        assert attrs[GEN_AI_USAGE_OUTPUT_TOKENS] == 5
-        assert attrs[GEN_AI_REQUEST_MAX_TOKENS] == 1024
+        call_kwargs = mock_client.start_as_current_observation.call_args.kwargs
+        assert call_kwargs["as_type"] == "generation"
+        assert call_kwargs["model"] == "claude-sonnet-4-5"
+        assert call_kwargs["usage"] == {"input": 10, "output": 5}
+        assert call_kwargs["metadata"]["provider"] == "anthropic"
+        assert call_kwargs["metadata"]["max_tokens"] == "1024"
 
-    def test_trace_without_max_tokens(self):
-        mock_tracer, mock_span = _make_mock_tracer()
-        provider = LangfuseProvider()
-        provider._tracer = mock_tracer
-
-        provider.trace_llm_call(
-            model="test",
-            provider="test",
-            system_prompt="sys",
-            user_prompt="user",
-            response_text="resp",
-            input_tokens=1,
-            output_tokens=1,
-            duration_ms=1.0,
+    def test_trace_includes_prompts_when_enabled(self):
+        mock_client = MagicMock()
+        mock_client.start_as_current_observation.return_value.__enter__ = MagicMock()
+        mock_client.start_as_current_observation.return_value.__exit__ = MagicMock(
+            return_value=False
         )
 
-        attrs = _set_attributes_dict(mock_span)
-        assert GEN_AI_REQUEST_MAX_TOKENS not in attrs
-
-    def test_trace_respects_log_prompts_false(self):
-        mock_tracer, mock_span = _make_mock_tracer()
-        provider = LangfuseProvider(log_prompts=False)
-        provider._tracer = mock_tracer
-
-        provider.trace_llm_call(
-            model="test",
-            provider="test",
-            system_prompt="sys",
-            user_prompt="user",
-            response_text="resp",
-            input_tokens=1,
-            output_tokens=1,
-            duration_ms=1.0,
-        )
-
-        attrs = _set_attributes_dict(mock_span)
-        assert GEN_AI_PROMPT not in attrs
-        assert GEN_AI_COMPLETION not in attrs
-
-    def test_trace_logs_prompts_when_enabled(self):
-        mock_tracer, mock_span = _make_mock_tracer()
         provider = LangfuseProvider(log_prompts=True)
-        provider._tracer = mock_tracer
+        provider._client = mock_client
 
         provider.trace_llm_call(
             model="test",
             provider="test",
             system_prompt="sys",
-            user_prompt="user prompt text",
+            user_prompt="user prompt",
             response_text="response text",
             input_tokens=1,
             output_tokens=1,
             duration_ms=1.0,
         )
 
-        attrs = _set_attributes_dict(mock_span)
-        assert attrs[GEN_AI_PROMPT] == "user prompt text"
-        assert attrs[GEN_AI_COMPLETION] == "response text"
+        call_kwargs = mock_client.start_as_current_observation.call_args.kwargs
+        assert call_kwargs["input"] == "user prompt"
+        assert call_kwargs["output"] == "response text"
 
-    def test_trace_truncates_long_prompts(self):
-        mock_tracer, mock_span = _make_mock_tracer()
-        provider = LangfuseProvider(log_prompts=True)
-        provider._tracer = mock_tracer
-
-        long_text = "x" * 2000
-        provider.trace_llm_call(
-            model="test",
-            provider="test",
-            system_prompt="sys",
-            user_prompt=long_text,
-            response_text=long_text,
-            input_tokens=1,
-            output_tokens=1,
-            duration_ms=1.0,
+    def test_trace_excludes_prompts_when_disabled(self):
+        mock_client = MagicMock()
+        mock_client.start_as_current_observation.return_value.__enter__ = MagicMock()
+        mock_client.start_as_current_observation.return_value.__exit__ = MagicMock(
+            return_value=False
         )
 
-        attrs = _set_attributes_dict(mock_span)
-        assert len(attrs[GEN_AI_PROMPT]) == 1000
-        assert len(attrs[GEN_AI_COMPLETION]) == 1000
-
-    def test_trace_with_metadata(self):
-        mock_tracer, mock_span = _make_mock_tracer()
-        provider = LangfuseProvider()
-        provider._tracer = mock_tracer
+        provider = LangfuseProvider(log_prompts=False)
+        provider._client = mock_client
 
         provider.trace_llm_call(
             model="test",
             provider="test",
             system_prompt="sys",
-            user_prompt="user",
-            response_text="resp",
+            user_prompt="user prompt",
+            response_text="response text",
             input_tokens=1,
             output_tokens=1,
             duration_ms=1.0,
-            metadata={"step": "summarize", "pipeline": "daily"},
         )
 
-        attrs = _set_attributes_dict(mock_span)
-        assert attrs["custom.step"] == "summarize"
-        assert attrs["custom.pipeline"] == "daily"
+        call_kwargs = mock_client.start_as_current_observation.call_args.kwargs
+        assert "input" not in call_kwargs
+        assert "output" not in call_kwargs
 
-    def test_trace_noop_without_tracer(self):
+    def test_trace_noop_without_client(self):
         provider = LangfuseProvider()
         # Should not raise
         provider.trace_llm_call(
@@ -418,6 +303,32 @@ class TestTraceLlmCall:
             duration_ms=1.0,
         )
 
+    def test_trace_sanitizes_metadata(self):
+        mock_client = MagicMock()
+        mock_client.start_as_current_observation.return_value.__enter__ = MagicMock()
+        mock_client.start_as_current_observation.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
+
+        provider = LangfuseProvider()
+        provider._client = mock_client
+
+        provider.trace_llm_call(
+            model="test",
+            provider="test",
+            system_prompt="sys",
+            user_prompt="user",
+            response_text="resp",
+            input_tokens=1,
+            output_tokens=1,
+            duration_ms=1.0,
+            metadata={"count": 42, "long": "x" * 300},
+        )
+
+        call_kwargs = mock_client.start_as_current_observation.call_args.kwargs
+        assert call_kwargs["metadata"]["count"] == "42"
+        assert len(call_kwargs["metadata"]["long"]) == 200
+
 
 # ---------------------------------------------------------------------------
 # Span
@@ -427,35 +338,28 @@ class TestTraceLlmCall:
 class TestStartSpan:
     """Tests for start_span() context manager."""
 
-    def test_span_with_attributes(self):
-        mock_tracer, mock_span = _make_mock_tracer()
+    def test_span_creates_observation(self):
+        mock_client = MagicMock()
+        mock_obs = MagicMock()
+        mock_client.start_as_current_observation.return_value.__enter__ = MagicMock(
+            return_value=mock_obs
+        )
+        mock_client.start_as_current_observation.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
+
         provider = LangfuseProvider()
-        provider._tracer = mock_tracer
+        provider._client = mock_client
 
         with provider.start_span("test.operation", {"key": "value"}):
             pass
 
-        mock_tracer.start_as_current_span.assert_called_once_with("test.operation")
-        mock_span.set_attribute.assert_called_once_with("key", "value")
+        call_kwargs = mock_client.start_as_current_observation.call_args.kwargs
+        assert call_kwargs["name"] == "test.operation"
+        assert call_kwargs["as_type"] == "span"
+        assert call_kwargs["metadata"] == {"key": "value"}
 
-    def test_span_without_attributes(self):
-        mock_tracer, mock_span = _make_mock_tracer()
-        provider = LangfuseProvider()
-        provider._tracer = mock_tracer
-
-        with provider.start_span("test.operation"):
-            pass
-
-        mock_tracer.start_as_current_span.assert_called_once_with("test.operation")
-        mock_span.set_attribute.assert_not_called()
-
-    def test_span_yields_none_without_setup(self):
-        """When setup() hasn't been called, start_span yields None.
-
-        Without _get_tracer() lazy fallback, self._tracer stays None,
-        so start_span correctly yields None rather than accidentally
-        creating a non-recording span from the global OTel provider.
-        """
+    def test_span_yields_none_without_client(self):
         provider = LangfuseProvider()
         with provider.start_span("test") as span:
             assert span is None
@@ -469,41 +373,41 @@ class TestStartSpan:
 class TestLifecycle:
     """Tests for flush() and shutdown() methods."""
 
-    def test_flush_calls_force_flush(self):
+    def test_flush_calls_client_flush(self):
         provider = LangfuseProvider()
-        provider._tracer_provider = MagicMock()
+        provider._client = MagicMock()
         provider.flush()
-        provider._tracer_provider.force_flush.assert_called_once()
+        provider._client.flush.assert_called_once()
 
     def test_flush_handles_exception(self):
         provider = LangfuseProvider()
-        provider._tracer_provider = MagicMock()
-        provider._tracer_provider.force_flush.side_effect = Exception("flush error")
+        provider._client = MagicMock()
+        provider._client.flush.side_effect = Exception("flush error")
         provider.flush()  # Should not raise
 
-    def test_flush_noop_without_provider(self):
+    def test_flush_noop_without_client(self):
         provider = LangfuseProvider()
         provider.flush()  # Should not raise
 
     def test_shutdown_resets_state(self):
         provider = LangfuseProvider()
-        provider._tracer_provider = MagicMock()
-        provider._tracer = MagicMock()
+        provider._client = MagicMock()
         provider._setup_complete = True
+        provider._instrumentor_active = True
 
         provider.shutdown()
 
-        assert provider._tracer_provider is None
-        assert provider._tracer is None
+        assert provider._client is None
         assert provider._setup_complete is False
+        assert provider._instrumentor_active is False
 
     def test_shutdown_handles_exception(self):
         provider = LangfuseProvider()
-        provider._tracer_provider = MagicMock()
-        provider._tracer_provider.shutdown.side_effect = Exception("shutdown error")
+        provider._client = MagicMock()
+        provider._client.flush.side_effect = Exception("shutdown error")
 
         provider.shutdown()
-        assert provider._tracer_provider is None
+        assert provider._client is None
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +435,26 @@ class TestFactoryDispatch:
 
         provider = get_observability_provider()
         assert provider.name == "langfuse"
+
+    def test_factory_passes_new_v4_settings(self, monkeypatch):
+        from src.config.settings import Settings
+        from src.telemetry.providers.factory import get_observability_provider
+
+        settings = Settings(
+            _env_file=None,
+            anthropic_api_key="test-key",
+            observability_provider="langfuse",
+            langfuse_sample_rate=0.5,
+            langfuse_debug=True,
+            langfuse_environment="staging",
+        )
+
+        monkeypatch.setattr("src.telemetry.providers.factory.settings", settings)
+
+        provider = get_observability_provider()
+        assert provider._sample_rate == 0.5
+        assert provider._debug is True
+        assert provider._environment == "staging"
 
     def test_factory_creates_langfuse_without_keys(self, monkeypatch):
         from src.config.settings import Settings
@@ -566,40 +490,43 @@ class TestSettingsValidation:
         )
         assert settings.observability_provider == "langfuse"
 
-    def test_settings_langfuse_fields_default(self):
+    def test_settings_langfuse_v4_fields_default(self):
         from src.config.settings import Settings
 
         settings = Settings(_env_file=None, anthropic_api_key="test-key")
-        assert settings.langfuse_public_key is None
-        assert settings.langfuse_secret_key is None
-        assert settings.langfuse_base_url == "https://cloud.langfuse.com"
+        assert settings.langfuse_sample_rate == 1.0
+        assert settings.langfuse_debug is False
+        assert settings.langfuse_environment is None
 
-    def test_settings_langfuse_with_keys(self):
+    def test_settings_sample_rate_clamped_high(self):
         from src.config.settings import Settings
 
         settings = Settings(
             _env_file=None,
             anthropic_api_key="test-key",
-            observability_provider="langfuse",
-            langfuse_public_key="pk-lf-test",
-            langfuse_secret_key="sk-lf-test",
-            langfuse_base_url="http://localhost:3100",
+            langfuse_sample_rate=2.0,
         )
-        assert settings.langfuse_public_key == "pk-lf-test"
-        assert settings.langfuse_secret_key == "sk-lf-test"
-        assert settings.langfuse_base_url == "http://localhost:3100"
+        assert settings.langfuse_sample_rate == 1.0
 
-    def test_settings_rejects_invalid_provider(self):
-        from pydantic import ValidationError
-
+    def test_settings_sample_rate_clamped_low(self):
         from src.config.settings import Settings
 
-        with pytest.raises(ValidationError):
-            Settings(
-                _env_file=None,
-                anthropic_api_key="test-key",
-                observability_provider="invalid",
-            )
+        settings = Settings(
+            _env_file=None,
+            anthropic_api_key="test-key",
+            langfuse_sample_rate=-0.5,
+        )
+        assert settings.langfuse_sample_rate == 0.0
+
+    def test_settings_sample_rate_valid_passes(self):
+        from src.config.settings import Settings
+
+        settings = Settings(
+            _env_file=None,
+            anthropic_api_key="test-key",
+            langfuse_sample_rate=0.5,
+        )
+        assert settings.langfuse_sample_rate == 0.5
 
 
 # ---------------------------------------------------------------------------

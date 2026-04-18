@@ -4,6 +4,8 @@ import json
 import time
 from datetime import datetime
 
+from langfuse import observe
+
 from src.config.models import ModelConfig, ModelStep, Provider, get_model_config
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
@@ -99,6 +101,7 @@ class ThemeAnalyzer:
                 return None
         return self.graphiti_client
 
+    @observe()
     async def analyze_themes(
         self,
         request: ThemeAnalysisRequest,
