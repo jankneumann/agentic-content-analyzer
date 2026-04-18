@@ -5,38 +5,33 @@ Usage:
     aca pipeline weekly
 
 Parallel Ingestion:
-    All 7 ingestion sources (Gmail, RSS, YouTube Playlist, YouTube RSS, Podcast,
-    Substack, X Search) run concurrently via asyncio.gather(). Total ingestion
+    All ingestion sources run concurrently via asyncio.gather(). Total ingestion
     time equals the slowest source, not the sum of all sources.
 
-OpenTelemetry Instrumentation:
-    Each pipeline stage creates an OTel span for observability:
-    - pipeline.ingestion: Parallel source ingestion with item_count
-    - pipeline.summarization: Content summarization with item_count
-    - pipeline.digest: Digest creation with digest_type
+Observability:
+    Uses Langfuse @observe() decorators for pipeline-level tracing (when configured).
+    OTel metrics (counters/histograms) are recorded separately for stage progress.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 import httpx
 import typer
 
 from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.telemetry.decorators import observe
 from src.telemetry.metrics import (
     record_pipeline_stage_completed,
     record_pipeline_stage_failed,
     record_pipeline_stage_started,
 )
 from src.utils.logging import get_logger
-
-if TYPE_CHECKING:
-    from opentelemetry.trace import Span
 
 logger = get_logger(__name__)
 
@@ -82,86 +77,37 @@ def _pipeline_via_api(params: dict[str, Any], label: str) -> None:
         raise typer.Exit(1)
 
 
-def _get_tracer() -> Any:
-    """Get OTel tracer if available, otherwise return None."""
-    try:
-        from opentelemetry import trace
+class _StageMetrics:
+    """Tracks item_count for OTel metrics recording at stage completion."""
 
-        return trace.get_tracer("newsletter-aggregator")
-    except ImportError:
-        return None
-
-
-class _StageContext:
-    """Context object for pipeline stage tracking.
-
-    Stores item_count for metrics reporting at stage completion.
-    """
-
-    def __init__(self, span: Span | None = None) -> None:
-        self.span = span
+    def __init__(self) -> None:
         self.item_count: int = 0
 
     def set_attribute(self, key: str, value: int | str) -> None:
-        """Set attribute on span if available."""
-        if self.span:
-            self.span.set_attribute(key, value)
-        # Track item_count for metrics
+        """Track item_count for metrics (other attributes are handled by @observe)."""
         if key == "item_count" and isinstance(value, int):
             self.item_count = value
 
 
 @contextmanager
-def _pipeline_stage_span(
-    stage_name: str,
-    pipeline_type: str,
-) -> Generator[_StageContext, None, None]:
-    """Create an OTel span for a pipeline stage with metrics.
+def _pipeline_stage_metrics(stage_name: str) -> Any:
+    """Record OTel metrics (counters/histograms) for a pipeline stage.
 
-    Creates a span named 'pipeline.{stage_name}' with attributes:
-    - pipeline_type: "daily" or "weekly"
-    - stage: Stage name (ingestion, summarization, digest)
-    - status: success|failure on completion
-    - item_count: Number of items processed (set by caller via ctx.set_attribute)
-    - error_message: Present if failed
-
-    Also records pipeline stage metrics (started/completed/failed counters).
-
-    Args:
-        stage_name: Stage name (ingestion, summarization, digest)
-        pipeline_type: Pipeline type (daily, weekly)
+    Tracing is handled by @observe() decorators on the stage functions.
+    This context manager only records the stage started/completed/failed
+    metrics that feed dashboards and alerts.
 
     Yields:
-        StageContext object for setting attributes and tracking item_count
+        _StageMetrics object for tracking item_count.
     """
-    # Record stage started metric
     record_pipeline_stage_started(stage_name)
-
-    tracer = _get_tracer()
-    if tracer is None:
-        ctx = _StageContext(None)
-        try:
-            yield ctx
-            record_pipeline_stage_completed(stage_name, ctx.item_count)
-        except Exception as e:
-            record_pipeline_stage_failed(stage_name, str(e))
-            raise
-        return
-
-    with tracer.start_as_current_span(f"pipeline.{stage_name}") as span:
-        span.set_attribute("pipeline_type", pipeline_type)
-        span.set_attribute("stage", stage_name)
-        ctx = _StageContext(span)
-        try:
-            yield ctx
-            span.set_attribute("status", "success")
-            record_pipeline_stage_completed(stage_name, ctx.item_count)
-        except Exception as e:
-            span.set_attribute("status", "failure")
-            span.set_attribute("error_message", str(e))
-            span.record_exception(e)
-            record_pipeline_stage_failed(stage_name, str(e))
-            raise
+    ctx = _StageMetrics()
+    try:
+        yield ctx
+        record_pipeline_stage_completed(stage_name, ctx.item_count)
+    except Exception as e:
+        record_pipeline_stage_failed(stage_name, str(e))
+        raise
 
 
 async def _ingest_source(
@@ -171,45 +117,15 @@ async def _ingest_source(
     """Ingest from a single source asynchronously.
 
     Wraps the synchronous ingestion service call in asyncio.to_thread()
-    to enable parallel execution without blocking.
-
-    Args:
-        source_name: Name of the source (gmail, rss, youtube, podcast)
-        ingest_func: Callable that performs the ingestion and returns count
+    to enable parallel execution without blocking. Tracing is handled by
+    the @observe() decorator on the orchestrator ingest_* functions.
 
     Returns:
         Tuple of (source_name, count, error_message)
-        - count is None if failed
-        - error_message is None if succeeded
     """
     try:
-        # Import OTel tracer for per-source spans
-        try:
-            from opentelemetry import trace
-
-            tracer = trace.get_tracer("newsletter-aggregator")
-        except ImportError:
-            tracer = None
-
-        # Create span for this source
-        if tracer:
-            with tracer.start_as_current_span(f"ingestion.{source_name}") as span:
-                span.set_attribute("source", source_name)
-                try:
-                    count = await asyncio.to_thread(ingest_func)
-                    span.set_attribute("status", "success")
-                    span.set_attribute("item_count", count)
-                    return (source_name, count, None)
-                except Exception as e:
-                    span.set_attribute("status", "error")
-                    span.set_attribute("error_type", type(e).__name__)
-                    span.set_attribute("error_message", str(e))
-                    span.record_exception(e)
-                    return (source_name, None, str(e))
-        else:
-            count = await asyncio.to_thread(ingest_func)
-            return (source_name, count, None)
-
+        count = await asyncio.to_thread(ingest_func)
+        return (source_name, count, None)
     except Exception as e:
         logger.error(f"Ingestion failed for {source_name}: {e}")
         return (source_name, None, str(e))
@@ -343,14 +259,14 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
     return results
 
 
+@observe()
 def _run_ingestion_stage(pipeline_type: str = "daily") -> dict[str, int]:
     """Run all ingestion sources in parallel and return counts per source.
 
     Wrapper that runs the async parallel ingestion in the event loop.
-    Creates an OTel span for the entire ingestion stage.
 
     Args:
-        pipeline_type: Pipeline type for span attributes (daily, weekly)
+        pipeline_type: Pipeline type for metrics attributes (daily, weekly)
 
     Returns:
         Dictionary mapping source name to number of items ingested.
@@ -358,11 +274,10 @@ def _run_ingestion_stage(pipeline_type: str = "daily") -> dict[str, int]:
     Raises:
         RuntimeError: If all ingestion sources fail.
     """
-    with _pipeline_stage_span("ingestion", pipeline_type) as ctx:
+    with _pipeline_stage_metrics("ingestion") as ctx:
         results = asyncio.run(_run_ingestion_stage_async())
         total_items = sum(results.values())
         ctx.set_attribute("item_count", total_items)
-        ctx.set_attribute("source_count", len(results))
         return results
 
 
@@ -408,13 +323,12 @@ async def _wait_for_jobs(job_ids: list[int], poll_interval: float = 2.0) -> dict
     return {"completed_count": completed, "failed_count": failed}
 
 
+@observe()
 def _run_summarization_stage(pipeline_type: str = "daily", use_queue: bool = False) -> int:
     """Run summarization on all pending content.
 
-    Creates an OTel span for the entire summarization stage.
-
     Args:
-        pipeline_type: Pipeline type for span attributes (daily, weekly)
+        pipeline_type: Pipeline type for metrics attributes (daily, weekly)
         use_queue: If True, enqueue jobs for worker processing and wait.
                    If False, process directly (default, backward compatible).
 
@@ -423,7 +337,7 @@ def _run_summarization_stage(pipeline_type: str = "daily", use_queue: bool = Fal
     """
     from src.processors.summarizer import ContentSummarizer
 
-    with _pipeline_stage_span("summarization", pipeline_type) as ctx:
+    with _pipeline_stage_metrics("summarization") as ctx:
         summarizer = ContentSummarizer()
 
         if use_queue:
@@ -457,6 +371,7 @@ def _run_summarization_stage(pipeline_type: str = "daily", use_queue: bool = Fal
         return count
 
 
+@observe()
 def _run_digest_stage(
     digest_type: str,
     period_start: datetime,
@@ -465,13 +380,11 @@ def _run_digest_stage(
 ) -> dict:
     """Create a digest for the given period.
 
-    Creates an OTel span for the digest creation stage.
-
     Args:
         digest_type: Either "daily" or "weekly".
         period_start: Start of the digest period (inclusive).
         period_end: End of the digest period (exclusive).
-        pipeline_type: Pipeline type for span attributes (daily, weekly)
+        pipeline_type: Pipeline type for metrics attributes (daily, weekly)
 
     Returns:
         Dictionary with digest creation result metadata.
@@ -479,7 +392,7 @@ def _run_digest_stage(
     from src.cli.adapters import create_digest_sync
     from src.models.digest import DigestRequest, DigestType
 
-    with _pipeline_stage_span("digest", pipeline_type) as ctx:
+    with _pipeline_stage_metrics("digest") as ctx:
         dtype = DigestType.DAILY if digest_type == "daily" else DigestType.WEEKLY
 
         request = DigestRequest(
