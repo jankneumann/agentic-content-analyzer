@@ -19,8 +19,6 @@ import os
 import time
 from typing import Any
 
-from langfuse import observe
-
 from src.config import settings
 from src.config.models import ModelConfig, ModelFamily, ModelStep, Provider
 from src.models.content import Content, ContentStatus
@@ -37,6 +35,7 @@ from src.models.summary import Summary
 from src.services.llm_router import ToolDefinition
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
+from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

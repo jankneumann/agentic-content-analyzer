@@ -20,8 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from langfuse import observe
-
+from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
