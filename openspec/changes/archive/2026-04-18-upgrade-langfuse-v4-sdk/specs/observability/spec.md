@@ -171,9 +171,3 @@ The system SHALL support configuration settings for the Langfuse SDK v4 feature 
 - **WHEN** `LANGFUSE_SAMPLE_RATE` is set to a value outside the range 0.0-1.0
 - **THEN** the system SHALL clamp the value to the nearest valid bound (0.0 or 1.0)
 - **AND** the system SHALL log a WARNING about the invalid value
-
-## REMOVED Requirements
-
-### Requirement: Langfuse raw OTel export with gen_ai.* attributes
-**Reason:** Replaced by native Langfuse SDK which provides generation-typed observations, automatic cost tracking, and `@observe()` support. Raw OTel export sent generic spans that Langfuse could not recognize as LLM generations.
-**Migration:** No user action required. The `LangfuseProvider` internal implementation changes but the `ObservabilityProvider` Protocol interface is unchanged. If raw OTel export is needed, use `OBSERVABILITY_PROVIDER=otel` instead.
