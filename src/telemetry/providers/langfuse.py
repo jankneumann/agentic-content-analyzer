@@ -141,6 +141,9 @@ class LangfuseProvider:
 
     def _setup_anthropic_instrumentor(self) -> None:
         """Enable AnthropicInstrumentor if available."""
+        if self._instrumentor_active:
+            return
+
         try:
             from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
 

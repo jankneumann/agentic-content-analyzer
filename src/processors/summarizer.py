@@ -9,8 +9,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from langfuse import observe
-
 from src.agents.base import SummarizationAgent
 from src.agents.claude import ClaudeAgent
 from src.config import settings
@@ -18,6 +16,7 @@ from src.config.models import ModelConfig
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
 from src.storage.database import get_db
+from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 from src.utils.summary_markdown import (
     extract_summary_theme_tags,

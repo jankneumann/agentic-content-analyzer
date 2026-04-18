@@ -11,8 +11,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from langfuse import observe, propagate_attributes
-
+from src.telemetry.decorators import observe, propagate_attributes
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

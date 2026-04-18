@@ -8,7 +8,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from anthropic import Anthropic
-from langfuse import observe
+
+from src.telemetry.decorators import observe
 
 if TYPE_CHECKING:
     from src.models.query import ContentQuery

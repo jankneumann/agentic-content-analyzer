@@ -4,8 +4,6 @@ import json
 import time
 from datetime import datetime
 
-from langfuse import observe
-
 from src.config.models import ModelConfig, ModelStep, Provider, get_model_config
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
@@ -22,6 +20,7 @@ from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.storage.graph_provider import GraphBackendUnavailableError
 from src.storage.graphiti_client import GraphitiClient
+from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
