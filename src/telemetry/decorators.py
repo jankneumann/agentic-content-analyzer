@@ -33,8 +33,8 @@ except ImportError:
 
         return decorator
 
-    @contextmanager  # type: ignore[arg-type]
-    def propagate_attributes(**kwargs: Any) -> Any:
+    @contextmanager
+    def propagate_attributes(**kwargs: Any) -> Any:  # type: ignore[misc]
         """No-op propagate_attributes() context manager when langfuse is not installed."""
         yield
 
