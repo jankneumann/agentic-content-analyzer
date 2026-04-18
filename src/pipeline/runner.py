@@ -11,11 +11,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from langfuse import observe, propagate_attributes
+
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
+@observe()
 async def _run_ingestion(
     on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, int]:
@@ -61,7 +64,7 @@ async def _run_ingestion(
 
             def _make_perplexity(src: WebSearchSource) -> Callable[[], int]:
                 def _f() -> int:
-                    return ingest_perplexity_search(
+                    return ingest_perplexity_search(  # type: ignore[no-any-return]
                         prompt=src.prompt,
                         max_results=src.max_results,
                         recency_filter=src.recency_filter,
@@ -75,7 +78,7 @@ async def _run_ingestion(
 
             def _make_grok(src: WebSearchSource) -> Callable[[], int]:
                 def _f() -> int:
-                    return ingest_xsearch(prompt=src.prompt, max_threads=src.max_threads)
+                    return ingest_xsearch(prompt=src.prompt, max_threads=src.max_threads)  # type: ignore[no-any-return]
 
                 return _f
 
@@ -143,7 +146,7 @@ def _run_summarization() -> int:
     from src.processors.summarizer import ContentSummarizer
 
     summarizer = ContentSummarizer()
-    return summarizer.summarize_pending_contents()
+    return summarizer.summarize_pending_contents()  # type: ignore[no-any-return]
 
 
 def _run_digest(
@@ -171,6 +174,7 @@ def _run_digest(
     }
 
 
+@observe()
 async def run_pipeline(
     pipeline_type: str = "daily",
     date: str | None = None,
@@ -214,37 +218,62 @@ async def run_pipeline(
         if on_progress:
             on_progress(data)
 
+    # Propagate session context to all child observations (Langfuse)
+    session_id = f"pipeline-{pipeline_type}-{target.strftime('%Y-%m-%d')}"
+    with propagate_attributes(
+        session_id=session_id,
+        tags=[f"pipeline:{pipeline_type}"],
+    ):
+        return await _run_pipeline_stages(  # type: ignore[no-any-return]
+            pipeline_type=pipeline_type,
+            period_start=period_start,
+            period_end=period_end,
+            result=result,
+            on_progress=_progress,
+        )
+
+
+@observe()
+async def _run_pipeline_stages(
+    *,
+    pipeline_type: str,
+    period_start: datetime,
+    period_end: datetime,
+    result: dict[str, Any],
+    on_progress: Callable[[dict[str, Any]], None],
+) -> dict[str, Any]:
+    """Execute pipeline stages within propagated session context."""
     # Stage 1: Ingestion
-    _progress({"stage": "ingestion", "status": "started"})
+    on_progress({"stage": "ingestion", "status": "started"})
     try:
         ingestion_counts = await _run_ingestion(on_progress=on_progress)
         result["stages"]["ingestion"] = {"status": "completed", "counts": ingestion_counts}
-        _progress({"stage": "ingestion", "status": "completed", "counts": ingestion_counts})
+        on_progress({"stage": "ingestion", "status": "completed", "counts": ingestion_counts})
     except Exception as e:
         result["stages"]["ingestion"] = {"status": "failed", "error": str(e)}
-        _progress({"stage": "ingestion", "status": "failed", "error": str(e)})
+        on_progress({"stage": "ingestion", "status": "failed", "error": str(e)})
         raise
 
     # Stage 2: Summarization
-    _progress({"stage": "summarization", "status": "started"})
+    on_progress({"stage": "summarization", "status": "started"})
     try:
         summarized = await asyncio.to_thread(_run_summarization)
         result["stages"]["summarization"] = {"status": "completed", "count": summarized}
-        _progress({"stage": "summarization", "status": "completed", "count": summarized})
+        on_progress({"stage": "summarization", "status": "completed", "count": summarized})
     except Exception as e:
         result["stages"]["summarization"] = {"status": "failed", "error": str(e)}
-        _progress({"stage": "summarization", "status": "failed", "error": str(e)})
+        on_progress({"stage": "summarization", "status": "failed", "error": str(e)})
         raise
 
     # Stage 3: Digest Creation
-    _progress({"stage": "digest", "status": "started"})
+    on_progress({"stage": "digest", "status": "started"})
     try:
         digest_info = await asyncio.to_thread(_run_digest, pipeline_type, period_start, period_end)
         result["stages"]["digest"] = {"status": "completed", **digest_info}
-        _progress({"stage": "digest", "status": "completed", **digest_info})
+        on_progress({"stage": "digest", "status": "completed", **digest_info})
     except Exception as e:
         result["stages"]["digest"] = {"status": "failed", "error": str(e)}
-        _progress({"stage": "digest", "status": "failed", "error": str(e)})
+        on_progress({"stage": "digest", "status": "failed", "error": str(e)})
         raise
 
     return result

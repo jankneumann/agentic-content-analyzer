@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from langfuse import observe
+
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -37,6 +39,7 @@ class URLIngestResult:
     duplicate: bool
 
 
+@observe()
 def ingest_gmail(
     *,
     query: str | None = None,
@@ -89,6 +92,7 @@ def ingest_gmail(
     )
 
 
+@observe()
 def ingest_rss(
     *,
     max_entries_per_feed: int = 10,
@@ -121,6 +125,7 @@ def ingest_rss(
     return result.items_ingested
 
 
+@observe()
 def ingest_blog(
     *,
     max_entries_per_source: int = 10,
@@ -155,6 +160,7 @@ def ingest_blog(
     return result.items_ingested
 
 
+@observe()
 def ingest_youtube_playlist(
     *,
     max_videos: int = 10,
@@ -199,6 +205,7 @@ def ingest_youtube_playlist(
     return asyncio.run(_run())
 
 
+@observe()
 def ingest_youtube_rss(
     *,
     max_videos: int = 10,
@@ -235,6 +242,7 @@ def ingest_youtube_rss(
     return asyncio.run(_run())
 
 
+@observe()
 def ingest_youtube(
     *,
     max_videos: int = 10,
@@ -271,6 +279,7 @@ def ingest_youtube(
     return playlist_count + rss_count
 
 
+@observe()
 def ingest_podcast(
     *,
     max_entries_per_feed: int = 10,
@@ -297,6 +306,7 @@ def ingest_podcast(
     )
 
 
+@observe()
 def ingest_substack(
     *,
     max_entries_per_source: int = 10,
@@ -330,6 +340,7 @@ def ingest_substack(
         service.close()
 
 
+@observe()
 def ingest_xsearch(
     *,
     prompt: str | None = None,
@@ -369,6 +380,7 @@ def ingest_xsearch(
         service.close()
 
 
+@observe()
 def ingest_perplexity_search(
     *,
     prompt: str | None = None,
@@ -413,6 +425,7 @@ def ingest_perplexity_search(
         service.close()
 
 
+@observe()
 def ingest_scholar(
     *,
     max_entries: int = 20,
@@ -462,6 +475,7 @@ def ingest_scholar(
     return asyncio.run(_run())
 
 
+@observe()
 def ingest_scholar_paper(
     *,
     identifier: str,
@@ -495,6 +509,7 @@ def ingest_scholar_paper(
     return asyncio.run(_run())
 
 
+@observe()
 def ingest_scholar_refs(
     *,
     after: datetime | None = None,
@@ -539,6 +554,7 @@ def ingest_scholar_refs(
     return asyncio.run(_run())
 
 
+@observe()
 def ingest_arxiv(
     *,
     max_results: int = 20,
@@ -594,6 +610,7 @@ def ingest_arxiv(
         service.close()
 
 
+@observe()
 def ingest_arxiv_paper(
     *,
     identifier: str,
@@ -624,6 +641,7 @@ def ingest_arxiv_paper(
         service.close()
 
 
+@observe()
 def ingest_huggingface_papers(
     *,
     max_papers: int = 30,
@@ -658,6 +676,7 @@ def ingest_huggingface_papers(
     return result.items_ingested
 
 
+@observe()
 def ingest_url(
     *,
     url: str,

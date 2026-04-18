@@ -19,6 +19,8 @@ import os
 import time
 from typing import Any
 
+from langfuse import observe
+
 from src.config import settings
 from src.config.models import ModelConfig, ModelFamily, ModelStep, Provider
 from src.models.content import Content, ContentStatus
@@ -141,6 +143,7 @@ class PodcastScriptGenerator:
 
         logger.info(f"Initialized PodcastScriptGenerator with {self.model}")
 
+    @observe()
     async def generate_script(
         self,
         request: PodcastRequest,

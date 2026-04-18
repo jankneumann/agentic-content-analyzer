@@ -1,16 +1,16 @@
-"""Langfuse observability provider.
+"""Langfuse observability provider using native Langfuse Python SDK v4.
 
-Uses OpenTelemetry with gen_ai.* semantic conventions to export traces
-to Langfuse (Cloud or self-hosted). Langfuse provides LLM-specific
-tracing, prompt management, and evaluation.
+Uses the Langfuse SDK for generation-typed observations, automatic cost
+tracking, session grouping, and @observe() decorator support. The SDK
+is built on OpenTelemetry internally, so it coexists with our existing
+OTel infrastructure auto-instrumentation (otel_setup.py).
 
-Cloud: https://cloud.langfuse.com/api/public/otel
-Self-hosted: {base_url}/api/public/otel
+Cloud: https://cloud.langfuse.com
+Self-hosted: configurable via base_url
 """
 
 from __future__ import annotations
 
-import base64
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -23,27 +23,33 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# gen_ai semantic convention attribute names (EXPERIMENTAL — may change)
-# Pinned as constants for single-point-of-update if conventions evolve
-GEN_AI_SYSTEM = "gen_ai.system"
-GEN_AI_REQUEST_MODEL = "gen_ai.request.model"
-GEN_AI_REQUEST_MAX_TOKENS = "gen_ai.request.max_tokens"
-GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
-GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
-GEN_AI_PROMPT = "gen_ai.prompt"
-GEN_AI_COMPLETION = "gen_ai.completion"
 
-# Default Langfuse Cloud base URL
-LANGFUSE_CLOUD_BASE_URL = "https://cloud.langfuse.com"
+def _sanitize_metadata(metadata: dict[str, Any] | None) -> dict[str, str]:
+    """Sanitize metadata to dict[str, str] with 200-char value limit.
+
+    Langfuse SDK v4 requires metadata values to be strings with a
+    maximum length of 200 characters. Non-string values are coerced;
+    oversized values are truncated.
+    """
+    if not metadata:
+        return {}
+    result: dict[str, str] = {}
+    for key, value in metadata.items():
+        str_value = str(value)
+        if len(str_value) > 200:
+            str_value = str_value[:197] + "..."
+        result[str(key)] = str_value
+    return result
 
 
 class LangfuseProvider:
-    """Langfuse observability provider using OTel with gen_ai.* attributes.
+    """Langfuse observability provider using native SDK v4.
+
+    Provides generation-typed observations for LLM calls, automatic cost
+    tracking via Langfuse's model pricing database, and compatibility with
+    @observe() decorators on pipeline functions.
 
     Supports both Langfuse Cloud and self-hosted deployments.
-    Authentication uses HTTP Basic Auth with public_key:secret_key.
-    All LLM calls are traced with gen_ai semantic conventions that
-    Langfuse recognizes for LLM-specific visualization.
     """
 
     def __init__(
@@ -51,103 +57,104 @@ class LangfuseProvider:
         *,
         public_key: str | None = None,
         secret_key: str | None = None,
-        base_url: str = LANGFUSE_CLOUD_BASE_URL,
+        base_url: str = "https://cloud.langfuse.com",
         service_name: str = "newsletter-aggregator",
         log_prompts: bool = False,
+        sample_rate: float = 1.0,
+        debug: bool = False,
+        environment: str | None = None,
     ) -> None:
         self._public_key = public_key
         self._secret_key = secret_key
         self._base_url = base_url
         self._service_name = service_name
         self._log_prompts = log_prompts
-        self._tracer: Any = None
-        self._tracer_provider: Any = None
+        self._sample_rate = sample_rate
+        self._debug = debug
+        self._environment = environment
+        self._client: Any = None
         self._setup_complete = False
+        self._instrumentor_active = False
 
     @property
     def name(self) -> str:
         return "langfuse"
 
-    def _build_auth_header(self) -> dict[str, str]:
-        """Build HTTP Basic Auth header for Langfuse.
-
-        Constructs Authorization: Basic base64(public_key:secret_key).
-        Returns empty dict if either key is missing.
-        """
-        if not self._public_key or not self._secret_key:
-            return {}
-
-        credentials = f"{self._public_key}:{self._secret_key}"
-        encoded = base64.b64encode(credentials.encode()).decode()
-        return {"Authorization": f"Basic {encoded}"}
-
-    def _get_endpoint(self) -> str:
-        """Get the OTLP endpoint URL.
-
-        Always constructs from base_url + /api/public/otel.
-        Never returns None since base_url has a default.
-        """
-        return f"{self._base_url.rstrip('/')}/api/public/otel"
-
     def setup(self, app: FastAPI | None = None) -> None:
-        """Initialize OTel SDK with OTLP exporter pointing to Langfuse."""
+        """Initialize Langfuse SDK and optionally enable AnthropicInstrumentor."""
         if self._setup_complete:
             return
 
+        # Warn about partial or missing auth configuration
+        has_public = bool(self._public_key)
+        has_secret = bool(self._secret_key)
+
+        if has_public != has_secret:
+            logger.warning(
+                "Langfuse provider has partial auth configuration: "
+                f"public_key={'set' if has_public else 'missing'}, "
+                f"secret_key={'set' if has_secret else 'missing'}. "
+                "Both are required for authentication."
+            )
+        elif not has_public and not has_secret:
+            logger.warning(
+                "Langfuse provider initialized without authentication keys. "
+                "This is acceptable for self-hosted instances without auth, "
+                "but Langfuse Cloud requires public_key and secret_key."
+            )
+
         try:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-                OTLPSpanExporter,
-            )
-            from opentelemetry.sdk.resources import Resource
-            from opentelemetry.sdk.trace import TracerProvider
-            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+            from langfuse import Langfuse
 
-            # Warn about partial or missing auth configuration
-            has_public = bool(self._public_key)
-            has_secret = bool(self._secret_key)
+            # Build constructor kwargs — only pass keys if provided
+            kwargs: dict[str, Any] = {
+                "host": self._base_url,
+                "sample_rate": self._sample_rate,
+                "debug": self._debug,
+            }
+            if self._public_key:
+                kwargs["public_key"] = self._public_key
+            if self._secret_key:
+                kwargs["secret_key"] = self._secret_key
+            if self._environment:
+                kwargs["environment"] = self._environment
 
-            if has_public != has_secret:
-                logger.warning(
-                    "Langfuse provider has partial auth configuration: "
-                    f"public_key={'set' if has_public else 'missing'}, "
-                    f"secret_key={'set' if has_secret else 'missing'}. "
-                    "Both are required for authentication."
-                )
-            elif not has_public and not has_secret:
-                logger.warning(
-                    "Langfuse provider initialized without authentication keys. "
-                    "This is acceptable for self-hosted instances without auth, "
-                    "but Langfuse Cloud requires public_key and secret_key."
-                )
-
-            resource = Resource.create({"service.name": self._service_name})
-            self._tracer_provider = TracerProvider(resource=resource)
-
-            endpoint = self._get_endpoint()
-
-            # Ensure endpoint includes /v1/traces path
-            if not endpoint.endswith("/v1/traces"):
-                endpoint = f"{endpoint.rstrip('/')}/v1/traces"
-
-            exporter = OTLPSpanExporter(
-                endpoint=endpoint,
-                headers=self._build_auth_header(),
-            )
-            self._tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
-
-            # Get tracer from our own provider — don't overwrite the global
-            # OTel tracer provider, which may be used by infrastructure
-            # auto-instrumentation (otel_setup.py).
-            self._tracer = self._tracer_provider.get_tracer(__name__)
+            self._client = Langfuse(**kwargs)
             self._setup_complete = True
 
-            logger.info(f"Langfuse provider initialized (endpoint: {endpoint})")
+            logger.info(
+                f"Langfuse provider initialized "
+                f"(host: {self._base_url}, "
+                f"sample_rate: {self._sample_rate}, "
+                f"environment: {self._environment or 'default'})"
+            )
+
         except ImportError:
             logger.error(
-                "OpenTelemetry packages not installed. "
-                "Install with: pip install opentelemetry-api opentelemetry-sdk "
-                "opentelemetry-exporter-otlp-proto-http"
+                "Langfuse package not installed. Install with: pip install langfuse>=4.3.0"
             )
+            self._setup_complete = True
+            return
+
+        # Enable AnthropicInstrumentor for automatic Claude call tracing
+        self._setup_anthropic_instrumentor()
+
+    def _setup_anthropic_instrumentor(self) -> None:
+        """Enable AnthropicInstrumentor if available."""
+        try:
+            from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+
+            AnthropicInstrumentor().instrument()
+            self._instrumentor_active = True
+            logger.info("AnthropicInstrumentor enabled for automatic Claude call tracing")
+        except ImportError:
+            logger.warning(
+                "opentelemetry-instrumentation-anthropic not installed. "
+                "Automatic Claude call tracing disabled. "
+                "Install with: pip install opentelemetry-instrumentation-anthropic"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to enable AnthropicInstrumentor: {e}")
 
     def trace_llm_call(
         self,
@@ -163,57 +170,75 @@ class LangfuseProvider:
         max_tokens: int | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Record an LLM call with gen_ai.* semantic conventions."""
-        if self._tracer is None:
+        """Record an LLM call as a Langfuse generation observation."""
+        if self._client is None:
             return
 
-        with self._tracer.start_as_current_span("llm.completion") as span:
-            span.set_attribute(GEN_AI_SYSTEM, provider)
-            span.set_attribute(GEN_AI_REQUEST_MODEL, model)
-            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
-            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
-
-            if max_tokens is not None:
-                span.set_attribute(GEN_AI_REQUEST_MAX_TOKENS, max_tokens)
+        try:
+            # Build generation kwargs
+            gen_kwargs: dict[str, Any] = {
+                "name": "llm.completion",
+                "as_type": "generation",
+                "model": model,
+                "usage": {
+                    "input": input_tokens,
+                    "output": output_tokens,
+                },
+                "metadata": {
+                    "provider": provider,
+                    **_sanitize_metadata(metadata),
+                },
+            }
 
             if self._log_prompts:
-                span.set_attribute(GEN_AI_PROMPT, user_prompt[:1000])
-                span.set_attribute(GEN_AI_COMPLETION, response_text[:1000])
+                gen_kwargs["input"] = user_prompt[:1000]
+                gen_kwargs["output"] = response_text[:1000]
 
-            if metadata:
-                for key, value in metadata.items():
-                    span.set_attribute(f"custom.{key}", str(value))
+            if max_tokens is not None:
+                gen_kwargs["metadata"]["max_tokens"] = str(max_tokens)
+
+            with self._client.start_as_current_observation(**gen_kwargs):
+                pass  # Observation is created and closed immediately
+
+        except Exception as e:
+            # Never let telemetry failures break LLM calls
+            logger.debug(f"Langfuse trace_llm_call failed: {e}")
 
     @contextmanager
     def start_span(
         self, name: str, attributes: dict[str, Any] | None = None
     ) -> Generator[Any, None, None]:
-        """Start a named OTel span."""
-        if self._tracer is None:
+        """Start a named Langfuse span observation."""
+        if self._client is None:
             yield None
             return
 
-        with self._tracer.start_as_current_span(name) as span:
-            if attributes:
-                for key, value in attributes.items():
-                    span.set_attribute(key, str(value))
-            yield span
+        try:
+            with self._client.start_as_current_observation(
+                name=name,
+                as_type="span",
+                metadata=_sanitize_metadata(attributes),
+            ) as observation:
+                yield observation
+        except Exception as e:
+            logger.debug(f"Langfuse start_span failed: {e}")
+            yield None
 
     def flush(self) -> None:
-        """Flush the OTel span processor."""
-        if self._tracer_provider is not None:
+        """Flush buffered Langfuse data."""
+        if self._client is not None:
             try:
-                self._tracer_provider.force_flush()
+                self._client.flush()
             except Exception as e:
                 logger.debug(f"Error flushing Langfuse provider: {e}")
 
     def shutdown(self) -> None:
-        """Shut down the OTel tracer provider."""
-        if self._tracer_provider is not None:
+        """Shut down the Langfuse provider."""
+        if self._client is not None:
             try:
-                self._tracer_provider.shutdown()
+                self._client.flush()
             except Exception as e:
                 logger.debug(f"Error shutting down Langfuse provider: {e}")
-        self._tracer_provider = None
-        self._tracer = None
+        self._client = None
         self._setup_complete = False
+        self._instrumentor_active = False
