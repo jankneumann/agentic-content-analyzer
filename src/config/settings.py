@@ -684,7 +684,9 @@ class Settings(BaseSettings):
     # Langfuse Configuration (Cloud or self-hosted)
     langfuse_public_key: str | None = None  # Langfuse public key (pk-lf-...)
     langfuse_secret_key: str | None = None  # Langfuse secret key (sk-lf-...)
-    langfuse_base_url: str = "https://cloud.langfuse.com"  # Base URL (override for self-hosted)
+    langfuse_base_url: str = (
+        "https://us.cloud.langfuse.com"  # Base URL (US region; override for EU or self-hosted)
+    )
     langfuse_sample_rate: float = 1.0  # Trace sampling rate (0.0-1.0, default: all)
     langfuse_debug: bool = False  # Enable Langfuse SDK debug logging
     langfuse_environment: str | None = None  # Environment tag (production, staging, etc.)

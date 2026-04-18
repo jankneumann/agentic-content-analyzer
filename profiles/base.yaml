@@ -124,6 +124,7 @@ settings:
     semantic_scholar_api_key: "${SEMANTIC_SCHOLAR_API_KEY:-}"
     langfuse_public_key: "${LANGFUSE_PUBLIC_KEY:-}"
     langfuse_secret_key: "${LANGFUSE_SECRET_KEY:-}"
+    langfuse_base_url: "${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}"
     web_search_provider: "${WEB_SEARCH_PROVIDER:-tavily}"
 
   # ---------------------------------------------------------------------------
