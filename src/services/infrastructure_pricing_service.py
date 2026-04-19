@@ -116,7 +116,7 @@ def _load_pricing_yaml() -> dict[str, Any]:
     # Fallback: direct file read
     current = Path(__file__).resolve().parent
     for parent in [current, *current.parents]:
-        if (parent / "pyproject.toml").exists():
+        if any((parent / m).exists() for m in ("pyproject.toml", "alembic.ini")):
             yaml_path = parent / "settings" / "pricing.yaml"
             if yaml_path.exists():
                 with open(yaml_path) as f:

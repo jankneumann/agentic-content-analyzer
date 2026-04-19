@@ -85,11 +85,11 @@ class PromptService:
             pass
 
         # Fallback: direct YAML read (for tests or early startup before registry init)
-        # Walk up from src/services/ to find project root (contains pyproject.toml)
+        # Walk up from src/services/ to find project root
         current = Path(__file__).resolve().parent
         project_root = current
         for parent in [current, *current.parents]:
-            if (parent / "pyproject.toml").exists():
+            if any((parent / m).exists() for m in ("pyproject.toml", "alembic.ini")):
                 project_root = parent
                 break
 
