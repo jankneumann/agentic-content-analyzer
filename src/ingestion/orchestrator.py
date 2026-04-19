@@ -9,6 +9,12 @@ Each function:
 - Accepts the same parameters the service expects
 - Returns int (number of items ingested) or a result dataclass
 
+Post-persist filter hook (see src/ingestion/filter_hook.py): every ingest
+function is wrapped with ``_with_filter_hook`` so that, after the adapter
+persists its Content rows, IngestionFilterService evaluates them through
+the three-tier persona-aware filter. The hook is a no-op when filtering is
+globally disabled, and adapters don't need to know about it.
+
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
 
 """
@@ -17,11 +23,40 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from functools import wraps
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _with_filter_hook(func: Callable[P, R]) -> Callable[P, R]:
+    """Run the post-persist IngestionFilter hook after ``func`` completes.
+
+    Captures a ``since`` timestamp before the ingest call, then evaluates any
+    Content rows ingested after that point. Errors in the hook never block
+    the ingest return value — the adapter's result is always returned.
+    """
+
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        since = datetime.now(UTC).replace(tzinfo=None)
+        result = func(*args, **kwargs)
+        try:
+            from src.ingestion.filter_hook import apply_filter_to_recent
+
+            persona_id: Any = kwargs.get("persona_id", "default")
+            apply_filter_to_recent(since=since, persona_id=str(persona_id))
+        except Exception:
+            logger_local = get_logger(__name__)
+            logger_local.exception("post-persist filter hook failed; ingestion result preserved")
+        return result
+
+    return wrapper
 
 if TYPE_CHECKING:
     from src.ingestion.rss import IngestionResult
@@ -754,3 +789,20 @@ def ingest_url(
         status="queued",
         duplicate=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Post-persist filter hook — wrap every ingest_* function in this module so
+# the filter runs automatically after each adapter, without touching
+# individual adapter code. New adapters added here inherit the behavior.
+# ---------------------------------------------------------------------------
+
+
+def _install_filter_hooks() -> None:
+    this_module = globals()
+    for name, obj in list(this_module.items()):
+        if name.startswith("ingest_") and callable(obj):
+            this_module[name] = _with_filter_hook(obj)
+
+
+_install_filter_hooks()
