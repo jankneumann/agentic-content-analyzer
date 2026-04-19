@@ -30,6 +30,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Enum as SQLEnum,
+    Float as sa_Float,
     ForeignKey,
     Index,
     Integer,
@@ -80,6 +81,7 @@ class ContentStatus(StrEnum):
     PROCESSING = "processing"  # Summarization in progress
     COMPLETED = "completed"  # Fully processed
     FAILED = "failed"  # Processing failed
+    FILTERED_OUT = "filtered_out"  # Rejected by IngestionFilterService, kept for audit
 
 
 class Content(Base):  # type: ignore[valid-type, misc]
@@ -162,6 +164,14 @@ class Content(Base):  # type: ignore[valid-type, misc]
     ingested_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     parsed_at = Column(DateTime, nullable=True)
     processed_at = Column(DateTime, nullable=True)  # When summarization completed
+
+    # Ingestion filter decision (see IngestionFilterService)
+    filter_score = Column(sa_Float, nullable=True)
+    filter_decision = Column(String(20), nullable=True)  # "keep" | "skip"
+    filter_tier = Column(String(20), nullable=True)  # "heuristic" | "embedding" | "llm"
+    filter_reason = Column(Text, nullable=True)
+    priority_bucket = Column(String(20), nullable=True)  # "high" | "normal" | "low"
+    filtered_at = Column(DateTime, nullable=True)
 
     # Relationships
     canonical: Mapped["Content | None"] = relationship(

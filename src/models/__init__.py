@@ -29,6 +29,8 @@ from src.models.content_reference import (
 )
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
+from src.models.filter_feedback_event import FilterFeedbackEvent
+from src.models.persona_filter_profile import PersonaFilterProfile
 from src.models.evaluation import (
     DatasetStatus,
     EvaluationConsensus,
@@ -165,6 +167,9 @@ __all__ = [
     "Preference",
     # Settings
     "PromptOverride",
+    # Ingestion filter
+    "PersonaFilterProfile",
+    "FilterFeedbackEvent",
     # YouTube
     "YouTubeTranscript",
     "TranscriptSegment",
