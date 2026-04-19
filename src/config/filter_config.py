@@ -8,7 +8,7 @@ future change; today it's a no-op.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from src.config.config_registry import ConfigDomain, get_config_registry
@@ -131,18 +131,13 @@ def _apply_persona_overrides(
     interest = profile.get("interest_description") or persona.get("description")
     band_raw = profile.get("borderline_band")
     band = _coerce_band(band_raw, base.borderline_band) if band_raw else base.borderline_band
-    return FilterConfig(
-        enabled=base.enabled,
-        strict=base.strict,
+    return replace(
+        base,
         min_word_count=int(profile.get("min_word_count", base.min_word_count)),
         allowed_languages=tuple(profile.get("languages") or base.allowed_languages),
-        embedding_provider=base.embedding_provider,
-        embedding_model=base.embedding_model,
-        llm_enabled=base.llm_enabled,
         borderline_band=band,
         priority_high_threshold=band.high,
         priority_low_threshold=band.low,
-        excerpt_chars=base.excerpt_chars,
         interest_description=interest,
         must_include=tuple(profile.get("must_include") or ()),
         must_exclude=tuple(profile.get("must_exclude") or ()),
@@ -150,39 +145,8 @@ def _apply_persona_overrides(
 
 
 def _apply_source_overrides(base: FilterConfig, overrides: dict[str, Any]) -> FilterConfig:
-    if "enabled" in overrides and overrides["enabled"] is False:
-        return FilterConfig(
-            enabled=False,
-            strict=base.strict,
-            min_word_count=base.min_word_count,
-            allowed_languages=base.allowed_languages,
-            embedding_provider=base.embedding_provider,
-            embedding_model=base.embedding_model,
-            llm_enabled=base.llm_enabled,
-            borderline_band=base.borderline_band,
-            priority_high_threshold=base.priority_high_threshold,
-            priority_low_threshold=base.priority_low_threshold,
-            excerpt_chars=base.excerpt_chars,
-            interest_description=base.interest_description,
-            must_include=base.must_include,
-            must_exclude=base.must_exclude,
-        )
-    llm_enabled = base.llm_enabled
+    if overrides.get("enabled") is False:
+        return replace(base, enabled=False)
     if "override_tier_3" in overrides:
-        llm_enabled = bool(overrides["override_tier_3"])
-    return FilterConfig(
-        enabled=base.enabled,
-        strict=base.strict,
-        min_word_count=base.min_word_count,
-        allowed_languages=base.allowed_languages,
-        embedding_provider=base.embedding_provider,
-        embedding_model=base.embedding_model,
-        llm_enabled=llm_enabled,
-        borderline_band=base.borderline_band,
-        priority_high_threshold=base.priority_high_threshold,
-        priority_low_threshold=base.priority_low_threshold,
-        excerpt_chars=base.excerpt_chars,
-        interest_description=base.interest_description,
-        must_include=base.must_include,
-        must_exclude=base.must_exclude,
-    )
+        return replace(base, llm_enabled=bool(overrides["override_tier_3"]))
+    return base

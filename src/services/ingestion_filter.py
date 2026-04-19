@@ -95,12 +95,20 @@ class FilterTier(StrEnum):
 Decision = Literal["keep", "skip"]
 Bucket = Literal["high", "normal", "low"]
 
-# Sentinel returned by _tier_embedding when the similarity score falls inside
-# the configured borderline band and the service should escalate to tier 3.
-# Using an explicit sentinel object (rather than overloading reason="borderline"
-# on a FilterDecision) removes the ambiguity around "which decision field is
-# load-bearing here".
-_BORDERLINE_SENTINEL: Any = object()
+
+class _Borderline:
+    """Sentinel type for the embedding-to-LLM escalation path.
+
+    Emitted from _tier_embedding when the similarity score lands in the
+    configured borderline band. Callers check ``isinstance(result, _Borderline)``
+    which narrows the union type cleanly — much nicer than relying on an
+    ambiguous reason="borderline" string on a FilterDecision.
+    """
+
+    __slots__ = ()
+
+
+_BORDERLINE_SENTINEL = _Borderline()
 
 
 @dataclass(frozen=True)
@@ -194,8 +202,8 @@ class IngestionFilterService:
                     reason=f"embedding.error:{type(exc).__name__}",
                     priority_bucket="low",
                 )
-            if embedding_result is not _BORDERLINE_SENTINEL:
-                return embedding_result  # type: ignore[return-value]
+            if not isinstance(embedding_result, _Borderline):
+                return embedding_result
 
             # Tier 3 — LLM. Runs only when embedding landed in borderline band.
             embedding_score = self._last_embedding_score
@@ -271,7 +279,7 @@ class IngestionFilterService:
 
         return None
 
-    def _tier_embedding(self, content: Content) -> FilterDecision | object:
+    def _tier_embedding(self, content: Content) -> FilterDecision | _Borderline:
         cfg = self._config
         provider = self._load_embedding_provider()
         persona_vec = self._get_or_compute_profile_vector(provider)

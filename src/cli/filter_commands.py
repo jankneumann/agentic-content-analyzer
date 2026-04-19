@@ -54,16 +54,32 @@ def rerun(
             help="Only re-evaluate rows ingested at/after this UTC datetime (ISO 8601).",
         ),
     ] = None,
+    days: Annotated[
+        int,
+        typer.Option(
+            "--days",
+            help="Fallback when --since is not set: re-evaluate rows ingested within the last N days (default 7).",
+        ),
+    ] = 7,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Print stats but do not update rows.")
     ] = False,
 ) -> None:
-    """Re-run the filter over previously-ingested rows for a persona."""
+    """Re-run the filter over previously-ingested rows for a persona.
+
+    Without --since, a sliding window of `--days` days (default 7) is used.
+    Epoch 1970 is intentionally NOT the default — a blank rerun would
+    otherwise re-evaluate the entire Content table, which is expensive on
+    large databases.
+    """
+    from datetime import timedelta
+
     from src.ingestion.filter_hook import apply_filter_to_recent
 
-    effective_since = since or datetime.fromtimestamp(0)
+    if since is None:
+        since = datetime.utcnow() - timedelta(days=days)
     stats = apply_filter_to_recent(
-        since=effective_since, persona_id=persona, dry_run=dry_run
+        since=since, persona_id=persona, dry_run=dry_run
     )
     typer.echo(f"rerun: {stats.as_dict()}")
 

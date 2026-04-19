@@ -43,15 +43,30 @@ def _ingest_callback(
     """Top-level ingest options that flip the IngestionFilter behavior.
 
     These set ACA_FILTER_* env vars that IngestionFilterService and the
-    orchestrator's post-persist hook consult at runtime. Scope is the current
-    process — they do not mutate persisted config.
+    orchestrator's post-persist hook consult at runtime. Scope is the
+    current process. To avoid leaking state into a subsequent command run
+    in the same Python process (worker / test harness), we register an
+    atexit handler that restores whatever was in the env before we set it.
     """
+    import atexit
     import os as _os
 
+    def _apply(key: str, value: str) -> None:
+        prior = _os.environ.get(key)
+        _os.environ[key] = value
+
+        def _restore() -> None:
+            if prior is None:
+                _os.environ.pop(key, None)
+            else:
+                _os.environ[key] = prior
+
+        atexit.register(_restore)
+
     if no_filter:
-        _os.environ["ACA_FILTER_ENABLED"] = "false"
+        _apply("ACA_FILTER_ENABLED", "false")
     if filter_dry_run:
-        _os.environ["ACA_FILTER_DRY_RUN"] = "true"
+        _apply("ACA_FILTER_DRY_RUN", "true")
 
 
 def _days_to_after_date(days: int | None) -> datetime | None:

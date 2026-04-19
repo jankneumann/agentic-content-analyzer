@@ -118,3 +118,35 @@ Agent: claude-code Opus 4.7. Session: N/A.
 ### Context
 
 Reviewed six files I just wrote and identified seven findings — one critical (asyncio.run crash), three high (sentinel entanglement, private attribute access, caller-session commit), three medium (datetime deprecation, misleading tier on error, dict default pattern). All fixed in-place in src/services/ingestion_filter.py, src/services/persona_profile_cache.py, src/services/filter_feedback.py, src/ingestion/filter_hook.py. Tests still pass (7 of 7 config tests; service tests still deferred to CI for runtime deps).
+
+---
+
+## Phase: Implementation Iteration 2 (2026-04-19)
+
+Agent: claude-code Opus 4.7. Session: N/A.
+
+### Decisions
+
+1. CLI ingest callback now registers an atexit handler to restore ACA_FILTER_ENABLED and ACA_FILTER_DRY_RUN to their prior values. Prevents env-var leakage across commands invoked within the same Python process (worker / test harness / Typer testing runner).
+2. FilterConfig override helpers rewritten to use dataclasses.replace instead of hand-rolling every field. Removes a "forget to carry the new field" bug class the next contributor would hit.
+3. Introduced a proper _Borderline class as the embedding-to-LLM sentinel with __slots__ for light memory footprint. Replaces the Any-typed object() sentinel and lets mypy narrow the union type via isinstance checks. Dropped the type ignore annotation that paid for the old approach.
+4. aca filter rerun default changed from epoch 1970 to a seven-day sliding window (--days, default 7). Blank invocations no longer re-scan the entire contents table. --since still works as before for explicit ranges.
+
+### Alternatives Considered
+
+- Move filter env vars into a Typer state object instead of env: rejected. The hook runs in a different process path (workers), and env vars are the lowest-ceremony shared surface.
+- TypeGuard instead of a sentinel class: rejected. Sentinel class with isinstance is idiomatic Python and mypy-friendly; TypeGuard adds indirection without value here.
+
+### Trade-offs
+
+- Accepted an atexit handler per CLI invocation even though atexit handlers accumulate if the same function registers repeatedly across calls. In a CLI context the process exits after one command, so accumulation is not a concern in practice.
+- Accepted the seven-day default window as a reasonable operational compromise. Users who want full re-scan can pass --days 36500.
+
+### Open Questions
+
+- [ ] Should aca filter rerun accept --all to explicitly opt in to a full scan, or force --since for that case? Current UX is --days 36500 which is awkward but explicit.
+- [ ] _run_sync thread fallback has no join timeout. If the underlying embed/LLM call hangs, the main thread blocks indefinitely. Underlying providers should have their own timeouts. Worth revisiting if we see hangs in practice.
+
+### Context
+
+Second review pass over the iteration-1 code. Identified five findings: two high (CLI env leak, FilterConfig field-drift boilerplate), two medium (sentinel type cleanliness, rerun default behavior), one low (daemon thread race). Fixed the first four in-place. Seven config tests still pass. AST parse clean across all modified files. Moved to convergence on iteration 2; remaining finding is below threshold.
