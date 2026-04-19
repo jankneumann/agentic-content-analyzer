@@ -31,6 +31,7 @@ from src.cli.digest_commands import app as digest_app
 from src.cli.edit_commands import app as edit_app
 from src.cli.evaluate_commands import app as evaluate_app
 from src.cli.graph_commands import app as graph_app
+from src.cli.filter_commands import app as filter_app
 from src.cli.ingest_commands import app as ingest_app
 from src.cli.job_commands import app as job_app
 from src.cli.kb_commands import app as kb_app
@@ -64,6 +65,7 @@ app = typer.Typer(
 
 # Register all sub-command groups
 app.add_typer(ingest_app, name="ingest")
+app.add_typer(filter_app, name="filter")
 app.add_typer(summarize_app, name="summarize")
 app.add_typer(digest_app, name="create-digest")
 app.add_typer(edit_app, name="edit")

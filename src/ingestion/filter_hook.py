@@ -15,6 +15,7 @@ here afterward; any Content row ingested after that point with
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -80,6 +81,14 @@ def apply_filter_to_recent(
     Safe to call even when filtering is globally disabled — the config is
     consulted on entry and an all-zero FilterStats is returned.
     """
+    # Env-var overrides let CLI flags (--no-filter / --filter-dry-run) and
+    # tests temporarily flip behavior without mutating persisted config.
+    if os.environ.get("ACA_FILTER_ENABLED", "").lower() in ("false", "0", "no"):
+        logger.debug("filter_hook: ACA_FILTER_ENABLED=false — skipping")
+        return FilterStats()
+    if os.environ.get("ACA_FILTER_DRY_RUN", "").lower() in ("true", "1", "yes"):
+        dry_run = True
+
     config = _load_persona_config(persona_id)
     if not config.enabled:
         logger.debug("filter_hook: filtering.enabled=false — skipping")

@@ -29,6 +29,31 @@ from src.cli.output import is_direct_mode, is_json_mode, output_result
 app = typer.Typer(help="Ingest content from various sources.", no_args_is_help=True)
 
 
+@app.callback()
+def _ingest_callback(
+    no_filter: bool = typer.Option(
+        False, "--no-filter", help="Disable the post-persist ingestion filter for this run."
+    ),
+    filter_dry_run: bool = typer.Option(
+        False,
+        "--filter-dry-run",
+        help="Record filter decisions but do not change Content.status.",
+    ),
+) -> None:
+    """Top-level ingest options that flip the IngestionFilter behavior.
+
+    These set ACA_FILTER_* env vars that IngestionFilterService and the
+    orchestrator's post-persist hook consult at runtime. Scope is the current
+    process — they do not mutate persisted config.
+    """
+    import os as _os
+
+    if no_filter:
+        _os.environ["ACA_FILTER_ENABLED"] = "false"
+    if filter_dry_run:
+        _os.environ["ACA_FILTER_DRY_RUN"] = "true"
+
+
 def _days_to_after_date(days: int | None) -> datetime | None:
     """Convert a --days integer to an after_date datetime, or None."""
     if days is None:
