@@ -82,3 +82,39 @@ Agent: claude-code Opus 4.7. Session: N/A.
 Implemented all seven work packages as designed. Thirteen files created, five modified, five commits on branch claude/plan-ingestion-filtering-Ns0kA following the DAG order: wp-data-model, wp-filter-service, wp-orchestrator-integration, then wp-cli-api in parallel with wp-feedback, then wp-integration. Seven unit tests pass locally. Additional tests are written against fakes and will run in CI. OpenSpec strict validation passes.
 
 Deviations from plan: reused ModelStep.CONTENT_FILTERING instead of adding a new one. Used a time-window sweep pattern instead of per-adapter content-id lists. Declared profile embeddings as JSONB instead of pgvector. All deviations are backward-compatible and lower-risk than the original plan.
+
+---
+
+## Phase: Implementation Iteration 1 (2026-04-19)
+
+Agent: claude-code Opus 4.7. Session: N/A.
+
+### Decisions
+
+1. Replaced bare asyncio.run with a _run_sync helper that detects a running loop and escalates to a thread with a fresh loop. Fixes a critical runtime error when the filter is called from FastAPI handlers, schedulers, or Jupyter contexts.
+2. Introduced an explicit _BORDERLINE_SENTINEL object to signal the embedding-to-LLM escalation path. Removes the ambiguous "reason equals borderline" string check that relied on both decision and reason fields for control flow.
+3. Added _resolve_embedding_model_id helper that tries model, model_name, then _model attributes before falling back to provider.name. Removes the brittle direct-access on the private _model attribute.
+4. filter_hook no longer commits caller-owned sessions. The commit call is gated behind a new commit kwarg that defaults to True only when we opened the session. Prevents the hook from breaking outer transactions.
+5. FilterStats switched from the dict = None plus type: ignore pattern to field with default_factory. Cleaner and type-checker friendly.
+6. Swapped datetime.utcnow for datetime.now(UTC).replace(tzinfo=None) across all new modules. Avoids the Python 3.12 deprecation warning without changing the persisted representation.
+7. Fixed the misleading tier identifier on the fail-open path. When embedding raises, the returned FilterDecision now reports tier=EMBEDDING rather than HEURISTIC so telemetry accurately reflects where the failure occurred. Same for the LLM fail-open path.
+
+### Alternatives Considered
+
+- Make the service fully async: rejected. The orchestrator and CLI path is synchronous today, and converting would cascade through a lot of existing code. The _run_sync helper is a pragmatic bridge.
+- Return None from _tier_embedding as the sentinel instead of a shared object: rejected. Typing is cleaner with a distinct sentinel, and the None-means-something-special pattern is easy to misuse.
+- Add a model property to the EmbeddingProvider Protocol: deferred. That would require updating every provider class; the attribute fallback keeps the iteration scoped.
+
+### Trade-offs
+
+- Accepted a small amount of thread churn in _run_sync when called from a running loop. The alternative (rewriting the service as async) was a much bigger change.
+- Accepted shared mutable state on self._last_embedding_score. It is scoped to a single filter call (the service is typically built per-call) so contention risk is effectively nil, but it could surprise a future contributor who reuses an instance.
+
+### Open Questions
+
+- [ ] Should the EmbeddingProvider Protocol grow a model property for v2 of the cache key. Deferred out of this change.
+- [ ] Should filter_hook expose commit as a public kwarg so outer callers can opt-in without passing their own session? Keeping internal for now.
+
+### Context
+
+Reviewed six files I just wrote and identified seven findings — one critical (asyncio.run crash), three high (sentinel entanglement, private attribute access, caller-session commit), three medium (datetime deprecation, misleading tier on error, dict default pattern). All fixed in-place in src/services/ingestion_filter.py, src/services/persona_profile_cache.py, src/services/filter_feedback.py, src/ingestion/filter_hook.py. Tests still pass (7 of 7 config tests; service tests still deferred to CI for runtime deps).

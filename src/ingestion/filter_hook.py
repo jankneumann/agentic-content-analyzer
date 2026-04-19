@@ -16,7 +16,7 @@ here afterward; any Content row ingested after that point with
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -32,6 +32,10 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _empty_tier_counts() -> dict[str, int]:
+    return {"heuristic": 0, "embedding": 0, "llm": 0}
+
+
 @dataclass
 class FilterStats:
     """Aggregate counts for a single filter-hook invocation."""
@@ -40,11 +44,7 @@ class FilterStats:
     kept: int = 0
     skipped: int = 0
     errors: int = 0
-    by_tier: dict[str, int] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.by_tier is None:
-            self.by_tier = {"heuristic": 0, "embedding": 0, "llm": 0}
+    by_tier: dict[str, int] = field(default_factory=_empty_tier_counts)
 
     def record(self, decision: FilterDecision) -> None:
         self.evaluated += 1
@@ -102,7 +102,14 @@ def apply_filter_to_recent(
         db = ctx.__enter__()
     try:
         assert db is not None  # for mypy
-        stats = _run(db, config=config, persona_id=persona_id, since=since, dry_run=dry_run)
+        stats = _run(
+            db,
+            config=config,
+            persona_id=persona_id,
+            since=since,
+            dry_run=dry_run,
+            commit=own_session,
+        )
     finally:
         if own_session:
             ctx.__exit__(None, None, None)
@@ -110,7 +117,13 @@ def apply_filter_to_recent(
 
 
 def _run(
-    db: Session, *, config: FilterConfig, persona_id: str, since: datetime, dry_run: bool
+    db: Session,
+    *,
+    config: FilterConfig,
+    persona_id: str,
+    since: datetime,
+    dry_run: bool,
+    commit: bool,
 ) -> FilterStats:
     stats = FilterStats()
     candidates: list[Content] = (
@@ -141,7 +154,10 @@ def _run(
             if config.strict:
                 raise
 
-    if not dry_run:
+    # Never commit a caller-owned session (commit=False) — the caller's
+    # transaction boundary controls that. In dry-run mode we also skip
+    # commit so nothing persists.
+    if commit and not dry_run:
         db.commit()
     logger.info("filter_hook: %s", stats.as_dict())
     return stats

@@ -20,10 +20,11 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Awaitable, Literal, TypeVar
 
 from sqlalchemy.orm import Session
 
@@ -34,6 +35,56 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+_T = TypeVar("_T")
+
+
+def _resolve_embedding_model_id(provider: Any) -> str:
+    """Best-effort stable identifier for an embedding provider+model pair.
+
+    The EmbeddingProvider Protocol doesn't mandate a model field, so we try
+    a few reasonable attribute names and fall back to the provider's name.
+    The resulting string is only used as a cache-partition key, not as an
+    API identifier, so "good enough to disambiguate" is sufficient.
+    """
+    for attr in ("model", "model_name", "_model"):
+        value = getattr(provider, attr, None)
+        if value:
+            return str(value)
+    return str(getattr(provider, "name", "unknown"))
+
+
+def _run_sync(coro: Awaitable[_T]) -> _T:
+    """Execute an awaitable synchronously, regardless of whether a loop runs.
+
+    asyncio.run() raises when called from an already-running loop (FastAPI,
+    Jupyter, etc). We detect that case and run the awaitable in a dedicated
+    thread with a fresh loop so the filter can be called from either sync or
+    async contexts.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)  # type: ignore[arg-type]
+
+    result: dict[str, _T] = {}
+    error: dict[str, BaseException] = {}
+
+    def _runner() -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            result["v"] = loop.run_until_complete(coro)  # type: ignore[arg-type]
+        except BaseException as exc:  # noqa: BLE001
+            error["e"] = exc
+        finally:
+            loop.close()
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if "e" in error:
+        raise error["e"]
+    return result["v"]
+
 
 class FilterTier(StrEnum):
     HEURISTIC = "heuristic"
@@ -43,6 +94,13 @@ class FilterTier(StrEnum):
 
 Decision = Literal["keep", "skip"]
 Bucket = Literal["high", "normal", "low"]
+
+# Sentinel returned by _tier_embedding when the similarity score falls inside
+# the configured borderline band and the service should escalate to tier 3.
+# Using an explicit sentinel object (rather than overloading reason="borderline"
+# on a FilterDecision) removes the ambiguity around "which decision field is
+# load-bearing here".
+_BORDERLINE_SENTINEL: Any = object()
 
 
 @dataclass(frozen=True)
@@ -86,6 +144,9 @@ class IngestionFilterService:
         self._embedding_provider = embedding_provider
         self._llm_client = llm_client
         self._cache = PersonaProfileCache(db)
+        # Tracked across tier 2 so tier 3 (and the fail-open fallback) can
+        # report the embedding score even though the sentinel carries no score.
+        self._last_embedding_score: float = 0.0
 
     # --- public entry point -------------------------------------------------
 
@@ -129,24 +190,25 @@ class IngestionFilterService:
                 return FilterDecision(
                     decision="keep",
                     score=0.0,
-                    tier=FilterTier.HEURISTIC,
+                    tier=FilterTier.EMBEDDING,
                     reason=f"embedding.error:{type(exc).__name__}",
                     priority_bucket="low",
                 )
-            if embedding_result.decision in ("keep", "skip") and embedding_result.reason != "borderline":
-                return embedding_result
+            if embedding_result is not _BORDERLINE_SENTINEL:
+                return embedding_result  # type: ignore[return-value]
 
             # Tier 3 — LLM. Runs only when embedding landed in borderline band.
+            embedding_score = self._last_embedding_score
             if not cfg.llm_enabled:
                 return FilterDecision(
                     decision="keep",
-                    score=embedding_result.score,
+                    score=embedding_score,
                     tier=FilterTier.EMBEDDING,
                     reason="embedding.borderline.tier3_disabled",
                     priority_bucket="low",
                 )
             try:
-                return self._tier_llm(content, embedding_score=embedding_result.score)
+                return self._tier_llm(content, embedding_score=embedding_score)
             except Exception as exc:  # fail-open
                 if cfg.strict:
                     raise
@@ -156,8 +218,8 @@ class IngestionFilterService:
                 )
                 return FilterDecision(
                     decision="keep",
-                    score=embedding_result.score,
-                    tier=FilterTier.EMBEDDING,
+                    score=embedding_score,
+                    tier=FilterTier.LLM,
                     reason=f"llm.error:{type(exc).__name__}",
                     priority_bucket="low",
                 )
@@ -209,17 +271,18 @@ class IngestionFilterService:
 
         return None
 
-    def _tier_embedding(self, content: Content) -> FilterDecision:
+    def _tier_embedding(self, content: Content) -> FilterDecision | object:
         cfg = self._config
         provider = self._load_embedding_provider()
         persona_vec = self._get_or_compute_profile_vector(provider)
 
         excerpt = self._build_excerpt(content)
-        doc_vec = asyncio.run(provider.embed(excerpt, is_query=False))
+        doc_vec = _run_sync(provider.embed(excerpt, is_query=False))
 
         similarity = cosine(persona_vec, list(doc_vec))
         # Normalize cosine [-1, 1] into [0, 1] for downstream score math.
         score = (similarity + 1.0) / 2.0
+        self._last_embedding_score = score
 
         band = cfg.borderline_band
         classified = band.classify(score)
@@ -239,14 +302,8 @@ class IngestionFilterService:
                 reason=f"embedding.similarity:{score:.3f}",
                 priority_bucket=cfg.priority_bucket(score),
             )
-        # borderline -> signal to caller to run tier 3
-        return FilterDecision(
-            decision="keep",
-            score=score,
-            tier=FilterTier.EMBEDDING,
-            reason="borderline",
-            priority_bucket=None,
-        )
+        # borderline -> explicit sentinel, caller dispatches to tier 3
+        return _BORDERLINE_SENTINEL
 
     def _tier_llm(self, content: Content, *, embedding_score: float) -> FilterDecision:
         cfg = self._config
@@ -300,18 +357,18 @@ class IngestionFilterService:
         cached: CachedProfile | None = self._cache.get(
             persona_id=self._persona_id,
             embedding_provider=provider.name,
-            embedding_model=getattr(provider, "_model", provider.name),
+            embedding_model=_resolve_embedding_model_id(provider),
         )
         interest = cfg.interest_description or ""
         if not self._cache.needs_refresh(cached, interest):
             assert cached is not None
             return cached.embedding
 
-        vec = asyncio.run(provider.embed(interest, is_query=False))
+        vec = _run_sync(provider.embed(interest, is_query=False))
         refreshed = self._cache.upsert(
             persona_id=self._persona_id,
             embedding_provider=provider.name,
-            embedding_model=getattr(provider, "_model", provider.name),
+            embedding_model=_resolve_embedding_model_id(provider),
             interest_description=interest,
             embedding=list(vec),
         )
@@ -323,7 +380,7 @@ class IngestionFilterService:
         content.filter_tier = decision.tier.value
         content.filter_reason = decision.reason
         content.priority_bucket = decision.priority_bucket
-        content.filtered_at = datetime.utcnow()
+        content.filtered_at = datetime.now(UTC).replace(tzinfo=None)
         if decision.decision == "skip":
             content.status = ContentStatus.FILTERED_OUT
         self._db.flush()

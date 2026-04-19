@@ -14,7 +14,7 @@ coupling to the review_service internals.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy.orm import Session
@@ -90,7 +90,7 @@ def emit_feedback(
         original_tier=str(content.filter_tier) if content.filter_tier else None,
         reviewer_decision=reviewer_decision,
         reviewer_id=reviewer_id,
-        reviewed_at=datetime.utcnow(),
+        reviewed_at=datetime.now(UTC).replace(tzinfo=None),
         metadata=metadata,
     )
     row = FilterFeedbackEvent(

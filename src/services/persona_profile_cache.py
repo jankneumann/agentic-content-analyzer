@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -104,13 +104,13 @@ class PersonaProfileCache:
                 embedding_model=embedding_model,
                 interest_hash=digest,
                 embedding=list(embedding),
-                updated_at=datetime.utcnow(),
+                updated_at=datetime.now(UTC).replace(tzinfo=None),
             )
             self._db.add(row)
         else:
             row.interest_hash = digest
             row.embedding = list(embedding)
-            row.updated_at = datetime.utcnow()
+            row.updated_at = datetime.now(UTC).replace(tzinfo=None)
         self._db.flush()
         return CachedProfile(
             persona_id=persona_id,

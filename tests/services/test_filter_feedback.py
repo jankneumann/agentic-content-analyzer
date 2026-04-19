@@ -101,15 +101,17 @@ def test_metadata_is_preserved() -> None:
 
 
 def test_reviewed_at_is_populated() -> None:
+    from datetime import UTC
+
     content = _content()
     session = _FakeSession(content=content)
-    before = datetime.utcnow()
+    before = datetime.now(UTC).replace(tzinfo=None)
     payload = emit_feedback(
         session,
         content_id=7,
         persona_id="default",
         reviewer_decision="approve",
     )
-    after = datetime.utcnow()
+    after = datetime.now(UTC).replace(tzinfo=None)
     assert payload is not None
     assert before <= payload.reviewed_at <= after
