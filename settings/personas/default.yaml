@@ -39,3 +39,23 @@ communication_style:
   tone: professional_concise
   format: structured_markdown
   audience: technical_leaders
+
+# Ingestion filter profile (consumed by IngestionFilterService).
+# Leaving this block out falls back to settings/filtering.yaml defaults and
+# uses `role` + `domain_focus` as the implicit interest description.
+filter_profile:
+  interest_description: |
+    Balanced technical strategist interested in artificial intelligence,
+    machine learning, data engineering, devops and infrastructure, security,
+    and developer tooling. Prefers insights with strategic framing plus
+    enough technical depth to act on.
+  must_include: []
+  must_exclude:
+    - press release
+    - sponsored content
+    - advertorial
+  min_word_count: 60
+  languages: [en]
+  borderline_band:
+    low: 0.45
+    high: 0.65

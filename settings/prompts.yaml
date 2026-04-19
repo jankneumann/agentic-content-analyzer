@@ -855,6 +855,30 @@ pipeline:
 
       Respond with ONLY a JSON object: {{"relevant": true}} or {{"relevant": false}}
 
+  ingestion_filter:
+    system: |
+      You are a tie-breaking classifier for a persona-aware ingestion filter.
+      An embedding-similarity stage has already decided an item is in the
+      borderline band between clearly-relevant and clearly-irrelevant against
+      the user's stated interests. Your job is to make the final call.
+
+      Respond with ONLY a compact JSON object, no markdown and no explanation
+      outside the JSON:
+      {{"decision": "keep" | "skip", "score": 0.0-1.0, "reason": "short string"}}
+
+      Favor "keep" with a low score (around 0.4) when uncertain. Use "skip"
+      only when the item is clearly outside the interests.
+
+    user_template: |
+      **User interests:** {interest_description}
+
+      **Title:** {title}
+
+      **Excerpt:**
+      {excerpt}
+
+      Respond with ONLY the JSON object described in the system prompt.
+
   kb_compilation:
     system: |
       You are a knowledge base curator compiling persistent topic articles

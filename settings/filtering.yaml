@@ -1,0 +1,44 @@
+# Ingestion filter configuration (see src/services/ingestion_filter.py).
+#
+# Override precedence (lowest -> highest):
+#   1. This file
+#   2. settings/personas/<persona>.yaml -> filter_profile.*
+#   3. sources.d/<source>.yaml -> defaults.filter.*
+#   4. DB override row (filter_overrides, future)
+#   5. Explicit kwargs to IngestionFilterService
+
+# Master kill switch. Flip to false to bypass the service entirely.
+enabled: true
+
+# When true, embedding/LLM errors raise and block ingestion. Default is
+# lenient -- failures fall through as "keep, priority_bucket=low" so a dead
+# embedding provider cannot stall ingestion.
+strict: false
+
+tiers:
+  heuristic:
+    # Below this the item is rejected before embeddings are computed.
+    min_word_count: 40
+    # ISO-639-1 codes the filter accepts in Tier 1. Empty list = accept all.
+    allowed_languages: [en]
+  embedding:
+    # null => use the global EmbeddingProvider (src/services/embedding.py).
+    provider: null
+    model: null
+  llm:
+    enabled: true
+
+# Cosine similarity band that triggers Tier 3 (LLM judgement).
+# Scores < low  => tier-2 skip. Scores > high => tier-2 keep.
+borderline_band:
+  low: 0.45
+  high: 0.65
+
+# Maps final score to priority bucket for kept items.
+priority_buckets:
+  high_threshold: 0.65
+  low_threshold: 0.45
+
+# How many characters from markdown_content to include in the embedding/LLM
+# input. Keep bounded so we don't embed full PDFs.
+excerpt_chars: 1200

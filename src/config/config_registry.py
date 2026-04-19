@@ -189,6 +189,7 @@ def register_all_domains(registry: ConfigRegistry | None = None) -> ConfigRegist
         ConfigDomain(name="voice", yaml_file="voice.yaml"),
         ConfigDomain(name="notifications", yaml_file="notifications.yaml"),
         ConfigDomain(name="pricing", yaml_file="pricing.yaml"),
+        ConfigDomain(name="filtering", yaml_file="filtering.yaml"),
     ]
 
     for domain in domains:
