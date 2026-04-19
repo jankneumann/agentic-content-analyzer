@@ -1,0 +1,273 @@
+version: 1
+change_id: add-ingestion-filtering-prioritization
+tier: coordinated
+
+packages:
+  - id: wp-contracts
+    name: "Contracts — DB schema, events, OpenAPI delta"
+    description: >
+      Generate and validate the contract surface the downstream packages rely on.
+      All implementation packages depend on this package completing.
+    priority: 1
+    dependencies: []
+    tasks:
+      - "1.1"
+    scope:
+      write_allow:
+        - "openspec/changes/add-ingestion-filtering-prioritization/contracts/**"
+      read_allow:
+        - "openspec/**"
+        - "src/models/**"
+        - "contracts/**"
+      deny:
+        - "src/**"
+    locks:
+      files:
+        - "openspec/changes/add-ingestion-filtering-prioritization/contracts"
+      keys:
+        - "contract:db:contents.filter_*"
+        - "contract:event:filter.decision"
+        - "contract:event:filter.review.feedback"
+        - "contract:api:GET /api/v1/contents (delta)"
+      ttl_minutes: 60
+      reason: "Contract definition for ingestion filtering"
+    verification: tier_c
+
+  - id: wp-data-model
+    name: "Data model — migrations and ORM"
+    description: >
+      Alembic migrations (enum extension standalone + columns + new tables) and
+      the corresponding SQLAlchemy model changes.
+    priority: 2
+    dependencies: ["wp-contracts"]
+    tasks:
+      - "1.2"
+      - "1.3"
+      - "1.4"
+      - "1.5"
+      - "1.6"
+    scope:
+      write_allow:
+        - "alembic/versions/**"
+        - "src/models/content.py"
+        - "src/models/persona_filter_profile.py"
+        - "src/models/filter_feedback_event.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-ingestion-filtering-prioritization/contracts/**"
+      deny:
+        - "src/services/**"
+        - "src/ingestion/**"
+        - "src/api/**"
+        - "src/cli/**"
+    locks:
+      files:
+        - "src/models/content.py"
+      keys:
+        - "db:schema:contents"
+        - "db:enum:content_status"
+        - "db:table:persona_filter_profiles"
+        - "db:table:filter_feedback_events"
+      ttl_minutes: 120
+      reason: "Schema migration for filtering columns and auxiliary tables"
+    verification: tier_a
+
+  - id: wp-filter-service
+    name: "Filter service — tiers 1/2/3"
+    description: >
+      IngestionFilterService with heuristic, embedding, and LLM tiers; persona
+      profile cache; filtering config loader.
+    priority: 3
+    dependencies: ["wp-data-model"]
+    tasks:
+      - "2.1"
+      - "2.2"
+      - "2.3"
+      - "2.4"
+      - "3.1"
+      - "3.2"
+      - "3.3"
+      - "3.4"
+      - "3.5"
+      - "3.6"
+      - "4.1"
+      - "4.2"
+      - "4.3"
+      - "4.4"
+      - "4.5"
+    scope:
+      write_allow:
+        - "src/services/ingestion_filter.py"
+        - "src/services/persona_profile_cache.py"
+        - "src/config/filter_config.py"
+        - "settings/filtering.yaml"
+        - "settings/prompts.yaml"
+        - "settings/models.yaml"
+        - "settings/personas/**"
+        - "tests/services/test_ingestion_filter*.py"
+        - "tests/services/test_persona_profile_cache*.py"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+        - "openspec/changes/add-ingestion-filtering-prioritization/**"
+      deny:
+        - "src/ingestion/**"
+        - "src/api/**"
+        - "src/cli/**"
+    locks:
+      files:
+        - "src/services/ingestion_filter.py"
+        - "settings/filtering.yaml"
+      keys:
+        - "service:IngestionFilterService"
+        - "config:filtering"
+        - "prompt:pipeline.filter.*"
+      ttl_minutes: 180
+      reason: "Implementation of the three-tier filter service"
+    verification: tier_b
+
+  - id: wp-orchestrator-integration
+    name: "Orchestrator integration — post-persist hook"
+    description: >
+      Wire IngestionFilterService into the post-persist hook of the orchestrator
+      so every adapter inherits it; route filtered-out rows out of the
+      summarization enqueue path.
+    priority: 4
+    dependencies: ["wp-filter-service"]
+    tasks:
+      - "5.1"
+      - "5.2"
+      - "5.3"
+      - "5.4"
+      - "5.5"
+    scope:
+      write_allow:
+        - "src/ingestion/orchestrator.py"
+        - "src/processors/summarization*.py"
+        - "sources.d/**"
+        - "tests/ingestion/**"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+        - "openspec/changes/add-ingestion-filtering-prioritization/**"
+      deny:
+        - "src/api/**"
+        - "src/cli/**"
+    locks:
+      files:
+        - "src/ingestion/orchestrator.py"
+      keys:
+        - "orchestrator:post_persist_hook"
+        - "queue:summarization.enqueue"
+      ttl_minutes: 120
+      reason: "Orchestrator hook and summarization enqueue filter-out"
+    verification: tier_a
+
+  - id: wp-cli-api
+    name: "CLI and API surface"
+    description: >
+      --filter-dry-run and --no-filter flags on aca ingest commands, the new
+      aca filter group (explain/rerun/stats), and GET /api/v1/contents query
+      param + response field extensions.
+    priority: 4
+    dependencies: ["wp-filter-service"]
+    tasks:
+      - "6.1"
+      - "6.2"
+      - "6.3"
+      - "6.4"
+      - "6.5"
+      - "6.6"
+    scope:
+      write_allow:
+        - "src/cli/ingest_commands.py"
+        - "src/cli/filter_commands.py"
+        - "src/api/contents.py"
+        - "tests/cli/**"
+        - "tests/api/**"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-ingestion-filtering-prioritization/**"
+      deny:
+        - "src/ingestion/orchestrator.py"
+        - "src/services/ingestion_filter.py"
+    locks:
+      files:
+        - "src/cli/ingest_commands.py"
+        - "src/cli/filter_commands.py"
+      keys:
+        - "cli:aca ingest"
+        - "cli:aca filter"
+        - "api:GET /api/v1/contents"
+        - "api:GET /api/v1/contents/{id}/filter/explain"
+        - "api:POST /api/v1/filter/rerun"
+      ttl_minutes: 120
+      reason: "CLI and API surface for filter inspection and rerun"
+    verification: tier_b
+
+  - id: wp-feedback
+    name: "Feedback event emission"
+    description: >
+      Emit filter.review.feedback and persist filter_feedback_events rows from
+      the review action handler.
+    priority: 4
+    dependencies: ["wp-data-model"]
+    tasks:
+      - "7.1"
+      - "7.2"
+    scope:
+      write_allow:
+        - "src/services/review_service.py"
+        - "src/events/**"
+        - "tests/services/test_review_service*.py"
+      read_allow:
+        - "src/**"
+        - "openspec/changes/add-ingestion-filtering-prioritization/**"
+      deny:
+        - "src/ingestion/**"
+        - "src/cli/**"
+        - "src/api/**"
+    locks:
+      files:
+        - "src/services/review_service.py"
+      keys:
+        - "event:filter.review.feedback"
+        - "db:table:filter_feedback_events"
+      ttl_minutes: 60
+      reason: "Feedback emission v1"
+    verification: tier_b
+
+  - id: wp-integration
+    name: "Integration — regression tests, docs, final validation"
+    description: >
+      Cross-package regression tests, documentation updates, and the final
+      openspec strict validation.
+    priority: 5
+    dependencies:
+      - "wp-orchestrator-integration"
+      - "wp-cli-api"
+      - "wp-feedback"
+    tasks:
+      - "8.1"
+      - "8.2"
+      - "8.3"
+      - "8.4"
+    scope:
+      write_allow:
+        - "tests/regression/**"
+        - "tests/cli/test_regression_daily_pipeline.py"
+        - "docs/**"
+        - "CLAUDE.md"
+      read_allow:
+        - "**"
+      deny: []
+    locks:
+      files:
+        - "docs/ARCHITECTURE.md"
+        - "docs/MODEL_CONFIGURATION.md"
+      keys:
+        - "docs:architecture"
+        - "docs:model_configuration"
+      ttl_minutes: 60
+      reason: "Integration tests and documentation updates"
+    verification: tier_a
