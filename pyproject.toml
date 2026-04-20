@@ -19,7 +19,7 @@ dependencies = [
 
     # Task Queue
     "pgqueuer>=0.25.0",   # PostgreSQL-native task queue
-    "asyncpg>=0.30.0",    # Async PostgreSQL driver (for PGQueuer)
+    "asyncpg>=0.31.0",    # Async PostgreSQL driver (for PGQueuer)
 
     # Web Framework
     "fastapi>=0.109.0",
