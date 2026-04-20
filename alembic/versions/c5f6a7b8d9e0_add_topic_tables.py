@@ -19,6 +19,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
@@ -37,22 +38,26 @@ def upgrade() -> None:
     # but ensure it for safety.
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-    # 1. Create PG enum types (use DO block for idempotent creation —
-    #    checkfirst=True can race with ORM metadata auto-creation)
-    op.execute("""
-        DO $$ BEGIN
-            CREATE TYPE topicstatus AS ENUM ('draft', 'active', 'stale', 'archived', 'merged');
-        EXCEPTION
-            WHEN duplicate_object THEN null;
-        END $$;
-    """)
-    op.execute("""
-        DO $$ BEGIN
-            CREATE TYPE topicnotetype AS ENUM ('observation', 'question', 'correction', 'insight');
-        EXCEPTION
-            WHEN duplicate_object THEN null;
-        END $$;
-    """)
+    # 1. Create PG enum types only if they don't already exist.
+    # Use pg_type catalog check (DO blocks with EXCEPTION handlers can have
+    # issues within Alembic's transaction context in some SA versions).
+    result = conn.execute(
+        sa.text("SELECT 1 FROM pg_type WHERE typname = 'topicstatus'")
+    )
+    if not result.scalar():
+        op.execute(
+            "CREATE TYPE topicstatus AS ENUM "
+            "('draft', 'active', 'stale', 'archived', 'merged')"
+        )
+
+    result = conn.execute(
+        sa.text("SELECT 1 FROM pg_type WHERE typname = 'topicnotetype'")
+    )
+    if not result.scalar():
+        op.execute(
+            "CREATE TYPE topicnotetype AS ENUM "
+            "('observation', 'question', 'correction', 'insight')"
+        )
 
     # 2. Create topics table
     if "topics" not in inspector.get_table_names():
@@ -64,7 +69,7 @@ def upgrade() -> None:
             sa.Column("category", sa.String(length=50), nullable=False),
             sa.Column(
                 "status",
-                sa.Enum(
+                postgresql.ENUM(
                     "draft",
                     "active",
                     "stale",
@@ -183,7 +188,7 @@ def upgrade() -> None:
             sa.Column("topic_id", sa.Integer(), nullable=False),
             sa.Column(
                 "note_type",
-                sa.Enum(
+                postgresql.ENUM(
                     "observation",
                     "question",
                     "correction",
