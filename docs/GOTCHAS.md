@@ -12,6 +12,7 @@ Things that will bite you if ignored. Organized by area.
 | Model-schema drift breaks migrations | Don't assume columns exist in DB; check before creating FK constraints |
 | Alembic multiple heads block `upgrade head` | Run `alembic heads` to detect; fix with `alembic merge heads -m "..."` or use `alembic upgrade heads` (plural) |
 | PG enum + Python StrEnum mismatch | Adding to Python `StrEnum` requires `ALTER TYPE ... ADD VALUE` migration; without it PG throws `InvalidTextRepresentation` |
+| AI-generated migration revision IDs collide | Models pick patterned IDs like `a1b2c3d4e5f6` — small pattern space causes duplicates. Always use `alembic revision` (random hash) or `python -c "import secrets; print(secrets.token_hex(6))"` |
 | Migrations create existing tables | Make idempotent: check `information_schema.tables` before `create_table` |
 | Cloud DB has no tables | Supabase/Neon start empty; run `alembic upgrade head` against production |
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
@@ -42,7 +43,7 @@ Things that will bite you if ignored. Organized by area.
 | Railway volumes not persistent by default | Attach a volume in Railway dashboard; without it, data lost on redeploy |
 | Railway Hobby plan connection limits | Use `pool_size=3`, `max_overflow=2`; exceeding causes connection errors |
 | Braintrust extra in Dockerfile | Must add `--extra braintrust` to `uv sync` in Dockerfile; without it `import braintrust` fails silently |
-| ParadeDB `listen_addresses` on Railway | Set `POSTGRES_LISTEN_ADDRESSES=*` on the ParadeDB service. Without it, PG listens only on `localhost` inside the container. Public TCP proxy works (proxies from within container), but private network traffic via `.railway.internal` arrives on the external interface and is **refused**. |
+| ParadeDB `listen_addresses` on Railway | Must include `listen_addresses = '*'` in custom `postgresql.conf`. The `POSTGRES_LISTEN_ADDRESSES` env var only works with the default Docker entrypoint-generated config; using `-c config_file=...` (CMD override) bypasses it entirely. Without this, PG listens only on localhost — private network traffic via `.railway.internal` is **refused**. |
 | ParadeDB SSL on Railway private network | Append `?sslmode=disable` to `DATABASE_URL` when using `.railway.internal` hostnames. Railway's private network does not terminate TLS — the DB driver's default SSL handshake **hangs until timeout**. |
 | ParadeDB volume mount path | Mount persistent volume at `/var/lib/postgresql/data` and set `PGDATA=/var/lib/postgresql/data/pgdata`. Railway creates `lost+found` at the mount root (ext4 filesystem) — PG refuses to init into a non-empty directory. The `PGDATA` subdirectory avoids this. |
 
