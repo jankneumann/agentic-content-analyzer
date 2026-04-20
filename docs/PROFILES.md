@@ -89,7 +89,7 @@ providers:
   database: local      # local | supabase | neon | railway
   neo4j: local         # local | auradb
   storage: local       # local | s3 | supabase | railway
-  observability: noop  # noop | opik | braintrust | otel
+  observability: langfuse  # langfuse | noop | opik | braintrust | otel
 
 # Optional: All configuration settings
 settings:
@@ -118,7 +118,7 @@ settings:
 | `database` | `local`, `supabase`, `neon`, `railway` | PostgreSQL provider |
 | `neo4j` | `local`, `auradb` | Knowledge graph provider |
 | `storage` | `local`, `s3`, `supabase`, `railway` | File storage provider |
-| `observability` | `noop`, `opik`, `braintrust`, `otel` | Telemetry provider |
+| `observability` | `langfuse`, `noop`, `opik`, `braintrust`, `otel` | Telemetry provider (default: `langfuse`) |
 
 ## Inheritance
 
@@ -256,6 +256,7 @@ Each provider has required settings that are validated at profile load time.
 
 | Provider | Required Settings |
 |----------|-------------------|
+| `langfuse` | `langfuse_public_key`, `langfuse_secret_key` (warns if missing, does not error) |
 | `noop` | None |
 | `opik` | `opik_api_key` or `opik_url_override` |
 | `braintrust` | `braintrust_api_key` |
