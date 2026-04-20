@@ -1,3 +1,8 @@
+# DEPRECATED: This profile is now equivalent to local.yaml
+# (Langfuse is the default observability provider since 2026-04-11).
+# Kept for backward compatibility with scripts using PROFILE=local-langfuse.
+# Use PROFILE=local instead.
+#
 # Local Development Profile with Langfuse Observability
 # =====================================================
 # Extends local profile with Langfuse self-hosted LLM tracing enabled.
@@ -33,3 +38,5 @@ settings:
     otel_enabled: true
     otel_service_name: newsletter-aggregator
     langfuse_base_url: "http://localhost:3100"
+    langfuse_debug: false
+    langfuse_environment: "${LANGFUSE_ENVIRONMENT:-development}"

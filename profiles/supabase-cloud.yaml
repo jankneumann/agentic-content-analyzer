@@ -25,7 +25,7 @@ providers:
   graphdb: neo4j       # top-level graph backend
   neo4j: auradb        # kept for backward compat
   storage: supabase
-  observability: braintrust
+  observability: langfuse
 
 settings:
   environment: production
@@ -57,13 +57,12 @@ settings:
     supabase_storage_public: false
 
   observability:
-    # Braintrust for LLM observability
-    braintrust_api_key: "${BRAINTRUST_API_KEY:-}"
-    braintrust_project_name: newsletter-aggregator
+    # Langfuse Cloud for LLM observability
+    langfuse_public_key: "${LANGFUSE_PUBLIC_KEY:-}"
+    langfuse_secret_key: "${LANGFUSE_SECRET_KEY:-}"
 
     otel_enabled: true
     otel_service_name: newsletter-aggregator
-    otel_exporter_otlp_endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT:-https://api.braintrust.dev/otel/v1/traces}"
 
   api_keys:
     anthropic_api_key: "${ANTHROPIC_API_KEY}"
