@@ -533,6 +533,6 @@ class ModelPricingExtractor:
             candidate = parent / "settings" / "models.yaml"
             if candidate.exists():
                 return candidate
-            if (parent / "pyproject.toml").exists():
+            if any((parent / m).exists() for m in ("pyproject.toml", "alembic.ini")):
                 return parent / "settings" / "models.yaml"
         raise FileNotFoundError("Cannot locate settings/models.yaml")

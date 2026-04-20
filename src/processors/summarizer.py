@@ -1,13 +1,11 @@
 """Content summarization processor.
 
 This module provides summarization for content using the unified Content model.
-Includes OpenTelemetry instrumentation for per-item progress tracking.
+Uses Langfuse @observe() for pipeline-level tracing when Langfuse is configured.
 """
 
 from __future__ import annotations
 
-from collections.abc import Generator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -18,6 +16,7 @@ from src.config.models import ModelConfig
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
 from src.storage.database import get_db
+from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 from src.utils.summary_markdown import (
     extract_summary_theme_tags,
@@ -25,56 +24,9 @@ from src.utils.summary_markdown import (
 )
 
 if TYPE_CHECKING:
-    from opentelemetry.trace import Span
-
     from src.models.query import ContentQuery
 
 logger = get_logger(__name__)
-
-
-def _get_tracer():
-    """Get OTel tracer if available, otherwise return None."""
-    try:
-        from opentelemetry import trace
-
-        return trace.get_tracer("newsletter-aggregator")
-    except ImportError:
-        return None
-
-
-@contextmanager
-def _summarization_span(content_id: int, title: str) -> Generator[Span | None, None, None]:
-    """Create an OTel span for content summarization.
-
-    Creates a span named 'summarization.content' with attributes:
-    - content_id: ID of the content being summarized
-    - title: Title of the content
-    - status: success|failure on completion
-    - error_message: Present if failed
-
-    Args:
-        content_id: Content ID being summarized
-        title: Content title for logging
-
-    Yields:
-        The span if OTel is available, None otherwise
-    """
-    tracer = _get_tracer()
-    if tracer is None:
-        yield None
-        return
-
-    with tracer.start_as_current_span("summarization.content") as span:
-        span.set_attribute("content_id", content_id)
-        span.set_attribute("title", title[:200])  # Truncate long titles
-        try:
-            yield span
-            span.set_attribute("status", "success")
-        except Exception as e:
-            span.set_attribute("status", "failure")
-            span.set_attribute("error_message", str(e))
-            span.record_exception(e)
-            raise
 
 
 class ContentSummarizer:
@@ -106,12 +58,12 @@ class ContentSummarizer:
         self.agent = agent
         logger.info(f"Initialized summarizer with {agent.__class__.__name__}")
 
+    @observe()
     def summarize_content(self, content_id: int) -> bool:
         """
         Summarize content from the unified Content model.
 
         Uses Content's markdown_content for improved summarization quality.
-        Creates an OTel span for per-item progress tracking.
 
         Args:
             content_id: Content ID to summarize
@@ -138,86 +90,85 @@ class ContentSummarizer:
             content.status = ContentStatus.PROCESSING
             db.commit()
 
-            # Wrap summarization in OTel span for per-item tracking
-            with _summarization_span(content_id, content.title or ""):
-                try:
-                    # Summarize using agent
-                    logger.info(f"Summarizing content: {content.title}")
-                    response = self.agent.summarize_content(content)
+            try:
+                # Summarize using agent
+                logger.info(f"Summarizing content: {content.title}")
+                response = self.agent.summarize_content(content)
 
-                    if not response.success:
-                        content.status = ContentStatus.FAILED
-                        content.error_message = response.error
-                        db.commit()
-                        logger.error(f"Summarization failed: {response.error}")
-                        return False
+                if not response.success:
+                    content.status = ContentStatus.FAILED
+                    content.error_message = response.error
+                    db.commit()
+                    logger.error(f"Summarization failed: {response.error}")
+                    return False
 
-                    # Store summary
-                    summary_data = response.data
+                # Store summary
+                summary_data = response.data
 
-                    # Generate markdown content and extract theme tags
-                    summary_dict = {
-                        "executive_summary": summary_data.executive_summary,
-                        "key_themes": summary_data.key_themes,
-                        "strategic_insights": summary_data.strategic_insights,
-                        "technical_details": summary_data.technical_details,
-                        "actionable_items": summary_data.actionable_items,
-                        "notable_quotes": summary_data.notable_quotes,
-                        "relevant_links": summary_data.relevant_links,
-                        "relevance_scores": summary_data.relevance_scores,
-                    }
-                    markdown_content = generate_summary_markdown(summary_dict)
-                    theme_tags = extract_summary_theme_tags(summary_dict)
+                # Generate markdown content and extract theme tags
+                summary_dict = {
+                    "executive_summary": summary_data.executive_summary,
+                    "key_themes": summary_data.key_themes,
+                    "strategic_insights": summary_data.strategic_insights,
+                    "technical_details": summary_data.technical_details,
+                    "actionable_items": summary_data.actionable_items,
+                    "notable_quotes": summary_data.notable_quotes,
+                    "relevant_links": summary_data.relevant_links,
+                    "relevance_scores": summary_data.relevance_scores,
+                }
+                markdown_content = generate_summary_markdown(summary_dict)
+                theme_tags = extract_summary_theme_tags(summary_dict)
 
-                    # Create summary record with content_id FK
-                    summary = Summary(
-                        content_id=content_id,
-                        executive_summary=summary_data.executive_summary,
-                        key_themes=summary_data.key_themes,
-                        strategic_insights=summary_data.strategic_insights,
-                        technical_details=summary_data.technical_details,
-                        actionable_items=summary_data.actionable_items,
-                        notable_quotes=summary_data.notable_quotes,
-                        relevant_links=summary_data.relevant_links,
-                        relevance_scores=summary_data.relevance_scores,
-                        markdown_content=markdown_content,
-                        theme_tags=theme_tags,
-                        agent_framework=summary_data.agent_framework,
-                        model_used=summary_data.model_used,
-                        model_version=summary_data.model_version,
-                        token_usage=summary_data.token_usage,
-                        processing_time_seconds=summary_data.processing_time_seconds,
+                # Create summary record with content_id FK
+                summary = Summary(
+                    content_id=content_id,
+                    executive_summary=summary_data.executive_summary,
+                    key_themes=summary_data.key_themes,
+                    strategic_insights=summary_data.strategic_insights,
+                    technical_details=summary_data.technical_details,
+                    actionable_items=summary_data.actionable_items,
+                    notable_quotes=summary_data.notable_quotes,
+                    relevant_links=summary_data.relevant_links,
+                    relevance_scores=summary_data.relevance_scores,
+                    markdown_content=markdown_content,
+                    theme_tags=theme_tags,
+                    agent_framework=summary_data.agent_framework,
+                    model_used=summary_data.model_used,
+                    model_version=summary_data.model_version,
+                    token_usage=summary_data.token_usage,
+                    processing_time_seconds=summary_data.processing_time_seconds,
+                )
+
+                db.add(summary)
+                content.status = ContentStatus.COMPLETED
+                content.processed_at = datetime.now(UTC)
+                db.commit()
+
+                logger.info(f"Successfully summarized content {content_id}: {content.title}")
+                return True
+
+            except Exception as e:
+                db.rollback()
+                # Check if this is a unique constraint violation (race condition)
+                # This happens when another process already created the summary
+                error_str = str(e)
+                if "UniqueViolation" in error_str or "unique constraint" in error_str.lower():
+                    logger.info(
+                        f"Content {content_id} was summarized by another process (race condition)"
                     )
-
-                    db.add(summary)
+                    # Update content status since summary exists
                     content.status = ContentStatus.COMPLETED
                     content.processed_at = datetime.now(UTC)
                     db.commit()
-
-                    logger.info(f"Successfully summarized content {content_id}: {content.title}")
                     return True
 
-                except Exception as e:
-                    db.rollback()
-                    # Check if this is a unique constraint violation (race condition)
-                    # This happens when another process already created the summary
-                    error_str = str(e)
-                    if "UniqueViolation" in error_str or "unique constraint" in error_str.lower():
-                        logger.info(
-                            f"Content {content_id} was summarized by another process (race condition)"
-                        )
-                        # Update content status since summary exists
-                        content.status = ContentStatus.COMPLETED
-                        content.processed_at = datetime.now(UTC)
-                        db.commit()
-                        return True
+                content.status = ContentStatus.FAILED
+                content.error_message = str(e)
+                db.commit()
+                logger.error(f"Error summarizing content {content_id}: {e}")
+                return False
 
-                    content.status = ContentStatus.FAILED
-                    content.error_message = str(e)
-                    db.commit()
-                    logger.error(f"Error summarizing content {content_id}: {e}")
-                    return False
-
+    @observe()
     def summarize_contents(self, content_ids: list[int]) -> dict[str, int | list[int]]:
         """
         Summarize multiple content records with detailed tracking.
@@ -292,6 +243,7 @@ class ContentSummarizer:
             "skipped_count": skipped_count,
         }
 
+    @observe()
     def summarize_pending_contents(
         self,
         limit: int | None = None,

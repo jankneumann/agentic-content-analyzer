@@ -238,11 +238,12 @@ def load_model_registry() -> tuple[
 
     if config is None:
         # Fallback: direct YAML read (for tests or early startup)
-        # Walk up from src/config/ to find project root (contains pyproject.toml)
+        # Walk up from src/config/ to find project root
+        # Check multiple markers: pyproject.toml (dev), alembic.ini (Docker runtime)
         current = Path(__file__).resolve().parent
         project_root = current
         for parent in [current, *current.parents]:
-            if (parent / "pyproject.toml").exists():
+            if any((parent / marker).exists() for marker in ("pyproject.toml", "alembic.ini")):
                 project_root = parent
                 break
 

@@ -27,10 +27,14 @@ class ConfigDomain:
 
 
 def _find_project_root() -> Path:
-    """Walk up from this file to find the project root (contains pyproject.toml)."""
+    """Walk up from this file to find the project root.
+
+    Checks for pyproject.toml (dev) or alembic.ini (Docker runtime where
+    pyproject.toml is not copied into the image).
+    """
     current = Path(__file__).resolve().parent
     for parent in [current, *current.parents]:
-        if (parent / "pyproject.toml").exists():
+        if any((parent / marker).exists() for marker in ("pyproject.toml", "alembic.ini")):
             return parent
     return current.parent.parent  # fallback: src/config -> project root
 

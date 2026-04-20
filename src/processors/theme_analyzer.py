@@ -20,6 +20,7 @@ from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.storage.graph_provider import GraphBackendUnavailableError
 from src.storage.graphiti_client import GraphitiClient
+from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -99,6 +100,7 @@ class ThemeAnalyzer:
                 return None
         return self.graphiti_client
 
+    @observe()
     async def analyze_themes(
         self,
         request: ThemeAnalysisRequest,

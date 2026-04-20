@@ -75,6 +75,9 @@ def get_observability_provider() -> ObservabilityProvider:
                 base_url=settings.langfuse_base_url,
                 service_name=settings.otel_service_name,
                 log_prompts=settings.otel_log_prompts,
+                sample_rate=settings.langfuse_sample_rate,
+                debug=settings.langfuse_debug,
+                environment=settings.langfuse_environment,
             )
 
         case _:  # "noop" or any unrecognized value
