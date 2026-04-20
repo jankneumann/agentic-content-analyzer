@@ -457,6 +457,6 @@ class InfrastructurePricingExtractor:
             candidate = parent / "settings" / "pricing.yaml"
             if candidate.exists():
                 return candidate
-            if (parent / "pyproject.toml").exists():
+            if any((parent / m).exists() for m in ("pyproject.toml", "alembic.ini")):
                 return parent / "settings" / "pricing.yaml"
         raise FileNotFoundError("Cannot locate settings/pricing.yaml")

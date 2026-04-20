@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 from anthropic import Anthropic
 
+from src.telemetry.decorators import observe
+
 if TYPE_CHECKING:
     from src.models.query import ContentQuery
 
@@ -82,6 +84,7 @@ class DigestCreator:
 
         logger.info(f"Initialized DigestCreator with {self.model}")
 
+    @observe()
     async def create_digest(
         self,
         request: DigestRequest,

@@ -40,6 +40,7 @@ COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY profiles/ ./profiles/
 COPY sources.d/ ./sources.d/
+COPY settings/ ./settings/
 
 # Copy and set up entrypoint script
 COPY docker-entrypoint.sh ./

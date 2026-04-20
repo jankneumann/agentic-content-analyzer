@@ -1364,9 +1364,7 @@ def arxiv_paper(
 # ---------------------------------------------------------------------------
 
 
-def _huggingface_papers_direct(
-    max_papers: int, after_date: datetime | None, force: bool
-) -> None:
+def _huggingface_papers_direct(max_papers: int, after_date: datetime | None, force: bool) -> None:
     """Direct HuggingFace Papers ingestion."""
     from rich.console import Console
 

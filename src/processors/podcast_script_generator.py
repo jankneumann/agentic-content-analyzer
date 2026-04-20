@@ -35,6 +35,7 @@ from src.models.summary import Summary
 from src.services.llm_router import ToolDefinition
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
+from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -141,6 +142,7 @@ class PodcastScriptGenerator:
 
         logger.info(f"Initialized PodcastScriptGenerator with {self.model}")
 
+    @observe()
     async def generate_script(
         self,
         request: PodcastRequest,

@@ -354,9 +354,7 @@ class HuggingFacePapersClient:
         citation_authors = soup.find_all("meta", attrs={"name": "citation_author"})
         if citation_authors:
             return ", ".join(
-                str(m["content"]).strip()
-                for m in citation_authors
-                if m.get("content")
+                str(m["content"]).strip() for m in citation_authors if m.get("content")
             )
 
         return None
@@ -414,9 +412,7 @@ class HuggingFacePapersClient:
         return None
 
     @staticmethod
-    def _extract_published_date(
-        soup: BeautifulSoup, arxiv_id: str
-    ) -> datetime | None:
+    def _extract_published_date(soup: BeautifulSoup, arxiv_id: str) -> datetime | None:
         """Extract publication date from page metadata or arXiv ID.
 
         Tries in order:
@@ -545,17 +541,13 @@ class HuggingFacePapersContentIngestionService:
         try:
             # Phase 1: Discover paper links
             html = self.client.fetch_listing_page(source_url)
-            papers = self.client.discover_paper_links(
-                html, source_url, max_papers=max_papers
-            )
+            papers = self.client.discover_paper_links(html, source_url, max_papers=max_papers)
 
             if not papers:
                 logger.info(f"No paper links found on {source_url}")
                 return fetch_result
 
-            logger.info(
-                f"Discovered {len(papers)} papers from {source_name or source_url}"
-            )
+            logger.info(f"Discovered {len(papers)} papers from {source_name or source_url}")
 
             # Phase 2: Extract content from each paper page
             request_delay = source.request_delay
@@ -706,9 +698,7 @@ class HuggingFacePapersContentIngestionService:
                         db.add(content)
                         db.flush()
                         count += 1
-                        logger.info(
-                            f"Linked duplicate to canonical ID {content_duplicate.id}"
-                        )
+                        logger.info(f"Linked duplicate to canonical ID {content_duplicate.id}")
                         continue
 
                     # New content
@@ -744,9 +734,7 @@ class HuggingFacePapersContentIngestionService:
                     logger.info(f"Ingested HF paper: {content_data.title}")
 
                 except Exception as e:
-                    logger.error(
-                        f"Failed to persist {content_data.source_url}: {e}"
-                    )
+                    logger.error(f"Failed to persist {content_data.source_url}: {e}")
                     continue
 
         return count

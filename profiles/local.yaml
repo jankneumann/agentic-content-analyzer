@@ -3,8 +3,15 @@
 # Extends base profile with Docker Compose local development settings.
 # All services run locally via Docker Compose.
 #
+# Observability: Langfuse self-hosted at http://localhost:3100
+# Start Langfuse first: make langfuse-up
+#   (or: docker compose -f docker-compose.langfuse.yml -p langfuse up -d)
+# If Langfuse stack is not running, traces are silently dropped (noop-equivalent).
+# To disable tracing entirely: set OBSERVABILITY_PROVIDER=noop
+#
 # Usage:
-#   docker compose up -d
+#   make langfuse-up                 # Start Langfuse stack
+#   docker compose up -d             # Start app services
 #   export PROFILE=local
 #   python -m src.api.app
 
@@ -18,7 +25,7 @@ providers:
   graphdb: neo4j       # top-level graph backend
   neo4j: local         # kept for backward compat
   storage: local
-  observability: noop
+  observability: langfuse
 
 settings:
   environment: development
@@ -40,3 +47,11 @@ settings:
   storage:
     storage_provider: local
     image_storage_path: "data/images"
+
+  observability:
+    # Self-hosted Langfuse at localhost:3100
+    # Requires: make langfuse-up (starts docker-compose.langfuse.yml)
+    # First start: Create account at http://localhost:3100, get API keys from Settings > API Keys
+    otel_enabled: true
+    otel_service_name: newsletter-aggregator
+    langfuse_base_url: "http://localhost:3100"
