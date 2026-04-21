@@ -81,6 +81,8 @@ Things that will bite you if ignored. Organized by area.
 | Auth: Invalid X-Admin-Key returns 403 (not 401) | Middleware distinguishes invalid keys (403 Forbidden) from missing auth (401 Unauthorized). Spec requires this for all environments |
 | `ENDPOINT_AUTH_MAP` in `dependencies.py` | Documentation-only constant — lists all routes and their auth requirements. Auth enforced by `AuthMiddleware` + `verify_admin_key` dependency |
 | Production CORS returns empty list | When `ENVIRONMENT=production` and `ALLOWED_ORIGINS` is dev defaults (localhost), `get_allowed_origins_list()` returns `[]` — must set explicit origins |
+| `OPTIONS /api/v1/... → 400` in logs | Starlette's CORSMiddleware rejects preflight with 400 (not 401) when origin isn't in `ALLOWED_ORIGINS` — see [MOBILE_DEPLOYMENT.md § Diagnosing cross-origin failures](MOBILE_DEPLOYMENT.md#diagnosing-cross-origin-failures-from-backend-logs) |
+| Cross-origin login drops cookie | Cookie set on `POST /auth/login` but next request is 401 — must set `AUTH_COOKIE_CROSS_ORIGIN=true` on backend so cookie gets `SameSite=None; Secure` (`src/api/auth_routes.py:113-123`) |
 | Production startup warns (doesn't fail) | Missing `ADMIN_API_KEY` or dev CORS in production logs warnings but does NOT prevent startup — intentional per design |
 | Upload magic bytes validation | File uploads are validated against `FILE_SIGNATURES` mapping in `upload_routes.py` — mismatched extensions return 415 |
 | Upload MIME cross-check | Client `Content-Type` is validated against `EXTENSION_MIME_MAP` — `application/octet-stream` and `None` bypass the check |

@@ -432,11 +432,39 @@ The React/Vite frontend (`web/`) deploys as a separate Railway service using RAI
 - **`VITE_API_URL`**: Must be set as a Railway env var pointing to the backend URL (e.g., `https://aca-production-410f.up.railway.app`)
 - **Trailing slash bug**: The API client strips trailing slashes from `VITE_API_URL` to prevent double-slash paths (`//api/v1/...`)
 - **CORS**: Backend must set `ALLOWED_ORIGINS` to include the frontend URL
+- **Cross-origin cookies**: Backend must set `AUTH_COOKIE_CROSS_ORIGIN=true` so the login cookie is issued with `SameSite=None; Secure` — otherwise login succeeds but the browser drops the cookie on every subsequent cross-origin call
 
 ```bash
-# Backend env vars for CORS
+# Backend env vars required for a cross-origin frontend
 ALLOWED_ORIGINS=https://your-frontend.up.railway.app,http://localhost:5173
+AUTH_COOKIE_CROSS_ORIGIN=true
 ```
+
+#### Diagnosing cross-origin failures from backend logs
+
+When the frontend can't reach the API, the backend logs have a specific signature depending on *which* layer rejected the request:
+
+| Log line                                                          | Layer           | Meaning                                                                                                                |
+|-------------------------------------------------------------------|-----------------|------------------------------------------------------------------------------------------------------------------------|
+| `OPTIONS /api/v1/... HTTP/1.1" 400 Bad Request`                   | CORSMiddleware  | Frontend origin isn't in `ALLOWED_ORIGINS`. Preflight rejected before the route is even reached.                       |
+| `GET /api/v1/... HTTP/1.1" 401 Unauthorized`                      | AuthMiddleware  | Preflight succeeded, but the request carries no session cookie / `X-Admin-Key`, or the cookie was dropped as SameSite. |
+| `GET /api/v1/... HTTP/1.1" 403 Forbidden`                         | AuthMiddleware  | `X-Admin-Key` was present but wrong — fail-secure.                                                                     |
+| `GET / HTTP/1.1" 401` / `GET /favicon.ico HTTP/1.1" 401`          | AuthMiddleware  | Harmless — someone opened the backend URL directly in a browser. Root is not an exempt path.                           |
+
+**Why 400 and not 401 on preflight?** Starlette's `CORSMiddleware` rejects preflights with `400 Bad Request` (body: "Disallowed CORS origin") *before* adding any `Access-Control-Allow-*` headers. The browser then reports "blocked by CORS policy" with no origin header to debug against — the 400 in backend logs is the canonical signal. If you see a storm of 400s on `OPTIONS`, the fix is `ALLOWED_ORIGINS`, not auth.
+
+**Production empty-list trap:** When `ENVIRONMENT=production` and `ALLOWED_ORIGINS` is the development default (localhost-only), `get_allowed_origins_list()` in `src/config/settings.py` deliberately returns `[]` — an empty allow-list that 400s every preflight. This is fail-secure by design: localhost origins in production are almost certainly a misconfiguration, not a use case. Set `ALLOWED_ORIGINS` explicitly.
+
+#### Sequence to verify after setting env vars
+
+1. Redeploy the backend (Railway auto-restarts on env-var change).
+2. Incognito browser → load the frontend. DevTools Network tab:
+    - `OPTIONS /api/v1/*` → **200** with an `access-control-allow-origin` header matching your frontend.
+    - `GET /api/v1/*` → **401** (expected — you're not logged in yet).
+3. Log in at `/login`. Network tab on `POST /api/v1/auth/login`:
+    - Response → **200** with `set-cookie` containing `SameSite=None; Secure`.
+    - If the cookie is missing `SameSite=None`, `AUTH_COOKIE_CROSS_ORIGIN` isn't set. If it's missing `Secure`, your frontend is on `http://` instead of `https://`.
+4. Subsequent `GET /api/v1/*` → **200** with the cookie riding along automatically.
 
 ### Watch Paths for Monorepo
 
