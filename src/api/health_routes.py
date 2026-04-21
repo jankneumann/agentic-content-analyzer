@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -10,9 +12,25 @@ from fastapi.responses import JSONResponse
 from src.config import settings
 from src.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from src.storage.graph_provider import GraphDBProvider
+
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["system"])
+
+
+@lru_cache(maxsize=1)
+def _cached_graph_provider() -> GraphDBProvider:
+    """Return a process-wide graph provider for readiness probes.
+
+    Cached to avoid creating a fresh Neo4j driver (or FalkorDB client)
+    on every /ready call. CLI callers still get fresh providers via
+    get_graph_provider() directly — they manage their own lifecycle.
+    """
+    from src.storage.graph_provider import get_graph_provider
+
+    return get_graph_provider()
 
 
 def _check_backup_recency() -> str:
@@ -124,6 +142,23 @@ async def readiness_check() -> JSONResponse:
     except Exception as exc:
         logger.warning("Queue health check failed: %s", exc)
         checks["queue"] = "unavailable"
+
+    # Graph DB check (always — surfaces misconfiguration even when graph is non-critical)
+    checks["graphdb_backend"] = f"{settings.graphdb_provider}/{settings.graphdb_mode}"
+    try:
+        provider = _cached_graph_provider()
+        graph_ok = await asyncio.wait_for(
+            provider.health_check(),
+            timeout=settings.health_check_timeout_seconds,
+        )
+        checks["graphdb"] = "ok" if graph_ok else "degraded"
+    except ValueError as exc:
+        # Misconfigured settings (e.g., cloud mode without FALKORDB_CLOUD_HOST)
+        logger.warning("Graph DB not configured: %s", exc)
+        checks["graphdb"] = "not_configured"
+    except Exception as exc:
+        logger.warning("Graph DB health check failed: %s", exc)
+        checks["graphdb"] = "unavailable"
 
     # Crawl4AI remote server check (only if configured)
     if settings.crawl4ai_enabled and settings.crawl4ai_server_url:

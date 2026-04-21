@@ -65,6 +65,13 @@ class FalkorDBGraphDBProvider:
                 password=self._password,
             )
             self._graph = self._client.select_graph(self._database)
+            logger.info(
+                "FalkorDB connection established: host=%s:%d database=%s mode=%s",
+                self._host,
+                self._port,
+                self._database,
+                self._mode,
+            )
         return self._graph
 
     def create_graphiti_driver(self) -> Any:

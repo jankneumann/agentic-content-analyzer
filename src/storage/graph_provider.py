@@ -109,6 +109,7 @@ class Neo4jGraphDBProvider:
         self._database = database
         self._driver = GraphDatabase.driver(uri, auth=(user, password))
         self._closed = False
+        self._connection_verified = False
 
         logger.info(
             "Initialized Neo4j graph provider: uri=%s, database=%s",
@@ -143,7 +144,15 @@ class Neo4jGraphDBProvider:
         """Sync query execution — called from thread pool."""
         with self._driver.session(database=self._database) as session:
             result = session.run(query, parameters=params)
-            return [dict(record) for record in result]
+            records = [dict(record) for record in result]
+        if not self._connection_verified:
+            self._connection_verified = True
+            logger.info(
+                "Neo4j connection verified: uri=%s database=%s",
+                self._uri,
+                self._database,
+            )
+        return records
 
     async def execute_write(
         self, query: str, params: dict[str, Any] | None = None
@@ -162,11 +171,19 @@ class Neo4jGraphDBProvider:
         with self._driver.session(database=self._database) as session:
             result = session.run(query, parameters=params)
             summary = result.consume()
-            return {
+            counts = {
                 "nodes_created": summary.counters.nodes_created,
                 "relationships_created": summary.counters.relationships_created,
                 "properties_set": summary.counters.properties_set,
             }
+        if not self._connection_verified:
+            self._connection_verified = True
+            logger.info(
+                "Neo4j connection verified: uri=%s database=%s",
+                self._uri,
+                self._database,
+            )
+        return counts
 
     def close(self) -> None:
         """Close Neo4j driver (sync)."""
@@ -184,6 +201,13 @@ class Neo4jGraphDBProvider:
         try:
             with self._driver.session(database=self._database) as session:
                 session.run("RETURN 1 AS n").consume()
+            if not self._connection_verified:
+                self._connection_verified = True
+                logger.info(
+                    "Neo4j connection verified: uri=%s database=%s",
+                    self._uri,
+                    self._database,
+                )
             return True
         except Exception:
             logger.warning("Neo4j health check failed", exc_info=True)
