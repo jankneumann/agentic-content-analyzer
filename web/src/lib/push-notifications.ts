@@ -12,6 +12,16 @@ import { isNative, getPlatform } from "./platform"
 import { apiClient } from "./api/client"
 import type { DeviceRegistration } from "@/types"
 
+type AppPermissionState = "granted" | "denied" | "prompt"
+
+// Capacitor's PermissionState also includes "prompt-with-rationale" (Android 13+)
+// which is semantically equivalent to "prompt" from the UI's perspective.
+function normalizePermissionState(state: string): AppPermissionState {
+  if (state === "granted") return "granted"
+  if (state === "denied") return "denied"
+  return "prompt"
+}
+
 /**
  * Request push notification permission from the user.
  *
@@ -29,7 +39,7 @@ export async function requestPushPermission(): Promise<
       "@capacitor/push-notifications"
     )
     const result = await PushNotifications.requestPermissions()
-    return result.receive
+    return normalizePermissionState(result.receive)
   } catch {
     return "denied"
   }
@@ -50,7 +60,7 @@ export async function checkPushPermission(): Promise<
       "@capacitor/push-notifications"
     )
     const result = await PushNotifications.checkPermissions()
-    return result.receive
+    return normalizePermissionState(result.receive)
   } catch {
     return "denied"
   }

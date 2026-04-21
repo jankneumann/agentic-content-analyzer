@@ -187,6 +187,10 @@ const sourceConfig: Record<
     label: "arXiv",
     icon: <FileText className="h-3 w-3" />,
   },
+  huggingface_papers: {
+    label: "HF Papers",
+    icon: <FileText className="h-3 w-3" />,
+  },
   other: {
     label: "Other",
     icon: <FileText className="h-3 w-3" />,

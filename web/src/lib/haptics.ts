@@ -25,7 +25,7 @@ export async function triggerImpact(
 
   try {
     const { Haptics, ImpactStyle } = await import("@capacitor/haptics")
-    const styleMap: Record<HapticStyle, ImpactStyle> = {
+    const styleMap: Record<HapticStyle, (typeof ImpactStyle)[keyof typeof ImpactStyle]> = {
       light: ImpactStyle.Light,
       medium: ImpactStyle.Medium,
       heavy: ImpactStyle.Heavy,
@@ -48,7 +48,10 @@ export async function triggerNotification(
 
   try {
     const { Haptics, NotificationType } = await import("@capacitor/haptics")
-    const typeMap: Record<HapticNotificationType, NotificationType> = {
+    const typeMap: Record<
+      HapticNotificationType,
+      (typeof NotificationType)[keyof typeof NotificationType]
+    > = {
       success: NotificationType.Success,
       warning: NotificationType.Warning,
       error: NotificationType.Error,
