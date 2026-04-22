@@ -1,0 +1,379 @@
+openapi: 3.1.0
+info:
+  title: ACA Cloud DB Source of Truth — New Endpoints
+  version: "1.0.0"
+  description: |
+    New HTTP endpoints added by the `cloud-db-source-of-truth` OpenSpec change.
+    Closes MCP↔HTTP parity gaps and enables external consumers (agentic-assistant)
+    to use the knowledge base and graph over HTTP.
+
+    All endpoints require `X-Admin-Key` authentication. Endpoints tagged
+    `audited: true` write an entry to the audit log.
+
+servers:
+  - url: https://api.aca.rotkohl.ai
+    description: Production
+  - url: http://localhost:8000
+    description: Local development
+
+security:
+  - AdminKey: []
+
+components:
+  securitySchemes:
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 7807 problem details
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+      required: [title, status]
+
+    TopicSearchResult:
+      type: object
+      properties:
+        slug: { type: string, example: "mixture-of-experts" }
+        title: { type: string, example: "Mixture of Experts Architecture" }
+        score: { type: number, format: float, example: 0.87 }
+        excerpt: { type: string, example: "Sparse MoE models activate only a subset..." }
+        last_compiled_at: { type: string, format: date-time }
+      required: [slug, title, score, excerpt]
+
+    KBSearchResponse:
+      type: object
+      properties:
+        topics:
+          type: array
+          items: { $ref: "#/components/schemas/TopicSearchResult" }
+        total_count: { type: integer, example: 42 }
+      required: [topics, total_count]
+
+    GraphQueryRequest:
+      type: object
+      properties:
+        query: { type: string, minLength: 1, example: "mixture of experts" }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      required: [query]
+
+    GraphEntity:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, example: "Model" }
+        score: { type: number, format: float }
+      required: [id, name, type, score]
+
+    GraphRelationship:
+      type: object
+      properties:
+        source_id: { type: string }
+        target_id: { type: string }
+        type: { type: string, example: "USES" }
+        score: { type: number, format: float }
+      required: [source_id, target_id, type]
+
+    GraphQueryResponse:
+      type: object
+      properties:
+        entities:
+          type: array
+          items: { $ref: "#/components/schemas/GraphEntity" }
+        relationships:
+          type: array
+          items: { $ref: "#/components/schemas/GraphRelationship" }
+      required: [entities, relationships]
+
+    GraphExtractRequest:
+      type: object
+      properties:
+        content_id: { type: integer, minimum: 1, example: 42 }
+      required: [content_id]
+
+    GraphExtractResponse:
+      type: object
+      properties:
+        entities_added: { type: integer }
+        relationships_added: { type: integer }
+        graph_episode_id: { type: string }
+      required: [entities_added, relationships_added, graph_episode_id]
+
+    ReferencesExtractRequest:
+      type: object
+      description: Provide either content_ids OR (since, until), not both.
+      oneOf:
+        - properties:
+            content_ids:
+              type: array
+              items: { type: integer }
+              minItems: 1
+          required: [content_ids]
+        - properties:
+            since: { type: string, format: date }
+            until: { type: string, format: date }
+          required: [since]
+
+    ReferencesExtractResponse:
+      type: object
+      properties:
+        references_extracted: { type: integer }
+        content_processed: { type: integer }
+        per_content:
+          type: array
+          items:
+            type: object
+            properties:
+              content_id: { type: integer }
+              references_found: { type: integer }
+      required: [references_extracted, content_processed]
+
+    ReferencesResolveRequest:
+      type: object
+      properties:
+        batch_size: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+
+    ReferencesResolveResponse:
+      type: object
+      properties:
+        resolved_count: { type: integer }
+        still_unresolved_count: { type: integer }
+        has_more: { type: boolean }
+      required: [resolved_count, still_unresolved_count, has_more]
+
+    LintIssue:
+      type: object
+      properties:
+        slug: { type: string }
+        issue_type: { type: string, enum: [stale, orphaned, score_anomaly] }
+        detail: { type: string }
+      required: [slug, issue_type, detail]
+
+    KBLintResponse:
+      type: object
+      properties:
+        stale_topics:
+          type: array
+          items: { $ref: "#/components/schemas/LintIssue" }
+        orphaned_topics:
+          type: array
+          items: { $ref: "#/components/schemas/LintIssue" }
+        score_anomalies:
+          type: array
+          items: { $ref: "#/components/schemas/LintIssue" }
+      required: [stale_topics, orphaned_topics, score_anomalies]
+
+    KBLintFixResponse:
+      type: object
+      properties:
+        corrections_applied:
+          type: array
+          items:
+            type: object
+            properties:
+              slug: { type: string }
+              fix_type: { type: string }
+              before: { type: string }
+              after: { type: string }
+            required: [slug, fix_type]
+      required: [corrections_applied]
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        timestamp: { type: string, format: date-time }
+        request_id: { type: string }
+        method: { type: string, example: "POST" }
+        path: { type: string, example: "/api/v1/kb/purge" }
+        operation:
+          type: string
+          nullable: true
+          example: "kb.purge"
+        admin_key_fp:
+          type: string
+          nullable: true
+          description: Last 8 chars of SHA-256 hash of the admin key
+          example: "a1b2c3d4"
+        status_code: { type: integer }
+        body_size: { type: integer, nullable: true }
+        client_ip: { type: string, nullable: true }
+        notes:
+          type: object
+          additionalProperties: true
+      required: [id, timestamp, request_id, method, path, status_code]
+
+    AuditQueryResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/AuditLogEntry" }
+        total_count: { type: integer }
+      required: [entries, total_count]
+
+paths:
+  /api/v1/kb/search:
+    get:
+      operationId: searchKnowledgeBase
+      summary: Full-text/semantic search across compiled KB topics
+      tags: [knowledge-base]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+          example: "mixture of experts"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KBSearchResponse" }
+        "401":
+          description: Missing/invalid admin key
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /api/v1/kb/lint:
+    get:
+      operationId: lintKnowledgeBase
+      summary: Read-only KB health check
+      tags: [knowledge-base]
+      responses:
+        "200":
+          description: Health report
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KBLintResponse" }
+
+  /api/v1/kb/lint/fix:
+    post:
+      operationId: applyKnowledgeBaseLintFix
+      summary: Apply auto-corrections (audited)
+      description: |
+        Tagged with `@audited(operation="kb.lint.fix")` — writes to audit log.
+      tags: [knowledge-base]
+      responses:
+        "200":
+          description: Diff of applied corrections
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KBLintFixResponse" }
+
+  /api/v1/graph/query:
+    post:
+      operationId: queryKnowledgeGraph
+      summary: Semantic graph query (read)
+      tags: [knowledge-graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GraphQueryRequest" }
+      responses:
+        "200":
+          description: Graph query results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphQueryResponse" }
+
+  /api/v1/graph/extract-entities:
+    post:
+      operationId: extractGraphEntities
+      summary: Push content into knowledge graph (audited)
+      description: |
+        Tagged with `@audited(operation="graph.extract_entities")` — writes to audit log.
+      tags: [knowledge-graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GraphExtractRequest" }
+      responses:
+        "200":
+          description: Extraction results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphExtractResponse" }
+        "404":
+          description: Content not found
+        "409":
+          description: Content has no summary (summarize first)
+
+  /api/v1/references/extract:
+    post:
+      operationId: extractReferences
+      summary: Extract references from content batch (audited)
+      tags: [references]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReferencesExtractRequest" }
+      responses:
+        "200":
+          description: Extraction summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReferencesExtractResponse" }
+
+  /api/v1/references/resolve:
+    post:
+      operationId: resolveReferences
+      summary: Resolve reference batch (audited)
+      tags: [references]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReferencesResolveRequest" }
+      responses:
+        "200":
+          description: Resolution summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReferencesResolveResponse" }
+
+  /api/v1/audit:
+    get:
+      operationId: queryAuditLog
+      summary: Query audit log entries
+      tags: [audit]
+      parameters:
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: until
+          in: query
+          schema: { type: string, format: date-time }
+        - name: path
+          in: query
+          schema: { type: string }
+        - name: operation
+          in: query
+          schema: { type: string }
+        - name: status_code
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+      responses:
+        "200":
+          description: Audit entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditQueryResponse" }
