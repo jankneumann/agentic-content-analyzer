@@ -1,0 +1,79 @@
+{
+  "review_type": "plan",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "GPT-5 Codex",
+  "findings": [
+    {
+      "id": "PR-001",
+      "type": "correctness",
+      "criticality": "high",
+      "description": "The work-package DAG does not match the planned package model. `tasks.md` maps Phase 4 to `wp-ops` and Phase 5 to `wp-integration` (`tasks.md:5-11`), and the selected/design approach describes `wp-ops` as a parallel lane (`proposal.md:117-122`, `design.md:86-88`). `work-packages.yaml` defines no `wp-ops`; it assigns tasks `4.1`-`4.5` to `wp-integration` (`work-packages.yaml:185-200`) and gives integration dependencies only on `wp-api`, `wp-audit`, and `wp-mcp` (`work-packages.yaml:226-230`). Additionally, `wp-api` depends on `wp-audit` (`work-packages.yaml:133-135`) and both allow writing `src/api/app.py` (`work-packages.yaml:48-52`, `work-packages.yaml:97-103`), contradicting the non-overlapping parallel-lane claim in `design.md:86-88`.",
+      "resolution": "Either add a separate `wp-ops` package with Phase 4 tasks, scopes, locks, and make `wp-integration` depend on it, or update proposal/design/tasks to explicitly fold ops into integration. Split `src/api/app.py` registration into one owner or move registration to integration so parallel packages have non-overlapping write scopes.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-002",
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "Audit logging semantics conflict across artifacts. The audit spec says every request to `/api/v1/*` SHALL create an audit row (`specs/audit-log/spec.md:5-13`) and seed data includes read and failed-auth entries (`contracts/db/seed.sql:4-9`), but OpenAPI says only endpoints tagged `audited: true` write audit entries (`contracts/openapi/v1.yaml:10-11`) and the performance section says read endpoints perform zero audit writes (`design.md:210-213`). The proposal also frames audit logging around destructive operations (`proposal.md:45-49`).",
+      "resolution": "Choose one audit policy. If all `/api/v1/*` requests are logged, update OpenAPI, performance notes, and tasks to require minimal audit rows for reads and auth failures. If only destructive endpoints are logged, rewrite the audit-log spec, seed rows, and failed-request scenarios accordingly.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-003",
+      "type": "security",
+      "criticality": "high",
+      "description": "Failed-request auditing is required (`specs/audit-log/spec.md:21-24`), but the plan only says to register middleware (`design.md:31-33`, `tasks.md:101-108`) and does not specify ordering relative to the existing auth middleware. The app relies on Starlette LIFO middleware ordering (`src/api/app.py:148-168`), and `AuthMiddleware` returns 401/403 before route handlers for missing or invalid admin keys (`src/api/middleware/auth.py:114-124`). If `AuditMiddleware` is registered inside `AuthMiddleware`, unauthenticated and invalid-key requests will not be logged.",
+      "resolution": "Specify the exact middleware insertion order so audit wraps auth failures while preserving CORS and trace behavior. Add tests proving 401 and 403 responses create audit rows and include request/trace correlation.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-004",
+      "type": "compatibility",
+      "criticality": "high",
+      "description": "The plan requires MCP tool return shapes to remain unchanged (`proposal.md:35-37`, `specs/mcp-http-client/spec.md:37-49`), but the HTTP contracts do not match current MCP outputs. `search_knowledge_base` currently returns a JSON list with `name`, `category`, `summary`, `relevance_score`, and `mention_count` (`src/mcp_server.py:2204-2249`), while OpenAPI returns `{topics,total_count}` with `title`, `score`, and `excerpt` (`contracts/openapi/v1.yaml:41-58`). `extract_references` currently returns `scanned`, `references_found`, and `dry_run` (`src/mcp_server.py:1774-1834`), while OpenAPI returns `references_extracted`, `content_processed`, and `per_content` (`contracts/openapi/v1.yaml:125-137`). `resolve_references` currently returns `resolved` and `batch_size` (`src/mcp_server.py:1837-1864`), while OpenAPI returns `resolved_count`, `still_unresolved_count`, and `has_more` (`contracts/openapi/v1.yaml:144-150`).",
+      "resolution": "Define explicit MCP HTTP-mode adapter mappings and tests for each refactored tool so HTTP responses are transformed back to legacy MCP result shapes, or revise the HTTP contract to provide legacy-compatible response variants for MCP use.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-005",
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "OpenAPI omits fields that the specs require. KB search says each topic includes `last_compiled_at` (`specs/knowledge-base/spec.md:9-14`), but `TopicSearchResult.required` omits it (`contracts/openapi/v1.yaml:41-50`). Graph query says each relationship includes `score` (`specs/knowledge-graph/spec.md:9-15`), but `GraphRelationship.required` omits `score` (`contracts/openapi/v1.yaml:76-84`).",
+      "resolution": "Add these fields to the required lists in OpenAPI, or update the corresponding specs to state that the fields are optional and define null/omission behavior.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-006",
+      "type": "performance",
+      "criticality": "high",
+      "description": "Reference endpoints permit unbounded work. The spec allows processing all content in a date range (`specs/content-references/spec.md:15-18`) and resolving all unresolved references with `{}` (`specs/content-references/spec.md:29-39`). OpenAPI makes the resolve body optional (`contracts/openapi/v1.yaml:333-342`) and gives extract no batch/cursor controls (`contracts/openapi/v1.yaml:110-123`), conflicting with the chunking/default batch-size assumption in `design.md:210-213`. The extract schema also requires only `since` for date-range extraction and can accept `content_ids` plus `until` (`contracts/openapi/v1.yaml:110-123`) despite the conflicting-filter rejection requirement (`specs/content-references/spec.md:20-23`).",
+      "resolution": "Require bounded `batch_size`/pagination for extract and resolve, include `has_more` and cursor or offset semantics, cap `content_ids`, and tighten the `oneOf` schema with explicit required fields and exclusions for conflicting filters.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-007",
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "Audit retention is specified as configurable via `AUDIT_LOG_RETENTION_DAYS` (`specs/audit-log/spec.md:60-72`, `design.md:45-48`), but the DB contract only comments a fixed `INTERVAL '90 days'` pg_cron statement (`contracts/db/schema.sql:35-41`). The design SQL references `current_setting('app.audit_retention_days')` (`design.md:136-142`) without any plan to set that database GUC from the application environment. A pg_cron job cannot read the application process environment directly, so the configurable-retention scenario is not implementable as specified.",
+      "resolution": "Define how retention days are persisted into the database, such as scheduling the pg_cron command with the configured value during migration, setting a database-level GUC, or moving retention to an app-managed job. Update `schema.sql`, design, and tests consistently.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-008",
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "Graph and MCP HTTP failure semantics are incomplete. `GraphitiClient.create()` can fail when the graph backend health check fails (`src/storage/graphiti_client.py:76-80`), and the current CLI adapter maps unavailable graph search to an empty list (`src/cli/adapters.py:213-227`), but the new graph OpenAPI paths specify only success plus 404/409 for extraction (`contracts/openapi/v1.yaml:276-314`). The MCP HTTP-mode spec covers missing config fallback only, not HTTP timeouts or 5xx handling (`specs/mcp-http-client/spec.md:5-35`), while the shared `ApiClient` has a long default timeout and no retry policy (`src/cli/api_client.py:41-63`).",
+      "resolution": "Specify timeout, retry, and status-code mapping for Graphiti/FalkorDB/Neo4j failures, including 502/503/504 responses. Define whether MCP HTTP mode falls back to in-process on transport failure or surfaces an error, and add tests for those failure modes.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-009",
+      "type": "observability",
+      "criticality": "medium",
+      "description": "The design claims a single path for telemetry (`design.md:7-12`) and stores `request_id` in audit rows (`design.md:45-48`), while the app already has trace middleware (`src/api/app.py:167-168`) and structured trace-aware logging (`src/utils/logging.py:47-91`). However no spec or task requires request ID generation/propagation, audit-to-trace correlation, OTel spans/attributes for the new endpoints and MCP HTTP calls, or metrics for destructive operations; the listed tasks only cover functional/audit correctness (`tasks.md:101-131`, `tasks.md:202-215`).",
+      "resolution": "Add observability requirements and tasks for request ID handling, trace ID correlation in audit rows or notes, structured logs around destructive operations, MCP client HTTP spans, and basic counters/latency metrics for the new API surface.",
+      "disposition": "fix"
+    }
+  ]
+}

@@ -33,7 +33,7 @@ packages:
     verification: "tier-c"
 
   - id: wp-audit
-    title: Audit middleware + decorator + audit_log migration + query endpoint
+    title: Audit middleware + decorator + audit_log migration + query endpoint + app.py wiring
     priority: 2
     tasks:
       - "2.1"
@@ -44,14 +44,19 @@ packages:
       - "2.6"
       - "2.7"
       - "2.8"
+      - "2.9"
+      - "2.10"
     scope:
       write_allow:
         - "src/api/middleware/audit.py"
         - "src/api/routes/audit_routes.py"
-        - "src/api/app.py"
+        - "src/api/app.py"   # wp-audit owns app.py — registers middleware in the correct order
         - "alembic/versions/*audit_log*.py"
         - "tests/api/test_audit_middleware.py"
+        - "tests/api/test_audit_ordering.py"
         - "tests/api/test_audit_routes.py"
+        - "tests/api/test_audit_retention.py"
+        - "tests/api/test_audit_observability.py"
         - "tests/unit/test_audit_decorator.py"
       read_allow:
         - "src/**"
@@ -62,6 +67,7 @@ packages:
         - "src/api/routes/graph_routes.py"
         - "src/api/routes/reference_routes.py"
         - "src/mcp_server.py"
+        - "src/cli/**"
         - "web/**"
     locks:
       files:
@@ -69,10 +75,11 @@ packages:
         - "src/api/app.py"
       keys:
         - "module:src.api.middleware.audit"
+        - "module:src.api.app"
         - "db:schema:audit_log"
         - "route:/api/v1/audit"
       ttl_minutes: 180
-      reason: "Audit middleware, decorator, migration — foundation for destructive endpoints"
+      reason: "Audit middleware, decorator, migration, and app.py middleware wiring (sole writer for app.py)"
     dependencies:
       - wp-contracts
     verification: "tier-a"
@@ -99,7 +106,6 @@ packages:
         - "src/api/routes/kb_routes.py"
         - "src/api/routes/graph_routes.py"
         - "src/api/routes/reference_routes.py"
-        - "src/api/app.py"
         - "src/api/schemas/kb.py"
         - "src/api/schemas/graph.py"
         - "src/api/schemas/references.py"
@@ -112,15 +118,15 @@ packages:
         - "openspec/changes/cloud-db-source-of-truth/**"
       deny:
         - "src/api/middleware/audit.py"
+        - "src/api/app.py"            # wp-audit owns app.py; wp-api mounts routers via its router module registration
         - "src/mcp_server.py"
-        - "src/cli/manage_commands.py"
+        - "src/cli/**"
         - "web/**"
     locks:
       files:
         - "src/api/routes/kb_search_routes.py"
         - "src/api/routes/graph_routes.py"
         - "src/api/routes/reference_routes.py"
-        - "src/api/app.py"
       keys:
         - "route:/api/v1/kb/search"
         - "route:/api/v1/kb/lint"
@@ -136,7 +142,7 @@ packages:
     verification: "tier-a"
 
   - id: wp-mcp
-    title: Refactor 4 MCP tools to use HTTP client with in-process fallback
+    title: Refactor 4 MCP tools to use HTTP client with OpenAPI-aligned shapes (breaking change)
     priority: 4
     tasks:
       - "3.1"
@@ -151,53 +157,54 @@ packages:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
+      - "3.14"
     scope:
       write_allow:
         - "src/mcp_server.py"
         - "src/mcp/api_client.py"
+        - "src/cli/api_client.py"   # wp-mcp updates ApiClient for 30s timeout + retry
         - "tests/mcp/test_mcp_http_mode.py"
-        - "tests/mcp/test_mcp_schema_stability.py"
+        - "tests/mcp/test_mcp_shape_conformance.py"
         - "tests/mcp/test_mcp_fallback.py"
+        - "tests/mcp/test_mcp_transport_resilience.py"
+        - "tests/cli/test_api_client_retry.py"
       read_allow:
         - "src/**"
         - "openspec/changes/cloud-db-source-of-truth/**"
       deny:
         - "src/api/**"
-        - "src/cli/**"
+        - "src/cli/manage_commands.py"
+        - "src/cli/restore_commands.py"
         - "alembic/**"
         - "web/**"
     locks:
       files:
         - "src/mcp_server.py"
+        - "src/cli/api_client.py"
       keys:
         - "module:src.mcp_server"
+        - "module:src.cli.api_client"
         - "mcp:tools:search_knowledge_base"
         - "mcp:tools:search_knowledge_graph"
         - "mcp:tools:extract_references"
         - "mcp:tools:resolve_references"
-      ttl_minutes: 180
-      reason: "MCP refactor to HTTP client with fallback; schema stability critical"
+      ttl_minutes: 240
+      reason: "MCP refactor to HTTP client with OpenAPI-aligned shapes (breaking change); requires coordinated update in agentic-assistant"
     dependencies:
       - wp-contracts
       - wp-api
     verification: "tier-a"
 
-  - id: wp-integration
-    title: Sync-down CLI + docs + drift check + full test suite
-    priority: 5
+  - id: wp-ops
+    title: Sync-down CLI wrapper + docs (restore-from-cloud)
+    priority: 4
     tasks:
       - "4.1"
       - "4.2"
       - "4.3"
       - "4.4"
       - "4.5"
-      - "5.1"
-      - "5.2"
-      - "5.3"
-      - "5.4"
-      - "5.5"
-      - "5.6"
-      - "5.7"
     scope:
       write_allow:
         - "src/cli/manage_commands.py"
@@ -205,8 +212,47 @@ packages:
         - "docs/SYNC_DOWN.md"
         - "docs/SETUP.md"
         - "tests/cli/test_restore_from_cloud.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "openspec/**"
+        - "docs/**"
+      deny:
+        - "src/api/**"
+        - "src/mcp_server.py"
+        - "src/cli/api_client.py"   # wp-mcp owns api_client.py
+        - "alembic/**"
+        - "web/**"
+    locks:
+      files:
+        - "src/cli/manage_commands.py"
+        - "src/cli/restore_commands.py"
+        - "docs/SYNC_DOWN.md"
+      keys:
+        - "cli:aca-manage-restore-from-cloud"
+      ttl_minutes: 120
+      reason: "Sync-down CLI + docs — runs in parallel with wp-api/wp-audit/wp-mcp (no scope overlap)"
+    dependencies:
+      - wp-contracts
+    verification: "tier-a"
+
+  - id: wp-integration
+    title: Drift check + full test suite + gotchas update + agentic-assistant coordination
+    priority: 5
+    tasks:
+      - "5.1"
+      - "5.2"
+      - "5.3"
+      - "5.4"
+      - "5.5"
+      - "5.6"
+      - "5.7"
+      - "5.8"
+    scope:
+      write_allow:
         - "tests/contract/test_openapi_drift.py"
         - "CLAUDE.md"
+        - "openspec/changes/cloud-db-source-of-truth/MIGRATION.md"
       read_allow:
         - "src/**"
         - "tests/**"
@@ -215,16 +261,14 @@ packages:
       deny: []
     locks:
       files:
-        - "src/cli/manage_commands.py"
-        - "docs/SYNC_DOWN.md"
         - "tests/contract/test_openapi_drift.py"
       keys:
-        - "cli:aca-manage-restore-from-cloud"
         - "contract:openapi-drift-check"
-      ttl_minutes: 180
-      reason: "Wrap-up phase: sync-down wrapper, drift test, full validation"
+      ttl_minutes: 120
+      reason: "Wrap-up phase: drift test, full validation, agentic-assistant migration confirmation"
     dependencies:
       - wp-api
       - wp-audit
       - wp-mcp
+      - wp-ops
     verification: "tier-a"

@@ -1,0 +1,55 @@
+{
+  "review_type": "plan",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "gemini-2.0-flash",
+  "findings": [
+    {
+      "id": "PR-001",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "knowledge-base/spec.md \u00a7Requirement: HTTP KB lint endpoints defines health checks for 'stale', 'orphaned', and 'score_anomalies' but provides no quantitative or qualitative definitions for these states (e.g., staleness threshold in days, score deviation percentage).",
+      "resolution": "Update knowledge-base/spec.md to define specific thresholds for staleness (e.g., > 30 days since last compilation) and score anomalies (e.g., > 2 sigma from mean).",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-002",
+      "type": "correctness",
+      "criticality": "low",
+      "description": "Inconsistency between tasks.md and work-packages.yaml. tasks.md Phase 4 (Tasks 4.1-4.5) is designated for 'wp-ops', but work-packages.yaml merges these tasks into 'wp-integration', effectively serializing the sync-down implementation with the final integration phase.",
+      "resolution": "Extract Phase 4 tasks into a dedicated 'wp-ops' package in work-packages.yaml to allow parallel implementation as originally intended in the proposal.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-003",
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Middleware ordering for AuditMiddleware (src/api/middleware/audit.py) is unspecified. To capture admin_key_fp and request_id as required by D3/D4, it must execute after AuthenticationMiddleware and RequestIdMiddleware, but design.md does not explicitly enforce this ordering.",
+      "resolution": "Add a requirement to specs/audit-log/spec.md or a note in design.md D3 specifying that AuditMiddleware must be registered after authentication and request ID middleware in the FastAPI chain.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-004",
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "Design D4 and contracts/db/schema.sql (commented out) rely on current_setting('app.audit_retention_days') for the pg_cron retention job. Custom GUC (Grand Unified Configuration) variables are often restricted or unsupported in managed Postgres environments like Railway unless set globally, which can cause the cron job to fail if the setting is missing.",
+      "resolution": "Modify Task 2.8 to interpolate the retention interval directly into the cron schedule SQL string during the Alembic migration rather than relying on a runtime GUC.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-005",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "mcp-http-client/spec.md specifies that the tool 'logs a warning' for partial config but does not define the destination. For MCP stdio servers, logging destination (stderr vs tool response) is critical for client visibility and troubleshooting.",
+      "resolution": "Update mcp-http-client/spec.md to specify that warnings MUST be emitted to stderr to avoid polluting tool outputs while remaining visible to the host.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-006",
+      "type": "contract_mismatch",
+      "criticality": "low",
+      "description": "contracts/openapi/v1.yaml specifies 404 and 409 responses for extractGraphEntities (lines 280-283) but fails to provide a response schema, whereas other error responses correctly use the Problem schema.",
+      "resolution": "Update openapi/v1.yaml to reference components/schemas/Problem for the 404 and 409 responses of extractGraphEntities.",
+      "disposition": "fix"
+    }
+  ]
+}
