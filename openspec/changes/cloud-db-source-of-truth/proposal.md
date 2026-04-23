@@ -34,7 +34,8 @@ All behind `X-Admin-Key` auth (consistent with existing admin surface).
 
 - Rewrite the 4 gap MCP tools to call `/api/v1/*` via the shared `ApiClient` (new reuse of `src/cli/api_client.py` or a new `src/mcp/api_client.py` adapter).
 - MCP gains config: `ACA_API_BASE_URL`, `ACA_ADMIN_KEY`. Falls back to in-process service calls when unset (preserves offline/embedded use).
-- **No breaking changes** to MCP tool names, argument schemas, or result shapes — consumers see transparent migration.
+- **Breaking change (accepted)**: MCP tool return shapes are updated to match the new OpenAPI contract — `search_knowledge_base` now returns `{topics, total_count}` instead of a flat list with `name/category/summary/relevance_score/mention_count`; `extract_references` returns `{references_extracted, content_processed, per_content}` instead of `{scanned, references_found, dry_run}`; `resolve_references` returns `{resolved_count, still_unresolved_count, has_more}` instead of `{resolved, batch_size}`. Consumers migrate in lockstep. (Rationale: the MCP consumer set is controlled — @jankneumann's local tooling + `agentic-assistant` project, both controlled by the same owner. A shape-identity adapter layer would cost more engineering than a coordinated migration.)
+- Tool **names and argument schemas** are preserved (no rename, no argument rename/removal).
 
 ### 3. Sync-down developer UX
 
@@ -42,13 +43,14 @@ All behind `X-Admin-Key` auth (consistent with existing admin surface).
 - Thin wrapper over the existing MinIO → `pg_restore` pipeline (`mc cp` + `pg_restore --clean --if-exists`).
 - New doc: `docs/SYNC_DOWN.md` covering prerequisites, examples, freshness tradeoffs, PII caveats.
 
-### 4. Audit logging for destructive operations
+### 4. Audit logging for all `/api/v1/*` requests
 
-- New middleware `src/api/middleware/audit.py` logs: endpoint, method, admin-key fingerprint (last 8 chars only, not full key), request ID, timestamp, request body size, response status.
-- Destructive endpoints tagged via a decorator (`@audited`): `DELETE /topics/{slug}`, `POST /kb/purge`, `POST /manage/switch-embeddings`, `POST /graph/extract-entities` (Neo4j writes), etc.
-- Admin read endpoint: `GET /api/v1/audit?since=<ts>&endpoint=<path>&limit=<n>`.
-- New Alembic migration for `audit_log` table.
-- Retention: 90 days, configurable via `AUDIT_LOG_RETENTION_DAYS`.
+- New middleware `src/api/middleware/audit.py` logs **every** request to `/api/v1/*` — reads and writes, successes and failures, authenticated and unauthenticated. Minimal record: endpoint, method, admin-key fingerprint (last 8 chars of SHA-256, or NULL), request ID, timestamp, request body size, response status, client IP. **Failed-auth requests (401/403) are also logged** — this is the main forensic value, so the middleware runs OUTSIDE AuthMiddleware.
+- Destructive endpoints additionally tagged via `@audited(operation="<verb>")` decorator — adds `operation` name and optional `notes` JSONB for enriched context. Destructive set: `POST /kb/lint/fix`, `POST /graph/extract-entities`, `POST /references/extract`, `POST /references/resolve`, plus any existing `DELETE /topics/{slug}`, `POST /kb/purge`, `POST /manage/switch-embeddings` that already exist.
+- Admin read endpoint: `GET /api/v1/audit?since=<ts>&until=<ts>&path=<exact>&operation=<str>&status_code=<int>&limit=<n>` (max 1000).
+- New Alembic migration for `audit_log` table. Retention: 90 days, configurable via `AUDIT_LOG_RETENTION_DAYS` — retention value is interpolated into the pg_cron schedule SQL at migration time (Railway managed Postgres does not support runtime `current_setting('app.*')` GUCs reliably).
+- **Audit write is best-effort, non-blocking**: if the audit INSERT fails (disk full, connection pool exhaustion), the error is logged to stderr and the original request proceeds normally. Rationale: forensic gaps are recoverable; production 5xx caused by a logging failure is not.
+- OPTIONS preflight requests bypass audit logging (they bypass auth too; logging CORS preflights would triple audit volume with no forensic value).
 
 ### Out of Scope
 
@@ -82,7 +84,10 @@ All behind `X-Admin-Key` auth (consistent with existing admin surface).
 ### Performance
 
 - MCP HTTP mode adds ~5–20 ms per tool call on localhost, ~50–100 ms over internet. Acceptable for interactive and agentic use.
-- Batch MCP tools (`resolve_references` on large batches) may warrant chunked HTTP requests. Contracts should allow client-side chunking without new endpoints.
+- Batch MCP tools (`resolve_references` on large batches) use server-side pagination via `batch_size` + `has_more` — no unbounded work. Reference-extract is bounded by the same `batch_size` parameter.
+- Audit write adds ~1–3 ms per request (single `INSERT`) on every `/api/v1/*` path. Not free, but the forensic value and uniform coverage are worth the cost. If observed to matter for a hot endpoint, move to queued async writes (not in scope).
+- Graphiti (Neo4j/FalkorDB) calls have enforced timeouts: 10s for `/graph/query` (read), 30s for `/graph/extract-entities` (write with LLM). Exceeding the timeout returns 504 Gateway Timeout.
+- MCP HTTP mode retries transient failures (429, 502, 503, 504, connection reset) **once** with 1s backoff. Fatal status codes (other 4xx) fail fast.
 
 ### Security
 
@@ -110,16 +115,18 @@ All behind `X-Admin-Key` auth (consistent with existing admin surface).
 
 **Effort**: L (estimated 4–5 sessions)
 
-### Approach 2: Contract-first parallel lanes (Recommended)
+### Approach 2: Contract-first sequenced lanes (Recommended)
 
-**Description**: Define OpenAPI contracts + MCP tool schemas + audit log schema up-front, then dispatch four parallel work packages to non-overlapping file scopes:
+**Description**: Define OpenAPI contracts + MCP tool schemas + audit log schema up-front. Then dispatch work packages with a mix of parallel and serial ordering, reflecting real file-scope overlap (notably `src/api/app.py`):
 
-- **WP-contracts**: OpenAPI 3.1 spec for new endpoints + JSON schemas for audit log events (foundational, priority 1)
-- **WP-api**: Implement HTTP endpoints against contracts
-- **WP-mcp**: Refactor MCP tools to call HTTP (using contract-generated stubs during development)
-- **WP-ops**: Sync-down CLI wrapper + docs (independent)
-- **WP-audit**: Audit middleware + migration + read endpoint (independent)
-- **WP-integration**: Merge all lanes, run full test suite (depends on all above)
+- **wp-contracts** (priority 1, no deps): OpenAPI 3.1 spec for new endpoints + JSON schemas + DB schema. Foundational.
+- **wp-audit** (priority 2, deps: wp-contracts): Audit middleware + `@audited` decorator + `audit_log` migration + `GET /api/v1/audit` endpoint. Registers middleware in `src/api/app.py`.
+- **wp-ops** (priority 2, deps: wp-contracts): `aca manage restore-from-cloud` CLI wrapper + `docs/SYNC_DOWN.md`. Independent of all other packages (touches only `src/cli/` + `docs/`). **Runs in parallel with wp-audit.**
+- **wp-api** (priority 3, deps: wp-contracts + wp-audit): New HTTP endpoints. Registers routers in `src/api/app.py` (serialized after wp-audit to avoid app.py conflict). Depends on wp-audit so `@audited` decorator and `audit_log` table are in place when destructive endpoints land.
+- **wp-mcp** (priority 4, deps: wp-contracts + wp-api): MCP refactor to HTTP client with in-process fallback. Depends on wp-api for the endpoints to exist.
+- **wp-integration** (priority 5, deps: wp-api + wp-audit + wp-mcp + wp-ops): OpenAPI drift test, full test suite, MCP E2E, smoke test, `CLAUDE.md` updates.
+
+Parallel lanes: `wp-audit` ∥ `wp-ops` after wp-contracts lands. Then serial: `wp-api` → `wp-mcp` → `wp-integration`.
 
 **Pros**:
 - Shortest wall-clock time when parallelism is available
@@ -165,8 +172,10 @@ Rationale:
 - Shipping audit logging *alongside* destructive endpoint additions is materially safer than adding it after. Phased delivery (Approach 1) would put endpoints in production briefly without audit coverage.
 - Approach 3's narrow scope is tempting but leaves known gaps (graph extract-entities, kb lint, sync-down) that would need to be re-proposed within weeks, each with its own review/merge overhead.
 
-## Open Questions
+## Resolved Decisions (formerly open questions)
 
-- **Exact `/api/v1/` vs `/api/v2/` decision**: `add-api-versioning` is deferred. This proposal stays on `/api/v1/` for consistency, but if v2 lands first, new endpoints would be added there instead. No action for this proposal; just flag for coordination.
-- **MCP in-process fallback semantics**: when `ACA_API_BASE_URL` is unset, should MCP fall back to in-process calls silently, or emit a warning? Proposed: silent for backwards compat, with a `--strict-http` MCP flag to enforce HTTP.
-- **Audit log write-path performance**: if audit logging becomes a hot path, consider async writes to a queue rather than synchronous INSERTs. Defer optimization until observed to matter.
+- **`/api/v1/` vs `/api/v2/`**: Stay on `/api/v1/`. Before merging wp-integration, verify `add-api-versioning` proposal hasn't landed on `/api/v2/`. If it has, rebase new endpoints onto v2. Documented in design §Rollout.
+- **MCP in-process fallback**: Silent fallback when `ACA_API_BASE_URL` is unset; warning emitted to **stderr** (not tool response) when config is partial (e.g., base URL set but admin key missing). `--strict-http` flag enforces HTTP mode on MCP server startup — server refuses to start if strict-http is set and config is missing.
+- **Audit log write-path performance**: Accept 1–3 ms per request for now. Move to async queue if Langfuse or APM shows hot-path regression. Not in scope.
+- **Audit scope**: Log ALL `/api/v1/*` requests (reads, writes, auth failures). Picks the broader audit-log spec interpretation. Enriched `@audited(operation=...)` tagging for destructive endpoints only.
+- **MCP byte-identical response shapes**: Dropped. MCP adopts the new OpenAPI response shapes directly (breaking change, accepted — sole consumers are @jankneumann's tooling + `agentic-assistant`, both controlled).

@@ -1,0 +1,135 @@
+{
+  "review_type": "plan",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "claude-opus-4-7",
+  "findings": [
+    {
+      "id": "PR-001",
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Proposal text describes Approach 2 as 'contract-first parallel lanes' and lists wp-api, wp-mcp, wp-ops, wp-audit as running in parallel after wp-contracts. The actual DAG in work-packages.yaml is nearly sequential: wp-audit depends on wp-contracts; wp-api depends on wp-contracts AND wp-audit; wp-mcp depends on wp-contracts AND wp-api. Only wp-audit and nothing else can run in parallel. The narrative claim of parallelism is not realized by the DAG, and schedulers relying on the manifest will execute the work effectively serially.",
+      "resolution": "Either (a) update proposal.md to describe the actual structure (wp-contracts → wp-audit → wp-api → wp-mcp → wp-integration with wp-audit/wp-api parallelizable with non-overlapping scopes if src/api/app.py edits are split), or (b) adjust work-packages.yaml to enable real parallelism by removing the wp-api→wp-audit dependency (they share src/api/app.py — either split those edits into a tiny wp-app-wiring package, or accept serial ordering and fix the narrative).",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-002",
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Proposal lists wp-ops as a distinct parallel package containing the sync-down CLI wrapper and docs. work-packages.yaml has no wp-ops — Phase 4 tasks (4.1–4.5, sync-down + docs) are folded into wp-integration alongside Phase 5 integration tasks. This is a scope mismatch between proposal narrative and the executable work breakdown. Downstream consequences: loss of planned parallelism (wp-ops was independent of wp-api/wp-audit/wp-mcp); wp-integration becomes a heavier package (12 tasks mixing independent wrapper work with cross-cutting integration).",
+      "resolution": "Split wp-integration into two packages: (a) wp-ops with tasks 4.1–4.5 and write_allow for src/cli/manage_commands.py, src/cli/restore_commands.py, docs/SYNC_DOWN.md, docs/SETUP.md; depends only on wp-contracts (can run in parallel with wp-audit/wp-api/wp-mcp); (b) wp-integration reduced to tasks 5.1–5.7, depends on wp-api + wp-audit + wp-mcp + wp-ops. This restores the proposal's parallel-lane claim and makes wp-integration a focused merge/validation package.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-003",
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "OpenAPI contract omits error response declarations that the specs require. Specifically: (1) knowledge-base spec says 'Unauthenticated search is rejected in production → 401' — only the /kb/search path declares 401; /kb/lint, /kb/lint/fix, /graph/query, /graph/extract-entities, /references/extract, /references/resolve, /audit all rely on the top-level security requirement but never declare 401 responses, so generated clients cannot type-check 401 handling. (2) knowledge-graph spec requires 422 Unprocessable Entity for empty/missing query field on /graph/query — OpenAPI only declares 200. (3) content-references spec requires 422 for conflicting filters on /references/extract — OpenAPI only declares 200. Drift test (task 5.1) will flag these once handlers raise them.",
+      "resolution": "Add 401 (AdminKey missing/invalid) to every path's responses, and add 422 Unprocessable Entity (Problem schema) to /graph/query, /references/extract, /graph/extract-entities (for invalid content_id), /kb/search (for minLength violation). Consider declaring 403 for valid-key-but-forbidden to distinguish from 401.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-004",
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "GraphRelationship schema in contracts/openapi/v1.yaml lines 76-83 requires [source_id, target_id, type] but NOT score, while knowledge-graph spec line 14 states 'each relationship includes source_id, target_id, type, AND score'. Contract must enforce the spec.",
+      "resolution": "Add 'score' to the GraphRelationship required array in contracts/openapi/v1.yaml.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-005",
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "ReferencesExtractRequest uses oneOf to mandate 'either content_ids OR (since, until), not both' but the two branches lack additionalProperties: false. Under OpenAPI 3.1 / JSON Schema semantics, a client can send {content_ids: [1], since: '2026-04-01'} and it will satisfy BOTH branches, making oneOf indeterminate (matches 0, 1, or 2 branches depending on validator strictness). Generated clients and server parsers may disagree. The content-references spec explicitly requires 422 for conflicting filters — contract must codify this to match.",
+      "resolution": "Add 'additionalProperties: false' to each branch of the oneOf, OR restructure as a single schema with all fields optional plus a server-side xor check and the 422 response declared. Prefer the latter because oneOf with additionalProperties produces bad codegen in several tools (Pydantic, openapi-typescript).",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-006",
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Design D3 describes AuditMiddleware as recording 'every request to /api/v1/*' with admin_key_fp, but does not specify middleware ordering relative to AuthMiddleware and CORSMiddleware. Two correctness-critical constraints follow from project memory: (a) AuditMiddleware MUST run AFTER AuthMiddleware so admin_key_fp reflects a validated key (not a forged header), and (b) AuditMiddleware MUST let OPTIONS preflight through without logging — because CORSMiddleware is an inner layer and OPTIONS handling was previously broken by an outer middleware (owner-auth PR #202 fix). Without explicit ordering, implementers may register middleware in the wrong order and either log unvalidated keys or re-break CORS.",
+      "resolution": "Add a Design decision D3a or subsection: 'AuditMiddleware registers AFTER AuthMiddleware and BEFORE CORSMiddleware in the stack. OPTIONS requests bypass audit logging (short-circuit like AuthMiddleware does). Admin_key_fp is read from request.state (populated by AuthMiddleware) rather than raw headers.' Add a corresponding scenario in specs/audit-log/spec.md: 'OPTIONS preflight request is NOT audited'.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-007",
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "Audit write-failure semantics are unspecified. If the audit_log INSERT fails (disk full, connection pool exhausted, bad migration state), does the request fail with 5xx, or does it proceed silently with a logged warning? This decision affects production availability and forensic coverage. No spec, design, or task task addresses it. Additionally, /graph/query and /graph/extract-entities depend on Graphiti (Neo4j/FalkorDB) — no timeout or retry is specified for the graph client.",
+      "resolution": "Add design decision: 'Audit write is best-effort. If the INSERT raises, log an error to stderr (with request_id) and allow the original request to complete normally. Rationale: audit gaps are recoverable; 5xx on production API for a logging failure is not.' Declare graph client timeout (e.g., 10s for query, 30s for extract-entities) in design.md §Performance, and add the timeouts to OpenAPI response declarations (504 Gateway Timeout). Add scenario to audit-log spec: 'Audit write failure does not block the request'.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-008",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "knowledge-base spec requires GET /kb/lint to return stale_topics, orphaned_topics, and score_anomalies arrays, but neither the spec nor design defines the thresholds. What makes a topic 'stale' — last_compiled_at older than N days? What's a 'score anomaly' — deviation from mean score by more than X standard deviations? Implementers have no objective criteria; tests cannot assert specific pass/fail conditions beyond 'arrays exist'.",
+      "resolution": "Add design decision D1a: 'KB lint thresholds are: stale if last_compiled_at < now() - 30 days (configurable via KB_LINT_STALE_DAYS); score_anomaly if |score - topic_score_median| > 3 * topic_score_mad; orphaned if a topic has zero incoming references from the content table.' Reflect these in three new scenarios in specs/knowledge-base/spec.md.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-009",
+      "type": "security",
+      "criticality": "medium",
+      "description": "GET /api/v1/audit accepts a 'path' filter (OpenAPI line 362-364) with type string. Neither spec nor design specifies exact-match vs substring/LIKE semantics. If implemented as LIKE '%{path}%', it enables (a) untrusted-input SQL pattern injection (%_ wildcards) and (b) timing-side-channel probing of audit contents via prefix scans. If implemented as exact match, expected 'query by endpoint pattern' use cases break.",
+      "resolution": "Decide semantics explicitly in design: prefer exact match (path = :p) with a separate `path_prefix` parameter that sanitizes to /^[a-zA-Z0-9/_-]+$/ before applying path LIKE :p || '%'. Add a spec scenario 'Audit path filter rejects wildcard characters' and declare the pattern in OpenAPI via schema pattern: '^[/a-zA-Z0-9_-]+$'.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-010",
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "wp-audit and wp-api both declare src/api/app.py in write_allow and in locks.files. With the current DAG (wp-api depends on wp-audit), this serializes fine — but if PR-001 resolution enables parallelism, the shared-file lock becomes a correctness blocker. Separately, even under serial execution, the expected edits overlap: wp-audit registers the middleware, wp-api registers the new routers. A reviewer should verify these are conflict-free (different sections of app.py) before implementation to avoid mid-flight rework.",
+      "resolution": "Add an explicit comment in work-packages.yaml under wp-audit and wp-api noting 'Edits to src/api/app.py are non-overlapping: wp-audit adds middleware registration; wp-api adds router include_router calls. Serialize execution to avoid concurrent edits.' Consider extracting app.py changes into a tiny wp-app-wiring package that runs last and imports symbols from both. Flag to @jankneumann before implementation.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-011",
+      "type": "observability",
+      "criticality": "medium",
+      "description": "Design addresses audit logging for destructive operations but is silent on general observability: structured logs, metrics, traces. Production deployment already uses Langfuse (per project_infra_direction memory) and OpenTelemetry — new endpoints should emit request latency histograms and error-rate counters at minimum. Without an observability requirement, the endpoints will ship with only stdlib logging, which is regression from the current production stance.",
+      "resolution": "Add design section §Observability: 'New endpoints inherit the existing FastAPI middleware chain including OTel instrumentation. Each new route emits logs with request_id (for correlation with audit_log) and standard OTel span attributes (http.route, http.status_code). No new dashboards required; alerts are added post-launch based on observed traffic.' Add a task 5.4a: 'Verify new endpoints appear in Langfuse traces during smoke test'.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-012",
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "mcp-http-client spec defines fallback-to-in-process behavior but no retry/backoff policy for network errors in HTTP mode. Over internet (~50–100ms baseline) transient 502/503/connection-reset failures are realistic. Without a retry policy, MCP tool calls become unreliable for agentic-assistant, which is the explicit integration target. Design §Performance mentions roundtrip latency but not failure handling.",
+      "resolution": "Add scenario to mcp-http-client spec: 'MCP tool retries transient HTTP failures once with 1s backoff; propagates error after second failure'. Spell out which status codes count as transient (429, 502, 503, 504, connection reset) vs fatal (4xx other than 429). Reflect in ApiClient implementation (new code in src/mcp/api_client.py per work-packages).",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-013",
+      "type": "security",
+      "criticality": "low",
+      "description": "client_ip INET column logs the immediate peer IP. Behind Cloudflare + Railway, this will be a Cloudflare edge IP, not the real client — making it near-useless for forensics. No design/spec reference to handling X-Forwarded-For or Cf-Connecting-Ip headers exists.",
+      "resolution": "Add design note under D4: 'client_ip is populated from Cf-Connecting-Ip (Railway sits behind Cloudflare); fall back to X-Forwarded-For first entry; fall back to request.client.host. Rationale: real client IP is required for forensic value.' Add scenario to audit-log spec: 'client_ip reflects the original client IP when request transits a proxy'.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-014",
+      "type": "style",
+      "criticality": "low",
+      "description": "tasks.md line 211 contains a typo: 'curl https://localhost:8000/api/v1/kb/search?q=test' should use http://, not https:// — local dev server does not terminate TLS.",
+      "resolution": "Change https to http in task 5.4 example curl command.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-015",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "Task 0.5 says 'Apply seed rows from contracts/db/seed.sql to fixture DB and assert row count = 5', but neither design nor spec describes the purpose of audit_log seed rows. Are these synthetic forensic test data? Canary entries? If a future developer sees seed rows they cannot explain, they may delete them or misinterpret them as real audit events.",
+      "resolution": "Add a comment header in contracts/db/seed.sql: '-- Synthetic audit_log rows for test fixture only. NOT applied to production. Used by the audit middleware test to verify query filter correctness.' Mention in design D4 that seed data exists for fixture use.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-016",
+      "type": "compatibility",
+      "criticality": "low",
+      "description": "Proposal states 'coordinate with deferred add-api-versioning proposal on v2 naming conventions'. work-packages.yaml does not surface this coordination — no task checks whether add-api-versioning has landed, and the new endpoints land on /api/v1/ unconditionally. If add-api-versioning lands first (unlikely but possible), this proposal will need to re-do path prefixes. Worth tracking but acceptable risk.",
+      "resolution": "Add to design §Rollout Plan: 'Before merge, verify add-api-versioning proposal status. If it has landed on /api/v2/, this proposal's new endpoints move to v2; otherwise stay on v1.' Cross-reference the add-api-versioning OpenSpec change slug.",
+      "disposition": "accept"
+    }
+  ]
+}

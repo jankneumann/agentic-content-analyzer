@@ -7,8 +7,14 @@ info:
     Closes MCP↔HTTP parity gaps and enables external consumers (agentic-assistant)
     to use the knowledge base and graph over HTTP.
 
-    All endpoints require `X-Admin-Key` authentication. Endpoints tagged
-    `audited: true` write an entry to the audit log.
+    All endpoints require `X-Admin-Key` authentication AND all requests to
+    `/api/v1/*` — successful or not — are logged to the `audit_log` table by
+    the audit middleware. Endpoints also tagged with `@audited(operation=...)`
+    additionally record a named operation for easier querying.
+
+    Error responses use RFC 7807 `application/problem+json` with the `Problem`
+    schema. Every endpoint may return 401 (auth failure) and 422 (request
+    validation failure); additional status codes are documented per-operation.
 
 servers:
   - url: https://api.aca.rotkohl.ai
@@ -25,6 +31,23 @@ components:
       type: apiKey
       in: header
       name: X-Admin-Key
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid admin key
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ValidationError:
+      description: Request body or parameters failed validation
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    GatewayTimeout:
+      description: Upstream graph backend timed out (Neo4j/FalkorDB)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
 
   schemas:
     Problem:
@@ -46,7 +69,7 @@ components:
         score: { type: number, format: float, example: 0.87 }
         excerpt: { type: string, example: "Sparse MoE models activate only a subset..." }
         last_compiled_at: { type: string, format: date-time }
-      required: [slug, title, score, excerpt]
+      required: [slug, title, score, excerpt, last_compiled_at]
 
     KBSearchResponse:
       type: object
@@ -80,7 +103,7 @@ components:
         target_id: { type: string }
         type: { type: string, example: "USES" }
         score: { type: number, format: float }
-      required: [source_id, target_id, type]
+      required: [source_id, target_id, type, score]
 
     GraphQueryResponse:
       type: object
@@ -98,6 +121,7 @@ components:
       properties:
         content_id: { type: integer, minimum: 1, example: 42 }
       required: [content_id]
+      additionalProperties: false
 
     GraphExtractResponse:
       type: object
@@ -109,24 +133,47 @@ components:
 
     ReferencesExtractRequest:
       type: object
-      description: Provide either content_ids OR (since, until), not both.
+      description: |
+        Provide either `content_ids` XOR a date range (`since` with optional `until`).
+        The two forms are mutually exclusive and enforced by `oneOf` + `additionalProperties: false`.
       oneOf:
-        - properties:
+        - type: object
+          properties:
             content_ids:
               type: array
-              items: { type: integer }
+              items: { type: integer, minimum: 1 }
               minItems: 1
+              maxItems: 500
+            batch_size:
+              type: integer
+              minimum: 1
+              maximum: 500
+              default: 50
           required: [content_ids]
-        - properties:
-            since: { type: string, format: date }
-            until: { type: string, format: date }
+          additionalProperties: false
+        - type: object
+          properties:
+            since: { type: string, format: date-time }
+            until: { type: string, format: date-time }
+            batch_size:
+              type: integer
+              minimum: 1
+              maximum: 500
+              default: 50
           required: [since]
+          additionalProperties: false
 
     ReferencesExtractResponse:
       type: object
       properties:
         references_extracted: { type: integer }
         content_processed: { type: integer }
+        has_more: { type: boolean }
+        next_cursor:
+          type: string
+          format: date-time
+          nullable: true
+          description: When has_more=true, pass this as `since` for the next call.
         per_content:
           type: array
           items:
@@ -134,12 +181,14 @@ components:
             properties:
               content_id: { type: integer }
               references_found: { type: integer }
-      required: [references_extracted, content_processed]
+            required: [content_id, references_found]
+      required: [references_extracted, content_processed, has_more]
 
     ReferencesResolveRequest:
       type: object
       properties:
         batch_size: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+      additionalProperties: false
 
     ReferencesResolveResponse:
       type: object
@@ -241,11 +290,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/KBSearchResponse" }
-        "401":
-          description: Missing/invalid admin key
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /api/v1/kb/lint:
     get:
@@ -258,13 +304,15 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/KBLintResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/v1/kb/lint/fix:
     post:
       operationId: applyKnowledgeBaseLintFix
       summary: Apply auto-corrections (audited)
       description: |
-        Tagged with `@audited(operation="kb.lint.fix")` — writes to audit log.
+        Tagged with `@audited(operation="kb.lint.fix")` — the resulting audit row
+        will have `operation='kb.lint.fix'` in addition to the middleware-written fields.
       tags: [knowledge-base]
       responses:
         "200":
@@ -272,6 +320,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/KBLintFixResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/v1/graph/query:
     post:
@@ -289,13 +338,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GraphQueryResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
 
   /api/v1/graph/extract-entities:
     post:
       operationId: extractGraphEntities
       summary: Push content into knowledge graph (audited)
       description: |
-        Tagged with `@audited(operation="graph.extract_entities")` — writes to audit log.
+        Tagged with `@audited(operation="graph.extract_entities")`.
       tags: [knowledge-graph]
       requestBody:
         required: true
@@ -308,10 +360,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GraphExtractResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: Content not found
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "409":
           description: Content has no summary (summarize first)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
 
   /api/v1/references/extract:
     post:
@@ -329,6 +390,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ReferencesExtractResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /api/v1/references/resolve:
     post:
@@ -346,6 +409,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ReferencesResolveResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /api/v1/audit:
     get:
@@ -361,13 +426,20 @@ paths:
           schema: { type: string, format: date-time }
         - name: path
           in: query
-          schema: { type: string }
+          description: Exact match on the `path` column; must match the safe-character pattern.
+          schema:
+            type: string
+            pattern: "^[/a-zA-Z0-9_-]+$"
+            maxLength: 200
         - name: operation
           in: query
-          schema: { type: string }
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9._-]*$"
+            maxLength: 100
         - name: status_code
           in: query
-          schema: { type: integer }
+          schema: { type: integer, minimum: 100, maximum: 599 }
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
@@ -377,3 +449,5 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuditQueryResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
