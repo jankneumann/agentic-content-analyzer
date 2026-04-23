@@ -7,14 +7,18 @@ info:
     Closes MCP↔HTTP parity gaps and enables external consumers (agentic-assistant)
     to use the knowledge base and graph over HTTP.
 
-    All endpoints require `X-Admin-Key` authentication AND all requests to
-    `/api/v1/*` — successful or not — are logged to the `audit_log` table by
-    the audit middleware. Endpoints also tagged with `@audited(operation=...)`
-    additionally record a named operation for easier querying.
+    All endpoints require `X-Admin-Key` authentication (or a valid session
+    cookie) AND all requests to `/api/v1/*` — successful or not — are logged
+    to the `audit_log` table by the audit middleware. Endpoints also tagged
+    with `@audited(operation=...)` additionally record a named operation for
+    easier querying.
 
     Error responses use RFC 7807 `application/problem+json` with the `Problem`
-    schema. Every endpoint may return 401 (auth failure) and 422 (request
-    validation failure); additional status codes are documented per-operation.
+    schema. Every protected endpoint may return:
+    - **401 Unauthorized** — no credentials presented (no key, no session)
+    - **403 Forbidden** — explicit invalid `X-Admin-Key`
+    - **422 Unprocessable Entity** — request body/parameters failed validation
+    - Additional status codes are documented per-operation.
 
 servers:
   - url: https://api.aca.rotkohl.ai
@@ -34,7 +38,12 @@ components:
 
   responses:
     Unauthorized:
-      description: Missing or invalid admin key
+      description: No credentials presented (no `X-Admin-Key` header and no valid session cookie)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: Explicit invalid admin key (`X-Admin-Key` header present but wrong)
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -44,7 +53,7 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
     GatewayTimeout:
-      description: Upstream graph backend timed out (Neo4j/FalkorDB)
+      description: Upstream backend timed out (graph backend, references batch)
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -291,6 +300,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/KBSearchResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
   /api/v1/kb/lint:
@@ -305,6 +315,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/KBLintResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /api/v1/kb/lint/fix:
     post:
@@ -321,6 +332,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/KBLintFixResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /api/v1/graph/query:
     post:
@@ -339,6 +351,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GraphQueryResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }
 
@@ -361,6 +374,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GraphExtractResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           description: Content not found
           content:
@@ -391,7 +405,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ReferencesExtractResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
 
   /api/v1/references/resolve:
     post:
@@ -410,7 +426,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ReferencesResolveResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
 
   /api/v1/audit:
     get:
@@ -450,4 +468,5 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AuditQueryResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }

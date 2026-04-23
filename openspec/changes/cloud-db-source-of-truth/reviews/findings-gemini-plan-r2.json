@@ -1,0 +1,44 @@
+{
+  "review_type": "plan_r2",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "gemini-2.5-pro",
+  "round1_resolutions": {
+    "audit_semantics_aligned": "resolved",
+    "middleware_ordering_specified": "resolved",
+    "pg_cron_migration_time_interpolation": "resolved",
+    "wp_ops_split": "partial",
+    "app_py_single_writer": "partial",
+    "mcp_openapi_shape_conformance": "resolved",
+    "references_bounded_batches": "resolved",
+    "openapi_problem_refs_and_required_fields": "resolved",
+    "graph_504_declared": "resolved",
+    "mcp_transport_resilience": "resolved",
+    "observability_requirements": "resolved"
+  },
+  "findings": [
+    {
+      "id": "PR-001",
+      "type": "architecture",
+      "criticality": "high",
+      "description": "`openspec/changes/cloud-db-source-of-truth/work-packages.yaml` correctly restricts `src/api/app.py` to a single writer (`wp-audit`) and denies `wp-api`, but this contradicts `openspec/changes/cloud-db-source-of-truth/design.md` (Section D7) which dictates `wp-api` must write to `app.py` to register its routers. Consequently, `wp-api` has no mechanism to mount its new routers because it is denied from `app.py` and lacks access to any other router registry. Furthermore, `wp-audit` (priority 2) cannot mount routers that `wp-api` (priority 3) has not yet created.",
+      "resolution": "Grant `wp-api` write access to a central router module (e.g., `src/api/routes/__init__.py`) to mount its routers, and have `wp-audit` mount that single module in `app.py`. Update `design.md` D7 to reflect this delegation.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-002",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "`openspec/changes/cloud-db-source-of-truth/proposal.md` (Section 4) requires tagging existing destructive endpoints (`DELETE /topics/{slug}`, `POST /kb/purge`, `POST /manage/switch-embeddings`) with `@audited`, but `openspec/changes/cloud-db-source-of-truth/tasks.md` (Phase 1) omits tasks for this. Additionally, `openspec/changes/cloud-db-source-of-truth/work-packages.yaml` (`wp-api` definition) lacks `write_allow` access to `src/api/routes/manage_routes.py` to tag the embeddings endpoint.",
+      "resolution": "Add a task in Phase 1 (`tasks.md`) to apply the `@audited` decorator to the existing destructive endpoints, and add `src/api/routes/manage_routes.py` to `wp-api`'s `write_allow` list in `work-packages.yaml`.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-003",
+      "type": "work_package_validity",
+      "criticality": "low",
+      "description": "`openspec/changes/cloud-db-source-of-truth/work-packages.yaml` assigns `wp-ops` a priority of 4, contradicting `openspec/changes/cloud-db-source-of-truth/design.md` (Section D7) which assigns it priority 2 to run in parallel with `wp-audit`.",
+      "resolution": "Change `priority: 4` to `priority: 2` for `wp-ops` in `work-packages.yaml`.",
+      "disposition": "fix"
+    }
+  ]
+}

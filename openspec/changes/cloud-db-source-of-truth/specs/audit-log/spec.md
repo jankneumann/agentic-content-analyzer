@@ -4,7 +4,7 @@
 
 ### Requirement: Audit log persistence for all API requests
 
-The system SHALL record every request to `/api/v1/*` endpoints in an append-only `audit_log` database table — including authentication failures (401/403), validation failures (422), and server errors (5xx). The log MUST capture: timestamp, request ID, HTTP method, path, admin-key fingerprint (last 8 chars of SHA-256 hash) when a key was supplied, status code, body size, client IP, and optional operation name.
+The system SHALL record every request to `/api/v1/*` endpoints in an append-only `audit_log` database table — including authentication failures (401 no-credentials, 403 invalid-key), validation failures (422), and server errors (5xx). The log MUST capture: timestamp, request ID, HTTP method, path, admin-key fingerprint (last 8 chars of SHA-256 hash computed from the raw `X-Admin-Key` header when present — regardless of whether the key is valid), status code, body size, client IP, and optional operation name.
 
 Rationale: complete forensic coverage for a single-consumer surface — without logging failed auth we cannot detect credential-probing, and without logging reads we cannot audit data exfiltration patterns.
 
@@ -12,14 +12,21 @@ Rationale: complete forensic coverage for a single-consumer surface — without 
 
 - **WHEN** a client sends any request to `/api/v1/*` (read or write, authenticated or not)
 - **THEN** an `audit_log` row is created with the full metadata
-- **AND** the `admin_key_fp` column contains only the last 8 characters of the SHA-256 of the provided `X-Admin-Key`, or NULL if no key was provided or the key failed format validation
+- **AND** the `admin_key_fp` column contains the last 8 characters of the SHA-256 of the raw `X-Admin-Key` header value whenever the header is present, or NULL when the header is absent (so invalid-key attempts can be correlated by fingerprint)
 
-#### Scenario: Authentication failure (401) is logged
+#### Scenario: No credentials (401) is logged
 
-- **WHEN** a client sends a request with no `X-Admin-Key` or an invalid key to a protected endpoint
+- **WHEN** a client sends a request with no `X-Admin-Key` header and no valid session cookie
 - **THEN** the API returns 401 Unauthorized
-- **AND** an `audit_log` row is still created with `status_code=401` and `admin_key_fp` reflecting the presented key fingerprint (or NULL)
-- **AND** the `notes` JSONB field records `{"auth_failure": "missing_key"}` or `{"auth_failure": "invalid_key"}`
+- **AND** an `audit_log` row is still created with `status_code=401`, `admin_key_fp` NULL
+- **AND** the `notes` JSONB field records `{"auth_failure": "missing_key"}`
+
+#### Scenario: Invalid admin key (403) is logged with fingerprint
+
+- **WHEN** a client sends a request with an `X-Admin-Key` header whose value does not match the configured admin key
+- **THEN** the API returns 403 Forbidden
+- **AND** an `audit_log` row is still created with `status_code=403`, `admin_key_fp` set to the SHA-256 last-8 of the presented (wrong) key value
+- **AND** the `notes` JSONB field records `{"auth_failure": "invalid_key"}`
 
 #### Scenario: OPTIONS preflight requests are not logged
 
@@ -56,6 +63,34 @@ Rationale: audit is best-effort — blocking user-facing responses on a secondar
 - **AND** IPv6 addresses are stored unmodified; IPv4-mapped IPv6 forms (`::ffff:1.2.3.4`) are normalized to IPv4
 
 Rationale: Railway's ingress sits behind Cloudflare; `request.client.host` alone would record the Cloudflare edge IP, not the real client.
+
+### Requirement: Audit middleware observability attributes
+
+The `AuditMiddleware` SHALL enrich the active OpenTelemetry span for every `/api/v1/*` request with the following attributes so audit behavior is observable from traces without inspecting the `audit_log` table:
+
+- `audit.operation` (string, nullable) — the `operation` value written to the audit row (NULL for non-decorated endpoints).
+- `audit.status_code` (integer) — the response status code.
+- `audit.write_failure` (boolean, only set when `true`) — present on spans where the audit INSERT raised.
+
+`request.state.request_id` (populated upstream by `TraceMiddleware`) SHALL be written verbatim to the `audit_log.request_id` column, enabling join between audit rows and trace logs.
+
+#### Scenario: Audit span attributes populated on success
+
+- **WHEN** a successful request reaches an `@audited(operation="kb.lint.fix")` endpoint
+- **THEN** the active OTel span has `audit.operation="kb.lint.fix"` and `audit.status_code=200`
+- **AND** `audit.write_failure` is absent (not set)
+
+#### Scenario: Audit span attribute marks write failure
+
+- **WHEN** the `audit_log` INSERT raises
+- **THEN** the active OTel span has `audit.write_failure=true`
+- **AND** the original response is unaffected (see non-blocking scenario above)
+
+#### Scenario: Trace ID correlation with audit row
+
+- **WHEN** `TraceMiddleware` has set `request.state.request_id="abc-123"` on a request
+- **THEN** the resulting `audit_log` row has `request_id='abc-123'`
+- **AND** structured logs emitted during the request include `request_id=abc-123` so log-to-audit correlation is trivial
 
 ### Requirement: Operation tagging via `@audited` decorator
 

@@ -73,7 +73,7 @@ Before/after for each tool:
 |------|-----------------|-------------------------|
 | `search_knowledge_base` | list of `{name, category, summary, relevance_score, mention_count}` | `{topics: [{slug, title, score, excerpt, last_compiled_at}], total_count}` |
 | `search_knowledge_graph` | ad-hoc text | `{entities: [{id, name, type, score}], relationships: [{source_id, target_id, type, score}]}` |
-| `extract_references` | `{scanned, references_found, dry_run}` | `{references_extracted, content_processed, per_content: [...]}` |
+| `extract_references` | `{scanned, references_found, dry_run}` | `{references_extracted, content_processed, has_more, next_cursor?, per_content?: [{content_id, references_found}]}` — `has_more` is always present; `next_cursor` is present only when `has_more=true`; `per_content` is an optional enriched detail array |
 | `resolve_references` | `{resolved, batch_size}` | `{resolved_count, still_unresolved_count, has_more}` |
 
 #### Scenario: HTTP and in-process modes produce identical shapes

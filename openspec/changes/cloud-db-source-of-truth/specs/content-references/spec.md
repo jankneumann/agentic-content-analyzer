@@ -12,10 +12,20 @@ Input bounds (enforced by Pydantic validation, reflected in OpenAPI):
 - `batch_size` (optional, default 50, max 500) caps how many content items are processed per call.
 - Extraction runs entirely within one request; for date ranges that exceed `batch_size`, the response indicates `has_more: true` and the caller paginates by advancing `since` to the last-processed content's ingestion timestamp.
 
+The response body matches `ReferencesExtractResponse` in `contracts/openapi/v1.yaml`:
+- `references_extracted` (int, required)
+- `content_processed` (int, required)
+- `has_more` (bool, required)
+- `next_cursor` (ISO-8601 date-time, optional) — present when `has_more=true` only
+- `per_content` (array of `{content_id, references_found}`, optional) — included as an enriched detail when the batch size is small enough to afford the payload overhead; may be omitted on very large batches
+
+Timeout: the endpoint SHALL respect a 60-second per-batch timeout. Requests exceeding the timeout return `504 Gateway Timeout` with a Problem body identifying the timeout source.
+
 #### Scenario: Extract references for content batch by IDs
 
 - **WHEN** a client sends `POST /api/v1/references/extract` with body `{"content_ids": [1, 2, 3]}` and a valid admin key
-- **THEN** the API runs extraction and returns a 200 response with `references_extracted`, `content_processed`, `has_more: false`, and a `per_content` summary
+- **THEN** the API runs extraction and returns a 200 response with `references_extracted`, `content_processed`, `has_more: false`, and optionally a `per_content` summary
+- **AND** `next_cursor` is absent (because `has_more=false`)
 - **AND** the audit log records the operation with `operation=references.extract`
 
 #### Scenario: Extract references for content by date range (bounded batch)
@@ -33,6 +43,12 @@ Input bounds (enforced by Pydantic validation, reflected in OpenAPI):
 
 - **WHEN** a client sends `content_ids` with more than 500 elements
 - **THEN** the API returns 422 with a `Problem` body naming the `content_ids` field and the maximum allowed length
+
+#### Scenario: Extract references returns 504 on per-batch timeout
+
+- **WHEN** extraction of the requested batch exceeds 60 seconds
+- **THEN** the API returns 504 Gateway Timeout with a Problem body identifying the timeout
+- **AND** the audit log still records the attempt with `status_code=504`
 
 ### Requirement: HTTP reference resolution endpoint
 
@@ -60,3 +76,9 @@ Input bounds (enforced by Pydantic validation):
 
 - **WHEN** a client sends `{"batch_size": 5000}`
 - **THEN** the API returns 422 with a `Problem` body naming the `batch_size` field and maximum 1000
+
+#### Scenario: Resolve returns 504 on per-batch timeout
+
+- **WHEN** resolution of the requested batch exceeds 60 seconds
+- **THEN** the API returns 504 Gateway Timeout with a Problem body identifying the timeout
+- **AND** the audit log still records the attempt with `status_code=504`
