@@ -33,7 +33,7 @@ packages:
     verification: "tier-c"
 
   - id: wp-audit
-    title: Audit middleware + decorator + audit_log migration + query endpoint + app.py wiring
+    title: Audit middleware + decorator + audit_log migration + query endpoint + app.py middleware registration
     priority: 2
     tasks:
       - "2.1"
@@ -50,7 +50,7 @@ packages:
       write_allow:
         - "src/api/middleware/audit.py"
         - "src/api/routes/audit_routes.py"
-        - "src/api/app.py"   # wp-audit owns app.py — registers middleware in the correct order
+        - "src/api/app.py"   # shared with wp-api (different sections — middleware block here, router block in wp-api); serialized by dependency edge
         - "alembic/versions/*audit_log*.py"
         - "tests/api/test_audit_middleware.py"
         - "tests/api/test_audit_ordering.py"
@@ -85,7 +85,7 @@ packages:
     verification: "tier-a"
 
   - id: wp-api
-    title: New HTTP endpoints (kb/search, kb/lint, graph/query, graph/extract-entities, references/extract, references/resolve)
+    title: New HTTP endpoints + retrofit @audited on existing destructive endpoints
     priority: 3
     tasks:
       - "1.1"
@@ -100,12 +100,16 @@ packages:
       - "1.10"
       - "1.11"
       - "1.12"
+      - "1.13"
     scope:
       write_allow:
         - "src/api/routes/kb_search_routes.py"
         - "src/api/routes/kb_routes.py"
         - "src/api/routes/graph_routes.py"
         - "src/api/routes/reference_routes.py"
+        - "src/api/routes/topics_routes.py"    # retrofit @audited on DELETE /topics/{slug}
+        - "src/api/routes/manage_routes.py"    # retrofit @audited on POST /manage/switch-embeddings and POST /kb/purge if housed here
+        - "src/api/app.py"                      # append include_router calls (serialized after wp-audit via dependency edge + lock key module:src.api.app)
         - "src/api/schemas/kb.py"
         - "src/api/schemas/graph.py"
         - "src/api/schemas/references.py"
@@ -113,12 +117,12 @@ packages:
         - "tests/api/test_kb_lint.py"
         - "tests/api/test_graph_routes.py"
         - "tests/api/test_reference_routes.py"
+        - "tests/api/test_destructive_endpoints_audited.py"
       read_allow:
         - "src/**"
         - "openspec/changes/cloud-db-source-of-truth/**"
       deny:
         - "src/api/middleware/audit.py"
-        - "src/api/app.py"            # wp-audit owns app.py; wp-api mounts routers via its router module registration
         - "src/mcp_server.py"
         - "src/cli/**"
         - "web/**"
@@ -127,7 +131,9 @@ packages:
         - "src/api/routes/kb_search_routes.py"
         - "src/api/routes/graph_routes.py"
         - "src/api/routes/reference_routes.py"
+        - "src/api/app.py"
       keys:
+        - "module:src.api.app"      # shared with wp-audit; serialized via dependency edge
         - "route:/api/v1/kb/search"
         - "route:/api/v1/kb/lint"
         - "route:/api/v1/graph/query"
@@ -135,7 +141,7 @@ packages:
         - "route:/api/v1/references/extract"
         - "route:/api/v1/references/resolve"
       ttl_minutes: 240
-      reason: "New HTTP endpoints; coordinate with add-content-references proposal on reference_routes.py"
+      reason: "New HTTP endpoints + existing-endpoint retrofit; serialized after wp-audit on src/api/app.py via shared lock key"
     dependencies:
       - wp-contracts
       - wp-audit
@@ -198,7 +204,7 @@ packages:
 
   - id: wp-ops
     title: Sync-down CLI wrapper + docs (restore-from-cloud)
-    priority: 4
+    priority: 2
     tasks:
       - "4.1"
       - "4.2"

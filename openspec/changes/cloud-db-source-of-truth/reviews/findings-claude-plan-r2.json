@@ -1,0 +1,60 @@
+{
+  "review_type": "plan_r2",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "claude-opus-4-7",
+  "round1_resolutions": {
+    "audit_semantics_aligned": "resolved",
+    "middleware_ordering_specified": "resolved",
+    "pg_cron_migration_time_interpolation": "resolved",
+    "wp_ops_split": "resolved",
+    "app_py_single_writer": "resolved",
+    "mcp_openapi_shape_conformance": "resolved",
+    "references_bounded_batches": "resolved",
+    "openapi_problem_refs_and_required_fields": "resolved",
+    "graph_504_declared": "resolved",
+    "mcp_transport_resilience": "resolved",
+    "observability_requirements": "resolved"
+  },
+  "findings": [
+    {
+      "id": "PR-001",
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Contradiction between design.md and work-packages.yaml about who writes router registrations in src/api/app.py. design.md:178 says 'wp-audit appends a middleware registration; wp-api appends include_router calls.' But work-packages.yaml:121 places 'src/api/app.py' in wp-api's deny list with comment 'wp-audit owns app.py; wp-api mounts routers via its router module registration'. If wp-api cannot write to app.py, there is no declared mechanism for its new routers (kb_search_routes, graph_routes, reference_routes, kb lint extension, audit_routes) to be registered — FastAPI requires explicit include_router calls in the app factory. Either (a) wp-audit must pre-land the include_router lines for wp-api's routers (awkward given wp-api's routers don't exist yet at wp-audit time), or (b) wp-api must be allowed to write app.py under serialization, or (c) a plugin-registry pattern must be declared. As written, the plan has no path for router wiring.",
+      "resolution": "Pick one: (1) remove src/api/app.py from wp-api's deny list and rely on dependency serialization (wp-api depends on wp-audit) — matches design.md; update yaml comment accordingly. (2) Introduce an auto-discovery router registry (e.g., src/api/routes/__init__.py glob-imports) that both wp-audit and wp-api can target without app.py edits — requires spec change. Option 1 is lower-cost and matches the design narrative.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-002",
+      "type": "contract_mismatch",
+      "criticality": "low",
+      "description": "specs/mcp-http-client/spec.md:76 before/after table says extract_references 'After' shape is '{references_extracted, content_processed, per_content: [...]}' — missing 'has_more' which is REQUIRED by ReferencesExtractResponse in contracts/openapi/v1.yaml:185. Tasks.md 3.9 correctly lists has_more. The spec's summary table undersells the actual shape and would cause MCP implementer confusion.",
+      "resolution": "Update specs/mcp-http-client/spec.md:76 table row for extract_references 'After' column to '{references_extracted, content_processed, has_more, per_content: [...], next_cursor?}' to match OpenAPI required fields.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-003",
+      "type": "style",
+      "criticality": "low",
+      "description": "design.md lines 70-71 have a duplicate '### D4:' section header — the heading 'D4: Audit log is append-only, schema-stable, and queryable via /api/v1/audit' appears twice back-to-back. Cosmetic but suggests a merge artifact from PLAN_FIX.",
+      "resolution": "Delete one of the duplicate D4 headings in design.md.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-004",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "tasks.md 2.3 and design.md D3a reference a 'TraceMiddleware' (or 'RequestIdMiddleware if present') as the outermost middleware that stamps request_id onto request.state. The wp-audit scope in work-packages.yaml only permits writes to src/api/middleware/audit.py, src/api/routes/audit_routes.py, src/api/app.py, and audit-related migrations/tests. If TraceMiddleware does not already exist in the codebase, wp-audit has no sanctioned path to add it, yet D10 and task 2.10 depend on it to populate audit_log.request_id. Plan should either (a) confirm TraceMiddleware already exists and cite the file, or (b) add it to wp-audit's write_allow.",
+      "resolution": "Add an explicit note in design.md §D10 citing the existing request_id middleware file path, OR expand wp-audit write_allow to include the trace-middleware file if a new one must be created.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-005",
+      "type": "style",
+      "criticality": "low",
+      "description": "work-packages.yaml:199 labels wp-ops as priority 4 while proposal.md:124 and design.md:124 describe it as 'priority 2' running in parallel with wp-audit after wp-contracts lands. Functionally the DAG is correct (wp-ops only depends on wp-contracts, so it can run in parallel with any of wp-audit/wp-api/wp-mcp), but the priority number mismatch may confuse schedulers that use 'priority' as a scheduling hint.",
+      "resolution": "Change wp-ops priority from 4 to 2 in work-packages.yaml to match the proposal/design narrative of 'parallel with wp-audit after wp-contracts'.",
+      "disposition": "fix"
+    }
+  ]
+}

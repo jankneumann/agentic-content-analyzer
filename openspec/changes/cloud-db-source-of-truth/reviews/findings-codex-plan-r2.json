@@ -1,0 +1,68 @@
+{
+  "review_type": "plan_r2",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "GPT-5.5 Codex",
+  "round1_resolutions": {
+    "audit_semantics_aligned": "partial",
+    "middleware_ordering_specified": "resolved",
+    "pg_cron_migration_time_interpolation": "resolved",
+    "wp_ops_split": "resolved",
+    "app_py_single_writer": "partial",
+    "mcp_openapi_shape_conformance": "partial",
+    "references_bounded_batches": "resolved",
+    "openapi_problem_refs_and_required_fields": "resolved",
+    "graph_504_declared": "resolved",
+    "mcp_transport_resilience": "resolved",
+    "observability_requirements": "partial"
+  },
+  "findings": [
+    {
+      "id": "PR-001",
+      "type": "architecture",
+      "criticality": "high",
+      "description": "The plan now claims `src/api/app.py` has a single writer, but the artifacts no longer give any executable owner for registering the new `kb_search` and `graph` routers. D7 and the rollout still say `wp-api` edits the router-registration block in `src/api/app.py` (`openspec/changes/cloud-db-source-of-truth/design.md:174-179`, `openspec/changes/cloud-db-source-of-truth/design.md:424-429`), while `work-packages.yaml` explicitly denies `src/api/app.py` to `wp-api` and assigns sole ownership to `wp-audit` (`openspec/changes/cloud-db-source-of-truth/work-packages.yaml:53`, `openspec/changes/cloud-db-source-of-truth/work-packages.yaml:82`, `openspec/changes/cloud-db-source-of-truth/work-packages.yaml:120-123`). In the current codebase, routers are manually imported and mounted in `src/api/app.py` (`src/api/app.py:13-53`, `src/api/app.py:173-210`), so this is not just narrative drift: the current package scopes leave no owner for adding the new router includes once `wp-api` creates those modules.",
+      "resolution": "Pick one executable ownership model and align every artifact to it: either let `wp-api` own the router-registration edits in `src/api/app.py` and serialize on that file, or redesign the new endpoints to live only inside already-mounted router modules so the single-writer claim remains true.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-002",
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "The accepted 'MCP matches OpenAPI shapes' rule is still internally inconsistent for `extract_references`. The proposal, design, and MCP spec describe the breaking-change target as `{references_extracted, content_processed, per_content}` (`openspec/changes/cloud-db-source-of-truth/proposal.md:37`, `openspec/changes/cloud-db-source-of-truth/design.md:211-212`, `openspec/changes/cloud-db-source-of-truth/specs/mcp-http-client/spec.md:72-77`), but the OpenAPI contract adds pagination fields `has_more` and `next_cursor` (`openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:166-185`), the content-references spec says successful extraction returns `has_more` and `per_content` (`openspec/changes/cloud-db-source-of-truth/specs/content-references/spec.md:17-25`), and the MCP tasks expect `has_more` as part of the tool shape (`openspec/changes/cloud-db-source-of-truth/tasks.md:174-177`). This leaves the consumer migration target ambiguous even after the round-1 'OpenAPI shape conformance' fix.",
+      "resolution": "Define one canonical `extract_references` response shape and propagate it everywhere. If pagination metadata is part of the canonical response, list `has_more` and conditional `next_cursor` in the proposal/design/MCP spec too, and decide explicitly whether `per_content` is required in OpenAPI.",
+      "disposition": "regenerate"
+    },
+    {
+      "id": "PR-003",
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "D11 now promises 60-second batch timeouts that map both `/api/v1/references/extract` and `/api/v1/references/resolve` to 504 (`openspec/changes/cloud-db-source-of-truth/design.md:252-254`), but that timeout behavior is not part of the normative contract: the content-references spec has no timeout scenarios (`openspec/changes/cloud-db-source-of-truth/specs/content-references/spec.md:5-62`), the OpenAPI paths do not declare 504 Problem responses (`openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:377-413`), and the route tasks do not test timeout mapping for either endpoint (`openspec/changes/cloud-db-source-of-truth/tasks.md:81-95`). The plan currently advertises resilience behavior that consumers cannot reliably code against.",
+      "resolution": "Either add 504 Problem scenarios/responses/tests for both references endpoints or remove those endpoints from the D11 timeout matrix so the design does not over-promise behavior absent from the contract.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-004",
+      "type": "security",
+      "criticality": "high",
+      "description": "The HTTP contract still omits the real explicit-invalid-key auth path. The existing `AuthMiddleware` returns 403 `Forbidden` when `X-Admin-Key` is present but wrong (`src/api/middleware/auth.py:114-125`), and the audit requirements explicitly treat 401/403 failures as in-scope events (`openspec/changes/cloud-db-source-of-truth/specs/audit-log/spec.md:7`, `openspec/changes/cloud-db-source-of-truth/specs/audit-log/spec.md:17-23`), but the OpenAPI description and protected path responses only document 401/422 plus path-specific errors (`openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:15-17`, `openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:293-295`, `openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:341-345`, `openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:363-375`, `openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:393-413`, `openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:452-453`). External HTTP consumers will therefore encounter an undocumented status code on a normal auth-failure path.",
+      "resolution": "Add a shared 403 Problem response to every protected `/api/v1/*` operation, with tasks/drift checks covering it, or change the auth policy to normalize explicit invalid keys to 401 and update the audit requirements accordingly.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-005",
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "The round-1 audit-semantics fix is still only partial. The audit spec says `admin_key_fp` is NULL when a key 'failed format validation' (`openspec/changes/cloud-db-source-of-truth/specs/audit-log/spec.md:13-16`), but D3a says the fingerprint is computed from the raw `X-Admin-Key` header specifically so invalid-key attempts can be correlated (`openspec/changes/cloud-db-source-of-truth/design.md:56-59`). The seed fixture also leaves the 401 sample without the `notes.auth_failure` payload that the audit spec requires for auth failures (`openspec/changes/cloud-db-source-of-truth/specs/audit-log/spec.md:19-23` vs `openspec/changes/cloud-db-source-of-truth/contracts/db/seed.sql:4-9`). These artifacts still do not define one unambiguous failed-auth row shape.",
+      "resolution": "Choose one failed-auth policy for malformed or invalid keys and mirror it across the audit spec, design, seed data, and planned tests. If `notes.auth_failure` is mandatory, encode it in the seed fixtures and task assertions as well.",
+      "disposition": "fix"
+    },
+    {
+      "id": "PR-006",
+      "type": "observability",
+      "criticality": "medium",
+      "description": "The requested audit span attributes are still only specified in tasks, not in the normative plan. Task 2.10 requires `audit.operation`, `audit.status_code`, and `audit.write_failure` OTel attributes (`openspec/changes/cloud-db-source-of-truth/tasks.md:137-138`), but the audit spec only mandates `audit.write_failure=true` on insert failure (`openspec/changes/cloud-db-source-of-truth/specs/audit-log/spec.md:43-49`) and D10 documents only the generic FastAPI `http.route`, `http.method`, and `http.status_code` attributes plus request-id correlation (`openspec/changes/cloud-db-source-of-truth/design.md:231-235`). As written, the observability contract is not testable from the spec/design layer for the non-error audit attributes.",
+      "resolution": "Add SHALL-level observability requirements for the audit span attributes in the audit spec/design, or relax task 2.10 so it only asserts the attributes the plan actually requires.",
+      "disposition": "fix"
+    }
+  ]
+}

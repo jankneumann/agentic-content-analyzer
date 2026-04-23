@@ -30,7 +30,7 @@ Phase → Work Package mapping:
   **Contracts**: `contracts/db/schema.sql`
   **Dependencies**: None
 
-- [ ] 0.5 Apply seed rows from `contracts/db/seed.sql` to fixture DB and assert row count = 5 (includes read, audited destructive, resolve, 500 error, 401 auth failure)
+- [ ] 0.5 Apply seed rows from `contracts/db/seed.sql` to fixture DB and assert row count = 6 (includes read, audited destructive, resolve, 500 error with notes, 401 no-credentials with `notes.auth_failure="missing_key"`, 403 invalid-key with `admin_key_fp` set and `notes.auth_failure="invalid_key"`)
   **Contracts**: `contracts/db/seed.sql`
   **Dependencies**: 0.4
 
@@ -78,29 +78,33 @@ Phase → Work Package mapping:
 
 ### 1C: References extract + resolve
 
-- [ ] 1.9 Write route tests for `POST /api/v1/references/extract` — by IDs, by date range with bounded batch, `has_more`/`next_cursor` pagination, conflicting-filter 422, oversized `content_ids` 422
-  **Spec scenarios**: content-references:Extract references for content batch by IDs, Extract references for content by date range (bounded batch), Extract references rejects conflicting filters, Extract references rejects oversized content_ids
+- [ ] 1.9 Write route tests for `POST /api/v1/references/extract` — by IDs, by date range with bounded batch, `has_more`/`next_cursor` pagination, `per_content` is optional (may be omitted on large batches), conflicting-filter 422, oversized `content_ids` 422, 60s batch timeout → 504 Problem
+  **Spec scenarios**: content-references:Extract references for content batch by IDs, Extract references for content by date range (bounded batch), Extract references rejects conflicting filters, Extract references rejects oversized content_ids, Extract references returns 504 on per-batch timeout
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1references~1extract`
   **Dependencies**: 0.2
 
 - [ ] 1.10 Implement references/extract handler with `@audited(operation="references.extract")`; extend or create `src/api/routes/reference_routes.py`; coordinate with `add-content-references` proposal for scope overlap
   **Dependencies**: 1.9, 2.2
 
-- [ ] 1.11 Write route tests for `POST /api/v1/references/resolve` — default batch, explicit batch_size, `has_more` pagination, oversized batch 422
-  **Spec scenarios**: content-references:Resolve all unresolved references uses default batch, Resolve with explicit batch limit, Resolve rejects oversized batch_size
+- [ ] 1.11 Write route tests for `POST /api/v1/references/resolve` — default batch, explicit batch_size, `has_more` pagination, oversized batch 422, 60s batch timeout → 504 Problem
+  **Spec scenarios**: content-references:Resolve all unresolved references uses default batch, Resolve with explicit batch limit, Resolve rejects oversized batch_size, Resolve returns 504 on per-batch timeout
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1references~1resolve`
   **Dependencies**: 0.2
 
 - [ ] 1.12 Implement references/resolve handler with `@audited(operation="references.resolve")`
   **Dependencies**: 1.11, 2.2
 
+- [ ] 1.13 Retrofit `@audited` on existing destructive endpoints listed in proposal.md §2: `DELETE /topics/{slug}` (audit operation `topics.delete`), `POST /kb/purge` (`kb.purge`), `POST /manage/switch-embeddings` (`manage.switch_embeddings`). Write `tests/api/test_destructive_endpoints_audited.py` asserting each endpoint produces an audit row with the expected `operation` tag.
+  **Spec scenarios**: audit-log:Operation tagging via @audited decorator:Decorated endpoint records operation name
+  **Dependencies**: 2.2
+
 ---
 
 ## Phase 2: Audit Logging (wp-audit)
 
-- [ ] 2.1 Write tests for `AuditMiddleware` — every `/api/v1/*` request logged (success AND failure), OPTIONS bypass, admin_key_fp fingerprinting (SHA-256 last 8 chars, NULL when absent), body_size capture, 401/403 auth-failure logging with `notes.auth_failure`, client_ip from `Cf-Connecting-Ip`/`X-Forwarded-For`/`request.client.host` fallback chain, write-failure is non-blocking (stderr log, no exception propagation)
-  **Spec scenarios**: audit-log:Request to any /api/v1/* endpoint, Authentication failure (401) is logged, OPTIONS preflight requests are not logged, Request body is not stored, Failed request is still logged, Audit write failure does not block the response, Client IP is extracted via proxy-aware headers
-  **Design decisions**: D3, D3a (middleware ordering), D4 (append-only schema), D4b (best-effort semantics)
+- [ ] 2.1 Write tests for `AuditMiddleware` — every `/api/v1/*` request logged (success AND failure), OPTIONS bypass, admin_key_fp fingerprinting (SHA-256 last 8 chars from raw `X-Admin-Key` header whenever present including invalid keys, NULL only when header absent), body_size capture, 401 no-credentials logging with `notes.auth_failure="missing_key"`, 403 invalid-key logging with `admin_key_fp` set AND `notes.auth_failure="invalid_key"`, client_ip from `Cf-Connecting-Ip`/`X-Forwarded-For`/`request.client.host` fallback chain, write-failure is non-blocking (stderr log, no exception propagation)
+  **Spec scenarios**: audit-log:Request to any /api/v1/* endpoint creates log entry, No credentials (401) is logged, Invalid admin key (403) is logged with fingerprint, OPTIONS preflight requests are not logged, Request body is not stored, Failed request is still logged, Audit write failure does not block the response, Client IP is extracted via proxy-aware headers
+  **Design decisions**: D3, D3a (middleware ordering + admin_key_fp always-compute-when-header-present policy), D4 (append-only schema), D4b (best-effort semantics)
   **Contracts**: `contracts/db/schema.sql`
   **Dependencies**: 0.4
 
@@ -135,7 +139,8 @@ Phase → Work Package mapping:
   **Dependencies**: 2.8
 
 - [ ] 2.10 Write observability test — assert `AuditMiddleware` sets OTel span attributes (`audit.operation`, `audit.status_code`, `audit.write_failure` on error) and `TraceMiddleware`'s request_id flows into `audit_log.request_id`
-  **Design decisions**: D10 (observability)
+  **Spec scenarios**: audit-log:Audit middleware observability attributes (all 3 scenarios — audit span populated on success, marks write failure, trace ID correlation)
+  **Design decisions**: D10 (observability inherits FastAPI stack; audit span SHALL clauses)
   **Dependencies**: 2.2
 
 ---
