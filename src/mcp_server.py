@@ -17,10 +17,50 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+
+
+def _strict_http_mode() -> bool:
+    """Whether the MCP server was started with --strict-http semantics."""
+    return os.environ.get("ACA_MCP_STRICT_HTTP", "").lower() in ("1", "true", "yes", "on")
+
+
+def _get_api_client() -> Any | None:
+    """Return a shared ApiClient when HTTP mode is configured, else None.
+
+    HTTP mode is enabled when BOTH ``ACA_API_BASE_URL`` and ``ACA_ADMIN_KEY``
+    env vars are set. Partial config (only one set) falls back to in-process
+    mode and emits a warning to stderr — NOT to the tool response — so the
+    MCP JSON-RPC stdout channel stays clean.
+
+    When ``ACA_MCP_STRICT_HTTP`` is set and the config is missing or
+    incomplete, this still returns None; the caller is expected to surface
+    an error rather than silently proceed to in-process mode.
+    """
+    base_url = os.environ.get("ACA_API_BASE_URL", "").strip()
+    admin_key = os.environ.get("ACA_ADMIN_KEY", "").strip()
+    if base_url and admin_key:
+        from src.cli.api_client import ApiClient
+
+        return ApiClient(base_url=base_url, admin_key=admin_key)
+    if base_url or admin_key:
+        missing = "ACA_ADMIN_KEY" if base_url else "ACA_API_BASE_URL"
+        print(
+            f"aca-mcp: partial HTTP config — {missing} not set; falling back to in-process mode.",
+            file=sys.stderr,
+        )
+    return None
+
+
+def _strict_http_error(tool: str, reason: str) -> str:
+    """Shape a uniform error response when --strict-http rejects a call."""
+    return _serialize({"error": "strict_http_unavailable", "tool": tool, "detail": reason})
+
 
 mcp = FastMCP(
     "Newsletter Aggregator",
@@ -1085,22 +1125,55 @@ def get_content(content_id: int) -> str:
 
 @mcp.tool()
 def search_knowledge_graph(query: str, limit: int = 10) -> str:
-    """Search the knowledge graph for related concepts.
+    """Search the knowledge graph (OpenAPI-aligned shape).
 
-    Queries the Graphiti-powered knowledge graph for entities and relationships
-    related to the search query.
+    Returns ``{entities: [{id, name, type, score}], relationships:
+    [{source_id, target_id, type, score}]}`` per
+    ``contracts/openapi/v1.yaml#/components/schemas/GraphQueryResponse``.
 
-    Args:
-        query: Search query for concept discovery.
-        limit: Maximum results (default: 10).
-
-    Returns:
-        JSON with related concepts, entities, and relationships.
+    HTTP mode: POST /api/v1/graph/query. In-process fallback adapts the
+    existing Graphiti-powered search into the same shape.
     """
+    client = _get_api_client()
+    if client is not None:
+        try:
+            return _serialize(client.graph_query(query=query, limit=limit))
+        finally:
+            client.close()
+    if _strict_http_mode():
+        return _strict_http_error(
+            "search_knowledge_graph",
+            "ACA_MCP_STRICT_HTTP is set but ACA_API_BASE_URL/ACA_ADMIN_KEY are missing",
+        )
+
+    # In-process path — adapt the existing graph search into the OpenAPI shape.
     from src.cli.adapters import search_graph_sync
 
-    results = search_graph_sync(query, limit=limit)
-    return _serialize(results)
+    raw = search_graph_sync(query, limit=limit) or []
+    entities: list[dict[str, Any]] = []
+    relationships: list[dict[str, Any]] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        if "source_node_uuid" in row or "target_node_uuid" in row:
+            relationships.append(
+                {
+                    "source_id": str(row.get("source_node_uuid", "")),
+                    "target_id": str(row.get("target_node_uuid", "")),
+                    "type": str(row.get("name") or row.get("type") or ""),
+                    "score": float(row.get("score", 0.0) or 0.0),
+                }
+            )
+        else:
+            entities.append(
+                {
+                    "id": str(row.get("uuid") or row.get("id") or ""),
+                    "name": str(row.get("name", "")),
+                    "type": str(row.get("type") or row.get("labels", "Entity") or "Entity"),
+                    "score": float(row.get("score", 0.0) or 0.0),
+                }
+            )
+    return _serialize({"entities": entities, "relationships": relationships})
 
 
 # ===========================================================================
@@ -1778,21 +1851,39 @@ def extract_references(
     dry_run: bool = False,
     batch_size: int = 50,
 ) -> str:
-    """Extract references from existing content (backfill).
+    """Extract references from existing content (OpenAPI-aligned shape).
 
-    Scans content records for arXiv IDs, DOIs, Semantic Scholar IDs, and
-    classifiable URLs. Stores discovered references in content_references table.
+    Returns ``{references_extracted, content_processed, has_more,
+    next_cursor?, per_content?}`` per
+    ``contracts/openapi/v1.yaml#/components/schemas/ReferencesExtractResponse``.
+    ``has_more`` is always present; ``next_cursor`` is present only when
+    ``has_more=true``; ``per_content`` is an optional enriched array.
 
-    Args:
-        after: ISO date - only process content after this date.
-        before: ISO date - only process content before this date.
-        source: Filter by source type (e.g., 'rss', 'substack').
-        dry_run: Preview without storing.
-        batch_size: Number of content items per batch.
-
-    Returns:
-        JSON with extraction stats: scanned, references_found, dry_run flag.
+    HTTP mode: POST /api/v1/references/extract (accepts ``since``/``until``
+    XOR ``content_ids``). In-process fallback mirrors the same shape.
     """
+    client = _get_api_client()
+    if client is not None:
+        try:
+            body: dict[str, Any] = {"batch_size": batch_size}
+            if after is not None:
+                body["since"] = after
+            if before is not None:
+                body["until"] = before
+            # The HTTP endpoint does not accept "source" / "dry_run" filters — those
+            # are in-process-only conveniences. If the caller asked for them, fall
+            # through to in-process mode below rather than silently discarding.
+            if source is None and not dry_run:
+                return _serialize(client.references_extract(**body))
+        finally:
+            client.close()
+    if _strict_http_mode():
+        return _strict_http_error(
+            "extract_references",
+            "ACA_MCP_STRICT_HTTP is set but ACA_API_BASE_URL/ACA_ADMIN_KEY are missing (or source/dry_run filter used)",
+        )
+
+    # In-process path — shape-match HTTP response.
     from datetime import datetime as dt
 
     from sqlalchemy import text as sa_text
@@ -1804,9 +1895,11 @@ def extract_references(
     extractor = ReferenceExtractor()
     total_stored = 0
     total_scanned = 0
+    per_content: list[dict[str, int]] = []
+    last_ingested_at: datetime | None = None
 
     with get_db() as db:
-        query = db.query(Content)
+        query = db.query(Content).order_by(Content.ingested_at.asc())
         if after:
             query = query.filter(Content.ingested_at >= dt.fromisoformat(after))
         if before:
@@ -1814,52 +1907,78 @@ def extract_references(
         if source:
             query = query.filter(Content.source_type.cast(sa_text("text")) == source)
 
-        contents = query.limit(batch_size).all()
+        # Fetch batch_size + 1 to detect has_more cheaply.
+        contents = query.limit(batch_size + 1).all()
+        has_more = len(contents) > batch_size
+        contents = contents[:batch_size]
 
         for content in contents:
             refs = extractor.extract_from_content(content, db)
             total_scanned += 1
+            per_content.append(
+                {"content_id": content.id or 0, "references_found": len(refs) if refs else 0}
+            )
             if refs and not dry_run and content.id is not None:
                 stored = extractor.store_references(content.id, refs, db)
                 total_stored += stored
             elif refs:
                 total_stored += len(refs)
+            if content.ingested_at is not None:
+                last_ingested_at = content.ingested_at
 
-    return _serialize(
-        {
-            "scanned": total_scanned,
-            "references_found": total_stored,
-            "dry_run": dry_run,
-        }
-    )
+    response: dict[str, Any] = {
+        "references_extracted": total_stored,
+        "content_processed": total_scanned,
+        "has_more": has_more,
+        "per_content": per_content,
+    }
+    if has_more and last_ingested_at is not None:
+        response["next_cursor"] = last_ingested_at.isoformat()
+    return _serialize(response)
 
 
 @mcp.tool()
 def resolve_references(
     batch_size: int = 100,
 ) -> str:
-    """Resolve unresolved content references against the database.
+    """Resolve unresolved content references (OpenAPI-aligned shape).
 
-    Matches external identifiers (arXiv ID, DOI, S2 paper ID) and URLs
-    against existing Content records and updates resolution status.
+    Returns ``{resolved_count, still_unresolved_count, has_more}`` per
+    ``contracts/openapi/v1.yaml#/components/schemas/ReferencesResolveResponse``.
 
-    Args:
-        batch_size: Number of references to process.
-
-    Returns:
-        JSON with resolution stats: resolved count and batch_size.
+    HTTP mode: POST /api/v1/references/resolve. In-process fallback mirrors
+    the same shape, counting remaining unresolved rows post-batch.
     """
+    client = _get_api_client()
+    if client is not None:
+        try:
+            return _serialize(client.references_resolve(batch_size=batch_size))
+        finally:
+            client.close()
+    if _strict_http_mode():
+        return _strict_http_error(
+            "resolve_references",
+            "ACA_MCP_STRICT_HTTP is set but ACA_API_BASE_URL/ACA_ADMIN_KEY are missing",
+        )
+
+    # In-process path.
+    from src.models.content_reference import ContentReference
     from src.services.reference_resolver import ReferenceResolver
     from src.storage.database import get_db
 
     with get_db() as db:
         resolver = ReferenceResolver(db)
         resolved = resolver.resolve_batch(batch_size)
-
+        still_unresolved = (
+            db.query(ContentReference)
+            .filter(ContentReference.resolution_status == "unresolved")
+            .count()
+        )
     return _serialize(
         {
-            "resolved": resolved,
-            "batch_size": batch_size,
+            "resolved_count": int(resolved),
+            "still_unresolved_count": int(still_unresolved),
+            "has_more": still_unresolved > 0,
         }
     )
 
@@ -2202,15 +2321,28 @@ def sync_obsidian(
 
 @mcp.tool()
 def search_knowledge_base(query: str, limit: int = 10) -> str:
-    """Search compiled KB topics by name and summary.
+    """Search compiled KB topics (OpenAPI-aligned shape).
 
-    Args:
-        query: Keyword or phrase to match against topic names and summaries.
-        limit: Maximum topics to return (default: 10).
+    Returns ``{topics: [{slug, title, score, excerpt, last_compiled_at}], total_count}``
+    per ``contracts/openapi/v1.yaml#/components/schemas/KBSearchResponse``.
 
-    Returns:
-        JSON list of matching topics with slug, name, category, and score.
+    In HTTP mode (ACA_API_BASE_URL + ACA_ADMIN_KEY set), calls GET
+    /api/v1/kb/search. Otherwise falls back to an in-process query that
+    emits the same shape.
     """
+    client = _get_api_client()
+    if client is not None:
+        try:
+            return _serialize(client.kb_search(query=query, limit=limit))
+        finally:
+            client.close()
+    if _strict_http_mode():
+        return _strict_http_error(
+            "search_knowledge_base",
+            "ACA_MCP_STRICT_HTTP is set but ACA_API_BASE_URL/ACA_ADMIN_KEY are missing",
+        )
+
+    # In-process path — shape-match the HTTP response.
     from sqlalchemy import or_
 
     from src.models.topic import Topic, TopicStatus
@@ -2232,21 +2364,21 @@ def search_knowledge_base(query: str, limit: int = 10) -> str:
             .limit(limit)
             .all()
         )
-        return _serialize(
-            [
-                {
-                    "slug": t.slug,
-                    "name": t.name,
-                    "category": t.category,
-                    "trend": t.trend,
-                    "status": str(t.status) if t.status is not None else None,
-                    "summary": t.summary,
-                    "relevance_score": float(t.relevance_score or 0.0),
-                    "mention_count": int(t.mention_count or 0),
-                }
-                for t in rows
-            ]
-        )
+        topics = [
+            {
+                "slug": t.slug,
+                "title": t.name,
+                "score": float(t.relevance_score or 0.0),
+                "excerpt": (t.summary or "")[:300],
+                "last_compiled_at": (
+                    t.last_compiled_at.isoformat()
+                    if t.last_compiled_at is not None
+                    else datetime.now(UTC).isoformat()
+                ),
+            }
+            for t in rows
+        ]
+        return _serialize({"topics": topics, "total_count": len(topics)})
 
 
 @mcp.tool()

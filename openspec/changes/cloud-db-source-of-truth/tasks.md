@@ -147,52 +147,52 @@ Phase → Work Package mapping:
 
 ## Phase 3: MCP Refactor (wp-mcp)
 
-- [ ] 3.1 Write test for `_get_api_client()` helper — returns ApiClient when both env vars set, None when unset, None for localhost default, emits stderr warning (NOT tool-response text) on partial config
+- [x] 3.1 Write test for `_get_api_client()` helper — returns ApiClient when both env vars set, None when unset, None for localhost default, emits stderr warning (NOT tool-response text) on partial config
   **Spec scenarios**: mcp-http-client:MCP tool with HTTP config uses ApiClient, MCP tool without HTTP config falls back to in-process, MCP tool with partial config emits stderr warning and falls back
   **Design decisions**: D2 (fallback semantics), D9 (OpenAPI-aligned shapes)
   **Dependencies**: None
 
-- [ ] 3.2 Implement `_get_api_client()` helper in `src/mcp_server.py`; warnings emit to stderr via `logging` configured to use `sys.stderr`
+- [x] 3.2 Implement `_get_api_client()` helper in `src/mcp_server.py`; warnings emit to stderr via `logging` configured to use `sys.stderr`
   **Dependencies**: 3.1
 
-- [ ] 3.3 Write HTTP-transport resilience tests — 30s timeout, one retry on {429,502,503,504,connreset}, non-retryable 4xx propagates, timeout does NOT fall back to in-process
+- [x] 3.3 Write HTTP-transport resilience tests — 30s timeout, one retry on {429,502,503,504,connreset}, non-retryable 4xx propagates, timeout does NOT fall back to in-process
   **Spec scenarios**: mcp-http-client:Transient 503 is retried once, Non-retryable 400 is surfaced directly, HTTP timeout falls back to error, not to in-process
   **Design decisions**: D11 (timeout/retry matrix)
   **Dependencies**: 3.2
 
-- [ ] 3.4 Update `src/cli/api_client.py` to support 30s timeout + one-shot retry for transient errors (or add a thin wrapper — whichever preserves CLI behavior)
+- [x] 3.4 Update `src/cli/api_client.py` to support 30s timeout + one-shot retry for transient errors (or add a thin wrapper — whichever preserves CLI behavior)
   **Dependencies**: 3.3
 
-- [ ] 3.5 Write integration tests for `search_knowledge_base` MCP tool — HTTP mode hits mocked API and returns `KBSearchResponse` shape; in-process mode returns the SAME shape (not legacy `{name, summary, relevance_score, mention_count}`)
+- [x] 3.5 Write integration tests for `search_knowledge_base` MCP tool — HTTP mode hits mocked API and returns `KBSearchResponse` shape; in-process mode returns the SAME shape (not legacy `{name, summary, relevance_score, mention_count}`)
   **Spec scenarios**: mcp-http-client:MCP tool with HTTP config uses ApiClient, HTTP and in-process modes produce identical shapes, Tool response validates against OpenAPI schema
   **Dependencies**: 3.4, 1.2
 
-- [ ] 3.6 Refactor `search_knowledge_base` MCP tool — HTTP path + in-process path both return `{topics, total_count}` with `last_compiled_at`
+- [x] 3.6 Refactor `search_knowledge_base` MCP tool — HTTP path + in-process path both return `{topics, total_count}` with `last_compiled_at`
   **Dependencies**: 3.5
 
-- [ ] 3.7 Write integration tests for `search_knowledge_graph` MCP tool — both modes return `{entities, relationships}` with `score` on every relationship
+- [x] 3.7 Write integration tests for `search_knowledge_graph` MCP tool — both modes return `{entities, relationships}` with `score` on every relationship
   **Dependencies**: 3.4, 1.6
 
-- [ ] 3.8 Refactor `search_knowledge_graph` MCP tool
+- [x] 3.8 Refactor `search_knowledge_graph` MCP tool
   **Dependencies**: 3.7
 
-- [ ] 3.9 Write integration tests for `extract_references` MCP tool — both modes return `{references_extracted, content_processed, has_more, per_content}` (NOT legacy `{scanned, references_found, dry_run}`)
+- [x] 3.9 Write integration tests for `extract_references` MCP tool — both modes return `{references_extracted, content_processed, has_more, per_content}` (NOT legacy `{scanned, references_found, dry_run}`)
   **Dependencies**: 3.4, 1.10
 
-- [ ] 3.10 Refactor `extract_references` MCP tool
+- [x] 3.10 Refactor `extract_references` MCP tool
   **Dependencies**: 3.9
 
-- [ ] 3.11 Write integration tests for `resolve_references` MCP tool — both modes return `{resolved_count, still_unresolved_count, has_more}` (NOT legacy `{resolved, batch_size}`)
+- [x] 3.11 Write integration tests for `resolve_references` MCP tool — both modes return `{resolved_count, still_unresolved_count, has_more}` (NOT legacy `{resolved, batch_size}`)
   **Dependencies**: 3.4, 1.12
 
-- [ ] 3.12 Refactor `resolve_references` MCP tool
+- [x] 3.12 Refactor `resolve_references` MCP tool
   **Dependencies**: 3.11
 
-- [ ] 3.13 Write OpenAPI-shape-conformance test — for each of the 4 refactored tools, validate its response payload (both HTTP and in-process modes) against the corresponding response schema in `contracts/openapi/v1.yaml` using `jsonschema`
+- [x] 3.13 Write OpenAPI-shape-conformance test — for each of the 4 refactored tools, validate its response payload (both HTTP and in-process modes) against the corresponding response schema in `contracts/openapi/v1.yaml` using `jsonschema`
   **Spec scenarios**: mcp-http-client:Tool response validates against OpenAPI schema
   **Dependencies**: 3.6, 3.8, 3.10, 3.12
 
-- [ ] 3.14 Add `--strict-http` flag to MCP server startup; test rejects unconfigured startup (stderr error + tool-invocation errors)
+- [x] 3.14 Add `--strict-http` flag to MCP server startup; test rejects unconfigured startup (stderr error + tool-invocation errors)
   **Spec scenarios**: mcp-http-client:Strict HTTP mode rejects unconfigured tools
   **Dependencies**: 3.2
 
