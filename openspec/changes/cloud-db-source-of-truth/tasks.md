@@ -200,20 +200,20 @@ Phase → Work Package mapping:
 
 ## Phase 4: Sync-Down UX (wp-ops)
 
-- [ ] 4.1 Write unit tests for `restore-from-cloud` CLI — argument parsing, backup date resolution (latest vs specific), subprocess error handling
+- [x] 4.1 Write unit tests for `restore-from-cloud` CLI — argument parsing, backup date resolution (latest vs specific), subprocess error handling
   **Design decisions**: D5 (thin wrapper, not reimplementation)
   **Dependencies**: None
 
-- [ ] 4.2 Implement `aca manage restore-from-cloud` subcommand in `src/cli/manage_commands.py`
+- [x] 4.2 Implement `aca manage restore-from-cloud` subcommand in `src/cli/manage_commands.py`
   **Dependencies**: 4.1
 
-- [ ] 4.3 Write integration test against a local MinIO fixture (use docker compose MinIO) — full round-trip restore of a known dump
+- [x] 4.3 Write integration test against a local MinIO fixture (use docker compose MinIO) — full round-trip restore of a known dump
   **Dependencies**: 4.2
 
-- [ ] 4.4 Write `docs/SYNC_DOWN.md` — prereqs, examples, PII caveats, freshness discussion
+- [x] 4.4 Write `docs/SYNC_DOWN.md` — prereqs, examples, PII caveats, freshness discussion
   **Dependencies**: 4.2
 
-- [ ] 4.5 Update `docs/SETUP.md` backup section to cross-reference `SYNC_DOWN.md`
+- [x] 4.5 Update `docs/SETUP.md` backup section to cross-reference `SYNC_DOWN.md`
   **Dependencies**: 4.4
 
 ---
