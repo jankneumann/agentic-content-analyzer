@@ -220,28 +220,28 @@ Phase → Work Package mapping:
 
 ## Phase 5: Integration (wp-integration)
 
-- [ ] 5.1 Write drift test `tests/contract/test_openapi_drift.py` — FastAPI runtime `/openapi.json` matches `contracts/openapi/v1.yaml` for new endpoints (including Problem refs on 401/422/404/409/504)
+- [x] 5.1 Write drift test `tests/contract/test_openapi_drift.py` — FastAPI runtime `/openapi.json` matches `contracts/openapi/v1.yaml` for new endpoints (including Problem refs on 401/422/404/409/504)
   **Dependencies**: 1.2, 1.4, 1.6, 1.8, 1.10, 1.12, 2.7
 
-- [ ] 5.2 Run full test suite: `pytest tests/ -v`
+- [x] 5.2 Run full test suite: `pytest tests/ -v`
   **Dependencies**: 5.1, 3.13
 
-- [ ] 5.3 Run contract tests: `pytest tests/contract/ -m contract --no-cov`
+- [x] 5.3 Run contract tests: `pytest tests/contract/ -m contract --no-cov`
   **Dependencies**: 5.1
 
-- [ ] 5.4 Smoke test against local stack: `make dev-bg` + `curl http://localhost:8000/api/v1/kb/search?q=test` + verify audit_log row written for the successful request AND a separate row for an unauthenticated attempt (401)
+- [x] 5.4 Smoke test against local stack: `make dev-bg` + `curl http://localhost:8000/api/v1/kb/search?q=test` + verify audit_log row written for the successful request AND a separate row for an unauthenticated attempt (401)
   **Dependencies**: 5.1, 2.5
 
-- [ ] 5.5 MCP E2E test: start MCP server with HTTP config pointing at local API; verify tool returns result via HTTP path with OpenAPI-conformant shape
+- [x] 5.5 MCP E2E test: start MCP server with HTTP config pointing at local API; verify tool returns result via HTTP path with OpenAPI-conformant shape
   **Dependencies**: 5.4
 
-- [ ] 5.6 Update `CLAUDE.md` gotchas table with any new patterns surfaced during implementation (e.g., middleware ordering, pg_cron migration-time interpolation, MCP breaking-change migration for agentic-assistant)
+- [x] 5.6 Update `CLAUDE.md` gotchas table with any new patterns surfaced during implementation (e.g., middleware ordering, pg_cron migration-time interpolation, MCP breaking-change migration for agentic-assistant)
   **Dependencies**: 5.5
 
-- [ ] 5.7 Coordinate with `agentic-assistant` repo: confirm the consumer project has been updated to the new MCP response shapes before merging this change. Record the agentic-assistant commit SHA or PR link in the `MIGRATION.md` notes.
+- [x] 5.7 Coordinate with `agentic-assistant` repo: confirm the consumer project has been updated to the new MCP response shapes before merging this change. Record the agentic-assistant commit SHA or PR link in the `MIGRATION.md` notes.
   **Dependencies**: 3.13
 
-- [ ] 5.8 Mark all tasks complete; run `openspec validate --strict cloud-db-source-of-truth`
+- [x] 5.8 Mark all tasks complete; run `openspec validate --strict cloud-db-source-of-truth`
   **Dependencies**: 5.6, 5.7
 
 ---
