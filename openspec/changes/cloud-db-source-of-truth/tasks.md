@@ -40,58 +40,58 @@ Phase → Work Package mapping:
 
 ### 1A: KB search + lint
 
-- [ ] 1.1 Write route tests for `GET /api/v1/kb/search` — matching query, empty result, auth enforcement, limit parameter, `last_compiled_at` present on every result
+- [x] 1.1 Write route tests for `GET /api/v1/kb/search` — matching query, empty result, auth enforcement, limit parameter, `last_compiled_at` present on every result
   **Spec scenarios**: knowledge-base:Search with matching query, Search with no matches, Unauthenticated search, Search honors limit
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1kb~1search`
   **Dependencies**: 0.2
 
-- [ ] 1.2 Implement `src/api/routes/kb_search_routes.py` — handler, Pydantic models from contracts, service wiring (must populate `last_compiled_at` on every result)
+- [x] 1.2 Implement `src/api/routes/kb_search_routes.py` — handler, Pydantic models from contracts, service wiring (must populate `last_compiled_at` on every result)
   **Dependencies**: 1.1
 
-- [ ] 1.3 Write route tests for `GET /api/v1/kb/lint` and `POST /api/v1/kb/lint/fix` — read-only vs mutation, audit-row operation tagging, zero-diff case, quantitative thresholds (stale >30d, orphaned zero-refs-and-zero-degree, score anomaly >3σ with minimum-sample-size guard)
+- [x] 1.3 Write route tests for `GET /api/v1/kb/lint` and `POST /api/v1/kb/lint/fix` — read-only vs mutation, audit-row operation tagging, zero-diff case, quantitative thresholds (stale >30d, orphaned zero-refs-and-zero-degree, score anomaly >3σ with minimum-sample-size guard)
   **Spec scenarios**: knowledge-base:GET lint returns health report, POST lint/fix applies corrections, POST lint/fix when no corrections needed
   **Design decisions**: D3 (middleware + @audited)
   **Contracts**: `contracts/openapi/v1.yaml` (kb lint paths)
   **Dependencies**: 0.2
 
-- [ ] 1.4 Implement KB lint routes (extend `src/api/routes/kb_routes.py`) with `@audited(operation="kb.lint.fix")` on fix endpoint
+- [x] 1.4 Implement KB lint routes (extend `src/api/routes/kb_routes.py`) with `@audited(operation="kb.lint.fix")` on fix endpoint
   **Dependencies**: 1.3, 2.2
 
 ### 1B: Graph query + extract-entities
 
-- [ ] 1.5 Write route tests for `POST /api/v1/graph/query` — entity/relationship shape (incl. required `score` on relationships), empty result, validation, 504 on graph timeout
+- [x] 1.5 Write route tests for `POST /api/v1/graph/query` — entity/relationship shape (incl. required `score` on relationships), empty result, validation, 504 on graph timeout
   **Spec scenarios**: knowledge-graph:Graph query returns entities and relationships, Graph query with empty result, Graph query validates query field
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1graph~1query`
   **Dependencies**: 0.2
 
-- [ ] 1.6 Implement `src/api/routes/graph_routes.py` — query handler, `GraphitiClient` wiring with 10s read timeout; map timeout → 504 Problem response
+- [x] 1.6 Implement `src/api/routes/graph_routes.py` — query handler, `GraphitiClient` wiring with 10s read timeout; map timeout → 504 Problem response
   **Dependencies**: 1.5
 
-- [ ] 1.7 Write route tests for `POST /api/v1/graph/extract-entities` — success, 404 missing content (Problem body), 409 no summary (Problem body), audit operation tag, 504 on graph timeout
+- [x] 1.7 Write route tests for `POST /api/v1/graph/extract-entities` — success, 404 missing content (Problem body), 409 no summary (Problem body), audit operation tag, 504 on graph timeout
   **Spec scenarios**: knowledge-graph:Extract entities for existing content, Extract entities for missing content, Extract entities for content without summary
   **Design decisions**: D3 (audited decorator)
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1graph~1extract-entities`
   **Dependencies**: 0.2
 
-- [ ] 1.8 Implement extract-entities handler with `@audited(operation="graph.extract_entities")`; 30s write timeout; 404/409 return `application/problem+json`
+- [x] 1.8 Implement extract-entities handler with `@audited(operation="graph.extract_entities")`; 30s write timeout; 404/409 return `application/problem+json`
   **Dependencies**: 1.7, 2.2
 
 ### 1C: References extract + resolve
 
-- [ ] 1.9 Write route tests for `POST /api/v1/references/extract` — by IDs, by date range with bounded batch, `has_more`/`next_cursor` pagination, `per_content` is optional (may be omitted on large batches), conflicting-filter 422, oversized `content_ids` 422, 60s batch timeout → 504 Problem
+- [x] 1.9 Write route tests for `POST /api/v1/references/extract` — by IDs, by date range with bounded batch, `has_more`/`next_cursor` pagination, `per_content` is optional (may be omitted on large batches), conflicting-filter 422, oversized `content_ids` 422, 60s batch timeout → 504 Problem
   **Spec scenarios**: content-references:Extract references for content batch by IDs, Extract references for content by date range (bounded batch), Extract references rejects conflicting filters, Extract references rejects oversized content_ids, Extract references returns 504 on per-batch timeout
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1references~1extract`
   **Dependencies**: 0.2
 
-- [ ] 1.10 Implement references/extract handler with `@audited(operation="references.extract")`; extend or create `src/api/routes/reference_routes.py`; coordinate with `add-content-references` proposal for scope overlap
+- [x] 1.10 Implement references/extract handler with `@audited(operation="references.extract")`; extend or create `src/api/routes/reference_routes.py`; coordinate with `add-content-references` proposal for scope overlap
   **Dependencies**: 1.9, 2.2
 
-- [ ] 1.11 Write route tests for `POST /api/v1/references/resolve` — default batch, explicit batch_size, `has_more` pagination, oversized batch 422, 60s batch timeout → 504 Problem
+- [x] 1.11 Write route tests for `POST /api/v1/references/resolve` — default batch, explicit batch_size, `has_more` pagination, oversized batch 422, 60s batch timeout → 504 Problem
   **Spec scenarios**: content-references:Resolve all unresolved references uses default batch, Resolve with explicit batch limit, Resolve rejects oversized batch_size, Resolve returns 504 on per-batch timeout
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1references~1resolve`
   **Dependencies**: 0.2
 
-- [ ] 1.12 Implement references/resolve handler with `@audited(operation="references.resolve")`
+- [x] 1.12 Implement references/resolve handler with `@audited(operation="references.resolve")`
   **Dependencies**: 1.11, 2.2
 
 - [ ] 1.13 Retrofit `@audited` on existing destructive endpoints listed in proposal.md §2: `DELETE /topics/{slug}` (audit operation `topics.delete`), `POST /kb/purge` (`kb.purge`), `POST /manage/switch-embeddings` (`manage.switch_embeddings`). Write `tests/api/test_destructive_endpoints_audited.py` asserting each endpoint produces an audit row with the expected `operation` tag.

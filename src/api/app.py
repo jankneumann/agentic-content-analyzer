@@ -38,6 +38,10 @@ from src.api.podcast_routes import router as podcast_router
 from src.api.pricing_routes import router as pricing_router
 from src.api.reference_routes import router as reference_router
 from src.api.routes.audit_routes import router as audit_router
+from src.api.routes.graph_routes import router as graph_router
+from src.api.routes.kb_routes import router as kb_lint_router
+from src.api.routes.kb_search_routes import router as kb_search_router
+from src.api.routes.reference_routes import router as references_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
 from src.api.search_routes import router as search_router
@@ -217,6 +221,10 @@ app.include_router(agent_router)  # Agentic analysis (tasks, insights, approvals
 app.include_router(evaluation_router)  # LLM router evaluation and calibration
 app.include_router(kb_router)  # Knowledge base compilation, topics, notes, Q&A
 app.include_router(audit_router)  # Audit log query endpoint (/api/v1/audit)
+app.include_router(kb_search_router)  # GET /api/v1/kb/search (cloud-db-source-of-truth)
+app.include_router(kb_lint_router)  # GET/POST /api/v1/kb/lint* (cloud-db-source-of-truth)
+app.include_router(graph_router)  # POST /api/v1/graph/{query,extract-entities}
+app.include_router(references_router)  # POST /api/v1/references/{extract,resolve}
 
 
 @app.get("/api/v1/system/config", tags=["system"])
