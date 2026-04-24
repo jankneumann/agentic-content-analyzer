@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.api.dependencies import verify_admin_key
+from src.api.middleware.audit import audited
 from src.models.theme import ThemeCategory
 from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
 from src.services.kb_qa import KBQAService
@@ -368,8 +369,14 @@ async def update_topic(slug: str, body: TopicUpdate) -> TopicResponse:
 
 
 @router.delete("/topics/{slug}", status_code=204)
+@audited(operation="topics.delete")
 async def archive_topic(slug: str) -> Response:
-    """Soft-delete a topic by setting status=archived."""
+    """Soft-delete a topic by setting status=archived.
+
+    The underlying data change is a `status = ARCHIVED` flag flip, not a row
+    deletion; `operation="topics.delete"` reflects the external-facing HTTP
+    verb (DELETE) for forensic queries, not the internal implementation.
+    """
     with get_db() as db:
         topic = db.query(Topic).filter_by(slug=slug).first()
         if topic is None:

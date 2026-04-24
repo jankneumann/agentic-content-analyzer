@@ -94,7 +94,7 @@ Phase → Work Package mapping:
 - [x] 1.12 Implement references/resolve handler with `@audited(operation="references.resolve")`
   **Dependencies**: 1.11, 2.2
 
-- [ ] 1.13 Retrofit `@audited` on existing destructive endpoints listed in proposal.md §2: `DELETE /topics/{slug}` (audit operation `topics.delete`), `POST /kb/purge` (`kb.purge`), `POST /manage/switch-embeddings` (`manage.switch_embeddings`). Write `tests/api/test_destructive_endpoints_audited.py` asserting each endpoint produces an audit row with the expected `operation` tag.
+- [x] 1.13 Retrofit `@audited` on existing destructive endpoints listed in proposal.md §2 — ONLY `DELETE /topics/{slug}` retrofitted with `@audited(operation="topics.delete")` in `src/api/kb_routes.py`. `POST /kb/purge` and `POST /manage/switch-embeddings` are plan-phantoms (not HTTP routes): `/kb/purge` exists only as a docstring example in `src/api/middleware/audit.py`; `switch-embeddings` is a CLI-only command at `src/cli/manage_commands.py:337`. Inventing new HTTP endpoints for those is out of scope; documented as deferred in `tests/api/test_destructive_endpoints_audited.py`.
   **Spec scenarios**: audit-log:Operation tagging via @audited decorator:Decorated endpoint records operation name
   **Dependencies**: 2.2
 
