@@ -156,7 +156,10 @@ async def extract_graph_entities(
     request: Request,
 ) -> GraphExtractResponse | JSONResponse:
     """Push a content's summary into the knowledge graph (30s timeout)."""
-    del request  # Used by @audited to stash operation into request.state
+    # IR-007: attach structured audit notes so the audit_log row records which
+    # content was operated on (spec knowledge-graph §"Extract entities for
+    # existing content" expects `notes.content_id=<id>`).
+    request.state.audit_notes = {"content_id": body.content_id}
     from src.storage.graphiti_client import GraphitiClient
 
     with get_db() as db:

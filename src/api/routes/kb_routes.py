@@ -178,7 +178,6 @@ async def apply_knowledge_base_lint_fix(request: Request) -> KBLintFixResponse:
     - ``status:stale`` — mark topics as ``stale`` when their last compile is
       older than threshold AND their current status is ``ACTIVE``.
     """
-    del request  # @audited reads from request.state; the handler itself only mutates DB
     threshold = timedelta(days=_stale_threshold_days())
     corrections: list[CorrectionApplied] = []
 
@@ -227,5 +226,13 @@ async def apply_knowledge_base_lint_fix(request: Request) -> KBLintFixResponse:
 
         if corrections:
             db.commit()
+
+    # IR-007: structured audit notes so the audit_log row records zero-diff runs
+    # and correction counts (spec knowledge-base §"POST lint/fix when no
+    # corrections are needed" expects the audit row to note the zero-diff case).
+    request.state.audit_notes = {
+        "corrections_applied": len(corrections),
+        "zero_diff": len(corrections) == 0,
+    }
 
     return KBLintFixResponse(corrections_applied=corrections)

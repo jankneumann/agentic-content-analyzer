@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from src.api.auth_routes import (
     _COOKIE_NAME,
@@ -23,9 +23,28 @@ from src.api.auth_routes import (
     _set_session_cookie,
     _verify_jwt,
 )
+from src.api.middleware.error_handler import _is_problem_path, _problem_body
 from src.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _auth_error_response(
+    request: Request, status_code: int, title: str, detail: str
+) -> JSONResponse:
+    """Emit RFC 7807 Problem body on /api/v1/{kb,graph,references,audit} paths,
+    legacy `{error, detail}` body elsewhere.
+
+    IR-003 fix: OpenAPI declares Problem on 401/403 for new endpoints; legacy
+    endpoints keep their historical shape so existing clients don't break.
+    """
+    if _is_problem_path(request.url.path):
+        body = _problem_body(title=title, status=status_code, detail=detail)
+        return JSONResponse(
+            status_code=status_code, content=body, media_type="application/problem+json"
+        )
+    return _error_response(status_code, title, detail)
+
 
 # Paths that skip authentication entirely
 AUTH_EXEMPT_PREFIXES = (
@@ -82,7 +101,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         keys_configured = settings.app_secret_key or settings.admin_api_key
         if settings.is_development and not keys_configured:
             if not _is_local_client(request):
-                return _error_response(
+                return _auth_error_response(
+                    request,
                     401,
                     "Authentication required",
                     "Unauthenticated development mode is restricted to local requests.",
@@ -117,9 +137,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if secrets.compare_digest(admin_key, settings.admin_api_key):
                 return await call_next(request)
             # Explicit invalid key → 403 (spec: "explicit keys are always validated")
-            return _error_response(403, "Forbidden", "Invalid admin API key")
+            return _auth_error_response(request, 403, "Forbidden", "Invalid admin API key")
 
         # Neither auth method succeeded
-        return _error_response(
-            401, "Authentication required", "Please log in or provide X-Admin-Key header."
+        return _auth_error_response(
+            request, 401, "Authentication required", "Please log in or provide X-Admin-Key header."
         )

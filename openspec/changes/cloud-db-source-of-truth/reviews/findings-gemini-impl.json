@@ -1,0 +1,31 @@
+{
+  "review_type": "impl",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "gemini-2.5-pro",
+  "findings": [
+    {
+      "id": "IR-001",
+      "type": "middleware_order",
+      "criticality": "medium",
+      "description": "In `src/api/app.py` lines ~126-150, the middleware addition order results in `Trace -> CORS -> SecurityHeaders -> Audit -> Auth` as the outermost-to-innermost runtime stack (Starlette's `add_middleware` pushes to the top/outer layer). This violates the spec's strict outermost-first requirement: `Trace -> Audit -> Auth -> CORS`. To achieve the spec's order, CORS must be added first (innermost) and Trace added last (outermost).",
+      "resolution": "Reorder the `app.add_middleware` calls in `src/api/app.py` to match the reverse of the desired execution stack: add CORS, then Auth, then Audit, then Trace.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-002",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "In `src/api/routes/audit_routes.py` line 67, the limit query parameter is declared as `limit: int = Query(default=100, ge=1)`. This enforces a `ge=1` validation constraint, meaning requests with `?limit=0` or `?limit=-1` will return a 422 Validation Error. This violates the spec requirement that limit is 'server-clamped, never fails' validation. There is also a corresponding test coverage gap, as negative limit cases are not tested in `test_audit_routes.py`.",
+      "resolution": "Remove `ge=1` from the `Query()` definition for the `limit` parameter so it passes request parsing and relies entirely on the existing `min(max(limit, 1), 1000)` clamping logic in the handler.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-003",
+      "type": "correctness",
+      "criticality": "low",
+      "description": "In `src/api/routes/audit_routes.py` line 96, the `total_count` field of `AuditQueryResponse` is blindly set to `len(entries)`. Because `entries` is already truncated by the `LIMIT` clause (max 1000), `total_count` will never exceed the page size. This violates the standard semantic purpose of a total count field in a paginated payload.",
+      "resolution": "Execute a separate `SELECT COUNT(*) ...` query using the same `where_sql` filters (without the `LIMIT`/`ORDER BY` clauses) and bind that scalar result to `total_count`.",
+      "disposition": "fix"
+    }
+  ]
+}

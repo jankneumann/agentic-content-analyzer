@@ -71,6 +71,25 @@ def test_trace_middleware_is_outermost():
     )
 
 
+def test_cors_wraps_audit_and_auth():
+    """IR-001 pragmatic resolution (D3a §Tradeoff): CORS must sit OUTSIDE
+    AuditMiddleware AND AuthMiddleware so 401/403 responses still carry
+    `Access-Control-Allow-Origin`. Otherwise browser clients see the failure
+    as a CORS error and can't display the real status code.
+    """
+    names = _get_middleware_class_names()
+    assert "CORSMiddleware" in names
+    cors_idx = names.index("CORSMiddleware")
+    audit_idx = names.index("AuditMiddleware")
+    auth_idx = names.index("AuthMiddleware")
+    assert cors_idx < audit_idx, (
+        f"CORSMiddleware must wrap AuditMiddleware (smaller index = outer). Got: {names}"
+    )
+    assert cors_idx < auth_idx, (
+        f"CORSMiddleware must wrap AuthMiddleware so 401/403 carry CORS headers. Got: {names}"
+    )
+
+
 @pytest.fixture
 def production_client(monkeypatch):
     """Force production mode so AuthMiddleware enforces X-Admin-Key."""

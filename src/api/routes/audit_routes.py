@@ -88,16 +88,16 @@ async def query_audit_log(
         max_length=100,
     ),
     status_code: int | None = Query(default=None, ge=100, le=599),
-    limit: int = Query(default=100, ge=1),
+    limit: int = Query(default=100),
 ) -> AuditQueryResponse:
     """Return recent audit entries matching the given filters.
 
-    Rows are ordered by ``timestamp DESC``. ``limit`` is already clamped to
-    [1, 1000] by the Query validator — oversized values are rejected by
-    FastAPI, meeting the spec's "server-clamped, never fails" contract at
-    the request-parsing boundary.
+    Rows are ordered by ``timestamp DESC``. Per spec audit-log §"Query respects
+    max limit", ``limit`` is server-clamped to [1, 1000] and MUST NOT fail
+    validation — values ≤0 are clamped to 1, values >1000 are clamped to 1000.
     """
-    # Per spec: limit is server-clamped to [1, 1000] and MUST NOT fail validation
+    # gemini IR-002 fix: no ``ge=1`` on the Query — we clamp in-handler instead
+    # so `?limit=0` is a silent clamp-to-1 rather than a 422 rejection.
     clamped_limit = min(max(limit, 1), 1000)
     clauses: list[str] = []
     params: dict[str, Any] = {"limit": clamped_limit}
@@ -123,14 +123,22 @@ async def query_audit_log(
     # ``where_sql`` is assembled from a closed vocabulary of hard-coded column
     # predicates; only the VALUES use :name placeholders.
     sql_str = f"SELECT id, timestamp, request_id, method, path, operation, admin_key_fp, status_code, body_size, HOST(client_ip) AS client_ip, notes FROM audit_log {where_sql} ORDER BY timestamp DESC LIMIT :limit"  # noqa: S608
+    # IR-003 (gemini + claude): total_count reflects the FULL filtered match
+    # count so pagination clients can compute "has more" correctly. Strip the
+    # :limit bind param from the COUNT version so it doesn't reject the unused
+    # placeholder.
+    count_sql_str = f"SELECT COUNT(*) FROM audit_log {where_sql}"  # noqa: S608
+    count_params = {k: v for k, v in params.items() if k != "limit"}
     sql = text(sql_str)
+    count_sql = text(count_sql_str)
 
     with get_db() as db:
         result = db.execute(sql, params).fetchall()
+        total_count = int(db.execute(count_sql, count_params).scalar() or 0)
 
     entries: list[AuditLogEntry] = []
     for row in result:
         mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
         entries.append(AuditLogEntry(**mapping))
 
-    return AuditQueryResponse(entries=entries, total_count=len(entries))
+    return AuditQueryResponse(entries=entries, total_count=total_count)

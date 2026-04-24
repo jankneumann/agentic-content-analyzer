@@ -236,6 +236,73 @@ class TestRestoreFromCloudCLI:
         assert result.exit_code != 0
         assert "minio" in result.output.lower() or "credentials" in result.output.lower()
 
+    # ---- Safety guards against restoring over Railway production DB (IR-002) ----
+
+    @patch("src.cli.restore_commands.get_settings")
+    def test_refuses_to_fallback_to_railway_database_url(self, mock_settings, fake_settings):
+        """IMPL_REVIEW IR-002: restore-from-cloud must NOT default to RAILWAY_DATABASE_URL.
+
+        Without --target-db and without local DATABASE_URL, the command must refuse
+        rather than silently target the Railway production DB.
+        """
+        fake_settings.database_url = None
+        fake_settings.railway_database_url = "postgresql://railway-prod:5432/main"
+        mock_settings.return_value = fake_settings
+
+        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
+
+        assert result.exit_code != 0
+        assert (
+            "RAILWAY_DATABASE_URL" in result.output
+            or "refused" in result.output.lower()
+            or "production" in result.output.lower()
+        ), f"Expected refusal message, got: {result.output!r}"
+
+    @patch("src.cli.restore_commands.get_settings")
+    def test_refuses_explicit_target_db_matching_railway_url(self, mock_settings, fake_settings):
+        """IR-002: even an explicit --target-db that matches RAILWAY_DATABASE_URL is refused."""
+        railway = "postgresql://railway-prod:5432/main"
+        fake_settings.database_url = "postgresql://localhost:5432/newsletters_sync"
+        fake_settings.railway_database_url = railway
+        mock_settings.return_value = fake_settings
+
+        result = runner.invoke(
+            app,
+            ["manage", "restore-from-cloud", "--target-db", railway, "--yes"],
+        )
+
+        assert result.exit_code != 0
+        assert "--allow-remote-target" in result.output or "refused" in result.output.lower()
+
+    @patch("src.cli.restore_commands.get_settings")
+    @patch("src.cli.restore_commands.subprocess.run")
+    def test_allow_remote_target_opts_into_railway_url(
+        self, mock_run, mock_settings, fake_settings
+    ):
+        """IR-002: explicit --allow-remote-target lets the operator use RAILWAY_DATABASE_URL."""
+        railway = "postgresql://railway-prod:5432/main"
+        fake_settings.database_url = None
+        fake_settings.railway_database_url = railway
+        mock_settings.return_value = fake_settings
+        mock_run.side_effect = [
+            _make_completed(0),
+            _make_completed(
+                0, stdout="[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
+            ),
+            _make_completed(0),
+            _make_completed(0),
+        ]
+
+        result = runner.invoke(
+            app,
+            ["manage", "restore-from-cloud", "--yes", "--allow-remote-target"],
+        )
+
+        assert result.exit_code == 0, result.output
+        pg_call = mock_run.call_args_list[3]
+        pg_args = pg_call[0][0]
+        assert any(railway in str(a) for a in pg_args)
+
     @patch("src.cli.restore_commands.get_settings")
     @patch("src.cli.restore_commands.subprocess.run")
     def test_target_db_override_used(self, mock_run, mock_settings, fake_settings):
