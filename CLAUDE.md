@@ -137,6 +137,11 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 | Mock patch lazy imports | Patch at SOURCE module (`src.X.Y`), not consumer — lazy `from X import Y` creates local vars |
 | `content_references` dual uniqueness | Refs with `external_id` use `uq_content_reference` constraint; URL-only refs use partial index `uq_content_reference_url` — `store_references()` handles both paths |
 | `neo4j_provider` deprecated | Use `graphdb_provider` + `graphdb_mode` instead — old field auto-mapped with deprecation warning |
+| Middleware order is LIFO (outer-first-call) | `app.add_middleware(X)` PREPENDS X to the outer stack. Order-in-code = trace, audit, auth, CORS ⇒ runtime outer→inner = trace → audit → auth → CORS. Getting this wrong means 401/403 audit-log rows go missing. See `src/api/app.py` + `tests/api/test_audit_ordering.py`. |
+| pg_cron + Railway managed PG | `current_setting('app.*')` GUC variables are restricted. For values that must persist across restarts (e.g., retention days), interpolate the value into the SQL at Alembic migration time — see `alembic/versions/b7a1c9d5e2f0_add_audit_log_table.py` for the pattern. |
+| `admin_key_fp` is always-fingerprint | Compute SHA-256 last-8 from the raw `X-Admin-Key` header whenever present, including invalid keys. NULL only when the header is absent. Lets you correlate credential-probing attempts from a single attacker. |
+| MCP tools use new OpenAPI shapes | Breaking change from legacy `{scanned, references_found, dry_run}` etc. The 4 refactored tools return OpenAPI-aligned shapes in BOTH HTTP and in-process modes. External consumers (only `agentic-assistant`) must migrate — see `openspec/changes/cloud-db-source-of-truth/MIGRATION.md`. |
+| `ruff S608` on multi-line SQL strings | `# noqa: S608` span is single-line. Prefer single-line f-strings so the noqa covers the violation line, OR put the noqa on the LINE where `SELECT`/`DELETE` appears — not the closing paren line. Otherwise you get a RUF100 "unused noqa" flip-flop. |
 
 ## Quick Links by Task
 
