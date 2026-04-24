@@ -1,0 +1,122 @@
+{
+  "phase": "VALIDATE",
+  "target": "cloud-db-source-of-truth",
+  "branch": "openspec/cloud-db-source-of-truth",
+  "base": "main",
+  "head_sha": "dce2486",
+  "status": "pass",
+  "checks": {
+    "secrets": {
+      "status": "pass",
+      "description": "Diff against main grepped for API keys, passwords, OAuth tokens, 32+ hex strings, sk-/pk_ prefixes. No real secrets found — only test fixtures (real-key, wrong, placeholder, mock)."
+    },
+    "alembic_single_head": {
+      "status": "pass",
+      "head": "b7a1c9d5e2f0",
+      "description": "Exactly one Alembic head; new audit_log migration chains off prior single head."
+    },
+    "openspec_strict": {
+      "status": "pass",
+      "command": "openspec validate --strict cloud-db-source-of-truth",
+      "output": "Change 'cloud-db-source-of-truth' is valid"
+    },
+    "test_suite": {
+      "status": "pass",
+      "passed": 195,
+      "skipped": 1,
+      "failed": 0,
+      "scope": [
+        "tests/api/test_audit_middleware.py",
+        "tests/api/test_audit_ordering.py",
+        "tests/api/test_audit_routes.py",
+        "tests/api/test_audit_retention.py",
+        "tests/api/test_audit_observability.py",
+        "tests/api/test_kb_search.py",
+        "tests/api/test_kb_lint.py",
+        "tests/api/test_graph_routes.py",
+        "tests/api/test_reference_routes.py",
+        "tests/api/test_destructive_endpoints_audited.py",
+        "tests/mcp/",
+        "tests/cli/test_restore_from_cloud.py",
+        "tests/cli/test_api_client_retry.py",
+        "tests/unit/test_audit_decorator.py",
+        "tests/contract/test_openapi_drift.py"
+      ],
+      "skipped_reason": "tests/cli/test_restore_from_cloud.py::test_restore_integration_round_trip — requires MinIO docker-compose fixture (deferred pending infra)"
+    },
+    "ruff_touched_files": {
+      "status": "pass",
+      "command": "ruff check (touched src + tests)",
+      "output": "All checks passed!",
+      "note": "12 ruff errors remain in unrelated pre-existing test files (tests/agents/, tests/models/, tests/test_services/) — outside this proposal's scope"
+    },
+    "mypy_touched_files": {
+      "status": "pass",
+      "files": [
+        "src/api/middleware/audit.py",
+        "src/api/middleware/auth.py",
+        "src/api/middleware/error_handler.py",
+        "src/api/routes/audit_routes.py",
+        "src/api/routes/kb_routes.py",
+        "src/api/routes/graph_routes.py",
+        "src/api/routes/reference_routes.py",
+        "src/api/routes/kb_search_routes.py",
+        "src/cli/api_client.py",
+        "src/cli/restore_commands.py"
+      ],
+      "output": "Success: no issues found in 10 source files"
+    },
+    "behavioral_smoke": {
+      "status": "pass",
+      "description": "End-to-end TestClient run against a production-mode app (env: ENVIRONMENT=production, ADMIN_API_KEY=real-key, APP_SECRET_KEY=48-char). Verifies the full middleware stack + handlers + exception converters produce spec-conformant responses.",
+      "endpoints_verified": {
+        "GET /api/v1/kb/search (no creds)": {
+          "status": 401,
+          "content_type": "application/problem+json",
+          "body_keys": ["detail", "status", "title"]
+        },
+        "GET /api/v1/kb/search (invalid X-Admin-Key)": {
+          "status": 403,
+          "content_type": "application/problem+json",
+          "body_keys": ["detail", "status", "title"]
+        },
+        "POST /api/v1/references/extract (conflicting content_ids + since)": {
+          "status": 422,
+          "content_type": "application/problem+json",
+          "body_keys": ["detail", "errors", "status", "title"]
+        },
+        "GET /api/v1/audit (invalid path pattern)": {
+          "status": 422,
+          "content_type": "application/problem+json",
+          "body_keys": ["detail", "errors", "status", "title"]
+        },
+        "GET /health (legacy endpoint)": {
+          "status": 200,
+          "content_type": "application/json",
+          "note": "Legacy shape preserved — Problem only applied to /api/v1/{kb,graph,references,audit}"
+        }
+      },
+      "non_blocking_audit_failures_observed": true,
+      "non_blocking_audit_note": "TestClient runs against an empty DB without the audit_log table. Audit INSERT failures printed to stderr; response shapes were unaffected — proves D4b best-effort semantics."
+    }
+  },
+  "known_limitations": [
+    {
+      "area": "MinIO integration test",
+      "description": "tests/cli/test_restore_from_cloud.py::test_restore_integration_round_trip is skipped pending a docker-compose MinIO fixture. 10/11 unit tests cover argument parsing, subprocess orchestration, and the new Railway-safety guards. Full round-trip coverage requires infra work outside this proposal's scope.",
+      "severity": "acceptable"
+    },
+    {
+      "area": "agentic-assistant coordination",
+      "description": "MIGRATION.md placeholder for agentic-assistant PR SHA is explicit and marked as a merge gate the PR reviewer must verify. The external consumer project has not yet been updated to the new MCP shapes.",
+      "severity": "blocking-at-merge",
+      "merge_gate": "PR description must list the agentic-assistant PR URL + merge SHA before human approval."
+    },
+    {
+      "area": "CORS preflight on production",
+      "description": "The OPTIONS smoke response returned 400 because ALLOWED_ORIGINS defaults to localhost-only in production mode. Real production deployment configures ALLOWED_ORIGINS via env var. Not a proposal-scope defect.",
+      "severity": "acceptable"
+    }
+  ],
+  "summary": "All security, behavioral, and CI-parity checks pass. 195 tests green. The 3 known limitations are process/infra items appropriately deferred; one is a merge-time gate the reviewer must enforce. Ready for VAL_REVIEW."
+}
