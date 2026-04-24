@@ -32,8 +32,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    text,
 )
+from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, relationship, validates
 
@@ -104,7 +104,7 @@ class Highlight(Base):  # type: ignore[valid-type, misc]
     location_type = Column(String(20), nullable=True)  # location|page|order|time_offset|char
 
     # Tags (free-form list, e.g. ["favorite", ".h1"])
-    tags = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    tags = Column(JSONB, nullable=False, server_default=sql_text("'[]'::jsonb"))
 
     # Provenance
     source = Column(String(20), nullable=False, default="native")
@@ -116,12 +116,12 @@ class Highlight(Base):  # type: ignore[valid-type, misc]
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=text("NOW()"),
+        server_default=sql_text("NOW()"),
     )
     updated_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=text("NOW()"),
+        server_default=sql_text("NOW()"),
     )
 
     # Soft delete (Readwise tombstone OR user-removed)
@@ -139,14 +139,14 @@ class Highlight(Base):  # type: ignore[valid-type, misc]
         Index(
             "ix_highlights_content_active",
             "content_id",
-            postgresql_where=text("deleted_at IS NULL"),
+            postgresql_where=sql_text("deleted_at IS NULL"),
         ),
         Index("ix_highlights_target", "target_kind", "target_id"),
         Index(
             "uq_highlights_readwise_id",
             "readwise_id",
             unique=True,
-            postgresql_where=text("readwise_id IS NOT NULL"),
+            postgresql_where=sql_text("readwise_id IS NOT NULL"),
         ),
     )
 
