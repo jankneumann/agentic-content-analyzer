@@ -788,6 +788,10 @@ A separate cleanup job runs one hour after the backup and removes files older th
 
 #### Restoring from Backup
 
+> **Shortcut**: use `aca manage restore-from-cloud` to wrap the steps below.
+> See [SYNC_DOWN.md](./SYNC_DOWN.md) for the full workflow, PII caveats, and
+> troubleshooting.
+
 ```bash
 # 1. List available backups
 mc alias set railway $RAILWAY_MINIO_ENDPOINT $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD

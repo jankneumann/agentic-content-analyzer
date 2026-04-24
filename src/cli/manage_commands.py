@@ -16,8 +16,13 @@ from typing import Any
 import typer
 
 from src.cli.output import is_json_mode, output_result
+from src.cli.restore_commands import restore_from_cloud as _restore_from_cloud
 
 app = typer.Typer(help="Setup and operational management commands.")
+
+# Register restore-from-cloud subcommand (thin subprocess wrapper; see design D5).
+# Implementation lives in `src/cli/restore_commands.py`.
+app.command("restore-from-cloud")(_restore_from_cloud)
 
 
 @app.command("generate-secret")
