@@ -9,12 +9,21 @@ in HTTP mode (default), falling back to direct service calls when
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Iterator
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Transient HTTP status codes that warrant one retry (per design.md D11).
+_RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
+# Default retry policy for MCP-style endpoints: 1 retry, 1s backoff.
+_DEFAULT_RETRY_ATTEMPTS = 1
+_DEFAULT_RETRY_BACKOFF_SECONDS = 1.0
+# Default per-request timeout for MCP endpoints (30s per D11).
+_MCP_REQUEST_TIMEOUT = 30.0
 
 
 class SSEEvent:
@@ -234,6 +243,86 @@ class ApiClient:
         resp = self._client.delete(f"/api/v1/settings/overrides/{key}")
         resp.raise_for_status()
         return self._resp_json(resp)
+
+    # ── MCP-aligned endpoints (with transient retry + 30s timeout) ──────
+
+    def kb_search(self, query: str, limit: int = 20) -> dict[str, Any]:
+        """GET /api/v1/kb/search — returns KBSearchResponse shape."""
+        return self._request_with_retry(
+            "GET", "/api/v1/kb/search", params={"q": query, "limit": limit}
+        )
+
+    def graph_query(self, query: str, limit: int = 20) -> dict[str, Any]:
+        """POST /api/v1/graph/query — returns GraphQueryResponse shape."""
+        return self._request_with_retry(
+            "POST", "/api/v1/graph/query", json={"query": query, "limit": limit}
+        )
+
+    def references_extract(self, **body: Any) -> dict[str, Any]:
+        """POST /api/v1/references/extract — returns ReferencesExtractResponse shape."""
+        payload = {k: v for k, v in body.items() if v is not None}
+        return self._request_with_retry("POST", "/api/v1/references/extract", json=payload)
+
+    def references_resolve(self, batch_size: int | None = None) -> dict[str, Any]:
+        """POST /api/v1/references/resolve — returns ReferencesResolveResponse shape."""
+        payload: dict[str, Any] = {}
+        if batch_size is not None:
+            payload["batch_size"] = batch_size
+        return self._request_with_retry("POST", "/api/v1/references/resolve", json=payload)
+
+    def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        attempts: int = _DEFAULT_RETRY_ATTEMPTS,
+        backoff: float = _DEFAULT_RETRY_BACKOFF_SECONDS,
+        timeout: float = _MCP_REQUEST_TIMEOUT,
+    ) -> dict[str, Any]:
+        """Issue an HTTP request with one retry on transient errors.
+
+        Per design.md D11: retry once with backoff on {429, 502, 503, 504,
+        ConnectError/ReadError}. Non-retryable 4xx propagates immediately.
+        Timeout → raises httpx.TimeoutException (does NOT fall back to
+        in-process — the caller decides).
+        """
+        last_exc: Exception | None = None
+        for attempt in range(attempts + 1):
+            try:
+                resp = self._client.request(method, path, params=params, json=json, timeout=timeout)
+                if resp.status_code in _RETRYABLE_STATUS and attempt < attempts:
+                    logger.warning(
+                        "api_client: %s %s returned %d, retrying in %.1fs (attempt %d/%d)",
+                        method,
+                        path,
+                        resp.status_code,
+                        backoff,
+                        attempt + 1,
+                        attempts + 1,
+                    )
+                    time.sleep(backoff)
+                    continue
+                resp.raise_for_status()
+                return self._resp_json(resp)
+            except (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError) as exc:
+                last_exc = exc
+                if attempt < attempts:
+                    logger.warning(
+                        "api_client: %s %s transport error %s, retrying in %.1fs",
+                        method,
+                        path,
+                        type(exc).__name__,
+                        backoff,
+                    )
+                    time.sleep(backoff)
+                    continue
+                raise
+        # Should be unreachable; satisfy type-checker.
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("retry loop exhausted without response or exception")
 
     # ── Internal ───────────────────────────────────────────────────────
 
