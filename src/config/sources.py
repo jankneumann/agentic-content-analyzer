@@ -179,6 +179,22 @@ class HuggingFacePapersSource(SourceBase):
     request_delay: float = 1.0
 
 
+class ReadwiseSource(SourceBase):
+    """Readwise Highlights API v2 source.
+
+    A single entry syncs every book + highlight across all Readwise-connected
+    upstreams (Kindle, Instapaper, Pocket, Apple Books, Airr, Reader, etc.).
+    Use `source_types` to restrict which upstreams get imported.
+    """
+
+    type: Literal["readwise"] = "readwise"
+    # Restrict to specific Readwise source_types (e.g. kindle, instapaper, pocket,
+    # apple_books, airr, reader, podcast, supplemental). Empty list = all.
+    source_types: list[str] = []
+    # Include deleted highlights (tombstones) — needed for soft-delete sync.
+    include_deleted: bool = False
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -192,7 +208,8 @@ Source = Annotated[
     | BlogSource
     | ScholarSource
     | ArxivSource
-    | HuggingFacePapersSource,
+    | HuggingFacePapersSource
+    | ReadwiseSource,
     Field(discriminator="type"),
 ]
 
@@ -255,6 +272,10 @@ class SourcesConfig(BaseModel):
     def get_huggingface_papers_sources(self) -> list[HuggingFacePapersSource]:
         """Get all enabled HuggingFace Papers sources."""
         return [s for s in self.sources if isinstance(s, HuggingFacePapersSource) and s.enabled]
+
+    def get_readwise_sources(self) -> list[ReadwiseSource]:
+        """Get all enabled Readwise sources."""
+        return [s for s in self.sources if isinstance(s, ReadwiseSource) and s.enabled]
 
 
 # --- Source File Model (per-file schema) ---

@@ -28,6 +28,7 @@ from src.models.content_reference import (
     ResolutionStatus,
 )
 from src.models.digest import Digest, DigestStatus, DigestType
+from src.models.highlight import Highlight, HighlightResponse, HighlightSource, HighlightTargetKind
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
 from src.models.evaluation import (
     DatasetStatus,
@@ -115,6 +116,11 @@ __all__ = [
     "Digest",
     "DigestType",
     "DigestStatus",
+    # Highlight
+    "Highlight",
+    "HighlightResponse",
+    "HighlightSource",
+    "HighlightTargetKind",
     # Podcast
     "PodcastScriptRecord",
     "Podcast",
