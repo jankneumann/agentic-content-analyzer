@@ -1420,3 +1420,134 @@ def huggingface_papers(
         _ingest_via_api("huggingface_papers", params, "HuggingFace Papers ingestion")
     except httpx.ConnectError:
         _huggingface_papers_direct(max, after_date, force)
+
+
+# ---------------------------------------------------------------------------
+# aca ingest readwise
+# ---------------------------------------------------------------------------
+
+
+def _readwise_direct(
+    updated_after: datetime | None,
+    source_types: list[str] | None,
+    include_deleted: bool | None,
+    max_books: int | None,
+    force: bool,
+) -> None:
+    """Direct Readwise ingestion (legacy inline path)."""
+    from rich.console import Console
+
+    from src.ingestion.readwise import ReadwiseIngestResult
+
+    console = Console()
+    captured: ReadwiseIngestResult | None = None
+
+    def _capture(r: ReadwiseIngestResult) -> None:
+        nonlocal captured
+        captured = r
+
+    try:
+        from src.ingestion.orchestrator import ingest_readwise
+
+        ingest_readwise(
+            updated_after=updated_after,
+            source_types=source_types,
+            include_deleted=include_deleted,
+            max_books=max_books,
+            force_reprocess=force,
+            on_result=_capture,
+        )
+    except Exception as exc:
+        if is_json_mode():
+            output_result({"error": str(exc), "source": "readwise"}, success=False)
+        else:
+            console.print(f"[red]Readwise ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if is_json_mode():
+        payload: dict = {"source": "readwise"}
+        if captured:
+            payload.update(
+                {
+                    "books_ingested": captured.books_ingested,
+                    "books_updated": captured.books_updated,
+                    "books_skipped": captured.books_skipped,
+                    "highlights_created": captured.highlights_created,
+                    "highlights_updated": captured.highlights_updated,
+                    "highlights_soft_deleted": captured.highlights_soft_deleted,
+                    "latest_updated_at": (
+                        captured.latest_updated_at.isoformat()
+                        if captured.latest_updated_at
+                        else None
+                    ),
+                    "errors": captured.errors,
+                }
+            )
+        output_result(payload)
+    else:
+        if captured:
+            console.print(
+                "[green]Readwise ingestion complete.[/green] "
+                f"{captured.books_ingested} new / {captured.books_updated} updated books, "
+                f"{captured.highlights_created} new / {captured.highlights_updated} updated / "
+                f"{captured.highlights_soft_deleted} soft-deleted highlights."
+            )
+        else:
+            console.print("[green]Readwise ingestion complete.[/green]")
+
+
+@app.command("readwise")
+def readwise(
+    days: Annotated[
+        int | None,
+        typer.Option(
+            "--days",
+            "-d",
+            help="Only fetch items updated in the last N days (incremental sync).",
+        ),
+    ] = None,
+    source_types: Annotated[
+        str | None,
+        typer.Option(
+            "--source-types",
+            help="Comma-separated Readwise upstreams to restrict to "
+            "(kindle,instapaper,pocket,apple_books,airr,reader,podcast,supplemental). "
+            "Default: all.",
+        ),
+    ] = None,
+    include_deleted: Annotated[
+        bool,
+        typer.Option(
+            "--include-deleted",
+            help="Include Readwise tombstones (soft-deletes local highlights).",
+        ),
+    ] = False,
+    max_books: Annotated[
+        int | None,
+        typer.Option("--max", "-m", help="Cap on books per run."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Reset status=PENDING on existing books."),
+    ] = False,
+) -> None:
+    """Ingest books and highlights from Readwise (Kindle, Instapaper, Pocket, Apple Books, ...)."""
+    after_date = _days_to_after_date(days)
+    types_list = [s.strip() for s in source_types.split(",") if s.strip()] if source_types else None
+
+    if is_direct_mode():
+        return _readwise_direct(after_date, types_list, include_deleted or None, max_books, force)
+
+    try:
+        params: dict[str, Any] = {"force_reprocess": force}
+        if days is not None:
+            params["days_back"] = days
+        if types_list:
+            params["source_types"] = types_list
+        if include_deleted:
+            params["include_deleted"] = True
+        if max_books is not None:
+            params["max_books"] = max_books
+        _ingest_via_api("readwise", params, "Readwise ingestion")
+    except httpx.ConnectError:
+        _readwise_direct(after_date, types_list, include_deleted or None, max_books, force)

@@ -9,7 +9,7 @@ Each function:
 - Accepts the same parameters the service expects
 - Returns int (number of items ingested) or a result dataclass
 
-Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers, readwise
 
 """
 
@@ -673,6 +673,70 @@ def ingest_huggingface_papers(
     if on_result:
         on_result(result)
     return result.items_ingested
+
+
+@observe()
+def ingest_readwise(
+    *,
+    updated_after: datetime | None = None,
+    source_types: list[str] | None = None,
+    include_deleted: bool | None = None,
+    max_books: int | None = None,
+    force_reprocess: bool = False,
+    on_result: Callable | None = None,
+) -> int:
+    """Ingest books and highlights from Readwise.
+
+    Imports every Readwise-connected upstream (Kindle, Instapaper, Pocket,
+    Apple Books, Airr, Reader, podcast, supplemental) via the v2 export
+    endpoint. Each book becomes a Content row; each highlight becomes a
+    Highlight row anchored to that Content.
+
+    Configuration (sources.d/readwise.yaml) supplies defaults for
+    ``source_types`` and ``include_deleted`` when not passed explicitly.
+
+    Args:
+        updated_after: Only fetch books/highlights updated after this time.
+        source_types: Restrict to Readwise upstreams (empty/None = all).
+        include_deleted: Include tombstones for soft-delete sync.
+        max_books: Cap on books per run (defaults to settings.readwise_max_entries).
+        force_reprocess: Reset Content.status=PENDING on existing books.
+        on_result: Optional callback receiving the full ReadwiseIngestResult.
+
+    Returns:
+        Number of books ingested or updated.
+    """
+    from src.config.sources import load_sources_config
+    from src.ingestion.readwise import ReadwiseContentIngestionService
+
+    # Apply sources.d/readwise.yaml defaults
+    if source_types is None or include_deleted is None:
+        try:
+            config = load_sources_config()
+            rw_sources = config.get_readwise_sources()
+            if rw_sources:
+                rw = rw_sources[0]
+                if source_types is None:
+                    source_types = rw.source_types or None
+                if include_deleted is None:
+                    include_deleted = rw.include_deleted
+        except Exception:
+            logger.debug("Could not load readwise sources config, using defaults")
+
+    service = ReadwiseContentIngestionService()
+    try:
+        result = service.ingest_content(
+            updated_after=updated_after,
+            source_types=source_types,
+            include_deleted=include_deleted,
+            max_books=max_books,
+            force_reprocess=force_reprocess,
+        )
+        if on_result is not None:
+            on_result(result)
+        return result.items_ingested
+    finally:
+        service.close()
 
 
 @observe()

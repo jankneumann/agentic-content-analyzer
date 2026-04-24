@@ -528,6 +528,12 @@ class Settings(BaseSettings):
     # Unified Web Search Provider (for ad-hoc search: chat, podcast, review)
     web_search_provider: str = "tavily"  # tavily, perplexity, grok
 
+    # Readwise Configuration (Highlights API v2 + Reader API v3)
+    readwise_api_key: str | None = None  # Token from https://readwise.io/access_token
+    readwise_max_entries: int = 500  # Max books per sync run
+    readwise_include_deleted: bool = False  # Include tombstones in highlights export
+    readwise_source_types_filter: list[str] = []  # e.g. ["kindle","instapaper"] — empty = all
+
     # Podcast Ingestion Configuration
     podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"
     podcast_max_duration_minutes: int = 120  # Max episode duration to transcribe
