@@ -261,3 +261,313 @@ class TestGetCitedBy:
         data = response.json()
         assert data["items"] == []
         assert data["total"] == 0
+
+
+# =============================================================================
+# POST /api/v1/references/extract and /api/v1/references/resolve
+# (added by cloud-db-source-of-truth — separate from the /contents/*/references
+# endpoints above)
+# =============================================================================
+
+from contextlib import contextmanager  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+from src.models.content import Content, ContentSource, ContentStatus  # noqa: E402
+
+
+@pytest.fixture
+def references_v2_db(monkeypatch, db_session):
+    """Patch the new ``src.api.routes.reference_routes`` module's ``get_db``."""
+
+    @contextmanager
+    def _fake_get_db():
+        yield db_session
+
+    monkeypatch.setattr("src.api.routes.reference_routes.get_db", _fake_get_db)
+    return _fake_get_db
+
+
+def _make_extract_content(db_session, *, ingested_at: datetime | None = None) -> Content:
+    stamp = ingested_at or datetime.now(UTC)
+    content = Content(
+        source_type=ContentSource.GMAIL,
+        source_id=f"ref-extract-{stamp.timestamp()}",
+        title="Seed content",
+        markdown_content="# Title\nhttps://arxiv.org/abs/2401.00001 body",
+        content_hash=f"hash-{stamp.timestamp()}",
+        status=ContentStatus.COMPLETED,
+        ingested_at=stamp,
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+    return content
+
+
+class TestExtractReferencesEndpoint:
+    def test_by_content_ids_returns_counts(self, client, db_session, references_v2_db):
+        c1 = _make_extract_content(db_session)
+        c2 = _make_extract_content(db_session)
+
+        fake_result = {
+            "references_extracted": 3,
+            "content_processed": 2,
+            "has_more": False,
+            "next_cursor": None,
+            "per_content": [],
+        }
+        with patch(
+            "src.api.routes.reference_routes._run_extraction",
+            return_value=fake_result,
+        ):
+            resp = client.post(
+                "/api/v1/references/extract",
+                json={"content_ids": [c1.id, c2.id]},
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["references_extracted"] == 3
+        assert body["content_processed"] == 2
+        assert body["has_more"] is False
+        assert body["next_cursor"] is None
+
+    def test_date_range_has_more_and_cursor(self, client, references_v2_db):
+        cursor = datetime(2026, 4, 15, 12, 0, tzinfo=UTC)
+        fake_result = {
+            "references_extracted": 5,
+            "content_processed": 50,
+            "has_more": True,
+            "next_cursor": cursor,
+            "per_content": [{"content_id": i, "references_found": 0} for i in range(50)],
+        }
+        with patch(
+            "src.api.routes.reference_routes._run_extraction",
+            return_value=fake_result,
+        ):
+            resp = client.post(
+                "/api/v1/references/extract",
+                json={
+                    "since": "2026-04-01T00:00:00+00:00",
+                    "until": "2026-04-21T00:00:00+00:00",
+                    "batch_size": 50,
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["has_more"] is True
+        assert body["next_cursor"] is not None
+        assert body["per_content"] is not None
+        assert len(body["per_content"]) == 50
+
+    def test_per_content_omitted_on_large_batches(self, client, references_v2_db):
+        fake_result = {
+            "references_extracted": 0,
+            "content_processed": 150,
+            "has_more": False,
+            "next_cursor": None,
+            "per_content": [{"content_id": i, "references_found": 0} for i in range(150)],
+        }
+        with patch(
+            "src.api.routes.reference_routes._run_extraction",
+            return_value=fake_result,
+        ):
+            resp = client.post(
+                "/api/v1/references/extract",
+                json={"since": "2026-04-01T00:00:00+00:00", "batch_size": 500},
+            )
+        body = resp.json()
+        assert body["per_content"] is None
+
+    def test_conflicting_filters_returns_422(self, client, references_v2_db):
+        resp = client.post(
+            "/api/v1/references/extract",
+            json={
+                "content_ids": [1, 2],
+                "since": "2026-04-01T00:00:00+00:00",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_oversized_content_ids_returns_422(self, client, references_v2_db):
+        resp = client.post(
+            "/api/v1/references/extract",
+            json={"content_ids": list(range(1, 502))},
+        )
+        assert resp.status_code == 422
+
+    def test_empty_body_returns_422(self, client, references_v2_db):
+        resp = client.post("/api/v1/references/extract", json={})
+        assert resp.status_code == 422
+
+    def test_extra_field_rejected_422(self, client, references_v2_db):
+        resp = client.post(
+            "/api/v1/references/extract",
+            json={"content_ids": [1], "unexpected": True},
+        )
+        assert resp.status_code == 422
+
+    def test_timeout_returns_504(self, client, references_v2_db):
+        async def raising_wait_for(coro, *args, **kwargs):
+            del args, kwargs  # asyncio.wait_for signature passes timeout
+            coro.close()
+            raise TimeoutError
+
+        with patch(
+            "src.api.routes.reference_routes.asyncio.wait_for",
+            side_effect=raising_wait_for,
+        ):
+            resp = client.post(
+                "/api/v1/references/extract",
+                json={"content_ids": [1]},
+            )
+        assert resp.status_code == 504
+        assert "application/problem+json" in resp.headers.get("content-type", "")
+        body = resp.json()
+        assert body["status"] == 504
+
+    def test_audit_records_extract_operation(self, client, db_session, references_v2_db):
+        c = _make_extract_content(db_session)
+        fake_result = {
+            "references_extracted": 0,
+            "content_processed": 1,
+            "has_more": False,
+            "next_cursor": None,
+            "per_content": [{"content_id": c.id, "references_found": 0}],
+        }
+        captured: list[dict] = []
+
+        def capture(**kwargs):
+            captured.append(kwargs)
+
+        with (
+            patch(
+                "src.api.routes.reference_routes._run_extraction",
+                return_value=fake_result,
+            ),
+            patch(
+                "src.api.middleware.audit._default_writer",
+                side_effect=capture,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/references/extract",
+                json={"content_ids": [c.id]},
+            )
+        assert resp.status_code == 200
+        rows = [r for r in captured if r.get("path") == "/api/v1/references/extract"]
+        assert rows and rows[0]["operation"] == "references.extract"
+
+
+class TestResolveReferencesEndpoint:
+    def test_default_batch_empty_body(self, client, references_v2_db):
+        fake_result = {
+            "resolved_count": 7,
+            "still_unresolved_count": 0,
+            "has_more": False,
+        }
+        with patch(
+            "src.api.routes.reference_routes._run_resolution",
+            return_value=fake_result,
+        ) as m:
+            resp = client.post("/api/v1/references/resolve", json={})
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body == fake_result
+        m.assert_called_once()
+        assert m.call_args.kwargs.get("batch_size") == 100
+
+    def test_explicit_batch_size_passed_through(self, client, references_v2_db):
+        fake_result = {
+            "resolved_count": 3,
+            "still_unresolved_count": 2,
+            "has_more": True,
+        }
+        with patch(
+            "src.api.routes.reference_routes._run_resolution",
+            return_value=fake_result,
+        ) as m:
+            resp = client.post(
+                "/api/v1/references/resolve",
+                json={"batch_size": 500},
+            )
+        assert resp.status_code == 200
+        assert m.call_args.kwargs.get("batch_size") == 500
+        assert resp.json()["has_more"] is True
+
+    def test_oversized_batch_size_returns_422(self, client, references_v2_db):
+        resp = client.post(
+            "/api/v1/references/resolve",
+            json={"batch_size": 5000},
+        )
+        assert resp.status_code == 422
+
+    def test_under_minimum_batch_size_returns_422(self, client, references_v2_db):
+        resp = client.post(
+            "/api/v1/references/resolve",
+            json={"batch_size": 0},
+        )
+        assert resp.status_code == 422
+
+    def test_extra_field_rejected_422(self, client, references_v2_db):
+        resp = client.post(
+            "/api/v1/references/resolve",
+            json={"batch_size": 100, "unknown": True},
+        )
+        assert resp.status_code == 422
+
+    def test_no_body_uses_default_batch(self, client, references_v2_db):
+        fake_result = {
+            "resolved_count": 0,
+            "still_unresolved_count": 0,
+            "has_more": False,
+        }
+        with patch(
+            "src.api.routes.reference_routes._run_resolution",
+            return_value=fake_result,
+        ) as m:
+            resp = client.post("/api/v1/references/resolve")
+        assert resp.status_code == 200
+        assert m.call_args.kwargs.get("batch_size") == 100
+
+    def test_timeout_returns_504(self, client, references_v2_db):
+        async def raising_wait_for(coro, *args, **kwargs):
+            del args, kwargs
+            coro.close()
+            raise TimeoutError
+
+        with patch(
+            "src.api.routes.reference_routes.asyncio.wait_for",
+            side_effect=raising_wait_for,
+        ):
+            resp = client.post("/api/v1/references/resolve", json={})
+        assert resp.status_code == 504
+        body = resp.json()
+        assert body["status"] == 504
+
+    def test_audit_records_resolve_operation(self, client, references_v2_db):
+        fake_result = {
+            "resolved_count": 0,
+            "still_unresolved_count": 0,
+            "has_more": False,
+        }
+        captured: list[dict] = []
+
+        def capture(**kwargs):
+            captured.append(kwargs)
+
+        with (
+            patch(
+                "src.api.routes.reference_routes._run_resolution",
+                return_value=fake_result,
+            ),
+            patch(
+                "src.api.middleware.audit._default_writer",
+                side_effect=capture,
+            ),
+        ):
+            resp = client.post("/api/v1/references/resolve", json={})
+        assert resp.status_code == 200
+        rows = [r for r in captured if r.get("path") == "/api/v1/references/resolve"]
+        assert rows and rows[0]["operation"] == "references.resolve"
