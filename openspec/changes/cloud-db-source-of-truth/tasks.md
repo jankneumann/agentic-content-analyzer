@@ -102,43 +102,43 @@ Phase → Work Package mapping:
 
 ## Phase 2: Audit Logging (wp-audit)
 
-- [ ] 2.1 Write tests for `AuditMiddleware` — every `/api/v1/*` request logged (success AND failure), OPTIONS bypass, admin_key_fp fingerprinting (SHA-256 last 8 chars from raw `X-Admin-Key` header whenever present including invalid keys, NULL only when header absent), body_size capture, 401 no-credentials logging with `notes.auth_failure="missing_key"`, 403 invalid-key logging with `admin_key_fp` set AND `notes.auth_failure="invalid_key"`, client_ip from `Cf-Connecting-Ip`/`X-Forwarded-For`/`request.client.host` fallback chain, write-failure is non-blocking (stderr log, no exception propagation)
+- [x] 2.1 Write tests for `AuditMiddleware` — every `/api/v1/*` request logged (success AND failure), OPTIONS bypass, admin_key_fp fingerprinting (SHA-256 last 8 chars from raw `X-Admin-Key` header whenever present including invalid keys, NULL only when header absent), body_size capture, 401 no-credentials logging with `notes.auth_failure="missing_key"`, 403 invalid-key logging with `admin_key_fp` set AND `notes.auth_failure="invalid_key"`, client_ip from `Cf-Connecting-Ip`/`X-Forwarded-For`/`request.client.host` fallback chain, write-failure is non-blocking (stderr log, no exception propagation)
   **Spec scenarios**: audit-log:Request to any /api/v1/* endpoint creates log entry, No credentials (401) is logged, Invalid admin key (403) is logged with fingerprint, OPTIONS preflight requests are not logged, Request body is not stored, Failed request is still logged, Audit write failure does not block the response, Client IP is extracted via proxy-aware headers
   **Design decisions**: D3, D3a (middleware ordering + admin_key_fp always-compute-when-header-present policy), D4 (append-only schema), D4b (best-effort semantics)
   **Contracts**: `contracts/db/schema.sql`
   **Dependencies**: 0.4
 
-- [ ] 2.2 Implement `src/api/middleware/audit.py` — middleware + `@audited` decorator; decorator adds `operation` to the row the middleware writes (decorator is NOT a gate, it is metadata enrichment)
+- [x] 2.2 Implement `src/api/middleware/audit.py` — middleware + `@audited` decorator; decorator adds `operation` to the row the middleware writes (decorator is NOT a gate, it is metadata enrichment)
   **Dependencies**: 2.1
 
-- [ ] 2.3 Write middleware-ordering test — assert registration order in `src/api/app.py` is `[TraceMiddleware, AuditMiddleware, AuthMiddleware, CORSMiddleware]` (outermost-first) so audit wraps auth failures AND CORS/OPTIONS bypass still works
+- [x] 2.3 Write middleware-ordering test — assert registration order in `src/api/app.py` is `[TraceMiddleware, AuditMiddleware, AuthMiddleware, CORSMiddleware]` (outermost-first) so audit wraps auth failures AND CORS/OPTIONS bypass still works
   **Design decisions**: D3a
   **Dependencies**: 2.2
 
-- [ ] 2.4 Write Alembic migration test — upgrade creates `audit_log` table with correct schema, downgrade removes it
+- [x] 2.4 Write Alembic migration test — upgrade creates `audit_log` table with correct schema, downgrade removes it
   **Contracts**: `contracts/db/schema.sql`
   **Dependencies**: 0.4
 
-- [ ] 2.5 Create Alembic migration `alembic/versions/<rev>_add_audit_log_table.py`
+- [x] 2.5 Create Alembic migration `alembic/versions/<rev>_add_audit_log_table.py`
   **Dependencies**: 2.4
 
-- [ ] 2.6 Write tests for `GET /api/v1/audit` — time range, operation filter, status_code filter, exact-match path filter, invalid-path-pattern → 422, limit clamping
+- [x] 2.6 Write tests for `GET /api/v1/audit` — time range, operation filter, status_code filter, exact-match path filter, invalid-path-pattern → 422, limit clamping
   **Spec scenarios**: audit-log:Query recent audit entries, Query by operation, Query by exact path, Invalid path filter is rejected, Query respects max limit
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1audit`
   **Dependencies**: 0.2, 2.5
 
-- [ ] 2.7 Implement `src/api/routes/audit_routes.py` — query endpoint with filters (exact-match path with pattern validation)
+- [x] 2.7 Implement `src/api/routes/audit_routes.py` — query endpoint with filters (exact-match path with pattern validation)
   **Dependencies**: 2.6
 
-- [ ] 2.8 Write test for pg_cron retention job — simulate old row, run retention SQL with an interpolated interval value, assert deletion; test also asserts that the Alembic migration INTERPOLATES the retention-days value literally into the cron command (no `current_setting(...)` GUC call in the resulting SQL)
+- [x] 2.8 Write test for pg_cron retention job — simulate old row, run retention SQL with an interpolated interval value, assert deletion; test also asserts that the Alembic migration INTERPOLATES the retention-days value literally into the cron command (no `current_setting(...)` GUC call in the resulting SQL)
   **Spec scenarios**: audit-log:Retention job deletes old entries, Retention interval is fixed by migration, not runtime
   **Design decisions**: D4a (migration-time interpolation)
   **Dependencies**: 2.5
 
-- [ ] 2.9 Create data migration registering pg_cron retention job — read `AUDIT_LOG_RETENTION_DAYS` at migration time, interpolate into cron SQL (NOT `current_setting`)
+- [x] 2.9 Create data migration registering pg_cron retention job — read `AUDIT_LOG_RETENTION_DAYS` at migration time, interpolate into cron SQL (NOT `current_setting`)
   **Dependencies**: 2.8
 
-- [ ] 2.10 Write observability test — assert `AuditMiddleware` sets OTel span attributes (`audit.operation`, `audit.status_code`, `audit.write_failure` on error) and `TraceMiddleware`'s request_id flows into `audit_log.request_id`
+- [x] 2.10 Write observability test — assert `AuditMiddleware` sets OTel span attributes (`audit.operation`, `audit.status_code`, `audit.write_failure` on error) and `TraceMiddleware`'s request_id flows into `audit_log.request_id`
   **Spec scenarios**: audit-log:Audit middleware observability attributes (all 3 scenarios — audit span populated on success, marks write failure, trace ID correlation)
   **Design decisions**: D10 (observability inherits FastAPI stack; audit span SHALL clauses)
   **Dependencies**: 2.2

@@ -23,6 +23,7 @@ from src.api.health_routes import router as health_router
 from src.api.image_generation_routes import router as image_generation_router
 from src.api.job_routes import router as job_router
 from src.api.kb_routes import router as kb_router
+from src.api.middleware.audit import AuditMiddleware
 from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
 from src.api.middleware.security_headers import SecurityHeadersMiddleware
@@ -36,6 +37,7 @@ from src.api.pipeline_routes import router as pipeline_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.pricing_routes import router as pricing_router
 from src.api.reference_routes import router as reference_router
+from src.api.routes.audit_routes import router as audit_router
 from src.api.save_routes import router as save_router
 from src.api.script_routes import router as script_router
 from src.api.search_routes import router as search_router
@@ -148,6 +150,12 @@ app = FastAPI(
 # Auth middleware — enforces session cookie or X-Admin-Key on all non-exempt endpoints
 app.add_middleware(AuthMiddleware)
 
+# Audit middleware — logs every /api/v1/* request (incl. auth failures) to audit_log.
+# MUST be registered AFTER AuthMiddleware so it wraps Auth (outer layer runs first
+# in Starlette's LIFO middleware stack). This places audit OUTSIDE auth so 401/403
+# responses are still captured — per spec audit-log §D3a.
+app.add_middleware(AuditMiddleware)
+
 # Security headers — adds X-Content-Type-Options, X-Frame-Options, CSP, etc.
 app.add_middleware(SecurityHeadersMiddleware, environment=settings.environment)
 
@@ -208,6 +216,7 @@ app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 app.include_router(agent_router)  # Agentic analysis (tasks, insights, approvals)
 app.include_router(evaluation_router)  # LLM router evaluation and calibration
 app.include_router(kb_router)  # Knowledge base compilation, topics, notes, Q&A
+app.include_router(audit_router)  # Audit log query endpoint (/api/v1/audit)
 
 
 @app.get("/api/v1/system/config", tags=["system"])
