@@ -1,0 +1,34 @@
+{
+  "review_type": "val",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "GPT-5 Codex",
+  "validation_report_verdict": "contradicted",
+  "impl_review_resolution_status": {
+    "C1_restore_safety": "partial",
+    "H1_problem_bodies": "resolved",
+    "H2_kb_parity": "resolved",
+    "H3_next_cursor": "partial",
+    "H4_strict_http": "resolved",
+    "M1_middleware_order": "resolved",
+    "M2_handler_notes": "resolved",
+    "M3_migration_md": "resolved"
+  },
+  "findings": [
+    {
+      "id": "VR-001",
+      "type": "security",
+      "criticality": "critical",
+      "description": "The IMPL_FIX hardens two dangerous cases, but restore safety is still bypassable through a misconfigured profile. `_resolve_target_db()` rejects `railway_database_url` fallback and an explicit `--target-db` equal to `RAILWAY_DATABASE_URL`, yet it still returns `settings.database_url` unchecked at `src/cli/restore_commands.py:93-106`. If the active profile's `DATABASE_URL` is accidentally set to the Railway production URL, `aca manage restore-from-cloud` will still run `pg_restore --clean --if-exists` against prod without requiring `--allow-remote-target`. The added tests only cover the missing-`DATABASE_URL` fallback and explicit `--target-db` equality cases (`tests/cli/test_restore_from_cloud.py:242-305`); they do not cover `DATABASE_URL == RAILWAY_DATABASE_URL` or any other remote/non-local `DATABASE_URL`.",
+      "resolution": "Apply the same remote-target guard to the default `DATABASE_URL` path before returning it. At minimum, reject normalized equality between `database_url` and `railway_database_url`; preferably, reject any non-local/non-scratch target unless `--allow-remote-target` is set. Add tests for `DATABASE_URL == RAILWAY_DATABASE_URL` and for a remote-host `DATABASE_URL` without the override flag.",
+      "disposition": "fix"
+    },
+    {
+      "id": "VR-002",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "The H3 parity fix switched both code paths to `overflow.ingested_at`, but the normative spec still requires `next_cursor` to be the last processed item's timestamp. `openspec/changes/cloud-db-source-of-truth/specs/content-references/spec.md:13-14,35` says callers paginate by advancing `since` to the last-processed content's `ingested_at`, while the HTTP route now returns the first unprocessed row at `src/api/routes/reference_routes.py:117-125` and the MCP in-process path mirrors that at `src/mcp_server.py:1910-1941`. The route test only asserts that `next_cursor` is non-null (`tests/api/test_reference_routes.py:335-361`), so validation does not catch the spec drift.",
+      "resolution": "Reconcile the spec with the implementation before merge. Either update `specs/content-references/spec.md` (and any related design text) to state that `next_cursor` is the first unprocessed row's `ingested_at`, or change both implementations and tests back to the last-processed-item rule.",
+      "disposition": "fix"
+    }
+  ]
+}

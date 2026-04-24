@@ -145,6 +145,39 @@ def test_auth_failure_returns_problem_shape(path, method, expected_statuses):
         )
 
 
+def test_legacy_kb_paths_do_not_return_problem_shape(monkeypatch):
+    """VF-H1 (gemini VAL_REVIEW VR-001): legacy /api/v1/kb/topics/* etc. must
+    keep their historical `{error, detail}` JSON error shape. Only the NEW
+    cloud-db-source-of-truth endpoints emit application/problem+json — so the
+    web frontend's existing error parsers don't silently break.
+    """
+    import os
+
+    from fastapi.testclient import TestClient
+
+    os.environ.setdefault("ENVIRONMENT", "production")
+    os.environ["ADMIN_API_KEY"] = "the-real-key"
+
+    from src.api.app import app
+
+    with TestClient(app) as client:
+        # /api/v1/kb/topics/nonexistent — a legacy path that shares the /api/v1/kb/
+        # prefix but is NOT in the cloud-db-source-of-truth contract. It should
+        # NOT return Problem+JSON on auth failure.
+        resp = client.get("/api/v1/kb/topics/nonexistent")
+        assert resp.status_code in (401, 403)
+        ctype = resp.headers.get("content-type", "")
+        assert "application/problem+json" not in ctype, (
+            f"Legacy /api/v1/kb/topics/* leaked Problem shape — content-type={ctype!r}, "
+            f"body={resp.text!r}. This is the gemini VR-001 regression."
+        )
+        # Legacy shape is {error, detail}, not {title, status, detail}
+        body = resp.json()
+        assert "title" not in body or "error" in body, (
+            f"Legacy endpoint returned Problem-style body: {body}"
+        )
+
+
 def test_invalid_admin_key_returns_problem_403(monkeypatch):
     """IR-003: an explicit wrong X-Admin-Key on a Problem-path endpoint must
     produce a 403 Problem response, not the legacy `{error, detail}` shape.

@@ -18,11 +18,21 @@ logger = get_logger(__name__)
 # application/problem+json on errors. Every other legacy endpoint keeps its
 # historical `{error, detail}` JSON shape so existing web/CLI clients don't
 # break mid-release.
+#
+# VF-H1 (gemini VAL_REVIEW VR-001): we can NOT use broad prefix matches like
+# "/api/v1/kb/" because that catches the legacy `/api/v1/kb/topics/*`,
+# `/api/v1/kb/compile`, `/api/v1/kb/index`, `/api/v1/kb/query` routes that
+# existing web clients already depend on. We match the NEW paths exactly
+# (with prefix semantics only where the new endpoint has sub-paths like
+# `/lint/fix` under `/lint`).
 _PROBLEM_PATH_PREFIXES = (
-    "/api/v1/kb/",
-    "/api/v1/graph/",
-    "/api/v1/references/",
-    "/api/v1/audit",
+    "/api/v1/kb/search",
+    "/api/v1/kb/lint",  # covers /lint and /lint/fix
+    "/api/v1/graph/query",
+    "/api/v1/graph/extract-entities",
+    "/api/v1/references/extract",
+    "/api/v1/references/resolve",
+    "/api/v1/audit",  # covers /audit and /audit/
 )
 
 
