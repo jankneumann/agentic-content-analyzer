@@ -110,21 +110,39 @@ def test_resolve_references_http_response_has_required_keys(http_mode_env):
 
 
 def test_search_knowledge_base_inprocess_shape_conforms(monkeypatch):
-    # No HTTP env → in-process path.
+    """IR-006 fix: in-process MUST match HTTP behavior exactly — including
+    dropping rows whose last_compiled_at/updated_at/created_at are all None
+    (no fabricated `datetime.now()` timestamps)."""
+    from datetime import UTC, datetime
+
     monkeypatch.delenv("ACA_API_BASE_URL", raising=False)
     monkeypatch.delenv("ACA_ADMIN_KEY", raising=False)
 
-    fake_topic = MagicMock()
-    fake_topic.slug = "demo"
-    fake_topic.name = "Demo Title"
-    fake_topic.category = "ai"
-    fake_topic.trend = "rising"
-    fake_topic.status = None
-    fake_topic.summary = "summary"
-    fake_topic.relevance_score = 0.5
-    fake_topic.mention_count = 3
-    fake_topic.last_compiled_at = None
-    fake_topic.article_md = ""
+    # Topic with a valid last_compiled_at — included.
+    compiled = MagicMock()
+    compiled.slug = "demo"
+    compiled.name = "Demo Title"
+    compiled.status = None
+    compiled.summary = "demo summary text"
+    compiled.article_md = "Demo article mentions demo in text."
+    compiled.relevance_score = 0.5
+    compiled.mention_count = 3
+    compiled.last_compiled_at = datetime(2026, 4, 20, 10, tzinfo=UTC)
+    compiled.updated_at = None
+    compiled.created_at = None
+
+    # Topic with NO timestamp at all — dropped to match HTTP.
+    orphan = MagicMock()
+    orphan.slug = "demo-orphan"
+    orphan.name = "Demo Orphan"
+    orphan.status = None
+    orphan.summary = "demo but unpublished"
+    orphan.article_md = "demo"
+    orphan.relevance_score = 0.3
+    orphan.mention_count = 1
+    orphan.last_compiled_at = None
+    orphan.updated_at = None
+    orphan.created_at = None
 
     class FakeQuery:
         def filter(self, *a, **k):
@@ -137,7 +155,7 @@ def test_search_knowledge_base_inprocess_shape_conforms(monkeypatch):
             return self
 
         def all(self):
-            return [fake_topic]
+            return [compiled, orphan]
 
     class FakeDB:
         def query(self, *a):
@@ -156,10 +174,15 @@ def test_search_knowledge_base_inprocess_shape_conforms(monkeypatch):
         data = json.loads(mcp.search_knowledge_base(query="demo"))
 
     assert KB_SEARCH_TOP_REQUIRED.issubset(data.keys())
+    # Orphan dropped → only one topic returned, matching HTTP semantics.
     assert len(data["topics"]) == 1
+    assert data["topics"][0]["slug"] == "demo"
     assert KB_SEARCH_RESULT_REQUIRED.issubset(data["topics"][0].keys())
-    # last_compiled_at must always be a string (never None) — spec requires present.
     assert isinstance(data["topics"][0]["last_compiled_at"], str)
+    # total_count is the FULL ranked count (pre-limit) — the orphan matched the
+    # query too, so it's still counted in the total even though excluded from
+    # topics (mirrors HTTP behavior before the timestamp filter).
+    assert data["total_count"] >= 1
 
 
 def test_resolve_references_inprocess_shape_conforms(monkeypatch):

@@ -332,12 +332,18 @@ class AuditMiddleware(BaseHTTPMiddleware):
             error = exc
             status_code = 500
 
-        # Compute notes based on the response status.
+        # Compute notes based on the response status + handler-supplied enrichment.
         notes: dict[str, Any] = {}
         if status_code == 401 and raw_admin_key is None:
             notes["auth_failure"] = "missing_key"
         elif status_code == 403 and raw_admin_key is not None:
             notes["auth_failure"] = "invalid_key"
+        # IR-007 fix: handlers may contribute structured notes (e.g., content_id,
+        # zero-diff markers) via ``request.state.audit_notes``. Merge them in.
+        # Handler-supplied keys win over middleware-default keys.
+        handler_notes = getattr(request.state, "audit_notes", None)
+        if isinstance(handler_notes, dict):
+            notes.update(handler_notes)
 
         operation = _resolve_operation(request)
         request_id = _resolve_request_id(request)

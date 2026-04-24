@@ -37,8 +37,28 @@ tools via MCP. Before merging this proposal, update that repo:
 
 ### Migration status
 
-- **agentic-assistant PR**: `<link or SHA once created>`
-- **Merge order**: agentic-assistant PR must land **before** this proposal merges. The ACA PR description should reference the agentic-assistant commit so both sides land together.
+- **agentic-assistant PR**: 🚧 NOT YET OPENED. This placeholder MUST be replaced
+  with the actual PR link and commit SHA before merging the ACA PR. See
+  "Merge gate" below.
+- **Merge order**: agentic-assistant PR must land **before** this proposal
+  merges. The ACA PR description should reference the agentic-assistant
+  commit so both sides land together.
+
+### Merge gate (enforced by PR review, not CI)
+
+The ACA PR description MUST contain this section, fully resolved, before a
+human reviewer approves:
+
+```
+## Consumer-side migration
+- agentic-assistant PR: <URL>
+- agentic-assistant merge SHA: <sha>
+- Migration checklist complete: [x]
+```
+
+A CI check cannot enforce this because the coordinating repo is private and
+external to this branch's checks. The reviewer must verify the cross-repo PR
+is merged and that the SHA in this file matches the cross-repo commit.
 
 ## Owner-side migration checklist
 

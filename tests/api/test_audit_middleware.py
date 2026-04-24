@@ -188,6 +188,71 @@ def test_non_decorated_endpoint_operation_is_null(app_factory, recorder):
     assert recorder.last()["operation"] is None
 
 
+def test_handler_notes_merge_into_audit_row(recorder):
+    """IR-007: handlers may contribute structured notes via
+    ``request.state.audit_notes``. The middleware merges them into the row.
+
+    Built on plain Starlette (bypassing FastAPI's DI) so we can directly
+    assert the middleware contract. The real end-to-end integration against
+    FastAPI routes lives in the route tests (e.g., test_kb_lint,
+    test_graph_routes) where the handler sets audit_notes and the full stack
+    runs.
+    """
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    from src.api.middleware.audit import AuditMiddleware
+
+    async def lint_fix(request: Request) -> JSONResponse:
+        request.state.audit_notes = {"corrections_applied": 3, "zero_diff": False}
+        return JSONResponse({"ok": 1})
+
+    app = Starlette(routes=[Route("/api/v1/lint/fix", lint_fix, methods=["GET"])])
+    app.add_middleware(AuditMiddleware, writer=recorder)
+
+    with TestClient(app) as c:
+        c.get("/api/v1/lint/fix")
+
+    row = recorder.last()
+    assert row["notes"]["corrections_applied"] == 3
+    assert row["notes"]["zero_diff"] is False
+
+
+def test_handler_notes_do_not_override_auth_failure_markers(recorder):
+    """Handler notes merge AFTER auth_failure markers — but in practice the
+    handler only runs on 2xx paths, so there's no conflict. This test pins
+    the invariant that auth_failure is set by the middleware on 401 even
+    without any handler state."""
+    from fastapi import FastAPI
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import JSONResponse
+
+    from src.api.middleware.audit import AuditMiddleware
+
+    app = FastAPI()
+
+    @app.get("/api/v1/protected")
+    async def protected() -> dict[str, str]:  # pragma: no cover — never reached
+        return {"ok": "true"}
+
+    class FakeAuth(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            return JSONResponse({"detail": "no creds"}, status_code=401)
+
+    # Register order: FakeAuth first (innermost), AuditMiddleware last (outermost).
+    app.add_middleware(FakeAuth)
+    app.add_middleware(AuditMiddleware, writer=recorder)
+
+    with TestClient(app) as c:
+        c.get("/api/v1/protected")
+
+    row = recorder.last()
+    assert row["status_code"] == 401
+    assert row["notes"].get("auth_failure") == "missing_key"
+
+
 def test_non_api_v1_paths_are_not_logged(app_factory, recorder):
     app = app_factory()
     with TestClient(app) as c:

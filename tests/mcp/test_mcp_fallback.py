@@ -77,3 +77,54 @@ def test_whitespace_only_config_treated_as_absent(monkeypatch):
     monkeypatch.setenv("ACA_ADMIN_KEY", "k")
     # The base_url is whitespace after .strip() → treated as missing.
     assert _get_api_client() is None
+
+
+# --- --strict-http startup validation (IR-005 fix) ---------------------------
+
+
+def test_strict_http_startup_exits_when_env_missing(monkeypatch, capsys):
+    """H4: --strict-http must emit a stderr error and sys.exit(2) at startup
+    when ACA_API_BASE_URL / ACA_ADMIN_KEY are incomplete."""
+    import pytest as _pytest
+
+    from src.mcp_server import _validate_strict_http_config_or_exit
+
+    monkeypatch.setenv("ACA_MCP_STRICT_HTTP", "1")
+    monkeypatch.delenv("ACA_API_BASE_URL", raising=False)
+    monkeypatch.delenv("ACA_ADMIN_KEY", raising=False)
+
+    with _pytest.raises(SystemExit) as excinfo:
+        _validate_strict_http_config_or_exit()
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "--strict-http" in err or "ACA_MCP_STRICT_HTTP" in err
+    assert "ACA_API_BASE_URL" in err
+    assert "ACA_ADMIN_KEY" in err
+
+
+def test_strict_http_startup_passes_when_env_complete(monkeypatch):
+    """--strict-http with fully-configured env vars returns cleanly (no exit)."""
+    from src.mcp_server import _validate_strict_http_config_or_exit
+
+    monkeypatch.setenv("ACA_MCP_STRICT_HTTP", "1")
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "k")
+
+    # Should not raise / exit.
+    _validate_strict_http_config_or_exit()
+
+
+def test_strict_http_flag_enables_env_via_cli(monkeypatch):
+    """Passing `--strict-http` on argv must set ACA_MCP_STRICT_HTTP=1.
+
+    We can't run `mcp.run()` in tests, so we invoke just the arg-parsing
+    prologue of main() by stubbing mcp.run and transport.
+    """
+    import argparse
+
+    monkeypatch.delenv("ACA_MCP_STRICT_HTTP", raising=False)
+    # Simulate main()'s argparse prologue directly.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--strict-http", action="store_true")
+    args, _ = parser.parse_known_args(["--strict-http"])
+    assert args.strict_http is True

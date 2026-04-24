@@ -46,12 +46,17 @@
 
 ### D3a: Middleware ordering and OPTIONS bypass
 
-**Decision**: The audit middleware registers in this exact order (FastAPI applies middleware in reverse-registration order, so **outermost runs first**): `[TraceMiddleware, AuditMiddleware, AuthMiddleware, CORSMiddleware, ...routes]`. Concretely:
+**Decision**: The middleware stack registers so the runtime **outermost → innermost** execution order is: `[TraceMiddleware, CORSMiddleware, SecurityHeadersMiddleware, AuditMiddleware, AuthMiddleware, ...routes]`. FastAPI applies middleware in reverse-registration order, so the `app.add_middleware()` calls in `src/api/app.py` appear in the OPPOSITE sequence (Auth first, Trace last).
 
-1. `TraceMiddleware` / `RequestIdMiddleware` runs first so every audit row can reference a valid `request_id`.
-2. `AuditMiddleware` runs **outside** `AuthMiddleware` so that 401/403 responses (invalid or missing admin key) are still recorded. This is the intended forensic signal — otherwise a caller with a bad key produces no audit trace.
-3. `AuthMiddleware` runs next, validating `X-Admin-Key` or session cookie.
-4. `CORSMiddleware` runs innermost, handling CORS response headers.
+Concretely:
+
+1. `TraceMiddleware` runs first (outermost) so every audit row can reference a valid `request_id`.
+2. `CORSMiddleware` sits above `AuthMiddleware` so that 401/403 responses carry CORS headers — browser clients need `Access-Control-Allow-Origin` on error responses too, or the browser treats the failure as a CORS error and hides the real status code. (See PR #202.)
+3. `SecurityHeadersMiddleware` adds defense-in-depth headers (CSP, X-Frame-Options, etc.) to every response.
+4. `AuditMiddleware` runs **outside** `AuthMiddleware` so that 401/403 responses (invalid or missing admin key) are still recorded — this is the intended forensic signal, otherwise a caller with a bad key produces no audit trace.
+5. `AuthMiddleware` runs innermost, validating `X-Admin-Key` or session cookie immediately before the route.
+
+**Tradeoff**: An earlier revision of this decision called for `CORSMiddleware` to be the innermost-most layer. Moving CORS innermost would mean 401/403 responses from Auth skip CORS on their way out — which breaks browser clients (they'd see a CORS error instead of the real 401 status). The pragmatic compromise — CORS outer to Auth — is load-bearing for the web frontend and is the order of the final implementation at `src/api/app.py:155-180`. `AuditMiddleware` still wraps `AuthMiddleware`, which is the forensic invariant that matters.
 
 **OPTIONS preflight bypass**: `AuditMiddleware` short-circuits on `request.method == "OPTIONS"` (no row written). Rationale: preflight requests carry no data, triple audit volume, and bypass auth already (per PR #202 fix). OPTIONS audit entries would be noise.
 

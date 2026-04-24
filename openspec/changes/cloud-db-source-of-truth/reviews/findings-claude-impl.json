@@ -1,0 +1,79 @@
+{
+  "review_type": "impl",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "claude-opus-4-7",
+  "findings": [
+    {
+      "id": "IR-001",
+      "type": "middleware_order",
+      "criticality": "medium",
+      "description": "Runtime middleware order deviates from design.md D3a. Design specifies Trace -> Audit -> Auth -> CORS (outermost first). Actual registration in src/api/app.py lines 155-180 yields runtime order Trace -> CORS -> SecurityHeaders -> Audit -> Auth (CORS wraps Audit+Auth). The comment on app.py:168-169 explicitly justifies CORS-outside-Auth so that 401/403 responses retain CORS headers -- a sensible deviation, but it contradicts the normative spec (design.md D3a line 54: 'CORSMiddleware runs innermost'). The drift test in tests/api/test_audit_ordering.py only asserts audit_idx < auth_idx and Trace at index 0; it does NOT guard the CORS-vs-Audit relationship either way. The code's position is probably correct behaviorally, but the spec narrative should be reconciled so future reviewers don't 'fix' it back and break CORS on auth failures.",
+      "resolution": "Either (a) update design.md D3a to match reality: runtime order is Trace -> CORS -> SecurityHeaders -> Audit -> Auth, with rationale that CORS must wrap Auth so 401/403 carry CORS headers (PR #202 pattern); or (b) if the spec is authoritative and CORS really should be innermost, move the CORSMiddleware registration call to BEFORE AuthMiddleware in app.py and add a test asserting cors_idx > auth_idx. Option (a) matches production practice and should be preferred.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-002",
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "MCP `search_knowledge_base` in-process fallback diverges from the HTTP route's shape for two fields, violating specs/mcp-http-client/spec.md scenario 'HTTP and in-process modes produce identical shapes'. (1) total_count: HTTP route computes `total_count = len(ranked)` -- the FULL match count before the limit slice (src/api/routes/kb_search_routes.py:128, consistent with specs/knowledge-base/spec.md line 30 'total_count reflects the full match count which may exceed limit'). In-process fallback sets `total_count: len(topics)` where topics is already `.limit(limit).all()` trimmed (src/mcp_server.py:2381). Two calls with identical data produce different totals once results exceed the limit. (2) last_compiled_at: HTTP route DROPS topics whose last_compiled_at/updated_at/created_at are all null (kb_search_routes.py:132-136). In-process fallback substitutes `datetime.now(UTC).isoformat()` (mcp_server.py:2373-2377), so a topic that the HTTP route would omit is returned in-process with an invented fresh timestamp. tests/mcp/test_mcp_shape_conformance.py:156-162 actually enforces the invented-timestamp behavior, locking in the divergence.",
+      "resolution": "Align the in-process path with the HTTP route: (a) run a separate unbounded candidate query to compute total, or keep mirroring the HTTP code's ranked-then-limited pattern and set total_count to len of the full ranked set; (b) drop topics whose last_compiled_at/updated_at/created_at are all None rather than substituting now(). Update tests/mcp/test_mcp_shape_conformance.py accordingly.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-003",
+      "type": "audit_semantics",
+      "criticality": "low",
+      "description": "Audit notes miss auth_failure classification for two plausible edge cases. src/api/middleware/audit.py:337-340 only sets notes.auth_failure when (status=401 AND raw_admin_key is None) OR (status=403 AND raw_admin_key is not None). (1) A 401 with a non-empty X-Admin-Key but no valid session cookie (unusual but possible if AuthMiddleware's behavior changes) would produce a 401 with notes={} and a populated admin_key_fp -- forensic signal is incomplete. (2) An empty-string X-Admin-Key header (`X-Admin-Key: ''`) would be treated as 'no key' by _hash_admin_key (returns None) and by the notes branch (raw_admin_key == '' is NOT None, so neither branch fires) -- notes stays empty. Neither case is in the spec's explicit scenarios, but the forensic coverage story in design D3a implies all auth failures should be classified.",
+      "resolution": "Broaden the classification to derive from status + header presence only: `if status_code == 401: notes['auth_failure'] = 'missing_key' if not raw_admin_key else 'invalid_session'` and `elif status_code == 403: notes['auth_failure'] = 'invalid_key' if raw_admin_key else 'forbidden'`. Add test cases in tests/api/test_audit_middleware.py for both edge cases.",
+      "disposition": "accept"
+    },
+    {
+      "id": "IR-004",
+      "type": "correctness",
+      "criticality": "low",
+      "description": "GET /api/v1/audit reports `total_count = len(entries)` (src/api/routes/audit_routes.py:136), which by construction equals the number of returned entries and therefore conveys no information beyond the array length. The OpenAPI contract marks total_count as required but does not specify semantics. Consumers following the pattern of KBSearchResponse.total_count (documented as 'full match count, may exceed limit') are likely to misread the audit endpoint's total_count.",
+      "resolution": "Either (a) run a COUNT(*) with the same WHERE clause and return that as total_count (requires an extra round-trip but is O(ms) with the idx_audit_log_timestamp index); or (b) document in the docstring + OpenAPI description that total_count is the returned-page size (i.e., explicitly mirror len(entries)). Option (a) is more consistent with KB search semantics.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-005",
+      "type": "test_coverage",
+      "criticality": "low",
+      "description": "Spec audit-log `Failed request is still logged` scenario references 5xx in addition to 4xx. tests/api/test_audit_middleware.py::test_failure_response_still_logged covers 500 via an uncaught RuntimeError but does not exercise a 5xx returned cleanly from a route (e.g., an explicit `raise HTTPException(503)`). Given the middleware has a dual path (response vs exception), the exception branch is covered but the HTTPException-returning-5xx branch is implicit only.",
+      "resolution": "Add a test fixture route that does `raise HTTPException(status_code=503)` and assert the audit row is written with status_code=503. Low-effort hardening against regression if the call_next exception path is later tightened.",
+      "disposition": "accept"
+    },
+    {
+      "id": "IR-006",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "proposal.md §4 named three destructive endpoints for @audited retrofit: DELETE /api/v1/kb/topics/{slug}, POST /api/v1/kb/purge, POST /api/v1/manage/switch-embeddings. Only the first exists as an HTTP route; the other two exist only as CLI paths or docstring examples (confirmed by tests/api/test_destructive_endpoints_audited.py:1-17). The implementation documents the mismatch in the test, but the design-level intent (cloud-only forensic coverage of destructive operations) is not achieved for kb.purge and manage.switch_embeddings -- CLI invocations never hit the middleware.",
+      "resolution": "Either (a) expose the missing destructive actions as HTTP endpoints with @audited tags so they appear in audit_log (a scope expansion), or (b) explicitly descope them in the proposal/tasks.md with a note that CLI invocations are out of audit scope. Test file already leans toward (b); update proposal.md §4 to document the descoping so the record is consistent.",
+      "disposition": "accept"
+    },
+    {
+      "id": "IR-007",
+      "type": "observability",
+      "criticality": "low",
+      "description": "src/api/middleware/audit.py:346 sets `audit.operation` to empty string when no operation is resolved (`operation if operation is not None else ''`). spec audit-log 'Audit span attributes populated on success' and D10 specify `audit.operation (string, nullable)` -- nullable meaning the attribute may be absent. OTel semantics treat empty-string attributes differently from unset attributes (they are exported vs dropped, respectively). Setting '' instead of not setting the attribute increases trace payload by a few bytes per request and can complicate span-query filters that use `audit.operation != ''` vs `audit.operation is set`.",
+      "resolution": "Only call `_set_span_attr('audit.operation', operation)` when operation is not None. Drop the empty-string fallback. Update tests/api/test_audit_observability.py:82-83 which currently asserts `in (None, '', ...)` -- simplify to `span.attrs.get('audit.operation') is None` for the plain-endpoint case.",
+      "disposition": "accept"
+    },
+    {
+      "id": "IR-008",
+      "type": "security",
+      "criticality": "low",
+      "description": "src/cli/restore_commands.py:207-221 invokes `pg_restore --dbname <target_url>` via subprocess.run with the credentials-bearing URL in argv. Anyone with shell access during the restore can observe the password via `ps auxf`. This is accepted practice for operator-initiated CLI tools (design D5 explicitly documents the thin-wrapper intent) but is worth noting because restore-from-cloud would typically be run against a local DB from an engineer's laptop where the blast radius is low; running it against a shared/prod target with other users would leak. The command does not warn about this in docs/SYNC_DOWN.md.",
+      "resolution": "Either (a) pass the target DB connection via PGPASSWORD + PGUSER + PGHOST env vars instead of URL in argv; or (b) add a warning block in docs/SYNC_DOWN.md noting that credentials appear in process listings during the restore window and that users should not run this against targets shared with untrusted users. Option (b) is the cheaper fix consistent with D5's 'thin wrapper' posture.",
+      "disposition": "accept"
+    },
+    {
+      "id": "IR-009",
+      "type": "correctness",
+      "criticality": "low",
+      "description": "MCP `extract_references` in-process fallback in src/mcp_server.py:1911-1927 uses `last_ingested_at = content.ingested_at` (overwrites on every iteration). The final value is the LAST processed content's ingested_at, not the overflow row's ingested_at. The HTTP route (src/api/routes/reference_routes.py:121-125) correctly uses `overflow = selected[batch_size]` and returns overflow.ingested_at. Result: if a client uses next_cursor from in-process mode as `since` for the next call, the next call will re-process the last item (since filter is >=). The HTTP route avoids this by returning the NEXT unprocessed item's timestamp. Minor correctness drift; symptomatic only when paginating across boundaries.",
+      "resolution": "In src/mcp_server.py:1910-1913, fetch `batch_size + 1` as already done, then split into `processed = contents[:batch_size]` and `overflow = contents[batch_size] if has_more else None`. Set `last_ingested_at = overflow.ingested_at` when has_more. Add a pagination boundary test in tests/mcp/test_mcp_shape_conformance.py.",
+      "disposition": "fix"
+    }
+  ]
+}

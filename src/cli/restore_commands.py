@@ -57,17 +57,53 @@ def _parse_mc_ls_output(stdout: str) -> list[tuple[str, str]]:
     return matches
 
 
-def _resolve_target_db(target_db: str | None, settings_obj: Any) -> str:
-    """Resolve the target database URL from --target-db or settings."""
+def _resolve_target_db(
+    target_db: str | None,
+    settings_obj: Any,
+    *,
+    allow_remote: bool = False,
+) -> str:
+    """Resolve the target database URL — defends against restoring over production.
+
+    Default resolution order (safe):
+      1. Explicit --target-db value (operator is responsible).
+      2. settings.database_url (local scratch / development target).
+
+    ``railway_database_url`` is the source-of-truth production URL. Falling back
+    to it as the restore target would let ``aca manage restore-from-cloud --yes``
+    silently run ``pg_restore --clean --if-exists`` against production — the
+    exact opposite of what sync-down is supposed to do. We refuse this unless
+    the operator passes ``--allow-remote-target`` as an explicit opt-in.
+
+    An explicit --target-db value that matches ``railway_database_url`` also
+    triggers the same guard to catch copy-paste accidents.
+    """
+    railway_url = getattr(settings_obj, "railway_database_url", None)
+    local_url = getattr(settings_obj, "database_url", None)
+
     if target_db:
+        # Explicit override — but guard against accidentally pasting the prod URL.
+        if railway_url and target_db.strip() == str(railway_url).strip() and not allow_remote:
+            _error(
+                "Refusing to restore over the Railway cloud database (--target-db matches "
+                "RAILWAY_DATABASE_URL). Pass --allow-remote-target if this is really what you want."
+            )
         return target_db
-    # Prefer railway_database_url only if explicitly set; otherwise database_url.
-    url = settings_obj.railway_database_url or settings_obj.database_url
-    if not url:
+
+    # No explicit target — default STRICTLY to local DATABASE_URL, never railway.
+    if not local_url:
+        if railway_url and not allow_remote:
+            _error(
+                "No local DATABASE_URL configured, and falling back to RAILWAY_DATABASE_URL "
+                "is refused (would overwrite production). Pass --target-db or set DATABASE_URL."
+            )
+        if allow_remote and railway_url:
+            return str(railway_url)
         _error(
             "No target database configured. Pass --target-db or set DATABASE_URL in your profile."
         )
-    return str(url)
+
+    return str(local_url)
 
 
 @app.command("restore-from-cloud")
@@ -98,6 +134,12 @@ def restore_from_cloud(
         "-y",
         help="Skip confirmation prompt.",
     ),
+    allow_remote_target: bool = typer.Option(
+        False,
+        "--allow-remote-target",
+        help="DANGEROUS: allow the target DB to be the Railway production URL. "
+        "Default is to refuse — sync-down should restore to a LOCAL scratch DB.",
+    ),
 ) -> None:
     """Restore a Railway MinIO backup dump into a local Postgres database.
 
@@ -121,7 +163,7 @@ def restore_from_cloud(
         )
         return  # unreachable — _error raises
 
-    target_url = _resolve_target_db(target_db, settings_obj)
+    target_url = _resolve_target_db(target_db, settings_obj, allow_remote=allow_remote_target)
 
     # --- 2. Confirm (skip in --json / --yes) ---------------------------------
     if not yes and not is_json_mode():

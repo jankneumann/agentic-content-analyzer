@@ -1,0 +1,71 @@
+{
+  "review_type": "impl",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "GPT-5.5",
+  "findings": [
+    {
+      "id": "IR-001",
+      "type": "middleware_order",
+      "criticality": "high",
+      "description": "`src/api/app.py:155-180` registers middleware as `Auth -> Audit -> SecurityHeaders -> CORS -> Trace`, which Starlette runs as `TraceIdMiddleware -> CORSMiddleware -> SecurityHeadersMiddleware -> AuditMiddleware -> AuthMiddleware`. The spec/design require runtime outer\u2192inner `Trace -> Audit -> Auth -> CORS` (`openspec/changes/cloud-db-source-of-truth/design.md:33-41`). `tests/api/test_audit_ordering.py:49-71` only checks `Trace` outermost and `Audit` before `Auth`, so the incorrect CORS placement is not caught.",
+      "resolution": "Reorder registrations so the runtime stack is exactly `TraceIdMiddleware -> AuditMiddleware -> AuthMiddleware -> CORSMiddleware`, and tighten the ordering test to assert the full prefix rather than a partial ordering.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-002",
+      "type": "security",
+      "criticality": "critical",
+      "description": "`src/cli/restore_commands.py:60-70` resolves the restore target as `railway_database_url or database_url`, but the design and operator docs say restore-from-cloud targets local `DATABASE_URL` (`openspec/changes/cloud-db-source-of-truth/design.md:132-135`, `docs/SYNC_DOWN.md:62-65`). On a Railway profile that carries `RAILWAY_DATABASE_URL`, `aca manage restore-from-cloud --yes` can run `pg_restore --clean --if-exists` against the cloud source-of-truth database instead of a scratch local DB.",
+      "resolution": "Default strictly to `DATABASE_URL`/`--target-db`, refuse `railway_database_url` unless the operator passes an explicit unsafe override, and add a failing test for the remote-URL case.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-003",
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "The committed contract requires RFC7807 Problem responses for 401/403/404/409/422/504 on the new endpoints (`openspec/changes/cloud-db-source-of-truth/contracts/openapi/v1.yaml:282-469`), but the implementation neither declares nor emits those shapes. The route decorators only expose default FastAPI responses (`src/api/routes/graph_routes.py:119-157`, `src/api/routes/reference_routes.py:171-220`, `src/api/routes/audit_routes.py:74-92`), auth failures return `{error, detail}` (`src/api/auth_routes.py:100-106`, `src/api/middleware/auth.py:115-124`), and graph 404/409 paths raise plain `HTTPException` (`src/api/routes/graph_routes.py:163-179`). The drift test explicitly skips checking the required non-200 statuses (`tests/contract/test_openapi_drift.py:104-108`), so this contract break passes CI.",
+      "resolution": "Declare the committed error responses on the route decorators, normalize auth/validation/HTTPException handling to Problem bodies, and make the drift test assert the full committed response surface instead of only `200`.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-004",
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "`src/api/routes/reference_routes.py:117-125` sets `next_cursor` to the overflow `(batch_size+1)` row\u2019s `ingested_at`, but the spec requires the last processed item\u2019s timestamp (`openspec/changes/cloud-db-source-of-truth/specs/content-references/spec.md:13-20,31-36`). The in-process MCP fallback uses the last processed item instead (`src/mcp_server.py:1910-1936`), so HTTP and fallback modes disagree on pagination semantics. `tests/api/test_reference_routes.py:335-361` only asserts that `next_cursor` is non-null, not that it matches the spec.",
+      "resolution": "Set `next_cursor` from `processed[-1].ingested_at`, add a failing route test that asserts exact cursor equality, and keep the MCP fallback aligned with the same rule.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-005",
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "The MCP spec requires a real `--strict-http` startup flag that logs an error on startup and fail-closes unconfigured tools (`openspec/changes/cloud-db-source-of-truth/specs/mcp-http-client/spec.md:34-39`, `openspec/changes/cloud-db-source-of-truth/design.md:21-25,438-439`). `src/mcp_server.py` only checks an env var (`:28-30`), has no CLI parsing or startup validation in `main()` (`:79-116`), and merely returns per-tool error payloads after the server is already running (`:60-63`, `:1143-1147`, `:1880-1884`, `:1958-1962`, `:2339-2342`). The tests likewise cover only env detection and per-tool errors (`tests/mcp/test_mcp_fallback.py:61-72`, `tests/mcp/test_mcp_http_mode.py:132-139`).",
+      "resolution": "Add actual `--strict-http` CLI/entrypoint handling, validate HTTP config before server startup, emit the required stderr startup error, and add a startup-level test.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-006",
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "`search_knowledge_base`'s in-process MCP fallback is not equivalent to the HTTP implementation. The HTTP path does slug matching, custom scoring, excerpt extraction, and `last_compiled_at` fallback to `updated_at/created_at` (`src/api/routes/kb_search_routes.py:101-145`); the fallback does a simpler SQL filter, omits slug matching, orders only by `relevance_score`, truncates `summary`, and fabricates `datetime.now(UTC)` when `last_compiled_at` is null (`src/mcp_server.py:2345-2381`). That violates the MCP requirement that HTTP and in-process modes return identical OpenAPI-aligned structures for the same data (`openspec/changes/cloud-db-source-of-truth/specs/mcp-http-client/spec.md:79-89`). Current tests only assert key presence (`tests/mcp/test_mcp_shape_conformance.py:112-163`).",
+      "resolution": "Factor the KB search shaping/ranking into shared code and reuse it from both the HTTP handler and MCP fallback; add parity tests that compare full payloads rather than only required keys.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-007",
+      "type": "audit_semantics",
+      "criticality": "medium",
+      "description": "The audit stack has no path for handler-specific notes. `AuditMiddleware` only writes auth-failure notes (`src/api/middleware/audit.py:335-368`), and `@audited` can only attach an `operation` (`src/api/middleware/audit.py:227-276`). That means the implementation never satisfies the spec\u2019s required enriched notes for `POST /api/v1/graph/extract-entities` (`notes.content_id=42`) and `POST /api/v1/kb/lint/fix` zero-diff attempts (`openspec/changes/cloud-db-source-of-truth/specs/knowledge-graph/spec.md:30-36`, `openspec/changes/cloud-db-source-of-truth/specs/knowledge-base/spec.md:56-60`). The tests only check the operation tag (`tests/api/test_graph_routes.py:209-232`, `tests/api/test_kb_lint.py:226-247`).",
+      "resolution": "Add a request-state notes channel (or extend `@audited`) so handlers can contribute structured notes, then assert `notes.content_id` and zero-diff notes in the route tests.",
+      "disposition": "fix"
+    },
+    {
+      "id": "IR-008",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "`openspec/changes/cloud-db-source-of-truth/MIGRATION.md:28-41` still contains unchecked checklist items and a placeholder `agentic-assistant PR`/SHA, even though task 5.7 requires recording the consumer-side update before merge (`openspec/changes/cloud-db-source-of-truth/tasks.md:241`). As written, the migration artifact does not prove that the only external consumer migrated in lockstep.",
+      "resolution": "Replace the placeholders with the actual `agentic-assistant` PR/commit SHA and completed checklist state, or mark the task incomplete until that coordination exists.",
+      "disposition": "fix"
+    }
+  ]
+}

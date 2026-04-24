@@ -110,6 +110,63 @@ def test_runtime_app_exposes_endpoint(runtime_openapi, path, method, expected_st
     )
 
 
+@pytest.mark.parametrize(("path", "method", "expected_statuses"), NEW_ENDPOINTS)
+def test_auth_failure_returns_problem_shape(path, method, expected_statuses):
+    """IR-003 fix: 401 / 403 responses on /api/v1/{kb,graph,references,audit}
+    MUST carry `application/problem+json` with the Problem schema, not FastAPI's
+    default `{detail: ...}` shape."""
+    import os
+
+    from fastapi.testclient import TestClient
+
+    os.environ.setdefault("ENVIRONMENT", "production")
+    os.environ.setdefault("ADMIN_API_KEY", "test-drift-check")
+
+    # Import inside test so prior tests in the session don't lock in dev-mode
+    # bypass (auth is only strict when keys are configured).
+    from src.api.app import app
+
+    with TestClient(app) as client:
+        # No credentials → 401 expected.
+        resp = client.request(method.upper(), path)
+        # 401 or 403 depending on how FastAPI handles the missing body; both are
+        # acceptable as long as the shape is Problem.
+        assert resp.status_code in (401, 403, 422), (
+            f"Unexpected status for unauth {method.upper()} {path}: {resp.status_code}"
+        )
+        ctype = resp.headers.get("content-type", "")
+        assert "application/problem+json" in ctype, (
+            f"{method.upper()} {path} returned unauth response with content-type "
+            f"{ctype!r}; expected application/problem+json (IR-003)"
+        )
+        body = resp.json()
+        assert "title" in body and "status" in body, (
+            f"Problem body missing required fields; got {list(body.keys())}"
+        )
+
+
+def test_invalid_admin_key_returns_problem_403(monkeypatch):
+    """IR-003: an explicit wrong X-Admin-Key on a Problem-path endpoint must
+    produce a 403 Problem response, not the legacy `{error, detail}` shape.
+    """
+    import os
+
+    from fastapi.testclient import TestClient
+
+    os.environ.setdefault("ENVIRONMENT", "production")
+    os.environ["ADMIN_API_KEY"] = "the-real-key"
+
+    from src.api.app import app
+
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/kb/search?q=x", headers={"X-Admin-Key": "wrong"})
+        assert resp.status_code == 403
+        assert "application/problem+json" in resp.headers.get("content-type", "")
+        body = resp.json()
+        assert body.get("status") == 403
+        assert body.get("title") == "Forbidden"
+
+
 def test_committed_contract_has_problem_schema(committed_contract):
     """Error-response schemas must be defined so consumers can parse them."""
     schemas = committed_contract.get("components", {}).get("schemas", {})

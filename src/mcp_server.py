@@ -1896,7 +1896,7 @@ def extract_references(
     total_stored = 0
     total_scanned = 0
     per_content: list[dict[str, int]] = []
-    last_ingested_at: datetime | None = None
+    overflow_ingested_at: datetime | None = None
 
     with get_db() as db:
         query = db.query(Content).order_by(Content.ingested_at.asc())
@@ -1910,7 +1910,14 @@ def extract_references(
         # Fetch batch_size + 1 to detect has_more cheaply.
         contents = query.limit(batch_size + 1).all()
         has_more = len(contents) > batch_size
-        contents = contents[:batch_size]
+        if has_more:
+            # IR-004 fix: next_cursor is the FIRST UNPROCESSED row's timestamp
+            # (match the HTTP route semantics at
+            # src/api/routes/reference_routes.py:121-125). Using the last
+            # processed row would re-process that item when the client passes
+            # the cursor back as `since`.
+            overflow_ingested_at = contents[batch_size].ingested_at
+            contents = contents[:batch_size]
 
         for content in contents:
             refs = extractor.extract_from_content(content, db)
@@ -1923,8 +1930,6 @@ def extract_references(
                 total_stored += stored
             elif refs:
                 total_stored += len(refs)
-            if content.ingested_at is not None:
-                last_ingested_at = content.ingested_at
 
     response: dict[str, Any] = {
         "references_extracted": total_stored,
@@ -1932,8 +1937,8 @@ def extract_references(
         "has_more": has_more,
         "per_content": per_content,
     }
-    if has_more and last_ingested_at is not None:
-        response["next_cursor"] = last_ingested_at.isoformat()
+    if has_more and overflow_ingested_at is not None:
+        response["next_cursor"] = overflow_ingested_at.isoformat()
     return _serialize(response)
 
 
@@ -2342,43 +2347,60 @@ def search_knowledge_base(query: str, limit: int = 10) -> str:
             "ACA_MCP_STRICT_HTTP is set but ACA_API_BASE_URL/ACA_ADMIN_KEY are missing",
         )
 
-    # In-process path — shape-match the HTTP response.
-    from sqlalchemy import or_
-
+    # In-process path — mirror the HTTP route's ranking + filtering exactly.
+    # IR-006 fix: HTTP and in-process MUST emit the same shape for the same data.
+    # - total_count is the FULL ranked match count (may exceed limit)
+    # - last_compiled_at is required; topics whose last_compiled_at AND
+    #   updated_at AND created_at are all null are DROPPED (not fabricated)
+    # - excerpt/score derived the same way as the HTTP handler
+    from src.api.routes.kb_search_routes import (
+        _extract_excerpt,
+        _resolve_last_compiled_at,
+        _score_topic,
+    )
     from src.models.topic import Topic, TopicStatus
     from src.storage.database import get_db
 
-    like = f"%{query}%"
+    needle = query.strip()
+    needle_like = f"%{needle}%"
     with get_db() as db:
-        rows = (
+        candidates = (
             db.query(Topic)
+            .filter(Topic.status.notin_([TopicStatus.ARCHIVED, TopicStatus.MERGED]))
             .filter(
-                Topic.status.notin_([TopicStatus.ARCHIVED, TopicStatus.MERGED]),
-                or_(
-                    Topic.name.ilike(like),
-                    Topic.summary.ilike(like),
-                    Topic.article_md.ilike(like),
-                ),
+                (Topic.name.ilike(needle_like))
+                | (Topic.slug.ilike(needle_like))
+                | (Topic.summary.ilike(needle_like))
+                | (Topic.article_md.ilike(needle_like)),
             )
-            .order_by(Topic.relevance_score.desc())
-            .limit(limit)
             .all()
         )
-        topics = [
-            {
-                "slug": t.slug,
-                "title": t.name,
-                "score": float(t.relevance_score or 0.0),
-                "excerpt": (t.summary or "")[:300],
-                "last_compiled_at": (
-                    t.last_compiled_at.isoformat()
-                    if t.last_compiled_at is not None
-                    else datetime.now(UTC).isoformat()
-                ),
-            }
-            for t in rows
-        ]
-        return _serialize({"topics": topics, "total_count": len(topics)})
+        ranked: list[tuple[float, Any]] = []
+        for topic in candidates:
+            score = _score_topic(topic, needle)
+            if score <= 0.0:
+                continue
+            ranked.append((score, topic))
+        ranked.sort(key=lambda pair: pair[0], reverse=True)
+        total = len(ranked)
+
+        topics: list[dict[str, Any]] = []
+        for score, topic in ranked[:limit]:
+            last_compiled = _resolve_last_compiled_at(topic)
+            if last_compiled is None:
+                continue  # match HTTP: skip rows missing all timestamp fallbacks
+            topics.append(
+                {
+                    "slug": topic.slug,
+                    "title": topic.name,
+                    "score": round(score, 6),
+                    "excerpt": _extract_excerpt(topic, needle),
+                    "last_compiled_at": last_compiled.isoformat()
+                    if hasattr(last_compiled, "isoformat")
+                    else str(last_compiled),
+                }
+            )
+        return _serialize({"topics": topics, "total_count": total})
 
 
 @mcp.tool()
@@ -2574,6 +2596,37 @@ def compile_knowledge_base() -> str:
 # ===========================================================================
 
 
+def _validate_strict_http_config_or_exit() -> None:
+    """Enforce --strict-http / ACA_MCP_STRICT_HTTP at startup.
+
+    Per specs/mcp-http-client/spec.md §"Strict HTTP mode rejects unconfigured
+    tools": if strict mode is on, the server MUST log an error to stderr at
+    startup when ACA_API_BASE_URL/ACA_ADMIN_KEY are incomplete, and subsequent
+    tool invocations MUST return an error rather than silently fall back
+    in-process. This function emits the stderr error and exits with code 2;
+    the per-tool strict error payload is still produced if the operator
+    somehow bypasses this check.
+    """
+    if not _strict_http_mode():
+        return
+    base_url = os.environ.get("ACA_API_BASE_URL", "").strip()
+    admin_key = os.environ.get("ACA_ADMIN_KEY", "").strip()
+    if base_url and admin_key:
+        return
+    missing = []
+    if not base_url:
+        missing.append("ACA_API_BASE_URL")
+    if not admin_key:
+        missing.append("ACA_ADMIN_KEY")
+    print(
+        "aca-mcp: --strict-http is enabled but required HTTP config is missing: "
+        f"{', '.join(missing)}. Refusing to start — either supply the missing env "
+        "vars or disable ACA_MCP_STRICT_HTTP.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def main() -> None:
     """Run the MCP server.
 
@@ -2582,13 +2635,34 @@ def main() -> None:
         sse:              For remote/web clients with auth
         streamable-http:  For newer MCP clients with auth
 
+    CLI flags:
+        --strict-http:  Refuse to fall back to in-process mode on any of the
+                        refactored KB/graph/references tools. If HTTP config
+                        (ACA_API_BASE_URL + ACA_ADMIN_KEY) is incomplete, the
+                        server logs an error to stderr and exits 2. Can also
+                        be enabled via the ACA_MCP_STRICT_HTTP env var.
+
     Environment variables:
-        MCP_TRANSPORT:  Transport type (stdio, sse, streamable-http)
-        MCP_PORT:       Port for HTTP transports (default: 8100)
-        MCP_HOST:       Host for HTTP transports (default: 0.0.0.0)
-        ADMIN_API_KEY:  Required for HTTP transports (auth via X-Admin-Key header)
+        MCP_TRANSPORT:        Transport type (stdio, sse, streamable-http)
+        MCP_PORT:             Port for HTTP transports (default: 8100)
+        MCP_HOST:             Host for HTTP transports (default: 0.0.0.0)
+        ADMIN_API_KEY:        Required for HTTP transports (auth via X-Admin-Key header)
+        ACA_API_BASE_URL:     Required in strict-http mode for KB/graph/refs tools
+        ACA_ADMIN_KEY:        Required in strict-http mode for KB/graph/refs tools
+        ACA_MCP_STRICT_HTTP:  Equivalent to --strict-http.
     """
-    import os
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="aca-mcp", add_help=True)
+    parser.add_argument(
+        "--strict-http",
+        action="store_true",
+        help="Refuse in-process fallback; require ACA_API_BASE_URL and ACA_ADMIN_KEY.",
+    )
+    args, _ = parser.parse_known_args()
+    if args.strict_http:
+        os.environ["ACA_MCP_STRICT_HTTP"] = "1"
+    _validate_strict_http_config_or_exit()
 
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
 
