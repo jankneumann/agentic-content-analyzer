@@ -1,0 +1,26 @@
+{
+  "review_type": "val",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "claude-opus-4-7",
+  "validation_report_verdict": "confirmed",
+  "impl_review_resolution_status": {
+    "C1_restore_safety": "resolved",
+    "H1_problem_bodies": "resolved",
+    "H2_kb_parity": "resolved",
+    "H3_next_cursor": "resolved",
+    "H4_strict_http": "resolved",
+    "M1_middleware_order": "resolved",
+    "M2_handler_notes": "partial",
+    "M3_migration_md": "resolved"
+  },
+  "findings": [
+    {
+      "id": "VR-001",
+      "type": "test_coverage",
+      "criticality": "low",
+      "description": "M2 handler-notes code fix is correctly in place — `src/api/routes/graph_routes.py:162` sets `request.state.audit_notes = {'content_id': body.content_id}` and `src/api/routes/kb_routes.py:233-236` sets `{corrections_applied, zero_diff}`. The middleware merge is covered by `tests/api/test_audit_middleware.py::test_handler_notes_merge_into_audit_row`. However, the codex IR-007 resolution explicitly called for asserting `notes.content_id` and zero-diff in the ROUTE tests. `tests/api/test_graph_routes.py::test_audit_records_operation` (line 209-232) only asserts `operation == 'graph.extract_entities'`, not `notes['content_id'] == content_id`. Similarly, `tests/api/test_kb_lint.py` does not capture the audit writer or assert `notes.corrections_applied` / `notes.zero_diff`. A behavioral regression to the `audit_notes` wiring in either route would not be caught by the current test suite — it would only surface through the middleware contract test (which uses a Starlette stub, not the real FastAPI route). Not a correctness blocker because the middleware-level test covers the merge contract, but leaves a forensic-coverage gap relative to what the specs prescribe (knowledge-graph/spec.md line 35 and knowledge-base/spec.md lines 56-60).",
+      "resolution": "Add one assertion per route test that captures `_default_writer` via monkeypatch and asserts the `notes` field contains the expected handler keys: `notes['content_id']` for graph/extract-entities, `notes['corrections_applied']` and `notes['zero_diff']` for kb/lint/fix (both zero-diff and non-zero-diff paths). Non-blocking for this PR; file a follow-up issue.",
+      "disposition": "accept"
+    }
+  ]
+}

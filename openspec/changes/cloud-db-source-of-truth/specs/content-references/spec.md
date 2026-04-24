@@ -10,7 +10,7 @@ Input bounds (enforced by Pydantic validation, reflected in OpenAPI):
 
 - Either `content_ids` (array of integers, 1 ≤ length ≤ 500) **XOR** the date range (`since` required, `until` optional — defaults to now) — the two inputs are mutually exclusive.
 - `batch_size` (optional, default 50, max 500) caps how many content items are processed per call.
-- Extraction runs entirely within one request; for date ranges that exceed `batch_size`, the response indicates `has_more: true` and the caller paginates by advancing `since` to the last-processed content's ingestion timestamp.
+- Extraction runs entirely within one request; for date ranges that exceed `batch_size`, the response indicates `has_more: true` and the caller paginates by passing `next_cursor` as `since` on the next call. `next_cursor` is the `ingested_at` of the **first unprocessed item** (the one immediately after the batch boundary). The server's filter is `ingested_at >= since`, so using the first-unprocessed timestamp resumes exactly where the previous call stopped without re-processing the last-processed row.
 
 The response body matches `ReferencesExtractResponse` in `contracts/openapi/v1.yaml`:
 - `references_extracted` (int, required)
@@ -32,7 +32,7 @@ Timeout: the endpoint SHALL respect a 60-second per-batch timeout. Requests exce
 
 - **WHEN** a client sends `POST /api/v1/references/extract` with body `{"since": "2026-04-01", "until": "2026-04-21", "batch_size": 50}`
 - **THEN** the API processes up to 50 content items in the range and returns `content_processed <= 50`
-- **AND** the response includes `has_more: true` if more items remain in the range and a `next_cursor` timestamp equal to the `ingested_at` of the last-processed item
+- **AND** the response includes `has_more: true` if more items remain in the range and a `next_cursor` timestamp equal to the `ingested_at` of the **first unprocessed item** (the row immediately after the batch boundary — passing this value as `since` on the next call resumes without re-processing the last-processed row, since the server uses `ingested_at >= since`)
 
 #### Scenario: Extract references rejects conflicting filters
 

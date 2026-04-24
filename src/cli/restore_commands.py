@@ -103,6 +103,21 @@ def _resolve_target_db(
             "No target database configured. Pass --target-db or set DATABASE_URL in your profile."
         )
 
+    # VF-C1 (codex VR-001): even when DATABASE_URL is set, refuse if it happens
+    # to equal RAILWAY_DATABASE_URL — that means someone's profile/env misconfigured
+    # the "local" DB to point at the cloud source-of-truth. Same --allow-remote-target
+    # opt-in applies.
+    if (
+        railway_url
+        and local_url
+        and str(local_url).strip() == str(railway_url).strip()
+        and not allow_remote
+    ):
+        _error(
+            "Refusing to restore: DATABASE_URL matches RAILWAY_DATABASE_URL, which would "
+            "overwrite the cloud production database. Set DATABASE_URL to a local scratch "
+            "DB, or pass --allow-remote-target if this is really what you want."
+        )
     return str(local_url)
 
 

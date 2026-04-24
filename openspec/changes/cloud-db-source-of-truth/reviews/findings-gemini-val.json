@@ -1,0 +1,34 @@
+{
+  "review_type": "val",
+  "target": "cloud-db-source-of-truth",
+  "reviewer_vendor": "gemini-1.5-pro",
+  "validation_report_verdict": "partial",
+  "impl_review_resolution_status": {
+    "C1_restore_safety": "resolved",
+    "H1_problem_bodies": "partial",
+    "H2_kb_parity": "resolved",
+    "H3_next_cursor": "unresolved",
+    "H4_strict_http": "resolved",
+    "M1_middleware_order": "resolved",
+    "M2_handler_notes": "resolved",
+    "M3_migration_md": "resolved"
+  },
+  "findings": [
+    {
+      "id": "VR-001",
+      "type": "regression",
+      "criticality": "high",
+      "description": "The `_PROBLEM_PATH_PREFIXES` in `src/api/middleware/error_handler.py:21` broadly matches `\"/api/v1/kb/\"`, which inadvertently applies the new RFC 7807 Problem shape to legacy endpoints like `/api/v1/kb/topics/*`. This contradicts the validation claim 'Legacy paths unchanged' and the inline comment stating that existing clients won't break.",
+      "resolution": "Change `_PROBLEM_PATH_PREFIXES` to exactly match the new endpoints (e.g., `\"/api/v1/kb/search\"`, `\"/api/v1/kb/lint\"`) or explicitly exclude legacy paths like `\"/api/v1/kb/topics/\"` from the problem check.",
+      "disposition": "fix"
+    },
+    {
+      "id": "VR-002",
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "IR-004 flagged that `next_cursor` incorrectly uses the overflow item's timestamp. IMPL_FIX left this spec violation intact, aligning the MCP fallback (`src/mcp_server.py:1914`) to match the HTTP route's buggy semantics (`overflow.ingested_at`) rather than fixing both to comply with `specs/content-references/spec.md:35`, which explicitly mandates the `ingested_at` of the 'last-processed item'.",
+      "resolution": "Fix both the HTTP handler (`src/api/routes/reference_routes.py:123`) and the MCP fallback (`src/mcp_server.py:1914`) to assign `next_cursor` from the last processed item (`processed[-1].ingested_at`), and update associated tests to assert exact spec compliance.",
+      "disposition": "fix"
+    }
+  ]
+}
