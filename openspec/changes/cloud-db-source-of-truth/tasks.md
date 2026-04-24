@@ -14,23 +14,23 @@ Phase → Work Package mapping:
 
 ## Phase 0: Contracts (wp-contracts)
 
-- [ ] 0.1 Validate OpenAPI spec against `openapi-spec-validator`
+- [x] 0.1 Validate OpenAPI spec against `openapi-spec-validator`
   **Contracts**: `contracts/openapi/v1.yaml`
   **Dependencies**: None
 
-- [ ] 0.2 Generate Pydantic models from OpenAPI to `contracts/generated/models.py`
+- [x] 0.2 Generate Pydantic models from OpenAPI to `contracts/generated/models.py`
   **Contracts**: `contracts/openapi/v1.yaml`
   **Dependencies**: 0.1
 
-- [ ] 0.3 Generate TypeScript types from OpenAPI to `contracts/generated/types.ts`
+- [x] 0.3 Generate TypeScript types from OpenAPI to `contracts/generated/types.ts`
   **Contracts**: `contracts/openapi/v1.yaml`
   **Dependencies**: 0.1
 
-- [ ] 0.4 Validate `contracts/db/schema.sql` parses cleanly against PG17 container
+- [x] 0.4 Validate `contracts/db/schema.sql` parses cleanly against PG17 container
   **Contracts**: `contracts/db/schema.sql`
   **Dependencies**: None
 
-- [ ] 0.5 Apply seed rows from `contracts/db/seed.sql` to fixture DB and assert row count = 6 (includes read, audited destructive, resolve, 500 error with notes, 401 no-credentials with `notes.auth_failure="missing_key"`, 403 invalid-key with `admin_key_fp` set and `notes.auth_failure="invalid_key"`)
+- [x] 0.5 Apply seed rows from `contracts/db/seed.sql` to fixture DB and assert row count = 6 (includes read, audited destructive, resolve, 500 error with notes, 401 no-credentials with `notes.auth_failure="missing_key"`, 403 invalid-key with `admin_key_fp` set and `notes.auth_failure="invalid_key"`)
   **Contracts**: `contracts/db/seed.sql`
   **Dependencies**: 0.4
 
