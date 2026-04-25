@@ -125,7 +125,7 @@ The val_fix commit triggers fresh CI; expect at least the cold-start check to fl
 - **F3 [Validation infra]**: Vite dev proxy hardcoded to :8000. Made env-overridable via `VITE_API_TARGET` so E2E can target the worktree's :10003 API without modifying config.
 
 ### Open findings (need follow-up after merge)
-- **F4 [High]**: If Railway production FalkorDB is also pinned at v4.4.1, the same procedure-missing bug affects production. **Action: verify Railway FalkorDB version and bump if needed.**
+- **F4 [High] — RESOLVED for production 2026-04-25 17:51:21Z**: Verified via `railway status --json`. Production falkordb service was running `falkordb/falkordb:v4.4.1`; manually bumped to `v4.18.1` (digest `sha256:d6aa9598...`) via Railway dashboard. **PR preview env `agentic-content-analyzer-pr-411` still on v4.4.1** — short-lived, expected to be cleaned up at merge; bump optional. F8 confirmed already resolved: `railway/postgres/Dockerfile:10` declares ParadeDB ships pg_cron 1.6.
 - **F5 [Low]**: `extract-entities` response field `graph_episode_id` returns the full `repr(EpisodicNode(...))` instead of a UUID. graphiti's newer `add_episode` returns `AddEpisodeResults`, not a plain UUID. Affects API contract. Fix is a small change in `GraphitiClient.add_content_summary()`.
 - **F6 [Medium against sync]**: `aca sync` import fails on enum columns where source DB has uppercase values (e.g., `digest_type='DAILY'`). Exporter emits `.name` instead of `.value` for enum columns. File against `src/sync/pg_exporter.py`.
 - **F7 [Tech-debt against validate-feature skill]**: The skill's smoke tests are coordinator-shaped (POST /memory/store + X-API-Key) — not portable. Project-native smoke tests should live in `tests/smoke_live/` in this repo.
@@ -143,7 +143,8 @@ The val_fix commit triggers fresh CI; expect at least the cold-start check to fl
 - Two real bugs found and fixed during validation (FalkorDB pin + graphiti group_id) — without these the PR's graph endpoints would 500 in production
 
 **Pre-merge action items:**
-- **F4 [HIGH]**: Verify Railway production FalkorDB version is ≥v4.8.0 (recommend v4.18.1 to match local). Same fix may need to apply there.
+- **F4 [HIGH] — RESOLVED**: Railway production falkordb bumped to v4.18.1 manually via dashboard on 2026-04-25 17:51Z. Verified with `railway status --json`. PR preview env (pr-411) still on v4.4.1; optional bump (will be cleaned up at merge).
+- **F8 — RESOLVED on inspection**: `railway/postgres/Dockerfile:10` declares ParadeDB ships pg_cron 1.6; production audit_log retention will run.
 - **CI re-run**: The val_fix commit (`8888d2c`) should re-trigger CI. The `Cold-start migration & boot` check that was failing on the prior commit may pass now.
 - **E2E gate override**: Cleanup gate currently checks E2E pass; this PR has 0 UI changes so E2E is vacuous. Apply `--force` at `/cleanup-feature` time, or skip the gate consciously.
 
