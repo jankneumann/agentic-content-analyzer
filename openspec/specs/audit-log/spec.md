@@ -157,4 +157,3 @@ The retention job is the only code path that removes audit rows — application 
 - **AND** changing `AUDIT_LOG_RETENTION_DAYS` later has NO effect until a new migration re-registers the cron job
 
 Rationale: pg_cron commands execute outside the application process and cannot read application env vars; persistent reconfigurability would require a second table and a migration-step, which is out of scope. Documenting the migration-time-fix contract prevents user surprise.
-

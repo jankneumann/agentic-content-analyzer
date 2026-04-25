@@ -28,10 +28,10 @@ class Problem(BaseModel):
 
 
 class TopicSearchResult(BaseModel):
-    slug: str = Field(..., examples=['mixture-of-experts'])
-    title: str = Field(..., examples=['Mixture of Experts Architecture'])
+    slug: str = Field(..., examples=["mixture-of-experts"])
+    title: str = Field(..., examples=["Mixture of Experts Architecture"])
     score: float = Field(..., examples=[0.87])
-    excerpt: str = Field(..., examples=['Sparse MoE models activate only a subset...'])
+    excerpt: str = Field(..., examples=["Sparse MoE models activate only a subset..."])
     last_compiled_at: AwareDatetime
 
 
@@ -41,21 +41,21 @@ class KBSearchResponse(BaseModel):
 
 
 class GraphQueryRequest(BaseModel):
-    query: constr(min_length=1) = Field(..., examples=['mixture of experts'])
+    query: constr(min_length=1) = Field(..., examples=["mixture of experts"])
     limit: conint(ge=1, le=100) | None = 20
 
 
 class GraphEntity(BaseModel):
     id: str
     name: str
-    type: str = Field(..., examples=['Model'])
+    type: str = Field(..., examples=["Model"])
     score: float
 
 
 class GraphRelationship(BaseModel):
     source_id: str
     target_id: str
-    type: str = Field(..., examples=['USES'])
+    type: str = Field(..., examples=["USES"])
     score: float
 
 
@@ -66,7 +66,7 @@ class GraphQueryResponse(BaseModel):
 
 class GraphExtractRequest(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     content_id: conint(ge=1) = Field(..., examples=[42])
 
@@ -83,7 +83,7 @@ class ContentId(RootModel[conint(ge=1)]):
 
 class ReferencesExtractRequest1(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     content_ids: list[ContentId] = Field(..., max_length=500, min_length=1)
     batch_size: conint(ge=1, le=500) | None = 50
@@ -91,19 +91,17 @@ class ReferencesExtractRequest1(BaseModel):
 
 class ReferencesExtractRequest2(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     since: AwareDatetime
     until: AwareDatetime | None = None
     batch_size: conint(ge=1, le=500) | None = 50
 
 
-class ReferencesExtractRequest(
-    RootModel[ReferencesExtractRequest1 | ReferencesExtractRequest2]
-):
+class ReferencesExtractRequest(RootModel[ReferencesExtractRequest1 | ReferencesExtractRequest2]):
     root: ReferencesExtractRequest1 | ReferencesExtractRequest2 = Field(
         ...,
-        description='Provide either `content_ids` XOR a date range (`since` with optional `until`).\nThe two forms are mutually exclusive and enforced by `oneOf` + `additionalProperties: false`.\n',
+        description="Provide either `content_ids` XOR a date range (`since` with optional `until`).\nThe two forms are mutually exclusive and enforced by `oneOf` + `additionalProperties: false`.\n",
     )
 
 
@@ -117,14 +115,14 @@ class ReferencesExtractResponse(BaseModel):
     content_processed: int
     has_more: bool
     next_cursor: AwareDatetime | None = Field(
-        None, description='When has_more=true, pass this as `since` for the next call.'
+        None, description="When has_more=true, pass this as `since` for the next call."
     )
     per_content: list[PerContentItem] | None = None
 
 
 class ReferencesResolveRequest(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     batch_size: conint(ge=1, le=1000) | None = 100
 
@@ -136,9 +134,9 @@ class ReferencesResolveResponse(BaseModel):
 
 
 class IssueType(StrEnum):
-    stale = 'stale'
-    orphaned = 'orphaned'
-    score_anomaly = 'score_anomaly'
+    stale = "stale"
+    orphaned = "orphaned"
+    score_anomaly = "score_anomaly"
 
 
 class LintIssue(BaseModel):
@@ -168,13 +166,13 @@ class AuditLogEntry(BaseModel):
     id: int
     timestamp: AwareDatetime
     request_id: str
-    method: str = Field(..., examples=['POST'])
-    path: str = Field(..., examples=['/api/v1/kb/purge'])
-    operation: str | None = Field(None, examples=['kb.purge'])
+    method: str = Field(..., examples=["POST"])
+    path: str = Field(..., examples=["/api/v1/kb/purge"])
+    operation: str | None = Field(None, examples=["kb.purge"])
     admin_key_fp: str | None = Field(
         None,
-        description='Last 8 chars of SHA-256 hash of the admin key',
-        examples=['a1b2c3d4'],
+        description="Last 8 chars of SHA-256 hash of the admin key",
+        examples=["a1b2c3d4"],
     )
     status_code: int
     body_size: int | None = None
