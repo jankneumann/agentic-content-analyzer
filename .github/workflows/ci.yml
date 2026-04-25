@@ -225,7 +225,7 @@ jobs:
           import uvicorn, threading, time, httpx
 
           def start():
-              uvicorn.run('src.api.main:app', host='127.0.0.1', port=8000, log_level='error')
+              uvicorn.run('src.api.app:app', host='127.0.0.1', port=8000, log_level='error')
 
           t = threading.Thread(target=start, daemon=True)
           t.start()
