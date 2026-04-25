@@ -29,6 +29,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# graphiti-core's FalkorDB driver sets default_group_id = "\\_" which fails its
+# own validate_group_id (rejects backslashes). Pass an explicit group_id to
+# every add_episode/search call to bypass the broken default.
+# See https://github.com/getzep/graphiti/issues/757
+DEFAULT_GROUP_ID = "newsletters"
+
 
 class GraphitiClient:
     """Client for managing content knowledge graph with Graphiti.
@@ -143,6 +149,7 @@ class GraphitiClient:
             source_description=f"Content from {source_type}",
             reference_time=reference_time,
             source=EpisodeType.text,
+            group_id=DEFAULT_GROUP_ID,
         )
 
         logger.info(f"Added episode {episode_id} for content {content.id} ({content.title})")
@@ -195,6 +202,7 @@ class GraphitiClient:
         results = await self.graphiti.search(
             query=query,
             num_results=limit,
+            group_ids=[DEFAULT_GROUP_ID],
         )
 
         logger.info(f"Found {len(results)} results for query: {query}")
@@ -212,7 +220,10 @@ class GraphitiClient:
         )
 
         all_results = []
-        search_tasks = [self.graphiti.search(query=concept, num_results=50) for concept in concepts]
+        search_tasks = [
+            self.graphiti.search(query=concept, num_results=50, group_ids=[DEFAULT_GROUP_ID])
+            for concept in concepts
+        ]
         search_results_list = await asyncio.gather(*search_tasks)
 
         for results in search_results_list:
@@ -354,6 +365,7 @@ class GraphitiClient:
             source_description="Automated theme analysis result",
             reference_time=result.analysis_date,
             source=EpisodeType.text,
+            group_id=DEFAULT_GROUP_ID,
         )
 
         logger.info(f"Added theme analysis episode {episode_id}")
@@ -372,6 +384,7 @@ class GraphitiClient:
             results = await self.graphiti.search(
                 query=entity_name,
                 num_results=limit,
+                group_ids=[DEFAULT_GROUP_ID],
             )
             all_facts.extend(results)
 
@@ -416,6 +429,7 @@ class GraphitiClient:
         semantic_results = await self.graphiti.search(
             query=theme_name,
             num_results=30,
+            group_ids=[DEFAULT_GROUP_ID],
         )
 
         # Filter semantic results by date
