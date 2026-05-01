@@ -16,6 +16,7 @@ Content Sources:
 - SCHOLAR: Academic papers via Semantic Scholar
 - ARXIV: arXiv preprints with full PDF text extraction
 - HUGGINGFACE_PAPERS: Daily papers from HuggingFace Papers
+- READWISE: Books/articles imported via Readwise (Kindle, Instapaper, Pocket, Apple Books, Airr, Reader)
 - MANUAL: Manually created content via API
 """
 
@@ -43,6 +44,7 @@ from src.models.base import Base
 
 if TYPE_CHECKING:
     from src.models.content_reference import ContentReference
+    from src.models.highlight import Highlight
     from src.models.image import Image
     from src.models.summary import Summary
 
@@ -68,6 +70,7 @@ class ContentSource(StrEnum):
     SCHOLAR = "scholar"  # Academic papers via Semantic Scholar
     ARXIV = "arxiv"  # arXiv preprints with full PDF text
     HUGGINGFACE_PAPERS = "huggingface_papers"  # Daily papers from HuggingFace
+    READWISE = "readwise"  # Books/articles imported via Readwise (Kindle, Instapaper, Pocket, etc.)
     OTHER = "other"
 
 
@@ -204,6 +207,15 @@ class Content(Base):  # type: ignore[valid-type, misc]
     cited_by: Mapped[list["ContentReference"]] = relationship(
         "ContentReference",
         foreign_keys="ContentReference.target_content_id",
+    )
+
+    # Content → Highlight (annotations on this content or its derived summaries/digests)
+    highlights: Mapped[list["Highlight"]] = relationship(
+        "Highlight",
+        back_populates="content",
+        foreign_keys="Highlight.content_id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     # Composite unique constraint on source_type + source_id
