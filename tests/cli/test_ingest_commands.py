@@ -66,7 +66,8 @@ class TestIngestGmail:
         result = runner.invoke(app, ["--json", "--direct", "ingest", "gmail"])
         assert result.exit_code == 0
         assert '"source": "gmail"' in result.output
-        assert '"ingested": 2' in result.output
+        assert '"items_ingested": 2' in result.output
+        assert '"status": "ok"' in result.output
 
 
 class TestIngestRss:

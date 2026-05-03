@@ -60,7 +60,7 @@ CANONICAL_COUNT_FIELD = "items_ingested"
 # `count_field` records the CURRENT shape per command. The consistency test
 # below uses xfail markers to track which commands deviate from canonical.
 INGEST_CASES = [
-    pytest.param("gmail", "ingest_gmail", "gmail", "ingested", [], id="gmail"),
+    pytest.param("gmail", "ingest_gmail", "gmail", "items_ingested", [], id="gmail"),
     pytest.param("rss", "ingest_rss", "rss", "ingested", [], id="rss"),
     pytest.param("blog", "ingest_blog", "blog", "ingested", [], id="blog"),
     pytest.param("substack", "ingest_substack", "substack", "ingested", [], id="substack"),

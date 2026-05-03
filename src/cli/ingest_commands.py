@@ -80,9 +80,14 @@ def _ingest_via_api(source: str, params: dict[str, Any], label: str) -> None:
 
 def _gmail_direct(query: str, max_results: int, after_date: datetime | None, force: bool) -> None:
     """Direct Gmail ingestion (legacy inline path)."""
+    import time
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_gmail
 
@@ -90,14 +95,30 @@ def _gmail_direct(query: str, max_results: int, after_date: datetime | None, for
             query=query, max_results=max_results, after_date=after_date, force_reprocess=force
         )
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        response = IngestionResponse(
+            command="ingest.gmail",
+            source="gmail",
+            status="error",
+            duration_ms=elapsed_ms,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "gmail"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]Gmail ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+    response = IngestionResponse(
+        command="ingest.gmail",
+        source="gmail",
+        status="ok",
+        items_ingested=count,
+        duration_ms=elapsed_ms,
+    )
     if is_json_mode():
-        output_result({"source": "gmail", "ingested": count})
+        output_result(response.model_dump(mode="json"))
     else:
         console.print(f"[green]Gmail ingestion complete.[/green] {count} item(s) ingested.")
 
