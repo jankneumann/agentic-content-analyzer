@@ -256,6 +256,24 @@ def test_ingest_gmail_envelope_validates_through_pydantic():
     IngestionResponse.model_validate_strict(payload)
 
 
+def test_ingest_response_rejects_unregistered_command_or_source():
+    """The Literal registry catches drift: an unregistered command/source raises.
+
+    Without this gate, a new transport could silently emit an envelope with
+    a typoed source identifier (e.g. ``"hugging_face_papers"``) that string
+    matchers would never catch but which would break cross-transport
+    aggregation downstream. Proves the closed registry actually closes.
+    """
+    from pydantic import ValidationError
+
+    from src.ingestion.result import IngestionResponse
+
+    with pytest.raises(ValidationError):
+        IngestionResponse(command="ingest.gmail", source="unknown_source", status="ok")  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        IngestionResponse(command="ingest.unknown", source="gmail", status="ok")  # type: ignore[arg-type]
+
+
 def test_ingest_failure_returns_nonzero_exit():
     """Orchestrator exception must surface as exit code 1, not silent success."""
     with patch("src.ingestion.orchestrator.ingest_rss") as mock:
