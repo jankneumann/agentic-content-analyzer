@@ -205,9 +205,7 @@ def _rss_direct(max_results: int, after_date: datetime | None, force: bool) -> N
         raise typer.Exit(1)
 
     elapsed_ms = int((time.monotonic() - started_mono) * 1000)
-    response = response.model_copy(
-        update={"duration_ms": elapsed_ms, "started_at": started_at_wall}
-    )
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
 
     if is_json_mode():
         output_result(response.model_dump(mode="json"))
@@ -304,9 +302,7 @@ def _blog_direct(max_results: int, after_date: datetime | None, force: bool) -> 
         raise typer.Exit(1)
 
     elapsed_ms = int((time.monotonic() - started_mono) * 1000)
-    response = response.model_copy(
-        update={"duration_ms": elapsed_ms, "started_at": started_at_wall}
-    )
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
 
     if is_json_mode():
         output_result(response.model_dump(mode="json"))
@@ -1464,9 +1460,7 @@ def _huggingface_papers_direct(max_papers: int, after_date: datetime | None, for
         raise typer.Exit(1)
 
     elapsed_ms = int((time.monotonic() - started_mono) * 1000)
-    response = response.model_copy(
-        update={"duration_ms": elapsed_ms, "started_at": started_at_wall}
-    )
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
 
     if is_json_mode():
         output_result(response.model_dump(mode="json"))
