@@ -56,7 +56,7 @@ class SourceFetchResult:
 
 
 @dataclass
-class IngestionResult:
+class RSSFetchOutcome:
     """Aggregated result of an RSS ingestion run."""
 
     items_ingested: int = 0
@@ -486,7 +486,7 @@ class RSSContentIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> IngestionResult:
+    ) -> RSSFetchOutcome:
         """
         Ingest content from RSS feeds and store as Content records.
 
@@ -504,10 +504,10 @@ class RSSContentIngestionService:
             force_reprocess: If True, reprocess existing content
 
         Returns:
-            IngestionResult with item count and per-source fetch outcomes
+            RSSFetchOutcome with item count and per-source fetch outcomes
         """
         logger.info("Starting RSS content ingestion (unified Content model)...")
-        ingestion_result = IngestionResult()
+        ingestion_result = RSSFetchOutcome()
 
         # Resolve sources with fallback chain
         if sources is None and feed_urls is None:
