@@ -170,17 +170,22 @@ def gmail(
 
 def _rss_direct(max_results: int, after_date: datetime | None, force: bool) -> None:
     """Direct RSS ingestion (legacy inline path)."""
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
-    from src.ingestion.rss import RSSFetchOutcome
+    from src.ingestion.result import IngestionError, IngestionResponse
 
     console = Console()
-    captured_result: RSSFetchOutcome | None = None
+    captured_response: IngestionResponse | None = None
 
-    def _capture_result(r: RSSFetchOutcome) -> None:
-        nonlocal captured_result
-        captured_result = r
+    def _capture_response(r: IngestionResponse) -> None:
+        nonlocal captured_response
+        captured_response = r
 
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_rss
 
@@ -188,47 +193,65 @@ def _rss_direct(max_results: int, after_date: datetime | None, force: bool) -> N
             max_entries_per_feed=max_results,
             after_date=after_date,
             force_reprocess=force,
-            on_result=_capture_result,
+            on_result=_capture_response,
         )
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.rss",
+            source="rss",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "rss"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]RSS ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
-    if is_json_mode():
-        result_data: dict = {"source": "rss", "ingested": count}
-        if captured_result:
-            result_data["failed_sources"] = [
-                {"url": r.url, "name": r.name, "error": r.error, "error_type": r.error_type}
-                for r in captured_result.failed_sources
-            ]
-            result_data["redirected_sources"] = [
-                {"url": r.url, "name": r.name, "redirected_to": r.redirected_to}
-                for r in captured_result.redirected_sources
-            ]
-        output_result(result_data)
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    if captured_response is None:
+        # Orchestrator was mocked or did not invoke on_result — fall back to
+        # constructing a minimal envelope from the count return value.
+        response = IngestionResponse(
+            command="ingest.rss",
+            source="rss",
+            status="ok",
+            items_ingested=count,
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+        )
     else:
-        console.print(f"[green]RSS ingestion complete.[/green] {count} item(s) ingested.")
-        if captured_result:
-            if captured_result.redirected_sources:
-                console.print(
-                    f"\n[yellow]Warning:[/yellow] {len(captured_result.redirected_sources)} "
-                    f"source(s) redirected to new URLs:"
-                )
-                for r in captured_result.redirected_sources:
-                    label = r.name or r.url
-                    console.print(f"  [yellow]{label}[/yellow]")
-                    console.print(f"    {r.url} -> {r.redirected_to}")
-            if captured_result.failed_sources:
-                console.print(
-                    f"\n[red]Error:[/red] {len(captured_result.failed_sources)} source(s) failed:"
-                )
-                for r in captured_result.failed_sources:
-                    label = r.name or r.url
-                    console.print(f"  [red]{label}[/red] ({r.error_type})")
-                    console.print(f"    {r.error}")
+        response = captured_response.model_copy(
+            update={
+                "duration_ms": elapsed_ms,
+                "started_at": started_at_wall,
+            }
+        )
+
+    if is_json_mode():
+        output_result(response.model_dump(mode="json"))
+    else:
+        console.print(
+            f"[green]RSS ingestion complete.[/green] {response.items_ingested} item(s) ingested."
+        )
+        if response.warnings:
+            console.print(
+                f"\n[yellow]Warning:[/yellow] {len(response.warnings)} source(s) had warnings:"
+            )
+            for w in response.warnings:
+                console.print(f"  [yellow]{w.url or w.code}[/yellow]")
+                if w.redirected_to:
+                    console.print(f"    {w.url} -> {w.redirected_to}")
+                else:
+                    console.print(f"    {w.message}")
+        if response.errors:
+            console.print(f"\n[red]Error:[/red] {len(response.errors)} source(s) failed:")
+            for e in response.errors:
+                console.print(f"  [red]{e.url or e.code}[/red] ({e.code})")
+                console.print(f"    {e.message}")
 
 
 @app.command("rss")

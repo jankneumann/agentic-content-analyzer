@@ -11,7 +11,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ingestion.rss import RSSFetchOutcome
+from src.ingestion.result import IngestionResponse
+
+
+def _rss_response(n: int) -> IngestionResponse:
+    """Helper: build a minimal canonical response for an RSS service mock."""
+    return IngestionResponse(
+        command="ingest.rss",
+        source="rss",
+        status="ok",
+        items_ingested=n,
+    )
 
 
 class TestIngestGmail:
@@ -48,7 +58,7 @@ class TestIngestRss:
     def test_returns_int(self, mock_cls):
         from src.ingestion.orchestrator import ingest_rss
 
-        mock_cls.return_value.ingest_content.return_value = RSSFetchOutcome(items_ingested=10)
+        mock_cls.return_value.ingest_content.return_value = _rss_response(10)
         result = ingest_rss()
         assert result == 10
         assert isinstance(result, int)
@@ -57,7 +67,7 @@ class TestIngestRss:
     def test_on_result_callback_receives_ingestion_result(self, mock_cls):
         from src.ingestion.orchestrator import ingest_rss
 
-        ingestion_result = RSSFetchOutcome(items_ingested=7)
+        ingestion_result = _rss_response(7)
         mock_cls.return_value.ingest_content.return_value = ingestion_result
 
         callback = MagicMock()
@@ -69,7 +79,7 @@ class TestIngestRss:
     def test_on_result_not_called_when_none(self, mock_cls):
         from src.ingestion.orchestrator import ingest_rss
 
-        mock_cls.return_value.ingest_content.return_value = RSSFetchOutcome(items_ingested=3)
+        mock_cls.return_value.ingest_content.return_value = _rss_response(3)
         # Should not raise when on_result is None (default)
         result = ingest_rss()
         assert result == 3
@@ -79,7 +89,7 @@ class TestIngestRss:
         from src.ingestion.orchestrator import ingest_rss
 
         mock_service = MagicMock()
-        mock_service.ingest_content.return_value = RSSFetchOutcome(items_ingested=0)
+        mock_service.ingest_content.return_value = _rss_response(0)
         mock_cls.return_value = mock_service
         after = datetime(2025, 1, 1, tzinfo=UTC)
 

@@ -61,7 +61,7 @@ CANONICAL_COUNT_FIELD = "items_ingested"
 # below uses xfail markers to track which commands deviate from canonical.
 INGEST_CASES = [
     pytest.param("gmail", "ingest_gmail", "gmail", "items_ingested", [], id="gmail"),
-    pytest.param("rss", "ingest_rss", "rss", "ingested", [], id="rss"),
+    pytest.param("rss", "ingest_rss", "rss", "items_ingested", [], id="rss"),
     pytest.param("blog", "ingest_blog", "blog", "ingested", [], id="blog"),
     pytest.param("substack", "ingest_substack", "substack", "ingested", [], id="substack"),
     pytest.param("youtube", "ingest_youtube", "youtube", "ingested", [], id="youtube"),
@@ -193,6 +193,36 @@ def test_ingest_commands_use_canonical_count_field(subcommand, orch_func):
     )
 
 
+def test_ingest_gmail_envelope_validates_through_pydantic():
+    """gmail --json output must round-trip through IngestionResponse validation.
+
+    Catches schema drift that string-match assertions miss: missing fields,
+    type mismatches, computed-field round-trip breakage, or unknown fields
+    drifted in. This is the cross-transport contract primitive — when HTTP
+    and MCP transports migrate, the same payload-validation pattern asserts
+    each transport produces the canonical envelope shape.
+    """
+    from src.ingestion.result import IngestionResponse
+
+    with patch("src.ingestion.orchestrator.ingest_gmail") as mock:
+        mock.return_value = 5
+        result = runner.invoke(app, ["--json", "--direct", "ingest", "gmail"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+
+    # Loose: round-trip works despite computed `success` field
+    response = IngestionResponse.model_validate(payload)
+    assert response.command == "ingest.gmail"
+    assert response.source == "gmail"
+    assert response.status == "ok"
+    assert response.items_ingested == 5
+    assert response.success is True  # computed from status
+
+    # Strict: no unknown fields drifted in (drift detection layer)
+    IngestionResponse.model_validate_strict(payload)
+
+
 def test_ingest_failure_returns_nonzero_exit():
     """Orchestrator exception must surface as exit code 1, not silent success."""
     with patch("src.ingestion.orchestrator.ingest_rss") as mock:
@@ -203,19 +233,13 @@ def test_ingest_failure_returns_nonzero_exit():
         f"Orchestrator raised but CLI exited {result.exit_code} — silent failure!"
     )
     payload = json.loads(result.stdout)
-    assert "error" in payload, f"Failure output missing error key: {payload}"
+    # New envelope: failures emit status="error" with at least one entry in errors[]
+    assert payload.get("status") == "error", (
+        f"Failure envelope missing `status: 'error'`: {payload}"
+    )
+    assert payload.get("errors"), f"Failure envelope missing populated errors: {payload}"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "PR #2 harmonization migrates failure JSON to use `status: 'error'` "
-        "(canonical IngestionResponse envelope). This test invokes `aca ingest rss` "
-        "which has not been migrated yet — when rss migrates, this test xpasses, "
-        "strict=True flips to red, and the marker is removed. Tripwire for the "
-        "harmonization rollout."
-    ),
-    strict=True,
-)
 def test_ingest_failure_pins_status_error_envelope():
     """The failure envelope must include `status: 'error'`.
 

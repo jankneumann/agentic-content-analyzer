@@ -10,7 +10,7 @@ RSSSource objects from the unified source configuration system.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -20,6 +20,7 @@ import httpx
 
 from src.config import settings
 from src.ingestion.gmail import ContentData
+from src.ingestion.result import IngestionResponse, build_response_from_source_results
 from src.models.content import Content, ContentSource, ContentStatus
 from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
@@ -53,22 +54,6 @@ class SourceFetchResult:
     @property
     def is_redirect(self) -> bool:
         return self.redirected_to is not None
-
-
-@dataclass
-class RSSFetchOutcome:
-    """Aggregated result of an RSS ingestion run."""
-
-    items_ingested: int = 0
-    source_results: list[SourceFetchResult] = field(default_factory=list)
-
-    @property
-    def failed_sources(self) -> list[SourceFetchResult]:
-        return [r for r in self.source_results if not r.success]
-
-    @property
-    def redirected_sources(self) -> list[SourceFetchResult]:
-        return [r for r in self.source_results if r.is_redirect]
 
 
 class RSSClient:
@@ -486,7 +471,7 @@ class RSSContentIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> RSSFetchOutcome:
+    ) -> IngestionResponse:
         """
         Ingest content from RSS feeds and store as Content records.
 
@@ -504,10 +489,10 @@ class RSSContentIngestionService:
             force_reprocess: If True, reprocess existing content
 
         Returns:
-            RSSFetchOutcome with item count and per-source fetch outcomes
+            IngestionResponse with item count, status, errors, and warnings.
         """
         logger.info("Starting RSS content ingestion (unified Content model)...")
-        ingestion_result = RSSFetchOutcome()
+        source_results: list[SourceFetchResult] = []
 
         # Resolve sources with fallback chain
         if sources is None and feed_urls is None:
@@ -534,7 +519,12 @@ class RSSContentIngestionService:
                 "No RSS sources configured. Add sources to sources.d/rss.yaml, "
                 "set RSS_FEEDS, or create rss_feeds.txt"
             )
-            return ingestion_result
+            return build_response_from_source_results(
+                command="ingest.rss",
+                source="rss",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         enabled_sources = [s for s in sources if s.enabled]
         logger.info(
@@ -554,11 +544,16 @@ class RSSContentIngestionService:
                 source_tags=source.tags if source.tags else None,
             )
             contents.extend(fetched)
-            ingestion_result.source_results.append(fetch_result)
+            source_results.append(fetch_result)
 
         if not contents:
             logger.info("No content found")
-            return ingestion_result
+            return build_response_from_source_results(
+                command="ingest.rss",
+                source="rss",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         # Store in database
         count = 0
@@ -711,21 +706,25 @@ class RSSContentIngestionService:
                     db.rollback()
                     continue
 
-        ingestion_result.items_ingested = count
         logger.info(f"Successfully ingested {count} content items")
 
         # Log summary of source health
-        if ingestion_result.failed_sources:
+        failed = [r for r in source_results if not r.success]
+        redirected = [r for r in source_results if r.is_redirect]
+        if failed:
+            logger.warning(f"{len(failed)} source(s) failed during ingestion")
+        if redirected:
             logger.warning(
-                f"{len(ingestion_result.failed_sources)} source(s) failed during ingestion"
-            )
-        if ingestion_result.redirected_sources:
-            logger.warning(
-                f"{len(ingestion_result.redirected_sources)} source(s) have redirected URLs "
+                f"{len(redirected)} source(s) have redirected URLs "
                 f"— consider updating sources.d/rss.yaml"
             )
 
-        return ingestion_result
+        return build_response_from_source_results(
+            command="ingest.rss",
+            source="rss",
+            items_ingested=count,
+            source_results=source_results,
+        )
 
     def close(self) -> None:
         """Close RSS client."""
