@@ -52,13 +52,13 @@ Design notes
       RSS XML malformed before any item parse) belong in ``errors`` with
       no ``items_failed`` increment — there were no items to fail.
 
-  KNOWN GAP (tracked for service-by-service migration): the three currently
-  envelope-returning services (rss, blog, huggingface_papers) do not yet
-  track per-item failures. They surface source-level errors via
-  ``build_response_from_source_results`` but report ``items_failed=0``
-  even when individual items inside a successfully-fetched source failed
-  to parse. Closing this gap requires per-service instrumentation and is
-  out of scope for the harmonization PR.
+  Per-item failure tracking is wired through ``SourceFetchResult.items_failed``
+  / ``item_errors`` (per-source) and the ``extra_item_errors`` /
+  ``extra_items_failed`` parameters on ``build_response_from_source_results``
+  (for service-level cross-source failures, e.g. RSS persistence happens
+  in a flat post-fetch loop). Sources still being migrated to the envelope
+  (substack, podcast, youtube, etc.) emit only an item count today; their
+  ``items_failed`` will populate as they cut over.
 
 - ``schema_version`` is a MAJOR version integer. Minor / additive field
   additions do NOT bump it (consumers ignore unknown fields). Bump only
@@ -306,21 +306,33 @@ def build_response_from_source_results(
     source: IngestionSourceLiteral,
     items_ingested: int,
     source_results: list[Any],
+    extra_item_errors: list[IngestionError] | None = None,
+    extra_items_failed: int = 0,
 ) -> IngestionResponse:
     """Construct an IngestionResponse from an ingestion service's per-source diagnostics.
 
     Shared helper for ingestion services (RSS, blog, HuggingFace papers, etc.)
     to convert their internal ``SourceFetchResult`` accumulator into the
-    canonical envelope. Source-level failures map to ``errors``, redirects
-    map to ``warnings`` with code ``feed_redirected``, and ``status`` is
-    derived from the items_ingested vs. error count.
+    canonical envelope.
 
-    Each ``source_results`` entry is duck-typed: it must have ``url``, ``success``,
-    and (for failures) ``error`` / ``error_type``. RSS-style sources also
-    expose ``redirected_to``; non-RSS sources may omit it.
+    Each ``source_results`` entry is duck-typed:
+      - Required: ``url``, ``success``
+      - For source-level failures: ``error`` / ``error_type``
+      - Optional redirect signal: ``redirected_to`` (RSS-style sources)
+      - Optional per-item failure counters (added during the harmonization
+        rollout): ``items_failed: int`` and ``item_errors: list[IngestionError]``
+
+    ``extra_item_errors`` / ``extra_items_failed`` carry per-item failures
+    that occur at the service level — outside any single ``SourceFetchResult``
+    boundary (e.g. RSS persists to the DB in a flat loop after all fetches
+    return, so a persistence error can't naturally attribute to one source).
+
+    Status is derived from items_ingested vs. the union of all failure
+    signals (source-level errors + item-level errors + items_failed counters).
     """
     errors: list[IngestionError] = []
     warnings: list[IngestionWarning] = []
+    items_failed = extra_items_failed
 
     for r in source_results:
         if not getattr(r, "success", True):
@@ -341,8 +353,14 @@ def build_response_from_source_results(
                     redirected_to=redirected_to,
                 )
             )
+        items_failed += getattr(r, "items_failed", 0)
+        errors.extend(getattr(r, "item_errors", []))
 
-    if not errors:
+    if extra_item_errors:
+        errors.extend(extra_item_errors)
+
+    has_failure = bool(errors) or items_failed > 0
+    if not has_failure:
         status: IngestionStatus = "ok"
     elif items_ingested > 0:
         status = "partial"
@@ -354,6 +372,7 @@ def build_response_from_source_results(
         source=source,
         status=status,
         items_ingested=items_ingested,
+        items_failed=items_failed,
         errors=errors,
         warnings=warnings,
     )
