@@ -7,7 +7,10 @@ importing, instantiating, and calling service classes.
 Each function:
 - Lazy-imports its service classes (avoids circular imports, defers heavy deps)
 - Accepts the same parameters the service expects
-- Returns int (number of items ingested) or a result dataclass
+- Returns either the canonical ``IngestionResponse`` envelope (rss, blog,
+  huggingface_papers — the harmonized sources) or a legacy shape (``int``
+  count, or a small result dataclass like ``URLIngestResult``) for sources
+  not yet migrated. Migration to ``IngestionResponse`` is in progress.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
 

@@ -3,9 +3,12 @@
 Used by all `aca ingest *` commands and the corresponding HTTP / MCP
 endpoints to produce a consistent JSON response shape across transports.
 
-This is distinct from the per-source orchestrator outcome dataclasses
-(``RSSFetchOutcome``, ``BlogFetchOutcome``, ``HFPapersFetchOutcome``)
-which are internal to ``on_result`` callbacks during ingestion.
+Services that previously emitted per-source outcome dataclasses now build
+an ``IngestionResponse`` directly (typically via
+``build_response_from_source_results``); the legacy ``on_result`` callback
+parameters on a few orchestrator entry points still pass this same envelope
+for backward compatibility and will be removed once all CLI direct paths
+consume the canonical envelope from the return value.
 
 Design notes
 ------------
@@ -27,8 +30,16 @@ Design notes
   exclusive categories. Their sum equals the total items the orchestrator
   *attempted* to process. ``_validate_status_invariants`` enforces:
     - ``status="ok"`` ⇒ ``errors == []`` AND ``items_failed == 0``
-    - ``status="error"`` ⇒ ``items_ingested == 0`` AND ``len(errors) > 0``
-    - ``status="partial"`` ⇒ ``items_ingested > 0`` AND ``len(errors) > 0``
+    - ``status="error"`` ⇒ ``items_ingested == 0`` AND
+      (``len(errors) > 0`` OR ``items_failed > 0``)
+    - ``status="partial"`` ⇒ ``items_ingested > 0`` AND
+      (``len(errors) > 0`` OR ``items_failed > 0``)
+
+  Either ``errors`` or ``items_failed > 0`` is a valid "something went
+  wrong" signal — services that increment ``items_failed`` without
+  emitting an ``IngestionError`` entry (e.g. logged-and-counted parse
+  failures) are representable, even though attaching a corresponding
+  error is strongly preferred for debuggability.
 
   Categorization policy:
     - ``items_ingested``: items successfully persisted to the DB.
@@ -236,10 +247,10 @@ class IngestionResponse(BaseModel):
                     "status='error' requires items_ingested == 0; "
                     "use 'partial' when some items landed despite errors"
                 )
-            if not self.errors:
+            if not self.errors and self.items_failed == 0:
                 raise ValueError(
-                    "status='error' requires non-empty errors; "
-                    "consumers need at least one diagnostic entry"
+                    "status='error' requires errors or items_failed > 0; "
+                    "consumers need at least one failure signal"
                 )
         elif self.status == "partial":
             if self.items_ingested == 0:
@@ -247,9 +258,10 @@ class IngestionResponse(BaseModel):
                     "status='partial' requires items_ingested > 0; "
                     "use 'error' when nothing was persisted"
                 )
-            if not self.errors:
+            if not self.errors and self.items_failed == 0:
                 raise ValueError(
-                    "status='partial' requires non-empty errors; use 'ok' when no failures occurred"
+                    "status='partial' requires errors or items_failed > 0; "
+                    "use 'ok' when no failures occurred"
                 )
         return self
 
