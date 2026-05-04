@@ -55,13 +55,16 @@ class TestIngestGmail:
 
 class TestIngestRss:
     @patch("src.ingestion.rss.RSSContentIngestionService")
-    def test_returns_int(self, mock_cls):
+    def test_returns_ingestion_response(self, mock_cls):
         from src.ingestion.orchestrator import ingest_rss
+        from src.ingestion.result import IngestionResponse
 
         mock_cls.return_value.ingest_content.return_value = _rss_response(10)
         result = ingest_rss()
-        assert result == 10
-        assert isinstance(result, int)
+        assert isinstance(result, IngestionResponse)
+        assert result.items_ingested == 10
+        assert result.command == "ingest.rss"
+        assert result.status == "ok"
 
     @patch("src.ingestion.rss.RSSContentIngestionService")
     def test_on_result_callback_receives_ingestion_result(self, mock_cls):
@@ -82,7 +85,7 @@ class TestIngestRss:
         mock_cls.return_value.ingest_content.return_value = _rss_response(3)
         # Should not raise when on_result is None (default)
         result = ingest_rss()
-        assert result == 3
+        assert result.items_ingested == 3
 
     @patch("src.ingestion.rss.RSSContentIngestionService")
     def test_passes_parameters(self, mock_cls):
