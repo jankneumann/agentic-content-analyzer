@@ -253,6 +253,24 @@ class IngestionResponse(BaseModel):
                 )
         return self
 
+    def with_timing(self, *, duration_ms: int, started_at: datetime) -> Self:
+        """Return a copy with transport-side timing fields populated, re-validated.
+
+        Use this at transport boundaries (CLI direct mode, HTTP handler, MCP
+        tool wrapper) to augment a service-built envelope with wall-clock
+        timing measured at the transport. Unlike raw ``model_copy(update=...)``
+        which skips validators by design, ``with_timing`` re-runs the full
+        validator chain so future schema changes that introduce timing-aware
+        invariants (e.g. "duration_ms > 0 if status='ok'") cannot be silently
+        bypassed.
+
+        Today the validator does not depend on either field, so the cost is
+        a small Pydantic round-trip; the value is forward compatibility.
+        """
+        return self.model_validate(
+            {**self.model_dump(), "duration_ms": duration_ms, "started_at": started_at}
+        )
+
     @classmethod
     def model_validate_strict(cls, payload: dict[str, Any]) -> Self:
         """Strict validation for cross-transport drift detection.

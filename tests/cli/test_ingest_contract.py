@@ -256,6 +256,31 @@ def test_ingest_gmail_envelope_validates_through_pydantic():
     IngestionResponse.model_validate_strict(payload)
 
 
+def test_with_timing_preserves_invariants_and_runs_validators():
+    """``with_timing`` augments timing fields through the validator chain.
+
+    Unlike ``model_copy(update=...)`` which skips validators, ``with_timing``
+    does a full ``model_validate`` round-trip. Asserting the post-augmentation
+    response is still a valid IngestionResponse (and that an invariant
+    violation in the BASE response would propagate, not be silently kept)
+    proves the helper can't be used to bypass status/items invariants.
+    """
+    from datetime import UTC, datetime as dt
+
+    from src.ingestion.result import IngestionResponse
+
+    base = IngestionResponse(command="ingest.rss", source="rss", status="ok", items_ingested=5)
+
+    augmented = base.with_timing(duration_ms=1234, started_at=dt(2026, 5, 4, tzinfo=UTC))
+
+    assert augmented.duration_ms == 1234
+    assert augmented.started_at == dt(2026, 5, 4, tzinfo=UTC)
+    assert augmented.items_ingested == 5
+    assert augmented.success is True  # computed from status
+    # Original instance untouched (immutability via model_validate copy)
+    assert base.duration_ms is None
+
+
 def test_ingest_response_rejects_unregistered_command_or_source():
     """The Literal registry catches drift: an unregistered command/source raises.
 
