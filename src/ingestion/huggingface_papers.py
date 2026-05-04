@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin
@@ -22,7 +22,11 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.ingestion.gmail import ContentData
-from src.ingestion.result import IngestionResponse, build_response_from_source_results
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    build_response_from_source_results,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -80,6 +84,8 @@ class SourceFetchResult:
     items_fetched: int = 0
     error: str | None = None
     error_type: str | None = None
+    items_failed: int = 0
+    item_errors: list[IngestionError] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -559,13 +565,25 @@ class HuggingFacePapersContentIngestionService:
 
                 content_data = self.client.extract_paper_content(paper)
                 if content_data is None:
+                    fetch_result.items_failed += 1
+                    fetch_result.item_errors.append(
+                        IngestionError(
+                            code="extraction_failed",
+                            message="Failed to extract paper content (HTTP error or insufficient content)",
+                            url=paper.url,
+                        )
+                    )
                     continue
 
                 contents.append(content_data)
 
             # Phase 3: Persist with deduplication
-            count = self._persist_contents(contents, force_reprocess=force_reprocess)
+            count, persist_errors = self._persist_contents(
+                contents, force_reprocess=force_reprocess
+            )
             fetch_result.items_fetched = count
+            fetch_result.items_failed += len(persist_errors)
+            fetch_result.item_errors.extend(persist_errors)
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching {source_url}: {e}")
@@ -585,9 +603,14 @@ class HuggingFacePapersContentIngestionService:
         contents: list[ContentData],
         *,
         force_reprocess: bool = False,
-    ) -> int:
-        """Persist content to database with 3-level deduplication."""
+    ) -> tuple[int, list[IngestionError]]:
+        """Persist content to database with 3-level deduplication.
+
+        Returns:
+            (count of items persisted, list of per-item persistence errors).
+        """
         count = 0
+        errors: list[IngestionError] = []
 
         with get_db() as db:
             for content_data in contents:
@@ -735,9 +758,16 @@ class HuggingFacePapersContentIngestionService:
 
                 except Exception as e:
                     logger.error(f"Failed to persist {content_data.source_url}: {e}")
+                    errors.append(
+                        IngestionError(
+                            code="persistence_error",
+                            message=str(e),
+                            url=content_data.source_url,
+                        )
+                    )
                     continue
 
-        return count
+        return count, errors
 
     @staticmethod
     def _load_sources() -> list:

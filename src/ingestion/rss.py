@@ -10,7 +10,7 @@ RSSSource objects from the unified source configuration system.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -20,7 +20,11 @@ import httpx
 
 from src.config import settings
 from src.ingestion.gmail import ContentData
-from src.ingestion.result import IngestionResponse, build_response_from_source_results
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    build_response_from_source_results,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
@@ -50,6 +54,8 @@ class SourceFetchResult:
     error: str | None = None
     error_type: str | None = None
     redirected_to: str | None = None
+    items_failed: int = 0
+    item_errors: list[IngestionError] = field(default_factory=list)
 
     @property
     def is_redirect(self) -> bool:
@@ -150,6 +156,14 @@ class RSSClient:
                     logger.error(
                         f"Error parsing entry '{entry.get('title', 'Unknown')}': {e}",
                         exc_info=True,
+                    )
+                    result.items_failed += 1
+                    result.item_errors.append(
+                        IngestionError(
+                            code="parse_error",
+                            message=str(e),
+                            url=entry.get("link") or feed_url,
+                        )
                     )
                     continue
 
@@ -557,6 +571,7 @@ class RSSContentIngestionService:
 
         # Store in database
         count = 0
+        persistence_errors: list[IngestionError] = []
         with get_db() as db:
             for content_data in contents:
                 try:
@@ -704,6 +719,13 @@ class RSSContentIngestionService:
                 except Exception as e:
                     logger.error(f"Error storing content: {e}")
                     db.rollback()
+                    persistence_errors.append(
+                        IngestionError(
+                            code="persistence_error",
+                            message=str(e),
+                            url=content_data.source_url,
+                        )
+                    )
                     continue
 
         logger.info(f"Successfully ingested {count} content items")
@@ -724,6 +746,8 @@ class RSSContentIngestionService:
             source="rss",
             items_ingested=count,
             source_results=source_results,
+            extra_item_errors=persistence_errors,
+            extra_items_failed=len(persistence_errors),
         )
 
     def close(self) -> None:
