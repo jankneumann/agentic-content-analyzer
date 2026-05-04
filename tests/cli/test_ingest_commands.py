@@ -73,7 +73,14 @@ class TestIngestGmail:
 class TestIngestRss:
     @patch("src.ingestion.orchestrator.ingest_rss")
     def test_rss_success(self, mock_ingest):
-        mock_ingest.return_value = 10
+        from src.ingestion.result import IngestionResponse
+
+        mock_ingest.return_value = IngestionResponse(
+            command="ingest.rss",
+            source="rss",
+            status="ok",
+            items_ingested=10,
+        )
 
         result = runner.invoke(app, ["--direct", "ingest", "rss"])
         assert result.exit_code == 0
@@ -89,16 +96,35 @@ class TestIngestRss:
         assert "RSS ingestion failed" in result.output
 
     @patch("src.ingestion.orchestrator.ingest_rss")
-    def test_rss_passes_on_result_callback(self, mock_ingest):
-        """Verify that the CLI passes an on_result callback to the orchestrator."""
-        mock_ingest.return_value = 5
+    def test_rss_consumes_response_envelope(self, mock_ingest):
+        """CLI surfaces warnings from the IngestionResponse return value.
 
-        runner.invoke(app, ["--direct", "ingest", "rss"])
+        Replaces the legacy ``on_result`` callback wiring: now that
+        ``ingest_rss`` returns ``IngestionResponse`` directly, the CLI consumes
+        the return value and renders warnings/errors from it. Asserting the
+        warning content surfaces in stdout proves the envelope was actually
+        traversed, not just the count extracted.
+        """
+        from src.ingestion.result import IngestionResponse, IngestionWarning
 
-        mock_ingest.assert_called_once()
-        call_kwargs = mock_ingest.call_args[1]
-        assert "on_result" in call_kwargs
-        assert callable(call_kwargs["on_result"])
+        mock_ingest.return_value = IngestionResponse(
+            command="ingest.rss",
+            source="rss",
+            status="ok",
+            items_ingested=5,
+            warnings=[
+                IngestionWarning(
+                    code="feed_redirected",
+                    message="redirected",
+                    url="https://example.com/feed",
+                    redirected_to="https://example.com/new-feed",
+                )
+            ],
+        )
+
+        result = runner.invoke(app, ["--direct", "ingest", "rss"])
+        assert result.exit_code == 0
+        assert "https://example.com/new-feed" in result.output
 
 
 class TestIngestYoutube:

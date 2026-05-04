@@ -178,22 +178,15 @@ def _rss_direct(max_results: int, after_date: datetime | None, force: bool) -> N
     from src.ingestion.result import IngestionError, IngestionResponse
 
     console = Console()
-    captured_response: IngestionResponse | None = None
-
-    def _capture_response(r: IngestionResponse) -> None:
-        nonlocal captured_response
-        captured_response = r
-
     started_at_wall = dt.now(UTC)
     started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_rss
 
-        count = ingest_rss(
+        response = ingest_rss(
             max_entries_per_feed=max_results,
             after_date=after_date,
             force_reprocess=force,
-            on_result=_capture_response,
         )
     except Exception as exc:
         elapsed_ms = int((time.monotonic() - started_mono) * 1000)
@@ -212,24 +205,9 @@ def _rss_direct(max_results: int, after_date: datetime | None, force: bool) -> N
         raise typer.Exit(1)
 
     elapsed_ms = int((time.monotonic() - started_mono) * 1000)
-    if captured_response is None:
-        # Orchestrator was mocked or did not invoke on_result — fall back to
-        # constructing a minimal envelope from the count return value.
-        response = IngestionResponse(
-            command="ingest.rss",
-            source="rss",
-            status="ok",
-            items_ingested=count,
-            duration_ms=elapsed_ms,
-            started_at=started_at_wall,
-        )
-    else:
-        response = captured_response.model_copy(
-            update={
-                "duration_ms": elapsed_ms,
-                "started_at": started_at_wall,
-            }
-        )
+    response = response.model_copy(
+        update={"duration_ms": elapsed_ms, "started_at": started_at_wall}
+    )
 
     if is_json_mode():
         output_result(response.model_dump(mode="json"))
@@ -291,14 +269,51 @@ def rss(
 
 def _blog_direct(max_results: int, after_date: datetime | None, force: bool) -> None:
     """Direct blog ingestion."""
-    from src.ingestion.orchestrator import ingest_blog
+    import time
+    from datetime import UTC, datetime as dt
 
-    count = ingest_blog(
-        max_entries_per_source=max_results,
-        after_date=after_date,
-        force_reprocess=force,
+    from rich.console import Console
+
+    from src.ingestion.result import IngestionError, IngestionResponse
+
+    console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
+    try:
+        from src.ingestion.orchestrator import ingest_blog
+
+        response = ingest_blog(
+            max_entries_per_source=max_results,
+            after_date=after_date,
+            force_reprocess=force,
+        )
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.blog",
+            source="blog",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
+        if is_json_mode():
+            output_result(response.model_dump(mode="json"))
+        else:
+            console.print(f"[red]Blog ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.model_copy(
+        update={"duration_ms": elapsed_ms, "started_at": started_at_wall}
     )
-    output_result({"source": "blog", "ingested": count})
+
+    if is_json_mode():
+        output_result(response.model_dump(mode="json"))
+    else:
+        console.print(
+            f"[green]Blog ingestion complete.[/green] {response.items_ingested} item(s) ingested."
+        )
 
 
 @app.command("blog")
@@ -1414,29 +1429,51 @@ def arxiv_paper(
 
 def _huggingface_papers_direct(max_papers: int, after_date: datetime | None, force: bool) -> None:
     """Direct HuggingFace Papers ingestion."""
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_huggingface_papers
 
-        count = ingest_huggingface_papers(
+        response = ingest_huggingface_papers(
             max_papers=max_papers,
             after_date=after_date,
             force_reprocess=force,
         )
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.huggingface-papers",
+            source="huggingface_papers",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "huggingface_papers"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]HuggingFace Papers ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.model_copy(
+        update={"duration_ms": elapsed_ms, "started_at": started_at_wall}
+    )
+
     if is_json_mode():
-        output_result({"source": "huggingface_papers", "ingested": count})
+        output_result(response.model_dump(mode="json"))
     else:
         console.print(
-            f"[green]HuggingFace Papers ingestion complete.[/green] {count} paper(s) ingested."
+            f"[green]HuggingFace Papers ingestion complete.[/green] "
+            f"{response.items_ingested} paper(s) ingested."
         )
 
 
