@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urljoin, urlparse
 
@@ -20,6 +20,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.ingestion.gmail import ContentData
+from src.ingestion.result import IngestionResponse, build_response_from_source_results
 from src.models.content import Content, ContentSource, ContentStatus
 from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
@@ -43,18 +44,6 @@ class SourceFetchResult:
     items_fetched: int = 0
     error: str | None = None
     error_type: str | None = None
-
-
-@dataclass
-class IngestionResult:
-    """Aggregated result of a blog ingestion run."""
-
-    items_ingested: int = 0
-    source_results: list[SourceFetchResult] = field(default_factory=list)
-
-    @property
-    def failed_sources(self) -> list[SourceFetchResult]:
-        return [r for r in self.source_results if not r.success]
 
 
 # --- Link Discovery ---
@@ -434,7 +423,7 @@ class BlogContentIngestionService:
         max_entries_per_source: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> IngestionResult:
+    ) -> IngestionResponse:
         """Discover and ingest blog posts from configured sources.
 
         Args:
@@ -451,9 +440,15 @@ class BlogContentIngestionService:
 
         if not sources:
             logger.warning("No blog sources configured")
-            return IngestionResult()
+            return build_response_from_source_results(
+                command="ingest.blog",
+                source="blog",
+                items_ingested=0,
+                source_results=[],
+            )
 
-        result = IngestionResult()
+        source_results: list[SourceFetchResult] = []
+        items_ingested = 0
 
         for source in sources:
             if not source.enabled:
@@ -465,10 +460,15 @@ class BlogContentIngestionService:
                 after_date=after_date,
                 force_reprocess=force_reprocess,
             )
-            result.source_results.append(source_result)
-            result.items_ingested += source_result.items_fetched
+            source_results.append(source_result)
+            items_ingested += source_result.items_fetched
 
-        return result
+        return build_response_from_source_results(
+            command="ingest.blog",
+            source="blog",
+            items_ingested=items_ingested,
+            source_results=source_results,
+        )
 
     def _ingest_source(
         self,

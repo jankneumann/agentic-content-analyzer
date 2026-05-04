@@ -489,8 +489,10 @@ class TestBlogContentIngestionService:
         )
 
         assert result.items_ingested >= 0
-        assert len(result.source_results) == 1
-        assert result.source_results[0].url == "https://example.com/blog"
+        assert result.command == "ingest.blog"
+        assert result.source == "blog"
+        assert result.status == "ok"
+        assert result.errors == []
 
     @patch("src.ingestion.blog_scraper.get_db")
     @patch.object(BlogScrapingClient, "fetch_index_page")
@@ -509,13 +511,18 @@ class TestBlogContentIngestionService:
         service = BlogContentIngestionService()
         result = service.ingest_content(sources=[source])
 
-        assert len(result.source_results) == 1
-        assert result.source_results[0].success is False
-        assert result.source_results[0].error is not None
+        # Source-level failure surfaces as one error in the canonical envelope
+        assert len(result.errors) == 1
+        assert result.errors[0].url == "https://broken.com/blog"
+        assert result.errors[0].message
+        assert result.status == "error"
+        assert result.items_ingested == 0
 
     def test_no_sources_returns_empty_result(self):
         """Empty source list returns empty result."""
         service = BlogContentIngestionService()
         result = service.ingest_content(sources=[])
         assert result.items_ingested == 0
-        assert len(result.source_results) == 0
+        assert result.errors == []
+        assert result.warnings == []
+        assert result.status == "ok"

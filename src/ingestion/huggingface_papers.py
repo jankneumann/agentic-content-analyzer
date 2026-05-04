@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin
@@ -22,6 +22,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.ingestion.gmail import ContentData
+from src.ingestion.result import IngestionResponse, build_response_from_source_results
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -79,18 +80,6 @@ class SourceFetchResult:
     items_fetched: int = 0
     error: str | None = None
     error_type: str | None = None
-
-
-@dataclass
-class IngestionResult:
-    """Aggregated result of a HuggingFace Papers ingestion run."""
-
-    items_ingested: int = 0
-    source_results: list[SourceFetchResult] = field(default_factory=list)
-
-    @property
-    def failed_sources(self) -> list[SourceFetchResult]:
-        return [r for r in self.source_results if not r.success]
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +474,7 @@ class HuggingFacePapersContentIngestionService:
         max_papers: int = 30,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> IngestionResult:
+    ) -> IngestionResponse:
         """Discover and ingest papers from configured HuggingFace sources.
 
         Args:
@@ -503,9 +492,15 @@ class HuggingFacePapersContentIngestionService:
 
         if not sources:
             logger.warning("No HuggingFace Papers sources configured")
-            return IngestionResult()
+            return build_response_from_source_results(
+                command="ingest.huggingface-papers",
+                source="huggingface_papers",
+                items_ingested=0,
+                source_results=[],
+            )
 
-        result = IngestionResult()
+        source_results: list[SourceFetchResult] = []
+        items_ingested = 0
 
         try:
             for source in sources:
@@ -518,12 +513,17 @@ class HuggingFacePapersContentIngestionService:
                     after_date=after_date,
                     force_reprocess=force_reprocess,
                 )
-                result.source_results.append(source_result)
-                result.items_ingested += source_result.items_fetched
+                source_results.append(source_result)
+                items_ingested += source_result.items_fetched
         finally:
             self.close()
 
-        return result
+        return build_response_from_source_results(
+            command="ingest.huggingface-papers",
+            source="huggingface_papers",
+            items_ingested=items_ingested,
+            source_results=source_results,
+        )
 
     def _ingest_source(
         self,
