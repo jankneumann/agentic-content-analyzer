@@ -98,18 +98,20 @@ def ingest_rss(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     on_result: Callable[[IngestionResponse], None] | None = None,
-) -> int:
+) -> IngestionResponse:
     """Ingest articles from configured RSS feeds.
 
     Args:
         max_entries_per_feed: Maximum entries per feed.
         after_date: Only fetch entries after this date.
         force_reprocess: Force reprocess existing content.
-        on_result: Optional callback that receives the full IngestionResponse
-                   (for rich result reporting in CLI).
+        on_result: Optional legacy callback that receives the full IngestionResponse.
+                   Prefer using the return value directly; on_result will be removed
+                   when all CLI direct paths consume the canonical envelope.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope with status, items_ingested,
+        errors, and warnings populated from per-source diagnostics.
     """
     from src.ingestion.rss import RSSContentIngestionService
 
@@ -121,7 +123,7 @@ def ingest_rss(
     )
     if on_result:
         on_result(result)
-    return result.items_ingested
+    return result
 
 
 @observe()
@@ -131,7 +133,7 @@ def ingest_blog(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     on_result: Callable[[IngestionResponse], None] | None = None,
-) -> int:
+) -> IngestionResponse:
     """Ingest blog posts from configured blog sources.
 
     Discovers post links from blog index pages, extracts content
@@ -141,10 +143,10 @@ def ingest_blog(
         max_entries_per_source: Maximum posts per blog source.
         after_date: Only fetch posts after this date.
         force_reprocess: Force reprocess existing content.
-        on_result: Optional callback for rich result reporting in CLI.
+        on_result: Optional legacy callback. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.blog_scraper import BlogContentIngestionService
 
@@ -156,7 +158,7 @@ def ingest_blog(
     )
     if on_result:
         on_result(result)
-    return result.items_ingested
+    return result
 
 
 @observe()
@@ -647,7 +649,7 @@ def ingest_huggingface_papers(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     on_result: Callable[[IngestionResponse], None] | None = None,
-) -> int:
+) -> IngestionResponse:
     """Ingest daily papers from HuggingFace Papers.
 
     Fetches the daily papers listing page, discovers paper links, extracts
@@ -657,10 +659,10 @@ def ingest_huggingface_papers(
         max_papers: Maximum papers to ingest per source.
         after_date: Only fetch papers after this date.
         force_reprocess: Force reprocess existing content.
-        on_result: Optional callback for rich result reporting.
+        on_result: Optional legacy callback. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.huggingface_papers import HuggingFacePapersContentIngestionService
 
@@ -672,7 +674,7 @@ def ingest_huggingface_papers(
     )
     if on_result:
         on_result(result)
-    return result.items_ingested
+    return result
 
 
 @observe()
