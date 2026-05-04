@@ -24,7 +24,7 @@ from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from src.ingestion.rss import IngestionResult
+    from src.ingestion.rss import RSSFetchOutcome
 
 logger = get_logger(__name__)
 
@@ -97,7 +97,7 @@ def ingest_rss(
     max_entries_per_feed: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    on_result: Callable[[IngestionResult], None] | None = None,
+    on_result: Callable[[RSSFetchOutcome], None] | None = None,
 ) -> int:
     """Ingest articles from configured RSS feeds.
 
@@ -105,7 +105,7 @@ def ingest_rss(
         max_entries_per_feed: Maximum entries per feed.
         after_date: Only fetch entries after this date.
         force_reprocess: Force reprocess existing content.
-        on_result: Optional callback that receives the full IngestionResult
+        on_result: Optional callback that receives the full RSSFetchOutcome
                    (for rich result reporting in CLI).
 
     Returns:
@@ -130,7 +130,7 @@ def ingest_blog(
     max_entries_per_source: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    on_result: Callable[[IngestionResult], None] | None = None,
+    on_result: Callable[[RSSFetchOutcome], None] | None = None,
 ) -> int:
     """Ingest blog posts from configured blog sources.
 
@@ -646,7 +646,7 @@ def ingest_huggingface_papers(
     max_papers: int = 30,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    on_result: Callable[[IngestionResult], None] | None = None,
+    on_result: Callable[[RSSFetchOutcome], None] | None = None,
 ) -> int:
     """Ingest daily papers from HuggingFace Papers.
 

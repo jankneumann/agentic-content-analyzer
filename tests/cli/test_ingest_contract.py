@@ -208,26 +208,32 @@ def test_ingest_failure_returns_nonzero_exit():
 
 @pytest.mark.xfail(
     reason=(
-        "src/cli/output.py:output_result drops the `success=False` arg when "
-        "data is a dict. PR #2 harmonization should fix the envelope so that "
-        "failure JSON consistently includes `success: false`. Removing this "
-        "xfail confirms the fix."
+        "PR #2 harmonization migrates failure JSON to use `status: 'error'` "
+        "(canonical IngestionResponse envelope). This test invokes `aca ingest rss` "
+        "which has not been migrated yet — when rss migrates, this test xpasses, "
+        "strict=True flips to red, and the marker is removed. Tripwire for the "
+        "harmonization rollout."
     ),
     strict=True,
 )
-def test_ingest_failure_pins_success_false_envelope():
-    """The failure envelope must include `success: false`.
+def test_ingest_failure_pins_status_error_envelope():
+    """The failure envelope must include `status: 'error'`.
 
-    This is currently broken — `output_result(data, success=False)` ignores
-    the success arg for dict data. The xfail makes that broken contract
-    explicit so the harmonization PR has a tripwire when it fixes it.
+    Tracks the harmonization rollout: each migrated command's failure path
+    emits the canonical IngestionResponse envelope which uses ``status: "error"``
+    (not the legacy ``success: false`` boolean). Re-pointed in PR #2 to assert
+    the chosen contract — the previous version asserted ``success: false`` and
+    would have stayed silently xfailed forever once the envelope dropped that
+    field.
     """
     with patch("src.ingestion.orchestrator.ingest_rss") as mock:
         mock.side_effect = RuntimeError("simulated upstream failure")
         result = runner.invoke(app, ["--json", "--direct", "ingest", "rss"])
 
     payload = json.loads(result.stdout)
-    assert payload.get("success") is False, f"Failure envelope missing `success: false`: {payload}"
+    assert payload.get("status") == "error", (
+        f"Failure envelope missing `status: 'error'`: {payload}"
+    )
 
 
 @pytest.mark.skip(
