@@ -29,8 +29,25 @@ Design notes
     - ``status="ok"`` ⇒ ``errors == []`` AND ``items_failed == 0``
     - ``status="error"`` ⇒ ``items_ingested == 0`` AND ``len(errors) > 0``
     - ``status="partial"`` ⇒ ``items_ingested > 0`` AND ``len(errors) > 0``
-  Source-level failures (e.g. a feed that 500'd before any items could
-  be parsed) belong in ``errors``, not ``items_failed``.
+
+  Categorization policy:
+    - ``items_ingested``: items successfully persisted to the DB.
+    - ``items_skipped``: items intentionally not persisted — deduplicated,
+      filtered out, paywalled without auth, blocked by robots.txt.
+    - ``items_failed``: items that errored mid-processing — parse failure,
+      LLM call failure, persistence error. Each typically warrants a
+      corresponding ``IngestionError`` entry pointing at the offending URL.
+    - Source-level failures (a feed returned HTTP 5xx, OAuth expired,
+      RSS XML malformed before any item parse) belong in ``errors`` with
+      no ``items_failed`` increment — there were no items to fail.
+
+  KNOWN GAP (tracked for service-by-service migration): the three currently
+  envelope-returning services (rss, blog, huggingface_papers) do not yet
+  track per-item failures. They surface source-level errors via
+  ``build_response_from_source_results`` but report ``items_failed=0``
+  even when individual items inside a successfully-fetched source failed
+  to parse. Closing this gap requires per-service instrumentation and is
+  out of scope for the harmonization PR.
 
 - ``schema_version`` is a MAJOR version integer. Minor / additive field
   additions do NOT bump it (consumers ignore unknown fields). Bump only
@@ -59,6 +76,57 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 IngestionStatus = Literal["ok", "partial", "error"]
+
+# Closed registry of canonical ``command`` values. New transports/services
+# adding an ingest path MUST add their identifier here so cross-transport
+# contract tests can assert agreement. Subcommand naming uses hyphen-case;
+# command identifier is always ``ingest.<subcommand>``.
+IngestionCommandLiteral = Literal[
+    "ingest.gmail",
+    "ingest.rss",
+    "ingest.blog",
+    "ingest.substack",
+    "ingest.youtube",
+    "ingest.youtube-rss",
+    "ingest.youtube-playlist",
+    "ingest.podcast",
+    "ingest.xsearch",
+    "ingest.perplexity-search",
+    "ingest.huggingface-papers",
+    "ingest.scholar",
+    "ingest.scholar-refs",
+    "ingest.arxiv",
+    "ingest.arxiv-paper",
+    "ingest.files",
+    "ingest.url",
+]
+
+# Closed registry of canonical ``source`` identifiers. Note the two
+# inconsistencies the ingestion subsystem inherited from history and which
+# this Literal codifies (rather than silently letting them drift further):
+#   - ``perplexity-search`` subcommand emits ``source: "perplexity"``
+#   - Multi-word sources use ``snake_case`` (``huggingface_papers``,
+#     ``arxiv_paper``) while compound subcommands keep ``hyphen-case``
+#     (``scholar-refs``, ``youtube-rss``)
+IngestionSourceLiteral = Literal[
+    "gmail",
+    "rss",
+    "blog",
+    "substack",
+    "youtube",
+    "youtube-rss",
+    "youtube-playlist",
+    "podcast",
+    "xsearch",
+    "perplexity",
+    "huggingface_papers",
+    "scholar",
+    "scholar-refs",
+    "arxiv",
+    "arxiv_paper",
+    "files",
+    "url",
+]
 
 
 class IngestionError(BaseModel):
@@ -91,12 +159,14 @@ class IngestionResponse(BaseModel):
     """Major version. Additive field changes do not bump this; consumers
     ignore unknown fields. Bump only on breaking changes."""
 
-    command: str
-    """Fully-qualified command identifier, e.g. ``ingest.gmail``."""
+    command: IngestionCommandLiteral
+    """Fully-qualified command identifier, e.g. ``ingest.gmail``. Closed
+    registry — see ``IngestionCommandLiteral``. New commands must register."""
 
-    source: str
+    source: IngestionSourceLiteral
     """Source identifier — typically matches the subcommand, but may differ
-    (e.g. ``perplexity-search`` subcommand emits ``source: "perplexity"``)."""
+    (e.g. ``perplexity-search`` subcommand emits ``source: "perplexity"``).
+    Closed registry — see ``IngestionSourceLiteral``."""
 
     status: IngestionStatus
 
@@ -202,8 +272,8 @@ class IngestionResponse(BaseModel):
 
 def build_response_from_source_results(
     *,
-    command: str,
-    source: str,
+    command: IngestionCommandLiteral,
+    source: IngestionSourceLiteral,
     items_ingested: int,
     source_results: list[Any],
 ) -> IngestionResponse:
