@@ -174,12 +174,15 @@ def ingest_rss(
     """
     from src.ingestion.orchestrator import ingest_rss as _ingest
 
-    count = _ingest(
+    response = _ingest(
         max_entries_per_feed=max_entries_per_feed,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "rss"})
+    # ingest_rss returns IngestionResponse post-commit 4ee2c7f. Extract the int
+    # count to keep the legacy MCP shape stable; envelope-level migration of
+    # MCP wrappers is tracked in the cross-transport pass.
+    return _serialize({"items_ingested": response.items_ingested, "source": "rss"})
 
 
 @mcp.tool()
@@ -399,12 +402,14 @@ def ingest_huggingface_papers(
     if days is not None:
         after_date = datetime.now(UTC) - timedelta(days=days)
 
-    count = _ingest(
+    response = _ingest(
         max_papers=max_papers,
         after_date=after_date,
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "huggingface_papers"})
+    # ingest_huggingface_papers returns IngestionResponse post-commit 4ee2c7f.
+    # Extract the int count to keep the legacy MCP shape stable.
+    return _serialize({"items_ingested": response.items_ingested, "source": "huggingface_papers"})
 
 
 @mcp.tool()

@@ -35,6 +35,7 @@ name — and `src/ingestion/orchestrator.py` for the function name.
 from __future__ import annotations
 
 import json
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -50,6 +51,38 @@ runner = CliRunner()
 CANONICAL_COUNT_FIELD = "items_ingested"
 
 
+# Orchestrator functions migrated to return IngestionResponse (commit 4ee2c7f).
+# Mocks for these MUST mimic the real return type — returning int from the mock
+# masks production bugs where the consumer treats a Pydantic model as if it were
+# an int. Pre-fix, _blog_direct silently emitted JSON like
+# {"ingested": "<IngestionResponse object>"} in production but the contract test
+# stayed green because the mock returned 7 (int).
+MIGRATED_ORCHESTRATOR_META = {
+    "ingest_rss": ("ingest.rss", "rss"),
+    "ingest_blog": ("ingest.blog", "blog"),
+    "ingest_huggingface_papers": ("ingest.huggingface-papers", "huggingface_papers"),
+}
+
+
+def _mock_orchestrator_return(orch_func: str, count: int) -> Any:
+    """Build the mock return value matching the orchestrator's real return type.
+
+    For migrated functions returns an IngestionResponse with the requested
+    item count; for legacy functions returns the bare int.
+    """
+    if orch_func not in MIGRATED_ORCHESTRATOR_META:
+        return count
+    from src.ingestion.result import IngestionResponse
+
+    command, source = MIGRATED_ORCHESTRATOR_META[orch_func]
+    return IngestionResponse(
+        command=command,
+        source=source,
+        status="ok",
+        items_ingested=count,
+    )
+
+
 # (cli_subcommand, orchestrator_func, expected_source, count_field, extra_args)
 #
 # `expected_source` is asserted explicitly because the CLI today has at least
@@ -62,7 +95,7 @@ CANONICAL_COUNT_FIELD = "items_ingested"
 INGEST_CASES = [
     pytest.param("gmail", "ingest_gmail", "gmail", "items_ingested", [], id="gmail"),
     pytest.param("rss", "ingest_rss", "rss", "items_ingested", [], id="rss"),
-    pytest.param("blog", "ingest_blog", "blog", "ingested", [], id="blog"),
+    pytest.param("blog", "ingest_blog", "blog", "items_ingested", [], id="blog"),
     pytest.param("substack", "ingest_substack", "substack", "ingested", [], id="substack"),
     pytest.param("youtube", "ingest_youtube", "youtube", "ingested", [], id="youtube"),
     pytest.param(
@@ -90,7 +123,7 @@ INGEST_CASES = [
         "huggingface-papers",
         "ingest_huggingface_papers",
         "huggingface_papers",
-        "ingested",
+        "items_ingested",
         [],
         id="huggingface-papers",
     ),
@@ -141,7 +174,7 @@ def test_ingest_command_json_contract(
 ):
     """Every ingest command must emit valid JSON with source + count fields."""
     with patch(f"src.ingestion.orchestrator.{orch_func}") as mock:
-        mock.return_value = 7
+        mock.return_value = _mock_orchestrator_return(orch_func, 7)
         result = runner.invoke(app, ["--json", "--direct", "ingest", subcommand, *extra_args])
 
     assert result.exit_code == 0, (
@@ -183,7 +216,7 @@ def test_ingest_commands_use_canonical_count_field(subcommand, orch_func):
     fix surfaces as XPASS → CI red.
     """
     with patch(f"src.ingestion.orchestrator.{orch_func}") as mock:
-        mock.return_value = 1
+        mock.return_value = _mock_orchestrator_return(orch_func, 1)
         result = runner.invoke(app, ["--json", "--direct", "ingest", subcommand])
 
     payload = json.loads(result.stdout)

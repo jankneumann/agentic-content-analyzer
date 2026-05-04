@@ -112,7 +112,7 @@ def _pipeline_stage_metrics(stage_name: str) -> Any:
 
 async def _ingest_source(
     source_name: str,
-    ingest_func: Callable[[], int],
+    ingest_func: Callable[[], Any],
 ) -> tuple[str, int | None, str | None]:
     """Ingest from a single source asynchronously.
 
@@ -120,11 +120,17 @@ async def _ingest_source(
     to enable parallel execution without blocking. Tracing is handled by
     the @observe() decorator on the orchestrator ingest_* functions.
 
+    During the partial-migration window, orchestrator functions return
+    either ``int`` (legacy, unmigrated) or ``IngestionResponse`` (migrated:
+    rss, blog, huggingface_papers). Both are normalized to a count for
+    the pipeline's per-source aggregation.
+
     Returns:
         Tuple of (source_name, count, error_message)
     """
     try:
-        count = await asyncio.to_thread(ingest_func)
+        result = await asyncio.to_thread(ingest_func)
+        count = result if isinstance(result, int) else result.items_ingested
         return (source_name, count, None)
     except Exception as e:
         logger.error(f"Ingestion failed for {source_name}: {e}")
