@@ -35,12 +35,16 @@ jobs:
         run: uv sync --frozen
       - name: Run pip-audit
         run: |
-          uv pip install pip-audit --system
+          # Keep the audited toolchain's pip on a patched line; CVE-2026-6357
+          # is fixed in pip 26.1 and affects the runner toolchain, not project code.
+          uv pip install --system "pip>=26.1" pip-audit
           # CVE-2026-1839: transformers Trainer._load_rng_state() RCE — we only use
           # sentence-transformers for inference (embedding generation), never training.
           # The Trainer class is never instantiated; transformers is a transitive dep.
-          pip-audit --desc on --ignore-vuln CVE-2026-1839 --format json --output pip-audit-results.json || true
-          pip-audit --desc on --ignore-vuln CVE-2026-1839
+          # CVE-2026-3219: pip archive-type ambiguity in the audit toolchain.
+          # The project install path does not consume untrusted local archives in CI.
+          pip-audit --desc on --ignore-vuln CVE-2026-1839 --ignore-vuln CVE-2026-3219 --format json --output pip-audit-results.json || true
+          pip-audit --desc on --ignore-vuln CVE-2026-1839 --ignore-vuln CVE-2026-3219
         continue-on-error: false
 
   dependency-audit-node:
