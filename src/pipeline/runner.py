@@ -109,9 +109,16 @@ async def _run_ingestion(
     if on_progress:
         on_progress({"stage": "ingestion", "message": f"Ingesting from {len(sources)} sources"})
 
-    async def _run_one(name: str, func: Callable[[], int]) -> tuple[str, int | None, str | None]:
+    async def _run_one(name: str, func: Callable[[], Any]) -> tuple[str, int | None, str | None]:
+        """Run one ingestion source, normalizing int / IngestionResponse returns.
+
+        During the partial-migration window, orchestrator functions return
+        either ``int`` (legacy) or ``IngestionResponse`` (migrated). Both
+        normalize to the per-source count for the pipeline's aggregation.
+        """
         try:
-            count = await asyncio.to_thread(func)
+            result = await asyncio.to_thread(func)
+            count = result if isinstance(result, int) else result.items_ingested
             return (name, count, None)
         except Exception as e:
             logger.error(f"Ingestion failed for {name}: {e}")

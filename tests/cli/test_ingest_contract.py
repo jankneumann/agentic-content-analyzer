@@ -64,6 +64,9 @@ MIGRATED_ORCHESTRATOR_META = {
     "ingest_substack": ("ingest.substack", "substack"),
     "ingest_xsearch": ("ingest.xsearch", "xsearch"),
     "ingest_perplexity_search": ("ingest.perplexity-search", "perplexity"),
+    "ingest_youtube": ("ingest.youtube", "youtube"),
+    "ingest_youtube_rss": ("ingest.youtube-rss", "youtube-rss"),
+    "ingest_youtube_playlist": ("ingest.youtube-playlist", "youtube-playlist"),
 }
 
 
@@ -100,15 +103,20 @@ INGEST_CASES = [
     pytest.param("rss", "ingest_rss", "rss", "items_ingested", [], id="rss"),
     pytest.param("blog", "ingest_blog", "blog", "items_ingested", [], id="blog"),
     pytest.param("substack", "ingest_substack", "substack", "items_ingested", [], id="substack"),
-    pytest.param("youtube", "ingest_youtube", "youtube", "ingested", [], id="youtube"),
+    pytest.param("youtube", "ingest_youtube", "youtube", "items_ingested", [], id="youtube"),
     pytest.param(
-        "youtube-rss", "ingest_youtube_rss", "youtube-rss", "ingested", [], id="youtube-rss"
+        "youtube-rss",
+        "ingest_youtube_rss",
+        "youtube-rss",
+        "items_ingested",
+        [],
+        id="youtube-rss",
     ),
     pytest.param(
         "youtube-playlist",
         "ingest_youtube_playlist",
         "youtube-playlist",
-        "ingested",
+        "items_ingested",
         [],
         id="youtube-playlist",
     ),

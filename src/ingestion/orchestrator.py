@@ -8,10 +8,11 @@ Each function:
 - Lazy-imports its service classes (avoids circular imports, defers heavy deps)
 - Accepts the same parameters the service expects
 - Returns either the canonical ``IngestionResponse`` envelope (rss, blog,
-  huggingface_papers, substack, xsearch, perplexity-search — the harmonized
-  sources) or a legacy shape (``int`` count, or a small result dataclass
-  like ``URLIngestResult``) for sources not yet migrated. Migration to
-  ``IngestionResponse`` is in progress.
+  huggingface_papers, substack, xsearch, perplexity-search, youtube,
+  youtube-rss, youtube-playlist — the harmonized sources) or a legacy
+  shape (``int`` count, or a small result dataclass like ``URLIngestResult``)
+  for sources not yet migrated. Migration to ``IngestionResponse`` is in
+  progress.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
 
@@ -165,6 +166,52 @@ def ingest_blog(
     return result
 
 
+def _merge_youtube_envelopes(
+    *,
+    command: str,
+    source: str,
+    parts: list[IngestionResponse],
+) -> IngestionResponse:
+    """Merge multiple IngestionResponse parts into a single combined envelope.
+
+    Used by ``ingest_youtube_playlist`` (playlists + channels share the
+    youtube-playlist command) and ``ingest_youtube`` (playlist + RSS).
+    Preserves all per-source errors / warnings so consumers can still see
+    which feed or playlist failed; status is recomputed from the merged
+    counts so a partial-success across the union is correctly classified.
+    """
+    from src.ingestion.result import (
+        IngestionError,
+        IngestionResponse as _Response,
+        IngestionStatus,
+    )
+
+    items_ingested = sum(p.items_ingested for p in parts)
+    items_skipped = sum(p.items_skipped for p in parts)
+    items_failed = sum(p.items_failed for p in parts)
+    errors: list[IngestionError] = [e for p in parts for e in p.errors]
+    warnings = [w for p in parts for w in p.warnings]
+
+    has_failure = bool(errors) or items_failed > 0
+    if not has_failure:
+        status: IngestionStatus = "ok"
+    elif items_ingested > 0:
+        status = "partial"
+    else:
+        status = "error"
+
+    return _Response(
+        command=command,  # type: ignore[arg-type]
+        source=source,  # type: ignore[arg-type]
+        status=status,
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        errors=errors,
+        warnings=warnings,
+    )
+
+
 @observe()
 def ingest_youtube_playlist(
     *,
@@ -172,13 +219,15 @@ def ingest_youtube_playlist(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     use_oauth: bool = True,
-) -> int:
+) -> IngestionResponse:
     """Ingest content from YouTube playlists and channels.
 
     Uses YouTubeContentIngestionService to process playlists (via YouTube
     Data API) and channels. Supports both Gemini native video extraction
     and transcript-based fallback.  Service methods are async; this function
-    bridges via asyncio.run() to keep callers synchronous.
+    bridges via asyncio.run() to keep callers synchronous. The two service
+    calls return separate envelopes which we merge into one combined envelope
+    for the youtube-playlist command.
 
     Args:
         max_videos: Maximum videos per playlist/channel.
@@ -187,27 +236,33 @@ def ingest_youtube_playlist(
         use_oauth: Use OAuth for private content (False = API key only).
 
     Returns:
-        Number of items ingested from playlists and channels.
+        Canonical IngestionResponse envelope (command='ingest.youtube-playlist',
+        source='youtube-playlist').
     """
     import asyncio
 
     from src.ingestion.youtube import YouTubeContentIngestionService
 
-    async def _run() -> int:
+    async def _run() -> tuple[IngestionResponse, IngestionResponse]:
         service = YouTubeContentIngestionService(use_oauth=use_oauth)
-        playlist_count = await service.ingest_all_playlists(
+        playlist_response = await service.ingest_all_playlists(
             max_videos_per_playlist=max_videos,
             after_date=after_date,
             force_reprocess=force_reprocess,
         )
-        channel_count = await service.ingest_channels(
+        channel_response = await service.ingest_channels(
             max_videos_per_channel=max_videos,
             after_date=after_date,
             force_reprocess=force_reprocess,
         )
-        return playlist_count + channel_count
+        return playlist_response, channel_response
 
-    return asyncio.run(_run())
+    playlist_response, channel_response = asyncio.run(_run())
+    return _merge_youtube_envelopes(
+        command="ingest.youtube-playlist",
+        source="youtube-playlist",
+        parts=[playlist_response, channel_response],
+    )
 
 
 @observe()
@@ -216,12 +271,12 @@ def ingest_youtube_rss(
     max_videos: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest content from YouTube RSS feeds.
 
     Uses YouTubeRSSIngestionService to process channel RSS feeds.
     Supports Gemini native video extraction (with low resolution by default)
-    and transcript-based fallback.  Service methods are async; this function
+    and transcript-based fallback. Service methods are async; this function
     bridges via asyncio.run() to keep callers synchronous.
 
     Args:
@@ -230,13 +285,14 @@ def ingest_youtube_rss(
         force_reprocess: Force reprocess existing content.
 
     Returns:
-        Number of items ingested from RSS feeds.
+        Canonical IngestionResponse envelope (command='ingest.youtube-rss',
+        source='youtube-rss').
     """
     import asyncio
 
     from src.ingestion.youtube import YouTubeRSSIngestionService
 
-    async def _run() -> int:
+    async def _run() -> IngestionResponse:
         service = YouTubeRSSIngestionService()
         return await service.ingest_all_feeds(
             max_entries_per_feed=max_videos,
@@ -254,12 +310,13 @@ def ingest_youtube(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     use_oauth: bool = True,
-) -> int:
+) -> IngestionResponse:
     """Ingest from all YouTube sources (playlists, channels, and RSS feeds).
 
     Backward-compatible combined function that runs playlists first,
     then RSS feeds. Playlists run first because they are higher priority
-    (curated content) and have fewer videos.
+    (curated content) and have fewer videos. The two sub-envelopes
+    are merged so the consumer sees one canonical youtube envelope.
 
     Args:
         max_videos: Maximum videos per playlist/channel/feed.
@@ -268,20 +325,26 @@ def ingest_youtube(
         use_oauth: Use OAuth for private content (False = API key only).
 
     Returns:
-        Total number of items ingested across all YouTube source types.
+        Canonical IngestionResponse envelope (command='ingest.youtube',
+        source='youtube'). All errors/warnings from both sub-envelopes
+        are concatenated in order (playlist first, then RSS).
     """
-    playlist_count = ingest_youtube_playlist(
+    playlist_response = ingest_youtube_playlist(
         max_videos=max_videos,
         after_date=after_date,
         force_reprocess=force_reprocess,
         use_oauth=use_oauth,
     )
-    rss_count = ingest_youtube_rss(
+    rss_response = ingest_youtube_rss(
         max_videos=max_videos,
         after_date=after_date,
         force_reprocess=force_reprocess,
     )
-    return playlist_count + rss_count
+    return _merge_youtube_envelopes(
+        command="ingest.youtube",
+        source="youtube",
+        parts=[playlist_response, rss_response],
+    )
 
 
 @observe()

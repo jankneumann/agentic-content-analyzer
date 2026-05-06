@@ -105,11 +105,23 @@ class TestIngestRss:
         )
 
 
+def _yt_response(command: str, source: str, n: int) -> IngestionResponse:
+    return IngestionResponse(
+        command=command,  # type: ignore[arg-type]
+        source=source,  # type: ignore[arg-type]
+        status="ok",
+        items_ingested=n,
+    )
+
+
 class TestIngestYoutube:
     """YouTube orchestrator tests.
 
-    Service methods are now async; orchestrator bridges via asyncio.run().
-    Mocks must use AsyncMock for awaitable methods.
+    Service methods are now async and return IngestionResponse envelopes;
+    orchestrator bridges via asyncio.run() and merges sub-envelopes via
+    ``_merge_youtube_envelopes``. Mocks must use AsyncMock for awaitable
+    methods AND return real IngestionResponse instances — returning ints
+    masks production bugs where consumers treat the envelope like an int.
     """
 
     @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
@@ -118,42 +130,64 @@ class TestIngestYoutube:
         from src.ingestion.orchestrator import ingest_youtube
 
         mock_content = MagicMock()
-        mock_content.ingest_all_playlists = AsyncMock(return_value=3)
-        mock_content.ingest_channels = AsyncMock(return_value=2)
+        mock_content.ingest_all_playlists = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 3)
+        )
+        mock_content.ingest_channels = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 2)
+        )
         mock_content_cls.return_value = mock_content
 
         mock_rss = MagicMock()
-        mock_rss.ingest_all_feeds = AsyncMock(return_value=1)
+        mock_rss.ingest_all_feeds = AsyncMock(
+            return_value=_yt_response("ingest.youtube-rss", "youtube-rss", 1)
+        )
         mock_rss_cls.return_value = mock_rss
 
         result = ingest_youtube()
 
-        assert result == 6  # 3 + 2 + 1
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.youtube"
+        assert result.source == "youtube"
+        assert result.items_ingested == 6  # 3 + 2 + 1
         mock_content.ingest_all_playlists.assert_called_once()
         mock_content.ingest_channels.assert_called_once()
         mock_rss.ingest_all_feeds.assert_called_once()
 
     @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
-    def test_returns_int(self, mock_content_cls, mock_rss_cls):
+    def test_returns_ingestion_response(self, mock_content_cls, mock_rss_cls):
         from src.ingestion.orchestrator import ingest_youtube
 
-        mock_content_cls.return_value.ingest_all_playlists = AsyncMock(return_value=0)
-        mock_content_cls.return_value.ingest_channels = AsyncMock(return_value=0)
-        mock_rss_cls.return_value.ingest_all_feeds = AsyncMock(return_value=0)
+        mock_content_cls.return_value.ingest_all_playlists = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 0)
+        )
+        mock_content_cls.return_value.ingest_channels = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 0)
+        )
+        mock_rss_cls.return_value.ingest_all_feeds = AsyncMock(
+            return_value=_yt_response("ingest.youtube-rss", "youtube-rss", 0)
+        )
 
         result = ingest_youtube()
-        assert result == 0
-        assert isinstance(result, int)
+        assert isinstance(result, IngestionResponse)
+        assert result.items_ingested == 0
+        assert result.command == "ingest.youtube"
 
     @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     def test_passes_use_oauth(self, mock_content_cls, mock_rss_cls):
         from src.ingestion.orchestrator import ingest_youtube
 
-        mock_content_cls.return_value.ingest_all_playlists = AsyncMock(return_value=0)
-        mock_content_cls.return_value.ingest_channels = AsyncMock(return_value=0)
-        mock_rss_cls.return_value.ingest_all_feeds = AsyncMock(return_value=0)
+        mock_content_cls.return_value.ingest_all_playlists = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 0)
+        )
+        mock_content_cls.return_value.ingest_channels = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 0)
+        )
+        mock_rss_cls.return_value.ingest_all_feeds = AsyncMock(
+            return_value=_yt_response("ingest.youtube-rss", "youtube-rss", 0)
+        )
 
         ingest_youtube(use_oauth=False)
 
@@ -165,12 +199,18 @@ class TestIngestYoutube:
         from src.ingestion.orchestrator import ingest_youtube
 
         mock_content = MagicMock()
-        mock_content.ingest_all_playlists = AsyncMock(return_value=0)
-        mock_content.ingest_channels = AsyncMock(return_value=0)
+        mock_content.ingest_all_playlists = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 0)
+        )
+        mock_content.ingest_channels = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 0)
+        )
         mock_content_cls.return_value = mock_content
 
         mock_rss = MagicMock()
-        mock_rss.ingest_all_feeds = AsyncMock(return_value=0)
+        mock_rss.ingest_all_feeds = AsyncMock(
+            return_value=_yt_response("ingest.youtube-rss", "youtube-rss", 0)
+        )
         mock_rss_cls.return_value = mock_rss
 
         after = datetime(2025, 1, 1, tzinfo=UTC)
@@ -191,6 +231,50 @@ class TestIngestYoutube:
             after_date=after,
             force_reprocess=True,
         )
+
+    @patch("src.ingestion.youtube.YouTubeRSSIngestionService")
+    @patch("src.ingestion.youtube.YouTubeContentIngestionService")
+    def test_merges_errors_and_warnings_across_subenvelopes(self, mock_content_cls, mock_rss_cls):
+        """Errors from the playlist and RSS sub-envelopes are concatenated.
+
+        Without this preservation, a single failed feed inside the RSS
+        sub-envelope would be invisible to the consumer of the combined
+        ``ingest.youtube`` envelope, since the orchestrator merges counts
+        before returning.
+        """
+        from src.ingestion.orchestrator import ingest_youtube
+        from src.ingestion.result import IngestionError
+
+        playlist_resp = IngestionResponse(
+            command="ingest.youtube-playlist",
+            source="youtube-playlist",
+            status="partial",
+            items_ingested=2,
+            errors=[IngestionError(code="oauth_unavailable", message="private")],
+        )
+        rss_resp = IngestionResponse(
+            command="ingest.youtube-rss",
+            source="youtube-rss",
+            status="partial",
+            items_ingested=1,
+            errors=[IngestionError(code="feed_ingest_error", message="500")],
+        )
+        # Inner playlist response (before merge with channels) needs to be
+        # returnable from each service call separately.
+        mock_content_cls.return_value.ingest_all_playlists = AsyncMock(return_value=playlist_resp)
+        mock_content_cls.return_value.ingest_channels = AsyncMock(
+            return_value=_yt_response("ingest.youtube-playlist", "youtube-playlist", 0)
+        )
+        mock_rss_cls.return_value.ingest_all_feeds = AsyncMock(return_value=rss_resp)
+
+        result = ingest_youtube()
+
+        assert result.command == "ingest.youtube"
+        assert result.items_ingested == 3  # 2 + 0 + 1
+        assert len(result.errors) == 2
+        codes = {e.code for e in result.errors}
+        assert codes == {"oauth_unavailable", "feed_ingest_error"}
+        assert result.status == "partial"
 
 
 class TestIngestPodcast:

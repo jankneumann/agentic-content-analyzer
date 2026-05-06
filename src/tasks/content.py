@@ -284,13 +284,16 @@ def register_content_tasks(pgq: PgQueuer) -> None:
 
         try:
             ingest_func, kwargs = source_map[source]
-            count = await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 lambda: ingest_func(
                     after_date=after_date,
                     force_reprocess=force_reprocess,
                     **kwargs,
                 )
             )
+
+            # Normalize int (legacy) or IngestionResponse (migrated) → int
+            count = result if isinstance(result, int) else result.items_ingested
 
             await update_job_progress(job.id, 100, f"Ingested {count} items from {source}")
             logger.info(f"Ingestion completed for source={source}: {count} items")
