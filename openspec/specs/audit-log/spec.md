@@ -1,8 +1,11 @@
 # audit-log Specification
 
 ## Purpose
-TBD - created by archiving change cloud-db-source-of-truth. Update Purpose after archive.
+
+Append-only API audit logging for authenticated and unauthenticated `/api/v1/*` traffic, including forensic request metadata, operation tagging, query access, observability correlation, and retention behavior.
+
 ## Requirements
+
 ### Requirement: Audit log persistence for all API requests
 
 The system SHALL record every request to `/api/v1/*` endpoints in an append-only `audit_log` database table — including authentication failures (401 no-credentials, 403 invalid-key), validation failures (422), and server errors (5xx). The log MUST capture: timestamp, request ID, HTTP method, path, admin-key fingerprint (last 8 chars of SHA-256 hash computed from the raw `X-Admin-Key` header when present — regardless of whether the key is valid), status code, body size, client IP, and optional operation name.
