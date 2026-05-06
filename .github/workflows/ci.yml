@@ -217,6 +217,8 @@ jobs:
           ANTHROPIC_API_KEY: test-key-for-ci
           APP_SECRET_KEY: test-secret-key-for-ci
           ADMIN_API_KEY: test-admin-key
+          NEO4J_AURADB_URI: neo4j+s://ci-placeholder.databases.neo4j.io
+          NEO4J_AURADB_PASSWORD: test-neo4j-password
           ENVIRONMENT: production
           WORKER_ENABLED: "false"
         run: |

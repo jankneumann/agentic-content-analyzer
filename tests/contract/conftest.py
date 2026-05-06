@@ -346,5 +346,9 @@ def contract_schema(seeded_db):
         patch("src.services.script_review_service.get_db", mock_get_db),
         patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):
-        schema = schemathesis.openapi.from_asgi("/openapi.json", app)
+        schema = schemathesis.openapi.from_asgi(
+            "/openapi.json",
+            app,
+            headers={"X-Admin-Key": os.environ["ADMIN_API_KEY"]},
+        )
         yield schema
