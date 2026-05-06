@@ -357,7 +357,7 @@ def _substack_direct(
     try:
         from src.ingestion.orchestrator import ingest_substack
 
-        count = ingest_substack(
+        response = ingest_substack(
             max_entries_per_source=max_results,
             after_date=after_date,
             force_reprocess=force,
@@ -371,9 +371,19 @@ def _substack_direct(
         raise typer.Exit(1)
 
     if is_json_mode():
-        output_result({"source": "substack", "ingested": count})
+        output_result(response.model_dump(mode="json"))
     else:
-        console.print(f"[green]Substack ingestion complete.[/green] {count} item(s) ingested.")
+        console.print(
+            f"[green]Substack ingestion complete.[/green] "
+            f"{response.items_ingested} item(s) ingested."
+        )
+        details = []
+        if response.items_failed:
+            details.append(f"{response.items_failed} failed")
+        if response.warnings:
+            details.append(f"{len(response.warnings)} warning(s)")
+        if details:
+            console.print(f"  [dim]{' | '.join(details)}[/dim]")
 
 
 @app.command("substack")
@@ -726,25 +736,14 @@ def podcast(
 
 def _xsearch_direct(prompt: str | None, max_threads: int | None, force: bool) -> None:
     """Direct X search ingestion."""
-    from dataclasses import asdict
-
     from rich.console import Console
 
-    from src.ingestion.xsearch import XSearchResult
-
     console = Console()
-    xsearch_result: XSearchResult | None = None
-
-    def _capture_result(result: XSearchResult) -> None:
-        nonlocal xsearch_result
-        xsearch_result = result
 
     try:
         from src.ingestion.orchestrator import ingest_xsearch
 
-        count = ingest_xsearch(
-            prompt=prompt, max_threads=max_threads, force_reprocess=force, on_result=_capture_result
-        )
+        response = ingest_xsearch(prompt=prompt, max_threads=max_threads, force_reprocess=force)
     except Exception as exc:
         if is_json_mode():
             output_result({"error": str(exc), "source": "xsearch"}, success=False)
@@ -753,24 +752,25 @@ def _xsearch_direct(prompt: str | None, max_threads: int | None, force: bool) ->
         raise typer.Exit(1)
 
     if is_json_mode():
-        data: dict = {"source": "xsearch", "ingested": count}
-        if xsearch_result is not None:
-            data.update(asdict(xsearch_result))
-        output_result(data)
+        output_result(response.model_dump(mode="json"))
     else:
-        console.print(f"[green]X search ingestion complete.[/green] {count} item(s) ingested.")
-        if xsearch_result is not None:
-            details = []
-            if xsearch_result.threads_found:
-                details.append(f"{xsearch_result.threads_found} thread(s) found")
-            if xsearch_result.items_skipped:
-                details.append(f"{xsearch_result.items_skipped} skipped (duplicates)")
-            if xsearch_result.tool_calls_made:
-                details.append(f"{xsearch_result.tool_calls_made} Grok tool call(s)")
-            if xsearch_result.errors:
-                details.append(f"{len(xsearch_result.errors)} error(s)")
-            if details:
-                console.print(f"  [dim]{' | '.join(details)}[/dim]")
+        console.print(
+            f"[green]X search ingestion complete.[/green] "
+            f"{response.items_ingested} item(s) ingested."
+        )
+        details = []
+        threads_found = response.details.get("threads_found", 0)
+        tool_calls = response.details.get("tool_calls_made", 0)
+        if threads_found:
+            details.append(f"{threads_found} thread(s) found")
+        if response.items_skipped:
+            details.append(f"{response.items_skipped} skipped (duplicates)")
+        if tool_calls:
+            details.append(f"{tool_calls} Grok tool call(s)")
+        if response.items_failed:
+            details.append(f"{response.items_failed} failed")
+        if details:
+            console.print(f"  [dim]{' | '.join(details)}[/dim]")
 
 
 @app.command("xsearch")
@@ -816,29 +816,19 @@ def _perplexity_direct(
     context_size: str | None,
 ) -> None:
     """Direct Perplexity search ingestion."""
-    from dataclasses import asdict
-
     from rich.console import Console
 
-    from src.ingestion.perplexity_search import PerplexitySearchResult
-
     console = Console()
-    search_result: PerplexitySearchResult | None = None
-
-    def _capture_result(result: PerplexitySearchResult) -> None:
-        nonlocal search_result
-        search_result = result
 
     try:
         from src.ingestion.orchestrator import ingest_perplexity_search
 
-        count = ingest_perplexity_search(
+        response = ingest_perplexity_search(
             prompt=prompt,
             max_results=max_results,
             force_reprocess=force,
             recency_filter=recency,
             context_size=context_size,
-            on_result=_capture_result,
         )
     except Exception as exc:
         if is_json_mode():
@@ -848,26 +838,25 @@ def _perplexity_direct(
         raise typer.Exit(1)
 
     if is_json_mode():
-        data: dict = {"source": "perplexity", "ingested": count}
-        if search_result is not None:
-            data.update(asdict(search_result))
-        output_result(data)
+        output_result(response.model_dump(mode="json"))
     else:
         console.print(
-            f"[green]Perplexity search ingestion complete.[/green] {count} item(s) ingested."
+            f"[green]Perplexity search ingestion complete.[/green] "
+            f"{response.items_ingested} item(s) ingested."
         )
-        if search_result is not None:
-            details = []
-            if search_result.queries_made:
-                details.append(f"{search_result.queries_made} query(ies) made")
-            if search_result.citations_found:
-                details.append(f"{search_result.citations_found} citation(s) found")
-            if search_result.items_skipped:
-                details.append(f"{search_result.items_skipped} skipped (duplicates)")
-            if search_result.errors:
-                details.append(f"{len(search_result.errors)} error(s)")
-            if details:
-                console.print(f"  [dim]{' | '.join(details)}[/dim]")
+        details = []
+        queries_made = response.details.get("queries_made", 0)
+        citations_found = response.details.get("citations_found", 0)
+        if queries_made:
+            details.append(f"{queries_made} query(ies) made")
+        if citations_found:
+            details.append(f"{citations_found} citation(s) found")
+        if response.items_skipped:
+            details.append(f"{response.items_skipped} skipped (duplicates)")
+        if response.items_failed:
+            details.append(f"{response.items_failed} failed")
+        if details:
+            console.print(f"  [dim]{' | '.join(details)}[/dim]")
 
 
 @app.command("perplexity-search")

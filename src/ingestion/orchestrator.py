@@ -8,9 +8,10 @@ Each function:
 - Lazy-imports its service classes (avoids circular imports, defers heavy deps)
 - Accepts the same parameters the service expects
 - Returns either the canonical ``IngestionResponse`` envelope (rss, blog,
-  huggingface_papers — the harmonized sources) or a legacy shape (``int``
-  count, or a small result dataclass like ``URLIngestResult``) for sources
-  not yet migrated. Migration to ``IngestionResponse`` is in progress.
+  huggingface_papers, substack, xsearch, perplexity-search — the harmonized
+  sources) or a legacy shape (``int`` count, or a small result dataclass
+  like ``URLIngestResult``) for sources not yet migrated. Migration to
+  ``IngestionResponse`` is in progress.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
 
@@ -317,7 +318,7 @@ def ingest_substack(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     session_cookie: str | None = None,
-) -> int:
+) -> IngestionResponse:
     """Ingest posts from Substack sources.
 
     Handles service.close() in a try/finally block to ensure cleanup.
@@ -329,7 +330,7 @@ def ingest_substack(
         session_cookie: Override SUBSTACK_SESSION_COOKIE value.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.substack import SubstackContentIngestionService
 
@@ -350,8 +351,8 @@ def ingest_xsearch(
     prompt: str | None = None,
     max_threads: int | None = None,
     force_reprocess: bool = False,
-    on_result: Callable | None = None,
-) -> int:
+    on_result: Callable[[IngestionResponse], None] | None = None,
+) -> IngestionResponse:
     """Ingest X posts/threads via Grok API search.
 
     Uses the xAI SDK with the x_search tool to discover AI-relevant
@@ -362,11 +363,12 @@ def ingest_xsearch(
         prompt: Override the default search prompt.
         max_threads: Maximum threads to ingest (default from settings).
         force_reprocess: Re-ingest threads that already exist.
-        on_result: Optional callback that receives the full XSearchResult
-                   (for rich result reporting in CLI).
+        on_result: Optional legacy callback that receives the full
+                   IngestionResponse. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope. ``details`` carries the
+        xsearch-specific ``tool_calls_made`` and ``threads_found`` extras.
     """
     from src.ingestion.xsearch import GrokXContentIngestionService
 
@@ -379,7 +381,7 @@ def ingest_xsearch(
         )
         if on_result is not None:
             on_result(result)
-        return result.items_ingested
+        return result
     finally:
         service.close()
 
@@ -392,8 +394,8 @@ def ingest_perplexity_search(
     force_reprocess: bool = False,
     recency_filter: str | None = None,
     context_size: str | None = None,
-    on_result: Callable | None = None,
-) -> int:
+    on_result: Callable[[IngestionResponse], None] | None = None,
+) -> IngestionResponse:
     """Ingest web content via Perplexity Sonar API search.
 
     Uses Perplexity's AI-powered web search to discover articles with
@@ -406,10 +408,12 @@ def ingest_perplexity_search(
         force_reprocess: Re-ingest content that already exists.
         recency_filter: Override recency filter (hour/day/week/month).
         context_size: Override context size (low/medium/high).
-        on_result: Optional callback that receives the full PerplexitySearchResult.
+        on_result: Optional legacy callback that receives the full
+                   IngestionResponse. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope. ``details`` carries the
+        perplexity-specific ``queries_made`` and ``citations_found`` extras.
     """
     from src.ingestion.perplexity_search import PerplexityContentIngestionService
 
@@ -424,7 +428,7 @@ def ingest_perplexity_search(
         )
         if on_result is not None:
             on_result(result)
-        return result.items_ingested
+        return result
     finally:
         service.close()
 

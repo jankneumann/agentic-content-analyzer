@@ -221,22 +221,32 @@ class TestIngestPodcast:
         )
 
 
+def _substack_response(n: int) -> IngestionResponse:
+    return IngestionResponse(
+        command="ingest.substack",
+        source="substack",
+        status="ok",
+        items_ingested=n,
+    )
+
+
 class TestIngestSubstack:
     @patch("src.ingestion.substack.SubstackContentIngestionService")
-    def test_returns_int(self, mock_cls):
+    def test_returns_ingestion_response(self, mock_cls):
         from src.ingestion.orchestrator import ingest_substack
 
-        mock_cls.return_value.ingest_content.return_value = 6
+        mock_cls.return_value.ingest_content.return_value = _substack_response(6)
         result = ingest_substack()
-        assert result == 6
-        assert isinstance(result, int)
+        assert isinstance(result, IngestionResponse)
+        assert result.items_ingested == 6
+        assert result.command == "ingest.substack"
 
     @patch("src.ingestion.substack.SubstackContentIngestionService")
     def test_calls_close_on_success(self, mock_cls):
         from src.ingestion.orchestrator import ingest_substack
 
         mock_service = MagicMock()
-        mock_service.ingest_content.return_value = 2
+        mock_service.ingest_content.return_value = _substack_response(2)
         mock_cls.return_value = mock_service
 
         ingest_substack()
@@ -260,7 +270,7 @@ class TestIngestSubstack:
     def test_passes_session_cookie(self, mock_cls):
         from src.ingestion.orchestrator import ingest_substack
 
-        mock_cls.return_value.ingest_content.return_value = 0
+        mock_cls.return_value.ingest_content.return_value = _substack_response(0)
 
         ingest_substack(session_cookie="test-cookie")
 
@@ -271,7 +281,7 @@ class TestIngestSubstack:
         from src.ingestion.orchestrator import ingest_substack
 
         mock_service = MagicMock()
-        mock_service.ingest_content.return_value = 0
+        mock_service.ingest_content.return_value = _substack_response(0)
         mock_cls.return_value = mock_service
         after = datetime(2025, 1, 1, tzinfo=UTC)
 
