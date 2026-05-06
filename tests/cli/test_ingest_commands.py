@@ -127,10 +127,28 @@ class TestIngestRss:
         assert "https://example.com/new-feed" in result.output
 
 
+def _yt_envelope(command: str, source: str, n: int):
+    """Helper: build a minimal IngestionResponse for YouTube CLI mocks.
+
+    Mocks for the migrated youtube orchestrator entry points MUST return
+    real ``IngestionResponse`` instances — returning ints worked before
+    the migration but now masks production bugs where the CLI consumer
+    treats a Pydantic model like an int.
+    """
+    from src.ingestion.result import IngestionResponse
+
+    return IngestionResponse(
+        command=command,
+        source=source,
+        status="ok",
+        items_ingested=n,
+    )
+
+
 class TestIngestYoutube:
     @patch("src.ingestion.orchestrator.ingest_youtube")
     def test_youtube_success(self, mock_ingest):
-        mock_ingest.return_value = 6
+        mock_ingest.return_value = _yt_envelope("ingest.youtube", "youtube", 6)
 
         result = runner.invoke(app, ["--direct", "ingest", "youtube"])
         assert result.exit_code == 0
@@ -139,7 +157,7 @@ class TestIngestYoutube:
 
     @patch("src.ingestion.orchestrator.ingest_youtube")
     def test_youtube_public_only(self, mock_ingest):
-        mock_ingest.return_value = 1
+        mock_ingest.return_value = _yt_envelope("ingest.youtube", "youtube", 1)
 
         result = runner.invoke(app, ["--direct", "ingest", "youtube", "--public-only"])
         assert result.exit_code == 0
@@ -158,7 +176,7 @@ class TestIngestYoutube:
 class TestIngestYoutubePlaylist:
     @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
     def test_youtube_playlist_success(self, mock_ingest):
-        mock_ingest.return_value = 3
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-playlist", "youtube-playlist", 3)
 
         result = runner.invoke(app, ["--direct", "ingest", "youtube-playlist"])
         assert result.exit_code == 0
@@ -167,7 +185,7 @@ class TestIngestYoutubePlaylist:
 
     @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
     def test_youtube_playlist_with_options(self, mock_ingest):
-        mock_ingest.return_value = 2
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-playlist", "youtube-playlist", 2)
 
         result = runner.invoke(
             app,
@@ -181,7 +199,7 @@ class TestIngestYoutubePlaylist:
 
     @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
     def test_youtube_playlist_public_only(self, mock_ingest):
-        mock_ingest.return_value = 1
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-playlist", "youtube-playlist", 1)
 
         result = runner.invoke(app, ["--direct", "ingest", "youtube-playlist", "--public-only"])
         assert result.exit_code == 0
@@ -198,18 +216,18 @@ class TestIngestYoutubePlaylist:
 
     @patch("src.ingestion.orchestrator.ingest_youtube_playlist")
     def test_youtube_playlist_json_mode(self, mock_ingest):
-        mock_ingest.return_value = 4
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-playlist", "youtube-playlist", 4)
 
         result = runner.invoke(app, ["--json", "--direct", "ingest", "youtube-playlist"])
         assert result.exit_code == 0
         assert '"source": "youtube-playlist"' in result.output
-        assert '"ingested": 4' in result.output
+        assert '"items_ingested": 4' in result.output
 
 
 class TestIngestYoutubeRss:
     @patch("src.ingestion.orchestrator.ingest_youtube_rss")
     def test_youtube_rss_success(self, mock_ingest):
-        mock_ingest.return_value = 15
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-rss", "youtube-rss", 15)
 
         result = runner.invoke(app, ["--direct", "ingest", "youtube-rss"])
         assert result.exit_code == 0
@@ -218,7 +236,7 @@ class TestIngestYoutubeRss:
 
     @patch("src.ingestion.orchestrator.ingest_youtube_rss")
     def test_youtube_rss_with_options(self, mock_ingest):
-        mock_ingest.return_value = 8
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-rss", "youtube-rss", 8)
 
         result = runner.invoke(
             app,
@@ -239,17 +257,17 @@ class TestIngestYoutubeRss:
 
     @patch("src.ingestion.orchestrator.ingest_youtube_rss")
     def test_youtube_rss_json_mode(self, mock_ingest):
-        mock_ingest.return_value = 7
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-rss", "youtube-rss", 7)
 
         result = runner.invoke(app, ["--json", "--direct", "ingest", "youtube-rss"])
         assert result.exit_code == 0
         assert '"source": "youtube-rss"' in result.output
-        assert '"ingested": 7' in result.output
+        assert '"items_ingested": 7' in result.output
 
     @patch("src.ingestion.orchestrator.ingest_youtube_rss")
     def test_youtube_rss_no_public_only_flag(self, mock_ingest):
         """youtube-rss should NOT have a --public-only flag (RSS doesn't use OAuth)."""
-        mock_ingest.return_value = 0
+        mock_ingest.return_value = _yt_envelope("ingest.youtube-rss", "youtube-rss", 0)
 
         result = runner.invoke(app, ["--direct", "ingest", "youtube-rss", "--public-only"])
         # Should fail because --public-only is not a valid option for youtube-rss

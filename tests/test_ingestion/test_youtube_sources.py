@@ -12,7 +12,11 @@ from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 
 from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource
-from src.ingestion.youtube import YouTubeClient, YouTubeContentIngestionService
+from src.ingestion.youtube import (
+    SourceFetchResult,
+    YouTubeClient,
+    YouTubeContentIngestionService,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -25,6 +29,25 @@ def _mock_init(self, use_oauth=True):
     self._authenticated = True
     self.use_oauth = use_oauth
     self.oauth_available = False  # Default to no OAuth
+
+
+def _yt_fetch_builder(items_fetched: int):
+    """Builder for ingest_playlist AsyncMock side_effect.
+
+    Returns a fresh ``SourceFetchResult`` per call so aggregator-side mutation
+    of ``result.name`` (and for channels, ``result.url``) doesn't leak across
+    calls. ``return_value=`` shares one instance — incompatible with how the
+    aggregator overrides per-source identity on each result.
+    """
+
+    def _build(*args, **kwargs):
+        playlist_id = kwargs.get("playlist_id", "PL_mock")
+        return SourceFetchResult(
+            url=f"https://www.youtube.com/playlist?list={playlist_id}",
+            items_fetched=items_fetched,
+        )
+
+    return _build
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +138,7 @@ class TestYouTubeVisibilityFiltering:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=3,
+        side_effect=_yt_fetch_builder(3),
     )
     async def test_private_skipped_without_oauth(self, mock_ingest, mock_settings):
         """Private sources are skipped when client.oauth_available is False."""
@@ -127,7 +150,8 @@ class TestYouTubeVisibilityFiltering:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = False
 
-        total = await service.ingest_all_playlists(sources=sources)
+        response = await service.ingest_all_playlists(sources=sources)
+        total = response.items_ingested
 
         mock_ingest.assert_not_called()
         assert total == 0
@@ -139,7 +163,7 @@ class TestYouTubeVisibilityFiltering:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=3,
+        side_effect=_yt_fetch_builder(3),
     )
     async def test_private_ingested_with_oauth(self, mock_ingest, mock_settings):
         """Private sources are ingested when client.oauth_available is True."""
@@ -151,7 +175,8 @@ class TestYouTubeVisibilityFiltering:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = True
 
-        total = await service.ingest_all_playlists(sources=sources)
+        response = await service.ingest_all_playlists(sources=sources)
+        total = response.items_ingested
 
         mock_ingest.assert_called_once()
         assert total == 3
@@ -163,7 +188,7 @@ class TestYouTubeVisibilityFiltering:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=2,
+        side_effect=_yt_fetch_builder(2),
     )
     async def test_public_always_ingested(self, mock_ingest, mock_settings):
         """Public playlists are always ingested regardless of OAuth status."""
@@ -175,7 +200,8 @@ class TestYouTubeVisibilityFiltering:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = False
 
-        total = await service.ingest_all_playlists(sources=sources)
+        response = await service.ingest_all_playlists(sources=sources)
+        total = response.items_ingested
 
         mock_ingest.assert_called_once()
         assert total == 2
@@ -187,7 +213,7 @@ class TestYouTubeVisibilityFiltering:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_mixed_visibility_filtering(self, mock_ingest, mock_settings):
         """Only public playlists ingested when OAuth is unavailable."""
@@ -201,7 +227,8 @@ class TestYouTubeVisibilityFiltering:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = False
 
-        total = await service.ingest_all_playlists(sources=sources)
+        response = await service.ingest_all_playlists(sources=sources)
+        total = response.items_ingested
 
         assert mock_ingest.call_count == 2
         ingested_ids = [call.kwargs["playlist_id"] for call in mock_ingest.call_args_list]
@@ -226,7 +253,7 @@ class TestYouTubeSourceResolution:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_uses_sources_parameter(self, mock_ingest, mock_settings):
         """When sources parameter is provided, use them directly."""
@@ -238,7 +265,8 @@ class TestYouTubeSourceResolution:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = True
 
-        total = await service.ingest_all_playlists(sources=sources)
+        response = await service.ingest_all_playlists(sources=sources)
+        total = response.items_ingested
 
         mock_ingest.assert_called_once()
         assert mock_ingest.call_args.kwargs["playlist_id"] == "PL_direct"
@@ -251,7 +279,7 @@ class TestYouTubeSourceResolution:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_uses_playlist_ids_backward_compat(self, mock_ingest, mock_settings):
         """When playlist_ids provided, wrap them as YouTubePlaylistSource objects."""
@@ -259,7 +287,8 @@ class TestYouTubeSourceResolution:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = True
 
-        total = await service.ingest_all_playlists(playlist_ids=["PL_legacy1", "PL_legacy2"])
+        response = await service.ingest_all_playlists(playlist_ids=["PL_legacy1", "PL_legacy2"])
+        total = response.items_ingested
 
         assert mock_ingest.call_count == 2
         ingested_ids = [call.kwargs["playlist_id"] for call in mock_ingest.call_args_list]
@@ -274,7 +303,7 @@ class TestYouTubeSourceResolution:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_loads_from_sources_config(self, mock_ingest, mock_settings):
         """When no parameters, load from settings.get_sources_config()."""
@@ -288,7 +317,8 @@ class TestYouTubeSourceResolution:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = True
 
-        total = await service.ingest_all_playlists()
+        response = await service.ingest_all_playlists()
+        total = response.items_ingested
 
         mock_settings.get_sources_config.assert_called_once()
         mock_ingest.assert_called_once()
@@ -302,7 +332,7 @@ class TestYouTubeSourceResolution:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_falls_back_to_legacy(self, mock_ingest, mock_settings):
         """When SourcesConfig has no playlists, fall back to legacy settings."""
@@ -317,7 +347,8 @@ class TestYouTubeSourceResolution:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = True
 
-        total = await service.ingest_all_playlists()
+        response = await service.ingest_all_playlists()
+        total = response.items_ingested
 
         mock_settings.get_youtube_playlists.assert_called_once()
         mock_ingest.assert_called_once()
@@ -340,7 +371,7 @@ class TestYouTubePerSourceSettings:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_per_source_max_entries_override(self, mock_ingest, mock_settings):
         """source.max_entries overrides the default max_videos_per_playlist."""
@@ -370,7 +401,7 @@ class TestYouTubePerSourceSettings:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_disabled_sources_skipped(self, mock_ingest, mock_settings):
         """Sources with enabled=False are filtered out."""
@@ -383,7 +414,8 @@ class TestYouTubePerSourceSettings:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = True
 
-        total = await service.ingest_all_playlists(sources=sources)
+        response = await service.ingest_all_playlists(sources=sources)
+        total = response.items_ingested
 
         mock_ingest.assert_called_once()
         assert mock_ingest.call_args.kwargs["playlist_id"] == "PL_active"
@@ -477,7 +509,7 @@ class TestYouTubeChannelIngestion:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=5,
+        side_effect=_yt_fetch_builder(5),
     )
     async def test_resolves_and_ingests_channel(self, mock_ingest, mock_settings):
         """Channel source should be resolved to playlist and ingested."""
@@ -490,7 +522,8 @@ class TestYouTubeChannelIngestion:
         service.client.oauth_available = True
         service.client.resolve_channel_to_playlist = MagicMock(return_value="UU_test")
 
-        total = await service.ingest_channels(sources=sources)
+        response = await service.ingest_channels(sources=sources)
+        total = response.items_ingested
 
         service.client.resolve_channel_to_playlist.assert_called_once_with("UC_test")
         mock_ingest.assert_called_once()
@@ -504,7 +537,7 @@ class TestYouTubeChannelIngestion:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_skips_unresolvable_channel(self, mock_ingest, mock_settings):
         """Channel that can't be resolved should be skipped."""
@@ -517,7 +550,8 @@ class TestYouTubeChannelIngestion:
         service.client.oauth_available = True
         service.client.resolve_channel_to_playlist = MagicMock(return_value=None)
 
-        total = await service.ingest_channels(sources=sources)
+        response = await service.ingest_channels(sources=sources)
+        total = response.items_ingested
 
         mock_ingest.assert_not_called()
         assert total == 0
@@ -529,7 +563,7 @@ class TestYouTubeChannelIngestion:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=3,
+        side_effect=_yt_fetch_builder(3),
     )
     async def test_private_channel_skipped_without_oauth(self, mock_ingest, mock_settings):
         """Private channels are skipped when OAuth is unavailable."""
@@ -543,7 +577,8 @@ class TestYouTubeChannelIngestion:
         service = YouTubeContentIngestionService()
         service.client.oauth_available = False
 
-        total = await service.ingest_channels(sources=sources)
+        response = await service.ingest_channels(sources=sources)
+        total = response.items_ingested
 
         mock_ingest.assert_not_called()
         assert total == 0
@@ -555,7 +590,7 @@ class TestYouTubeChannelIngestion:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=2,
+        side_effect=_yt_fetch_builder(2),
     )
     async def test_passes_channel_languages(self, mock_ingest, mock_settings):
         """Channel languages should be passed through to ingest_playlist."""
@@ -579,7 +614,7 @@ class TestYouTubeChannelIngestion:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_per_channel_max_entries(self, mock_ingest, mock_settings):
         """Channel max_entries should override default max_videos_per_channel."""
@@ -603,7 +638,7 @@ class TestYouTubeChannelIngestion:
         YouTubeContentIngestionService,
         "ingest_playlist",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=_yt_fetch_builder(1),
     )
     async def test_loads_channels_from_config(self, mock_ingest, mock_settings):
         """When no sources param, loads from SourcesConfig."""
@@ -618,7 +653,8 @@ class TestYouTubeChannelIngestion:
         service.client.oauth_available = True
         service.client.resolve_channel_to_playlist = MagicMock(return_value="UU_config")
 
-        total = await service.ingest_channels()
+        response = await service.ingest_channels()
+        total = response.items_ingested
 
         mock_settings.get_sources_config.assert_called_once()
         assert total == 1

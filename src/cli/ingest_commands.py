@@ -498,8 +498,18 @@ def _youtube_direct(
     force: bool,
     use_oauth: bool = True,
 ) -> None:
-    """Direct YouTube ingestion (shared for all youtube variants)."""
+    """Direct YouTube ingestion (shared for all youtube variants).
+
+    Reads the canonical IngestionResponse envelope returned by the
+    orchestrator and surfaces ``items_ingested`` plus per-source
+    errors/warnings in rich mode. JSON mode dumps the full envelope.
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
+
+    from src.ingestion.result import IngestionError, IngestionResponse
 
     console = Console()
     # Human-readable label with proper capitalization
@@ -508,7 +518,17 @@ def _youtube_direct(
         "youtube-playlist": "YouTube playlist",
         "youtube-rss": "YouTube RSS",
     }
+    # Map subcommand -> (command literal, source literal) for failure envelopes.
+    command_map: dict[str, tuple[str, str]] = {
+        "youtube": ("ingest.youtube", "youtube"),
+        "youtube-playlist": ("ingest.youtube-playlist", "youtube-playlist"),
+        "youtube-rss": ("ingest.youtube-rss", "youtube-rss"),
+    }
     label = labels.get(source_name, source_name)
+    command, source = command_map[source_name]
+
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
 
     try:
         import importlib
@@ -524,18 +544,38 @@ def _youtube_direct(
         if func_name in ("ingest_youtube", "ingest_youtube_playlist"):
             kwargs["use_oauth"] = use_oauth
 
-        total = ingest_func(**kwargs)
+        response = ingest_func(**kwargs)
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command=command,  # type: ignore[arg-type]
+            source=source,  # type: ignore[arg-type]
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": source_name}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]{label} ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result({"source": source_name, "ingested": total})
+        output_result(response.model_dump(mode="json"))
     else:
-        console.print(f"[green]{label} ingestion complete.[/green] {total} item(s) ingested.")
+        console.print(
+            f"[green]{label} ingestion complete.[/green] "
+            f"{response.items_ingested} item(s) ingested."
+        )
+        if response.errors:
+            console.print(f"\n[red]Error:[/red] {len(response.errors)} source(s) failed:")
+            for e in response.errors:
+                console.print(f"  [red]{e.url or e.code}[/red] ({e.code})")
+                console.print(f"    {e.message}")
 
 
 @app.command("youtube-playlist")

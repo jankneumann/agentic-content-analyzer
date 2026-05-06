@@ -533,9 +533,9 @@ def _register_content_handlers() -> None:
 
         # URL ingestion doesn't take after_date/force_reprocess
         if source == "url":
-            count = await _asyncio.to_thread(lambda: ingest_func(**kwargs))
+            result = await _asyncio.to_thread(lambda: ingest_func(**kwargs))
         else:
-            count = await _asyncio.to_thread(
+            result = await _asyncio.to_thread(
                 lambda: ingest_func(
                     after_date=after_date,
                     force_reprocess=force_reprocess,
@@ -543,9 +543,17 @@ def _register_content_handlers() -> None:
                 )
             )
 
-        # ingest_url returns a result object, not a count
+        # Normalize the per-source return shape to a count for the job progress
+        # message. During the partial-migration window we have three return
+        # shapes in flight: int (legacy: gmail, podcast, scholar, arxiv),
+        # IngestionResponse (migrated: rss, blog, hf_papers, substack, xsearch,
+        # perplexity, youtube*, ...), and URLIngestResult (url-only).
         if source == "url":
-            count = 1 if count else 0
+            count = 1 if result else 0
+        elif isinstance(result, int):
+            count = result
+        else:
+            count = result.items_ingested
 
         await update_job_progress(job_id, 100, f"Ingested {count} items from {source}")
 

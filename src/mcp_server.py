@@ -208,13 +208,16 @@ def ingest_youtube(
     """
     from src.ingestion.orchestrator import ingest_youtube as _ingest
 
-    count = _ingest(
+    response = _ingest(
         max_videos=max_videos,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
         use_oauth=use_oauth,
     )
-    return _serialize({"items_ingested": count, "source": "youtube"})
+    # ingest_youtube returns IngestionResponse post-harmonization; extract the
+    # int count to keep the legacy MCP shape stable. Envelope-level migration
+    # of MCP wrappers is tracked in the cross-transport pass.
+    return _serialize({"items_ingested": response.items_ingested, "source": "youtube"})
 
 
 @mcp.tool()
