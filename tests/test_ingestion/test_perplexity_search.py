@@ -2,12 +2,13 @@
 
 Covers:
 - PerplexityResponse model
-- PerplexitySearchResult dataclass
 - PerplexityClient: init, search, close, lazy client creation
 - Helper functions: _generate_source_id, _format_citations_markdown,
   _build_markdown_content, _build_metadata
 - PerplexityContentIngestionService: full ingest_content lifecycle,
-  dedup, error handling, force_reprocess
+  dedup, error handling, force_reprocess. Returns the canonical
+  ``IngestionResponse`` envelope; per-call extras (``queries_made``,
+  ``citations_found``) live in ``response.details``.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from src.ingestion.perplexity_search import (
     PerplexityClient,
     PerplexityContentIngestionService,
     PerplexityResponse,
-    PerplexitySearchResult,
     _build_markdown_content,
     _build_metadata,
     _format_citations_markdown,
@@ -53,35 +53,6 @@ class TestPerplexityResponse:
         assert len(r.citations) == 2
         assert r.model == "sonar"
         assert r.usage["total_tokens"] == 150
-
-
-# ---------------------------------------------------------------------------
-# PerplexitySearchResult dataclass
-# ---------------------------------------------------------------------------
-
-
-class TestPerplexitySearchResult:
-    def test_defaults(self):
-        r = PerplexitySearchResult()
-        assert r.items_ingested == 0
-        assert r.items_skipped == 0
-        assert r.queries_made == 0
-        assert r.citations_found == 0
-        assert r.errors == []
-
-    def test_custom_values(self):
-        r = PerplexitySearchResult(
-            items_ingested=5, items_skipped=2, queries_made=1, citations_found=12
-        )
-        assert r.items_ingested == 5
-        assert r.items_skipped == 2
-
-    def test_errors_list_independence(self):
-        """Each instance should have its own errors list."""
-        r1 = PerplexitySearchResult()
-        r2 = PerplexitySearchResult()
-        r1.errors.append("err")
-        assert r2.errors == []
 
 
 # ---------------------------------------------------------------------------
@@ -397,8 +368,9 @@ class TestPerplexityContentIngestionService:
             result = service.ingest_content()
 
         assert result.items_ingested == 1
-        assert result.queries_made == 1
-        assert result.citations_found == 2
+        assert result.details["queries_made"] == 1
+        assert result.details["citations_found"] == 2
+        assert result.command == "ingest.perplexity-search"
         mock_db.add.assert_called_once()
         mock_db.commit.assert_called_once()
 
@@ -447,9 +419,11 @@ class TestPerplexityContentIngestionService:
             result = service.ingest_content()
 
         assert result.items_ingested == 0
-        assert result.queries_made == 0
+        assert result.details["queries_made"] == 0
+        assert result.status == "error"
         assert len(result.errors) == 1
-        assert "Search failed" in result.errors[0]
+        assert result.errors[0].code == "search_failed"
+        assert "Search failed" in result.errors[0].message
 
     @patch("src.ingestion.perplexity_search.PerplexityClient")
     def test_ingest_content_empty_response(self, mock_client_cls):
@@ -467,8 +441,9 @@ class TestPerplexityContentIngestionService:
             result = service.ingest_content()
 
         assert result.items_ingested == 0
-        assert result.queries_made == 1
+        assert result.details["queries_made"] == 1
         assert result.errors == []
+        assert result.status == "ok"
 
     @patch("src.ingestion.perplexity_search.get_db")
     @patch("src.ingestion.perplexity_search.PerplexityClient")

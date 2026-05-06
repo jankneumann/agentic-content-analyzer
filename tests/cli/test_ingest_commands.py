@@ -6,7 +6,7 @@ Tests mock at `src.ingestion.orchestrator.<func>` instead of individual service 
 
 from __future__ import annotations
 
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -424,9 +424,21 @@ class TestIngestUrl:
 
 
 class TestIngestXSearch:
+    @staticmethod
+    def _xsearch_response(*, items_ingested: int = 0, status: str = "ok"):
+        from src.ingestion.result import IngestionResponse
+
+        return IngestionResponse(
+            command="ingest.xsearch",
+            source="xsearch",
+            status=status,  # type: ignore[arg-type]
+            items_ingested=items_ingested,
+            details={"tool_calls_made": 0, "threads_found": items_ingested},
+        )
+
     @patch("src.ingestion.orchestrator.ingest_xsearch")
     def test_xsearch_success(self, mock_ingest):
-        mock_ingest.return_value = 5
+        mock_ingest.return_value = self._xsearch_response(items_ingested=5)
 
         result = runner.invoke(app, ["--direct", "ingest", "xsearch"])
         assert result.exit_code == 0
@@ -435,7 +447,7 @@ class TestIngestXSearch:
 
     @patch("src.ingestion.orchestrator.ingest_xsearch")
     def test_xsearch_with_custom_prompt(self, mock_ingest):
-        mock_ingest.return_value = 3
+        mock_ingest.return_value = self._xsearch_response(items_ingested=3)
 
         result = runner.invoke(
             app,
@@ -453,12 +465,11 @@ class TestIngestXSearch:
             prompt="Find AI model releases",
             max_threads=20,
             force_reprocess=False,
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_xsearch")
     def test_xsearch_with_force(self, mock_ingest):
-        mock_ingest.return_value = 1
+        mock_ingest.return_value = self._xsearch_response(items_ingested=1)
 
         result = runner.invoke(app, ["--direct", "ingest", "xsearch", "--force"])
         assert result.exit_code == 0
@@ -466,7 +477,6 @@ class TestIngestXSearch:
             prompt=None,
             max_threads=None,
             force_reprocess=True,
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_xsearch")
@@ -479,12 +489,12 @@ class TestIngestXSearch:
 
     @patch("src.ingestion.orchestrator.ingest_xsearch")
     def test_xsearch_json_mode(self, mock_ingest):
-        mock_ingest.return_value = 2
+        mock_ingest.return_value = self._xsearch_response(items_ingested=2)
 
         result = runner.invoke(app, ["--json", "--direct", "ingest", "xsearch"])
         assert result.exit_code == 0
         assert '"source": "xsearch"' in result.output
-        assert '"ingested": 2' in result.output
+        assert '"items_ingested": 2' in result.output
 
     @patch("src.ingestion.orchestrator.ingest_xsearch")
     def test_xsearch_json_mode_failure(self, mock_ingest):

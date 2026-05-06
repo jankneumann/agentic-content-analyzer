@@ -194,7 +194,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
             source_name = f"websearch:{ws_source.name or 'perplexity'}"
 
             def _make_perplexity_func(src: WebSearchSource) -> Any:
-                def _func() -> int:
+                def _func() -> Any:
                     return ingest_perplexity_search(
                         prompt=src.prompt,
                         max_results=src.max_results,
@@ -213,7 +213,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
             source_name = f"websearch:{ws_source.name or 'grok'}"
 
             def _make_grok_func(src: WebSearchSource) -> Any:
-                def _func() -> int:
+                def _func() -> Any:
                     return ingest_xsearch(
                         prompt=src.prompt,
                         max_threads=src.max_threads,

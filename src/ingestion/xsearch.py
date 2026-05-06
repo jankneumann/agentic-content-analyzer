@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,6 +20,11 @@ from pydantic import BaseModel, Field
 
 from src.config import settings
 from src.ingestion.gmail import ContentData
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    IngestionWarning,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -60,17 +64,6 @@ class XThreadData(BaseModel):
     hashtags: list[str] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
     source_url: str | None = None
-
-
-@dataclass
-class XSearchResult:
-    """Aggregated result of an X search ingestion run."""
-
-    items_ingested: int = 0
-    items_skipped: int = 0
-    tool_calls_made: int = 0
-    threads_found: int = 0
-    errors: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +396,7 @@ class GrokXContentIngestionService:
         prompt: str | None = None,
         max_threads: int | None = None,
         force_reprocess: bool = False,
-    ) -> XSearchResult:
+    ) -> IngestionResponse:
         """Search X and ingest discovered threads.
 
         Args:
@@ -412,28 +405,60 @@ class GrokXContentIngestionService:
             force_reprocess: Re-ingest threads that already exist.
 
         Returns:
-            XSearchResult with ingestion stats and error details.
+            IngestionResponse envelope. ``details`` carries xsearch-specific
+            extras (``tool_calls_made``, ``threads_found``).
         """
-        result = XSearchResult()
+        items_ingested = 0
+        items_skipped = 0
+        item_errors: list[IngestionError] = []
+        warnings: list[IngestionWarning] = []
+        tool_calls = 0
+        threads_found = 0
+
         search_prompt = prompt or self._get_search_prompt()
         max_threads = max_threads or settings.grok_x_max_threads
 
         logger.info(f"Starting Grok X search (max_threads={max_threads})")
 
-        # Run search
-        response_text, tool_calls = self.client.search(
-            search_prompt, max_turns=settings.grok_x_max_turns
-        )
-        result.tool_calls_made = tool_calls
+        # Run search — wrap so failures land in the envelope, matching
+        # perplexity_search's existing pattern. Previously this raised and
+        # the CLI caught the exception; the envelope is now the canonical
+        # failure surface.
+        try:
+            response_text, tool_calls = self.client.search(
+                search_prompt, max_turns=settings.grok_x_max_turns
+            )
+        except Exception as exc:
+            logger.error(f"Grok X search failed: {exc}")
+            return IngestionResponse(
+                command="ingest.xsearch",
+                source="xsearch",
+                status="error",
+                items_ingested=0,
+                errors=[
+                    IngestionError(code="search_failed", message=str(exc)),
+                ],
+                details={"tool_calls_made": 0, "threads_found": 0},
+            )
 
         if not response_text.strip():
             logger.warning("Grok returned empty response")
-            return result
+            warnings.append(
+                IngestionWarning(code="empty_response", message="Grok returned empty response")
+            )
+            return IngestionResponse(
+                command="ingest.xsearch",
+                source="xsearch",
+                status="ok",
+                items_ingested=0,
+                warnings=warnings,
+                details={"tool_calls_made": tool_calls, "threads_found": 0},
+            )
 
         # Parse threads
         threads = self.client.parse_threads_from_response(response_text)
-        result.threads_found = len(threads)
-        logger.info(f"Parsed {len(threads)} thread(s) from Grok response")
+        threads_found = len(threads)
+        logger.info(f"Parsed {threads_found} thread(s) from Grok response")
 
         # Limit
         if len(threads) > max_threads:
@@ -450,7 +475,7 @@ class GrokXContentIngestionService:
 
                     if not force_reprocess and self._is_duplicate(db, thread):
                         logger.debug(f"Skipping duplicate: {thread.root_post_id}")
-                        result.items_skipped += 1
+                        items_skipped += 1
                         continue
 
                     content_data = thread_to_content_data(thread, search_prompt, tool_calls)
@@ -470,23 +495,47 @@ class GrokXContentIngestionService:
                     )
                     db.add(content)
                     db.flush()
-                    result.items_ingested += 1
+                    items_ingested += 1
                     logger.info(
                         f"Ingested X content: id={content.id}, source_id={content_data.source_id}"
                     )
                 except Exception as exc:
                     db.rollback()  # rolls back to SAVEPOINT, not entire transaction
-                    result.errors.append(f"{thread.root_post_id}: {exc}")
+                    item_errors.append(
+                        IngestionError(
+                            code="storage_error",
+                            message=f"{thread.root_post_id}: {exc}",
+                            url=f"https://x.com/i/status/{thread.root_post_id}",
+                        )
+                    )
                     logger.warning(
                         f"Failed to ingest thread {thread.root_post_id}",
                         exc_info=True,
                     )
 
-            if result.items_ingested > 0:
+            if items_ingested > 0:
                 db.commit()
-                logger.info(f"Committed {result.items_ingested} X content item(s)")
+                logger.info(f"Committed {items_ingested} X content item(s)")
 
-        return result
+        items_failed = len(item_errors)
+        if items_failed == 0:
+            status = "ok"
+        elif items_ingested > 0:
+            status = "partial"
+        else:
+            status = "error"
+
+        return IngestionResponse(
+            command="ingest.xsearch",
+            source="xsearch",
+            status=status,
+            items_ingested=items_ingested,
+            items_skipped=items_skipped,
+            items_failed=items_failed,
+            errors=item_errors,
+            warnings=warnings,
+            details={"tool_calls_made": tool_calls, "threads_found": threads_found},
+        )
 
     def _is_duplicate(self, db: Any, thread: XThreadData) -> bool:
         """Check if a thread already exists using multi-level dedup.
