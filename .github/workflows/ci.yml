@@ -223,7 +223,7 @@ jobs:
           WORKER_ENABLED: "false"
         run: |
           echo "Starting app with PROFILE=railway..."
-          timeout 10 python -c "
+          timeout 20 python -c "
           import uvicorn, threading, time, httpx
 
           def start():
@@ -231,11 +231,20 @@ jobs:
 
           t = threading.Thread(target=start, daemon=True)
           t.start()
-          time.sleep(3)
-
-          resp = httpx.get('http://127.0.0.1:8000/health')
-          assert resp.status_code == 200, f'Health check failed: {resp.status_code}'
-          print('✓ App booted and health check passed')
+          deadline = time.monotonic() + 15
+          last_error = None
+          while time.monotonic() < deadline:
+              try:
+                  resp = httpx.get('http://127.0.0.1:8000/health')
+                  if resp.status_code == 200:
+                      print('✓ App booted and health check passed')
+                      break
+                  last_error = AssertionError(f'Health check failed: {resp.status_code}')
+              except Exception as exc:
+                  last_error = exc
+              time.sleep(1)
+          else:
+              raise AssertionError(f'Health check did not pass before timeout: {last_error}')
           " || { echo "::error::App failed to boot with railway profile"; exit 1; }
 
   validate-profiles:
