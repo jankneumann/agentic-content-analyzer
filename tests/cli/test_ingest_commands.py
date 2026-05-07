@@ -274,10 +274,21 @@ class TestIngestYoutubeRss:
         assert result.exit_code != 0
 
 
+def _podcast_envelope(n: int):
+    from src.ingestion.result import IngestionResponse
+
+    return IngestionResponse(
+        command="ingest.podcast",
+        source="podcast",
+        status="ok",
+        items_ingested=n,
+    )
+
+
 class TestIngestPodcast:
     @patch("src.ingestion.orchestrator.ingest_podcast")
     def test_podcast_success(self, mock_ingest):
-        mock_ingest.return_value = 4
+        mock_ingest.return_value = _podcast_envelope(4)
 
         result = runner.invoke(app, ["--direct", "ingest", "podcast"])
         assert result.exit_code == 0
