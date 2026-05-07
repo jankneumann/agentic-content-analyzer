@@ -692,10 +692,23 @@ def youtube(
 def _podcast_direct(
     max_results: int, after_date: datetime | None, force: bool, transcribe: bool
 ) -> None:
-    """Direct podcast ingestion."""
+    """Direct podcast ingestion.
+
+    Reads the canonical IngestionResponse envelope from the service /
+    orchestrator and surfaces ``items_ingested`` plus per-source
+    errors/warnings in rich mode. JSON mode dumps the full envelope.
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
+
     try:
         if not transcribe:
             from src.config import settings
@@ -706,7 +719,7 @@ def _podcast_direct(
             sources = sources_config.get_podcast_sources()
             for source in sources:
                 source.transcribe = False
-            count = service.ingest_all_feeds(
+            response = service.ingest_all_feeds(
                 sources=sources,
                 max_entries_per_feed=max_results,
                 after_date=after_date,
@@ -715,20 +728,40 @@ def _podcast_direct(
         else:
             from src.ingestion.orchestrator import ingest_podcast
 
-            count = ingest_podcast(
+            response = ingest_podcast(
                 max_entries_per_feed=max_results, after_date=after_date, force_reprocess=force
             )
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.podcast",
+            source="podcast",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "podcast"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]Podcast ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result({"source": "podcast", "ingested": count})
+        output_result(response.model_dump(mode="json"))
     else:
-        console.print(f"[green]Podcast ingestion complete.[/green] {count} episode(s) ingested.")
+        console.print(
+            f"[green]Podcast ingestion complete.[/green] "
+            f"{response.items_ingested} episode(s) ingested."
+        )
+        if response.errors:
+            console.print(f"\n[red]Error:[/red] {len(response.errors)} source(s) failed:")
+            for e in response.errors:
+                console.print(f"  [red]{e.url or e.code}[/red] ({e.code})")
+                console.print(f"    {e.message}")
 
 
 @app.command("podcast")

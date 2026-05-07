@@ -9,10 +9,10 @@ Each function:
 - Accepts the same parameters the service expects
 - Returns either the canonical ``IngestionResponse`` envelope (rss, blog,
   huggingface_papers, substack, xsearch, perplexity-search, youtube,
-  youtube-rss, youtube-playlist — the harmonized sources) or a legacy
-  shape (``int`` count, or a small result dataclass like ``URLIngestResult``)
-  for sources not yet migrated. Migration to ``IngestionResponse`` is in
-  progress.
+  youtube-rss, youtube-playlist, podcast — the harmonized sources) or a
+  legacy shape (``int`` count, or a small result dataclass like
+  ``URLIngestResult``) for sources not yet migrated. Migration to
+  ``IngestionResponse`` is in progress.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
 
@@ -353,7 +353,7 @@ def ingest_podcast(
     max_entries_per_feed: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest episodes from configured podcast feeds.
 
     Args:
@@ -362,7 +362,7 @@ def ingest_podcast(
         force_reprocess: Force reprocess existing content.
 
     Returns:
-        Number of episodes ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.podcast import PodcastContentIngestionService
 

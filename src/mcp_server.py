@@ -240,12 +240,12 @@ def ingest_podcast(
     """
     from src.ingestion.orchestrator import ingest_podcast as _ingest
 
-    count = _ingest(
+    response = _ingest(
         max_entries_per_feed=max_entries_per_feed,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "podcast"})
+    return _serialize({"items_ingested": response.items_ingested, "source": "podcast"})
 
 
 @mcp.tool()

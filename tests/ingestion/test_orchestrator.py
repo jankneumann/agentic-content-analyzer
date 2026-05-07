@@ -277,22 +277,35 @@ class TestIngestYoutube:
         assert result.status == "partial"
 
 
+def _podcast_response(n: int) -> IngestionResponse:
+    """Helper: build a minimal canonical response for a Podcast service mock."""
+    return IngestionResponse(
+        command="ingest.podcast",
+        source="podcast",
+        status="ok",
+        items_ingested=n,
+    )
+
+
 class TestIngestPodcast:
     @patch("src.ingestion.podcast.PodcastContentIngestionService")
-    def test_returns_int(self, mock_cls):
+    def test_returns_envelope(self, mock_cls):
         from src.ingestion.orchestrator import ingest_podcast
 
-        mock_cls.return_value.ingest_all_feeds.return_value = 4
+        mock_cls.return_value.ingest_all_feeds.return_value = _podcast_response(4)
         result = ingest_podcast()
-        assert result == 4
-        assert isinstance(result, int)
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.podcast"
+        assert result.source == "podcast"
+        assert result.items_ingested == 4
+        assert result.status == "ok"
 
     @patch("src.ingestion.podcast.PodcastContentIngestionService")
     def test_passes_parameters(self, mock_cls):
         from src.ingestion.orchestrator import ingest_podcast
 
         mock_service = MagicMock()
-        mock_service.ingest_all_feeds.return_value = 0
+        mock_service.ingest_all_feeds.return_value = _podcast_response(0)
         mock_cls.return_value = mock_service
         after = datetime(2025, 1, 1, tzinfo=UTC)
 

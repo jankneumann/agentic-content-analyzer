@@ -303,9 +303,10 @@ class TestPodcastIngestion:
         # Tier 1 returns transcript from feed
         service.client.extract_transcript_from_feed.return_value = long_transcript
 
-        count = service.ingest_feed("https://example.com/feed.xml")
+        result = service.ingest_feed("https://example.com/feed.xml")
 
-        assert count >= 1
+        assert result.items_fetched >= 1
+        assert result.success is True
         mock_db.add.assert_called()
         added_content = mock_db.add.call_args[0][0]
         assert added_content.raw_format == "feed_transcript"
@@ -344,9 +345,9 @@ class TestPodcastIngestion:
         # Tier 2 succeeds
         service.client.extract_transcript_from_url.return_value = linked_transcript
 
-        count = service.ingest_feed("https://example.com/feed.xml")
+        result = service.ingest_feed("https://example.com/feed.xml")
 
-        assert count >= 1
+        assert result.items_fetched >= 1
         mock_db.add.assert_called()
         added_content = mock_db.add.call_args[0][0]
         assert added_content.raw_format == "linked_transcript"
@@ -382,9 +383,11 @@ class TestPodcastIngestion:
         service.client.extract_transcript_from_feed.return_value = None
         service.client.extract_transcript_from_url.return_value = None
 
-        count = service.ingest_feed("https://example.com/feed.xml", transcribe=False)
+        result = service.ingest_feed("https://example.com/feed.xml", transcribe=False)
 
-        assert count == 0
+        assert result.items_fetched == 0
+        # Episodes without transcripts are silently skipped, not counted as failures
+        assert result.items_failed == 0
         mock_db.add.assert_not_called()
 
     @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
@@ -417,9 +420,9 @@ class TestPodcastIngestion:
         ]
         service.client.extract_transcript_from_feed.return_value = "Full transcript content. " * 50
 
-        count = service.ingest_feed("https://example.com/feed.xml")
+        result = service.ingest_feed("https://example.com/feed.xml")
 
-        assert count == 0
+        assert result.items_fetched == 0
         mock_db.add.assert_not_called()
 
     @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
@@ -453,13 +456,14 @@ class TestPodcastIngestion:
         ]
         service.client.extract_transcript_from_feed.return_value = long_transcript
 
-        count = service.ingest_feed(
+        result = service.ingest_feed(
             "https://example.com/feed.xml",
             source_name="AI Weekly Podcast",
             source_tags=["ai", "ml", "podcast"],
         )
 
-        assert count >= 1
+        assert result.items_fetched >= 1
+        assert result.name == "AI Weekly Podcast"
         mock_db.add.assert_called()
         added_content = mock_db.add.call_args[0][0]
         assert added_content.metadata_json["source_name"] == "AI Weekly Podcast"
@@ -556,27 +560,48 @@ class TestPodcastSourceResolution:
     """Tests for source resolution in ingest_all_feeds()."""
 
     @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
-    @patch.object(PodcastContentIngestionService, "ingest_feed", return_value=3)
+    @patch.object(PodcastContentIngestionService, "ingest_feed")
     def test_uses_sources_parameter(self, mock_ingest_feed):
         """Explicit PodcastSource list used directly."""
+        from src.ingestion.result import SourceFetchResult
+
+        # Each call returns a fresh SourceFetchResult so aggregator-side mutation
+        # doesn't leak across calls (matches the youtube test helper pattern).
+        def _build(*args, **kwargs):
+            url = kwargs.get("feed_url") or (args[0] if args else "https://x")
+            return SourceFetchResult(url=url, items_fetched=3)
+
+        mock_ingest_feed.side_effect = _build
+
         sources = [
             PodcastSource(url="https://a.com/feed.xml", name="Podcast A"),
             PodcastSource(url="https://b.com/feed.xml", name="Podcast B"),
         ]
 
         service = PodcastContentIngestionService()
-        total = service.ingest_all_feeds(sources=sources)
+        response = service.ingest_all_feeds(sources=sources)
 
         assert mock_ingest_feed.call_count == 2
         calls = mock_ingest_feed.call_args_list
         assert calls[0].kwargs.get("feed_url") or calls[0].args[0] is not None
-        assert total == 6  # 3 per feed * 2 feeds
+        assert response.items_ingested == 6  # 3 per feed * 2 feeds
+        assert response.command == "ingest.podcast"
+        assert response.source == "podcast"
+        assert response.status == "ok"
 
     @patch("src.ingestion.podcast.settings")
     @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
-    @patch.object(PodcastContentIngestionService, "ingest_feed", return_value=2)
+    @patch.object(PodcastContentIngestionService, "ingest_feed")
     def test_loads_from_sources_config(self, mock_ingest_feed, mock_settings):
         """Falls through to settings.get_sources_config().get_podcast_sources()."""
+        from src.ingestion.result import SourceFetchResult
+
+        def _build(*args, **kwargs):
+            url = kwargs.get("feed_url") or (args[0] if args else "https://x")
+            return SourceFetchResult(url=url, items_fetched=2)
+
+        mock_ingest_feed.side_effect = _build
+
         mock_config = MagicMock()
         mock_config.get_podcast_sources.return_value = [
             PodcastSource(url="https://config.com/feed.xml", name="Config Podcast"),
@@ -584,16 +609,24 @@ class TestPodcastSourceResolution:
         mock_settings.get_sources_config.return_value = mock_config
 
         service = PodcastContentIngestionService()
-        total = service.ingest_all_feeds()
+        response = service.ingest_all_feeds()
 
         mock_settings.get_sources_config.assert_called_once()
         assert mock_ingest_feed.call_count == 1
-        assert total == 2
+        assert response.items_ingested == 2
 
     @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)
-    @patch.object(PodcastContentIngestionService, "ingest_feed", return_value=5)
+    @patch.object(PodcastContentIngestionService, "ingest_feed")
     def test_per_source_settings_passed(self, mock_ingest_feed):
         """source.transcribe, stt_provider, languages passed through to ingest_feed()."""
+        from src.ingestion.result import SourceFetchResult
+
+        def _build(*args, **kwargs):
+            url = kwargs.get("feed_url") or (args[0] if args else "https://x")
+            return SourceFetchResult(url=url, items_fetched=5)
+
+        mock_ingest_feed.side_effect = _build
+
         sources = [
             PodcastSource(
                 url="https://german.com/feed.xml",
