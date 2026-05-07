@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin
@@ -25,6 +25,7 @@ from src.ingestion.gmail import ContentData
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
+    SourceFetchResult,
     build_response_from_source_results,
 )
 from src.models.content import Content, ContentSource, ContentStatus
@@ -67,25 +68,6 @@ def _parse_date(date_str: str) -> datetime | None:
         except ValueError:
             continue
     return None
-
-
-# ---------------------------------------------------------------------------
-# Result dataclasses
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class SourceFetchResult:
-    """Tracks the outcome of fetching a single source."""
-
-    url: str
-    name: str | None = None
-    success: bool = True
-    items_fetched: int = 0
-    error: str | None = None
-    error_type: str | None = None
-    items_failed: int = 0
-    item_errors: list[IngestionError] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

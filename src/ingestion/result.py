@@ -81,6 +81,7 @@ Design notes
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Self
 
@@ -159,6 +160,54 @@ class IngestionWarning(BaseModel):
     message: str
     url: str | None = None
     redirected_to: str | None = None
+
+
+@dataclass
+class SourceFetchResult:
+    """Canonical per-source outcome accumulator.
+
+    Used by ingestion services as a per-source diagnostic record while
+    fetching content; the service then passes a list of these to
+    ``build_response_from_source_results`` to construct the canonical
+    ``IngestionResponse`` envelope.
+
+    Field semantics:
+      - ``url`` / ``name``: identifies the source (feed URL, channel,
+        playlist, subscription, etc.).
+      - ``success``: source-level success flag — flips to False when the
+        outer fetch (HTTP error, OAuth expired, malformed feed before any
+        item parses) fails. Surfaces as an ``IngestionError`` on the envelope.
+      - ``items_fetched``: items successfully persisted from this source.
+      - ``error`` / ``error_type``: populated when ``success=False``;
+        ``error_type`` becomes the ``IngestionError.code`` on the envelope.
+      - ``items_failed`` / ``item_errors``: per-item failure tracking
+        (e.g. one feed entry parsed badly while others succeeded). Each
+        ``item_errors`` entry should map 1:1 to a count in ``items_failed``,
+        though the helper accepts the ``items_failed > 0`` signal alone.
+      - ``redirected_to``: optional, set when the source URL was followed
+        through an HTTP 30x to a new canonical URL. Surfaces as an
+        ``IngestionWarning`` (``code="feed_redirected"``) on the envelope.
+        Generic across HTTP-fetched sources; today only RSS sets it.
+
+    The ``build_response_from_source_results`` helper consumes this via
+    duck-typing (``getattr(r, "items_failed", 0)`` etc.), so service-specific
+    extensions or omissions (e.g. YouTube currently never increments
+    ``items_failed``) are tolerated without breaking the contract.
+    """
+
+    url: str
+    name: str | None = None
+    success: bool = True
+    items_fetched: int = 0
+    error: str | None = None
+    error_type: str | None = None
+    items_failed: int = 0
+    item_errors: list[IngestionError] = field(default_factory=list)
+    redirected_to: str | None = None
+
+    @property
+    def is_redirect(self) -> bool:
+        return self.redirected_to is not None
 
 
 class IngestionResponse(BaseModel):

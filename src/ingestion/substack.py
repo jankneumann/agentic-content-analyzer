@@ -6,7 +6,7 @@ recent posts for enabled sources in sources.d/substack.yaml.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,7 @@ from src.ingestion.gmail import ContentData
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
+    SourceFetchResult,
     build_response_from_source_results,
 )
 from src.models.content import Content, ContentSource, ContentStatus
@@ -45,20 +46,6 @@ class SubstackSubscription:
     name: str
     url: str
     is_paid: bool = False
-
-
-@dataclass
-class SourceFetchResult:
-    """Tracks the outcome of fetching a single Substack source."""
-
-    url: str
-    name: str | None = None
-    success: bool = True
-    items_fetched: int = 0
-    error: str | None = None
-    error_type: str | None = None
-    items_failed: int = 0
-    item_errors: list[IngestionError] = field(default_factory=list)
 
 
 @dataclass
