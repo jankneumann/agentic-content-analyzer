@@ -18,7 +18,7 @@ import pytest
 import schemathesis
 from hypothesis import settings as hypothesis_settings
 
-from tests.contract.conftest import EXCLUDED_COMMON_PATHS
+from tests.contract.conftest import CONTRACT_REQUEST_HEADERS, EXCLUDED_COMMON_PATHS
 
 EXCLUDED_PATH_REGEX = "|".join(EXCLUDED_COMMON_PATHS)
 
@@ -36,7 +36,7 @@ def test_get_endpoints_conform_to_schema(case):
     1. No 500 errors (server bugs)
     2. Successful responses (2xx) match the declared response schema
     """
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {**(case.headers or {}), **CONTRACT_REQUEST_HEADERS}
 
     try:
         response = case.call()

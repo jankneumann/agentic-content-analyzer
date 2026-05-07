@@ -11,6 +11,7 @@ from sqlalchemy import func
 from src.config import settings
 from src.config.sources import (
     GmailSource,
+    WebSearchSource,
     YouTubeChannelSource,
     YouTubePlaylistSource,
 )
@@ -71,6 +72,8 @@ def _get_source_url(source) -> str:
         return f"https://www.youtube.com/channel/{source.channel_id}"
     if isinstance(source, GmailSource):
         return source.query
+    if isinstance(source, WebSearchSource):
+        return f"{source.provider}: {source.prompt}"
     # ScholarSource and other query-based sources
     if hasattr(source, "query"):
         return source.query

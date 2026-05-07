@@ -93,13 +93,10 @@ class HybridSearchService:
         # Fetch more candidates than needed for fusion quality
         search_limit = min((query.limit + query.offset) * 5, settings.search_max_limit * 5)
 
-        # Execute search based on type
-        # BM25 strategies use synchronous DB calls, so we run them in a thread
-        # to avoid blocking the async event loop.
+        # Execute search based on type. BM25 uses the request-scoped SQLAlchemy
+        # session, which must stay on the request thread.
         if query.type == SearchType.BM25:
-            bm25_results = await asyncio.to_thread(
-                self._bm25.search, query.query, search_limit, content_ids
-            )
+            bm25_results = self._bm25.search(query.query, search_limit, content_ids)
             vector_results: list[tuple[int, float, int]] = []
         elif query.type == SearchType.VECTOR:
             bm25_results = []
@@ -107,10 +104,9 @@ class HybridSearchService:
                 query.query, limit=search_limit, content_ids=content_ids
             )
         else:
-            # Hybrid: run both in parallel
-            bm25_results, vector_results = await asyncio.gather(
-                asyncio.to_thread(self._bm25.search, query.query, search_limit, content_ids),
-                self._vector_search(query.query, limit=search_limit, content_ids=content_ids),
+            bm25_results = self._bm25.search(query.query, search_limit, content_ids)
+            vector_results = await self._vector_search(
+                query.query, limit=search_limit, content_ids=content_ids
             )
 
         # Build raw score maps: chunk_id -> score

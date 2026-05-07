@@ -15,7 +15,7 @@ import pytest
 import schemathesis
 from hypothesis import settings as hypothesis_settings
 
-from tests.contract.conftest import EXCLUDED_COMMON_PATHS
+from tests.contract.conftest import CONTRACT_REQUEST_HEADERS, EXCLUDED_COMMON_PATHS
 
 # Fuzz tests exclude everything that conformance tests exclude, PLUS
 # mutating endpoints that trigger LLM calls, external services, or TTS.
@@ -31,6 +31,9 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     r"/api/v1/scripts/\{script_id\}/regenerate$",
     r"/api/v1/scripts/\{script_id\}/sections/",
     r"/api/v1/summaries/\{summary_id\}/regenerate",
+    r"/api/v1/images/",
+    r"/api/v1/kb/compile$",
+    r"/api/v1/kb/query$",
     # TTS generation
     r"/api/v1/podcasts/generate$",
     r"/api/v1/audio-digests$",
@@ -40,6 +43,12 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     r"/api/v1/content/save-url$",
     r"/api/v1/content/save-page$",
     r"/api/v1/documents/upload$",
+    r"/api/v1/graph/",
+    r"/api/v1/references/",
+    # Background refresh / pipeline triggers
+    r"/api/v1/models/pricing/refresh$",
+    r"/api/v1/pricing/refresh$",
+    r"/api/v1/pipeline/run$",
 ]
 
 EXCLUDED_FUZZ_REGEX = "|".join(EXCLUDED_COMMON_PATHS + _FUZZ_ONLY_EXCLUSIONS)
@@ -69,7 +78,7 @@ def test_get_endpoints_no_500(case):
     Schemathesis generates schema-valid but randomized parameter values.
     Valid inputs should never produce 500 errors — only 2xx or 4xx.
     """
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {**(case.headers or {}), **CONTRACT_REQUEST_HEADERS}
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on GET {case.formatted_path}: {response.status_code} - {response.text[:500]}"
@@ -81,7 +90,7 @@ def test_get_endpoints_no_500(case):
 @hypothesis_settings(max_examples=15, deadline=None)
 def test_settings_endpoints_no_500(case):
     """Settings endpoints handle fuzzed inputs gracefully."""
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {**(case.headers or {}), **CONTRACT_REQUEST_HEADERS}
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on {case.method.upper()} {case.formatted_path}: "
@@ -94,7 +103,7 @@ def test_settings_endpoints_no_500(case):
 @hypothesis_settings(max_examples=15, deadline=None)
 def test_search_endpoint_no_500(case):
     """Search endpoint handles fuzzed queries without server errors."""
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {**(case.headers or {}), **CONTRACT_REQUEST_HEADERS}
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on {case.method.upper()} {case.formatted_path}: "
@@ -112,7 +121,7 @@ def test_mutating_endpoints_no_500(case):
     job retry, source management, and conversation operations.  LLM-calling
     and external-service endpoints are excluded via EXCLUDED_FUZZ_REGEX.
     """
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {**(case.headers or {}), **CONTRACT_REQUEST_HEADERS}
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on {case.method.upper()} {case.formatted_path}: "

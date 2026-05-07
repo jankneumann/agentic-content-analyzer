@@ -28,16 +28,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system ruff mypy
+          uv sync --frozen --extra dev
 
       - name: Run Ruff linter
-        run: ruff check src/
+        run: uv run --frozen --extra dev ruff check src/
 
       - name: Run Ruff formatter check
-        run: ruff format --check src/
+        run: uv run --frozen --extra dev ruff format --check src/
 
       - name: Check Alembic single head
-        run: python scripts/check_alembic_heads.py
+        run: uv run --frozen --extra dev python scripts/check_alembic_heads.py
 
   typecheck:
     runs-on: ubuntu-latest
@@ -56,10 +56,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          uv sync --frozen --extra dev
 
       - name: Run mypy type checking
-        run: mypy src/ --ignore-missing-imports
+        run: uv run --frozen --extra dev mypy src/ --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
@@ -93,7 +93,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          uv sync --frozen --extra dev
 
       - name: Run tests with coverage
         env:
@@ -101,13 +101,13 @@ jobs:
           ANTHROPIC_API_KEY: test-key-for-ci
           ENVIRONMENT: test
         run: |
-          pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=25 -x -m "not hoverfly and not contract"
+          uv run --frozen --extra dev pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=25 -x -m "not hoverfly and not contract"
 
       - name: Coverage summary
         if: always()
         run: |
           echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
-          pytest tests/ --cov=src --cov-report=term -m "not hoverfly and not contract" -q --no-header 2>&1 | tail -20 >> $GITHUB_STEP_SUMMARY || true
+          uv run --frozen --extra dev pytest tests/ --cov=src --cov-report=term -m "not hoverfly and not contract" -q --no-header 2>&1 | tail -20 >> $GITHUB_STEP_SUMMARY || true
 
   contract-test:
     runs-on: ubuntu-latest
@@ -141,14 +141,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          uv sync --frozen --extra dev
 
       - name: Run database migrations
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           APP_SECRET_KEY: test-secret-key-for-ci
         run: |
-          alembic upgrade head
+          uv run --frozen --extra dev alembic upgrade head
 
       - name: Run API contract and fuzz tests
         env:
@@ -160,7 +160,7 @@ jobs:
           ENVIRONMENT: development
           WORKER_ENABLED: "false"
         run: |
-          pytest tests/contract/ -m contract -v --no-cov --tb=short
+          uv run --frozen --extra dev pytest tests/contract/ -m contract -v --no-cov --tb=short
 
   cold-start:
     name: Cold-start migration & boot
@@ -195,7 +195,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          uv sync --frozen --extra dev
 
       - name: Run full migration chain from scratch
         env:
@@ -205,7 +205,7 @@ jobs:
           ENVIRONMENT: production
         run: |
           echo "Running alembic upgrade head on empty database..."
-          alembic upgrade head
+          uv run --frozen --extra dev alembic upgrade head
           echo "✓ All migrations applied successfully"
 
       - name: Verify app boots with production profile
@@ -223,7 +223,7 @@ jobs:
           WORKER_ENABLED: "false"
         run: |
           echo "Starting app with PROFILE=railway..."
-          timeout 20 python -c "
+          timeout 20 uv run --frozen --extra dev python -c "
           import uvicorn, threading, time, httpx
 
           def start():
@@ -264,7 +264,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          uv sync --frozen --extra dev
 
       - name: Validate all profiles
         env:
@@ -274,7 +274,7 @@ jobs:
           for profile in profiles/*.yaml; do
             name=$(basename "$profile" .yaml)
             echo "Validating profile: $name"
-            python -m src.cli profile validate "$name" || exit 1
+            uv run --frozen --extra dev python -m src.cli profile validate "$name" || exit 1
           done
           echo "All profiles validated successfully!"
 

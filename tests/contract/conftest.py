@@ -46,6 +46,10 @@ from tests.factories.summary import SummaryFactory
 from tests.helpers.test_db import create_test_engine, get_test_database_url
 
 TEST_DATABASE_URL = get_test_database_url()
+CONTRACT_REQUEST_HEADERS = {
+    "X-Admin-Key": "test-admin-key",
+    "X-Forwarded-For": "127.0.0.1",
+}
 
 # Locate the alembic config relative to the project root
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -71,6 +75,8 @@ EXCLUDED_COMMON_PATHS: list[str] = [
     r"/api/v1/audio-digests/\{audio_digest_id\}/stream",
     # OTEL proxy
     r"/api/v1/otel/",
+    # SSE streaming endpoints
+    r"/api/v1/notifications/stream",
     # Requires Neo4j
     r"/api/v1/settings/connections",
 ]
@@ -343,12 +349,13 @@ def contract_schema(seeded_db):
         patch("src.api.upload_routes.get_db", mock_get_db),
         patch("src.api.save_routes.get_db", mock_get_db),
         patch("src.api.search_routes.get_db", mock_get_db),
+        patch("src.services.content_query.get_db", mock_get_db),
         patch("src.services.script_review_service.get_db", mock_get_db),
         patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):
         schema = schemathesis.openapi.from_asgi(
             "/openapi.json",
             app,
-            headers={"X-Admin-Key": os.environ["ADMIN_API_KEY"]},
+            headers=CONTRACT_REQUEST_HEADERS,
         )
         yield schema

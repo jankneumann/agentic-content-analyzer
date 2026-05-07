@@ -10,6 +10,7 @@ The factory auto-detects pg_search availability at runtime.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Protocol, runtime_checkable
 
 from sqlalchemy import text
@@ -67,7 +68,8 @@ class ParadeDBBM25Strategy:
         limit: int = 100,
         content_ids: list[int] | None = None,
     ) -> list[tuple[int, float, int]]:
-        if not query.strip():
+        query = _sanitize_paradedb_query(query)
+        if not query:
             return []
 
         if content_ids:
@@ -97,6 +99,11 @@ class ParadeDBBM25Strategy:
             )
 
         return [(row.id, row.score, row.content_id) for row in result]
+
+
+def _sanitize_paradedb_query(query: str) -> str:
+    """Normalize user text into ParadeDB's simple term syntax."""
+    return " ".join(re.findall(r"\w+", query, flags=re.UNICODE))
 
 
 class PostgresNativeFTSStrategy:
