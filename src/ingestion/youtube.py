@@ -13,7 +13,6 @@ import os
 import random
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
@@ -30,6 +29,7 @@ from src.config import settings
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
+    SourceFetchResult,
     build_response_from_source_results,
 )
 from src.models.content import Content, ContentSource, ContentStatus
@@ -42,31 +42,14 @@ if TYPE_CHECKING:
     from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource, YouTubeRSSSource
 
 
-@dataclass
-class SourceFetchResult:
-    """Tracks the outcome of fetching a single YouTube source (playlist/channel/feed).
-
-    Mirrors the shape used by other harmonized ingestion services (substack,
-    rss, blog) so ``build_response_from_source_results`` can consume it.
-
-    Source-level errors (stale OAuth, channel-not-resolvable, feed 5xx) populate
-    ``error``/``error_type`` and flip ``success`` to False — these surface as
-    ``IngestionError`` entries on the envelope. Per-item failures inside the
-    source are not tracked here today: video processing today logs and returns
-    False for transient or skip cases (no transcript, dedup, force=False), and
-    we intentionally don't conflate skips with failures. Future work could
-    promote raised exceptions inside ``_process_video`` to ``items_failed``.
-    """
-
-    url: str
-    name: str | None = None
-    success: bool = True
-    items_fetched: int = 0
-    error: str | None = None
-    error_type: str | None = None
-    items_failed: int = 0
-    item_errors: list[IngestionError] = field(default_factory=list)
-
+# Note on YouTube per-item failure tracking:
+# YouTube's source-level errors (stale OAuth, channel-not-resolvable, feed 5xx)
+# populate ``error``/``error_type`` and flip ``success`` to False. Per-item
+# failures inside a source (transcript fetch errors, etc.) are NOT tracked on
+# ``items_failed`` today — ``_process_video`` returns False for both transient
+# errors and intentional skips (no transcript, dedup, force=False), and we
+# intentionally don't conflate skips with failures. Future work could promote
+# raised exceptions inside ``_process_video`` to ``items_failed``.
 
 logger = get_logger(__name__)
 

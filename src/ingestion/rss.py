@@ -10,7 +10,6 @@ RSSSource objects from the unified source configuration system.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -23,6 +22,7 @@ from src.ingestion.gmail import ContentData
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
+    SourceFetchResult,
     build_response_from_source_results,
 )
 from src.models.content import Content, ContentSource, ContentStatus
@@ -41,25 +41,6 @@ if TYPE_CHECKING:
     from src.config.sources import RSSSource
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class SourceFetchResult:
-    """Tracks the outcome of fetching a single RSS source."""
-
-    url: str
-    name: str | None = None
-    success: bool = True
-    items_fetched: int = 0
-    error: str | None = None
-    error_type: str | None = None
-    redirected_to: str | None = None
-    items_failed: int = 0
-    item_errors: list[IngestionError] = field(default_factory=list)
-
-    @property
-    def is_redirect(self) -> bool:
-        return self.redirected_to is not None
 
 
 class RSSClient:

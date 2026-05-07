@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urljoin, urlparse
 
@@ -23,6 +23,7 @@ from src.ingestion.gmail import ContentData
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
+    SourceFetchResult,
     build_response_from_source_results,
 )
 from src.models.content import Content, ContentSource, ContentStatus
@@ -33,23 +34,6 @@ from src.utils.html_parser import extract_links
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-# --- Result Dataclasses ---
-
-
-@dataclass
-class SourceFetchResult:
-    """Tracks the outcome of fetching a single blog source."""
-
-    url: str
-    name: str | None = None
-    success: bool = True
-    items_fetched: int = 0
-    error: str | None = None
-    error_type: str | None = None
-    items_failed: int = 0
-    item_errors: list[IngestionError] = field(default_factory=list)
 
 
 # --- Link Discovery ---
