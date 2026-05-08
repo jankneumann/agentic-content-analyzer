@@ -4,7 +4,35 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.ingestion.result import IngestionResponse
 from src.services.reference_auto_ingest import AutoIngestTrigger
+
+
+def _scholar_paper_envelope(items: int) -> IngestionResponse:
+    """Build a scholar-paper IngestionResponse mock with the given items_ingested.
+
+    Mirrors the shape of the real orchestrator return after harmonization
+    round 3 (2026-05-07): mocks must return the canonical envelope so the
+    consumer's ``response.items_ingested`` attribute access matches production.
+    """
+    return IngestionResponse(
+        command="ingest.scholar-paper",
+        source="scholar_paper",
+        status="ok",
+        items_ingested=items,
+        details={"identifier": "DOI:10.1234/test", "with_refs": False, "refs_ingested": 0},
+    )
+
+
+def _arxiv_paper_envelope(items: int) -> IngestionResponse:
+    """Build an arxiv-paper IngestionResponse mock — see ``_scholar_paper_envelope``."""
+    return IngestionResponse(
+        command="ingest.arxiv-paper",
+        source="arxiv_paper",
+        status="ok",
+        items_ingested=items,
+        details={"identifier": "2301.12345", "arxiv_id": "2301.12345", "version_updated": False},
+    )
 
 
 class TestAutoIngestTrigger:
@@ -93,7 +121,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_scholar_paper",
-            return_value=1,
+            return_value=_scholar_paper_envelope(1),
         ):
             result = await trigger.maybe_ingest(self._make_ref())
 
@@ -111,7 +139,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_scholar_paper",
-            return_value=0,
+            return_value=_scholar_paper_envelope(0),
         ):
             result = await trigger.maybe_ingest(self._make_ref())
 
@@ -129,7 +157,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_scholar_paper",
-            return_value=1,
+            return_value=_scholar_paper_envelope(1),
         ):
             result = await trigger.maybe_ingest(self._make_ref())
 
@@ -153,7 +181,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_arxiv_paper",
-            return_value=1,
+            return_value=_arxiv_paper_envelope(1),
         ):
             result = await trigger.maybe_ingest(ref)
 
@@ -172,7 +200,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_arxiv_paper",
-            return_value=0,
+            return_value=_arxiv_paper_envelope(0),
         ):
             result = await trigger.maybe_ingest(ref)
 
@@ -191,7 +219,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_arxiv_paper",
-            return_value=1,
+            return_value=_arxiv_paper_envelope(1),
         ):
             result = await trigger.maybe_ingest(ref)
 
@@ -258,7 +286,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_scholar_paper",
-            return_value=1,
+            return_value=_scholar_paper_envelope(1),
         ):
             result = await trigger.maybe_ingest(self._make_ref())
 
@@ -284,7 +312,7 @@ class TestAutoIngestTrigger:
 
         with patch(
             "src.ingestion.orchestrator.ingest_scholar_paper",
-            return_value=1,
+            return_value=_scholar_paper_envelope(1),
         ):
             result = await trigger.maybe_ingest(self._make_ref())
 

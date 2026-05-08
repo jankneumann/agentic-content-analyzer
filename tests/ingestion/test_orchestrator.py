@@ -389,3 +389,369 @@ class TestIngestSubstack:
             after_date=after,
             force_reprocess=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Scholar variants — multi-source (ingest_scholar), single paper
+# (ingest_scholar_paper), reference traversal (ingest_scholar_refs).
+# Each test mocks at the service-class level (post-PR-#147 boundary):
+# patches go on src.ingestion.scholar.* / src.services.reference_extractor.*.
+# ---------------------------------------------------------------------------
+
+
+def _scholar_search_result(
+    *,
+    ingested: int = 0,
+    skipped_dup: int = 0,
+    skipped_filter: int = 0,
+    failed: int = 0,
+):
+    """Build a ScholarSearchResult-shaped mock for service-method returns."""
+    from src.ingestion.scholar import ScholarSearchResult
+
+    return ScholarSearchResult(
+        source_name="test-source",
+        query="test",
+        papers_found=ingested + skipped_dup + skipped_filter + failed,
+        papers_ingested=ingested,
+        papers_skipped_duplicate=skipped_dup,
+        papers_skipped_filter=skipped_filter,
+        papers_failed=failed,
+    )
+
+
+class TestIngestScholar:
+    @patch("src.ingestion.scholar.ScholarContentIngestionService")
+    @patch("src.config.sources.load_sources_config")
+    def test_returns_envelope_with_aggregated_counts(self, mock_load, mock_cls):
+        from src.ingestion.orchestrator import ingest_scholar
+
+        # Two enabled sources contributing to the aggregation.
+        source_a = MagicMock(name="source_a", enabled=True)
+        source_b = MagicMock(name="source_b", enabled=True)
+        mock_load.return_value.get_scholar_sources.return_value = [source_a, source_b]
+
+        mock_service = MagicMock()
+        mock_service.ingest_from_search = AsyncMock(
+            side_effect=[
+                _scholar_search_result(ingested=4, skipped_dup=1, skipped_filter=2),
+                _scholar_search_result(ingested=3, failed=1),
+            ]
+        )
+        mock_service.close = AsyncMock()
+        mock_cls.return_value = mock_service
+
+        result = ingest_scholar()
+
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.scholar"
+        assert result.source == "scholar"
+        # 4 + 3 ingested; (1 dup + 2 filter) + 0 = 3 skipped; 0 + 1 failed
+        assert result.items_ingested == 7
+        assert result.items_skipped == 3
+        assert result.items_failed == 1
+        # Status is partial because items_ingested>0 and items_failed>0.
+        assert result.status == "partial"
+        mock_service.close.assert_awaited_once()
+
+    @patch("src.ingestion.scholar.ScholarContentIngestionService")
+    @patch("src.config.sources.load_sources_config")
+    def test_source_exception_becomes_error_entry(self, mock_load, mock_cls):
+        from src.ingestion.orchestrator import ingest_scholar
+
+        bad = MagicMock(name="bad", enabled=True)
+        bad.name = "bad-source"
+        mock_load.return_value.get_scholar_sources.return_value = [bad]
+
+        mock_service = MagicMock()
+        mock_service.ingest_from_search = AsyncMock(side_effect=RuntimeError("boom"))
+        mock_service.close = AsyncMock()
+        mock_cls.return_value = mock_service
+
+        result = ingest_scholar()
+
+        assert result.status == "error"
+        assert result.items_ingested == 0
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "scholar_source_error"
+        assert "boom" in result.errors[0].message
+
+    @patch("src.config.sources.load_sources_config")
+    def test_no_sources_returns_ok_envelope(self, mock_load):
+        from src.ingestion.orchestrator import ingest_scholar
+
+        mock_load.return_value.get_scholar_sources.return_value = []
+        result = ingest_scholar()
+
+        assert isinstance(result, IngestionResponse)
+        assert result.status == "ok"
+        assert result.items_ingested == 0
+
+
+def _scholar_paper_result(
+    *,
+    paper_id: str | None = "p1",
+    ingested: bool = True,
+    already_exists: bool = False,
+    refs_ingested: int = 0,
+    error: str | None = None,
+):
+    from src.ingestion.scholar import ScholarPaperResult
+
+    return ScholarPaperResult(
+        identifier="DOI:10.1/x",
+        paper_id=paper_id,
+        ingested=ingested,
+        already_exists=already_exists,
+        refs_ingested=refs_ingested,
+        error=error,
+    )
+
+
+class TestIngestScholarPaper:
+    @patch("src.ingestion.scholar.ScholarContentIngestionService")
+    def test_returns_envelope_with_details(self, mock_cls):
+        from src.ingestion.orchestrator import ingest_scholar_paper
+
+        mock_service = MagicMock()
+        mock_service.ingest_paper = AsyncMock(
+            return_value=_scholar_paper_result(ingested=True, refs_ingested=3)
+        )
+        mock_service.close = AsyncMock()
+        mock_cls.return_value = mock_service
+
+        result = ingest_scholar_paper(identifier="DOI:10.1/x", with_refs=True)
+
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.scholar-paper"
+        assert result.source == "scholar_paper"
+        # 1 (seed paper) + 3 (refs) = 4 total
+        assert result.items_ingested == 4
+        assert result.details["with_refs"] is True
+        assert result.details["refs_ingested"] == 3
+        assert result.details["paper_id"] == "p1"
+
+    @patch("src.ingestion.scholar.ScholarContentIngestionService")
+    def test_already_exists_classified_as_skipped(self, mock_cls):
+        from src.ingestion.orchestrator import ingest_scholar_paper
+
+        mock_service = MagicMock()
+        mock_service.ingest_paper = AsyncMock(
+            return_value=_scholar_paper_result(ingested=False, already_exists=True)
+        )
+        mock_service.close = AsyncMock()
+        mock_cls.return_value = mock_service
+
+        result = ingest_scholar_paper(identifier="DOI:10.1/x")
+
+        assert result.items_ingested == 0
+        assert result.items_skipped == 1
+        assert result.status == "ok"
+
+    @patch("src.ingestion.scholar.ScholarContentIngestionService")
+    def test_error_field_populates_errors(self, mock_cls):
+        from src.ingestion.orchestrator import ingest_scholar_paper
+
+        mock_service = MagicMock()
+        mock_service.ingest_paper = AsyncMock(
+            return_value=_scholar_paper_result(ingested=False, error="Paper not found")
+        )
+        mock_service.close = AsyncMock()
+        mock_cls.return_value = mock_service
+
+        result = ingest_scholar_paper(identifier="DOI:10.1/x")
+
+        assert result.status == "error"
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "scholar_paper_error"
+
+
+class TestIngestScholarRefs:
+    @patch("src.services.reference_extractor.ReferenceExtractor")
+    def test_returns_envelope_with_papers_ingested_in_details(self, mock_cls):
+        """scholar-refs uses the reserved ``papers_ingested`` key in details
+        per the result.py registry, even though items_ingested carries the
+        same number — preserves the legacy CLI JSON consumer's expectations."""
+        from src.ingestion.orchestrator import ingest_scholar_refs
+        from src.services.reference_extractor import ReferenceExtractionResult
+
+        mock_extractor = MagicMock()
+        mock_extractor.ingest_extracted_references = AsyncMock(
+            return_value=ReferenceExtractionResult(
+                content_scanned=10,
+                references_found=8,
+                references_resolved=6,
+                references_unresolved=2,
+                papers_ingested=5,
+                papers_skipped_duplicate=1,
+            )
+        )
+        mock_extractor.close = AsyncMock()
+        mock_cls.return_value = mock_extractor
+
+        result = ingest_scholar_refs(dry_run=False)
+
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.scholar-refs"
+        assert result.source == "scholar-refs"
+        assert result.items_ingested == 5
+        assert result.items_skipped == 1
+        assert result.details["papers_ingested"] == 5
+        assert result.details["content_scanned"] == 10
+        assert result.details["references_found"] == 8
+        assert result.details["dry_run"] is False
+
+
+# ---------------------------------------------------------------------------
+# arXiv variants — multi-source (ingest_arxiv) and single paper
+# (ingest_arxiv_paper). Service methods here are sync, so plain MagicMock
+# (no AsyncMock) suffices.
+# ---------------------------------------------------------------------------
+
+
+def _arxiv_ingestion_result(
+    *,
+    ingested: int = 0,
+    updated: int = 0,
+    enriched: int = 0,
+    skipped_dup: int = 0,
+    failed: int = 0,
+    errors: list[str] | None = None,
+):
+    from src.ingestion.arxiv import ArxivIngestionResult
+
+    return ArxivIngestionResult(
+        source_name="test",
+        query="test",
+        papers_found=ingested + updated + enriched + skipped_dup + failed,
+        papers_ingested=ingested,
+        papers_updated_version=updated,
+        papers_enriched_scholar=enriched,
+        papers_skipped_duplicate=skipped_dup,
+        papers_failed=failed,
+        errors=errors or [],
+    )
+
+
+class TestIngestArxiv:
+    @patch("src.ingestion.arxiv.ArxivContentIngestionService")
+    @patch("src.config.sources.load_sources_config")
+    def test_returns_envelope_aggregating_three_landed_categories(self, mock_load, mock_cls):
+        """Ingested + updated_version + enriched_scholar all roll up into items_ingested,
+        because each represents content that landed in (or refreshed) the DB.
+        """
+        from src.ingestion.orchestrator import ingest_arxiv
+
+        s1 = MagicMock(enabled=True, max_entries=None, pdf_extraction=True)
+        mock_load.return_value.get_arxiv_sources.return_value = [s1]
+
+        mock_service = MagicMock()
+        mock_service.ingest_from_search.return_value = _arxiv_ingestion_result(
+            ingested=3, updated=1, enriched=2, skipped_dup=4, failed=0
+        )
+        mock_cls.return_value = mock_service
+
+        result = ingest_arxiv()
+
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.arxiv"
+        assert result.source == "arxiv"
+        # 3 ingested + 1 updated + 2 enriched = 6 items_ingested
+        assert result.items_ingested == 6
+        assert result.items_skipped == 4
+        assert result.status == "ok"
+
+    @patch("src.ingestion.arxiv.ArxivContentIngestionService")
+    @patch("src.config.sources.load_sources_config")
+    def test_per_paper_errors_become_ingestion_errors(self, mock_load, mock_cls):
+        from src.ingestion.orchestrator import ingest_arxiv
+
+        s1 = MagicMock(enabled=True, max_entries=None, pdf_extraction=True)
+        mock_load.return_value.get_arxiv_sources.return_value = [s1]
+
+        mock_service = MagicMock()
+        mock_service.ingest_from_search.return_value = _arxiv_ingestion_result(
+            ingested=1, failed=2, errors=["2301.x: parse failed", "2301.y: HTTP 503"]
+        )
+        mock_cls.return_value = mock_service
+
+        result = ingest_arxiv()
+
+        # Status="partial": some items landed, some failed.
+        assert result.status == "partial"
+        assert result.items_ingested == 1
+        assert result.items_failed == 2
+        assert len(result.errors) == 2
+        assert all(e.code == "arxiv_paper_error" for e in result.errors)
+
+    @patch("src.ingestion.arxiv.ArxivContentIngestionService")
+    @patch("src.config.sources.load_sources_config")
+    def test_no_pdf_flips_pdf_extraction_on_all_sources(self, mock_load, mock_cls):
+        from src.ingestion.orchestrator import ingest_arxiv
+
+        s1 = MagicMock(enabled=True, max_entries=None, pdf_extraction=True)
+        s2 = MagicMock(enabled=True, max_entries=None, pdf_extraction=True)
+        mock_load.return_value.get_arxiv_sources.return_value = [s1, s2]
+
+        mock_service = MagicMock()
+        mock_service.ingest_from_search.return_value = _arxiv_ingestion_result(ingested=0)
+        mock_cls.return_value = mock_service
+
+        ingest_arxiv(no_pdf=True)
+
+        assert s1.pdf_extraction is False
+        assert s2.pdf_extraction is False
+
+
+def _arxiv_paper_result(
+    *,
+    arxiv_id: str | None = "2301.12345",
+    ingested: bool = True,
+    already_exists: bool = False,
+    version_updated: bool = False,
+    error: str | None = None,
+):
+    from src.ingestion.arxiv import ArxivPaperResult
+
+    return ArxivPaperResult(
+        identifier="2301.12345",
+        arxiv_id=arxiv_id,
+        ingested=ingested,
+        already_exists=already_exists,
+        version_updated=version_updated,
+        error=error,
+    )
+
+
+class TestIngestArxivPaperOrch:
+    @patch("src.ingestion.arxiv.ArxivContentIngestionService")
+    def test_returns_envelope_with_arxiv_id_in_details(self, mock_cls):
+        from src.ingestion.orchestrator import ingest_arxiv_paper
+
+        mock_service = MagicMock()
+        mock_service.ingest_paper.return_value = _arxiv_paper_result(
+            ingested=True, version_updated=True
+        )
+        mock_cls.return_value = mock_service
+
+        result = ingest_arxiv_paper(identifier="2301.12345")
+
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.arxiv-paper"
+        assert result.source == "arxiv_paper"
+        assert result.items_ingested == 1
+        assert result.details["arxiv_id"] == "2301.12345"
+        assert result.details["version_updated"] is True
+
+    @patch("src.ingestion.arxiv.ArxivContentIngestionService")
+    def test_close_called_on_exception(self, mock_cls):
+        from src.ingestion.orchestrator import ingest_arxiv_paper
+
+        mock_service = MagicMock()
+        mock_service.ingest_paper.side_effect = RuntimeError("API error")
+        mock_cls.return_value = mock_service
+
+        with pytest.raises(RuntimeError, match="API error"):
+            ingest_arxiv_paper(identifier="2301.12345")
+
+        mock_service.close.assert_called_once()

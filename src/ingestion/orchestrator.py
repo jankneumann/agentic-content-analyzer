@@ -9,9 +9,10 @@ Each function:
 - Accepts the same parameters the service expects
 - Returns either the canonical ``IngestionResponse`` envelope (rss, blog,
   huggingface_papers, substack, xsearch, perplexity-search, youtube,
-  youtube-rss, youtube-playlist, podcast — the harmonized sources) or a
-  legacy shape (``int`` count, or a small result dataclass like
-  ``URLIngestResult``) for sources not yet migrated. Migration to
+  youtube-rss, youtube-playlist, podcast, scholar, scholar-paper,
+  scholar-refs, arxiv, arxiv-paper — the harmonized sources) or a legacy
+  shape (``int`` count for gmail, or a small result dataclass like
+  ``URLIngestResult`` for url) for sources not yet migrated. Migration to
   ``IngestionResponse`` is in progress.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
@@ -29,7 +30,9 @@ from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from src.ingestion.arxiv import ArxivPaperResult
     from src.ingestion.result import IngestionResponse
+    from src.ingestion.scholar import ScholarPaperResult
 
 logger = get_logger(__name__)
 
@@ -500,50 +503,92 @@ def ingest_perplexity_search(
 def ingest_scholar(
     *,
     max_entries: int = 20,
-) -> int:
+) -> IngestionResponse:
     """Ingest academic papers from configured scholar sources.
 
     Loads scholar sources from sources.d/scholar.yaml and runs search-based
     ingestion for each enabled source via the ScholarContentIngestionService.
+    Each source's ``ScholarSearchResult`` is folded into the canonical
+    envelope: ``papers_ingested`` accumulates as ``items_ingested``,
+    duplicates and filter rejections collapse into ``items_skipped``,
+    and per-paper failures populate ``items_failed``. Source-level
+    exceptions become ``IngestionError`` entries (one per source).
 
     Args:
         max_entries: Maximum papers per source.
 
     Returns:
-        Number of papers ingested.
+        Canonical IngestionResponse envelope (command='ingest.scholar',
+        source='scholar').
     """
     import asyncio
 
     from src.config.sources import load_sources_config
-    from src.ingestion.scholar import ScholarContentIngestionService
+    from src.ingestion.result import IngestionError, IngestionResponse, IngestionStatus
 
     try:
         config = load_sources_config()
         sources = config.get_scholar_sources()
     except Exception:
         logger.debug("Could not load scholar sources config")
-        return 0
+        return IngestionResponse(
+            command="ingest.scholar", source="scholar", status="ok", items_ingested=0
+        )
 
     if not sources:
-        return 0
+        return IngestionResponse(
+            command="ingest.scholar", source="scholar", status="ok", items_ingested=0
+        )
 
-    async def _run() -> int:
+    async def _run() -> tuple[int, int, int, list[IngestionError]]:
+        from src.ingestion.scholar import ScholarContentIngestionService
+
         service = ScholarContentIngestionService()
+        ingested = 0
+        skipped = 0
+        failed = 0
+        errors: list[IngestionError] = []
         try:
-            total = 0
             for source in sources:
                 if not source.enabled:
                     continue
                 try:
-                    result = await service.ingest_from_search(source)
-                    total += result.papers_ingested
+                    result = await service.ingest_from_search(source, force_reprocess=False)
+                    ingested += result.papers_ingested
+                    skipped += result.papers_skipped_duplicate + result.papers_skipped_filter
+                    failed += result.papers_failed
                 except Exception as exc:
                     logger.error(f"Scholar source '{source.name}' failed: {exc}")
-            return total
+                    errors.append(
+                        IngestionError(
+                            code="scholar_source_error",
+                            message=str(exc),
+                            url=source.name,
+                        )
+                    )
         finally:
             await service.close()
+        return ingested, skipped, failed, errors
 
-    return asyncio.run(_run())
+    items_ingested, items_skipped, items_failed, errors = asyncio.run(_run())
+
+    has_failure = bool(errors) or items_failed > 0
+    if not has_failure:
+        status: IngestionStatus = "ok"
+    elif items_ingested > 0:
+        status = "partial"
+    else:
+        status = "error"
+
+    return IngestionResponse(
+        command="ingest.scholar",
+        source="scholar",
+        status=status,
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        errors=errors,
+    )
 
 
 @observe()
@@ -551,33 +596,80 @@ def ingest_scholar_paper(
     *,
     identifier: str,
     with_refs: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest a single academic paper by identifier.
 
     Resolves the identifier (DOI, arXiv ID, S2 paper ID, or URL) to a
     Semantic Scholar paper and ingests it. Optionally ingests referenced
-    papers as well.
+    papers as well; in that mode the seed paper plus its references are
+    counted together under ``items_ingested``.
 
     Args:
         identifier: DOI, arXiv ID, S2 paper ID, or URL.
         with_refs: Also ingest papers referenced by this paper.
 
     Returns:
-        Number of papers ingested (1 if successful, 0 if not).
+        Canonical IngestionResponse envelope (command='ingest.scholar-paper',
+        source='scholar_paper'). ``details`` carries the original identifier,
+        the resolved S2 paper id (when available), the ``with_refs`` flag,
+        and ``refs_ingested`` (subset of items_ingested that came from the
+        references walk).
     """
     import asyncio
 
-    from src.ingestion.scholar import ScholarContentIngestionService
+    from src.ingestion.result import (
+        IngestionError,
+        IngestionResponse,
+        IngestionStatus,
+    )
 
-    async def _run() -> int:
+    async def _run() -> ScholarPaperResult:
+        from src.ingestion.scholar import ScholarContentIngestionService
+
         service = ScholarContentIngestionService()
         try:
-            result = await service.ingest_paper(identifier, with_refs=with_refs)
-            return 1 if result.ingested else 0
+            return await service.ingest_paper(identifier, with_refs=with_refs)
         finally:
             await service.close()
 
-    return asyncio.run(_run())
+    result = asyncio.run(_run())
+
+    refs_ingested = result.refs_ingested if with_refs else 0
+    items_ingested = (1 if result.ingested else 0) + refs_ingested
+    items_skipped = 1 if result.already_exists else 0
+
+    errors: list[IngestionError] = []
+    if result.error:
+        errors.append(
+            IngestionError(
+                code="scholar_paper_error",
+                message=result.error,
+                url=identifier,
+            )
+        )
+
+    has_failure = bool(errors)
+    if not has_failure:
+        status: IngestionStatus = "ok"
+    elif items_ingested > 0:
+        status = "partial"
+    else:
+        status = "error"
+
+    return IngestionResponse(
+        command="ingest.scholar-paper",
+        source="scholar_paper",
+        status=status,
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        errors=errors,
+        details={
+            "identifier": identifier,
+            "paper_id": result.paper_id,
+            "with_refs": with_refs,
+            "refs_ingested": refs_ingested,
+        },
+    )
 
 
 @observe()
@@ -588,11 +680,15 @@ def ingest_scholar_refs(
     source_types: list[str] | None = None,
     dry_run: bool = False,
     limit: int | None = None,
-) -> int:
+) -> IngestionResponse:
     """Extract and ingest academic paper references from existing content.
 
     Scans existing content records for arXiv IDs, DOIs, and Semantic Scholar
-    URLs, then resolves and ingests the referenced papers.
+    URLs, then resolves and ingests the referenced papers. Reference-extraction
+    counters from ``ReferenceExtractionResult`` (content_scanned, references_found,
+    references_resolved/unresolved) land in ``details``; ``papers_ingested`` is
+    additionally surfaced in ``details`` for backward-compatible JSON consumers
+    (per the reserved-key registry in ``result.py``).
 
     Args:
         after: Only scan content ingested after this date.
@@ -602,27 +698,45 @@ def ingest_scholar_refs(
         limit: Maximum number of references to ingest.
 
     Returns:
-        Number of papers ingested from extracted references.
+        Canonical IngestionResponse envelope (command='ingest.scholar-refs',
+        source='scholar-refs').
     """
     import asyncio
 
     from src.ingestion.reference_extractor import ReferenceExtractor
+    from src.ingestion.result import IngestionResponse
+    from src.services.reference_extractor import ReferenceExtractionResult
 
-    async def _run() -> int:
+    async def _run() -> ReferenceExtractionResult:
         extractor = ReferenceExtractor()
         try:
-            result = await extractor.ingest_extracted_references(
+            return await extractor.ingest_extracted_references(
                 after=after,
                 before=before,
                 source_types=source_types,
                 dry_run=dry_run,
                 limit=limit,
             )
-            return result.papers_ingested
         finally:
             await extractor.close()
 
-    return asyncio.run(_run())
+    result = asyncio.run(_run())
+
+    return IngestionResponse(
+        command="ingest.scholar-refs",
+        source="scholar-refs",
+        status="ok",
+        items_ingested=result.papers_ingested,
+        items_skipped=result.papers_skipped_duplicate,
+        details={
+            "papers_ingested": result.papers_ingested,
+            "content_scanned": result.content_scanned,
+            "references_found": result.references_found,
+            "references_resolved": result.references_resolved,
+            "references_unresolved": result.references_unresolved,
+            "dry_run": dry_run,
+        },
+    )
 
 
 @observe()
@@ -632,11 +746,19 @@ def ingest_arxiv(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     no_pdf: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest papers from configured arXiv sources.
 
     Loads sources from sources.d/arxiv.yaml and runs search-based
-    ingestion for each enabled source.
+    ingestion for each enabled source. Each source's ``ArxivIngestionResult``
+    folds into the canonical envelope:
+      - ``papers_ingested + papers_updated_version + papers_enriched_scholar``
+        all count as ``items_ingested`` (newer or richer content landed in
+        the DB)
+      - ``papers_skipped_duplicate`` becomes ``items_skipped``
+      - ``papers_failed`` becomes ``items_failed``; the per-paper messages
+        in ``ArxivIngestionResult.errors`` are flattened into structured
+        ``IngestionError`` entries
 
     Args:
         max_results: Maximum papers per source.
@@ -645,20 +767,26 @@ def ingest_arxiv(
         no_pdf: Skip PDF download, use abstract-only.
 
     Returns:
-        Number of papers ingested.
+        Canonical IngestionResponse envelope (command='ingest.arxiv',
+        source='arxiv').
     """
     from src.config.sources import load_sources_config
     from src.ingestion.arxiv import ArxivContentIngestionService
+    from src.ingestion.result import IngestionError, IngestionResponse, IngestionStatus
 
     try:
         config = load_sources_config()
         sources = config.get_arxiv_sources()
     except Exception:
         logger.debug("Could not load arxiv sources config")
-        return 0
+        return IngestionResponse(
+            command="ingest.arxiv", source="arxiv", status="ok", items_ingested=0
+        )
 
     if not sources:
-        return 0
+        return IngestionResponse(
+            command="ingest.arxiv", source="arxiv", status="ok", items_ingested=0
+        )
 
     # Override pdf_extraction if --no-pdf
     if no_pdf:
@@ -670,15 +798,60 @@ def ingest_arxiv(
         if s.max_entries is None or max_results != 20:
             s.max_entries = max_results
 
+    items_ingested = 0
+    items_skipped = 0
+    items_failed = 0
+    errors: list[IngestionError] = []
+
     service = ArxivContentIngestionService()
     try:
-        return service.ingest_content(
-            sources=sources,
-            after_date=after_date,
-            force_reprocess=force_reprocess,
-        )
+        for source in sources:
+            if not source.enabled:
+                continue
+            try:
+                result = service.ingest_from_search(
+                    source,
+                    force_reprocess=force_reprocess,
+                    after_date=after_date,
+                )
+                items_ingested += (
+                    result.papers_ingested
+                    + result.papers_updated_version
+                    + result.papers_enriched_scholar
+                )
+                items_skipped += result.papers_skipped_duplicate
+                items_failed += result.papers_failed
+                for err_msg in result.errors:
+                    errors.append(IngestionError(code="arxiv_paper_error", message=err_msg))
+            except Exception as exc:
+                logger.error(f"arXiv source '{source.name}' failed: {exc}")
+                errors.append(
+                    IngestionError(
+                        code="arxiv_source_error",
+                        message=str(exc),
+                        url=source.name,
+                    )
+                )
     finally:
         service.close()
+
+    has_failure = bool(errors) or items_failed > 0
+    if not has_failure:
+        status: IngestionStatus = "ok"
+    elif items_ingested > 0:
+        status = "partial"
+    else:
+        status = "error"
+
+    return IngestionResponse(
+        command="ingest.arxiv",
+        source="arxiv",
+        status=status,
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        errors=errors,
+    )
 
 
 @observe()
@@ -687,7 +860,7 @@ def ingest_arxiv_paper(
     identifier: str,
     pdf_extraction: bool = True,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest a single arXiv paper by identifier.
 
     Args:
@@ -696,20 +869,61 @@ def ingest_arxiv_paper(
         force_reprocess: Force re-ingest.
 
     Returns:
-        1 if ingested, 0 otherwise.
+        Canonical IngestionResponse envelope (command='ingest.arxiv-paper',
+        source='arxiv_paper'). ``details`` carries the original identifier,
+        the resolved base ``arxiv_id``, and the ``version_updated`` flag.
     """
     from src.ingestion.arxiv import ArxivContentIngestionService
+    from src.ingestion.result import (
+        IngestionError,
+        IngestionResponse,
+        IngestionStatus,
+    )
 
     service = ArxivContentIngestionService()
     try:
-        result = service.ingest_paper(
+        result: ArxivPaperResult = service.ingest_paper(
             identifier,
             pdf_extraction=pdf_extraction,
             force_reprocess=force_reprocess,
         )
-        return 1 if result.ingested else 0
     finally:
         service.close()
+
+    items_ingested = 1 if result.ingested else 0
+    items_skipped = 1 if result.already_exists else 0
+
+    errors: list[IngestionError] = []
+    if result.error:
+        errors.append(
+            IngestionError(
+                code="arxiv_paper_error",
+                message=result.error,
+                url=identifier,
+            )
+        )
+
+    has_failure = bool(errors)
+    if not has_failure:
+        status: IngestionStatus = "ok"
+    elif items_ingested > 0:
+        status = "partial"
+    else:
+        status = "error"
+
+    return IngestionResponse(
+        command="ingest.arxiv-paper",
+        source="arxiv_paper",
+        status=status,
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        errors=errors,
+        details={
+            "identifier": identifier,
+            "arxiv_id": result.arxiv_id,
+            "version_updated": result.version_updated,
+        },
+    )
 
 
 @observe()
