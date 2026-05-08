@@ -116,7 +116,7 @@ def _parse_graph_search_results(
     return entities, relationships
 
 
-@router.post("/query", response_model=GraphQueryResponse)
+@router.post("/query", response_model=GraphQueryResponse, operation_id="knowledge_graph")
 async def query_knowledge_graph(body: GraphQueryRequest) -> GraphQueryResponse | JSONResponse:
     """Semantic read against the knowledge graph with a 10s timeout."""
     from src.storage.graphiti_client import GraphitiClient
