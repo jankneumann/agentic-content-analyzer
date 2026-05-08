@@ -92,7 +92,7 @@ def _resolve_last_compiled_at(topic: Topic) -> datetime | None:
     return None
 
 
-@router.get("/search", response_model=KBSearchResponse)
+@router.get("/search", response_model=KBSearchResponse, operation_id="search")
 async def search_knowledge_base(
     q: str = Query(..., min_length=1, description="Full-text query"),
     limit: int = Query(default=20, ge=1, le=100),
