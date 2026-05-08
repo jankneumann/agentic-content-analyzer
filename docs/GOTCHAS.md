@@ -23,6 +23,7 @@ Things that will bite you if ignored. Organized by area.
 | Issue | Solution |
 |-------|----------|
 | DATABASE_PROVIDER required for cloud | Must explicitly set `DATABASE_PROVIDER=supabase` or `neon` |
+| `DATABASE_URL` doesn't override profile-resolved DB | When `DATABASE_PROVIDER` is set, the matching `<PROVIDER>_DATABASE_URL` is checked **first** and only falls through to `DATABASE_URL` if unset. To target a specific DB ad-hoc, set the prefixed form (e.g., `LOCAL_DATABASE_URL=…` for `DATABASE_PROVIDER=local`). See `Settings.get_effective_database_url()` and `docs/PROFILES.md` Database Provider Requirements. |
 | Neon first connection slow | Scale-to-zero may take 2-5s to wake up; increase timeout |
 | Supabase free tier IPv6 only | Direct connections use IPv6; use pooler if on IPv4-only network |
 | Local Supabase needs SUPABASE_LOCAL | Set `SUPABASE_LOCAL=true` for auto-configured local endpoints |
