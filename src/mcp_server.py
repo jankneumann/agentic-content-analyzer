@@ -368,13 +368,15 @@ def ingest_arxiv(
     if days is not None:
         after_date = datetime.now(UTC) - timedelta(days=days)
 
-    count = _ingest(
+    response = _ingest(
         max_results=max_results,
         after_date=after_date,
         force_reprocess=force_reprocess,
         no_pdf=no_pdf,
     )
-    return _serialize({"items_ingested": count, "source": "arxiv"})
+    # ingest_arxiv returns IngestionResponse post-harmonization round 3.
+    # Extract the int count to keep the legacy MCP shape stable.
+    return _serialize({"items_ingested": response.items_ingested, "source": "arxiv"})
 
 
 @mcp.tool()
@@ -437,15 +439,17 @@ def ingest_arxiv_paper(
     """
     from src.ingestion.orchestrator import ingest_arxiv_paper as _ingest
 
-    count = _ingest(
+    response = _ingest(
         identifier=identifier,
         pdf_extraction=not no_pdf,
         force_reprocess=force_reprocess,
     )
+    # ingest_arxiv_paper returns IngestionResponse post-harmonization round 3.
+    # Extract the int count to keep the legacy MCP shape stable.
     return _serialize(
         {
             "identifier": identifier,
-            "items_ingested": count,
+            "items_ingested": response.items_ingested,
             "source": "arxiv-paper",
         }
     )

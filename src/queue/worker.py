@@ -545,9 +545,10 @@ def _register_content_handlers() -> None:
 
         # Normalize the per-source return shape to a count for the job progress
         # message. During the partial-migration window we have three return
-        # shapes in flight: int (legacy: gmail, scholar, arxiv),
+        # shapes in flight: int (legacy: gmail, files),
         # IngestionResponse (migrated: rss, blog, hf_papers, substack, xsearch,
-        # perplexity, youtube*, podcast, ...), and URLIngestResult (url-only).
+        # perplexity, youtube*, podcast, scholar*, arxiv*), and URLIngestResult
+        # (url-only).
         if source == "url":
             count = 1 if result else 0
         elif isinstance(result, int):

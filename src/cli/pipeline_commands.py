@@ -121,11 +121,12 @@ async def _ingest_source(
     the @observe() decorator on the orchestrator ingest_* functions.
 
     During the partial-migration window, orchestrator functions return
-    either ``int`` (legacy, unmigrated: gmail, scholar, arxiv, files,
-    url) or ``IngestionResponse`` (migrated: rss, blog,
-    huggingface_papers, substack, xsearch, perplexity, youtube,
-    youtube-rss, youtube-playlist, podcast). Both are normalized to a
-    count for the pipeline's per-source aggregation.
+    either ``int`` (legacy, unmigrated: gmail, files) or
+    ``IngestionResponse`` (migrated: rss, blog, huggingface_papers,
+    substack, xsearch, perplexity, youtube, youtube-rss,
+    youtube-playlist, podcast, scholar, scholar-paper, scholar-refs,
+    arxiv, arxiv-paper) — plus ``URLIngestResult`` for url. All shapes
+    normalize to a count for the pipeline's per-source aggregation.
 
     Returns:
         Tuple of (source_name, count, error_message)

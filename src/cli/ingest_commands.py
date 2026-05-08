@@ -1144,25 +1144,57 @@ def url(
 
 
 def _scholar_direct(max_entries: int) -> None:
-    """Direct scholar ingestion."""
+    """Direct scholar ingestion.
+
+    Reads the canonical IngestionResponse envelope from the orchestrator and
+    surfaces ``items_ingested`` plus per-source errors in rich mode. JSON
+    mode dumps the full envelope.
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_scholar
 
-        count = ingest_scholar(max_entries=max_entries)
+        response = ingest_scholar(max_entries=max_entries)
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.scholar",
+            source="scholar",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "scholar"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]Scholar ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result({"source": "scholar", "items_ingested": count})
+        output_result(response.model_dump(mode="json"))
     else:
-        console.print(f"[green]Scholar ingestion complete.[/green] {count} paper(s) ingested.")
+        console.print(
+            f"[green]Scholar ingestion complete.[/green] "
+            f"{response.items_ingested} paper(s) ingested."
+        )
+        if response.errors:
+            console.print(f"\n[red]Error:[/red] {len(response.errors)} source(s) failed:")
+            for e in response.errors:
+                console.print(f"  [red]{e.url or e.code}[/red] ({e.code})")
+                console.print(f"    {e.message}")
 
 
 @app.command("scholar")
@@ -1189,35 +1221,53 @@ def scholar(
 
 
 def _scholar_paper_direct(identifier: str, with_refs: bool) -> None:
-    """Direct scholar paper ingestion."""
+    """Direct scholar paper ingestion.
+
+    Reads the canonical IngestionResponse envelope; ``details`` carries
+    ``identifier``, ``paper_id``, ``with_refs``, and ``refs_ingested``.
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_scholar_paper
 
-        count = ingest_scholar_paper(identifier=identifier, with_refs=with_refs)
+        response = ingest_scholar_paper(identifier=identifier, with_refs=with_refs)
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.scholar-paper",
+            source="scholar_paper",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+            details={"identifier": identifier, "with_refs": with_refs},
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "scholar-paper"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]Scholar paper ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result(
-            {
-                "source": "scholar-paper",
-                "identifier": identifier,
-                "items_ingested": count,
-                "with_refs": with_refs,
-            }
-        )
+        output_result(response.model_dump(mode="json"))
     else:
-        if count > 0:
+        if response.items_ingested > 0:
             msg = f"[green]Paper ingested.[/green] Identifier: {identifier}"
             if with_refs:
-                msg += " (with references)"
+                refs = response.details.get("refs_ingested", 0)
+                msg += f" (with references: {refs} ingested)"
             console.print(msg)
         else:
             console.print("[yellow]Paper not ingested[/yellow] (already exists or not found).")
@@ -1257,8 +1307,19 @@ def _scholar_refs_direct(
     dry_run: bool,
     limit: int | None,
 ) -> None:
-    """Direct scholar reference extraction."""
+    """Direct scholar reference extraction.
+
+    Reads the canonical IngestionResponse envelope. ``details`` carries the
+    extraction-specific counters (``content_scanned``, ``references_found``,
+    ``references_resolved``, ``references_unresolved``, ``papers_ingested``,
+    ``dry_run``).
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
+
+    from src.ingestion.result import IngestionError, IngestionResponse
 
     console = Console()
 
@@ -1269,10 +1330,12 @@ def _scholar_refs_direct(
     if before:
         before_dt = datetime.strptime(before, "%Y-%m-%d").replace(tzinfo=UTC)
 
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_scholar_refs
 
-        count = ingest_scholar_refs(
+        response = ingest_scholar_refs(
             after=after_dt,
             before=before_dt,
             source_types=source,
@@ -1280,21 +1343,29 @@ def _scholar_refs_direct(
             limit=limit,
         )
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.scholar-refs",
+            source="scholar-refs",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+            details={"dry_run": dry_run},
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "scholar-refs"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]Scholar reference extraction failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result(
-            {
-                "source": "scholar-refs",
-                "papers_ingested": count,
-                "dry_run": dry_run,
-            }
-        )
+        output_result(response.model_dump(mode="json"))
     else:
+        count = response.items_ingested
         if dry_run:
             console.print(f"[yellow]Dry run:[/yellow] {count} paper(s) would be ingested.")
         else:
@@ -1351,31 +1422,61 @@ def scholar_refs(
 
 
 def _arxiv_direct(max_entries: int, days: int | None, force_reprocess: bool, no_pdf: bool) -> None:
-    """Direct arXiv ingestion."""
+    """Direct arXiv ingestion.
+
+    Reads the canonical IngestionResponse envelope; surfaces ``items_ingested``
+    plus per-source errors in rich mode. JSON mode dumps the full envelope.
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_arxiv
 
         after_date = _days_to_after_date(days)
-        count = ingest_arxiv(
+        response = ingest_arxiv(
             max_results=max_entries,
             after_date=after_date,
             force_reprocess=force_reprocess,
             no_pdf=no_pdf,
         )
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.arxiv",
+            source="arxiv",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "arxiv"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]arXiv ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result({"source": "arxiv", "items_ingested": count})
+        output_result(response.model_dump(mode="json"))
     else:
-        console.print(f"[green]arXiv ingestion complete.[/green] {count} paper(s) ingested.")
+        console.print(
+            f"[green]arXiv ingestion complete.[/green] {response.items_ingested} paper(s) ingested."
+        )
+        if response.errors:
+            console.print(f"\n[red]Error:[/red] {len(response.errors)} paper(s)/source(s) failed:")
+            for e in response.errors:
+                console.print(f"  [red]{e.url or e.code}[/red] ({e.code})")
+                console.print(f"    {e.message}")
 
 
 @app.command("arxiv")
@@ -1420,29 +1521,53 @@ def arxiv(
 
 
 def _arxiv_paper_direct(identifier: str, no_pdf: bool, force_reprocess: bool) -> None:
-    """Direct single arXiv paper ingestion."""
+    """Direct single arXiv paper ingestion.
+
+    Reads the canonical IngestionResponse envelope; ``details`` carries
+    ``identifier``, ``arxiv_id``, and ``version_updated``.
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_arxiv_paper
 
-        count = ingest_arxiv_paper(
+        response = ingest_arxiv_paper(
             identifier=identifier,
             pdf_extraction=not no_pdf,
             force_reprocess=force_reprocess,
         )
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.arxiv-paper",
+            source="arxiv_paper",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+            details={"identifier": identifier},
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "arxiv-paper"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]arXiv paper ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result({"source": "arxiv-paper", "identifier": identifier, "items_ingested": count})
+        output_result(response.model_dump(mode="json"))
     else:
-        if count:
+        if response.items_ingested:
             console.print(f"[green]Ingested arXiv paper:[/green] {identifier}")
         else:
             console.print(f"[yellow]Paper already exists or not found:[/yellow] {identifier}")

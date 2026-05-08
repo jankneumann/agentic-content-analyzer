@@ -68,6 +68,9 @@ MIGRATED_ORCHESTRATOR_META = {
     "ingest_youtube_rss": ("ingest.youtube-rss", "youtube-rss"),
     "ingest_youtube_playlist": ("ingest.youtube-playlist", "youtube-playlist"),
     "ingest_podcast": ("ingest.podcast", "podcast"),
+    "ingest_scholar": ("ingest.scholar", "scholar"),
+    "ingest_scholar_refs": ("ingest.scholar-refs", "scholar-refs"),
+    "ingest_arxiv": ("ingest.arxiv", "arxiv"),
 }
 
 
@@ -144,7 +147,7 @@ INGEST_CASES = [
         "scholar-refs",
         "ingest_scholar_refs",
         "scholar-refs",
-        "papers_ingested",
+        "items_ingested",
         [],
         id="scholar-refs",
     ),
