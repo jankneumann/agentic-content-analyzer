@@ -120,21 +120,16 @@ async def _ingest_source(
     to enable parallel execution without blocking. Tracing is handled by
     the @observe() decorator on the orchestrator ingest_* functions.
 
-    During the partial-migration window, orchestrator functions return
-    either ``int`` (legacy, unmigrated: gmail, files) or
-    ``IngestionResponse`` (migrated: rss, blog, huggingface_papers,
-    substack, xsearch, perplexity, youtube, youtube-rss,
-    youtube-playlist, podcast, scholar, scholar-paper, scholar-refs,
-    arxiv, arxiv-paper) — plus ``URLIngestResult`` for url. All shapes
-    normalize to a count for the pipeline's per-source aggregation.
+    Post round-4 harmonization (2026-05-08), every orchestrator entry point
+    returns the canonical ``IngestionResponse`` envelope — the per-source
+    aggregation reads ``items_ingested`` directly.
 
     Returns:
         Tuple of (source_name, count, error_message)
     """
     try:
         result = await asyncio.to_thread(ingest_func)
-        count = result if isinstance(result, int) else result.items_ingested
-        return (source_name, count, None)
+        return (source_name, result.items_ingested, None)
     except Exception as e:
         logger.error(f"Ingestion failed for {source_name}: {e}")
         return (source_name, None, str(e))

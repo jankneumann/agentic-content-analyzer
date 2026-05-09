@@ -58,6 +58,7 @@ CANONICAL_COUNT_FIELD = "items_ingested"
 # {"ingested": "<IngestionResponse object>"} in production but the contract test
 # stayed green because the mock returned 7 (int).
 MIGRATED_ORCHESTRATOR_META = {
+    "ingest_gmail": ("ingest.gmail", "gmail"),
     "ingest_rss": ("ingest.rss", "rss"),
     "ingest_blog": ("ingest.blog", "blog"),
     "ingest_huggingface_papers": ("ingest.huggingface-papers", "huggingface_papers"),
@@ -71,6 +72,8 @@ MIGRATED_ORCHESTRATOR_META = {
     "ingest_scholar": ("ingest.scholar", "scholar"),
     "ingest_scholar_refs": ("ingest.scholar-refs", "scholar-refs"),
     "ingest_arxiv": ("ingest.arxiv", "arxiv"),
+    "ingest_files": ("ingest.files", "files"),
+    "ingest_url": ("ingest.url", "url"),
 }
 
 
@@ -152,6 +155,26 @@ INGEST_CASES = [
         id="scholar-refs",
     ),
     pytest.param("arxiv", "ingest_arxiv", "arxiv", "items_ingested", [], id="arxiv"),
+    # files takes one or more positional paths; the orchestrator mock intercepts
+    # before any file system access, so a non-existent path is fine here. The
+    # path is never opened or written to — Typer accepts the string and dispatches
+    # straight to the patched orchestrator function.
+    pytest.param(
+        "files",
+        "ingest_files",
+        "files",
+        "items_ingested",
+        ["contract-test-placeholder.txt"],
+        id="files",
+    ),
+    pytest.param(
+        "url",
+        "ingest_url",
+        "url",
+        "items_ingested",
+        ["https://example.com/contract-test"],
+        id="url",
+    ),
 ]
 
 
@@ -163,8 +186,9 @@ INGEST_CASES = [
 def _build_consistency_cases() -> list:
     cases = []
     for case in INGEST_CASES:
-        # case.values is a tuple of the raw param values
-        subcommand, orch_func, _expected_source, count_field, _ = case.values
+        # case.values is a tuple of the raw param values; thread extra_args
+        # through so commands with required positionals (files, url) get them.
+        subcommand, orch_func, _expected_source, count_field, extra_args = case.values
         kwargs = {"id": case.id}
         if count_field != CANONICAL_COUNT_FIELD:
             kwargs["marks"] = pytest.mark.xfail(
@@ -174,7 +198,7 @@ def _build_consistency_cases() -> list:
                 ),
                 strict=True,
             )
-        cases.append(pytest.param(subcommand, orch_func, **kwargs))
+        cases.append(pytest.param(subcommand, orch_func, extra_args, **kwargs))
     return cases
 
 
@@ -221,8 +245,8 @@ def test_ingest_command_json_contract(
     assert mock.called, f"Orchestrator function `{orch_func}` was not invoked"
 
 
-@pytest.mark.parametrize("subcommand,orch_func", CONSISTENCY_CASES)
-def test_ingest_commands_use_canonical_count_field(subcommand, orch_func):
+@pytest.mark.parametrize("subcommand,orch_func,extra_args", CONSISTENCY_CASES)
+def test_ingest_commands_use_canonical_count_field(subcommand, orch_func, extra_args):
     """All ingest commands should expose the count under `items_ingested`.
 
     Currently xfailed for the 11 commands using `ingested` and the one using
@@ -232,7 +256,7 @@ def test_ingest_commands_use_canonical_count_field(subcommand, orch_func):
     """
     with patch(f"src.ingestion.orchestrator.{orch_func}") as mock:
         mock.return_value = _mock_orchestrator_return(orch_func, 1)
-        result = runner.invoke(app, ["--json", "--direct", "ingest", subcommand])
+        result = runner.invoke(app, ["--json", "--direct", "ingest", subcommand, *extra_args])
 
     payload = json.loads(result.stdout)
     assert CANONICAL_COUNT_FIELD in payload, (
@@ -253,7 +277,12 @@ def test_ingest_gmail_envelope_validates_through_pydantic():
     from src.ingestion.result import IngestionResponse
 
     with patch("src.ingestion.orchestrator.ingest_gmail") as mock:
-        mock.return_value = 5
+        mock.return_value = IngestionResponse(
+            command="ingest.gmail",
+            source="gmail",
+            status="ok",
+            items_ingested=5,
+        )
         result = runner.invoke(app, ["--json", "--direct", "ingest", "gmail"])
 
     assert result.exit_code == 0

@@ -7,23 +7,21 @@ importing, instantiating, and calling service classes.
 Each function:
 - Lazy-imports its service classes (avoids circular imports, defers heavy deps)
 - Accepts the same parameters the service expects
-- Returns either the canonical ``IngestionResponse`` envelope (rss, blog,
-  huggingface_papers, substack, xsearch, perplexity-search, youtube,
-  youtube-rss, youtube-playlist, podcast, scholar, scholar-paper,
-  scholar-refs, arxiv, arxiv-paper — the harmonized sources) or a legacy
-  shape (``int`` count for gmail, or a small result dataclass like
-  ``URLIngestResult`` for url) for sources not yet migrated. Migration to
-  ``IngestionResponse`` is in progress.
+- Returns the canonical ``IngestionResponse`` envelope. Round-4 harmonization
+  (2026-05-08) closed the last legacy shapes (``int`` for gmail, the small
+  ``URLIngestResult`` dataclass for url, and the ad-hoc per-file dict for
+  files); every command now produces the same envelope.
 
-Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity,
+url, files, scholar, arxiv, huggingface_papers
 
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.telemetry.decorators import observe
@@ -37,15 +35,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-@dataclass
-class URLIngestResult:
-    """Result of a direct URL ingestion."""
-
-    content_id: int
-    status: str  # "queued" or "exists"
-    duplicate: bool
-
-
 @observe()
 def ingest_gmail(
     *,
@@ -53,11 +42,14 @@ def ingest_gmail(
     max_results: int | None = None,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest newsletters from Gmail.
 
     When query or max_results are None, reads defaults from
-    sources.d/gmail.yaml via get_gmail_sources().
+    sources.d/gmail.yaml via get_gmail_sources(). The Gmail service still
+    returns a bare int internally (its API surface predates the envelope);
+    we wrap that count at the orchestrator boundary into the canonical
+    envelope so all transports see the same shape.
 
     Args:
         query: Gmail search query. None = use sources.d config.
@@ -66,9 +58,11 @@ def ingest_gmail(
         force_reprocess: Force reprocess existing content.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope (command='ingest.gmail',
+        source='gmail').
     """
     from src.ingestion.gmail import GmailContentIngestionService
+    from src.ingestion.result import IngestionResponse
 
     # Apply sources.d/gmail.yaml defaults when params not explicitly set
     if query is None or max_results is None:
@@ -91,11 +85,17 @@ def ingest_gmail(
     max_results = max_results or 50
 
     service = GmailContentIngestionService()
-    return service.ingest_content(
+    count = service.ingest_content(
         query=query,
         max_results=max_results,
         after_date=after_date,
         force_reprocess=force_reprocess,
+    )
+    return IngestionResponse(
+        command="ingest.gmail",
+        source="gmail",
+        status="ok",
+        items_ingested=count,
     )
 
 
@@ -968,11 +968,13 @@ def ingest_url(
     title: str | None = None,
     tags: list[str] | None = None,
     notes: str | None = None,
-) -> URLIngestResult:
+) -> IngestionResponse:
     """Ingest a single URL using the save-url workflow.
 
-    Creates a Content record (source_type=WEBPAGE) and enqueues background
-    extraction via URLExtractor. Deduplicates by source_url.
+    Creates a Content record (source_type=WEBPAGE) and runs URL extraction
+    synchronously. Deduplicates by source_url; a duplicate hit returns
+    ``items_skipped=1`` (not ``items_ingested``) — the row already existed
+    so nothing new landed.
 
     Args:
         url: The URL to ingest.
@@ -981,10 +983,13 @@ def ingest_url(
         notes: Optional user notes.
 
     Returns:
-        URLIngestResult with content_id, status, and duplicate flag.
+        Canonical IngestionResponse envelope (command='ingest.url',
+        source='url'). ``details`` carries ``content_id``, ``status``
+        ('queued' or 'exists'), ``duplicate`` (bool), and the original ``url``.
     """
     from datetime import UTC, datetime
 
+    from src.ingestion.result import IngestionResponse
     from src.models.content import Content, ContentSource, ContentStatus
     from src.storage.database import get_db
     from src.utils.content_hash import generate_markdown_hash
@@ -994,10 +999,17 @@ def ingest_url(
         existing = db.query(Content).filter(Content.source_url == url).first()
         if existing:
             logger.info(f"URL already exists: content_id={existing.id}, url={url}")
-            return URLIngestResult(
-                content_id=existing.id,
-                status="exists",
-                duplicate=True,
+            return IngestionResponse(
+                command="ingest.url",
+                source="url",
+                status="ok",
+                items_skipped=1,
+                details={
+                    "content_id": existing.id,
+                    "status": "exists",
+                    "duplicate": True,
+                    "url": url,
+                },
             )
 
         # Build metadata
@@ -1035,8 +1047,117 @@ def ingest_url(
 
         asyncio.run(extractor.extract_content(content_id))
 
-    return URLIngestResult(
-        content_id=content_id,
-        status="queued",
-        duplicate=False,
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status="ok",
+        items_ingested=1,
+        details={
+            "content_id": content_id,
+            "status": "queued",
+            "duplicate": False,
+            "url": url,
+        },
+    )
+
+
+@observe()
+def ingest_files(
+    *,
+    paths: list[Path],
+    publication: str | None = None,
+    title: str | None = None,
+) -> IngestionResponse:
+    """Ingest one or more local files into the content pipeline.
+
+    Loops over the provided paths, parsing each via the FileContentIngestionService
+    and persisting markdown content. Per-file failures (file-not-found, parse
+    errors, size-limit violations) become ``IngestionError`` entries with
+    ``url=str(path)`` so the CLI / HTTP / MCP transports can report which
+    file went wrong.
+
+    Args:
+        paths: Local file paths to ingest.
+        publication: Optional publisher/source name applied to every file.
+        title: Optional title override (used only when ``len(paths) == 1``;
+               callers should not pass title for multi-file batches —
+               the CLI emits a warning and drops the value before calling).
+
+    Returns:
+        Canonical IngestionResponse envelope (command='ingest.files',
+        source='files'). ``details.results`` carries a list of
+        ``{path, content_id, title}`` dicts for the rich-mode summary table.
+    """
+    import asyncio
+
+    from src.ingestion.files import FileContentIngestionService
+    from src.ingestion.result import (
+        IngestionError,
+        IngestionResponse,
+        IngestionStatus,
+    )
+    from src.parsers.markitdown_parser import MarkItDownParser
+    from src.parsers.router import ParserRouter
+    from src.storage.database import get_db
+
+    items_ingested = 0
+    items_failed = 0
+    errors: list[IngestionError] = []
+    results: list[dict] = []
+
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists():
+            items_failed += 1
+            errors.append(
+                IngestionError(
+                    code="file_not_found",
+                    message=f"File not found: {path}",
+                    url=str(path),
+                )
+            )
+            continue
+
+        try:
+            with get_db() as db:
+                markitdown = MarkItDownParser()
+                router = ParserRouter(markitdown_parser=markitdown)
+                service = FileContentIngestionService(router=router, db=db)
+                content = asyncio.run(
+                    service.ingest_file(path, publication=publication, title=title)
+                )
+            items_ingested += 1
+            results.append(
+                {
+                    "path": str(path),
+                    "content_id": content.id,
+                    "title": content.title,
+                }
+            )
+        except Exception as exc:
+            items_failed += 1
+            errors.append(
+                IngestionError(
+                    code="file_ingest_error",
+                    message=str(exc),
+                    url=str(path),
+                )
+            )
+
+    has_failure = bool(errors) or items_failed > 0
+    if not has_failure:
+        status: IngestionStatus = "ok"
+    elif items_ingested > 0:
+        status = "partial"
+    else:
+        status = "error"
+
+    return IngestionResponse(
+        command="ingest.files",
+        source="files",
+        status=status,
+        items_ingested=items_ingested,
+        items_failed=items_failed,
+        errors=errors,
+        details={"results": results},
     )

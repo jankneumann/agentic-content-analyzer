@@ -244,24 +244,3 @@ def extract_themes_from_graph_sync(
         return await client.extract_themes_from_range(start_date, end_date, query=query)
 
     return run_async(_extract())
-
-
-# --- File Ingestion ---
-
-
-def ingest_file_sync(
-    file_path: Any,
-    publication: str | None = None,
-    title: str | None = None,
-) -> Any:
-    """Ingest a file synchronously."""
-    from src.ingestion.files import FileContentIngestionService
-    from src.parsers.markitdown_parser import MarkItDownParser
-    from src.parsers.router import ParserRouter
-    from src.storage.database import get_db
-
-    with get_db() as db:
-        markitdown = MarkItDownParser()
-        router = ParserRouter(markitdown_parser=markitdown)
-        service = FileContentIngestionService(router=router, db=db)
-        return run_async(service.ingest_file(file_path, publication=publication, title=title))
