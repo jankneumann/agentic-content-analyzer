@@ -24,6 +24,7 @@ from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
     IngestionWarning,
+    derive_status,
 )
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
@@ -438,7 +439,11 @@ class GrokXContentIngestionService:
                 errors=[
                     IngestionError(code="search_failed", message=str(exc)),
                 ],
-                details={"tool_calls_made": 0, "threads_found": 0},
+                details={
+                    "query_echo": search_prompt,
+                    "tool_calls_made": 0,
+                    "threads_found": 0,
+                },
             )
 
         if not response_text.strip():
@@ -452,7 +457,11 @@ class GrokXContentIngestionService:
                 status="ok",
                 items_ingested=0,
                 warnings=warnings,
-                details={"tool_calls_made": tool_calls, "threads_found": 0},
+                details={
+                    "query_echo": search_prompt,
+                    "tool_calls_made": tool_calls,
+                    "threads_found": 0,
+                },
             )
 
         # Parse threads
@@ -517,24 +526,30 @@ class GrokXContentIngestionService:
                 db.commit()
                 logger.info(f"Committed {items_ingested} X content item(s)")
 
+        # Service convention: 1:1 errors↔items_failed (every error already
+        # gets an entry in item_errors). The IngestionResponse contract
+        # leaves these signals independent — a service may raise items_failed
+        # without a matching IngestionError — but we couple them here for
+        # debuggability. If you change this, document it loudly.
         items_failed = len(item_errors)
-        if items_failed == 0:
-            status = "ok"
-        elif items_ingested > 0:
-            status = "partial"
-        else:
-            status = "error"
-
         return IngestionResponse(
             command="ingest.xsearch",
             source="xsearch",
-            status=status,
+            status=derive_status(
+                items_ingested=items_ingested,
+                items_failed=items_failed,
+                errors=item_errors,
+            ),
             items_ingested=items_ingested,
             items_skipped=items_skipped,
             items_failed=items_failed,
             errors=item_errors,
             warnings=warnings,
-            details={"tool_calls_made": tool_calls, "threads_found": threads_found},
+            details={
+                "query_echo": search_prompt,
+                "tool_calls_made": tool_calls,
+                "threads_found": threads_found,
+            },
         )
 
     def _is_duplicate(self, db: Any, thread: XThreadData) -> bool:

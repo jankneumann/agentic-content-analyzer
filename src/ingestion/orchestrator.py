@@ -186,7 +186,7 @@ def _merge_youtube_envelopes(
     from src.ingestion.result import (
         IngestionError,
         IngestionResponse as _Response,
-        IngestionStatus,
+        derive_status,
     )
 
     items_ingested = sum(p.items_ingested for p in parts)
@@ -195,18 +195,12 @@ def _merge_youtube_envelopes(
     errors: list[IngestionError] = [e for p in parts for e in p.errors]
     warnings = [w for p in parts for w in p.warnings]
 
-    has_failure = bool(errors) or items_failed > 0
-    if not has_failure:
-        status: IngestionStatus = "ok"
-    elif items_ingested > 0:
-        status = "partial"
-    else:
-        status = "error"
-
     return _Response(
         command=command,  # type: ignore[arg-type]
         source=source,  # type: ignore[arg-type]
-        status=status,
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
         items_ingested=items_ingested,
         items_skipped=items_skipped,
         items_failed=items_failed,
@@ -524,7 +518,7 @@ def ingest_scholar(
     import asyncio
 
     from src.config.sources import load_sources_config
-    from src.ingestion.result import IngestionError, IngestionResponse, IngestionStatus
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
     try:
         config = load_sources_config()
@@ -572,18 +566,12 @@ def ingest_scholar(
 
     items_ingested, items_skipped, items_failed, errors = asyncio.run(_run())
 
-    has_failure = bool(errors) or items_failed > 0
-    if not has_failure:
-        status: IngestionStatus = "ok"
-    elif items_ingested > 0:
-        status = "partial"
-    else:
-        status = "error"
-
     return IngestionResponse(
         command="ingest.scholar",
         source="scholar",
-        status=status,
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
         items_ingested=items_ingested,
         items_skipped=items_skipped,
         items_failed=items_failed,
@@ -617,11 +605,7 @@ def ingest_scholar_paper(
     """
     import asyncio
 
-    from src.ingestion.result import (
-        IngestionError,
-        IngestionResponse,
-        IngestionStatus,
-    )
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
     async def _run() -> ScholarPaperResult:
         from src.ingestion.scholar import ScholarContentIngestionService
@@ -648,18 +632,10 @@ def ingest_scholar_paper(
             )
         )
 
-    has_failure = bool(errors)
-    if not has_failure:
-        status: IngestionStatus = "ok"
-    elif items_ingested > 0:
-        status = "partial"
-    else:
-        status = "error"
-
     return IngestionResponse(
         command="ingest.scholar-paper",
         source="scholar_paper",
-        status=status,
+        status=derive_status(items_ingested=items_ingested, items_failed=0, errors=errors),
         items_ingested=items_ingested,
         items_skipped=items_skipped,
         errors=errors,
@@ -772,7 +748,7 @@ def ingest_arxiv(
     """
     from src.config.sources import load_sources_config
     from src.ingestion.arxiv import ArxivContentIngestionService
-    from src.ingestion.result import IngestionError, IngestionResponse, IngestionStatus
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
     try:
         config = load_sources_config()
@@ -835,18 +811,12 @@ def ingest_arxiv(
     finally:
         service.close()
 
-    has_failure = bool(errors) or items_failed > 0
-    if not has_failure:
-        status: IngestionStatus = "ok"
-    elif items_ingested > 0:
-        status = "partial"
-    else:
-        status = "error"
-
     return IngestionResponse(
         command="ingest.arxiv",
         source="arxiv",
-        status=status,
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
         items_ingested=items_ingested,
         items_skipped=items_skipped,
         items_failed=items_failed,
@@ -874,11 +844,7 @@ def ingest_arxiv_paper(
         the resolved base ``arxiv_id``, and the ``version_updated`` flag.
     """
     from src.ingestion.arxiv import ArxivContentIngestionService
-    from src.ingestion.result import (
-        IngestionError,
-        IngestionResponse,
-        IngestionStatus,
-    )
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
     service = ArxivContentIngestionService()
     try:
@@ -903,18 +869,10 @@ def ingest_arxiv_paper(
             )
         )
 
-    has_failure = bool(errors)
-    if not has_failure:
-        status: IngestionStatus = "ok"
-    elif items_ingested > 0:
-        status = "partial"
-    else:
-        status = "error"
-
     return IngestionResponse(
         command="ingest.arxiv-paper",
         source="arxiv_paper",
-        status=status,
+        status=derive_status(items_ingested=items_ingested, items_failed=0, errors=errors),
         items_ingested=items_ingested,
         items_skipped=items_skipped,
         errors=errors,
@@ -989,7 +947,7 @@ def ingest_url(
     """
     from datetime import UTC, datetime
 
-    from src.ingestion.result import IngestionResponse
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
     from src.models.content import Content, ContentSource, ContentStatus
     from src.storage.database import get_db
     from src.utils.content_hash import generate_markdown_hash
@@ -1038,20 +996,44 @@ def ingest_url(
         content_id = content.id
         logger.info(f"Created content record: id={content_id}, url={url}")
 
-    # Trigger extraction synchronously (CLI context — no event loop running)
+    # Trigger extraction synchronously (CLI context — no event loop running).
+    # The Content row is already committed at this point — if extraction
+    # raises, the row exists in PENDING state and the envelope must reflect
+    # that: items_ingested=1 (a row landed) plus an error entry, yielding
+    # status='partial'. Letting the exception propagate would have the
+    # transport boundary emit status='error', items_ingested=0 — misleading
+    # because the row IS in the DB and is resumable by re-running extraction.
     from src.services.url_extractor import URLExtractor
 
+    extraction_errors: list[IngestionError] = []
     with get_db() as db:
         extractor = URLExtractor(db)
         import asyncio
 
-        asyncio.run(extractor.extract_content(content_id))
+        try:
+            asyncio.run(extractor.extract_content(content_id))
+        except Exception as exc:
+            logger.warning(
+                f"URL extraction failed for content_id={content_id}, url={url}: {exc}",
+                exc_info=True,
+            )
+            extraction_errors.append(
+                IngestionError(
+                    code="extraction_failed",
+                    message=str(exc),
+                    url=url,
+                )
+            )
 
+    items_ingested = 1
     return IngestionResponse(
         command="ingest.url",
         source="url",
-        status="ok",
-        items_ingested=1,
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=0, errors=extraction_errors
+        ),
+        items_ingested=items_ingested,
+        errors=extraction_errors,
         details={
             "content_id": content_id,
             "status": "queued",
@@ -1091,11 +1073,7 @@ def ingest_files(
     import asyncio
 
     from src.ingestion.files import FileContentIngestionService
-    from src.ingestion.result import (
-        IngestionError,
-        IngestionResponse,
-        IngestionStatus,
-    )
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
     from src.parsers.markitdown_parser import MarkItDownParser
     from src.parsers.router import ParserRouter
     from src.storage.database import get_db
@@ -1144,18 +1122,12 @@ def ingest_files(
                 )
             )
 
-    has_failure = bool(errors) or items_failed > 0
-    if not has_failure:
-        status: IngestionStatus = "ok"
-    elif items_ingested > 0:
-        status = "partial"
-    else:
-        status = "error"
-
     return IngestionResponse(
         command="ingest.files",
         source="files",
-        status=status,
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
         items_ingested=items_ingested,
         items_failed=items_failed,
         errors=errors,
