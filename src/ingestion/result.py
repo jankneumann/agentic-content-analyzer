@@ -351,6 +351,34 @@ class IngestionResponse(BaseModel):
         return cls.model_validate(payload)
 
 
+def derive_status(
+    *,
+    items_ingested: int,
+    items_failed: int,
+    errors: list[IngestionError],
+) -> IngestionStatus:
+    """Compute the canonical three-state status from items + failure signals.
+
+    Single-shot services (perplexity, xsearch, scholar-paper, arxiv-paper,
+    files-loop) that don't aggregate per-source ``SourceFetchResult`` records
+    call this directly; ``build_response_from_source_results`` calls it
+    internally. Centralizing in one place ensures any future invariant tweak
+    (e.g. "status='ok' requires items_ingested >= 1") only needs to land here
+    instead of at every emitter site.
+
+    Status rules (mirroring ``_validate_status_invariants`` on the model):
+      - ``ok`` — no errors AND items_failed == 0
+      - ``partial`` — items_ingested > 0 AND (errors OR items_failed > 0)
+      - ``error`` — items_ingested == 0 AND (errors OR items_failed > 0)
+    """
+    has_failure = bool(errors) or items_failed > 0
+    if not has_failure:
+        return "ok"
+    if items_ingested > 0:
+        return "partial"
+    return "error"
+
+
 def build_response_from_source_results(
     *,
     command: IngestionCommandLiteral,
@@ -410,18 +438,12 @@ def build_response_from_source_results(
     if extra_item_errors:
         errors.extend(extra_item_errors)
 
-    has_failure = bool(errors) or items_failed > 0
-    if not has_failure:
-        status: IngestionStatus = "ok"
-    elif items_ingested > 0:
-        status = "partial"
-    else:
-        status = "error"
-
     return IngestionResponse(
         command=command,
         source=source,
-        status=status,
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
         items_ingested=items_ingested,
         items_failed=items_failed,
         errors=errors,

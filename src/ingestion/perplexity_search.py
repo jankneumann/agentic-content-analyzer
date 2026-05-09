@@ -20,7 +20,12 @@ from typing import Any
 from pydantic import BaseModel
 
 from src.config import settings
-from src.ingestion.result import IngestionError, IngestionResponse
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    IngestionWarning,
+    derive_status,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -264,7 +269,9 @@ class PerplexityContentIngestionService:
             context_size: Override search context size (low/medium/high).
 
         Returns:
-            IngestionResponse envelope. ``details`` carries perplexity-specific
+            IngestionResponse envelope. ``details`` carries the reserved-key
+            registry entries (``citations``: list of citation/source URLs,
+            ``query_echo``: the resolved search prompt) plus perplexity-specific
             extras (``queries_made``, ``citations_found``).
         """
         items_ingested = 0
@@ -304,7 +311,12 @@ class PerplexityContentIngestionService:
                 errors=[
                     IngestionError(code="search_failed", message=f"Search failed: {e}"),
                 ],
-                details={"queries_made": 0, "citations_found": 0},
+                details={
+                    "citations": [],
+                    "query_echo": search_prompt,
+                    "queries_made": 0,
+                    "citations_found": 0,
+                },
             )
 
         if not response.content.strip():
@@ -314,7 +326,18 @@ class PerplexityContentIngestionService:
                 source="perplexity",
                 status="ok",
                 items_ingested=0,
-                details={"queries_made": queries_made, "citations_found": citations_found},
+                warnings=[
+                    IngestionWarning(
+                        code="empty_response",
+                        message="Perplexity returned empty content",
+                    )
+                ],
+                details={
+                    "citations": list(response.citations),
+                    "query_echo": search_prompt,
+                    "queries_made": queries_made,
+                    "citations_found": citations_found,
+                },
             )
 
         # Build Content record
@@ -377,23 +400,30 @@ class PerplexityContentIngestionService:
             f"{elapsed:.1f}s elapsed"
         )
 
+        # Service convention: 1:1 errors↔items_failed (every error already
+        # gets an entry in item_errors). The IngestionResponse contract
+        # leaves these signals independent — a service may raise items_failed
+        # without a matching IngestionError — but we couple them here for
+        # debuggability. If you change this, document it loudly.
         items_failed = len(item_errors)
-        if items_failed == 0:
-            status = "ok"
-        elif items_ingested > 0:
-            status = "partial"
-        else:
-            status = "error"
-
         return IngestionResponse(
             command="ingest.perplexity-search",
             source="perplexity",
-            status=status,
+            status=derive_status(
+                items_ingested=items_ingested,
+                items_failed=items_failed,
+                errors=item_errors,
+            ),
             items_ingested=items_ingested,
             items_skipped=items_skipped,
             items_failed=items_failed,
             errors=item_errors,
-            details={"queries_made": queries_made, "citations_found": citations_found},
+            details={
+                "citations": list(response.citations),
+                "query_echo": search_prompt,
+                "queries_made": queries_made,
+                "citations_found": citations_found,
+            },
         )
 
     def _is_duplicate(

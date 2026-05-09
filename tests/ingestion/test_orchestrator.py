@@ -859,6 +859,40 @@ class TestIngestUrl:
         assert result.details["status"] == "exists"
         assert result.details["duplicate"] is True
 
+    def test_extraction_failure_returns_partial_with_error(self):
+        """Review finding #3: extraction failure after row commit.
+
+        The Content row is committed BEFORE extraction runs; if extraction
+        raises, the row exists in PENDING state in the DB. The envelope
+        must reflect this as ``items_ingested=1`` (a row landed) plus an
+        IngestionError, yielding ``status='partial'`` — NOT ``status='error'``
+        with ``items_ingested=0``, which would misrepresent the DB state.
+        """
+        from src.ingestion.orchestrator import ingest_url
+
+        get_db, _ = self._stub_db_session(existing=None)
+
+        with (
+            patch("src.storage.database.get_db", get_db),
+            patch("src.services.url_extractor.URLExtractor") as mock_extractor_cls,
+        ):
+            mock_extractor = MagicMock()
+            mock_extractor.extract_content = AsyncMock(side_effect=RuntimeError("network timeout"))
+            mock_extractor_cls.return_value = mock_extractor
+
+            result = ingest_url(url="https://example.com/network-fail")
+
+        assert result.status == "partial"
+        assert result.items_ingested == 1  # the row IS in the DB
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "extraction_failed"
+        assert "network timeout" in result.errors[0].message
+        assert result.errors[0].url == "https://example.com/network-fail"
+        # Details still describe the queued row so a re-run can pick it up
+        assert result.details["content_id"] == 123
+        assert result.details["status"] == "queued"
+        assert result.details["duplicate"] is False
+
 
 def _files_response_fixture(*, ingested: int, results, errors=None, items_failed: int = 0):
     """Helper for asserting the canonical files envelope shape."""
