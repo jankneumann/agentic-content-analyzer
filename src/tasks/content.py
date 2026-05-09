@@ -292,8 +292,8 @@ def register_content_tasks(pgq: PgQueuer) -> None:
                 )
             )
 
-            # Normalize int (legacy) or IngestionResponse (migrated) → int
-            count = result if isinstance(result, int) else result.items_ingested
+            # All sources return IngestionResponse post round-4 harmonization
+            count = result.items_ingested
 
             await update_job_progress(job.id, 100, f"Ingested {count} items from {source}")
             logger.info(f"Ingestion completed for source={source}: {count} items")

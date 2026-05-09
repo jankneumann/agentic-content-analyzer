@@ -145,13 +145,15 @@ def ingest_gmail(
     """
     from src.ingestion.orchestrator import ingest_gmail as _ingest
 
-    count = _ingest(
+    response = _ingest(
         query=query,
         max_results=max_results,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "gmail"})
+    # ingest_gmail returns IngestionResponse post round-4 harmonization;
+    # extract the int count to keep the legacy MCP shape stable.
+    return _serialize({"items_ingested": response.items_ingested, "source": "gmail"})
 
 
 @mcp.tool()
@@ -479,8 +481,21 @@ def ingest_url(
     from src.ingestion.orchestrator import ingest_url as _ingest
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
-    result = _ingest(url=url, title=title, tags=tag_list, notes=notes)
-    return _serialize(result)
+    response = _ingest(url=url, title=title, tags=tag_list, notes=notes)
+    # ingest_url returns IngestionResponse post round-4 harmonization;
+    # the legacy MCP shape (content_id/status/duplicate flat keys) lives
+    # in ``response.details``. Keeping the flat shape stable for the
+    # agentic-assistant consumer until the cross-transport pass migrates
+    # MCP wrappers to the canonical envelope.
+    details = response.details
+    return _serialize(
+        {
+            "content_id": details.get("content_id"),
+            "status": details.get("status"),
+            "duplicate": details.get("duplicate"),
+            "source": "url",
+        }
+    )
 
 
 # ===========================================================================
@@ -784,8 +799,11 @@ def run_pipeline(digest_type: str = "daily") -> str:
 
     for name, func in sources.items():
         try:
-            count = func()
-            ingestion_results[name] = count
+            # All five orchestrator entry points return IngestionResponse
+            # post round-4 harmonization; extract the int count to keep
+            # the legacy MCP run_pipeline aggregation stable.
+            result = func()
+            ingestion_results[name] = result.items_ingested
         except Exception as e:
             ingestion_results[name] = 0
             results.setdefault("errors", {})[f"ingest_{name}"] = str(e)

@@ -25,14 +25,20 @@ def _rss_response(n: int) -> IngestionResponse:
 
 
 class TestIngestGmail:
+    """Post-round-4 (2026-05-08): orchestrator wraps the service's bare int into
+    the canonical IngestionResponse envelope."""
+
     @patch("src.ingestion.gmail.GmailContentIngestionService")
-    def test_returns_int(self, mock_cls):
+    def test_returns_envelope(self, mock_cls):
         from src.ingestion.orchestrator import ingest_gmail
 
         mock_cls.return_value.ingest_content.return_value = 5
         result = ingest_gmail()
-        assert result == 5
-        assert isinstance(result, int)
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.gmail"
+        assert result.source == "gmail"
+        assert result.status == "ok"
+        assert result.items_ingested == 5
 
     @patch("src.ingestion.gmail.GmailContentIngestionService")
     def test_passes_parameters(self, mock_cls):
@@ -43,7 +49,9 @@ class TestIngestGmail:
         mock_cls.return_value = mock_service
         after = datetime(2025, 1, 1, tzinfo=UTC)
 
-        ingest_gmail(query="label:test", max_results=5, after_date=after, force_reprocess=True)
+        result = ingest_gmail(
+            query="label:test", max_results=5, after_date=after, force_reprocess=True
+        )
 
         mock_service.ingest_content.assert_called_once_with(
             query="label:test",
@@ -51,6 +59,21 @@ class TestIngestGmail:
             after_date=after,
             force_reprocess=True,
         )
+        assert result.items_ingested == 3
+        assert result.source == "gmail"
+
+    @patch("src.ingestion.gmail.GmailContentIngestionService")
+    def test_zero_count_still_ok_status(self, mock_cls):
+        """Empty Gmail label returns ``items_ingested=0`` with status='ok' —
+        the envelope invariants disallow status='error' without an error signal,
+        so a no-op fetch must be 'ok' not 'error'."""
+        from src.ingestion.orchestrator import ingest_gmail
+
+        mock_cls.return_value.ingest_content.return_value = 0
+        result = ingest_gmail()
+        assert result.status == "ok"
+        assert result.items_ingested == 0
+        assert result.errors == []
 
 
 class TestIngestRss:
@@ -755,3 +778,181 @@ class TestIngestArxivPaperOrch:
             ingest_arxiv_paper(identifier="2301.12345")
 
         mock_service.close.assert_called_once()
+
+
+class TestIngestUrl:
+    """Round-4 migration: URLIngestResult dataclass replaced with the canonical
+    envelope. New URLs surface as ``items_ingested=1``; duplicates as
+    ``items_skipped=1`` (a row already existed, nothing new landed). The
+    ``details`` dict carries the legacy flat keys for consumers like the MCP
+    wrapper that still emit a flat content_id/status/duplicate shape.
+    """
+
+    def _stub_db_session(self, existing=None):
+        """Build a stub get_db() context manager.
+
+        ``existing`` controls the duplicate-check query: pass an object with
+        ``.id`` to simulate a row already in the DB; pass None for the
+        fresh-URL path.
+        """
+        from contextlib import contextmanager
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = existing
+        db.add = MagicMock()
+        db.commit = MagicMock()
+
+        # When the orchestrator calls db.refresh(content), assign the
+        # newly-created Content an id so the envelope details carry it.
+        def _refresh(content):
+            content.id = 123
+
+        db.refresh = MagicMock(side_effect=_refresh)
+
+        @contextmanager
+        def _get_db():
+            yield db
+
+        return _get_db, db
+
+    def test_fresh_url_returns_items_ingested(self):
+        from src.ingestion.orchestrator import ingest_url
+
+        get_db, _ = self._stub_db_session(existing=None)
+
+        with (
+            patch("src.storage.database.get_db", get_db),
+            patch("src.services.url_extractor.URLExtractor") as mock_extractor_cls,
+        ):
+            mock_extractor = MagicMock()
+            mock_extractor.extract_content = AsyncMock(return_value=None)
+            mock_extractor_cls.return_value = mock_extractor
+
+            result = ingest_url(url="https://example.com/article")
+
+        assert isinstance(result, IngestionResponse)
+        assert result.command == "ingest.url"
+        assert result.source == "url"
+        assert result.status == "ok"
+        assert result.items_ingested == 1
+        assert result.items_skipped == 0
+        assert result.details["content_id"] == 123
+        assert result.details["status"] == "queued"
+        assert result.details["duplicate"] is False
+        assert result.details["url"] == "https://example.com/article"
+
+    def test_duplicate_url_returns_items_skipped(self):
+        from src.ingestion.orchestrator import ingest_url
+
+        existing = MagicMock()
+        existing.id = 99
+        get_db, _ = self._stub_db_session(existing=existing)
+
+        with patch("src.storage.database.get_db", get_db):
+            result = ingest_url(url="https://example.com/already-saved")
+
+        # Duplicate path returns early — no extractor call needed
+        assert result.items_ingested == 0
+        assert result.items_skipped == 1
+        assert result.status == "ok"
+        assert result.details["content_id"] == 99
+        assert result.details["status"] == "exists"
+        assert result.details["duplicate"] is True
+
+
+def _files_response_fixture(*, ingested: int, results, errors=None, items_failed: int = 0):
+    """Helper for asserting the canonical files envelope shape."""
+    return ingested, results, errors or [], items_failed
+
+
+class TestIngestFiles:
+    """Round-4 migration: per-file loop moved from CLI into orchestrator. Each
+    failing file becomes an ``IngestionError`` entry with ``url=str(path)``;
+    each successful file produces a ``details.results`` row used by the rich-mode
+    summary table.
+    """
+
+    def test_all_files_succeed(self, tmp_path):
+        from src.ingestion.orchestrator import ingest_files
+
+        f1 = tmp_path / "a.md"
+        f2 = tmp_path / "b.md"
+        f1.write_text("aaa")
+        f2.write_text("bbb")
+
+        content1 = MagicMock(id=1, title="A")
+        content2 = MagicMock(id=2, title="B")
+
+        with patch("src.ingestion.files.FileContentIngestionService") as mock_svc_cls:
+            svc = MagicMock()
+            svc.ingest_file = AsyncMock(side_effect=[content1, content2])
+            mock_svc_cls.return_value = svc
+
+            result = ingest_files(paths=[f1, f2])
+
+        assert result.command == "ingest.files"
+        assert result.source == "files"
+        assert result.status == "ok"
+        assert result.items_ingested == 2
+        assert result.items_failed == 0
+        assert result.errors == []
+        results_detail = result.details["results"]
+        assert len(results_detail) == 2
+        assert results_detail[0]["content_id"] == 1
+        assert results_detail[1]["content_id"] == 2
+
+    def test_missing_file_becomes_error_entry(self, tmp_path):
+        """File-not-found surfaces as IngestionError(code='file_not_found')."""
+        from src.ingestion.orchestrator import ingest_files
+
+        missing = tmp_path / "absent.md"
+
+        result = ingest_files(paths=[missing])
+
+        assert result.status == "error"
+        assert result.items_ingested == 0
+        assert result.items_failed == 1
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "file_not_found"
+        assert str(missing) in result.errors[0].url
+
+    def test_partial_status_when_one_succeeds_one_fails(self, tmp_path):
+        """Status='partial' invariant: items_ingested>0 AND failure signal."""
+        from src.ingestion.orchestrator import ingest_files
+
+        good = tmp_path / "good.md"
+        good.write_text("ok")
+        missing = tmp_path / "missing.md"
+
+        with patch("src.ingestion.files.FileContentIngestionService") as mock_svc_cls:
+            svc = MagicMock()
+            svc.ingest_file = AsyncMock(return_value=MagicMock(id=42, title="Good"))
+            mock_svc_cls.return_value = svc
+
+            result = ingest_files(paths=[good, missing])
+
+        assert result.status == "partial"
+        assert result.items_ingested == 1
+        assert result.items_failed == 1
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "file_not_found"
+
+    def test_parse_error_becomes_file_ingest_error(self, tmp_path):
+        """Service-raised exceptions surface as code='file_ingest_error'."""
+        from src.ingestion.orchestrator import ingest_files
+
+        f = tmp_path / "broken.md"
+        f.write_text("...")
+
+        with patch("src.ingestion.files.FileContentIngestionService") as mock_svc_cls:
+            svc = MagicMock()
+            svc.ingest_file = AsyncMock(side_effect=ValueError("unsupported format"))
+            mock_svc_cls.return_value = svc
+
+            result = ingest_files(paths=[f])
+
+        assert result.status == "error"
+        assert result.items_failed == 1
+        assert result.errors[0].code == "file_ingest_error"
+        assert "unsupported format" in result.errors[0].message
+        assert result.errors[0].url == str(f)

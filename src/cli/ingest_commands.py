@@ -79,7 +79,12 @@ def _ingest_via_api(source: str, params: dict[str, Any], label: str) -> None:
 
 
 def _gmail_direct(query: str, max_results: int, after_date: datetime | None, force: bool) -> None:
-    """Direct Gmail ingestion (legacy inline path)."""
+    """Direct Gmail ingestion.
+
+    Reads the canonical IngestionResponse envelope from the orchestrator and
+    augments it with transport-side timing via ``with_timing``. JSON mode dumps
+    the full envelope; rich mode surfaces the count and any envelope errors.
+    """
     import time
     from datetime import UTC, datetime as dt
 
@@ -93,7 +98,7 @@ def _gmail_direct(query: str, max_results: int, after_date: datetime | None, for
     try:
         from src.ingestion.orchestrator import ingest_gmail
 
-        count = ingest_gmail(
+        response = ingest_gmail(
             query=query, max_results=max_results, after_date=after_date, force_reprocess=force
         )
     except Exception as exc:
@@ -113,18 +118,13 @@ def _gmail_direct(query: str, max_results: int, after_date: datetime | None, for
         raise typer.Exit(1)
 
     elapsed_ms = int((time.monotonic() - started_mono) * 1000)
-    response = IngestionResponse(
-        command="ingest.gmail",
-        source="gmail",
-        status="ok",
-        items_ingested=count,
-        duration_ms=elapsed_ms,
-        started_at=started_at_wall,
-    )
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
     if is_json_mode():
         output_result(response.model_dump(mode="json"))
     else:
-        console.print(f"[green]Gmail ingestion complete.[/green] {count} item(s) ingested.")
+        console.print(
+            f"[green]Gmail ingestion complete.[/green] {response.items_ingested} item(s) ingested."
+        )
 
 
 @app.command("gmail")
@@ -996,52 +996,64 @@ def files(
 ) -> None:
     """Ingest one or more local files into the content pipeline.
 
-    Always runs directly (requires local file system access).
+    Always runs directly (requires local file system access). The orchestrator
+    owns the per-file loop and accumulates per-file failures into the canonical
+    envelope; this CLI layer only renders the rich summary table from
+    ``response.details["results"]`` and surfaces per-file error messages.
     """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
     from rich.table import Table
+
+    from src.ingestion.result import IngestionError, IngestionResponse
 
     console = Console()
 
     if title and len(paths) > 1:
-        console.print("[yellow]Warning:[/yellow] --title is ignored when ingesting multiple files.")
+        if not is_json_mode():
+            console.print(
+                "[yellow]Warning:[/yellow] --title is ignored when ingesting multiple files."
+            )
         title = None
 
-    results: list[dict] = []
-    errors: list[dict] = []
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
+    try:
+        from src.ingestion.orchestrator import ingest_files
 
-    for file_path in paths:
-        if not file_path.exists():
-            err = {"path": str(file_path), "error": "File not found"}
-            errors.append(err)
-            if not is_json_mode():
-                console.print(f"[red]File not found:[/red] {file_path}")
-            continue
+        response = ingest_files(paths=paths, publication=publication, title=title)
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.files",
+            source="files",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[IngestionError(code="orchestrator_exception", message=str(exc))],
+        )
+        if is_json_mode():
+            output_result(response.model_dump(mode="json"))
+        else:
+            console.print(f"[red]File ingestion failed:[/red] {exc}")
+        raise typer.Exit(1)
 
-        try:
-            from src.cli.adapters import ingest_file_sync
-
-            content = ingest_file_sync(file_path=file_path, publication=publication, title=title)
-            results.append(
-                {"path": str(file_path), "content_id": content.id, "title": content.title}
-            )
-        except Exception as exc:
-            err = {"path": str(file_path), "error": str(exc)}
-            errors.append(err)
-            if not is_json_mode():
-                console.print(f"[red]Failed to ingest {file_path}:[/red] {exc}")
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
 
     if is_json_mode():
-        output_result(
-            {
-                "source": "files",
-                "ingested": len(results),
-                "failed": len(errors),
-                "results": results,
-                "errors": errors,
-            }
-        )
+        output_result(response.model_dump(mode="json"))
     else:
+        # Surface per-file failures so users see which paths went wrong
+        for err in response.errors:
+            if err.code == "file_not_found":
+                console.print(f"[red]File not found:[/red] {err.url}")
+            else:
+                console.print(f"[red]Failed to ingest {err.url}:[/red] {err.message}")
+
+        results = response.details.get("results", [])
         if results:
             table = Table(title="Ingested Files")
             table.add_column("Path", style="cyan")
@@ -1051,13 +1063,12 @@ def files(
                 table.add_row(r["path"], str(r["content_id"]), r["title"])
             console.print(table)
 
-        total = len(results)
-        failed = len(errors)
         console.print(
-            f"[green]File ingestion complete.[/green] {total} file(s) ingested, {failed} failed."
+            f"[green]File ingestion complete.[/green] "
+            f"{response.items_ingested} file(s) ingested, {response.items_failed} failed."
         )
 
-    if errors and not results:
+    if response.items_failed and not response.items_ingested:
         raise typer.Exit(1)
 
 
@@ -1069,36 +1080,61 @@ def files(
 def _url_direct(
     target_url: str, title: str | None, tags: list[str] | None, notes: str | None
 ) -> None:
-    """Direct URL ingestion."""
+    """Direct URL ingestion.
+
+    Reads the canonical IngestionResponse envelope from the orchestrator;
+    ``details`` carries content_id/status/duplicate. Rich mode renders a
+    one-line summary with the resolved content_id.
+    """
+    import time
+    from datetime import UTC, datetime as dt
+
     from rich.console import Console
 
+    from src.ingestion.result import IngestionError, IngestionResponse
+
     console = Console()
+    started_at_wall = dt.now(UTC)
+    started_mono = time.monotonic()
     try:
         from src.ingestion.orchestrator import ingest_url
 
-        result = ingest_url(url=target_url, title=title, tags=tags, notes=notes)
+        response = ingest_url(url=target_url, title=title, tags=tags, notes=notes)
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+        response = IngestionResponse(
+            command="ingest.url",
+            source="url",
+            status="error",
+            duration_ms=elapsed_ms,
+            started_at=started_at_wall,
+            errors=[
+                IngestionError(
+                    code="orchestrator_exception",
+                    message=str(exc),
+                    url=target_url,
+                )
+            ],
+        )
         if is_json_mode():
-            output_result({"error": str(exc), "source": "url"}, success=False)
+            output_result(response.model_dump(mode="json"))
         else:
             console.print(f"[red]URL ingestion failed:[/red] {exc}")
         raise typer.Exit(1)
 
+    elapsed_ms = int((time.monotonic() - started_mono) * 1000)
+    response = response.with_timing(duration_ms=elapsed_ms, started_at=started_at_wall)
+
     if is_json_mode():
-        output_result(
-            {
-                "source": "url",
-                "content_id": result.content_id,
-                "status": result.status,
-                "duplicate": result.duplicate,
-            }
-        )
+        output_result(response.model_dump(mode="json"))
     else:
-        if result.duplicate:
-            console.print(f"[yellow]URL already exists.[/yellow] Content ID: {result.content_id}")
+        details = response.details
+        content_id = details.get("content_id")
+        if details.get("duplicate"):
+            console.print(f"[yellow]URL already exists.[/yellow] Content ID: {content_id}")
         else:
             console.print(
-                f"[green]URL ingested.[/green] Content ID: {result.content_id} (extraction queued)"
+                f"[green]URL ingested.[/green] Content ID: {content_id} (extraction queued)"
             )
 
 

@@ -6,7 +6,7 @@ Tests mock at `src.ingestion.orchestrator.<func>` instead of individual service 
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -15,10 +15,27 @@ from src.cli.app import app
 runner = CliRunner()
 
 
+def _gmail_envelope(items: int):
+    """Build a gmail IngestionResponse mock — see post-round-4 docstring above."""
+    from src.ingestion.result import IngestionResponse
+
+    return IngestionResponse(
+        command="ingest.gmail",
+        source="gmail",
+        status="ok",
+        items_ingested=items,
+    )
+
+
 class TestIngestGmail:
+    """Post-round-4 (2026-05-08): ingest_gmail returns ``IngestionResponse``;
+    mocks must mimic that shape — returning a bare int would mask production
+    bugs where the consumer treats a Pydantic model as if it were an int.
+    """
+
     @patch("src.ingestion.orchestrator.ingest_gmail")
     def test_gmail_success(self, mock_ingest):
-        mock_ingest.return_value = 5
+        mock_ingest.return_value = _gmail_envelope(5)
 
         result = runner.invoke(app, ["--direct", "ingest", "gmail"])
         assert result.exit_code == 0
@@ -27,7 +44,7 @@ class TestIngestGmail:
 
     @patch("src.ingestion.orchestrator.ingest_gmail")
     def test_gmail_with_options(self, mock_ingest):
-        mock_ingest.return_value = 3
+        mock_ingest.return_value = _gmail_envelope(3)
 
         result = runner.invoke(
             app,
@@ -61,7 +78,7 @@ class TestIngestGmail:
 
     @patch("src.ingestion.orchestrator.ingest_gmail")
     def test_gmail_json_mode(self, mock_ingest):
-        mock_ingest.return_value = 2
+        mock_ingest.return_value = _gmail_envelope(2)
 
         result = runner.invoke(app, ["--json", "--direct", "ingest", "gmail"])
         assert result.exit_code == 0
@@ -304,39 +321,92 @@ class TestIngestPodcast:
         assert "Podcast ingestion failed" in result.output
 
 
+def _files_envelope(*, ingested: int = 0, failed: int = 0, results=None, errors=None):
+    """Build a files IngestionResponse mock.
+
+    Mirrors what ``ingest_files`` emits post round-4 harmonization (2026-05-08):
+    items_ingested = successful files, items_failed = per-file failures,
+    details.results = the per-file metadata the rich-mode CLI renders into a
+    summary table.
+    """
+    from src.ingestion.result import IngestionResponse
+
+    if ingested > 0 and failed > 0:
+        status = "partial"
+    elif ingested > 0:
+        status = "ok"
+    elif failed > 0:
+        status = "error"
+    else:
+        status = "ok"
+
+    return IngestionResponse(
+        command="ingest.files",
+        source="files",
+        status=status,
+        items_ingested=ingested,
+        items_failed=failed,
+        errors=errors or [],
+        details={"results": results or []},
+    )
+
+
 class TestIngestFiles:
-    @patch("src.cli.adapters.ingest_file_sync")
+    """Post-round-4: the per-file loop moved into the orchestrator. Tests now
+    mock ``src.ingestion.orchestrator.ingest_files`` (matching the post-#147
+    pattern); the previous mocks at ``src.cli.adapters.ingest_file_sync`` no
+    longer intercept since the CLI delegates to the orchestrator.
+    """
+
+    @patch("src.ingestion.orchestrator.ingest_files")
     def test_files_success(self, mock_ingest, tmp_path):
         test_file = tmp_path / "test.txt"
         test_file.write_text("test content")
 
-        mock_content = MagicMock()
-        mock_content.id = 42
-        mock_content.title = "Test File"
-        mock_ingest.return_value = mock_content
+        mock_ingest.return_value = _files_envelope(
+            ingested=1,
+            results=[{"path": str(test_file), "content_id": 42, "title": "Test File"}],
+        )
 
         result = runner.invoke(app, ["--direct", "ingest", "files", str(test_file)])
         assert result.exit_code == 0
         assert "1 file(s) ingested" in result.output
 
-    def test_files_not_found(self, tmp_path):
-        result = runner.invoke(
-            app, ["--direct", "ingest", "files", str(tmp_path / "nonexistent.txt")]
+    @patch("src.ingestion.orchestrator.ingest_files")
+    def test_files_not_found(self, mock_ingest, tmp_path):
+        from src.ingestion.result import IngestionError
+
+        missing = tmp_path / "nonexistent.txt"
+        mock_ingest.return_value = _files_envelope(
+            failed=1,
+            errors=[
+                IngestionError(
+                    code="file_not_found",
+                    message=f"File not found: {missing}",
+                    url=str(missing),
+                )
+            ],
         )
+
+        result = runner.invoke(app, ["--direct", "ingest", "files", str(missing)])
+        # All-failures envelope (items_ingested=0 AND items_failed>0) ⇒ exit 1
         assert result.exit_code == 1
         assert "File not found" in result.output
 
-    @patch("src.cli.adapters.ingest_file_sync")
+    @patch("src.ingestion.orchestrator.ingest_files")
     def test_files_title_warning_multiple(self, mock_ingest, tmp_path):
         f1 = tmp_path / "a.txt"
         f2 = tmp_path / "b.txt"
         f1.write_text("a")
         f2.write_text("b")
 
-        mock_content = MagicMock()
-        mock_content.id = 1
-        mock_content.title = "A"
-        mock_ingest.return_value = mock_content
+        mock_ingest.return_value = _files_envelope(
+            ingested=2,
+            results=[
+                {"path": str(f1), "content_id": 1, "title": "A"},
+                {"path": str(f2), "content_id": 2, "title": "B"},
+            ],
+        )
 
         result = runner.invoke(
             app,
@@ -351,6 +421,9 @@ class TestIngestFiles:
         )
         assert result.exit_code == 0
         assert "Warning" in result.output
+        # CLI should drop --title before calling orchestrator on multi-file batch
+        call_kwargs = mock_ingest.call_args[1]
+        assert call_kwargs["title"] is None
 
     def test_files_help(self):
         result = runner.invoke(app, ["--direct", "ingest", "files", "--help"])
@@ -358,12 +431,39 @@ class TestIngestFiles:
         assert "Ingest one or more local files" in result.output
 
 
+def _url_envelope(*, content_id: int, duplicate: bool):
+    """Build a url IngestionResponse mock matching the post-round-4 shape.
+
+    Duplicates surface as ``items_skipped=1`` (URL row already exists, nothing
+    new landed); fresh URLs surface as ``items_ingested=1`` (queued for
+    extraction). ``details`` carries the legacy flat keys consumers like the
+    MCP wrapper still read.
+    """
+    from src.ingestion.result import IngestionResponse
+
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status="ok",
+        items_ingested=0 if duplicate else 1,
+        items_skipped=1 if duplicate else 0,
+        details={
+            "content_id": content_id,
+            "status": "exists" if duplicate else "queued",
+            "duplicate": duplicate,
+            "url": "https://example.com",
+        },
+    )
+
+
 class TestIngestUrl:
+    """Post-round-4: ingest_url returns IngestionResponse with details carrying
+    the legacy flat keys (content_id/status/duplicate). Mocks updated to match.
+    """
+
     @patch("src.ingestion.orchestrator.ingest_url")
     def test_url_success(self, mock_ingest):
-        from src.ingestion.orchestrator import URLIngestResult
-
-        mock_ingest.return_value = URLIngestResult(content_id=42, status="queued", duplicate=False)
+        mock_ingest.return_value = _url_envelope(content_id=42, duplicate=False)
 
         result = runner.invoke(app, ["--direct", "ingest", "url", "https://example.com/article"])
         assert result.exit_code == 0
@@ -372,9 +472,7 @@ class TestIngestUrl:
 
     @patch("src.ingestion.orchestrator.ingest_url")
     def test_url_duplicate(self, mock_ingest):
-        from src.ingestion.orchestrator import URLIngestResult
-
-        mock_ingest.return_value = URLIngestResult(content_id=99, status="exists", duplicate=True)
+        mock_ingest.return_value = _url_envelope(content_id=99, duplicate=True)
 
         result = runner.invoke(app, ["--direct", "ingest", "url", "https://example.com/article"])
         assert result.exit_code == 0
@@ -383,9 +481,7 @@ class TestIngestUrl:
 
     @patch("src.ingestion.orchestrator.ingest_url")
     def test_url_with_options(self, mock_ingest):
-        from src.ingestion.orchestrator import URLIngestResult
-
-        mock_ingest.return_value = URLIngestResult(content_id=1, status="queued", duplicate=False)
+        mock_ingest.return_value = _url_envelope(content_id=1, duplicate=False)
 
         result = runner.invoke(
             app,
@@ -421,21 +517,18 @@ class TestIngestUrl:
 
     @patch("src.ingestion.orchestrator.ingest_url")
     def test_url_json_mode(self, mock_ingest):
-        from src.ingestion.orchestrator import URLIngestResult
-
-        mock_ingest.return_value = URLIngestResult(content_id=7, status="queued", duplicate=False)
+        mock_ingest.return_value = _url_envelope(content_id=7, duplicate=False)
 
         result = runner.invoke(app, ["--json", "--direct", "ingest", "url", "https://example.com"])
         assert result.exit_code == 0
         assert '"source": "url"' in result.output
+        # content_id / duplicate live in details on the canonical envelope
         assert '"content_id": 7' in result.output
         assert '"duplicate": false' in result.output
 
     @patch("src.ingestion.orchestrator.ingest_url")
     def test_url_json_mode_duplicate(self, mock_ingest):
-        from src.ingestion.orchestrator import URLIngestResult
-
-        mock_ingest.return_value = URLIngestResult(content_id=99, status="exists", duplicate=True)
+        mock_ingest.return_value = _url_envelope(content_id=99, duplicate=True)
 
         result = runner.invoke(app, ["--json", "--direct", "ingest", "url", "https://example.com"])
         assert result.exit_code == 0

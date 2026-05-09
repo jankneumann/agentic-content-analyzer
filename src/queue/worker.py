@@ -543,18 +543,11 @@ def _register_content_handlers() -> None:
                 )
             )
 
-        # Normalize the per-source return shape to a count for the job progress
-        # message. During the partial-migration window we have three return
-        # shapes in flight: int (legacy: gmail, files),
-        # IngestionResponse (migrated: rss, blog, hf_papers, substack, xsearch,
-        # perplexity, youtube*, podcast, scholar*, arxiv*), and URLIngestResult
-        # (url-only).
-        if source == "url":
-            count = 1 if result else 0
-        elif isinstance(result, int):
-            count = result
-        else:
-            count = result.items_ingested
+        # All sources return IngestionResponse post round-4 harmonization
+        # (2026-05-08); take items_ingested for the progress message. URL
+        # duplicates surface as items_skipped=1 so a re-saved URL reports
+        # "Ingested 0 items" — semantically accurate (nothing new landed).
+        count = result.items_ingested
 
         await update_job_progress(job_id, 100, f"Ingested {count} items from {source}")
 

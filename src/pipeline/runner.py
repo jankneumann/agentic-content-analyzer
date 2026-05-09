@@ -40,7 +40,9 @@ async def _run_ingestion(
         ingest_youtube_rss,
     )
 
-    sources: list[tuple[str, Callable[[], int]]] = [
+    # Every entry returns IngestionResponse post round-4 harmonization;
+    # _run_one extracts items_ingested for the per-source aggregation.
+    sources: list[tuple[str, Callable[[], Any]]] = [
         ("gmail", ingest_gmail),
         ("rss", ingest_rss),
         ("youtube-playlist", ingest_youtube_playlist),
@@ -61,9 +63,9 @@ async def _run_ingestion(
     for ws in websearch_sources:
         if ws.provider == "perplexity" and app_settings.perplexity_api_key:
 
-            def _make_perplexity(src: WebSearchSource) -> Callable[[], int]:
-                def _f() -> int:
-                    return ingest_perplexity_search(  # type: ignore[no-any-return]
+            def _make_perplexity(src: WebSearchSource) -> Callable[[], Any]:
+                def _f() -> Any:
+                    return ingest_perplexity_search(
                         prompt=src.prompt,
                         max_results=src.max_results,
                         recency_filter=src.recency_filter,
@@ -75,9 +77,9 @@ async def _run_ingestion(
             sources.append((f"websearch:{ws.name or 'perplexity'}", _make_perplexity(ws)))
         elif ws.provider == "grok" and app_settings.xai_api_key:
 
-            def _make_grok(src: WebSearchSource) -> Callable[[], int]:
-                def _f() -> int:
-                    return ingest_xsearch(prompt=src.prompt, max_threads=src.max_threads)  # type: ignore[no-any-return]
+            def _make_grok(src: WebSearchSource) -> Callable[[], Any]:
+                def _f() -> Any:
+                    return ingest_xsearch(prompt=src.prompt, max_threads=src.max_threads)
 
                 return _f
 
@@ -110,16 +112,15 @@ async def _run_ingestion(
         on_progress({"stage": "ingestion", "message": f"Ingesting from {len(sources)} sources"})
 
     async def _run_one(name: str, func: Callable[[], Any]) -> tuple[str, int | None, str | None]:
-        """Run one ingestion source, normalizing int / IngestionResponse returns.
+        """Run one ingestion source, taking ``items_ingested`` from the envelope.
 
-        During the partial-migration window, orchestrator functions return
-        either ``int`` (legacy) or ``IngestionResponse`` (migrated). Both
-        normalize to the per-source count for the pipeline's aggregation.
+        Post round-4 harmonization every orchestrator entry point returns the
+        canonical ``IngestionResponse`` envelope — the pipeline aggregates the
+        per-source count from ``items_ingested``.
         """
         try:
             result = await asyncio.to_thread(func)
-            count = result if isinstance(result, int) else result.items_ingested
-            return (name, count, None)
+            return (name, result.items_ingested, None)
         except Exception as e:
             logger.error(f"Ingestion failed for {name}: {e}")
             return (name, None, str(e))
