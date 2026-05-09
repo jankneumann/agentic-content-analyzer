@@ -142,6 +142,7 @@ def test_engine():
     )
     from src.models.podcast import Podcast, PodcastScriptRecord  # noqa: F401
     from src.models.settings import PromptOverride  # noqa: F401
+    from src.models.settings_override import SettingsOverride  # noqa: F401
     from src.models.summary import Summary  # noqa: F401
     from src.models.theme import ThemeAnalysis  # noqa: F401
     from src.models.topic import KBIndex, Topic, TopicNote  # noqa: F401
