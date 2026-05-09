@@ -346,5 +346,13 @@ def contract_schema(seeded_db):
         patch("src.services.script_review_service.get_db", mock_get_db),
         patch("src.processors.theme_analyzer.get_db", mock_get_db),
     ):
-        schema = schemathesis.openapi.from_asgi("/openapi.json", app)
+        # AuthMiddleware gates /openapi.json behind owner-auth — supply the
+        # admin-key header on schema fetch so Schemathesis can load the spec.
+        # Per-request auth is also injected by tests/contract/test_*.py via
+        # `case.headers["X-Admin-Key"] = "test-admin-key"`.
+        schema = schemathesis.openapi.from_asgi(
+            "/openapi.json",
+            app,
+            headers={"X-Admin-Key": "test-admin-key"},
+        )
         yield schema
