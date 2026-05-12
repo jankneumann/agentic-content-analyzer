@@ -213,14 +213,14 @@ jobs:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           RAILWAY_DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           DATABASE_PROVIDER: railway
-          PROFILE: railway
+          PROFILE: railway-falkordb
           ANTHROPIC_API_KEY: test-key-for-ci
           APP_SECRET_KEY: test-secret-key-for-ci
           ADMIN_API_KEY: test-admin-key
           ENVIRONMENT: production
           WORKER_ENABLED: "false"
         run: |
-          echo "Starting app with PROFILE=railway..."
+          echo "Starting app with PROFILE=railway-falkordb..."
           timeout 10 python -c "
           import uvicorn, threading, time, httpx
 
@@ -234,7 +234,7 @@ jobs:
           resp = httpx.get('http://127.0.0.1:8000/health')
           assert resp.status_code == 200, f'Health check failed: {resp.status_code}'
           print('✓ App booted and health check passed')
-          " || { echo "::error::App failed to boot with railway profile"; exit 1; }
+          " || { echo "::error::App failed to boot with railway-falkordb profile"; exit 1; }
 
   validate-profiles:
     runs-on: ubuntu-latest

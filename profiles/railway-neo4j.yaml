@@ -1,0 +1,27 @@
+# Railway Deployment Profile — Neo4j AuraDB variant
+# ==================================================
+# Layers the Neo4j AuraDB graph backend onto the shared `railway` profile.
+# Sibling to `railway-falkordb.yaml`; neither is the implicit default —
+# callers pick explicitly via `PROFILE=railway-neo4j` or
+# `PROFILE=railway-falkordb`.
+#
+# Required secrets in .secrets.yaml or environment:
+#   - NEO4J_AURADB_URI       (e.g. neo4j+s://xxxxxxxx.databases.neo4j.io)
+#   - NEO4J_AURADB_PASSWORD
+#
+# Usage:
+#   Set PROFILE=railway-neo4j in Railway service variables.
+
+name: railway-neo4j
+extends: railway
+description: Railway.app deployment with Neo4j AuraDB graph backend
+
+providers:
+  graphdb: neo4j
+  neo4j: auradb
+
+settings:
+  neo4j:
+    neo4j_auradb_uri: "${NEO4J_AURADB_URI:-}"
+    neo4j_auradb_user: neo4j
+    neo4j_auradb_password: "${NEO4J_AURADB_PASSWORD:-}"

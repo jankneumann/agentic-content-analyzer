@@ -41,6 +41,8 @@ class TestProfileLoadingDefaults:
             "base",
             "local",
             "railway",
+            "railway-falkordb",
+            "railway-neo4j",
             "railway-neon",
             "railway-neon-staging",
             "staging",
@@ -87,7 +89,7 @@ class TestCloudConfig:
 
     @pytest.mark.parametrize(
         "profile_name",
-        ["railway", "railway-neon", "supabase-cloud"],
+        ["railway", "railway-falkordb", "railway-neo4j", "railway-neon", "supabase-cloud"],
     )
     def test_cloud_profile_has_langfuse_keys(self, profiles_dir: Path, profile_name: str) -> None:
         """Cloud profiles should reference LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY."""
@@ -104,10 +106,11 @@ class TestCloudConfig:
             f"{profile_name}: langfuse_secret_key should reference ${{LANGFUSE_SECRET_KEY}}"
         )
 
-    def test_railway_otel_enabled(self, profiles_dir: Path) -> None:
-        """railway.yaml should have OTel enabled."""
+    @pytest.mark.parametrize("profile_name", ["railway-falkordb", "railway-neo4j"])
+    def test_railway_variants_otel_enabled(self, profiles_dir: Path, profile_name: str) -> None:
+        """Both Railway deployment variants should have OTel enabled."""
         profile = load_profile(
-            "railway",
+            profile_name,
             profiles_dir=profiles_dir,
             skip_interpolation=True,
         )
