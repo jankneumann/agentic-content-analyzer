@@ -47,6 +47,19 @@ test:  ## Run tests
 test-cov:  ## Run tests with coverage report
 	pytest --cov=src --cov-report=term-missing --cov-report=html
 
+test-cold:  ## Drop test DB + run pytest in CI-like cold-start state. Override test selection with ARGS=...
+	@DB=$$(.venv/bin/python -c "from urllib.parse import urlparse; from tests.helpers.test_db import get_test_database_url; print(urlparse(get_test_database_url()).path.lstrip('/'))" 2>/dev/null); \
+		if [ -z "$$DB" ]; then echo "✗ Could not resolve test DB name — is .venv set up?"; exit 1; fi; \
+		echo "→ Dropping test DB: $$DB"; \
+		PGPASSWORD=newsletter_password psql -h localhost -U newsletter_user -d postgres \
+			-c "DROP DATABASE IF EXISTS $$DB;" 2>&1 | grep -vE "NOTICE|^$$" || true
+	@echo "→ Running pytest in cold state (no coverage, no warm-state fixtures)..."
+	@if [ -n "$(ARGS)" ]; then \
+		.venv/bin/pytest --no-cov -m "not hoverfly and not contract" $(ARGS); \
+	else \
+		.venv/bin/pytest tests/ --no-cov -m "not hoverfly and not contract"; \
+	fi
+
 test-opik:  ## Run Opik integration tests (requires: make opik-up)
 	@if ! curl -sf http://localhost:8080/health-check >/dev/null 2>&1; then \
 		echo "✗ Opik is not running! Start with: make opik-up"; \

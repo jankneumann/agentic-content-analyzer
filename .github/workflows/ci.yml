@@ -63,6 +63,10 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [api, cli-stack, services-stack, rest]
     services:
       postgres:
         image: paradedb/paradedb:0.22.2-pg17
@@ -95,19 +99,44 @@ jobs:
         run: |
           uv pip install --system -e ".[dev]"
 
-      - name: Run tests with coverage
+      - name: Run tests (shard ${{ matrix.shard }})
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           ANTHROPIC_API_KEY: test-key-for-ci
           ENVIRONMENT: test
+        # Coverage intentionally omitted: no external consumer (no codecov,
+        # SonarCloud retired). Run `make test-cov` locally when you want it.
+        # Shard layout: roughly balanced by test-file count. The `rest` shard
+        # uses --ignore for the other shards' paths so new test directories
+        # automatically route there without a workflow update.
         run: |
-          pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=25 -x -m "not hoverfly and not contract"
-
-      - name: Coverage summary
-        if: always()
-        run: |
-          echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
-          pytest tests/ --cov=src --cov-report=term -m "not hoverfly and not contract" -q --no-header 2>&1 | tail -20 >> $GITHUB_STEP_SUMMARY || true
+          case "${{ matrix.shard }}" in
+            api)
+              PATHS="tests/api"
+              ;;
+            cli-stack)
+              PATHS="tests/cli tests/agents tests/mcp tests/integration"
+              ;;
+            services-stack)
+              PATHS="tests/test_services tests/services tests/test_ingestion tests/test_processors tests/ingestion"
+              ;;
+            rest)
+              PATHS="tests/ \
+                --ignore=tests/api \
+                --ignore=tests/cli \
+                --ignore=tests/agents \
+                --ignore=tests/mcp \
+                --ignore=tests/integration \
+                --ignore=tests/test_services \
+                --ignore=tests/services \
+                --ignore=tests/test_ingestion \
+                --ignore=tests/test_processors \
+                --ignore=tests/ingestion \
+                --ignore=tests/contract \
+                --ignore=tests/e2e"
+              ;;
+          esac
+          pytest $PATHS -v --no-cov -x -m "not hoverfly and not contract"
 
   contract-test:
     runs-on: ubuntu-latest
