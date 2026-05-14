@@ -268,20 +268,34 @@ jobs:
           FALKORDB_PASSWORD: unused-cold-start-stub
         run: |
           echo "Starting app with PROFILE=railway-falkordb..."
-          timeout 10 python -c "
-          import uvicorn, threading, time, httpx
-
-          def start():
-              uvicorn.run('src.api.app:app', host='127.0.0.1', port=8000, log_level='error')
-
-          t = threading.Thread(target=start, daemon=True)
-          t.start()
-          time.sleep(3)
-
-          resp = httpx.get('http://127.0.0.1:8000/health')
-          assert resp.status_code == 200, f'Health check failed: {resp.status_code}'
-          print('✓ App booted and health check passed')
-          " || { echo "::error::App failed to boot with railway-falkordb profile"; exit 1; }
+          # Run uvicorn as a subprocess so we can capture its stderr if it
+          # crashes during startup. The previous threading.Thread(daemon=True)
+          # setup swallowed startup errors because the main thread proceeded
+          # to sleep+health-check while the daemon thread died silently.
+          uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --log-level info > uvicorn.log 2>&1 &
+          UVICORN_PID=$!
+          # Poll for readiness instead of fixed sleep — exits early on success
+          # and gives accurate timing in logs.
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "✓ App booted and health check passed (took ${i}s)"
+              kill $UVICORN_PID 2>/dev/null || true
+              exit 0
+            fi
+            # If uvicorn died, report it now rather than waiting for the timeout
+            if ! kill -0 $UVICORN_PID 2>/dev/null; then
+              echo "::error::uvicorn process exited during startup"
+              echo "--- uvicorn.log ---"
+              cat uvicorn.log
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "::error::App failed to respond to /health within 20s"
+          echo "--- uvicorn.log ---"
+          cat uvicorn.log
+          kill $UVICORN_PID 2>/dev/null || true
+          exit 1
 
   validate-profiles:
     runs-on: ubuntu-latest

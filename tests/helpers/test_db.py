@@ -200,5 +200,30 @@ def reset_test_schema(engine: Engine) -> None:
     # render_as_string(hide_password=False) — plain str(engine.url) redacts the
     # password to "***" (a SQLAlchemy safety feature for log output) which would
     # silently break the alembic connection with an "auth failed" error.
-    alembic_cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
+    target_url = engine.url.render_as_string(hide_password=False)
+    alembic_cfg.set_main_option("sqlalchemy.url", target_url)
+    # Print to stderr (bypasses pytest stdout capture) so CI logs always show
+    # where we're migrating — silent fixture setup is impossible to debug.
+    import sys
+
+    print(f"[reset_test_schema] migrating {db_name} via alembic", file=sys.stderr)
     command.upgrade(alembic_cfg, "head")
+
+    # Sanity check: at least one table from the latest migrations must exist.
+    # If migrations silently ran against the wrong DB or got stuck on an early
+    # revision, this catches it immediately instead of letting downstream tests
+    # fail with cryptic "relation X does not exist" errors.
+    with engine.connect() as conn:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+            ).fetchall()
+        }
+    required = {"topics", "digests", "contents"}
+    missing = required - tables
+    if missing:
+        raise RuntimeError(
+            f"reset_test_schema: alembic upgrade head left {missing} missing "
+            f"in {db_name}. Found {len(tables)} tables: {sorted(tables)}"
+        )
