@@ -18,6 +18,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.api.dependencies import verify_admin_key
 from src.api.evaluation_routes import router
 
 # Patch at source since routes use lazy imports
@@ -33,12 +34,19 @@ def _mock_db():
 
 @pytest.fixture
 def client():
-    """Create a lightweight test client with just the evaluation router."""
+    """Create a lightweight test client with just the evaluation router.
+
+    Overrides verify_admin_key — clearing router.dependencies only covers
+    router-level deps; route handlers still resolve any endpoint-level
+    Depends(verify_admin_key), which transitively triggers get_settings →
+    _get_voice_db_override → settings_overrides table query against the
+    real DB. In CI that DB doesn't have the table, producing a 500.
+    """
     test_app = FastAPI()
-    # Mount router without auth dependency for tests
     clean_router = router
     clean_router.dependencies = []
     test_app.include_router(clean_router)
+    test_app.dependency_overrides[verify_admin_key] = lambda: "test-admin-key"
     with patch(_GET_DB_PATH, _mock_db):
         yield TestClient(test_app)
 

@@ -99,6 +99,17 @@ jobs:
         run: |
           uv pip install --system -e ".[dev]"
 
+      - name: Run database migrations
+        # API tests use TestClient which hits the app's actual DATABASE_URL
+        # (newsletters), separate from the worktree-aware fixture DB
+        # (newsletters_test). Without this step, route handlers query an
+        # empty DB and tests fail with "relation X does not exist".
+        env:
+          DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
+          APP_SECRET_KEY: test-secret-key-for-ci
+        run: |
+          alembic upgrade head
+
       - name: Run tests (shard ${{ matrix.shard }})
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
@@ -248,6 +259,13 @@ jobs:
           ADMIN_API_KEY: test-admin-key
           ENVIRONMENT: production
           WORKER_ENABLED: "false"
+          # Settings validator requires non-empty FALKORDB_HOST when
+          # graphdb_mode=cloud (the railway profile default). Cold-start only
+          # hits /health which doesn't touch the graph DB, so localhost is a
+          # safe stand-in — the connection is never opened. Production Railway
+          # injects the real internal hostname here.
+          FALKORDB_HOST: localhost
+          FALKORDB_PASSWORD: unused-cold-start-stub
         run: |
           echo "Starting app with PROFILE=railway-falkordb..."
           timeout 10 python -c "
