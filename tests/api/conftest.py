@@ -177,7 +177,12 @@ class AuthenticatedTestClient:
         return self._client.patch(*args, **kwargs)
 
     def stream(self, *args, **kwargs):
-        """Pass through to underlying client's stream method."""
+        """Pass through to underlying client's stream method.
+
+        Adds X-Admin-Key like the other methods — SSE chat endpoints require
+        auth too. Without this, every test that streams responses got a 401.
+        """
+        kwargs = self._add_auth_headers(kwargs)
         return self._client.stream(*args, **kwargs)
 
     def __getattr__(self, name):
