@@ -162,3 +162,43 @@ def create_test_engine(url: str | None = None) -> Engine:
     ensure_test_db_exists(db_name, url)
 
     return engine
+
+
+def reset_test_schema(engine: Engine) -> None:
+    """Drop and recreate the public schema, then run alembic to head.
+
+    Replaces the legacy ``Base.metadata.drop_all`` + ``create_all`` pattern.
+    Building the schema via alembic ensures tests see the same DDL that
+    production migrations produce — no more "missing table because someone
+    forgot a model import in conftest" failures.
+
+    Safety: relies on the same ``"test" in db_name`` invariant enforced by
+    ``create_test_engine``; refuses to operate on non-test databases.
+    """
+    db_name = engine.url.database
+    if not db_name or "test" not in db_name.lower():
+        raise ValueError(f"reset_test_schema refuses non-test database '{db_name}'.")
+
+    # Drop and recreate the public schema for a clean slate. CASCADE catches
+    # any orphan objects (sequences, types, enums) that interrupted runs left
+    # behind. Outside a transaction so the DDL takes effect immediately.
+    with engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.commit()
+
+    # Run alembic upgrade head pointed at the test DB. env.py respects a
+    # pre-set sqlalchemy.url (see alembic/env.py) so this doesn't disturb
+    # the developer's real DATABASE_URL or settings cache.
+    from alembic.config import Config
+
+    from alembic import command
+
+    repo_root = Path(__file__).resolve().parents[2]
+    alembic_cfg = Config(str(repo_root / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(repo_root / "alembic"))
+    # render_as_string(hide_password=False) — plain str(engine.url) redacts the
+    # password to "***" (a SQLAlchemy safety feature for log output) which would
+    # silently break the alembic connection with an "auth failed" error.
+    alembic_cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
+    command.upgrade(alembic_cfg, "head")

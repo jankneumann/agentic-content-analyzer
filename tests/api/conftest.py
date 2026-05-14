@@ -28,13 +28,19 @@ if "sqlite" in os.environ.get("TEST_DATABASE_URL", ""):
 os.environ.setdefault("WORKER_ENABLED", "false")
 
 from src.api.app import app
-from src.models.audio_digest import AudioDigest  # noqa: F401 - registers with Base.metadata
+
+# Model imports register tables with Base.metadata so create_all() builds them.
+# When a model is missing here, the matching table silently doesn't exist in
+# the test DB and queries blow up with "relation X does not exist" — the
+# kind of failure that is invisible until tests reach the affected route.
+# Keep this list in sync with src/models/ (or add the model to the alembic
+# migration chain and switch this fixture to alembic-based schema build).
+from src.models.audio_digest import AudioDigest  # noqa: F401
 from src.models.base import Base
-from src.models.content import ContentStatus
-from src.models.content_reference import (
-    ContentReference,  # noqa: F401 - registers with Base.metadata
-)
-from src.models.notification import (  # noqa: F401 - registers with Base.metadata
+from src.models.content import Content, ContentStatus  # noqa: F401
+from src.models.content_reference import ContentReference  # noqa: F401
+from src.models.digest import Digest  # noqa: F401
+from src.models.notification import (  # noqa: F401
     DeviceRegistration,
     NotificationEvent,
 )
@@ -43,16 +49,11 @@ from src.models.podcast import (
     PodcastScriptRecord,
     PodcastStatus,
 )
-from src.models.settings import PromptOverride  # noqa: F401 - registers with Base.metadata
-from src.models.settings_override import (
-    SettingsOverride,  # noqa: F401 - registers with Base.metadata
-)
-from src.models.theme import ThemeAnalysis  # noqa: F401 - registers with Base.metadata
-from src.models.topic import (  # noqa: F401 - registers with Base.metadata
-    KBIndex,
-    Topic,
-    TopicNote,
-)
+from src.models.settings import PromptOverride  # noqa: F401
+from src.models.settings_override import SettingsOverride  # noqa: F401
+from src.models.summary import Summary  # noqa: F401
+from src.models.theme import ThemeAnalysis  # noqa: F401
+from src.models.topic import KBIndex, Topic, TopicNote  # noqa: F401
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
@@ -88,18 +89,21 @@ def test_db_engine():
 
     Uses shared helper for worktree-aware DB naming and auto-creation.
     Drops and recreates all tables at session start for clean state.
+
+    NOTE: This uses ``Base.metadata.create_all()`` rather than alembic
+    migrations because some migrations create pg_search BM25 indexes whose
+    syntax is sensitive to the pg_search extension version (CI runs a
+    newer paradedb than the one the index migration was written against).
+    Schema completeness depends on the model-import block above — adding
+    a new model means adding its import there.
     """
     engine = create_test_engine(TEST_DATABASE_URL)
 
-    # Drop all tables first for clean state (handles interrupted previous runs)
     Base.metadata.drop_all(engine)
-
-    # Create all tables fresh
     Base.metadata.create_all(engine)
 
     yield engine
 
-    # Cleanup: Drop all tables after all tests complete
     Base.metadata.drop_all(engine)
     engine.dispose()
 

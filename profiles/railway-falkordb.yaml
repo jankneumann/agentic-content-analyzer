@@ -28,7 +28,7 @@ providers:
 
 settings:
   graphdb:
-    falkordb_cloud_host: ${FALKORDB_HOST}
+    falkordb_cloud_host: ${FALKORDB_HOST:-}
     falkordb_cloud_port: ${FALKORDB_PORT:-6379}
     falkordb_cloud_password: ${FALKORDB_PASSWORD:-}
     falkordb_database: ${FALKORDB_DATABASE:-newsletter_graph}
