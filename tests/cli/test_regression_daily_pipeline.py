@@ -19,7 +19,7 @@ Markers:
 from __future__ import annotations
 
 from contextlib import ExitStack
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -52,11 +52,11 @@ def _mock_ingestion_patches() -> ExitStack:
 
 
 def _mock_summarizer():
-    """Create a mock ContentSummarizer that returns 8 summarized items."""
-    mock = patch("src.processors.summarizer.ContentSummarizer")
-    mock_summarizer = mock.start()
-    mock_summarizer.return_value.summarize_pending_contents.return_value = 8
-    return mock, mock_summarizer
+    """Pre-configured ContentSummarizer patcher (unstarted; caller enters via `with`)."""
+    summarizer_class_mock = MagicMock()
+    summarizer_class_mock.return_value.summarize_pending_contents.return_value = 8
+    patcher = patch("src.processors.summarizer.ContentSummarizer", new=summarizer_class_mock)
+    return patcher, summarizer_class_mock
 
 
 def _mock_digest_creation():

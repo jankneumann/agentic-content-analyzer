@@ -8,6 +8,7 @@ Validates that:
 """
 
 import logging
+from contextlib import contextmanager
 
 from src.config.settings import Settings
 
@@ -25,30 +26,62 @@ def _make_settings(**overrides) -> Settings:
     return Settings(_env_file=None, **defaults)
 
 
+@contextmanager
+def _capture_settings_warnings():
+    """Capture WARNING+ logs from `src.config.settings` directly.
+
+    Uses a handler attached straight to the named logger instead of pytest's
+    `caplog`. This is robust against test-ordering pollution in the CI rest
+    shard — e.g., `opentelemetry-instrumentation-logging` rewriting the
+    LogRecord factory before pytest's caplog handler is installed, which
+    silently drops records from named loggers.
+    """
+    logger = logging.getLogger("src.config.settings")
+    records: list[logging.LogRecord] = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _ListHandler(level=logging.WARNING)
+    previous_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+
+
+def _messages(records: list[logging.LogRecord]) -> list[str]:
+    return [r.getMessage() for r in records]
+
+
 class TestProductionSecurityWarnings:
     """Test that production mode logs appropriate security warnings."""
 
-    def test_production_missing_admin_key_logs_warning(self, caplog):
+    def test_production_missing_admin_key_logs_warning(self):
         """Production with no ADMIN_API_KEY should log a warning."""
-        with caplog.at_level(logging.WARNING, logger="src.config.settings"):
+        with _capture_settings_warnings() as records:
             _make_settings(environment="production", admin_api_key=None)
 
-        assert any("ADMIN_API_KEY is not set" in msg for msg in caplog.messages)
+        assert any("ADMIN_API_KEY is not set" in msg for msg in _messages(records))
 
-    def test_production_with_admin_key_no_warning(self, caplog):
+    def test_production_with_admin_key_no_warning(self):
         """Production with ADMIN_API_KEY set should NOT log admin key warning."""
-        with caplog.at_level(logging.WARNING, logger="src.config.settings"):
+        with _capture_settings_warnings() as records:
             _make_settings(
                 environment="production",
                 admin_api_key="my-secret-key",
                 allowed_origins="https://myapp.com",
             )
 
-        assert not any("ADMIN_API_KEY is not set" in msg for msg in caplog.messages)
+        assert not any("ADMIN_API_KEY is not set" in msg for msg in _messages(records))
 
-    def test_production_dev_default_cors_logs_warning(self, caplog):
+    def test_production_dev_default_cors_logs_warning(self):
         """Production with dev-default CORS origins should log a warning."""
-        with caplog.at_level(logging.WARNING, logger="src.config.settings"):
+        with _capture_settings_warnings() as records:
             _make_settings(
                 environment="production",
                 admin_api_key="my-key",
@@ -56,12 +89,12 @@ class TestProductionSecurityWarnings:
             )
 
         assert any(
-            "ALLOWED_ORIGINS is using development defaults" in msg for msg in caplog.messages
+            "ALLOWED_ORIGINS is using development defaults" in msg for msg in _messages(records)
         )
 
-    def test_production_explicit_origins_no_cors_warning(self, caplog):
+    def test_production_explicit_origins_no_cors_warning(self):
         """Production with explicit origins should NOT log CORS warning."""
-        with caplog.at_level(logging.WARNING, logger="src.config.settings"):
+        with _capture_settings_warnings() as records:
             _make_settings(
                 environment="production",
                 admin_api_key="my-key",
@@ -69,17 +102,17 @@ class TestProductionSecurityWarnings:
             )
 
         assert not any(
-            "ALLOWED_ORIGINS is using development defaults" in msg for msg in caplog.messages
+            "ALLOWED_ORIGINS is using development defaults" in msg for msg in _messages(records)
         )
 
-    def test_development_no_warnings(self, caplog):
+    def test_development_no_warnings(self):
         """Development mode should NOT log production security warnings."""
-        with caplog.at_level(logging.WARNING, logger="src.config.settings"):
+        with _capture_settings_warnings() as records:
             _make_settings(environment="development", admin_api_key=None)
 
-        assert not any("ADMIN_API_KEY is not set" in msg for msg in caplog.messages)
+        assert not any("ADMIN_API_KEY is not set" in msg for msg in _messages(records))
         assert not any(
-            "ALLOWED_ORIGINS is using development defaults" in msg for msg in caplog.messages
+            "ALLOWED_ORIGINS is using development defaults" in msg for msg in _messages(records)
         )
 
 
