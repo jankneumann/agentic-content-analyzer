@@ -193,6 +193,10 @@ async def test_create_digest_success(sample_themes, sample_contents, mock_llm_re
         end_date=request.period_end,
         newsletter_count=2,
         newsletter_ids=[1, 2],
+        # content_count drives the "no content found" early-return in
+        # DigestCreator; without it, the field defaults to 0 and the
+        # digest title falls back to "Daily Digest - No Content".
+        content_count=2,
         themes=sample_themes,
         total_themes=2,
         emerging_themes_count=1,
