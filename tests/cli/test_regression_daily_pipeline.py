@@ -37,12 +37,20 @@ pytestmark = pytest.mark.regression
 
 
 def _mock_ingestion_patches() -> ExitStack:
-    """Set up all ingestion source mocks returning realistic item counts."""
+    """Set up all ingestion source mocks returning realistic item counts.
+
+    Must cover every orchestrator function the daily pipeline invokes (see
+    `src/cli/pipeline_commands.py::_run_ingestion_stage_async`). Missing a
+    mock causes the pipeline to call the real implementation, which can
+    blow out test runtime (YouTube hits real APIs and times out at ~15min).
+    """
     stack = ExitStack()
     sources = {
         "src.ingestion.orchestrator.ingest_gmail": 3,
         "src.ingestion.orchestrator.ingest_rss": 5,
-        "src.ingestion.orchestrator.ingest_youtube": 2,
+        "src.ingestion.orchestrator.ingest_blog": 0,
+        "src.ingestion.orchestrator.ingest_youtube_playlist": 1,
+        "src.ingestion.orchestrator.ingest_youtube_rss": 1,
         "src.ingestion.orchestrator.ingest_podcast": 1,
         "src.ingestion.orchestrator.ingest_substack": 0,
     }
@@ -106,8 +114,9 @@ class TestDailyPipelineCommand:
                 result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
-        # Should show source count summary
-        assert "5/5 complete" in result.output
+        # Should show source count summary (7 sources: gmail, rss, blog,
+        # youtube-playlist, youtube-rss, podcast, substack)
+        assert "7/7 complete" in result.output
 
 
 # =============================================================================

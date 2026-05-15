@@ -158,6 +158,10 @@ async def test_enrich_themes_with_history_success(
         mock_anthropic_class.return_value = mock_client
 
         with patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class:
+            # GraphitiClient.create is an async classmethod; call it via the
+            # mocked class returns the awaitable. Plain return_value gives a
+            # MagicMock that can't be awaited.
+            mock_graphiti_class.create = AsyncMock(return_value=mock_graphiti)
             mock_graphiti_class.return_value = mock_graphiti
 
             analyzer = HistoricalContextAnalyzer()

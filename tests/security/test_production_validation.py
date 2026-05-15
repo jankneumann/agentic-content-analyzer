@@ -7,8 +7,7 @@ Validates that:
 - Explicit ALLOWED_ORIGINS in production returns configured list
 """
 
-import logging
-from contextlib import contextmanager
+from unittest.mock import patch
 
 from src.config.settings import Settings
 
@@ -26,62 +25,43 @@ def _make_settings(**overrides) -> Settings:
     return Settings(_env_file=None, **defaults)
 
 
-@contextmanager
-def _capture_settings_warnings():
-    """Capture WARNING+ logs from `src.config.settings` directly.
-
-    Uses a handler attached straight to the named logger instead of pytest's
-    `caplog`. This is robust against test-ordering pollution in the CI rest
-    shard — e.g., `opentelemetry-instrumentation-logging` rewriting the
-    LogRecord factory before pytest's caplog handler is installed, which
-    silently drops records from named loggers.
-    """
-    logger = logging.getLogger("src.config.settings")
-    records: list[logging.LogRecord] = []
-
-    class _ListHandler(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            records.append(record)
-
-    handler = _ListHandler(level=logging.WARNING)
-    previous_level = logger.level
-    logger.addHandler(handler)
-    logger.setLevel(logging.WARNING)
-    try:
-        yield records
-    finally:
-        logger.removeHandler(handler)
-        logger.setLevel(previous_level)
-
-
-def _messages(records: list[logging.LogRecord]) -> list[str]:
-    return [r.getMessage() for r in records]
+def _warning_messages(mock_logger) -> list[str]:
+    """Concatenate all positional args from logger.warning(...) calls into strings."""
+    return [" ".join(str(a) for a in call.args) for call in mock_logger.warning.call_args_list]
 
 
 class TestProductionSecurityWarnings:
-    """Test that production mode logs appropriate security warnings."""
+    """Test that production mode logs appropriate security warnings.
+
+    Each test patches `src.config.settings.logger` directly rather than using
+    pytest's `caplog` fixture. The caplog approach silently dropped records
+    in the CI rest shard (likely opentelemetry-instrumentation-logging
+    rewriting the LogRecord factory after caplog's handler attaches). By
+    replacing the logger object, we capture the validator's intent regardless
+    of handler-chain plumbing or factory rewrites.
+    """
 
     def test_production_missing_admin_key_logs_warning(self):
         """Production with no ADMIN_API_KEY should log a warning."""
-        with _capture_settings_warnings() as records:
+        with patch("src.config.settings.logger") as mock_logger:
             _make_settings(environment="production", admin_api_key=None)
 
-        assert any("ADMIN_API_KEY is not set" in msg for msg in _messages(records))
+        assert any("ADMIN_API_KEY is not set" in m for m in _warning_messages(mock_logger))
 
     def test_production_with_admin_key_no_warning(self):
         """Production with ADMIN_API_KEY set should NOT log admin key warning."""
-        with _capture_settings_warnings() as records:
+        with patch("src.config.settings.logger") as mock_logger:
             _make_settings(
                 environment="production",
                 admin_api_key="my-secret-key",
                 allowed_origins="https://myapp.com",
             )
 
-        assert not any("ADMIN_API_KEY is not set" in msg for msg in _messages(records))
+        assert not any("ADMIN_API_KEY is not set" in m for m in _warning_messages(mock_logger))
 
     def test_production_dev_default_cors_logs_warning(self):
         """Production with dev-default CORS origins should log a warning."""
-        with _capture_settings_warnings() as records:
+        with patch("src.config.settings.logger") as mock_logger:
             _make_settings(
                 environment="production",
                 admin_api_key="my-key",
@@ -89,12 +69,13 @@ class TestProductionSecurityWarnings:
             )
 
         assert any(
-            "ALLOWED_ORIGINS is using development defaults" in msg for msg in _messages(records)
+            "ALLOWED_ORIGINS is using development defaults" in m
+            for m in _warning_messages(mock_logger)
         )
 
     def test_production_explicit_origins_no_cors_warning(self):
         """Production with explicit origins should NOT log CORS warning."""
-        with _capture_settings_warnings() as records:
+        with patch("src.config.settings.logger") as mock_logger:
             _make_settings(
                 environment="production",
                 admin_api_key="my-key",
@@ -102,18 +83,18 @@ class TestProductionSecurityWarnings:
             )
 
         assert not any(
-            "ALLOWED_ORIGINS is using development defaults" in msg for msg in _messages(records)
+            "ALLOWED_ORIGINS is using development defaults" in m
+            for m in _warning_messages(mock_logger)
         )
 
     def test_development_no_warnings(self):
         """Development mode should NOT log production security warnings."""
-        with _capture_settings_warnings() as records:
+        with patch("src.config.settings.logger") as mock_logger:
             _make_settings(environment="development", admin_api_key=None)
 
-        assert not any("ADMIN_API_KEY is not set" in msg for msg in _messages(records))
-        assert not any(
-            "ALLOWED_ORIGINS is using development defaults" in msg for msg in _messages(records)
-        )
+        messages = _warning_messages(mock_logger)
+        assert not any("ADMIN_API_KEY is not set" in m for m in messages)
+        assert not any("ALLOWED_ORIGINS is using development defaults" in m for m in messages)
 
 
 class TestCORSDefaults:
