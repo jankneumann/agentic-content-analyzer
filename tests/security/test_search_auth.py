@@ -9,19 +9,29 @@ from src.models.search import SearchMeta, SearchResponse
 client = TestClient(app)
 
 
-@patch("src.api.dependencies.get_settings")
-def test_search_routes_protected_in_production(mock_get_settings):
+def _make_production_settings_mock() -> MagicMock:
+    """Build a Settings mock with everything both auth layers need.
+
+    AuthMiddleware reads `app_secret_key` and `admin_api_key`;
+    `verify_admin_key` (dependencies.py) also reads `app_secret_key`.
     """
-    Verify that search routes are PROTECTED in production.
-    """
-    # Create a Settings object that looks like production
     settings = MagicMock(spec=Settings)
     settings.is_development = False
     settings.is_production = True
     settings.admin_api_key = "secret-key"
     settings.app_secret_key = "app-secret-key"
+    return settings
 
-    mock_get_settings.return_value = settings
+
+@patch("src.api.middleware.auth.get_settings")
+@patch("src.api.dependencies.get_settings")
+def test_search_routes_protected_in_production(mock_deps_settings, mock_middleware_settings):
+    """
+    Verify that search routes are PROTECTED in production.
+    """
+    settings = _make_production_settings_mock()
+    mock_deps_settings.return_value = settings
+    mock_middleware_settings.return_value = settings
 
     # Access without header
     # This should return 401/403 if protected
@@ -31,18 +41,15 @@ def test_search_routes_protected_in_production(mock_get_settings):
     )
 
 
+@patch("src.api.middleware.auth.get_settings")
 @patch("src.api.dependencies.get_settings")
-def test_search_routes_accessible_with_key(mock_get_settings):
+def test_search_routes_accessible_with_key(mock_deps_settings, mock_middleware_settings):
     """
     Verify that search routes are accessible with valid key.
     """
-    settings = MagicMock(spec=Settings)
-    settings.is_development = False
-    settings.is_production = True
-    settings.admin_api_key = "secret-key"
-    settings.app_secret_key = "app-secret-key"
-
-    mock_get_settings.return_value = settings
+    settings = _make_production_settings_mock()
+    mock_deps_settings.return_value = settings
+    mock_middleware_settings.return_value = settings
 
     # We need to mock get_db and HybridSearchService too, otherwise it will try to access DB
     with (

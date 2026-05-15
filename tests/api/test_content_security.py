@@ -47,7 +47,11 @@ def test_content_routes_require_auth(raw_client, monkeypatch):
     # 1. Test missing header (401)
     response = raw_client.get("/api/v1/contents")
     assert response.status_code == 401
-    assert "Missing authentication header" in response.json()["detail"]
+    # AuthMiddleware returns "Please log in or provide X-Admin-Key header."
+    # (src/api/middleware/auth.py:144). Older text was "Missing authentication
+    # header". Assert on the stable substring instead of the exact message.
+    detail = response.json()["detail"]
+    assert "X-Admin-Key" in detail or "authentication" in detail.lower()
 
     # 2. Test invalid key (403)
     response = raw_client.get("/api/v1/contents", headers={"X-Admin-Key": "wrong-key"})

@@ -467,7 +467,7 @@ class TestToolHandlers:
             result = await generator._handle_web_search("latest AI news 2025")
 
         assert "latest AI news 2025" in generator.web_search_queries
-        mock_tavily.search.assert_called_once_with("latest AI news 2025")
+        mock_tavily.search.assert_called_once_with("latest AI news 2025", max_results=3)
         mock_tavily.format_results.assert_called_once()
         assert "AI News 2025" in result
 
