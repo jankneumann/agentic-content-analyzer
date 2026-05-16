@@ -468,7 +468,9 @@ class TestToolHandlers:
 
         assert "latest AI news 2025" in generator.web_search_queries
         mock_tavily.search.assert_called_once_with("latest AI news 2025", max_results=3)
-        mock_tavily.format_results.assert_called_once()
+        # format_results is handled by the TavilyWebSearchProvider adapter
+        # itself (src/services/web_search.py), not delegated to the inner
+        # TavilyService — so we assert on the adapter's output instead.
         assert "AI News 2025" in result
 
 

@@ -168,7 +168,6 @@ class TestThemeAnalysisCommand:
                 "2025-01-01",
                 "--end",
                 "2025-01-15",
-                "--direct",
             ],
         )
 
@@ -194,7 +193,6 @@ class TestThemeAnalysisCommand:
                 "2025-01-15",
                 "--end",
                 "2025-01-01",
-                "--direct",
             ],
         )
 
@@ -263,7 +261,6 @@ class TestPodcastGenerateCommand:
                 "301",
                 "--length",
                 "brief",
-                "--direct",
             ],
         )
 
