@@ -326,9 +326,9 @@ async def save_page_form(
     api_base_url = str(request.base_url).rstrip("/")
 
     return templates.TemplateResponse(
+        request,
         "save.html",
         {
-            "request": request,
             "url": url or "",
             "title": title or "",
             "excerpt": excerpt or "",
@@ -348,9 +348,9 @@ async def bookmarklet_page(request: Request) -> HTMLResponse:
     api_base_url = str(request.base_url).rstrip("/")
 
     return templates.TemplateResponse(
+        request,
         "bookmarklet.html",
         {
-            "request": request,
             "api_base_url": api_base_url,
         },
     )
@@ -367,9 +367,9 @@ async def shortcut_page(request: Request) -> HTMLResponse:
     api_base_url = str(request.base_url).rstrip("/")
 
     return templates.TemplateResponse(
+        request,
         "shortcut.html",
         {
-            "request": request,
             "api_base_url": api_base_url,
         },
     )
