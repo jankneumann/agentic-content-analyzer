@@ -255,8 +255,17 @@ class TestTraceLogCorrelation:
         trace.set_tracer_provider(provider)
         tracer = trace.get_tracer("test")
 
-        # Instrument logging
+        # LoggingInstrumentor is an opentelemetry singleton — calling
+        # `.instrument()` is a no-op if some earlier test already instrumented
+        # and didn't tear down. Force-uninstrument first so we start fresh.
+        # This is the same shard-ordering issue that hits caplog-based tests
+        # (see test_bao_secrets.py); CI surfaces it because the rest shard
+        # runs many telemetry-touching files in one pytest session.
         instrumentor = LoggingInstrumentor()
+        try:
+            instrumentor.uninstrument()
+        except Exception:
+            pass  # Wasn't instrumented; that's fine
         instrumentor.instrument(set_logging_format=False)
 
         try:
