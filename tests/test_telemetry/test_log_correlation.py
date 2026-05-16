@@ -246,23 +246,27 @@ class TestTraceLogCorrelation:
 
     def test_log_within_active_span_has_trace_context(self):
         """Log records emitted within an active span should have otelTraceID/otelSpanID."""
-        from opentelemetry import trace
         from opentelemetry.instrumentation.logging import LoggingInstrumentor
         from opentelemetry.sdk.trace import TracerProvider
 
-        # Set up a real TracerProvider
+        # Use the provider DIRECTLY rather than `trace.set_tracer_provider`
+        # + `trace.get_tracer`. The global trace API allows
+        # `set_tracer_provider` only once per process — subsequent calls
+        # are silently ignored (OTel emits a warning and keeps the first
+        # provider). If an earlier test in the shard already set a
+        # provider, the global one ignores us and we get tracers from the
+        # wrong provider; LoggingInstrumentor sees no active span and
+        # never injects otelTraceID. Calling `provider.get_tracer()`
+        # bypasses the global registry entirely.
         provider = TracerProvider()
-        trace.set_tracer_provider(provider)
-        tracer = trace.get_tracer("test")
+        tracer = provider.get_tracer("test")
 
-        # LoggingInstrumentor wraps the current LogRecord factory; if some
-        # other test (caplog, a previous LoggingInstrumentor, anything
-        # touching logging.setLogRecordFactory) ran first, the wrapper may
-        # not produce a clean otelTraceID injection. Reset to the default
-        # factory + uninstrument before installing our hook. This was the
-        # exact failure mode in CI rest shard: my uninstrument-only fix
-        # wasn't enough because the FACTORY was already mutated by an
-        # earlier test's caplog teardown.
+        # LoggingInstrumentor wraps logging.Logger.makeRecord; if some
+        # other test already instrumented and didn't tear down, our
+        # call is a no-op. Force-uninstrument first so we install a
+        # fresh wrapper. Also reset the LogRecord factory in case
+        # caplog (or a previous LoggingInstrumentor teardown) left it
+        # in a weird state.
         original_factory = logging.getLogRecordFactory()
         logging.setLogRecordFactory(logging.LogRecord)
         instrumentor = LoggingInstrumentor()
@@ -298,7 +302,8 @@ class TestTraceLogCorrelation:
             test_logger.removeHandler(handler)
         finally:
             instrumentor.uninstrument()
-            trace.set_tracer_provider(TracerProvider())
+            # No need to reset the global tracer provider — we never set
+            # it; we used `provider.get_tracer()` directly.
             logging.setLogRecordFactory(original_factory)
 
     def test_log_outside_span_has_zero_trace_context(self):
