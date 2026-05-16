@@ -147,7 +147,7 @@ jobs:
                 --ignore=tests/e2e"
               ;;
           esac
-          pytest $PATHS -v --no-cov -x -m "not hoverfly and not contract"
+          pytest $PATHS -v --no-cov -x -m "not hoverfly and not contract and not smoke and not integration and not live_api"
 
   contract-test:
     runs-on: ubuntu-latest

@@ -375,6 +375,19 @@ class ModelConfig:
             or DEFAULT_MODELS.get("kb_compilation", DEFAULT_MODELS["theme_analysis"]),
             ModelStep.KB_INDEX: kb_index
             or DEFAULT_MODELS.get("kb_index", DEFAULT_MODELS["summarization"]),
+            # Newer enum members without dedicated constructor params: fall
+            # back to YAML defaults, then to the summarization default. Keeps
+            # `get_model_for_step()` from raising KeyError when callers ask
+            # for a step that was added after ModelConfig's signature.
+            ModelStep.CONTENT_FILTERING: DEFAULT_MODELS.get(
+                "content_filtering", DEFAULT_MODELS["summarization"]
+            ),
+            ModelStep.TREE_SUMMARIZATION: DEFAULT_MODELS.get(
+                "tree_summarization", DEFAULT_MODELS["summarization"]
+            ),
+            ModelStep.TREE_SEARCH: DEFAULT_MODELS.get(
+                "tree_search", DEFAULT_MODELS["summarization"]
+            ),
         }
 
         # Validate all models exist

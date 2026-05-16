@@ -164,15 +164,22 @@ class TestExtractReferences:
         mock_extractor.store_references.return_value = 1
 
         mock_db = MagicMock()
-        mock_db.query.return_value.limit.return_value.all.return_value = [content1]
+        # Production now orders by ingested_at before limiting; mock the
+        # query chain accordingly: db.query(Content).order_by(...).limit(N).all()
+        mock_db.query.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            content1
+        ]
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
         result = json.loads(extract_references())
 
-        assert result["scanned"] == 1
-        assert result["references_found"] == 1
-        assert result["dry_run"] is False
+        # OpenAPI-aligned shape (src/mcp_server.py:1964): the legacy
+        # {scanned, references_found, dry_run} keys were retired in favor of
+        # the ReferencesExtractResponse contract.
+        assert result["content_processed"] == 1
+        assert result["references_extracted"] == 1
+        assert result["has_more"] is False
 
     @patch("src.storage.database.get_db")
     @patch("src.services.reference_extractor.ReferenceExtractor", autospec=False)
@@ -190,15 +197,19 @@ class TestExtractReferences:
         mock_extractor.extract_from_content.return_value = [ref1, ref2]
 
         mock_db = MagicMock()
-        mock_db.query.return_value.limit.return_value.all.return_value = [content1]
+        mock_db.query.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            content1
+        ]
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
         result = json.loads(extract_references(dry_run=True))
 
-        assert result["scanned"] == 1
-        assert result["references_found"] == 2
-        assert result["dry_run"] is True
+        # OpenAPI shape: no dry_run flag in response — dry_run is an input-side
+        # behavior that suppresses store_references(); the observable signal
+        # is "store_references was not called" plus the extracted-count.
+        assert result["content_processed"] == 1
+        assert result["references_extracted"] == 2
         mock_extractor.store_references.assert_not_called()
 
     @patch("src.storage.database.get_db")
@@ -210,14 +221,14 @@ class TestExtractReferences:
         from src.mcp_server import extract_references
 
         mock_db = MagicMock()
-        mock_db.query.return_value.limit.return_value.all.return_value = []
+        mock_db.query.return_value.order_by.return_value.limit.return_value.all.return_value = []
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
         result = json.loads(extract_references())
 
-        assert result["scanned"] == 0
-        assert result["references_found"] == 0
+        assert result["content_processed"] == 0
+        assert result["references_extracted"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -239,13 +250,20 @@ class TestResolveReferences:
         mock_resolver.resolve_batch.return_value = 7
 
         mock_db = MagicMock()
+        # Production now counts still-unresolved refs after the resolve_batch
+        # call (src/mcp_server.py:2007-2011). Default MagicMock returns a
+        # MagicMock for .count(), which then fails the `> 0` comparison.
+        mock_db.query.return_value.filter.return_value.count.return_value = 3
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
         result = json.loads(resolve_references(batch_size=50))
 
-        assert result["resolved"] == 7
-        assert result["batch_size"] == 50
+        # OpenAPI shape (ReferencesResolveResponse):
+        # {resolved_count, still_unresolved_count, has_more}. batch_size is an
+        # input-only concern; assert mock call args instead.
+        assert result["resolved_count"] == 7
+        assert result["still_unresolved_count"] == 3
         mock_resolver.resolve_batch.assert_called_once_with(50)
 
     @patch("src.storage.database.get_db")
@@ -261,13 +279,16 @@ class TestResolveReferences:
         mock_resolver.resolve_batch.return_value = 0
 
         mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.count.return_value = 0
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
         result = json.loads(resolve_references())
 
-        assert result["batch_size"] == 100
+        # batch_size is no longer echoed in the OpenAPI shape; just assert
+        # the resolver was called with the right default.
         mock_resolver.resolve_batch.assert_called_once_with(100)
+        assert "resolved_count" in result
 
 
 # ---------------------------------------------------------------------------
