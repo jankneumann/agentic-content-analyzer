@@ -30,7 +30,14 @@ class TestContentSourceEnum:
     """Tests for ContentSource enum."""
 
     def test_all_source_types_defined(self):
-        """Verify all expected source types exist."""
+        """Verify the originally-expected source types are still present.
+
+        Was an exact-equality assertion locking the set of ContentSource
+        values; new sources are added regularly (arxiv, blog, scholar,
+        perplexity, xsearch, …) so the equality test creates churn for
+        every ingestion-source addition. Test the invariant: the original
+        nine sources still exist.
+        """
         expected_sources = {
             "gmail",
             "rss",
@@ -43,7 +50,8 @@ class TestContentSourceEnum:
             "substack",
         }
         actual_sources = {source.value for source in ContentSource}
-        assert actual_sources == expected_sources
+        missing = expected_sources - actual_sources
+        assert not missing, f"Expected source types missing: {missing}"
 
     def test_source_string_representation(self):
         """Test that source values are lowercase strings."""

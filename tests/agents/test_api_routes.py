@@ -13,13 +13,22 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.api.agent_routes import router
+from src.api.dependencies import verify_admin_key
 
 
 @pytest.fixture
 def app() -> FastAPI:
-    """Create a test FastAPI app with the agent router."""
+    """Create a test FastAPI app with the agent router.
+
+    Overrides verify_admin_key so the route handler doesn't transitively
+    invoke get_settings → _get_voice_db_override, which queries the
+    settings_overrides table. The test's @patch on get_db / AgentTaskService
+    only covers the route body — the auth dependency runs first and hits
+    its own get_db, bypassing the patch.
+    """
     test_app = FastAPI()
     test_app.include_router(router)
+    test_app.dependency_overrides[verify_admin_key] = lambda: "test-admin-key"
     return test_app
 
 

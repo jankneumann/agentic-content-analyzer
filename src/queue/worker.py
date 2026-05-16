@@ -543,11 +543,13 @@ def _register_content_handlers() -> None:
                 )
             )
 
-        # All sources return IngestionResponse post round-4 harmonization
-        # (2026-05-08); take items_ingested for the progress message. URL
-        # duplicates surface as items_skipped=1 so a re-saved URL reports
-        # "Ingested 0 items" — semantically accurate (nothing new landed).
-        count = result.items_ingested
+        # Most sources return IngestionResponse post round-4 harmonization
+        # (2026-05-08); a few legacy paths still return a plain int. Accept
+        # both shapes so the partial-migration window doesn't break the worker
+        # and so test mocks can keep returning ints without rebuilding the
+        # full envelope. URL duplicates surface as items_skipped=1 so a
+        # re-saved URL reports "Ingested 0 items" — semantically accurate.
+        count = result if isinstance(result, int) else result.items_ingested
 
         await update_job_progress(job_id, 100, f"Ingested {count} items from {source}")
 

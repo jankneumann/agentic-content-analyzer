@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {
+      "timestamp": "2026-05-16T13:02:16-04:00",
+      "skill": "explore-feature",
+      "focus_area": null,
+      "top_opportunity_id": "opp-update-mcp-ingest-envelope",
+      "top_title": "Finish canonical MCP ingest envelope unification",
+      "recommended_next_action": "/implement-feature unify-mcp-ingest-envelope",
+      "status": "recommended",
+      "score": 3.0,
+      "evidence_summary": [
+        "Active OpenSpec change exists with 0/23 tasks.",
+        "Cross-transport ingestion envelope consistency is a known gap.",
+        "Implementation scope is focused on MCP wrappers, tests, docs, and the agentic-assistant consumer."
+      ],
+      "ranking_notes": [
+        "No previous discovery history existed, so no history-based priority dampening was applied.",
+        "Gen-eval and archive intelligence signals were unavailable.",
+        "Coordinator and Beads state were unavailable in this checkout."
+      ]
+    }
+  ]
+}

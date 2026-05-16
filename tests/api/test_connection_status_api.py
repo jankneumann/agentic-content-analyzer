@@ -6,7 +6,12 @@ from src.services.connection_checker import ConnectionCheckResult, ServiceStatus
 
 
 class TestGetConnectionStatus:
-    """Test GET /api/v1/settings/connections."""
+    """Test GET /api/v1/status/connections.
+
+    The legacy `/api/v1/settings/connections` path now 307-redirects here;
+    tests target the canonical URL directly to avoid coupling to TestClient's
+    redirect-following behavior.
+    """
 
     def test_returns_services(self, client):
         """Mock all checks to ensure endpoint returns structured response."""
@@ -31,11 +36,11 @@ class TestGetConnectionStatus:
         )
 
         with patch(
-            "src.api.connection_status_routes.check_all_connections",
+            "src.api.status_routes.check_all_connections",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            resp = client.get("/api/v1/settings/connections")
+            resp = client.get("/api/v1/status/connections")
             assert resp.status_code == 200
             data = resp.json()
             assert "services" in data
@@ -51,11 +56,11 @@ class TestGetConnectionStatus:
         )
 
         with patch(
-            "src.api.connection_status_routes.check_all_connections",
+            "src.api.status_routes.check_all_connections",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            resp = client.get("/api/v1/settings/connections")
+            resp = client.get("/api/v1/status/connections")
             assert resp.json()["all_ok"] is True
 
     def test_not_ok_when_service_unavailable(self, client):
@@ -69,11 +74,11 @@ class TestGetConnectionStatus:
         )
 
         with patch(
-            "src.api.connection_status_routes.check_all_connections",
+            "src.api.status_routes.check_all_connections",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            resp = client.get("/api/v1/settings/connections")
+            resp = client.get("/api/v1/status/connections")
             assert resp.json()["all_ok"] is False
 
     def test_not_configured_is_ok(self, client):
@@ -86,11 +91,11 @@ class TestGetConnectionStatus:
         )
 
         with patch(
-            "src.api.connection_status_routes.check_all_connections",
+            "src.api.status_routes.check_all_connections",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            resp = client.get("/api/v1/settings/connections")
+            resp = client.get("/api/v1/status/connections")
             assert resp.json()["all_ok"] is True
 
     def test_service_has_latency(self, client):
@@ -101,10 +106,10 @@ class TestGetConnectionStatus:
         )
 
         with patch(
-            "src.api.connection_status_routes.check_all_connections",
+            "src.api.status_routes.check_all_connections",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            resp = client.get("/api/v1/settings/connections")
+            resp = client.get("/api/v1/status/connections")
             service = resp.json()["services"][0]
             assert service["latency_ms"] == 12.3

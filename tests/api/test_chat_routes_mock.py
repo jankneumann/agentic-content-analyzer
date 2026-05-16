@@ -7,10 +7,17 @@ from fastapi.testclient import TestClient
 from src.api.app import app
 from src.api.dependencies import verify_admin_key
 
-# Override dependency to bypass auth
+# Bypass route-level auth dependency.
 app.dependency_overrides[verify_admin_key] = lambda: "test-key"
 
 client = TestClient(app)
+
+# AuthMiddleware (separate from the route dependency) checks for either a
+# session cookie or X-Admin-Key on every non-exempt request. tests/api/conftest
+# sets ADMIN_API_KEY=test-admin-key in the env via its autouse fixture, so
+# every request from this file must include the matching header to clear the
+# middleware before the route-level mocks even matter.
+_AUTH_HEADERS = {"X-Admin-Key": "test-admin-key"}
 
 
 def test_send_message_rate_limit_exceeded():
@@ -23,6 +30,7 @@ def test_send_message_rate_limit_exceeded():
         response = client.post(
             "/api/v1/chat/conversations/123/messages",
             json={"content": "Hello"},
+            headers=_AUTH_HEADERS,
         )
 
         assert response.status_code == 429
@@ -57,7 +65,10 @@ def test_regenerate_rate_limit_exceeded():
         mock_limiter.is_limited.return_value = True
         mock_limiter.get_retry_after.return_value = 15
 
-        response = client.post("/api/v1/chat/conversations/123/regenerate")
+        response = client.post(
+            "/api/v1/chat/conversations/123/regenerate",
+            headers=_AUTH_HEADERS,
+        )
 
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "15"
@@ -72,6 +83,7 @@ def test_create_conversation_rate_limit_exceeded():
         response = client.post(
             "/api/v1/chat/conversations",
             json={"artifact_type": "digest", "artifact_id": "1"},
+            headers=_AUTH_HEADERS,
         )
 
         assert response.status_code == 429

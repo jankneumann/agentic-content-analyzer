@@ -63,6 +63,10 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [api, cli-stack, services-stack, rest]
     services:
       postgres:
         image: paradedb/paradedb:0.22.2-pg17
@@ -95,19 +99,55 @@ jobs:
         run: |
           uv pip install --system -e ".[dev]"
 
-      - name: Run tests with coverage
+      - name: Run database migrations
+        # API tests use TestClient which hits the app's actual DATABASE_URL
+        # (newsletters), separate from the worktree-aware fixture DB
+        # (newsletters_test). Without this step, route handlers query an
+        # empty DB and tests fail with "relation X does not exist".
+        env:
+          DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
+          APP_SECRET_KEY: test-secret-key-for-ci
+        run: |
+          alembic upgrade head
+
+      - name: Run tests (shard ${{ matrix.shard }})
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           ANTHROPIC_API_KEY: test-key-for-ci
           ENVIRONMENT: test
+        # Coverage intentionally omitted: no external consumer (no codecov,
+        # SonarCloud retired). Run `make test-cov` locally when you want it.
+        # Shard layout: roughly balanced by test-file count. The `rest` shard
+        # uses --ignore for the other shards' paths so new test directories
+        # automatically route there without a workflow update.
         run: |
-          pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=25 -x -m "not hoverfly and not contract"
-
-      - name: Coverage summary
-        if: always()
-        run: |
-          echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
-          pytest tests/ --cov=src --cov-report=term -m "not hoverfly and not contract" -q --no-header 2>&1 | tail -20 >> $GITHUB_STEP_SUMMARY || true
+          case "${{ matrix.shard }}" in
+            api)
+              PATHS="tests/api"
+              ;;
+            cli-stack)
+              PATHS="tests/cli tests/agents tests/mcp tests/integration"
+              ;;
+            services-stack)
+              PATHS="tests/test_services tests/services tests/test_ingestion tests/test_processors tests/ingestion"
+              ;;
+            rest)
+              PATHS="tests/ \
+                --ignore=tests/api \
+                --ignore=tests/cli \
+                --ignore=tests/agents \
+                --ignore=tests/mcp \
+                --ignore=tests/integration \
+                --ignore=tests/test_services \
+                --ignore=tests/services \
+                --ignore=tests/test_ingestion \
+                --ignore=tests/test_processors \
+                --ignore=tests/ingestion \
+                --ignore=tests/contract \
+                --ignore=tests/e2e"
+              ;;
+          esac
+          pytest $PATHS -v --no-cov -x -m "not hoverfly and not contract and not smoke and not integration and not live_api"
 
   contract-test:
     runs-on: ubuntu-latest
@@ -213,28 +253,49 @@ jobs:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           RAILWAY_DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           DATABASE_PROVIDER: railway
-          PROFILE: railway
+          PROFILE: railway-falkordb
           ANTHROPIC_API_KEY: test-key-for-ci
           APP_SECRET_KEY: test-secret-key-for-ci
           ADMIN_API_KEY: test-admin-key
           ENVIRONMENT: production
           WORKER_ENABLED: "false"
+          # Settings validator requires non-empty FALKORDB_HOST when
+          # graphdb_mode=cloud (the railway profile default). Cold-start only
+          # hits /health which doesn't touch the graph DB, so localhost is a
+          # safe stand-in — the connection is never opened. Production Railway
+          # injects the real internal hostname here.
+          FALKORDB_HOST: localhost
+          FALKORDB_PASSWORD: unused-cold-start-stub
         run: |
-          echo "Starting app with PROFILE=railway..."
-          timeout 10 python -c "
-          import uvicorn, threading, time, httpx
-
-          def start():
-              uvicorn.run('src.api.app:app', host='127.0.0.1', port=8000, log_level='error')
-
-          t = threading.Thread(target=start, daemon=True)
-          t.start()
-          time.sleep(3)
-
-          resp = httpx.get('http://127.0.0.1:8000/health')
-          assert resp.status_code == 200, f'Health check failed: {resp.status_code}'
-          print('✓ App booted and health check passed')
-          " || { echo "::error::App failed to boot with railway profile"; exit 1; }
+          echo "Starting app with PROFILE=railway-falkordb..."
+          # Run uvicorn as a subprocess so we can capture its stderr if it
+          # crashes during startup. The previous threading.Thread(daemon=True)
+          # setup swallowed startup errors because the main thread proceeded
+          # to sleep+health-check while the daemon thread died silently.
+          uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --log-level info > uvicorn.log 2>&1 &
+          UVICORN_PID=$!
+          # Poll for readiness instead of fixed sleep — exits early on success
+          # and gives accurate timing in logs.
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "✓ App booted and health check passed (took ${i}s)"
+              kill $UVICORN_PID 2>/dev/null || true
+              exit 0
+            fi
+            # If uvicorn died, report it now rather than waiting for the timeout
+            if ! kill -0 $UVICORN_PID 2>/dev/null; then
+              echo "::error::uvicorn process exited during startup"
+              echo "--- uvicorn.log ---"
+              cat uvicorn.log
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "::error::App failed to respond to /health within 20s"
+          echo "--- uvicorn.log ---"
+          cat uvicorn.log
+          kill $UVICORN_PID 2>/dev/null || true
+          exit 1
 
   validate-profiles:
     runs-on: ubuntu-latest

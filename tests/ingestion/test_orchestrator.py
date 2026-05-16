@@ -590,7 +590,12 @@ class TestIngestScholarPaper:
 
 
 class TestIngestScholarRefs:
-    @patch("src.services.reference_extractor.ReferenceExtractor")
+    # Orchestrator imports `ReferenceExtractor` from the back-compat shim at
+    # src/ingestion/reference_extractor.py, which re-exports from
+    # src/services/reference_extractor.py. The shim has its own module-level
+    # binding established at import time, so patching the source module
+    # doesn't reach the orchestrator's view of the symbol. Patch the shim.
+    @patch("src.ingestion.reference_extractor.ReferenceExtractor")
     def test_returns_envelope_with_papers_ingested_in_details(self, mock_cls):
         """scholar-refs uses the reserved ``papers_ingested`` key in details
         per the result.py registry, even though items_ingested carries the

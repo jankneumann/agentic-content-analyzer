@@ -8,18 +8,31 @@ from src.config.settings import Settings
 client = TestClient(app)
 
 
-@patch("src.api.dependencies.get_settings")
-def test_digest_routes_protected_in_production(mock_get_settings):
+def _make_production_settings_mock() -> MagicMock:
+    """Build a Settings mock with all attributes the auth layers touch.
+
+    `verify_admin_key` (dependencies.py:93) reads `settings.app_secret_key`
+    even when only checking for an admin key, so missing it raises
+    AttributeError → 500. AuthMiddleware also reads `app_secret_key` for
+    JWT cookie validation.
     """
-    Verify that digest routes are PROTECTED in production.
-    """
-    # Create a Settings object that looks like production
     settings = MagicMock(spec=Settings)
     settings.is_development = False
     settings.is_production = True
     settings.admin_api_key = "secret-key"
+    settings.app_secret_key = "app-secret-key"
+    return settings
 
-    mock_get_settings.return_value = settings
+
+@patch("src.api.middleware.auth.get_settings")
+@patch("src.api.dependencies.get_settings")
+def test_digest_routes_protected_in_production(mock_deps_settings, mock_middleware_settings):
+    """
+    Verify that digest routes are PROTECTED in production.
+    """
+    settings = _make_production_settings_mock()
+    mock_deps_settings.return_value = settings
+    mock_middleware_settings.return_value = settings
 
     # Access without header
     # This should return 401 if protected
@@ -29,17 +42,15 @@ def test_digest_routes_protected_in_production(mock_get_settings):
     )
 
 
+@patch("src.api.middleware.auth.get_settings")
 @patch("src.api.dependencies.get_settings")
-def test_content_routes_protected_in_production(mock_get_settings):
+def test_content_routes_protected_in_production(mock_deps_settings, mock_middleware_settings):
     """
     Verify that content routes ARE protected in production.
     """
-    settings = MagicMock(spec=Settings)
-    settings.is_development = False
-    settings.is_production = True
-    settings.admin_api_key = "secret-key"
-
-    mock_get_settings.return_value = settings
+    settings = _make_production_settings_mock()
+    mock_deps_settings.return_value = settings
+    mock_middleware_settings.return_value = settings
 
     # Access without header
     response = client.get("/api/v1/contents")
