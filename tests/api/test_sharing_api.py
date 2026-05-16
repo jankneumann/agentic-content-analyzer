@@ -415,7 +415,7 @@ class TestShareRateLimiter:
 
     def test_rate_limiter_allows_normal_traffic(self):
         """Rate limiter allows requests under the limit."""
-        from src.api.share_rate_limiter import ShareRateLimiter
+        from src.api.rate_limiter_base import EndpointRateLimiter as ShareRateLimiter
 
         limiter = ShareRateLimiter(max_requests=5, window_seconds=60)
         for _ in range(5):
@@ -423,7 +423,7 @@ class TestShareRateLimiter:
 
     def test_rate_limiter_blocks_excess_traffic(self):
         """Rate limiter blocks after exceeding limit."""
-        from src.api.share_rate_limiter import ShareRateLimiter
+        from src.api.rate_limiter_base import EndpointRateLimiter as ShareRateLimiter
 
         limiter = ShareRateLimiter(max_requests=3, window_seconds=60)
         for _ in range(3):
@@ -433,7 +433,7 @@ class TestShareRateLimiter:
 
     def test_rate_limiter_per_ip_isolation(self):
         """Different IPs have independent limits."""
-        from src.api.share_rate_limiter import ShareRateLimiter
+        from src.api.rate_limiter_base import EndpointRateLimiter as ShareRateLimiter
 
         limiter = ShareRateLimiter(max_requests=2, window_seconds=60)
         for _ in range(2):
@@ -444,7 +444,7 @@ class TestShareRateLimiter:
 
     def test_rate_limiter_retry_after(self):
         """Retry-After returns positive value when blocked."""
-        from src.api.share_rate_limiter import ShareRateLimiter
+        from src.api.rate_limiter_base import EndpointRateLimiter as ShareRateLimiter
 
         limiter = ShareRateLimiter(max_requests=2, window_seconds=60)
         for _ in range(2):
@@ -456,7 +456,7 @@ class TestShareRateLimiter:
 
     def test_rate_limiter_retry_after_not_blocked(self):
         """Retry-After returns 0 when not blocked."""
-        from src.api.share_rate_limiter import ShareRateLimiter
+        from src.api.rate_limiter_base import EndpointRateLimiter as ShareRateLimiter
 
         limiter = ShareRateLimiter(max_requests=10, window_seconds=60)
         assert limiter.get_retry_after("192.168.1.1") == 0

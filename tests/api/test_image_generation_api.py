@@ -328,4 +328,9 @@ class TestFeatureFlag:
                 json={"content": "Test content for suggestions here"},
             )
             assert response.status_code == 422
-            assert "disabled" in response.json()["detail"]
+            # The route deliberately wraps the underlying ValueError ("Image
+            # generation is disabled.") into a generic "Invalid image
+            # generator configuration" message so callers can't probe internal
+            # state (src/api/image_generation_routes.py:126).
+            detail = response.json()["detail"]
+            assert "invalid image generator" in detail.lower() or "disabled" in detail.lower()
