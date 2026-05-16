@@ -255,12 +255,16 @@ class TestTraceLogCorrelation:
         trace.set_tracer_provider(provider)
         tracer = trace.get_tracer("test")
 
-        # LoggingInstrumentor is an opentelemetry singleton — calling
-        # `.instrument()` is a no-op if some earlier test already instrumented
-        # and didn't tear down. Force-uninstrument first so we start fresh.
-        # This is the same shard-ordering issue that hits caplog-based tests
-        # (see test_bao_secrets.py); CI surfaces it because the rest shard
-        # runs many telemetry-touching files in one pytest session.
+        # LoggingInstrumentor wraps the current LogRecord factory; if some
+        # other test (caplog, a previous LoggingInstrumentor, anything
+        # touching logging.setLogRecordFactory) ran first, the wrapper may
+        # not produce a clean otelTraceID injection. Reset to the default
+        # factory + uninstrument before installing our hook. This was the
+        # exact failure mode in CI rest shard: my uninstrument-only fix
+        # wasn't enough because the FACTORY was already mutated by an
+        # earlier test's caplog teardown.
+        original_factory = logging.getLogRecordFactory()
+        logging.setLogRecordFactory(logging.LogRecord)
         instrumentor = LoggingInstrumentor()
         try:
             instrumentor.uninstrument()
@@ -295,6 +299,7 @@ class TestTraceLogCorrelation:
         finally:
             instrumentor.uninstrument()
             trace.set_tracer_provider(TracerProvider())
+            logging.setLogRecordFactory(original_factory)
 
     def test_log_outside_span_has_zero_trace_context(self):
         """Log records emitted outside a span should have zero/empty trace context."""
