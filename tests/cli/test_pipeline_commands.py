@@ -48,6 +48,7 @@ def _mock_all_orchestrator_functions(
     *,
     gmail: int | Exception = 2,
     rss: int | Exception = 3,
+    blog: int | Exception = 0,
     youtube_playlist: int | Exception = 1,
     youtube_rss: int | Exception = 0,
     podcast: int | Exception = 1,
@@ -57,6 +58,7 @@ def _mock_all_orchestrator_functions(
     source_map = {
         "ingest_gmail": ("gmail", gmail),
         "ingest_rss": ("rss", rss),
+        "ingest_blog": ("blog", blog),
         "ingest_youtube_playlist": ("youtube-playlist", youtube_playlist),
         "ingest_youtube_rss": ("youtube-rss", youtube_rss),
         "ingest_podcast": ("podcast", podcast),
@@ -85,12 +87,14 @@ class TestDailyPipeline:
         "src.ingestion.orchestrator.ingest_youtube_playlist",
         return_value=_env("youtube-playlist", 1),
     )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
     @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 3))
     @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 2))
     def test_daily_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,
@@ -120,12 +124,14 @@ class TestDailyPipeline:
         "src.ingestion.orchestrator.ingest_youtube_playlist",
         return_value=_env("youtube-playlist", 1),
     )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
     @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 3))
     @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 2))
     def test_daily_pipeline_emits_pipeline_completion(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,
@@ -160,10 +166,18 @@ class TestDailyPipeline:
     @patch("src.ingestion.orchestrator.ingest_podcast", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_youtube_rss", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_youtube_playlist", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_blog", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_rss", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail"))
     def test_daily_pipeline_all_ingestion_fails(
-        self, mock_gmail, mock_rss, mock_yt_playlist, mock_yt_rss, mock_podcast, mock_substack
+        self,
+        mock_gmail,
+        mock_rss,
+        mock_blog,
+        mock_yt_playlist,
+        mock_yt_rss,
+        mock_podcast,
+        mock_substack,
     ):
         result = runner.invoke(app, ["pipeline", "daily"])
         assert result.exit_code == 1
@@ -190,12 +204,14 @@ class TestWeeklyPipeline:
         "src.ingestion.orchestrator.ingest_youtube_playlist",
         return_value=_env("youtube-playlist", 2),
     )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
     @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 10))
     @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 5))
     def test_weekly_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,
@@ -225,12 +241,14 @@ class TestWeeklyPipeline:
         "src.ingestion.orchestrator.ingest_youtube_playlist",
         return_value=_env("youtube-playlist", 2),
     )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
     @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 10))
     @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 5))
     def test_weekly_pipeline_emits_pipeline_completion(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,
