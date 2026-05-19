@@ -222,10 +222,29 @@ def _poll_job(
     last_body: dict[str, Any] = {}
 
     while time.time() < deadline:
-        resp = http_client.get(f"/api/v1/jobs/{job_id}")
+        try:
+            resp = http_client.get(f"/api/v1/jobs/{job_id}")
+        except (httpx.ConnectError, httpx.ReadTimeout) as e:
+            # Transient connectivity hiccup — Railway's edge occasionally
+            # drops connections. Retry next interval rather than failing.
+            logger.warning("Polling /api/v1/jobs/%s raised %s; retrying", job_id, e)
+            time.sleep(interval)
+            continue
         if resp.status_code == 404:
             # The job was enqueued but no row exists yet — race with
             # the queue insertion. Wait one interval and retry.
+            time.sleep(interval)
+            continue
+        if 500 <= resp.status_code < 600:
+            # Railway's edge proxy returns 502 "Application failed to respond"
+            # when the API container is briefly unresponsive (cold start, deploy,
+            # transient memory pressure). The job is still running on the
+            # worker — retry rather than fail the test on infra noise.
+            logger.warning(
+                "Polling /api/v1/jobs/%s returned %d (transient); retrying",
+                job_id,
+                resp.status_code,
+            )
             time.sleep(interval)
             continue
         assert resp.status_code == 200, (
@@ -263,31 +282,45 @@ def _assert_job_succeeded(
     )
     assert not error, f"Variant {variant.source!r} completed but reported error: {error!r}"
 
-    if not variant.allow_empty_result:
-        payload = job.get("payload") or {}
-        processed = payload.get("processed", 0)
-        total = payload.get("total", 0)
-        # We don't require processed > 0 in all cases (RSS/blog/etc. with
-        # no new items legitimately process 0). But for `url` ingestion we
-        # know exactly one item should be processed.
-        if variant.source == "url":
-            assert processed >= 1, (
-                f"URL variant should process exactly 1 item, "
-                f"got processed={processed} total={total} payload={payload}"
-            )
+    # We intentionally do not assert on payload.processed / payload.total
+    # / "Ingested N items" message text. Reasons:
+    #   - Single-URL ingest doesn't populate processed/total at all (only
+    #     batch sources do), so the field shapes are heterogeneous.
+    #   - Even for batch sources, "0 items" is a legitimate success: an
+    #     RSS feed with no new entries since the last poll is fine; the
+    #     URL variant re-ingesting an already-known URL is correctly
+    #     deduplicated to 0.
+    # The job-status terminal state is the source of truth — if the
+    # worker said "completed" with no error, the variant works end-to-end.
+    # Item-count assertions belong in source-specific unit tests, not
+    # the cross-variant regression harness.
 
 
 # ─── Tests ──────────────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="module")
-def worker_ready(http_client: httpx.Client) -> None:
-    """Module-scoped preflight: skip every variant if backend is unreachable.
+def worker_ready(http_client: httpx.Client, admin_key: str) -> None:
+    """Module-scoped preflight: skip every variant on hard env-setup failures.
 
-    Only skips on hard reachability failures (connection refused, timeout,
-    non-200 response). We do NOT gate on queue/worker metrics — see
+    Checks:
+    1. Admin key is present (without it, every POST hits 401 — confusing
+       failure mode that looks like a backend bug). The most common cause
+       is `E2E_ADMIN_KEY=$ADMIN_API_KEY pytest ...` where $ADMIN_API_KEY
+       was unset in the shell, so E2E_ADMIN_KEY became literal "".
+    2. Backend /ready returns 200 (proves backend is alive).
+
+    We deliberately do NOT gate on queue/worker metrics — see
     _preflight_backend_reachable for why.
     """
+    if not admin_key:
+        pytest.skip(
+            "No admin key available. Set E2E_ADMIN_KEY or ADMIN_API_KEY before "
+            "invoking pytest. If you wrote `E2E_ADMIN_KEY=$ADMIN_API_KEY pytest ...`, "
+            "verify $ADMIN_API_KEY is exported in your shell first: "
+            "`echo ${#ADMIN_API_KEY}` should print a non-zero length.",
+            allow_module_level=True,
+        )
     reason = _preflight_backend_reachable(http_client)
     if reason:
         pytest.skip(reason, allow_module_level=True)
