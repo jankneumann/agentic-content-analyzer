@@ -734,6 +734,7 @@ PARSER_TO_STRATEGY: dict[str, str] = {
     "youtube_transcript_api": "youtube_transcript",
     "gemini": "gemini_summary",
     "MarkItDownParser": "markdown",
+    "BlogScraper": "markdown",  # Trafilatura → clean markdown, same as MarkItDown
 }
 
 

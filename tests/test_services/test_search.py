@@ -480,7 +480,7 @@ class TestTreeSearchHelpers:
         # Mock LLM to return invalid JSON
         with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
             mock_router = MagicMock()
-            mock_router.generate = AsyncMock(return_value=MagicMock(content="not valid json {{{"))
+            mock_router.generate = AsyncMock(return_value=MagicMock(text="not valid json {{{"))
             mock_router_cls.return_value = mock_router
 
             with patch("src.config.models.get_model_config"):
@@ -511,7 +511,7 @@ class TestTreeSearchHelpers:
 
         with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
             mock_router = MagicMock()
-            mock_router.generate = AsyncMock(return_value=MagicMock(content=llm_response))
+            mock_router.generate = AsyncMock(return_value=MagicMock(text=llm_response))
             mock_router_cls.return_value = mock_router
 
             # Mock leaf fetching
@@ -548,7 +548,7 @@ class TestTreeSearchHelpers:
 
         with patch("src.services.llm_router.LLMRouter") as mock_router_cls:
             mock_router = MagicMock()
-            mock_router.generate = AsyncMock(return_value=MagicMock(content=llm_response))
+            mock_router.generate = AsyncMock(return_value=MagicMock(text=llm_response))
             mock_router_cls.return_value = mock_router
 
             mock_leaf_result = MagicMock()
